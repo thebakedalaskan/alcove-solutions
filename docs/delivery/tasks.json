@@ -1,0 +1,732 @@
+[
+  {
+    "id": "MVP-001",
+    "title": "Create the MVP workspace and isolated local stack",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Required repository boundaries and doctor/local lifecycle scripts exist and reject missing prerequisites honestly.",
+      "Local edge, API and ciphertext stores run under isolated names on loopback with synthetic identities.",
+      "Local and CI configurations cannot acquire production secrets, call paid suppliers or join real meetings."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-002",
+    "title": "Lock and build desktop, API and meeting artifacts",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-001"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Actual runtime, package, native, browser and model versions are resolved into checked-in locks and source inventories.",
+      "Three server images and the reference desktop payload have computed artifact digests tied to the source revision.",
+      "Builds reject missing or mutable inputs and images perform no package, browser or model download at runtime."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-003",
+    "title": "Generate canonical MVP contracts and protocol vectors",
+    "status": "Backlog",
+    "lane": "Clients and security",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-001"
+    ],
+    "specification": "docs/engineering/privacy-keys-and-sessions.md",
+    "acceptance": [
+      "Generated client/server schemas implement the same identifiers, lossless integers, typed failures and finite bounds.",
+      "Duplicate members, unknown critical fields, malformed sizes and invalid operation bindings reject before execution.",
+      "Signature, encrypted record and channel vectors cover tampering, wrong binding and replay across the native and API implementations."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-004",
+    "title": "Create native installation keys and the restricted desktop bridge",
+    "status": "Backlog",
+    "lane": "Clients and security",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-003"
+    ],
+    "specification": "docs/engineering/privacy-keys-and-sessions.md",
+    "acceptance": [
+      "Reference-platform installation creates its identity and vault key, seals them natively and exports only the public identity for setup.",
+      "Typed bridge operations enforce origin, window, owner, argument and size checks without arbitrary path, execution or signing access.",
+      "Lock and same-installation reopen work on the actual reference machine without UI key export or plaintext key files."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-005",
+    "title": "Open and verify the attested owner channel",
+    "status": "Backlog",
+    "lane": "Clients and security",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-003",
+      "MVP-004"
+    ],
+    "specification": "docs/engineering/privacy-keys-and-sessions.md",
+    "acceptance": [
+      "Client verifies the expected C01 application, accepted code/configuration and endpoint key binding before releasing the vault key.",
+      "Authenticated operations travel inside the bounded encrypted channel with owner/session/operation binding and expiry.",
+      "Wrong application/image/key, replay, altered ciphertext and expired sessions fail before content or secret delivery."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-006",
+    "title": "Bootstrap C01 applications and scoped sealed service secrets",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-005"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "API and meeting applications have separate accepted identities, explicit OS/image policy and verified attested recipients.",
+      "Trusted bootstrap transfers complete scoped credential sets without plaintext shell arguments, files, logs or infrastructure state.",
+      "Service credentials survive approved restart under application seals while no persistent owner vault root enters server secret storage."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-007",
+    "title": "Persist encrypted revisions and transactional document commits",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-003",
+      "MVP-005"
+    ],
+    "specification": "docs/engineering/files-documents-and-storage.md",
+    "acceptance": [
+      "D01 schema stores encrypted private payloads and only documented opaque transactional metadata with restricted roles.",
+      "Immutable revision insert, expected-parent CAS and operation deduplication yield one durable result under retry and crash.",
+      "Stale parent preserves the client draft and missing referenced ciphertext is reported unavailable rather than acknowledged as a saved revision."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-008",
+    "title": "Persist encrypted local drafts and pending operations",
+    "status": "Backlog",
+    "lane": "Clients and security",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-004",
+      "MVP-007"
+    ],
+    "specification": "docs/engineering/files-documents-and-storage.md",
+    "acceptance": [
+      "Native drafts and pending operation bytes are encrypted before local database, journal or temporary-file writes.",
+      "Restart retries the original immutable operation identity and retains an unresolved edit without silently overwriting it.",
+      "Locked or missing native seal produces an explicit locked/unavailable state without a plaintext fallback."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-009",
+    "title": "Deliver upload, file preview and immutable replacement versions",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-007",
+      "MVP-008"
+    ],
+    "specification": "docs/engineering/files-documents-and-storage.md",
+    "acceptance": [
+      "Owner uploads supported text PDF, TXT and Markdown within canonical quotas, reopens the retained original and uses Edit as page for TXT/MD with source provenance.",
+      "Ciphertext chunk manifests resume safely after interruption and reject changed, reordered or oversized bytes.",
+      "Safe preview and explicit replacement create immutable versions; filenames or plaintext preview URLs never reach ordinary storage or edge logs."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-010",
+    "title": "Deliver the persisted rich-text page editor",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-007",
+      "MVP-008"
+    ],
+    "specification": "docs/engineering/files-documents-and-storage.md",
+    "acceptance": [
+      "Owner creates and edits a validated structured page using the supported blocks and saves a full immutable revision.",
+      "Closing and reopening the application restores the page and encrypted unsaved draft correctly.",
+      "Stale-parent save returns the documented conflict while preserving both accepted revision and local work."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-011",
+    "title": "Extract supported documents in a bounded protected process",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-009",
+      "MVP-010"
+    ],
+    "specification": "docs/engineering/files-documents-and-storage.md",
+    "acceptance": [
+      "Selected PDF and text parsers run inside C01 without network, general secrets or unbounded CPU/memory/temp access.",
+      "Extraction stores encrypted chunks tied to exact source revision and page/block locators with canonical size/count limits.",
+      "Malformed, scanned-without-text, oversized and failed inputs produce explicit coverage/error states without an ordinary-host fallback."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-012",
+    "title": "Retrieve selected sources and open exact citations",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-011"
+    ],
+    "specification": "docs/engineering/chat-and-inference.md",
+    "acceptance": [
+      "Pinned E02 artifacts and lexical retrieval run in the protected runtime and persist encrypted source-scoped index payloads.",
+      "Only selected permitted revisions enter bounded context and partial/missing extraction is reflected in retrieval results.",
+      "Citations open the exact retained revision and locator; source deletion invalidates retrieval before dispatch/publication while newer or unavailable sources remain explicit."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-013",
+    "title": "Implement the protected I01 request and response adapter",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-005"
+    ],
+    "specification": "docs/engineering/chat-and-inference.md",
+    "acceptance": [
+      "Selected I01 route performs its supported model, attestation/channel/key and response checks without plaintext fallback.",
+      "Stock request preparation keeps its response-key closure only in protected memory; exact buffered response and verification follow the canonical adapter contract.",
+      "Malformed proof/output, timeout or crash losing the key cannot trigger a second paid request; answer_lost retains only encrypted evidence for read-only reconciliation."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-014",
+    "title": "Implement owner credits, reservation and settlement transactions",
+    "status": "Backlog",
+    "lane": "Payments and accounting",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-003",
+      "MVP-007"
+    ],
+    "specification": "docs/engineering/payments-and-usage.md",
+    "acceptance": [
+      "Lossless owner-bound balances, immutable events and unique purchase/action keys preserve the accounting equations.",
+      "admitAction reserves the maximum atomically; settleAction releases or consumes it once; concurrent requests cannot overspend.",
+      "Unknown external outcomes retain their documented exposure and reconcileAction cannot create a second charge or silently record zero cost."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-015",
+    "title": "Prepare the real private credit purchase and wallet signature",
+    "status": "Backlog",
+    "lane": "Payments and accounting",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-003",
+      "MVP-005",
+      "MVP-014"
+    ],
+    "specification": "docs/engineering/payments-and-usage.md",
+    "acceptance": [
+      "P01 prepares the fixed pack on one configured supported route and durably binds the quote, purchase and original owner.",
+      "Desktop displays the exact payment details and obtains the documented owner-wallet intent signature without custody of the wallet key.",
+      "Wrong route, asset, recipient, intent, expiry or changed quote rejects before submission and sensitive provider references remain encrypted."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-016",
+    "title": "Submit and reconcile private purchases with one credit",
+    "status": "Backlog",
+    "lane": "Payments and accounting",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-015"
+    ],
+    "specification": "docs/engineering/payments-and-usage.md",
+    "acceptance": [
+      "Submission persists its identity and send-start state before the external request; ambiguous results use read-only status reconciliation.",
+      "Authenticated accepted SUCCESS is checked against the original purchase and required actual provider outcome fields.",
+      "Duplicate, concurrent and restart status observations credit once under unique settlement/purchase constraints; failed or unknown purchases do not credit."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-017",
+    "title": "Account for operator supplier capacity and uncertain expense",
+    "status": "Backlog",
+    "lane": "Payments and accounting",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-006",
+      "MVP-014"
+    ],
+    "specification": "docs/engineering/payments-and-usage.md",
+    "acceptance": [
+      "Operator can securely record actual manual prefunding and supported balance/report evidence for the dedicated supplier account.",
+      "Paid admission checks confirmed usable capacity minus committed or unknown exposure and blocks on low or stale capacity.",
+      "Retail service debit, owner credits and provider expense remain distinct; missing provider cost stays unknown without inventing or changing an owner balance."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-018",
+    "title": "Deliver one bounded paid contextual chat end to end",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-012",
+      "MVP-013",
+      "MVP-014",
+      "MVP-017"
+    ],
+    "specification": "docs/engineering/chat-and-inference.md",
+    "acceptance": [
+      "Selected stored revisions produce a protected cited answer through one admitted bounded I01 request.",
+      "Encrypted status/history exposes reservation, final debit and useful partial/failure states without leaking prompts or provider credentials.",
+      "Interrupted or uncertain send preserves its action identity and cannot silently resubmit, double debit or use unselected sources."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-019",
+    "title": "Build and isolate the single-run meeting attendee image",
+    "status": "Backlog",
+    "lane": "Audio and meetings",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-003",
+      "MVP-006"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "Separate C01 worker boots the locked browser, private display/audio daemon and recorder with the browser sandbox enabled.",
+      "Worker receives only run-scoped recording/control authority and no owner vault root, historical content or merchant/inference credentials.",
+      "Browser profile, display and audio temp data remain inside protected bounded scratch with no host mounts, public debugging or plaintext log output."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-020",
+    "title": "Implement authorized guest admission and stop controls",
+    "status": "Backlog",
+    "lane": "Audio and meetings",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-005",
+      "MVP-014",
+      "MVP-019"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "Owner authorizes the pasted meeting URL and session cap, with reservation accepted before the visible guest attempts entry.",
+      "Guest-enabled host admission, timeout, denied entry and unsupported login/CAPTCHA follow the canonical visible states.",
+      "Stop and the bounded reconnect path preserve one run identity and distinguish requested stop, confirmed leave and uncertain external state."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-021",
+    "title": "Capture encrypted meeting audio with truthful timing",
+    "status": "Backlog",
+    "lane": "Audio and meetings",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-020"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "Actual private sink samples produce independent five-second encrypted FLAC chunks with verified sample format, counts and timing.",
+      "Chunk ordering, partial tail, silence and capture gaps survive interruption and authenticated upload without fabricated coverage.",
+      "Spool, duration and recording caps stop new capture safely while retaining acknowledged encrypted chunks and explicit partial state."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-022",
+    "title": "Transcribe protected audio with checkpointed provenance",
+    "status": "Backlog",
+    "lane": "Audio and meetings",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-021"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "S02 loads only pinned model artifacts and processes verified recording chunks in constrained C01 subprocesses.",
+      "Timestamped transcript segments preserve original sample-clock coverage and explicit gaps with bounded checkpoints and deadline.",
+      "Malformed audio, resource exhaustion and worker restart preserve completed encrypted output and never route audio to an ordinary speech endpoint."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-023",
+    "title": "Commit, reopen and query the saved meeting transcript",
+    "status": "Backlog",
+    "lane": "Vault and agent",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-007",
+      "MVP-012",
+      "MVP-022"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "Canonical recording import commits the recording-key-wrapped artifact metadata using expected revision without a competing storage type.",
+      "Saved transcript reopens with correct temporal citations, supports text-only revision edits, and cascades audio/key cleanup on deletion with quota released after verified removal.",
+      "Contextual questions use selected transcript coverage and report missing/gapped audio honestly; summaries require their own admitted chat action."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-024",
+    "title": "Settle the capped meeting session and recover partial runs",
+    "status": "Backlog",
+    "lane": "Audio and meetings",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-017",
+      "MVP-020",
+      "MVP-021",
+      "MVP-022",
+      "MVP-023"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "Session reservation precedes join and bounds admitted attendance plus eligible captured-audio usage under the canonical price profile.",
+      "Stop, denied admission, cap exhaustion and partial transcription settle or reconcile the original action once with documented units.",
+      "Worker crash or uncertain leave never becomes invented captured audio, a blind replacement run or a zero-cost assertion."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-025",
+    "title": "Deliver credit purchase, balance and usage screens",
+    "status": "Backlog",
+    "lane": "Payments and accounting",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-016",
+      "MVP-018",
+      "MVP-024"
+    ],
+    "specification": "docs/engineering/payments-and-usage.md",
+    "acceptance": [
+      "Owner can prepare/sign a pack purchase and see pending, success, failure or uncertain status from the encrypted API.",
+      "Account view distinguishes available and reserved credits with immutable purchase/debit history and meaningful action states.",
+      "Repeated refresh/reopen reconciles the original purchase without prompting duplicate payment or exposing private merchant/provider metadata."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-026",
+    "title": "Unify the desktop library, editor, chat and meeting experience",
+    "status": "Backlog",
+    "lane": "Clients and security",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-009",
+      "MVP-010",
+      "MVP-018",
+      "MVP-023",
+      "MVP-024",
+      "MVP-025"
+    ],
+    "specification": "docs/engineering/system-architecture.md",
+    "acceptance": [
+      "Installed client supports navigation across the same owner's stored files, native pages, transcripts, contextual chat and credit screens.",
+      "Empty/loading/locked/conflict/partial/uncertain states preserve user work and link to the relevant source or action.",
+      "One continuous local synthetic journey completes upload, edit, reopen, cited answer, meeting transcript and payment-to-debit UI paths."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-027",
+    "title": "Exercise deterministic crash, replay and failure boundaries",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-007",
+      "MVP-016",
+      "MVP-018",
+      "MVP-024"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Faults at durable commit, send-start and response milestones preserve original operation/purchase/action identities.",
+      "Tampered/replayed channels, interrupted uploads, malformed files, duplicate payment status and worker failures produce documented safe states.",
+      "Evidence distinguishes pass, fail, blocked and skipped with exact fixtures/source/configuration, and fixtures cannot enable live external actions."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-028",
+    "title": "Configure opaque ingress, least privilege and content-free diagnostics",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-005",
+      "MVP-007",
+      "MVP-019"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Public paths are limited to canonical runtime/session/channel/health surfaces and bounded ciphertext transport, with private methods inside encryption.",
+      "D01/O01 roles, bucket privacy, validated TLS, egress allowlists and actual proxy limits match the canonical contracts.",
+      "Logs, metrics, health checks and diagnostics omit content, meeting URLs, credentials, private payment data and plaintext body snippets."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-029",
+    "title": "Deploy the immutable demo candidate to actual C01",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-006",
+      "MVP-017",
+      "MVP-026",
+      "MVP-027",
+      "MVP-028"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Actual supported node/OS/application selection and observed API/worker images match the rendered immutable candidate.",
+      "Wrong application/image/key/debug configuration fails the live negative checks before synthetic content-key or service-secret delivery.",
+      "Migrations, private object behavior, resource caps, scoped secrets and content-free health pass on the demo environment with recorded evidence."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-030",
+    "title": "Package and install the signed reference desktop build",
+    "status": "Backlog",
+    "lane": "Clients and security",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-002",
+      "MVP-026"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Bundled reference-platform artifact carries the intended signature and matches its recorded payload/build digest.",
+      "Actual reference machine installs, launches, creates native keys and reopens saved encrypted work using the demo configuration.",
+      "Selected-file/native-store permissions and restricted bridge/CSP behavior pass without remote application code or unnecessary capture permissions."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-031",
+    "title": "Verify encrypted backup, retention and ordinary restore",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P1",
+    "owner": null,
+    "dependencies": [
+      "MVP-007",
+      "MVP-016",
+      "MVP-018",
+      "MVP-024",
+      "MVP-028"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Backup inventory contains ciphertext application payloads and sealed service envelopes with the declared seven-day expiry.",
+      "Isolated restore verifies schema, referenced objects and secret-envelope availability without persisting an owner vault root.",
+      "Uncertain purchase and paid-action states reconcile before paid dispatch resumes; missing artifacts remain unavailable rather than silently reset."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-032",
+    "title": "Inspect the actual deployment for plaintext canary leaks",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-029",
+      "MVP-030",
+      "MVP-031"
+    ],
+    "specification": "docs/engineering/deployment-and-acceptance.md",
+    "acceptance": [
+      "Unique synthetic document, prompt, transcript, meeting URL and secret markers are absent from ordinary logs, D01/O01 exports and backups.",
+      "Inspection covers actual edge/host temp paths, browser profiles, parser/speech scratch, crash output and diagnostic collection.",
+      "The evidence records inspected surfaces and encrypted exceptions; any plaintext leak blocks that candidate's demo acceptance."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-033",
+    "title": "Prove a real private purchase and subsequent paid chat",
+    "status": "Backlog",
+    "lane": "Payments and accounting",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-016",
+      "MVP-018",
+      "MVP-025",
+      "MVP-029",
+      "MVP-030",
+      "MVP-032"
+    ],
+    "specification": "docs/engineering/payments-and-usage.md",
+    "acceptance": [
+      "Authorized owner executes the real fixed-pack P01 purchase and authenticated actual SUCCESS is bound to the original purchase.",
+      "Repeated reconciliation and restart produce exactly one credit with the transaction and unique settlement evidence retained privately.",
+      "One actual protected cited chat reserves then settles its service debit from that credited account, with supplier expense separately recorded or honestly unknown."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-034",
+    "title": "Prove actual authorized meeting audio through saved transcript",
+    "status": "Backlog",
+    "lane": "Audio and meetings",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-018",
+      "MVP-023",
+      "MVP-024",
+      "MVP-029",
+      "MVP-030",
+      "MVP-032",
+      "MVP-033"
+    ],
+    "specification": "docs/engineering/google-meet-and-transcripts.md",
+    "acceptance": [
+      "Authorized host admits the visible guest in the recorded qualified meeting configuration and real spoken test phrases are captured.",
+      "Saved audio-derived transcript has truthful timestamps/gaps and a contextual answer cites an actual transcript interval.",
+      "Owner stop produces recorded terminal attendance/capture status and bounded settlement with private evidence tied to the actual candidate."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  },
+  {
+    "id": "MVP-035",
+    "title": "Complete the installed MVP demo and evidence readback",
+    "status": "Backlog",
+    "lane": "Platform and assurance",
+    "priority": "P0",
+    "owner": null,
+    "dependencies": [
+      "MVP-026",
+      "MVP-030",
+      "MVP-031",
+      "MVP-032",
+      "MVP-033",
+      "MVP-034"
+    ],
+    "specification": "docs/delivery/build-plan.md",
+    "acceptance": [
+      "Same installed candidate completes upload/store/view/version, native page create/edit/save/reopen and selected-source contextual chat.",
+      "Evidence includes the real purchase credited once, a subsequent paid chat debit and an actual authorized meeting transcript/question journey.",
+      "Redacted report binds desktop/images/source/configuration to every result and leaves missing evidence as Not run, blocked or failed rather than declaring success."
+    ],
+    "evidenceTier": "Not run",
+    "evidence": null
+  }
+]
