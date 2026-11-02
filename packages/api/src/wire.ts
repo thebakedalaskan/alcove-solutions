@@ -3,7 +3,6 @@
  * domain types: the app never sees them.
  */
 import { z } from 'zod';
-import { RootSourceSchema } from './types';
 
 const b64url = z.string().regex(/^[A-Za-z0-9_-]*$/);
 const transport = z.enum(['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb']);
@@ -53,9 +52,16 @@ export type CeremonyStart = z.infer<typeof CeremonyStartSchema>;
  */
 const secret = b64url.length(43);
 export const RegisterStartBodySchema = z.object({ name: z.string().trim().min(1).max(80) });
-export const RegisterFinishBodySchema = z.object({ challengeId: z.string(), credential: RegistrationCredentialSchema, secret, rootSource: RootSourceSchema, deviceName: z.string().max(80) });
-export const UnlockFinishBodySchema = z.object({ challengeId: z.string(), credential: AssertionCredentialSchema, secret, rootSource: RootSourceSchema });
-export const AddPasskeyFinishBodySchema = RegisterFinishBodySchema.omit({});
+/**
+ * The client sends whatever it has: the PRF output and/or a device-held secret. The server decides
+ * which one this passkey uses (recorded at registration), so a client can't switch a passkey's mode.
+ */
+const secrets = { prf: secret.optional(), deviceSecret: secret.optional() };
+export const RegisterFinishBodySchema = z.object({ challengeId: z.string(), credential: RegistrationCredentialSchema, ...secrets, deviceName: z.string().max(80) });
+export const UnlockFinishBodySchema = z.object({ challengeId: z.string(), credential: AssertionCredentialSchema, ...secrets });
+export const AddPasskeyFinishBodySchema = RegisterFinishBodySchema;
+/** Proof of a fresh passkey use, required before adding or removing passkeys. */
+export const StepUpFinishBodySchema = z.object({ challengeId: z.string(), credential: AssertionCredentialSchema });
 
 /** Fixed PRF input. Every Alcove passkey evaluates PRF over this salt. */
 export const PRF_SALT_LABEL = 'MVP/passkey-prf/v1';

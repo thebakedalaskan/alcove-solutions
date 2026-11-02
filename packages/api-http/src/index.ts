@@ -7,7 +7,7 @@ import {
   AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CallEndResultSchema, CallLinkSchema, CallStateSchema, CeremonyStartSchema, CreditBalanceSchema,
   CreditEventSchema, CreditPackSchema, MeetingSchema, NoteProgressSchema, NoteSchema, NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PasskeySchema,
   PreferencesSchema, RecordingStopResultSchema, RoomRecordingStateSchema, SessionSchema, SetupStepSchema, WeekStatsSchema, isAlcoveErrorCode,
-  type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState, type RootSource
+  type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState
 } from '@alcove/api';
 import { z } from 'zod';
 import { b64u, browserPasskeys, localSecrets, prfSalt, randomBytes, type PasskeyDevice, type SecretStore } from './passkeys';
@@ -76,12 +76,14 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
 
-  /** The per-passkey secret: PRF output when available, otherwise a device-held secret. */
-  function secretFor(credentialId: string, prf: Uint8Array | null): { secret: string; rootSource: RootSource } {
-    if (prf && prf.length >= 32) return { secret: b64u(prf.slice(0, 32)), rootSource: 'prf' };
-    const stored = secrets.get(credentialId);
-    if (!stored) throw new AlcoveApiError('key-unavailable', 'This passkey can’t unlock Alcove on this device. Use the device you created it on, or a passkey provider that supports PRF.');
-    return { secret: b64u(stored), rootSource: 'device' };
+  /** Every secret this browser has for a passkey. The server decides which one the passkey uses. */
+  function secretsFor(credentialId: string, prf: Uint8Array | null): { prf?: string; deviceSecret?: string } {
+    const device = secrets.get(credentialId);
+    const out: { prf?: string; deviceSecret?: string } = {};
+    if (prf && prf.length >= 32) out.prf = b64u(prf.slice(0, 32));
+    if (device) out.deviceSecret = b64u(device);
+    if (!out.prf && !out.deviceSecret) throw new AlcoveApiError('key-unavailable', 'This passkey can’t unlock Alcove on this device. Use the device you created it on, or a passkey provider that supports PRF.');
+    return out;
   }
   async function register(startPath: string, startBody: unknown) {
     const start = await req(CeremonyStartSchema, 'POST', startPath, startBody);
@@ -91,21 +93,26 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     // Some authenticators enable PRF at creation but only evaluate it on use: ask once more.
     if (!prf && made.prfEnabled) prf = (await passkeys.get({ challenge: b64u(randomBytes(32)), userVerification: 'required' }, salt, [made.credential.id])).prf;
     if (!prf) secrets.put(made.credential.id, randomBytes(32));
-    return { start, made, ...secretFor(made.credential.id, prf) };
+    return { start, made, ...secretsFor(made.credential.id, prf) };
+  }
+  /** Fresh proof with an existing passkey, required before adding or removing passkeys. */
+  async function stepUp() {
+    const start = await req(CeremonyStartSchema, 'POST', '/passkeys/verify/start', {});
+    const used = await passkeys.get(start.options, await prfSalt());
+    await req(z.unknown(), 'POST', '/passkeys/verify/finish', { challengeId: start.challengeId, credential: used.credential });
   }
 
   return {
     auth: {
       getSession: () => req(SessionSchema.nullable(), 'GET', '/session'),
       createAccount: async (name) => {
-        const r = await register('/auth/register/start', { name });
-        return req(SessionSchema, 'POST', '/auth/register/finish', { challengeId: r.start.challengeId, credential: r.made.credential, secret: r.secret, rootSource: r.rootSource, deviceName: deviceName() });
+        const { start, made, ...keys } = await register('/auth/register/start', { name });
+        return req(SessionSchema, 'POST', '/auth/register/finish', { challengeId: start.challengeId, credential: made.credential, ...keys, deviceName: deviceName() });
       },
       unlock: async () => {
         const start = await req(CeremonyStartSchema, 'POST', '/auth/unlock/start', {});
         const used = await passkeys.get(start.options, await prfSalt());
-        const s = secretFor(used.credential.id, used.prf);
-        return req(SessionSchema, 'POST', '/auth/unlock/finish', { challengeId: start.challengeId, credential: used.credential, ...s });
+        return req(SessionSchema, 'POST', '/auth/unlock/finish', { challengeId: start.challengeId, credential: used.credential, ...secretsFor(used.credential.id, used.prf) });
       },
       lock: async () => { await req(z.unknown(), 'POST', '/session/lock', {}); }
     },
@@ -115,8 +122,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       rename: (name) => req(SessionSchema, 'POST', '/account/name', { name }),
       passkeys: () => req(z.array(PasskeySchema), 'GET', '/passkeys'),
       addPasskey: async () => {
-        const r = await register('/passkeys/start', {});
-        return req(PasskeySchema, 'POST', '/passkeys/finish', { challengeId: r.start.challengeId, credential: r.made.credential, secret: r.secret, rootSource: r.rootSource, deviceName: deviceName() });
+        await stepUp();
+        const { start, made, ...keys } = await register('/passkeys/start', {});
+        return req(PasskeySchema, 'POST', '/passkeys/finish', { challengeId: start.challengeId, credential: made.credential, ...keys, deviceName: deviceName() });
+      },
+      removePasskey: async (id) => {
+        await stepUp();
+        await req(z.unknown(), 'DELETE', `/passkeys/${encodeURIComponent(id)}`, {});
       },
       setupSteps: () => req(z.array(SetupStepSchema), 'GET', '/account/setup')
     },
@@ -148,12 +160,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       })
     },
     notes: {
-      list: (q) => {
-        const params = new URLSearchParams();
-        if (q?.kind) params.set('kind', q.kind);
-        if (q?.text) params.set('text', q.text);
-        return req(z.array(NoteSummarySchema), 'GET', `/notes?${params}`);
-      },
+      // Search terms go in the body so they never appear in URLs or access logs.
+      list: (q) => req(z.array(NoteSummarySchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}) }),
       get: (id) => req(NoteSchema, 'GET', `/notes/${encodeURIComponent(id)}`),
       progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
       audioUrl: (id, segment) => `${base}/notes/${encodeURIComponent(id)}/audio/${segment}`,

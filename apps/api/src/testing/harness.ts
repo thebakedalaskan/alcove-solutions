@@ -3,6 +3,7 @@ import { createHttpApi, type PasskeyDevice } from '@alcove/api-http';
 import { serve, type ServerType } from '@hono/node-server';
 import pg from 'pg';
 import { createApp } from '../app';
+import type { Deps } from '../context';
 import { loadConfig } from '../config';
 import { createPool } from '../db';
 import { migrate } from '../migrate';
@@ -15,9 +16,10 @@ export interface Harness {
   baseUrl: string;
   pool: pg.Pool;
   objects: ObjectStore;
+  deps: Deps;
   /** A fresh "browser": its own cookie jar and passkeys. */
   /** A fresh "browser" with its own cookie jar, or the same browser (pass its fetch) with another passkey. */
-  client(device?: PasskeyDevice, sameBrowser?: typeof fetch): { api: AlcoveApi; device: PasskeyDevice; fetch: typeof fetch };
+  client(device?: PasskeyDevice, sameBrowser?: typeof fetch, deviceName?: string): { api: AlcoveApi; device: PasskeyDevice; fetch: typeof fetch };
   close(): Promise<void>;
 }
 
@@ -37,17 +39,18 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const objects = await createObjectStore(cfg);
-  const app = createApp({ cfg, pool, objects, sessions: new SessionStore() });
+  const deps: Deps = { cfg, pool, objects, sessions: new SessionStore() };
+  const app = createApp(deps);
   const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s)); });
   const addr = server.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const baseUrl = `http://127.0.0.1:${port}`;
   return {
-    baseUrl, pool, objects,
-    client(device, sameBrowser) {
+    baseUrl, pool, objects, deps,
+    client(device, sameBrowser, deviceName) {
       const d = device ?? softPasskeys({ origin: ORIGIN, rpId: 'localhost' });
-      const f = sameBrowser ?? cookieFetch();
-      return { api: createHttpApi({ baseUrl, fetch: f, passkeys: d, secrets: memorySecrets(), deviceName: () => 'Test laptop' }), device: d, fetch: f };
+      const f = sameBrowser ?? cookieFetch(ORIGIN);
+      return { api: createHttpApi({ baseUrl, fetch: f, passkeys: d, secrets: memorySecrets(), deviceName: () => deviceName ?? 'Test laptop' }), device: d, fetch: f };
     },
     async close() {
       await new Promise<void>((r) => server.close(() => r()));

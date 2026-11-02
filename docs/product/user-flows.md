@@ -1,52 +1,56 @@
-**The same owner uses the desktop workspace, chat, meeting and payment flows.** Every screen state must correspond to an observed backend result. The app must remain useful and truthful when a request is interrupted.
+# User flows
 
-[MVP guide](../README.md) · [Tasks](../delivery/tasks.md) · [Stack and setup](../references/stack-and-provider-setup.md)
+[Docs home](../README.md) · [Product overview](overview.md)
 
-## Start and return
+Each flow below is implemented in `apps/web` and exercised end to end by the integration tests in
+`apps/api/src/flows.integration.test.ts` (API level) and by a real-browser check before release.
 
-The reference desktop client creates or unlocks its local owner keys and authenticates to the approved confidential backend. A fresh verified session is required before content keys are delegated for private processing. Reopening the same installation unlocks its saved identity and fetches encrypted saved state. Account identity, content decryption and wallet approval are distinct authorities.
+## 1. Create an account
 
-A failed verification or inaccessible local key produces an actionable blocked state. The app does not upload plaintext to make onboarding succeed. Only the native trusted boundary handles raw private keys; the UI receives authorized display content and opaque operations.
+1. Open Alcove. Enter your name and choose **Create your passkey**.
+2. The browser creates a passkey (Touch ID, Face ID, Windows Hello, a phone or a security key).
+3. You land on the first-day home: 10,000 free credits, a setup checklist (passkey ✓, first call, second
+   passkey) and empty states for meetings and notes.
 
-## Create, upload and edit
+There is no password, email or social sign-in. Connecting calendars and other accounts comes later.
 
-1. Create a native page, enter rich text, and save. The client shows local draft, saving and accepted revision states.
-2. Upload a supported file. Retain its encrypted original and confirm accepted revision before presenting it as saved.
-3. Extract/index only inside approved processing. Show processing, ready, unsupported, partial or failed status; a stored file is not automatically searchable text.
-4. Reopen the saved revision and edit a native page. Use expected-parent checks so a stale save does not silently replace accepted content.
-5. Replace a binary original as a new version. Source citations retain the exact version they referenced.
+## 2. Unlock
 
-A network failure keeps the encrypted pending operation. An exact retry returns its original result. Changed content receives a new revision/operation identity. Deleting an item removes it from new retrieval immediately under the app's accepted state; queued work rechecks whether it may still publish.
+Returning, or after the session ends (15 minutes idle, 60 minutes at most, or a server restart), choose
+**Unlock with your passkey**. If the passkey's provider supports PRF the key comes from the passkey;
+otherwise from a secret kept on the device where the passkey was created.
 
-## Chat privately, optionally with sources
+## 3. Start a call now
 
-The owner opens a private chat and sends a message. No sources are needed: the app checks credit and submits a bounded I01 request with the chat's own history. If the owner attaches saved sources, the app also resolves allowed source revisions and performs protected retrieval before the request. Show queued, working, verification/response pending, completed, failed or unknown status accurately.
+1. **New call › Start a call now** (or press **N**). A call is created and you go to pre-join.
+2. Pre-join shows your camera, a live mic meter and device names. Choose notes for this call:
+   *Notes + transcript*, *Notes only* or *No notes* (pre-selected from your default; "Ask me" leaves it open).
+3. **Join**. The call opens full screen. Controls: mute (M), camera (V), present your screen, notes,
+   raise hand, leave; panels for notes, people and chat (C).
 
-A private chat answer is labelled as general knowledge. A sourced response includes file/page or transcript time references. The owner can open the exact cited source. Provider output remains untrusted text: citations and permitted structured responses are validated by application code. Chat cannot initiate an external message, purchase, meeting or broader source grant.
+## 4. Notes during a call
 
-Attaching sources to a private chat or changing the selected source set starts a clean context so previous hidden turns or caches cannot sneak excluded text into a narrower request. Missing/failed indexes produce an honest coverage warning or a bounded permitted scan; they do not fabricate complete search.
+- Starting notes shows a notice to everyone and records from that moment.
+- Pause stops recording; resume continues the same part. Stop ends the part; starting again begins a new part.
+- The notes panel shows recording time and how many encrypted pieces have been saved.
 
-## Buy and use prepaid credit
+## 5. Leave and read notes
 
-1. Request the configured credit pack for the authenticated owner.
-2. Review the exact source asset, amount, merchant/refund route, fees/expiry and resulting service-credit pack.
-3. Approve the generated intent in the owner's wallet. Wallet keys remain in the approved client/wallet; the backend receives only the authorized signed payload.
-4. Watch the durable pending purchase while the app reconciles the provider's supported outcome.
-5. On validated completion, receive one credit and a private receipt. Duplicate polls, callbacks and restarts must not create another credit.
-6. Run paid chat/transcription. Reserve a finite cap before dispatch, settle the priced usage once, and show the available/reserved/used amounts.
+1. **Leave** flushes the last audio, ends the call and hands the recording to the notes service.
+2. "Writing your notes" shows progress, then opens the note.
+3. Until the notes service is connected, the note shows a clear status and plays back the decrypted recording.
 
-A failed or pending purchase cannot fund use. An ambiguous paid operation remains pending/unknown until reconciliation; the app does not ask the owner to unknowingly pay again. A balance display is private account state, not a transferable cash wallet.
+## 6. Schedule for later
 
-## Capture and transcribe a meeting
+**New call › Schedule for later**: title, day, time, length, guests, notes setting and who receives notes.
+The meeting appears on Home (next call, week view) and in Meetings, where it can be edited, have its notes
+setting changed, or be cancelled. Guests are stored; email invites are not sent yet.
 
-The owner pastes a permitted meeting link, sees the configured duration/cost cap and explicitly starts the attendee. The participant is visible and waits for host admission. UI state distinguishes waiting from actual capture.
+## 7. Record in the room
 
-After admission, the recorder confirms rendered media samples. It encrypts durable chunks and reports truthful timing/gaps. The owner can stop, which ends capture and leaves the meeting; upload/transcription can finish separately under the bounded job authority. Host removal or admission failure is visible and does not cause an unapproved rejoin loop.
+**Record in the room** records your microphone in 5-second encrypted pieces with a live waveform.
+Rename, pause, resume, **Stop and save** (into a private note) or **Discard** (deletes everything).
 
-Protected speech processing produces a timed transcript. The owner can open it as a private workspace source, correct text, and ask chat about it. Corrections create a new transcript revision and invalidate old derived retrieval for current queries. The original meeting provider and other participants already know the source call; our privacy covers our captured copy and downstream app processing.
+## 8. Account
 
-## Complete demo and failure checks
-
-Demonstrate paid document chat and paid meeting transcription using the same owner account and credit balance. Inspect stored content and error/log paths for canary plaintext. Exercise a duplicate payment outcome, interrupted upload, denied meeting admission, absent/silent media, a stopped recording, invalid ciphertext, and a provider timeout with unknown cost.
-
-The engineering pages define exact bodies, limits, types and recovery rules for these states. The app should explain the actual failure and preserve accepted work, without routing content through a less private fallback.
+Change your name, set notes defaults, add a passkey on another device, see credits, or **Lock Alcove**.

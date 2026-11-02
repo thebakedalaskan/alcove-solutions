@@ -1,6 +1,9 @@
 **Implementation decisions for this MVP.** This page records the chosen build, accepted provider assumptions and practical checks required to demonstrate it. It is not a list of new products or research prerequisites.
 
-[MVP guide](../README.md) · [Tasks](tasks.md) · [Stack and setup](../references/stack-and-provider-setup.md)
+[MVP guide](../README.md) · [Roadmap](roadmap.md) · [Stack and setup](../references/stack-and-provider-setup.md)
+
+> **Note (November 2026):** written for the earlier desktop design (documents, chat, a meeting bot). The product is now Alcove, private calls with built-in notes; see [docs/README.md](../README.md). Provider details here (NEAR AI, Phala, 1Click, R2) remain the reference.
+
 
 ## Frozen choices
 

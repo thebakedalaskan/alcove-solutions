@@ -1,13 +1,14 @@
 # @alcove/api
 
 The contract between the Alcove frontend and its backend. The web app only ever talks to an
-`AlcoveApi`, so swapping the mock for the real backend changes one line of configuration.
+`AlcoveApi`; every type here is a zod schema, so the client validates everything the server sends.
 
-- `src/types.ts` holds the domain models (meetings, notes, calls, credits).
+- `src/types.ts` holds the domain models (meetings, notes, calls, credits) as zod schemas.
+- `src/wire.ts` holds HTTP-only shapes shared by client and server (passkey ceremonies, call actions).
 - `src/client.ts` holds the `AlcoveApi` interface and the live-session interfaces
   (`CallSession`, `RoomRecording`) used for anything that streams.
-- Implementations live in `@alcove/api-mock` (in-browser, seeded fixtures) and
-  `@alcove/api-http` (REST + WebSocket against the real service).
+- The implementation is `@alcove/server` (apps/api); the browser client is
+  `@alcove/api-http` (REST, NDJSON streams and raw audio uploads).
 
 Rules for implementations:
 

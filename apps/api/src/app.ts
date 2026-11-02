@@ -1,7 +1,7 @@
 import {
   AddPasskeyFinishBodySchema, AUDIO_HEADERS, CallActionSchema, MAX_AUDIO_PIECE_BYTES, MeetingInputSchema, MeetingNotesSettingSchema, NoteKindSchema,
   NotesAudienceSchema, NotesModeSchema, OPERATION_HEADER, PreferencesSchema, RecordingActionSchema, RegisterFinishBodySchema, RegisterStartBodySchema,
-  UnlockFinishBodySchema, isAlcoveErrorCode
+  StepUpFinishBodySchema, UnlockFinishBodySchema, isAlcoveErrorCode
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -13,7 +13,7 @@ import { equalBytes, fromUtf8, mac, operationCommitKey, operationResultKey, open
 import { bytea, exec, maybeOne } from './db';
 import { ApiError } from './errors';
 import { inference } from './inference';
-import { ABSOLUTE_MS, COOKIE } from './sessions';
+import { ABSOLUTE_MS, cookieName } from './sessions';
 import * as account from './modules/account';
 import * as audioMod from './modules/audio';
 import * as billing from './modules/billing';
@@ -25,16 +25,45 @@ import * as stats from './modules/stats';
 
 type Env = { Variables: { owner: Owner } };
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+/** POSTs that read rather than change state, so they don't need a stored receipt. */
+const NO_RECEIPT = new Set(['/v1/notes/search']);
+const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
+
+/** A small fixed-window limiter for unauthenticated ceremony starts, keyed by client address. */
+function rateLimit(max: number, windowMs: number) {
+  const hits = new Map<string, { n: number; until: number }>();
+  return (c: Context) => {
+    const key = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'direct';
+    const now = Date.now();
+    const h = hits.get(key);
+    if (!h || h.until < now) { hits.set(key, { n: 1, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
+    if (++h.n > max) throw new ApiError('unavailable', 'Too many attempts. Wait a minute and try again.');
+  };
+}
 const StoredResult = z.object({ status: z.number(), body: z.string() });
 
 export function createApp(d: Deps) {
   const app = new Hono<Env>();
   const secure = d.cfg.WEB_ORIGIN.startsWith('https://');
+  const COOKIE = cookieName(secure);
   const startSession = (c: Context, o: Owner) => setCookie(c, COOKIE, o.session.id, { httpOnly: true, sameSite: 'Strict', path: '/', secure, maxAge: ABSOLUTE_MS / 1000 });
+  const limiter = rateLimit(30, 60_000);
   const body = async <S extends z.ZodType>(c: Context, schema: S): Promise<z.infer<S>> => schema.parse(await c.req.json().catch(() => { throw new ApiError('invalid', 'Expected a JSON body.'); }));
 
   // Only the web app's own origin may call the API with credentials (matters when they're on different subdomains).
   app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, allowHeaders: ['content-type', OPERATION_HEADER, ...Object.values(AUDIO_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
+
+  /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
+     cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
+  app.use('/v1/*', async (c, next) => {
+    if (!MUTATING.has(c.req.method)) return next();
+    const origin = c.req.header('origin');
+    if (origin !== d.cfg.WEB_ORIGIN) throw new ApiError('forbidden', 'Requests must come from the Alcove app.');
+    const type = (c.req.header('content-type') ?? '').toLowerCase();
+    const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/')) throw new ApiError('invalid', 'Unsupported content type.');
+    return next();
+  });
 
   app.onError((e, c) => {
     if (e instanceof ApiError) return c.json({ code: e.code, message: e.message }, e.status);
@@ -53,13 +82,13 @@ export function createApp(d: Deps) {
     const s = d.sessions.touch(getCookie(c, COOKIE));
     return c.json(s ? await account.sessionFor(account.ownerOf(d, s)) : null);
   });
-  app.post('/v1/auth/register/start', async (c) => c.json(await account.registerStart(d, (await body(c, RegisterStartBodySchema)).name)));
+  app.post('/v1/auth/register/start', async (c) => { limiter(c); return c.json(await account.registerStart(d, (await body(c, RegisterStartBodySchema)).name)); });
   app.post('/v1/auth/register/finish', async (c) => {
     const o = await account.registerFinish(d, await body(c, RegisterFinishBodySchema));
     startSession(c, o);
     return c.json(await account.sessionFor(o));
   });
-  app.post('/v1/auth/unlock/start', async (c) => c.json(await account.unlockStart(d)));
+  app.post('/v1/auth/unlock/start', async (c) => { limiter(c); return c.json(await account.unlockStart(d)); });
   app.post('/v1/auth/unlock/finish', async (c) => {
     const o = await account.unlockFinish(d, await body(c, UnlockFinishBodySchema));
     startSession(c, o);
@@ -81,23 +110,23 @@ export function createApp(d: Deps) {
   /* Mutations are idempotent by operation ID (docs: Network and API contract). */
   app.use('/v1/*', async (c, next) => {
     const opId = c.req.header(OPERATION_HEADER);
-    if (!opId || !MUTATING.has(c.req.method)) return next();
+    if (!opId || !MUTATING.has(c.req.method) || NO_RECEIPT.has(c.req.path)) return next();
     if (!/^[A-Za-z0-9_-]{22}$/.test(opId)) throw new ApiError('invalid', 'Malformed operation ID.');
     const o = c.get('owner');
     const reqBytes = new Uint8Array(await c.req.raw.clone().arrayBuffer());
-    const commitment = mac(operationCommitKey(o.session.root, o.ownerId), new Uint8Array([...utf8(`${c.req.method} ${c.req.path}\n`), ...reqBytes]));
+    const commitment = mac(operationCommitKey(o.root, o.ownerId), new Uint8Array([...utf8(`${c.req.method} ${c.req.path}\n`), ...reqBytes]));
     const hdr = { v: 1 as const, kind: 'operation-result', ownerId: o.ownerId, operationId: opId };
     const prior = await maybeOne(d.pool, z.object({ request_commitment: bytea, result_ciphertext: bytea }), 'SELECT request_commitment, result_ciphertext FROM operations WHERE owner_id = $1 AND operation_id = $2', [o.ownerId, opId]);
     if (prior) {
       if (!equalBytes(prior.request_commitment, commitment)) throw new ApiError('conflict', 'That operation ID was already used for a different request.');
-      const r = openJson(operationResultKey(o.session.root, o.ownerId), hdr, prior.result_ciphertext, StoredResult);
+      const r = openJson(operationResultKey(o.root, o.ownerId), hdr, prior.result_ciphertext, StoredResult);
       return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json' } });
     }
     await next();
     if (c.res.ok && (c.res.headers.get('content-type') ?? '').includes('application/json')) {
       const text = await c.res.clone().text();
       await exec(d.pool, `INSERT INTO operations (owner_id, operation_id, method, request_commitment, result_ciphertext, completed_at) VALUES ($1,$2,$3,$4,$5,now()) ON CONFLICT DO NOTHING`,
-        [o.ownerId, opId, `${c.req.method} ${c.req.routePath}`, commitment, sealJson(operationResultKey(o.session.root, o.ownerId), hdr, { status: c.res.status, body: text })]);
+        [o.ownerId, opId, `${c.req.method} ${c.req.routePath}`, commitment, sealJson(operationResultKey(o.root, o.ownerId), hdr, { status: c.res.status, body: text })]);
     }
     return undefined;
   });
@@ -118,7 +147,10 @@ export function createApp(d: Deps) {
   });
   app.get('/v1/account/setup', async (c) => c.json(await account.setupSteps(c.get('owner'))));
   app.get('/v1/passkeys', async (c) => c.json(await account.passkeys(c.get('owner'))));
+  app.post('/v1/passkeys/verify/start', async (c) => c.json(await account.stepUpStart(c.get('owner'))));
+  app.post('/v1/passkeys/verify/finish', async (c) => { await account.stepUpFinish(c.get('owner'), await body(c, StepUpFinishBodySchema)); return c.json({ verified: true }); });
   app.post('/v1/passkeys/start', async (c) => c.json(await account.addPasskeyStart(c.get('owner'))));
+  app.delete('/v1/passkeys/:id', async (c) => { await account.removePasskey(c.get('owner'), c.req.param('id')); return c.json({ removed: true }); });
   app.post('/v1/passkeys/finish', async (c) => c.json(await account.addPasskeyFinish(c.get('owner'), await body(c, AddPasskeyFinishBodySchema))));
 
   /* meetings */
@@ -147,9 +179,10 @@ export function createApp(d: Deps) {
   app.delete('/v1/recordings/:id', async (c) => { await recordings.discard(c.get('owner'), c.req.param('id')); return c.json({ discarded: true }); });
 
   /* notes */
-  app.get('/v1/notes', async (c) => {
-    const kind = NoteKindSchema.safeParse(c.req.query('kind'));
-    return c.json(await notes.list(c.get('owner'), { kind: kind.success ? kind.data : undefined, text: c.req.query('text') }));
+  // Search terms travel in the body, never the URL, so they can't end up in access logs.
+  app.post('/v1/notes/search', async (c) => {
+    const q = await body(c, z.object({ kind: NoteKindSchema.optional(), text: z.string().max(200).optional() }));
+    return c.json(await notes.list(c.get('owner'), { kind: q.kind, text: q.text }));
   });
   app.get('/v1/notes/actions', async (c) => c.json(await notes.openActions(c.get('owner'))));
   app.get('/v1/notes/:id', async (c) => c.json(await notes.get(c.get('owner'), c.req.param('id'))));
@@ -172,7 +205,9 @@ export function createApp(d: Deps) {
     const seg = n.audio.find((a) => a.index === segment);
     if (!seg) throw new ApiError('not-found', 'No audio in that part of the recording.');
     const recordingId = await notes.recordingOf(o, n.id);
-    c.header('content-type', seg.mimeType.split(';')[0] ?? 'audio/webm');
+    const mime = seg.mimeType.split(';')[0] ?? '';
+    c.header('content-type', AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream');
+    c.header('x-content-type-options', 'nosniff');
     c.header('cache-control', 'no-store');
     return stream(c, async (s) => { for await (const chunk of audioMod.stream(o, recordingId, segment)) await s.write(chunk); });
   });

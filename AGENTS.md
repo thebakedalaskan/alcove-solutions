@@ -3,19 +3,21 @@
 Alcove is private video calls with an AI note taker. This repo is a pnpm + Turborepo monorepo.
 
 ```
-apps/web            TanStack Start app (React 19, Tailwind v4, Motion). SPA mode for now.
+apps/web            TanStack Start app (React 19, Tailwind v4, Motion). SPA mode.
+apps/api            The API (@alcove/server): Hono, Postgres, S3-compatible objects, WebAuthn, crypto.
 packages/ui         The design system: tokens, components, illustrations. Everything visual lives here.
-packages/api        The contract: domain types + the AlcoveApi interface. No implementation.
-packages/api-mock   In-browser implementation with seeded data and simulated live calls.
-packages/api-http   REST/NDJSON/WebSocket implementation for the real backend.
-docs/               Product, engineering and design docs.
+packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
+packages/api-http   The browser client: REST, NDJSON, audio uploads, WebAuthn with PRF, live sessions.
+infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
+docs/               Product, engineering and design docs. Keep them true to the code.
 ```
 
 ## Commands
 
 ```
 pnpm install
-pnpm dev            # web app on http://localhost:3000 against the mock backend
+pnpm dev            # Postgres + RustFS in Docker, API on :8787, web app on http://localhost:3000
+pnpm migrate        # apply database migrations (the API also does this at start)
 pnpm typecheck      # strict-typing guard, then tsc in every package
 pnpm test           # test-policy guard, then integration tests
 pnpm build
@@ -25,15 +27,17 @@ pnpm check          # all of the above
 ## Testing (enforced)
 
 - **Integration tests only.** No unit tests. A test must drive a whole user flow through a public
-  boundary (today: the `AlcoveApi` contract), e.g. "sign in → schedule → join → leave → notes written".
+  boundary: the real API over HTTP via `@alcove/api-http`, against real Postgres and the object store,
+  e.g. "create account → schedule → join → record → leave → note saved".
   Don't test individual functions, hooks or components in isolation.
 - **No browser tests.** No Playwright, Cypress, Puppeteer, WebdriverIO or Vitest browser mode.
 - **No component or Storybook tests.** No Storybook, no `*.stories.*`, no Testing Library, no jsdom
   or happy-dom.
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
-- When you add a feature, extend `packages/api-mock/src/flows.integration.test.ts` (or add another
-  `*.integration.test.ts`) with the flow it enables.
+- When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
+  `*.integration.test.ts`) with the flow it enables. Passkeys in tests come from the software
+  authenticator in `apps/api/src/testing/soft-passkey.ts`; never stub out verification.
 
 ## TypeScript (enforced)
 
@@ -65,15 +69,27 @@ See `.claude/skills/strict-typescript/SKILL.md` for worked examples.
 ## Backend boundary
 
 - The app talks to the backend only through `api` from `apps/web/src/lib/api.ts`, which returns an
-  `AlcoveApi`. Never import `@alcove/api-mock` or `@alcove/api-http` anywhere else, except that the
-  dev panel may use `mockControls`.
+  `AlcoveApi`. Never import `@alcove/api-http` anywhere else in the app. There is no mock backend.
 - Screens read data through `apps/web/src/lib/queries.ts` (TanStack Query). Add a query or mutation
   there instead of calling `api` inside a component, except for streaming and live sessions.
-- Changing what the backend must provide means changing `packages/api` first, then both
-  implementations. Keep both type-checking.
+- Changing what the backend must provide means changing `packages/api` first, then the server and
+  `@alcove/api-http`. Every response is parsed with the contract's schemas on the client.
 - Live things (calls, room recordings) are `LiveStore`s that push whole snapshots. Read them with
   `useLive()`. Don't mirror their state in React state.
-- Switching to the real backend is `VITE_ALCOVE_API=http` plus `VITE_ALCOVE_API_URL`. Nothing else.
+- The app reaches the API at `/api` (Vite proxy locally) or `VITE_ALCOVE_API_URL` in production.
+
+## Privacy (enforced by review and tests)
+
+Read `docs/engineering/privacy-keys-and-sessions.md` before touching anything that stores data.
+
+- Nothing readable goes into a database column, object name, URL, log line or error message. Titles,
+  names, guests, chat, labels, audio and notes are sealed records (`crypto.ts`) with headers that bind
+  the owner and exact location.
+- New stored data gets a new record kind and header, and a canary in the leakage test.
+- Every query is scoped by `owner_id`; add a cross-owner test for every new ID that comes from a request.
+- Use the request's key copies (`Owner.root`, `Owner.wrapKey`), never the session's arrays.
+- Deleting must be physical: rows, receipts and objects (queue failed object deletes in `object_gc`).
+- Secrets never go in code or committed files. Local values live in `.env` (gitignored).
 
 ## Design system
 

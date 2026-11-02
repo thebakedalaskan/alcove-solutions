@@ -25,8 +25,10 @@ export interface AlcoveApi {
     updatePreferences(patch: Patch<Preferences>): Promise<Preferences>;
     rename(name: string): Promise<Session>;
     passkeys(): Promise<Passkey[]>;
-    /** Registers another passkey for this account (e.g. on a second device) while unlocked. */
+    /** Registers another passkey for this account (e.g. on a second device). Asks for an existing passkey first. */
     addPasskey(): Promise<Passkey>;
+    /** Removes a passkey. Asks for an existing passkey first; the last passkey can't be removed. */
+    removePasskey(id: ID): Promise<void>;
     setupSteps(): Promise<SetupStep[]>;
   };
   meetings: {

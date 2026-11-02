@@ -39,19 +39,34 @@ export interface Piece { segment: number; seq: number; durationMs: number; mimeT
 /** Encrypts, stores and verifies one piece. Re-sending the same slot is a no-op, so retries are safe. */
 export async function appendPiece(o: Owner, recordingId: string, p: Piece): Promise<void> {
   const { krec, state } = await krecOf(o, recordingId);
-  if (state === 'stopped') throw conflict('This recording has already stopped.');
+  if (state !== 'recording') { krec.fill(0); throw conflict(state === 'paused' ? 'Recording is paused.' : 'This recording has already stopped.'); }
   const exists = await maybeOne(o.pool, z.object({ seq: z.number() }), 'SELECT seq FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 AND seq = $4', [o.ownerId, recordingId, p.segment, p.seq]);
-  if (exists) return;
+  if (exists) { krec.fill(0); return; }
   const objectId = id128();
   const ct = sealRecord(krec, header(o, recordingId, p.segment, p.seq, objectId), p.bytes);
   krec.fill(0);
   await o.objects.put(objectId, ct);
   const back = await o.objects.get(objectId);
   const digest = sha(ct);
-  if (back.length !== ct.length || !equalBytes(sha(back), digest)) throw new ApiError('unknown', 'The encrypted audio didn’t store correctly. It will be retried.');
-  await exec(o.pool, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
-                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, objectId, digest, ct.length, p.durationMs, p.mimeType]);
-  await exec(o.pool, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
+  if (back.length !== ct.length || !equalBytes(sha(back), digest)) { await queueDelete(o, [objectId]); throw new ApiError('unknown', 'The encrypted audio didn’t store correctly. It will be retried.'); }
+  try {
+    const inserted = await exec(o.pool, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
+                                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, objectId, digest, ct.length, p.durationMs, p.mimeType]);
+    if (inserted === 1) await exec(o.pool, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
+    else await queueDelete(o, [objectId]); // a concurrent retry won the slot
+  } catch (e) {
+    await queueDelete(o, [objectId]);
+    throw e;
+  }
+}
+
+/** Deletes objects now; anything that fails is queued for the maintenance loop to retry. */
+export async function queueDelete(o: Pick<Owner, 'pool' | 'objects' | 'ownerId'>, objectIds: string[]): Promise<void> {
+  await Promise.all(objectIds.map(async (id) => {
+    try { await o.objects.delete(id); } catch (e) {
+      await exec(o.pool, 'INSERT INTO object_gc (object_id, owner_id, last_error) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [id, o.ownerId, e instanceof Error ? e.message.slice(0, 200) : 'delete failed']);
+    }
+  }));
 }
 
 const Seg = z.object({ segment: z.number(), pieces: z.coerce.number(), ms: z.coerce.number(), mime_type: z.string() });
@@ -83,10 +98,8 @@ export async function* stream(o: Owner, recordingId: string, segment: number): A
   }
 }
 
-export async function deleteRecording(o: Owner, recordingId: string): Promise<void> {
-  const objs = await rows(o.pool, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }), 'SELECT object_id, cipher_bytes FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
-  await exec(o.pool, 'DELETE FROM recordings WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
-  const freed = objs.reduce((n, x) => n + x.cipher_bytes, 0);
-  if (freed) await exec(o.pool, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, freed]);
-  await Promise.all(objs.map((x) => o.objects.delete(x.object_id).catch(() => undefined)));
+/** Objects and stored bytes belonging to a recording, for deletion. */
+export async function recordingObjects(o: Owner, db: Db, recordingId: string): Promise<{ ids: string[]; bytes: number }> {
+  const objs = await rows(db, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }), 'SELECT object_id, cipher_bytes FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
+  return { ids: objs.map((x) => x.object_id), bytes: objs.reduce((n, x) => n + x.cipher_bytes, 0) };
 }

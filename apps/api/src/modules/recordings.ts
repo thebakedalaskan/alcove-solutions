@@ -4,9 +4,8 @@ import type { Owner } from '../context';
 import { maybeOne, timestamp, tx } from '../db';
 import { ApiError } from '../errors';
 import { getItem } from '../vault';
-import { appendPiece, createRecording, deleteRecording, progress, setRecordingState, type Piece } from './audio';
-import { NoteManifest, blankNote, createNoteWithRecording, finishRecording, updateNote } from './notes';
-import { tombstone } from '../vault';
+import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
+import { NoteManifest, blankNote, createNoteWithRecording, finishRecording, remove, updateNote } from './notes';
 
 const Row = z.object({ note_item_id: z.string(), state: z.enum(['recording', 'paused', 'stopped']), started_at: timestamp });
 async function row(o: Owner, recordingId: string) {
@@ -58,6 +57,5 @@ export async function stop(o: Owner, recordingId: string): Promise<RecordingStop
 
 export async function discard(o: Owner, recordingId: string): Promise<void> {
   const r = await row(o, recordingId);
-  await tx(o.pool, (c) => tombstone(o, c, r.note_item_id));
-  await deleteRecording(o, recordingId);
+  await remove(o, r.note_item_id);
 }

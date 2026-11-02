@@ -57,15 +57,44 @@ describe('accounts and passkeys', () => {
     expect(code(await h.client(tampered).api.auth.unlock().catch((e: unknown) => e))).toBe('key-unavailable');
   });
 
-  it('adds a second passkey that unlocks the same account from another browser', async () => {
-    const { session, fetch } = await newAccount('Two Keys');
-    const second = soft();
-    const added = await h.client(second, fetch).api.account.addPasskey();
+  it('adds a second passkey only after a fresh passkey proof, and it unlocks the same account elsewhere', async () => {
+    const device = soft();
+    const first = h.client(device);
+    const session = await first.api.auth.createAccount('Two Keys');
+    // The new passkey is created on the same authenticator after it re-proves with the first one.
+    const added = await first.api.account.addPasskey();
     expect(added.deviceName).toBe('Test laptop');
-    const other = h.client(second);
+    const newCred = device.credentials.find((c) => Buffer.from(c.id).toString('base64url') === added.id);
+    if (!newCred) throw new Error('expected the new credential');
+    const phone = soft();
+    phone.credentials.push(newCred);
+    const other = h.client(phone);
     expect((await other.api.auth.unlock()).ownerId).toBe(session.ownerId);
     expect((await other.api.account.passkeys()).length).toBe(2);
     expect((await other.api.account.setupSteps()).find((s) => s.id === 'second-passkey')?.done).toBe(true);
+
+    // One current session per owner: unlocking elsewhere locked the first browser.
+    expect(code(await first.api.account.passkeys().catch((e: unknown) => e))).toBe('locked');
+
+    // Removing needs a fresh proof too, and the last passkey can never be removed.
+    const original = (await other.api.account.passkeys()).find((p) => p.id !== added.id)?.id ?? '';
+    await other.api.account.removePasskey(original);
+    expect((await other.api.account.passkeys()).map((p) => p.id)).toEqual([added.id]);
+    expect(code(await other.api.account.removePasskey(added.id).catch((e: unknown) => e))).toBe('conflict');
+  });
+
+  it('refuses to add a passkey with only a session cookie', async () => {
+    const { fetch } = await newAccount('Cookie Thief');
+    const res = await fetch(`${h.baseUrl}/v1/passkeys/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses state changes from other origins and non-JSON bodies', async () => {
+    const { fetch } = await newAccount('Origin Check');
+    const evil = await fetch(`${h.baseUrl}/v1/calls`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://localhost:4000' }, body: '{}' });
+    expect(evil.status).toBe(403);
+    const plain = await fetch(`${h.baseUrl}/v1/calls`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' });
+    expect(plain.status).toBe(400);
   });
 
   it('falls back to a device-held secret when the authenticator has no PRF', async () => {
@@ -182,12 +211,21 @@ describe('calls with notes', () => {
     expect(await api.notes.list()).toEqual([]);
   });
 
-  it('rejects an unknown call code and other owners’ calls', async () => {
+  it('keeps every owner’s calls, notes, audio and recordings out of reach of other accounts', async () => {
     const a = await newAccount('A');
     const b = await newAccount('B');
     const { code: c } = await a.api.calls.createInstant();
     expect(code(await b.api.calls.join(c, { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await a.api.calls.join('zzz-zzzz-zzz', { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
+
+    const rec = await a.api.recordings.start('Mine');
+    const state = rec.getSnapshot();
+    await rec.appendAudio(piece(audioBytes('private'), 0, 0));
+    expect(code(await b.api.notes.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect((await b.fetch(a.api.notes.audioUrl(state.noteId, 0))).status).toBe(404);
+    const steal = await b.fetch(`${h.baseUrl}/v1/recordings/${state.id}/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    expect(steal.status).toBe(404);
+    expect(code(await b.api.meetings.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
   });
 });
 
@@ -198,7 +236,10 @@ describe('room recordings', () => {
     await rec.appendAudio(piece(audioBytes('room-0'), 0, 0));
     rec.rename('Board prep with Dana');
     rec.pause();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(code(await rec.appendAudio(piece(audioBytes('while paused'), 0, 1)).catch((e: unknown) => e))).toBe('conflict');
     rec.resume();
+    await new Promise((r) => setTimeout(r, 150));
     const { pendingNoteId } = await rec.stop();
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'pending', audience: 'host' });
@@ -209,39 +250,68 @@ describe('room recordings', () => {
     await throwaway.discard();
     expect((await api.notes.list()).map((n) => n.title)).toEqual(['Board prep with Dana']);
 
+    const objectIds = (await h.pool.query('SELECT p.object_id FROM recording_pieces p JOIN recordings r USING (owner_id, recording_id) WHERE r.note_item_id = $1', [pendingNoteId])).rows.map((r) => String(r.object_id));
+    expect(objectIds.length).toBeGreaterThan(0);
     await api.notes.delete(pendingNoteId);
     expect(await api.notes.list()).toEqual([]);
+    // Gone for good: no revisions, recording rows, jobs, receipts or objects remain for this owner.
+    const owner = (await api.auth.getSession())?.ownerId ?? '';
+    // The only receipt left is the delete's own ({"deleted":true}); older ones were purged with the note.
+    for (const t of ['revisions WHERE item_id = $2', 'recordings WHERE note_item_id = $2', "operations WHERE method NOT LIKE 'DELETE%'"]) {
+      const r = await h.pool.query(`SELECT count(*)::int AS n FROM ${t.split(' WHERE ')[0]} WHERE owner_id = $1 AND ${t.split(' WHERE ')[1]}`, t.includes('$2') ? [owner, pendingNoteId] : [owner]);
+      expect(r.rows[0]?.n).toBe(0);
+    }
+    for (const id of objectIds) expect(await h.objects.get(id).then(() => 'exists', () => 'gone')).toBe('gone');
   });
 });
 
 describe('privacy at rest', () => {
-  it('keeps titles, names, chat and audio out of database rows and stored objects', async () => {
-    const { api } = await newAccount('CANARY-NAME Person');
-    await api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'full', audience: 'everyone' });
-    const { code: c } = await api.calls.createInstant();
-    const call = await api.calls.join(c, { mic: true, cam: true, notes: 'full' });
+  it('keeps names, titles, guests, chat, labels and audio out of rows and objects in any encoding', async () => {
+    const c = h.client(soft(), undefined, 'CANARY-DEVICE laptop');
+    const { ownerId } = await c.api.auth.createAccount('CANARY-NAME Person');
+    const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'full', audience: 'everyone' });
+    await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
+    const { code: cc } = await c.api.calls.createInstant();
+    const call = await c.api.calls.join(cc, { mic: true, cam: true, notes: 'full' });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     call.sendChat('CANARY-CHAT private remark');
     await settle(call, (x) => x.chat.length === 1);
     await call.leave();
+    const rec = await c.api.recordings.start('Room');
+    rec.rename('CANARY-ROOM title');
+    await new Promise((r) => setTimeout(r, 150));
+    await rec.stop();
+    await c.api.notes.list({ text: 'CANARY-SEARCH words' });
 
-    const dump = await h.pool.query(`SELECT string_agg(t::text, ' ') AS all FROM (
+    const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
       SELECT row_to_json(x)::text AS t FROM owners x UNION ALL SELECT row_to_json(x)::text FROM passkeys x UNION ALL
       SELECT row_to_json(x)::text FROM items x UNION ALL SELECT row_to_json(x)::text FROM revisions x UNION ALL
       SELECT row_to_json(x)::text FROM calls x UNION ALL SELECT row_to_json(x)::text FROM recordings x UNION ALL
       SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL
       SELECT row_to_json(x)::text FROM content_jobs x UNION ALL SELECT row_to_json(x)::text FROM operations x) q`);
-    const text = String(dump.rows[0]?.all ?? '');
-    const hexOf = (s: string) => Buffer.from(s).toString('hex');
-    for (const canary of ['CANARY-NAME', 'CANARY-TITLE', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'Welcome credits']) {
-      expect(text).not.toContain(canary);
-      expect(text).not.toContain(hexOf(canary)); // bytea renders as hex
+    const rowsText = String(dump.rows[0]?.all ?? '');
+    // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
+    const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
+    const canaries = ['CANARY-NAME', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-DEVICE', 'CANARY-ROOM', 'CANARY-SEARCH', 'Welcome credits'];
+    const hexRows = Buffer.from(rowsText).toString('utf8');
+    for (const canary of canaries) for (const enc of encodings(canary)) expect(hexRows.includes(enc), `${canary} as ${enc}`).toBe(false);
+
+    // Every object in the bucket, not only the referenced ones.
+    for await (const obj of h.objects.list()) {
+      const bytes = Buffer.from(await h.objects.get(obj.id));
+      for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
     }
-    const objs = await h.pool.query('SELECT object_id FROM recording_pieces');
-    for (const r of objs.rows) {
-      const bytes = Buffer.from(await h.objects.get(String(r.object_id)));
-      expect(bytes.includes(Buffer.from('CANARY-AUDIO-RAW'))).toBe(false);
-    }
+    expect(ownerId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+});
+
+describe('maintenance', () => {
+  it('deletes unreferenced objects and closes expired sessions', async () => {
+    const { maintain } = await import('./maintenance');
+    await h.objects.put('orphanorphanorphan0000', new Uint8Array([1, 2, 3]));
+    const r = await maintain(h.deps, { orphanAgeMs: 0 });
+    expect(r.orphans).toBeGreaterThanOrEqual(1);
+    expect(await h.objects.get('orphanorphanorphan0000').then(() => 'exists', () => 'gone')).toBe('gone');
   });
 });
 

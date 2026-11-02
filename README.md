@@ -1,33 +1,38 @@
-# The Privacy Suite
+# Alcove (the-privacy-suite)
 
-A personal desktop workspace for confidential documents, private chat, Google Meet transcripts and prepaid processing.
+Private video calls with confidential AI notes built in. No note-taker bots in the meeting, no recording
+behind people's backs: notes are a service of the call, written where the operator can't read them.
 
-Start with the **[MVP build guide](docs/README.md)**. It links the complete product scope, seven engineering contracts, payment and privacy flows, deployment/acceptance plan, implementation backlog and provider references.
+Start with the **[docs](docs/README.md)**.
 
 | Section | Contents |
 | --- | --- |
-| [Product](docs/product/overview.md) | MVP goals and owner journeys |
-| [Engineering](docs/engineering/system-architecture.md) | Architecture, keys/sessions, files, chat, meetings, payment and deployment |
-| [Delivery](docs/delivery/build-plan.md) | Build order, decisions and [35 tasks / 105 acceptance criteria](docs/delivery/tasks.md) |
-| [References](docs/references/stack-and-provider-setup.md) | Concrete stack choices, provider setup and primary sources |
+| [Product](docs/product/overview.md) | Why, what, current status, [user flows](docs/product/user-flows.md) |
+| [Engineering](docs/engineering/system-architecture.md) | Architecture, [privacy and keys](docs/engineering/privacy-keys-and-sessions.md), storage, calls, notes, payments, deployment |
+| [Roadmap](docs/delivery/roadmap.md) | Done and next |
+| [Deploying](infra/README.md) | GCP + Cloudflare setup, CI/CD, merge rules |
 
-This repository currently contains the implementation plan. Software implementation, deployment and live-provider acceptance remain **Not run**. The confidentiality boundary and accepted provider assumptions are documented explicitly in the guide and engineering contracts.
+**Status:** a working local stack with passkey accounts, single-participant calls with real media,
+encrypted notes recordings, CI and a prepared deploy pipeline. Transcription and note writing (NEAR AI),
+multi-party end-to-end encrypted calls and confidential compute are next; see the roadmap.
 
 ## Running the app
 
-The frontend lives in a pnpm + Turborepo monorepo (see `AGENTS.md` for the full rules).
+The app lives in a pnpm + Turborepo monorepo (see `AGENTS.md` for the full rules). You need Node 24,
+pnpm and Docker.
 
 ```
+cp .env.example .env   # then fill in KSERVICE (and NEAR_AI_API_KEY if you have one)
 pnpm install
-pnpm dev        # http://localhost:3000, mock backend in the browser
-pnpm check      # test policy, strict typing, typecheck, integration tests, build
+pnpm dev               # Postgres + RustFS in Docker, API on :8787, web app on http://localhost:3000
+pnpm check             # test policy, strict typing, typecheck, integration tests, builds
 ```
 
 - `apps/web`: TanStack Start, React 19, Tailwind v4, Motion
+- `apps/api`: the API (Hono, Postgres, S3-compatible objects, WebAuthn with PRF)
 - `packages/ui`: the Alcove design system
-- `packages/api`: the backend contract (zod schemas + `AlcoveApi`)
-- `packages/api-mock` / `packages/api-http`: mock and real implementations
+- `packages/api`: the contract (zod schemas + `AlcoveApi`); `packages/api-http`: the browser client
+- `infra/` and `.github/`: deployment guide, GCP bootstrap, CI, deploy pipeline, branch ruleset
 
-Switch to a real backend with `VITE_ALCOVE_API=http VITE_ALCOVE_API_URL=https://…` (see
-`apps/web/.env.example`). With the mock, add `?scenario=fresh`, `?scenario=demo` or
-`?scenario=signed-out` to any URL, or use the gear button, to change the account's state.
+Use a browser with passkey support (current Chrome, Edge or Safari). Calls need camera and microphone
+permission; everything else is in `docs/`.

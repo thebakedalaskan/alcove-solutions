@@ -60,3 +60,15 @@ the web app to Cloudflare Pages. The deploy job does nothing until the repositor
 - **Not yet confidential.** Cloud Run is not a TEE. The engineering docs' attestation and HPKE
   channel are required before real users; see `docs/engineering/deployment-and-acceptance.md`.
 - **Passkeys are bound to `RP_ID`.** Changing the domain later invalidates every passkey.
+
+## Blocking merges until checks pass
+
+`.github/rulesets/main.json` makes `main` accept changes only through pull requests whose four CI
+checks (Policy, Typecheck, Build, Integration tests) pass on an up-to-date branch, and forbids force
+pushes and deletion. Apply it once: Settings › Rules › Rulesets › New ruleset › Import a ruleset, or
+
+```
+gh api -X POST repos/thebakedalaskan/the-privacy-suite/rulesets --input .github/rulesets/main.json
+```
+
+Rulesets on private repositories need GitHub Pro, Team or Enterprise.

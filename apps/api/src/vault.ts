@@ -1,5 +1,5 @@
 /*
- * Encrypted items and immutable revisions (docs: files-documents-and-storage › Ciphertext
+ * Encrypted items and immutable revisions (docs: data-and-storage › Manifests; privacy-keys-and-sessions › Records
  * representation). Each revision gets a fresh random Krecord, wrapped under Kwrap with the
  * revision as its scope; the manifest record binds owner, item and revision in its header.
  */
@@ -17,7 +17,7 @@ const header = (o: Owner, itemId: string, revisionId: string): RecordHeader =>
 
 function sealManifest(o: Owner, itemId: string, revisionId: string, manifest: unknown) {
   const k = random(32);
-  const envelope = sealKey(o.wrapKey, o.ownerId, revisionId, k);
+  const envelope = sealKey(o.wrapKey, o.ownerId, `revision:${revisionId}`, k);
   const ct = sealJson(k, header(o, itemId, revisionId), toJson(manifest));
   k.fill(0);
   return { envelope, ct };
@@ -54,7 +54,7 @@ const HEAD_SQL = `SELECT i.item_id, r.revision_id, r.key_envelope, r.manifest_ci
                   WHERE i.owner_id = $1 AND i.kind = $2 AND i.deleted_at IS NULL`;
 
 function decode<S extends z.ZodType>(o: Owner, r: z.infer<typeof HeadRow>, schema: S): Loaded<z.infer<S>> {
-  const k = openKey(o.wrapKey, o.ownerId, r.revision_id, r.key_envelope);
+  const k = openKey(o.wrapKey, o.ownerId, `revision:${r.revision_id}`, r.key_envelope);
   const manifest = openJson(k, header(o, r.item_id, r.revision_id), r.manifest_ciphertext, schema);
   k.fill(0);
   return { itemId: r.item_id, revisionId: r.revision_id, manifest, updatedAt: r.created_at, createdAt: r.first_at };

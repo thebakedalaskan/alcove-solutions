@@ -10,6 +10,7 @@ import { hkdf } from '@noble/hashes/hkdf.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes } from '@noble/hashes/utils.js';
+import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ApiError } from './errors';
 
@@ -38,7 +39,14 @@ export function concat(...parts: Uint8Array[]): Uint8Array {
   for (const p of parts) { out.set(p, o); o += p.length; }
   return out;
 }
-export const equalBytes = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+/** Constant-time comparison. */
+export const equalBytes = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && timingSafeEqual(a, b);
+const isZero = (k: Uint8Array): boolean => k.every((x) => x === 0);
+/** Never seal or open with a wiped key: a closed session must not silently produce public-key ciphertext. */
+function live(k: Uint8Array): Uint8Array {
+  if (k.length !== 32 || isZero(k)) throw new ApiError('locked', 'Your session ended. Unlock with your passkey to continue.');
+  return k;
+}
 
 /* ---------- canonical JSON (JCS subset: our values are strings, finite numbers, booleans, null, arrays, objects) ---------- */
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
@@ -55,8 +63,8 @@ export const toJson = (v: unknown): Json => JsonSchema.parse(JSON.parse(JSON.str
 /* ---------- key derivation ---------- */
 const derive = (ikm: Uint8Array, salt: Uint8Array, info: string): Uint8Array => hkdf(sha256, ikm, salt, utf8(info), 32);
 export const ownerWrapKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(root, unb64u(ownerId, 32), 'MVP/owner-wrap/v1');
-/** Key for a mutable encrypted state row (calls, labels, preferences), scoped to that row. */
-export const stateKey = (wrapKey: Uint8Array, scope: string): Uint8Array => derive(wrapKey, utf8(scope), 'MVP/state/v1');
+/** Key for a mutable encrypted state row (call state, passkey labels, jobs). Derived from Kowner under its own label, scoped to the row. */
+export const stateKey = (root: Uint8Array, ownerId: string, scope: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), `MVP/state/v1/${scope}`);
 export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(root, unb64u(ownerId, 32), 'MVP/operation-commit/v1');
 export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(root, unb64u(ownerId, 32), 'MVP/operation-result/v1');
 /** Proves a delegated root is the owner's without storing anything that reveals it. */
@@ -72,7 +80,7 @@ const EnvelopeSchema = z.object({ v: z.literal(1), ownerId: z.string(), scopeId:
 export function sealKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, key: Uint8Array): Uint8Array {
   const header = { v: 1, ownerId, scopeId, keyVersion: '1' };
   const nonce = random(24);
-  const ct = xchacha20poly1305(wrapKey, nonce, utf8(jcs(header))).encrypt(key);
+  const ct = xchacha20poly1305(live(wrapKey), nonce, utf8(jcs(header))).encrypt(key);
   return utf8(jcs({ ...header, nonce: b64u(nonce), ciphertext: b64u(ct) }));
 }
 export function openKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, envelope: Uint8Array): Uint8Array {
@@ -80,7 +88,7 @@ export function openKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, e
   if (e.ownerId !== ownerId || e.scopeId !== scopeId) throw new ApiError('forbidden', 'Key envelope belongs to another scope.');
   const header = { v: 1, ownerId, scopeId, keyVersion: '1' };
   try {
-    return xchacha20poly1305(wrapKey, unb64u(e.nonce, 24), utf8(jcs(header))).decrypt(unb64u(e.ciphertext));
+    return xchacha20poly1305(live(wrapKey), unb64u(e.nonce, 24), utf8(jcs(header))).decrypt(unb64u(e.ciphertext));
   } catch {
     throw new ApiError('key-unavailable', 'This key can’t open that data.');
   }
@@ -92,7 +100,7 @@ const RecordSchema = z.object({ header: z.record(z.string(), z.unknown()), nonce
 
 export function sealRecord(key: Uint8Array, header: RecordHeader, plaintext: Uint8Array): Uint8Array {
   const nonce = random(24);
-  const ct = xchacha20poly1305(key, nonce, utf8(jcs(header))).encrypt(plaintext);
+  const ct = xchacha20poly1305(live(key), nonce, utf8(jcs(header))).encrypt(plaintext);
   return utf8(jcs({ header, nonce: b64u(nonce), ciphertext: b64u(ct) }));
 }
 /** Opens a record and checks that its header is exactly the one expected. */
@@ -100,7 +108,7 @@ export function openRecord(key: Uint8Array, expected: RecordHeader, record: Uint
   const r = RecordSchema.parse(JSON.parse(fromUtf8(record)));
   if (jcs(toJson(r.header)) !== jcs(expected)) throw new ApiError('forbidden', 'Record header doesn’t match its location.');
   try {
-    return xchacha20poly1305(key, unb64u(r.nonce, 24), utf8(jcs(expected))).decrypt(unb64u(r.ciphertext));
+    return xchacha20poly1305(live(key), unb64u(r.nonce, 24), utf8(jcs(expected))).decrypt(unb64u(r.ciphertext));
   } catch {
     throw new ApiError('key-unavailable', 'A record failed its integrity check.');
   }

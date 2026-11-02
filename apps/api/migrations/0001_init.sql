@@ -1,4 +1,4 @@
--- Alcove D01 schema. Content tables follow docs/engineering/files-documents-and-storage.md:
+-- Alcove D01 schema (explained in docs/engineering/data-and-storage.md). Content tables follow the original spec:
 -- clear columns hold only opaque IDs, relationships, byte counts, states and sequence numbers;
 -- everything else is an authenticated ciphertext record.
 

@@ -7,6 +7,8 @@ import { id128, ownerWrapKey } from './crypto';
 export const IDLE_MS = 15 * 60_000;
 export const ABSOLUTE_MS = 60 * 60_000;
 export const COOKIE = 'alcove_session';
+/** Over HTTPS the cookie gets the __Host- prefix: Secure, host-only, path /. */
+export const cookieName = (secure: boolean) => (secure ? `__Host-${COOKIE}` : COOKIE);
 
 export interface OwnerSession {
   id: string;
@@ -16,6 +18,8 @@ export interface OwnerSession {
   rootSource: 'prf' | 'device';
   createdAt: number;
   lastActive: number;
+  /** Until when a fresh passkey proof allows changing passkeys. */
+  stepUpUntil?: number;
 }
 
 export class SessionStore {
@@ -41,6 +45,13 @@ export class SessionStore {
     return s;
   }
   expiresAt(s: OwnerSession): Date { return new Date(s.createdAt + ABSOLUTE_MS); }
+  /** Closes every expired session, so idle roots leave memory even if the browser never returns. */
+  sweep(): number {
+    const t = this.now(); let n = 0;
+    for (const s of [...this.byId.values()]) if (t - s.lastActive > IDLE_MS || t - s.createdAt > ABSOLUTE_MS) { this.close(s.id); n++; }
+    return n;
+  }
+  get size() { return this.byId.size; }
   close(id: string) {
     const s = this.byId.get(id);
     if (s) { s.root.fill(0); s.wrapKey.fill(0); }

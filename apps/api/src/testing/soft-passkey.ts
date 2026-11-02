@@ -74,12 +74,13 @@ export function memorySecrets(): SecretStore {
   return { get: (id) => m.get(id) ?? null, put: (id, s) => { m.set(id, s); } };
 }
 
-/** fetch with a one-cookie jar, like a browser tab. */
-export function cookieFetch(): typeof fetch {
+/** fetch with a one-cookie jar and the app's Origin, like a browser tab on the Alcove site. */
+export function cookieFetch(origin: string): typeof fetch {
   let cookie = '';
   return async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     if (cookie) headers.set('cookie', cookie);
+    if (!headers.has('origin')) headers.set('origin', origin);
     const res = await fetch(input, { ...init, headers });
     for (const s of res.headers.getSetCookie()) {
       const kv = s.split(';')[0] ?? '';

@@ -4,18 +4,22 @@ import { id128 } from './crypto';
 import { ApiError } from './errors';
 
 const TTL_MS = 60_000;
+/** Unauthenticated callers can create challenges, so the map is bounded. */
+const MAX_PENDING = 10_000;
 type Pending =
   | { kind: 'register'; challenge: string; userId: Uint8Array; name: string }
   | { kind: 'unlock'; challenge: string }
-  | { kind: 'add'; challenge: string; ownerId: string };
+  | { kind: 'add'; challenge: string; ownerId: string }
+  | { kind: 'step-up'; challenge: string; ownerId: string };
 
 /** Single-use ceremony challenges that expire after 60 seconds. */
 export class Challenges {
   private map = new Map<string, Pending & { expires: number }>();
   issue(p: Pending): string {
+    for (const [k, v] of this.map) if (v.expires < Date.now()) this.map.delete(k);
+    if (this.map.size >= MAX_PENDING) throw new ApiError('unavailable', 'Too many sign-in attempts right now. Try again in a minute.');
     const id = id128();
     this.map.set(id, { ...p, expires: Date.now() + TTL_MS });
-    for (const [k, v] of this.map) if (v.expires < Date.now()) this.map.delete(k);
     return id;
   }
   take<K extends Pending['kind']>(id: string, kind: K): Extract<Pending, { kind: K }> {

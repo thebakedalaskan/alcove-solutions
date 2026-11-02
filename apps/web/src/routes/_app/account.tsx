@@ -34,6 +34,10 @@ function Account() {
     setAdding(false);
   };
   // Leave the app first, so mounted screens don't refetch into a locked session.
+  const removePasskey = async (id: string, label: string) => {
+    try { await api.account.removePasskey(id); await qc.invalidateQueries({ queryKey: qk.passkeys }); toast(`${label} removed`, 'fingerprint'); }
+    catch (e) { toast(errorMessage(e), 'x'); }
+  };
   const lock = async () => { await api.auth.lock(); qc.setQueryData(qk.session, null); await navigate({ to: '/welcome' }); qc.clear(); };
   return (
     <>
@@ -86,10 +90,15 @@ function Account() {
               <div key={p.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 border-b border-hair py-2.5 last:border-0">
                 <Icon name="fingerprint" className="text-ink-2" />
                 <span><b className="block text-sm">{p.deviceName}</b><span className="text-[12.5px] text-ink-3">Added {fullDate(p.createdAt)}{p.lastUsedAt ? ` · last used ${fullDate(p.lastUsedAt)}` : ''}</span></span>
-                <Chip tone={p.usesPrf ? 'ok' : 'neutral'}>{p.usesPrf ? 'Key from passkey' : 'Key on this device'}</Chip>
+                <span className="flex items-center gap-2">
+                  <Chip tone={p.usesPrf ? 'ok' : 'neutral'}>{p.usesPrf ? 'Key from passkey' : 'Key on this device'}</Chip>
+                  {passkeys.length > 1 && <Button size="sm" variant="danger-ghost" onClick={() => void removePasskey(p.id, p.deviceName)}>Remove</Button>}
+                </span>
               </div>
             ))}
             {passkeys.length < 2 && <p className="mb-0 mt-2 text-[13px] text-ink-3">Your notes can only be unlocked with a passkey. Add a second one (for example on your phone) so you don’t lose access.</p>}
+            <p className="mb-0 mt-2 text-[13px] text-ink-3">Adding or removing a passkey asks you to confirm with one you already have.</p>
+            {passkeys.some((p) => !p.usesPrf) && <p className="mb-0 mt-2 text-[13px] text-lamp-ink">A passkey marked “Key on this device” keeps its key in this browser. Clearing site data removes it, so keep a second passkey.</p>}
           </Card>
           <Button variant="ghost" icon="lock" className="self-start" onClick={lock}>Lock Alcove</Button>
         </div>

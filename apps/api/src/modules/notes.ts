@@ -7,9 +7,10 @@ import type { Owner } from '../context';
 import { id128, sealJson, stateKey, toJson } from '../crypto';
 import { exec, tx, type Db } from '../db';
 import { ApiError } from '../errors';
-import { createItem, getItem, listItems, lockItem, saveRevision, tombstone, type Loaded } from '../vault';
+import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me } from './account';
-import { deleteRecording, segments } from './audio';
+import { queueDelete, recordingObjects, segments } from './audio';
+import { MeetingManifest } from './meetings';
 
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
@@ -48,7 +49,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   const job = { noteId, recordingId: next.recordingId, keep: next.keep };
   await exec(db, `INSERT INTO content_jobs (owner_id, job_id, revision_id, kind, state, attempt, job_ciphertext) VALUES ($1,$2,$3,'notes','awaiting_inference',0,$4)
                   ON CONFLICT (owner_id, revision_id, kind) DO NOTHING`,
-    [o.ownerId, id128(), head.revisionId, sealJson(stateKey(o.wrapKey, `job:${noteId}`), { v: 1, kind: 'job', ownerId: o.ownerId, noteId }, toJson(job))]);
+    [o.ownerId, id128(), head.revisionId, sealJson(stateKey(o.root, o.ownerId, `job:${noteId}`), { v: 1, kind: 'job', ownerId: o.ownerId, noteId }, toJson(job))]);
 }
 
 const PENDING_EXCERPT = 'Recording saved and encrypted. Notes will be written once the notes service is connected.';
@@ -97,8 +98,25 @@ export async function setActionDone(o: Owner, noteId: string, actionId: string, 
     return { ...n, actions: n.actions.map((a) => (a.id === actionId ? { ...a, done } : a)) };
   }));
 }
+/**
+ * Deletes a note for good: every revision, its recording and pieces, its jobs, the link from its
+ * meeting, and this owner's operation receipts (which may hold copies of responses). Objects are
+ * deleted after the commit; failures are retried by the maintenance loop.
+ */
 export async function remove(o: Owner, id: string): Promise<void> {
   const recordingId = await recordingOf(o, id);
-  await tx(o.pool, (c) => tombstone(o, c, id));
-  await deleteRecording(o, recordingId);
+  const objects = await tx(o.pool, async (c) => {
+    const objs = await recordingObjects(o, c, recordingId);
+    await exec(c, `DELETE FROM content_jobs WHERE owner_id = $1 AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [o.ownerId, id]);
+    for (const m of (await listItems(o, c, 'meeting', MeetingManifest)).filter((x) => x.manifest.noteId === id)) {
+      const { noteId: _drop, ...rest } = m.manifest;
+      void _drop;
+      await saveRevision(o, c, m.itemId, m.revisionId, rest);
+    }
+    await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
+    if (objs.bytes) await exec(c, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, objs.bytes]);
+    await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
+    return objs.ids;
+  });
+  await queueDelete(o, objects);
 }

@@ -5,7 +5,7 @@ import {
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { b64u, random } from '../crypto';
-import { tx, type Db } from '../db';
+import { exec, tx, type Db } from '../db';
 import { ApiError, notFound } from '../errors';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
@@ -88,11 +88,15 @@ export async function update(o: Owner, id: string, patch: Patch<MeetingInput>): 
   return get(o, id);
 }
 export async function setNotes(o: Owner, id: string, notes: MeetingNotesSetting): Promise<Meeting> { return update(o, id, { notes }); }
+/** Cancelling deletes the meeting for good: every revision and its calls (with their chat). Notes stay. */
 export async function cancel(o: Owner, id: string): Promise<void> {
-  await tx(o.pool, (c) => updateManifest(o, c, id, (m) => {
-    if (m.status === 'live') throw new ApiError('conflict', 'That call is happening now. Leave it first.');
-    return { ...m, status: 'cancelled' };
-  }));
+  await tx(o.pool, async (c) => {
+    await lockItem(o, c, id);
+    const m = await getItem(o, c, 'meeting', id, MeetingManifest, 'That meeting');
+    if (m.manifest.status === 'live') throw new ApiError('conflict', 'That call is happening now. Leave it first.');
+    await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
+    await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
+  });
 }
 
 /** A call that starts now: used by "Start a call now" and "Get a link to share". */

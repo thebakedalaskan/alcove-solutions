@@ -1,6 +1,9 @@
 # Source Evidence
 
-[MVP guide](../README.md) · [Tasks](../delivery/tasks.md) · [Stack and setup](stack-and-provider-setup.md)
+[MVP guide](../README.md) · [Roadmap](../delivery/roadmap.md) · [Stack and setup](stack-and-provider-setup.md)
+
+> **Note (November 2026):** written for the earlier desktop design (documents, chat, a meeting bot). The product is now Alcove, private calls with built-in notes; see [docs/README.md](../README.md). Provider details here (NEAR AI, Phala, 1Click, R2) remain the reference.
+
 
 Primary sources for the selected MVP stack and integration contracts. Research was checked on 1–2 November 2026. This page records what the sources support and what the implementation still has to demonstrate. It is not evidence that this application has been built or that any confidential deployment, live meeting or payment has run.
 

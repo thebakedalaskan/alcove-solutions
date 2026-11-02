@@ -13,5 +13,10 @@ export interface Deps {
 export interface Owner extends Deps {
   session: OwnerSession;
   ownerId: string;
+  /**
+   * Per-request copies of the session keys. Locking zeroes the session's own arrays; a request
+   * already in flight keeps working with its copies instead of sealing under zeros.
+   */
+  root: Uint8Array;
   wrapKey: Uint8Array;
 }

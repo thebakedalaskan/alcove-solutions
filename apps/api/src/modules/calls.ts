@@ -19,7 +19,7 @@ const Stored = z.object({
 });
 type Stored = z.infer<typeof Stored>;
 const Row = z.object({ call_id: z.string(), meeting_item_id: z.string(), state: z.enum(['live', 'ended']), started_at: timestamp, ended_at: timestamp.nullable(), state_ciphertext: bytea });
-const key = (o: Owner, callId: string) => stateKey(o.wrapKey, `call:${callId}`);
+const key = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call:${callId}`);
 const header = (o: Owner, callId: string) => ({ v: 1 as const, kind: 'call-state', ownerId: o.ownerId, callId });
 
 async function load(o: Owner, db: Db, callId: string, lock = false) {
