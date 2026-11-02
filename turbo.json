@@ -2,9 +2,42 @@
   "$schema": "https://turbo.build/schema.json",
   "ui": "stream",
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": [".output/**", "dist/**"] },
-    "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": {},
-    "dev": { "cache": false, "persistent": true }
-  }
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".output/**",
+        "dist/**"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^typecheck"
+      ]
+    },
+    "test": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  },
+  "globalEnv": [
+    "DATABASE_URL",
+    "TEST_DATABASE_URL",
+    "OBJECTS_ENDPOINT",
+    "OBJECTS_BUCKET",
+    "OBJECTS_ACCESS_KEY",
+    "OBJECTS_SECRET_KEY",
+    "API_PORT",
+    "WEB_ORIGIN",
+    "RP_ID",
+    "KSERVICE",
+    "NEAR_AI_BASE_URL"
+  ],
+  "globalPassThroughEnv": [
+    "NEAR_AI_API_KEY"
+  ]
 }

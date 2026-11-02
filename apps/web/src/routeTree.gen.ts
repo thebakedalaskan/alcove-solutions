@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as EndedRouteImport } from './routes/ended'
-import { Route as PasskeyRouteImport } from './routes/passkey'
 import { Route as RecordRouteImport } from './routes/record'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppAccountRouteImport } from './routes/_app/account'
@@ -36,11 +35,6 @@ const AppRoute = AppRouteImport.update({
 const EndedRoute = EndedRouteImport.update({
   id: '/ended',
   path: '/ended',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PasskeyRoute = PasskeyRouteImport.update({
-  id: '/passkey',
-  path: '/passkey',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecordRoute = RecordRouteImport.update({
@@ -97,7 +91,6 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ended': typeof EndedRoute
-  '/passkey': typeof PasskeyRoute
   '/record': typeof RecordRoute
   '/welcome': typeof WelcomeRoute
   '/account': typeof AppAccountRoute
@@ -112,7 +105,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ended': typeof EndedRoute
-  '/passkey': typeof PasskeyRoute
   '/record': typeof RecordRoute
   '/welcome': typeof WelcomeRoute
   '/account': typeof AppAccountRoute
@@ -129,7 +121,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/ended': typeof EndedRoute
-  '/passkey': typeof PasskeyRoute
   '/record': typeof RecordRoute
   '/welcome': typeof WelcomeRoute
   '/_app/account': typeof AppAccountRoute
@@ -146,7 +137,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/ended'
-    | '/passkey'
     | '/record'
     | '/welcome'
     | '/account'
@@ -161,7 +151,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/ended'
-    | '/passkey'
     | '/record'
     | '/welcome'
     | '/account'
@@ -177,7 +166,6 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/ended'
-    | '/passkey'
     | '/record'
     | '/welcome'
     | '/_app/account'
@@ -194,7 +182,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   EndedRoute: typeof EndedRoute
-  PasskeyRoute: typeof PasskeyRoute
   RecordRoute: typeof RecordRoute
   WelcomeRoute: typeof WelcomeRoute
   CallCodeRoute: typeof CallCodeRoute
@@ -223,13 +210,6 @@ declare module '@tanstack/react-router' {
       path: '/ended'
       fullPath: '/ended'
       preLoaderRoute: typeof EndedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/passkey': {
-      id: '/passkey'
-      path: '/passkey'
-      fullPath: '/passkey'
-      preLoaderRoute: typeof PasskeyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/record': {
@@ -327,7 +307,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   EndedRoute: EndedRoute,
-  PasskeyRoute: PasskeyRoute,
   RecordRoute: RecordRoute,
   WelcomeRoute: WelcomeRoute,
   CallCodeRoute: CallCodeRoute,

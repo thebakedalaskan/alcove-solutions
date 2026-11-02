@@ -1,0 +1,10 @@
+**/node_modules
+**/.output
+**/dist
+**/.turbo
+**/.tanstack
+.env
+.env.*
+!.env.example
+docs
+.git

@@ -1,0 +1,84 @@
+name: Deploy
+
+# Deploys only after CI passes on main, and only once infrastructure exists:
+# set the repository variable DEPLOY_ENABLED=true when infra/README.md is done.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation: no long-lived GCP keys in GitHub.
+
+jobs:
+  api:
+    name: API → Cloud Run
+    if: vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/alcove/api:${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.workflow_run.head_sha || github.sha }}' }
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+      - name: Build and push the image
+        run: docker build -f apps/api/Dockerfile -t "$IMAGE" . && docker push "$IMAGE"
+      - name: Run database migrations
+        run: |
+          gcloud run jobs deploy alcove-migrate --image "$IMAGE" --region ${{ vars.GCP_REGION }} \
+            --command node --args dist/migrate-cli.js \
+            --service-account ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }} \
+            --set-cloudsql-instances ${{ vars.GCP_CLOUDSQL_INSTANCE }} \
+            --set-secrets DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest \
+            --set-env-vars OBJECTS_ENDPOINT=${{ vars.OBJECTS_ENDPOINT }},OBJECTS_BUCKET=${{ vars.OBJECTS_BUCKET }},WEB_ORIGIN=${{ vars.WEB_ORIGIN }},RP_ID=${{ vars.RP_ID }} \
+            --set-secrets OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest
+          gcloud run jobs execute alcove-migrate --region ${{ vars.GCP_REGION }} --wait
+      - name: Deploy the API
+        run: |
+          gcloud run deploy alcove-api --image "$IMAGE" --region ${{ vars.GCP_REGION }} \
+            --service-account ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }} \
+            --set-cloudsql-instances ${{ vars.GCP_CLOUDSQL_INSTANCE }} \
+            --allow-unauthenticated --min-instances 1 --max-instances 1 --session-affinity \
+            --set-env-vars OBJECTS_ENDPOINT=${{ vars.OBJECTS_ENDPOINT }},OBJECTS_BUCKET=${{ vars.OBJECTS_BUCKET }},WEB_ORIGIN=${{ vars.WEB_ORIGIN }},RP_ID=${{ vars.RP_ID }},NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1 \
+            --set-secrets DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest
+      - name: Health check
+        run: curl -fsS "${{ vars.API_ORIGIN }}/healthz"
+
+  web:
+    name: Web → Cloudflare Pages
+    needs: api
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.workflow_run.head_sha || github.sha }}' }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        env:
+          VITE_ALCOVE_API_URL: ${{ vars.API_ORIGIN }}
+        run: pnpm --filter @alcove/web build
+      - name: Content security policy for this API origin
+        run: |
+          printf "  Content-Security-Policy: default-src 'self'; connect-src 'self' %s; media-src 'self' blob: %s; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'\n" \
+            "${{ vars.API_ORIGIN }}" "${{ vars.API_ORIGIN }}" >> apps/web/dist/client/_headers
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/web/dist/client --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main

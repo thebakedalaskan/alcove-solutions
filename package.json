@@ -6,13 +6,16 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "turbo run dev --filter=@alcove/web",
+    "dev": "docker compose up -d --wait && turbo run dev --filter=@alcove/web --filter=@alcove/server",
     "build": "turbo run build",
     "typecheck": "node scripts/check-types.mjs && turbo run typecheck",
-    "test": "node scripts/check-tests.mjs && turbo run test",
+    "test": "node scripts/check-tests.mjs && docker compose up -d --wait && turbo run test",
     "check": "node scripts/check-tests.mjs && node scripts/check-types.mjs && turbo run typecheck test build",
     "check:tests": "node scripts/check-tests.mjs",
-    "check:types": "node scripts/check-types.mjs"
+    "check:types": "node scripts/check-types.mjs",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "migrate": "pnpm --filter @alcove/server migrate"
   },
   "devDependencies": {
     "turbo": "^2.11.10",

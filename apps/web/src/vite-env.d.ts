@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
 interface ImportMetaEnv {
-  readonly VITE_ALCOVE_API?: 'mock' | 'http';
+  /** Base URL of the Alcove API. Defaults to /api, which Vite proxies to the local server in development. */
   readonly VITE_ALCOVE_API_URL?: string;
 }

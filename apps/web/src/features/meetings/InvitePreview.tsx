@@ -3,7 +3,7 @@ import { Avatar, Icon } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { q } from '~/lib/queries';
 
-/** What a guest receives. Mirrors the email the backend sends from the host's own calendar. */
+/** What a guest will receive once email invites are connected. */
 export function InvitePreview({ title, when, code, notes }: { title: string; when: string; code: string; notes: MeetingNotesSetting }) {
   const { data: s } = useQuery(q.session());
   const line = notes === 'off' ? 'This call won’t take notes.'

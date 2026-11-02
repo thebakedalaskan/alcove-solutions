@@ -195,7 +195,6 @@ export function SetupCard({ steps, onAddPasskey }: { steps: SetupStep[]; onAddPa
           <span className={s.done ? 'text-ink-2' : ''}>{s.label}</span>
           {!s.done && s.id === 'first-call' && <Button size="sm" variant="secondary" onClick={() => void start()}>Start</Button>}
           {!s.done && s.id === 'second-passkey' && <Button size="sm" variant="secondary" onClick={onAddPasskey}>Add</Button>}
-          {!s.done && s.id === 'calendar' && <Link to="/account" className="text-sm font-semibold underline">Connect</Link>}
         </div>
       ))}
     </Card>
@@ -208,7 +207,7 @@ export function StartTiles() {
   const navigate = useNavigate();
   const tiles = [
     { art: <CallArt />, title: 'Start a call now', body: 'Opens full screen with a link to share', go: () => void start() },
-    { art: <InviteArt />, title: 'Schedule a call', body: 'Invites go out from your calendar', go: () => dialogs.open({ kind: 'schedule' }) },
+    { art: <InviteArt />, title: 'Schedule a call', body: 'Pick a time and choose notes ahead', go: () => dialogs.open({ kind: 'schedule' }) },
     { art: <RoomArt />, title: 'Record in the room', body: 'Notes from a conversation around you', go: () => void navigate({ to: '/record' }) }
   ];
   return (

@@ -5,11 +5,16 @@ import viteReact from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  server: { port: 3000 },
+  envDir: '../..',
+  server: {
+    port: 3000,
+    // Same origin for the app and the API, so the session cookie and passkeys just work.
+    proxy: { '/api': { target: 'http://127.0.0.1:8787', rewrite: (p) => p.replace(/^\/api/, '') } }
+  },
   resolve: { alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) } },
   plugins: [
     tailwindcss(),
-    // SPA mode: the mock backend lives in the browser. Turn SSR back on once the real API is wired up.
+    // SPA mode: every screen needs the unlocked session, which only exists in the browser.
     tanstackStart({ spa: { enabled: true } }),
     viteReact()
   ]

@@ -1,5 +1,5 @@
 /* Query keys and fetchers. Screens read data through these, never through `api` directly. */
-import type { MeetingInput, MeetingNotesSetting, NoteKind, Preferences } from '@alcove/api';
+import type { MeetingInput, MeetingNotesSetting, NoteKind, Patch, Preferences } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 
@@ -7,7 +7,6 @@ export const qk = {
   session: ['session'] as const,
   prefs: ['prefs'] as const,
   passkeys: ['passkeys'] as const,
-  calendars: ['calendars'] as const,
   setup: ['setup'] as const,
   upcoming: ['meetings', 'upcoming'] as const,
   past: ['meetings', 'past'] as const,
@@ -26,7 +25,6 @@ export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
   passkeys: () => queryOptions({ queryKey: qk.passkeys, queryFn: () => api.account.passkeys() }),
-  calendars: () => queryOptions({ queryKey: qk.calendars, queryFn: () => api.account.calendars() }),
   setup: () => queryOptions({ queryKey: qk.setup, queryFn: () => api.account.setupSteps() }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming() }),
   past: () => queryOptions({ queryKey: qk.past, queryFn: () => api.meetings.past() }),
@@ -70,11 +68,7 @@ export function useActionDone() {
 }
 export function usePreferences() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (p: Partial<Preferences>) => api.account.updatePreferences(p), onSuccess: (d) => qc.setQueryData(qk.prefs, d) });
-}
-export function usePurchase() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (packId: string) => api.credits.purchase(packId), onSuccess: () => qc.invalidateQueries({ queryKey: ['credits'] }) });
+  return useMutation({ mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p), onSuccess: (d) => qc.setQueryData(qk.prefs, d) });
 }
 /** After sign-in, sign-out or a scenario switch everything cached is stale. */
 export function useResetCache() {

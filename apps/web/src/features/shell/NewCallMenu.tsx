@@ -21,7 +21,7 @@ export function NewCallMenu({ align = 'start', ...button }: { align?: 'start' | 
     <Menu align={align} trigger={<Button icon="plus" {...button}>New call</Button>} items={[
       { icon: 'cam', label: 'Start a call now', description: 'Opens full screen with a link to share', shortcut: 'N', onSelect: () => void start() },
       { icon: 'link', label: 'Get a link to share', description: 'For now or for later', onSelect: () => dialogs.open({ kind: 'link' }) },
-      { icon: 'cal', label: 'Schedule for later', description: 'Invites go out from your calendar', onSelect: () => dialogs.open({ kind: 'schedule' }) }
+      { icon: 'cal', label: 'Schedule for later', description: 'Pick a time and choose notes', onSelect: () => dialogs.open({ kind: 'schedule' }) }
     ]} />
   );
 }

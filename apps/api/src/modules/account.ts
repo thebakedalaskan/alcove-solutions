@@ -1,0 +1,170 @@
+import { PreferencesSchema, type Patch, type Passkey, type Person, type PortraitStyle, type Preferences, type Session, type SetupStep } from '@alcove/api';
+import type { AddPasskeyFinishBodySchema, RegisterFinishBodySchema, UnlockFinishBodySchema } from '@alcove/api';
+import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
+import { z } from 'zod';
+import type { Deps, Owner } from '../context';
+import { H, b64u, equalBytes, fromUtf8, openKey, passkeyWrapKey, random, rootCheck, sealKey, stateKey, unb64u, utf8, openRecord, sealRecord } from '../crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx } from '../db';
+import { ApiError } from '../errors';
+import { createItem, getItem, listItems, saveRevision } from '../vault';
+import { Challenges, asTransports, assertionJSON, registrationJSON } from '../webauthn';
+import { openAccount } from './billing';
+
+export const challenges = new Challenges();
+const Profile = z.object({ name: z.string(), preferences: PreferencesSchema });
+type FinishReg = z.infer<typeof RegisterFinishBodySchema>;
+
+const scopeOf = (credentialId: string) => `passkey:${credentialId}`;
+const ownerIdFor = (publicKey: Uint8Array) => b64u(H('MVP/owner/v1', publicKey));
+
+/* ---------- portraits: a stable illustrated avatar per owner ---------- */
+const SKINS = ['#F2D3BA', '#EDC7A6', '#E3B996', '#C99572', '#B9835A', '#A86F4C', '#7A4A30'];
+const HAIRS = ['#1F1A17', '#2A1C14', '#4A2E1E', '#B5562B', '#D9A95B', '#26211E'];
+const BGS = ['#F3D9C4', '#CFE3D6', '#E6D4EC', '#D3DEEC', '#EFE2C2', '#D6E0E6'];
+const SHIRTS = ['#C2623A', '#2F5D4B', '#6E3F80', '#34507A', '#A07A2C', '#4F6B8A'];
+const STYLES = ['short', 'swept', 'curly', 'long', 'bob', 'afro', 'bun'] as const;
+const ROOMS: [string, string, string][] = [['#C98A5E', '#5D3F31', '#E8C29C'], ['#5F8C76', '#26352D', '#A8C2A4'], ['#9A6FA8', '#35263F', '#D7B3C6'], ['#6F8DB3', '#24324A', '#B7C6DC']];
+function portraitFor(seed: string): PortraitStyle {
+  const h = H('MVP/portrait/v1', utf8(seed));
+  const pick = <T,>(xs: readonly T[], i: number): T => { const v = xs[(h[i] ?? 0) % xs.length]; if (v === undefined) throw new Error('empty palette'); return v; };
+  return { bg: pick(BGS, 0), skin: pick(SKINS, 1), hair: pick(HAIRS, 2), shirt: pick(SHIRTS, 3), style: pick(STYLES, 4), glasses: (h[5] ?? 0) % 4 === 0, room: pick(ROOMS, 6) };
+}
+export async function me(o: Owner): Promise<Person> {
+  const p = await profile(o);
+  return { id: o.ownerId, name: p.manifest.name, email: '', portrait: portraitFor(o.ownerId) };
+}
+async function profile(o: Owner) {
+  const [p] = await listItems(o, o.pool, 'profile', Profile);
+  if (!p) throw new ApiError('not-found', 'Your profile is missing.');
+  return p;
+}
+export async function sessionFor(o: Owner): Promise<Session> {
+  const created = await maybeOne(o.pool, z.object({ created_at: timestamp }), 'SELECT created_at FROM owners WHERE owner_id = $1', [o.ownerId]);
+  return { user: await me(o), ownerId: o.ownerId, rootSource: o.session.rootSource, createdAt: (created?.created_at ?? new Date()).toISOString(), expiresAt: o.sessions.expiresAt(o.session).toISOString() };
+}
+export const ownerOf = (d: Deps, s: Owner['session']): Owner => ({ ...d, session: s, ownerId: s.ownerId, wrapKey: s.wrapKey });
+
+/* ---------- create account ---------- */
+export async function registerStart(d: Deps, name: string) {
+  const userId = random(16);
+  const options = await generateRegistrationOptions({
+    rpName: 'Alcove', rpID: d.cfg.RP_ID, userName: name, userDisplayName: name, userID: userId, attestationType: 'none',
+    authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' }
+  });
+  return { challengeId: challenges.issue({ kind: 'register', challenge: options.challenge, userId, name }), options };
+}
+
+async function verifyNew(d: Deps, body: FinishReg, expectedChallenge: string) {
+  const v = await verifyRegistrationResponse({ response: registrationJSON(body.credential), expectedChallenge, expectedOrigin: d.cfg.WEB_ORIGIN, expectedRPID: d.cfg.RP_ID, requireUserVerification: true })
+    .catch((e: unknown) => { console.warn('passkey registration rejected:', e instanceof Error ? e.message : e); throw new ApiError('invalid', 'That passkey couldn’t be verified.'); });
+  if (!v.verified) throw new ApiError('invalid', 'That passkey couldn’t be verified.');
+  return v.registrationInfo.credential;
+}
+function sealLabel(wrapKey: Uint8Array, ownerId: string, credentialId: string, label: string) {
+  return sealRecord(stateKey(wrapKey, scopeOf(credentialId)), { v: 1, kind: 'passkey-label', ownerId, credentialId }, utf8(label || 'Passkey'));
+}
+
+export async function registerFinish(d: Deps, body: FinishReg): Promise<Owner> {
+  const ch = challenges.take(body.challengeId, 'register');
+  const cred = await verifyNew(d, body, ch.challenge);
+  const ownerId = ownerIdFor(cred.publicKey);
+  const root = random(32);
+  const session = d.sessions.open(ownerId, root, body.rootSource);
+  const o = ownerOf(d, session);
+  try {
+    await tx(d.pool, async (c) => {
+      await exec(c, 'INSERT INTO owners (owner_id, auth_public_key, webauthn_user_id, root_check) VALUES ($1,$2,$3,$4)', [ownerId, cred.publicKey, ch.userId, rootCheck(root, ownerId)]);
+      await exec(c, `INSERT INTO passkeys (credential_id, owner_id, public_key, counter, transports, root_envelope, uses_prf, label_ciphertext, last_used_at)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())`,
+        [cred.id, ownerId, cred.publicKey, cred.counter, cred.transports ?? [], sealKey(passkeyWrapKey(unb64u(body.secret, 32), cred.id), ownerId, scopeOf(cred.id), root), body.rootSource === 'prf', sealLabel(o.wrapKey, ownerId, cred.id, body.deviceName)]);
+      const prefs: Preferences = { notesDefault: 'ask', keep: 'full' };
+      await createItem(o, c, 'profile', { name: ch.name, preferences: prefs });
+      await openAccount(d, c, ownerId);
+    });
+  } catch (e) {
+    d.sessions.close(session.id);
+    throw e;
+  }
+  return o;
+}
+
+/* ---------- unlock ---------- */
+export async function unlockStart(d: Deps) {
+  const options = await generateAuthenticationOptions({ rpID: d.cfg.RP_ID, userVerification: 'required' });
+  return { challengeId: challenges.issue({ kind: 'unlock', challenge: options.challenge }), options };
+}
+const PasskeyRow = z.object({ credential_id: z.string(), owner_id: z.string(), public_key: bytea, counter: z.union([z.string(), z.number()]).transform(Number), transports: z.array(z.string()), root_envelope: bytea });
+
+export async function unlockFinish(d: Deps, body: z.infer<typeof UnlockFinishBodySchema>): Promise<Owner> {
+  const ch = challenges.take(body.challengeId, 'unlock');
+  const pk = await maybeOne(d.pool, PasskeyRow, 'SELECT credential_id, owner_id, public_key, counter, transports, root_envelope FROM passkeys WHERE credential_id = $1', [body.credential.id]);
+  if (!pk) throw new ApiError('unauthenticated', 'That passkey isn’t registered with Alcove on this server.');
+  const v = await verifyAuthenticationResponse({
+    response: assertionJSON(body.credential), expectedChallenge: ch.challenge, expectedOrigin: d.cfg.WEB_ORIGIN, expectedRPID: d.cfg.RP_ID,
+    credential: { id: pk.credential_id, publicKey: pk.public_key, counter: pk.counter, transports: asTransports(pk.transports) }, requireUserVerification: true
+  }).catch((e: unknown) => { console.warn('passkey assertion rejected:', e instanceof Error ? e.message : e); throw new ApiError('unauthenticated', 'That passkey couldn’t be verified.'); });
+  if (!v.verified) throw new ApiError('unauthenticated', 'That passkey couldn’t be verified.');
+  const root = openKey(passkeyWrapKey(unb64u(body.secret, 32), pk.credential_id), pk.owner_id, scopeOf(pk.credential_id), pk.root_envelope);
+  const check = await maybeOne(d.pool, z.object({ root_check: bytea }), 'SELECT root_check FROM owners WHERE owner_id = $1', [pk.owner_id]);
+  if (!check || !equalBytes(check.root_check, rootCheck(root, pk.owner_id))) throw new ApiError('key-unavailable', 'This passkey can’t unlock your notes on this device.');
+  await exec(d.pool, 'UPDATE passkeys SET counter = $2, last_used_at = now() WHERE credential_id = $1', [pk.credential_id, v.authenticationInfo.newCounter]);
+  return ownerOf(d, d.sessions.open(pk.owner_id, root, body.rootSource));
+}
+
+/* ---------- more passkeys ---------- */
+export async function addPasskeyStart(o: Owner) {
+  const owner = await maybeOne(o.pool, z.object({ webauthn_user_id: bytea }), 'SELECT webauthn_user_id FROM owners WHERE owner_id = $1', [o.ownerId]);
+  if (!owner) throw new ApiError('not-found', 'Account missing.');
+  const existing = await rows(o.pool, z.object({ credential_id: z.string(), transports: z.array(z.string()) }), 'SELECT credential_id, transports FROM passkeys WHERE owner_id = $1', [o.ownerId]);
+  const name = (await profile(o)).manifest.name;
+  const options = await generateRegistrationOptions({
+    rpName: 'Alcove', rpID: o.cfg.RP_ID, userName: name, userDisplayName: name, userID: owner.webauthn_user_id, attestationType: 'none',
+    excludeCredentials: existing.map((e) => ({ id: e.credential_id, transports: asTransports(e.transports) })),
+    authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' }
+  });
+  return { challengeId: challenges.issue({ kind: 'add', challenge: options.challenge, ownerId: o.ownerId }), options };
+}
+export async function addPasskeyFinish(o: Owner, body: z.infer<typeof AddPasskeyFinishBodySchema>): Promise<Passkey> {
+  const ch = challenges.take(body.challengeId, 'add');
+  if (ch.ownerId !== o.ownerId) throw new ApiError('forbidden', 'That prompt belongs to another account.');
+  const cred = await verifyNew(o, body, ch.challenge);
+  await exec(o.pool, `INSERT INTO passkeys (credential_id, owner_id, public_key, counter, transports, root_envelope, uses_prf, label_ciphertext)
+                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [cred.id, o.ownerId, cred.publicKey, cred.counter, cred.transports ?? [], sealKey(passkeyWrapKey(unb64u(body.secret, 32), cred.id), o.ownerId, scopeOf(cred.id), o.session.root), body.rootSource === 'prf', sealLabel(o.wrapKey, o.ownerId, cred.id, body.deviceName)]);
+  const all = await passkeys(o);
+  const added = all.find((p) => p.id === cred.id);
+  if (!added) throw new ApiError('unknown', 'Passkey was not saved.');
+  return added;
+}
+export async function passkeys(o: Owner): Promise<Passkey[]> {
+  const r = await rows(o.pool, z.object({ credential_id: z.string(), label_ciphertext: bytea, created_at: timestamp, last_used_at: timestamp.nullable(), uses_prf: z.boolean() }),
+    'SELECT credential_id, label_ciphertext, created_at, last_used_at, uses_prf FROM passkeys WHERE owner_id = $1 ORDER BY created_at', [o.ownerId]);
+  return r.map((p) => ({
+    id: p.credential_id,
+    deviceName: fromUtf8(openRecord(stateKey(o.wrapKey, scopeOf(p.credential_id)), { v: 1, kind: 'passkey-label', ownerId: o.ownerId, credentialId: p.credential_id }, p.label_ciphertext)),
+    createdAt: p.created_at.toISOString(), lastUsedAt: p.last_used_at?.toISOString() ?? null, usesPrf: p.uses_prf
+  }));
+}
+
+/* ---------- profile and preferences ---------- */
+export async function preferences(o: Owner): Promise<Preferences> { return (await profile(o)).manifest.preferences; }
+export async function updateProfile(o: Owner, patch: { name?: string | undefined; preferences?: Patch<Preferences> | undefined }) {
+  return tx(o.pool, async (c) => {
+    const [p] = await listItems(o, c, 'profile', Profile);
+    if (!p) throw new ApiError('not-found', 'Your profile is missing.');
+    const prefs = p.manifest.preferences;
+    const next = { name: patch.name?.trim() || p.manifest.name, preferences: { notesDefault: patch.preferences?.notesDefault ?? prefs.notesDefault, keep: patch.preferences?.keep ?? prefs.keep } };
+    await saveRevision(o, c, p.itemId, p.revisionId, next);
+    return next;
+  });
+}
+export async function setupSteps(o: Owner): Promise<SetupStep[]> {
+  const counts = await maybeOne(o.pool, z.object({ keys: z.coerce.number(), calls: z.coerce.number() }),
+    `SELECT (SELECT count(*) FROM passkeys WHERE owner_id = $1) AS keys, (SELECT count(*) FROM calls WHERE owner_id = $1 AND state = 'ended') AS calls`, [o.ownerId]);
+  return [
+    { id: 'passkey', label: 'Passkey created', done: true },
+    { id: 'first-call', label: 'Have your first call', done: (counts?.calls ?? 0) > 0 },
+    { id: 'second-passkey', label: 'Add a passkey on a second device', done: (counts?.keys ?? 0) > 1 }
+  ];
+}
+export { getItem };

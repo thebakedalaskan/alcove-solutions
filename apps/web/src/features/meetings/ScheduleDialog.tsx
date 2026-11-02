@@ -15,9 +15,7 @@ interface Form { title: string; day: number; time: string; dur: number; guests: 
 
 export function ScheduleDialog({ open, meetingId, onClose }: { open: boolean; meetingId?: string | undefined; onClose: () => void }) {
   const editing = useQuery({ ...q.meeting(meetingId ?? ''), enabled: !!meetingId && open });
-  const { data: session } = useQuery(q.session());
   const { data: balance } = useQuery(q.balance());
-  const { data: cals } = useQuery(q.calendars());
   const { data: prefs } = useQuery(q.prefs());
   const save = useSaveMeeting();
   const toast = useToast();
@@ -36,8 +34,6 @@ export function ScheduleDialog({ open, meetingId, onClose }: { open: boolean; me
   }, [open, meetingId, editing.data, defaultKeep]);
 
   const addGuest = () => { const v = f.draft.trim().replace(/,$/, ''); if (v && !f.guests.includes(v)) set({ guests: [...f.guests, v], draft: '' }); else set({ draft: '' }); };
-  const cal = cals?.find((c) => c.connected);
-  const calName = cal ? { google: 'Google Calendar', microsoft: 'Outlook', apple: 'iCloud Calendar' }[cal.provider] : null;
 
   const submit = async () => {
     const guests = f.draft.trim() ? [...f.guests, f.draft.trim()] : f.guests;
@@ -45,14 +41,14 @@ export function ScheduleDialog({ open, meetingId, onClose }: { open: boolean; me
     const start = new Date(dayAt(f.day)); start.setHours(h ?? 10, m ?? 0, 0, 0);
     try {
       await save.mutateAsync({ id: meetingId, input: { title: f.title, startsAt: start.toISOString(), durationMinutes: f.dur, guests, notes: f.notes, audience: f.audience } });
-      toast(meetingId ? `Saved. ${guests.length} ${guests.length === 1 ? 'guest was' : 'guests were'} emailed the change.` : `${f.title || 'Untitled call'} · ${dayName(dayAt(f.day), f.day)} at ${f.time}. Invite sent to ${guests.length} ${guests.length === 1 ? 'person' : 'people'}.`, 'mail');
+      toast(meetingId ? 'Changes saved' : `${f.title || 'Untitled call'} · ${dayName(dayAt(f.day), f.day)} at ${f.time}`, 'cal');
       onClose();
     } catch (e) { toast(errorMessage(e), 'x'); }
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()} title={meetingId ? 'Edit call' : 'Schedule a call'} width={600}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={save.isPending} onClick={submit}>{meetingId ? 'Save and update invites' : 'Schedule and send invites'}</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={save.isPending} onClick={submit}>{meetingId ? 'Save changes' : 'Schedule call'}</Button></>}>
       <input autoFocus value={f.title} onChange={(e) => set({ title: e.target.value })} placeholder="Call title" aria-label="Call title"
         className="h-[54px] border-0 border-b border-hair bg-transparent p-0 font-display text-[22px] font-bold tracking-[-.02em] outline-none transition-colors placeholder:text-ink-3 focus:border-ink focus-visible:outline-none" />
       <Field label="Day"><Segmented label="Day" value={f.day} onChange={(day) => set({ day })} options={DAYS.map((d, i) => ({ value: i, label: dayName(d, i) }))} /></Field>
@@ -60,7 +56,7 @@ export function ScheduleDialog({ open, meetingId, onClose }: { open: boolean; me
         <Field label="Start" htmlFor="sched-time"><Input id="sched-time" type="time" className="font-mono" value={f.time} onChange={(e) => set({ time: e.target.value })} /></Field>
         <Field label="Length"><Segmented label="Length" value={f.dur} onChange={(dur) => set({ dur })} options={[15, 30, 45, 60].map((v) => ({ value: v, label: v === 60 ? '1h' : `${v}m` }))} /></Field>
       </div>
-      <Field label="Guests" htmlFor="sched-guests" hint="Guests don’t need an account. They join from the link in the invite.">
+      <Field label="Guests" htmlFor="sched-guests" hint="Guests won’t need an account. They’ll join from the link.">
         <div onClick={() => guestInput.current?.focus()} className="flex min-h-[46px] flex-wrap items-center gap-1.5 rounded-xl bg-card p-[7px] shadow-[inset_0_0_0_1px_var(--hair-2)] focus-within:shadow-[inset_0_0_0_1.5px_var(--ink)]">
           {f.guests.map((g) => (
             <span key={g} className="inline-flex h-[30px] animate-pop items-center gap-1 rounded-[9px] bg-well pl-2.5 pr-1 text-[13.5px]">{g}
@@ -89,7 +85,7 @@ export function ScheduleDialog({ open, meetingId, onClose }: { open: boolean; me
       </p>
       <div className="flex gap-2.5 rounded-[14px] bg-raised px-3.5 py-3 text-[13.5px] text-ink-2">
         <Icon name="mail" className="mt-px size-[17px]" />
-        <span>{calName ? <>Invites go out from <b>{session?.user.email}</b> through {calName}. Guests can RSVP from their own calendar.</> : <>Invites go out by email from Alcove. Connect a calendar in Account to send them from your own address.</>}</span>
+        <span>Guests are saved with the call. Email invites aren’t connected yet, and only you can join calls in this build.</span>
       </div>
     </Dialog>
   );

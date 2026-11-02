@@ -25,11 +25,6 @@ export type NotesAudience = z.infer<typeof NotesAudienceSchema>;
 export const NotesDefaultSchema = z.enum(['ask', 'always', 'never']);
 export type NotesDefault = z.infer<typeof NotesDefaultSchema>;
 
-export const AuthProviderSchema = z.enum(['google', 'microsoft', 'apple', 'email']);
-export type AuthProvider = z.infer<typeof AuthProviderSchema>;
-export const CalendarProviderSchema = z.enum(['google', 'microsoft', 'apple']);
-export type CalendarProvider = z.infer<typeof CalendarProviderSchema>;
-
 export const PortraitHairSchema = z.enum(['short', 'swept', 'curly', 'long', 'bob', 'afro', 'bun']);
 export type PortraitHair = z.infer<typeof PortraitHairSchema>;
 /** Appearance for illustrated portraits. Backends may omit it; the UI falls back to a letter tile. */
@@ -44,29 +39,26 @@ export type PortraitStyle = z.infer<typeof PortraitStyleSchema>;
 export const PersonSchema = z.object({ id: IDSchema, name: z.string(), email: z.string(), portrait: PortraitStyleSchema.optional() });
 export type Person = z.infer<typeof PersonSchema>;
 
+/** Where the owner root came from: the passkey's PRF output, or a device-held secret when PRF is unsupported. */
+export const RootSourceSchema = z.enum(['prf', 'device']);
+export type RootSource = z.infer<typeof RootSourceSchema>;
+
+/** An unlocked owner session. Absent (null) when signed out or locked. */
 export const SessionSchema = z.object({
   user: PersonSchema,
-  provider: AuthProviderSchema,
-  /** False until the user has created a passkey. Notes cannot be unlocked without one. */
-  hasPasskey: z.boolean(),
-  createdAt: ISODateSchema
+  ownerId: z.string(),
+  rootSource: RootSourceSchema,
+  createdAt: ISODateSchema,
+  /** The session closes at this time at the latest, even if active. */
+  expiresAt: ISODateSchema
 });
 export type Session = z.infer<typeof SessionSchema>;
 
-export const PasskeySchema = z.object({ id: IDSchema, deviceName: z.string(), createdAt: ISODateSchema, thisDevice: z.boolean() });
+export const PasskeySchema = z.object({ id: IDSchema, deviceName: z.string(), createdAt: ISODateSchema, lastUsedAt: ISODateSchema.nullable(), usesPrf: z.boolean() });
 export type Passkey = z.infer<typeof PasskeySchema>;
 
 export const PreferencesSchema = z.object({ notesDefault: NotesDefaultSchema, keep: NotesKeepSchema });
 export type Preferences = z.infer<typeof PreferencesSchema>;
-
-export const CalendarConnectionSchema = z.object({
-  provider: CalendarProviderSchema,
-  connected: z.boolean(),
-  /** True when the connection came with sign-in rather than a separate grant. */
-  viaSignIn: z.boolean(),
-  account: z.string().optional()
-});
-export type CalendarConnection = z.infer<typeof CalendarConnectionSchema>;
 
 export const RsvpSchema = z.enum(['yes', 'pending', 'no']);
 export type Rsvp = z.infer<typeof RsvpSchema>;
@@ -140,8 +132,16 @@ export type Chapter = z.infer<typeof ChapterSchema>;
 export const NoteKindSchema = z.enum(['call', 'room']);
 export type NoteKind = z.infer<typeof NoteKindSchema>;
 
+/** recording: audio is still arriving. pending: waiting for the notes service. ready: notes written. */
+export const NoteStatusSchema = z.enum(['recording', 'pending', 'ready']);
+export type NoteStatus = z.infer<typeof NoteStatusSchema>;
+
+/** One continuous stretch of recorded audio. Stopping and restarting notes starts a new segment. */
+export const AudioSegmentSchema = z.object({ index: z.number(), seconds: z.number(), pieces: z.number(), mimeType: z.string() });
+export type AudioSegment = z.infer<typeof AudioSegmentSchema>;
+
 export const NoteSummarySchema = z.object({
-  id: IDSchema, kind: NoteKindSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
+  id: IDSchema, kind: NoteKindSchema, status: NoteStatusSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
   people: z.array(PersonSchema), excerpt: z.string(), openActions: z.number(), totalActions: z.number(),
   keep: NotesKeepSchema, meetingId: IDSchema.optional()
 });
@@ -156,7 +156,9 @@ export const NoteSchema = NoteSummarySchema.extend({
   /** Null when only notes were kept and the transcript was deleted. */
   transcript: z.array(TranscriptLineSchema).nullable(),
   audience: NotesAudienceSchema,
-  suggestedQuestions: z.array(z.string())
+  suggestedQuestions: z.array(z.string()),
+  /** Encrypted audio kept for this note; playable through notes.audioUrl. */
+  audio: z.array(AudioSegmentSchema)
 });
 export type Note = z.infer<typeof NoteSchema>;
 
@@ -196,7 +198,7 @@ export const WeekStatsSchema = z.object({
 export type WeekStats = z.infer<typeof WeekStatsSchema>;
 
 export const SetupStepSchema = z.object({
-  id: z.enum(['signed-in', 'passkey', 'calendar', 'first-call', 'second-passkey']),
+  id: z.enum(['passkey', 'first-call', 'second-passkey']),
   label: z.string(),
   done: z.boolean()
 });

@@ -45,7 +45,7 @@ function FirstDay({ credits, perMinute, upcoming }: { credits: number; perMinute
   const { data: steps = [] } = useQuery(q.setup());
   const qc = useQueryClient();
   const toast = useToast();
-  const addPasskey = async () => { await api.account.addPasskey(); toast('Passkey added on iPhone', 'fingerprint'); void qc.invalidateQueries({ queryKey: qk.setup }); };
+  const addPasskey = async () => { await api.account.addPasskey().catch((e: unknown) => { toast(e instanceof Error ? e.message : 'Couldn’t add a passkey', 'x'); throw e; }); toast('Passkey added', 'fingerprint'); void qc.invalidateQueries({ queryKey: qk.setup }); };
   return (
     <Bento>
       <Cell span={7}><GiftCard credits={credits} perMinute={perMinute} /></Cell>

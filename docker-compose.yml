@@ -1,0 +1,34 @@
+# Local stand-ins for D01 (Postgres) and O01 (S3-compatible object store; R2 in production).
+name: alcove
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: alcove
+      POSTGRES_PASSWORD: alcove
+      POSTGRES_DB: alcove
+    ports: ["127.0.0.1:54329:5432"]
+    volumes: [db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alcove"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  objects:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: alcove
+      RUSTFS_SECRET_KEY: alcove-local-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+    ports: ["127.0.0.1:9310:9000"]
+    volumes: [objects:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9000/ || wget -q -O /dev/null http://127.0.0.1:9000/ || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  db: {}
+  objects: {}

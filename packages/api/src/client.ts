@@ -1,26 +1,32 @@
 import type { CallSession, NoteProgress, RoomRecording } from './live';
 import type {
-  AnswerPart, AuthProvider, CalendarConnection, CalendarProvider, CallLink, CreditBalance, CreditEvent, CreditPack,
+  AnswerPart, CallLink, CreditBalance, CreditEvent, CreditPack,
   ID, Meeting, MeetingInput, MeetingNotesSetting, Note, NoteKind, NoteSummary, NotesAudience, NotesMode, OpenAction, Passkey,
   Preferences, Session, SetupStep, WeekStats
 } from './types';
 
+/** A partial update: any field may be missing or explicitly undefined. */
+export type Patch<T> = { [K in keyof T]?: T[K] | undefined };
+
 /** Everything the frontend can ask of the backend. */
 export interface AlcoveApi {
   auth: {
+    /** The unlocked session, or null when signed out or locked. */
     getSession(): Promise<Session | null>;
-    /** Runs the provider's sign-in. The real client redirects; the mock resolves after a short delay. */
-    signIn(provider: AuthProvider, email?: string): Promise<Session>;
-    createPasskey(): Promise<Passkey>;
-    signOut(): Promise<void>;
+    /** Creates an account protected by a new passkey and unlocks it. */
+    createAccount(name: string): Promise<Session>;
+    /** Unlocks with an existing passkey on this device. */
+    unlock(): Promise<Session>;
+    /** Ends the session. The server drops the owner root immediately. */
+    lock(): Promise<void>;
   };
   account: {
     preferences(): Promise<Preferences>;
-    updatePreferences(patch: Partial<Preferences>): Promise<Preferences>;
+    updatePreferences(patch: Patch<Preferences>): Promise<Preferences>;
+    rename(name: string): Promise<Session>;
     passkeys(): Promise<Passkey[]>;
+    /** Registers another passkey for this account (e.g. on a second device) while unlocked. */
     addPasskey(): Promise<Passkey>;
-    calendars(): Promise<CalendarConnection[]>;
-    setCalendar(provider: CalendarProvider, connected: boolean): Promise<CalendarConnection[]>;
     setupSteps(): Promise<SetupStep[]>;
   };
   meetings: {
@@ -29,21 +35,17 @@ export interface AlcoveApi {
     get(id: ID): Promise<Meeting>;
     byCode(code: string): Promise<Meeting | null>;
     create(input: MeetingInput): Promise<Meeting>;
-    update(id: ID, input: Partial<MeetingInput>): Promise<Meeting>;
+    update(id: ID, input: Patch<MeetingInput>): Promise<Meeting>;
     setNotes(id: ID, notes: MeetingNotesSetting): Promise<Meeting>;
-    resendInvite(id: ID, email: string): Promise<void>;
     cancel(id: ID): Promise<void>;
   };
   links: {
     create(notes: MeetingNotesSetting): Promise<CallLink>;
   };
   calls: {
-    /**
-     * Joins a call by code. `name` is required for guests without a session.
-     * Hosts pass `notes` to decide notes at join time when the meeting is set to `ask`.
-     */
-    join(code: string, opts: { name?: string | undefined; mic: boolean; cam: boolean; notes?: NotesMode | undefined; audience?: NotesAudience | undefined; instant?: boolean | undefined }): Promise<CallSession>;
-    /** Starts a brand new call and returns its code. */
+    /** Joins one of your calls by code. `notes` decides notes at join time for `ask` meetings. */
+    join(code: string, opts: { mic: boolean; cam: boolean; notes?: NotesMode | undefined; audience?: NotesAudience | undefined }): Promise<CallSession>;
+    /** Creates a new call to start right away and returns its code. */
     createInstant(): Promise<{ code: string }>;
   };
   recordings: {
@@ -53,10 +55,12 @@ export interface AlcoveApi {
     list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]>;
     get(id: ID): Promise<Note>;
     progress(id: ID): AsyncIterable<NoteProgress>;
+    /** Same-origin URL that streams one decrypted audio segment while the session is unlocked. */
+    audioUrl(id: ID, segment: number): string;
     setActionDone(noteId: ID, actionId: ID, done: boolean): Promise<void>;
     openActions(): Promise<OpenAction[]>;
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
-    shareLink(noteId: ID): Promise<string>;
+    delete(id: ID): Promise<void>;
   };
   credits: {
     balance(): Promise<CreditBalance>;
@@ -70,7 +74,8 @@ export interface AlcoveApi {
 }
 
 export type AlcoveErrorCode =
-  | 'unauthenticated' | 'not-found' | 'forbidden' | 'invalid' | 'insufficient-credits' | 'conflict' | 'network' | 'unknown';
+  | 'unauthenticated' | 'locked' | 'not-found' | 'forbidden' | 'invalid' | 'insufficient-credits' | 'conflict' | 'unavailable'
+  | 'key-unavailable' | 'network' | 'unknown';
 
 export class AlcoveApiError extends Error {
   constructor(public readonly code: AlcoveErrorCode, message: string) {
@@ -79,7 +84,7 @@ export class AlcoveApiError extends Error {
   }
 }
 
-export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'network', 'unknown'];
+export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'locked', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'network', 'unknown'];
 export const isAlcoveErrorCode = (v: unknown): v is AlcoveErrorCode => typeof v === 'string' && ALCOVE_ERROR_CODES.some((c) => c === v);
 
 /** A user-facing message for anything thrown. */

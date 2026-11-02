@@ -1,7 +1,7 @@
 import { clock, type Note } from '@alcove/api';
 import { Avatar, AvatarStack, Button, CheckDraw, Chip, Icon, cn, useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
-import { Link, createFileRoute } from '@tanstack/react-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { useRef, useState, type ReactNode } from 'react';
 import { AskBar } from '~/features/notes/AskBar';
@@ -24,6 +24,9 @@ function NotePage() {
   const { noteId } = Route.useParams();
   const { data: n } = useQuery(q.note(noteId));
   const [hl, setHl] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const toast = useToast();
   const lines = useRef<Record<string, HTMLDivElement | null>>({});
   if (!n) return null;
@@ -34,13 +37,13 @@ function NotePage() {
     lines.current[line.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setHl(line.id); setTimeout(() => setHl(null), 2400);
   };
-  const toc: { id: string; label: string }[] = [{ id: 'sum', label: 'Summary' }, { id: 'dec', label: 'Decisions' }, { id: 'act', label: 'Action items' }, { id: 'chap', label: 'Chapters' }, ...(n.screens.length ? [{ id: 'scr', label: 'On screen' }] : []), { id: 'tr', label: 'Transcript' }];
+  const toc: { id: string; label: string }[] = n.status !== 'ready' ? [] : [{ id: 'sum', label: 'Summary' }, { id: 'dec', label: 'Decisions' }, { id: 'act', label: 'Action items' }, { id: 'chap', label: 'Chapters' }, ...(n.screens.length ? [{ id: 'scr', label: 'On screen' }] : []), { id: 'tr', label: 'Transcript' }];
   return (
     <>
       <div className="flex items-center gap-2.5">
         <Link to="/notes" className="inline-flex h-[34px] items-center gap-1.5 rounded-[10px] px-3 text-[13.5px] font-semibold text-ink-2 hover:bg-well hover:text-ink"><Icon name="left" className="size-4" />All notes</Link>
         <div className="flex-1" />
-        <Button size="sm" variant="secondary" icon="share" onClick={async () => { const url = await api.notes.shareLink(n.id); try { await navigator.clipboard.writeText(url); } catch { /* blocked */ } toast(n.kind === 'room' ? 'Link copied. Only you can open it until you share access.' : 'Link copied. Only people who were in the call can open it.', 'link'); }}>Share</Button>
+
       </div>
       <div className="grid grid-cols-[170px_minmax(0,1fr)] gap-10 pb-[170px] max-[960px]:grid-cols-1">
         <nav aria-label="Sections" className="sticky top-5 flex flex-col gap-0.5 self-start pt-[110px] max-[960px]:hidden">
@@ -52,10 +55,27 @@ function NotePage() {
             <h1 className="text-[clamp(36px,4.4vw,52px)] leading-[1.02]">{n.title}</h1>
             <div className="flex flex-wrap items-center gap-3.5 text-sm text-ink-2">
               <span>{fullDate(n.startedAt)} · {hm(n.startedAt)}</span><i className="size-[3px] rounded-full bg-ink-3" /><span>{minutesLabel(n.duration)}</span><i className="size-[3px] rounded-full bg-ink-3" />
-              <AvatarStack people={n.people} size={26} /><span>{n.kind === 'room' || n.audience === 'host' ? 'Only you can read these' : `Shared with the ${n.people.length} people in the call`}</span>
+              <AvatarStack people={n.people} size={26} /><span>{n.kind === 'room' || n.audience === 'host' ? 'Only you can read these' : 'For everyone in the call'}</span>
             </div>
           </motion.header>
-          <motion.section id="sum" {...reveal} className="scroll-mt-6 rounded-[22px] bg-card px-6 py-[22px] text-[17px] leading-[1.6] shadow-[inset_0_0_0_1px_var(--hair),var(--sh-soft)]"><p className="m-0">{n.summary}</p></motion.section>
+          {n.status !== 'ready' && (
+            <motion.section {...reveal} className="flex flex-col gap-4 rounded-[22px] bg-card px-6 py-[22px] shadow-[inset_0_0_0_1px_var(--hair),var(--sh-soft)]">
+              <div className="flex items-start gap-3"><Icon name="clock" className="mt-0.5 text-lamp-ink" /><div><b className="block text-[16px]">{n.status === 'recording' ? 'Still recording' : 'Waiting for the notes service'}</b><span className="text-[14.5px] text-ink-2">The recording is saved and encrypted. The summary, decisions and action items will appear here once the notes service is connected.</span></div></div>
+              {n.audio.length > 0 && (
+                <div className="flex flex-col gap-2.5 border-t border-hair pt-4">
+                  {n.audio.map((a) => (
+                    <div key={a.index} className="flex flex-col gap-1.5">
+                      <span className="text-[13px] font-semibold text-ink-3">{n.audio.length > 1 ? `Part ${a.index + 1} · ` : ''}{clock(a.seconds)} · {a.pieces} encrypted {a.pieces === 1 ? 'piece' : 'pieces'}</span>
+                      <audio controls preload="none" src={api.notes.audioUrl(n.id, a.index)} className="w-full" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {n.audio.length === 0 && <span className="text-[13.5px] text-ink-3">No audio was recorded.</span>}
+            </motion.section>
+          )}
+          {n.summary && <motion.section id="sum" {...reveal} className="scroll-mt-6 rounded-[22px] bg-card px-6 py-[22px] text-[17px] leading-[1.6] shadow-[inset_0_0_0_1px_var(--hair),var(--sh-soft)]"><p className="m-0">{n.summary}</p></motion.section>}
+          {n.status === 'ready' && <>
           <Section id="dec" title="Decisions">{n.decisions.map((d) => <div key={d} className="flex gap-3 border-b border-hair py-3 text-[15.5px]"><Icon name="okCircle" className="mt-0.5 size-[19px] text-ok" /><span>{d}</span></div>)}</Section>
           <Section id="act" title="Action items"><Actions note={n} /></Section>
           <Section id="chap" title="Chapters">
@@ -91,9 +111,11 @@ function NotePage() {
               </div>
             )}
           </Section>
+          </>}
+          <div className="flex justify-end pt-2"><Button size="sm" variant="danger-ghost" icon="trash" onClick={async () => { if (!confirmDelete) { setConfirmDelete(true); return; } await api.notes.delete(n.id); await qc.invalidateQueries({ queryKey: ['notes'] }); await navigate({ to: '/notes' }); toast('Notes and recording deleted', 'trash'); }}>{confirmDelete ? 'Delete for good' : 'Delete notes and recording'}</Button></div>
         </article>
       </div>
-      <AskBar note={n} onCite={cite} />
+      {n.status === 'ready' && <AskBar note={n} onCite={cite} />}
     </>
   );
 }

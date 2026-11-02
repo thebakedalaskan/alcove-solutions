@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ActionItemSchema, IDSchema, NotesAudienceSchema, NotesKeepSchema, PersonSchema, ScreenCaptureSchema, TranscriptLineSchema, type NotesKeep } from './types';
+import { IDSchema, ISODateSchema, NotesAudienceSchema, NotesKeepSchema, PersonSchema, type NotesKeep } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -11,8 +11,8 @@ export interface LiveStore<S> {
 }
 
 export const CallParticipantSchema = z.object({
-  id: IDSchema, person: PersonSchema, isMe: z.boolean(), isHost: z.boolean(), isGuest: z.boolean(),
-  mic: z.boolean(), cam: z.boolean(), hand: z.boolean(), speaking: z.boolean()
+  id: IDSchema, person: PersonSchema, isMe: z.boolean(), isHost: z.boolean(),
+  mic: z.boolean(), cam: z.boolean(), hand: z.boolean()
 });
 export type CallParticipant = z.infer<typeof CallParticipantSchema>;
 
@@ -28,37 +28,41 @@ export type CallNotesStatus = z.infer<typeof CallNotesStatusSchema>;
 
 export const CallNoticeSchema = z.object({
   id: IDSchema,
-  /** Plain sentence shown to everyone, e.g. "Ben turned on notes." */
+  /** Plain sentence shown to everyone, e.g. "You started notes." */
   text: z.string(),
   kind: z.enum(['notes', 'people', 'info'])
 });
 export type CallNotice = z.infer<typeof CallNoticeSchema>;
 
-/** A line in the live feed: something said, or something shown on a shared screen. */
-export const LiveLineSchema = z.discriminatedUnion('kind', [
-  TranscriptLineSchema.extend({ kind: z.literal('speech') }),
-  ScreenCaptureSchema.extend({ id: IDSchema, kind: z.literal('screen') })
-]);
-export type LiveLine = z.infer<typeof LiveLineSchema>;
+/** Encrypted audio stored so far for the call's notes. */
+export const RecordingProgressSchema = z.object({
+  /** Current segment; a new one starts each time notes start again after being stopped. */
+  segment: z.number(),
+  pieces: z.number(),
+  seconds: z.number()
+});
+export type RecordingProgress = z.infer<typeof RecordingProgressSchema>;
 
 export const CallStateSchema = z.object({
   callId: IDSchema,
+  meetingId: IDSchema,
   code: z.string(),
   title: z.string(),
+  startedAt: ISODateSchema,
   /** Seconds since the call started. */
   elapsed: z.number(),
-  phase: z.enum(['joining', 'waiting-room', 'in-call', 'ended']),
+  phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
-  sharing: z.object({ by: IDSchema, title: z.string() }).nullable(),
+  sharing: z.object({ title: z.string() }).nullable(),
   notes: z.object({
     status: CallNotesStatusSchema,
     mode: NotesKeepSchema,
     audience: NotesAudienceSchema,
-    /** True once notes have been on at any point, so something will be written at the end. */
-    everOn: z.boolean()
+    /** True once notes have been on at any point, so the call produces a note. */
+    everOn: z.boolean(),
+    noteId: IDSchema.nullable(),
+    recording: RecordingProgressSchema
   }),
-  transcript: z.array(LiveLineSchema),
-  live: z.object({ summary: z.string().nullable(), decisions: z.array(z.string()), actions: z.array(ActionItemSchema.pick({ id: true, text: true })) }),
   chat: z.array(ChatMessageSchema),
   notices: z.array(CallNoticeSchema),
   canControlNotes: z.boolean()
@@ -67,35 +71,48 @@ export type CallState = z.infer<typeof CallStateSchema>;
 
 export const CallEndResultSchema = z.object({
   meetingId: IDSchema,
-  /** Present when notes were on at some point; the notes are being written. */
+  /** Present when notes were on at some point. */
   pendingNoteId: IDSchema.nullable(),
   duration: z.number()
 });
 export type CallEndResult = z.infer<typeof CallEndResultSchema>;
 
+/** A piece of recorded audio, as produced by MediaRecorder every few seconds. */
+export interface AudioPiece {
+  data: Blob;
+  /** Segment the piece belongs to (see RecordingProgress.segment). */
+  segment: number;
+  /** Position within the segment, starting at 0. */
+  seq: number;
+  durationMs: number;
+  mimeType: string;
+}
+
 export interface CallSession extends LiveStore<CallState> {
   setMic(on: boolean): void;
   setCam(on: boolean): void;
   setHand(up: boolean): void;
-  setSharing(on: boolean): void;
+  setSharing(on: boolean, title?: string): void;
   sendChat(text: string): void;
   startNotes(mode: NotesKeep): void;
   pauseNotes(): void;
   resumeNotes(): void;
   stopNotes(): void;
-  invite(email: string): Promise<void>;
+  /** Encrypts and stores one piece of the notes recording. */
+  appendAudio(piece: AudioPiece): Promise<void>;
   dismissNotice(id: string): void;
   leave(): Promise<CallEndResult>;
 }
 
 export const RoomRecordingStateSchema = z.object({
   id: IDSchema,
+  noteId: IDSchema,
   title: z.string(),
+  startedAt: ISODateSchema,
+  /** Seconds recorded, excluding pauses. */
   elapsed: z.number(),
   status: z.enum(['recording', 'paused', 'stopped']),
-  /** 0..1 input level, sampled ~10 times a second. */
-  level: z.number(),
-  transcript: z.array(TranscriptLineSchema)
+  recording: RecordingProgressSchema
 });
 export type RoomRecordingState = z.infer<typeof RoomRecordingStateSchema>;
 
@@ -106,6 +123,7 @@ export interface RoomRecording extends LiveStore<RoomRecordingState> {
   rename(title: string): void;
   pause(): void;
   resume(): void;
+  appendAudio(piece: AudioPiece): Promise<void>;
   /** Stops and hands the audio to the notes service. Resolves with the note being written. */
   stop(): Promise<RecordingStopResult>;
   discard(): Promise<void>;

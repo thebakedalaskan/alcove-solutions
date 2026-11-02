@@ -2,8 +2,6 @@ import { TooltipProvider, ThemeProvider, ToastProvider, themeBootScript } from '
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { DevPanel } from '~/features/dev/DevPanel';
-import { mockControls } from '~/lib/api';
 import css from '~/styles/app.css?url';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -44,7 +42,6 @@ function Root() {
         <TooltipProvider>
           <ToastProvider>
             <Outlet />
-            {mockControls && <DevPanel controls={mockControls} />}
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>

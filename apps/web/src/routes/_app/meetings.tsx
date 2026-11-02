@@ -11,7 +11,6 @@ import { InvitePreview } from '~/features/meetings/InvitePreview';
 import { NOTE_OPTIONS, NotesChip } from '~/features/meetings/NotesChip';
 import { useDialogs } from '~/features/shell/dialogs';
 import { useStartInstant } from '~/features/shell/NewCallMenu';
-import { api } from '~/lib/api';
 import { q, useCancelMeeting, useMeetingNotes } from '~/lib/queries';
 import { dayLabel, fullDate, hm, isToday, minutesBetween, minutesLabel } from '~/lib/time';
 
@@ -104,9 +103,9 @@ function Detail({ meeting: m }: { meeting: Meeting }) {
           {confirm && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
               <div className="mt-1 flex flex-wrap items-center gap-2.5 rounded-[14px] bg-bad-soft px-3.5 py-3 text-sm">
-                <Icon name="mail" /><span className="min-w-[200px] flex-1">Cancel this call for everyone? Guests get an email and it leaves their calendars.</span>
+                <Icon name="mail" /><span className="min-w-[200px] flex-1">Cancel this call? It’s removed from your meetings.</span>
                 <Button size="sm" variant="secondary" onClick={() => setConfirm(false)}>Keep it</Button>
-                <Button size="sm" variant="danger" loading={cancel.isPending} onClick={async () => { await cancel.mutateAsync(m.id); toast(`${m.title} cancelled. ${m.guests.length} ${m.guests.length === 1 ? 'guest was' : 'guests were'} emailed.`, 'mail'); setConfirm(false); }}>Cancel call</Button>
+                <Button size="sm" variant="danger" loading={cancel.isPending} onClick={async () => { await cancel.mutateAsync(m.id); toast(`${m.title} cancelled`, 'cal'); setConfirm(false); }}>Cancel call</Button>
               </div>
             </motion.div>
           )}
@@ -133,14 +132,14 @@ function Detail({ meeting: m }: { meeting: Meeting }) {
               <Avatar person={g.person ?? { name: g.email }} size={30} ring={false} />
               <span className="min-w-0"><b className="block truncate text-sm">{g.person?.name ?? g.email}</b><span className="text-[12.5px] text-ink-3">{g.person ? g.email : 'Guest · no account'}</span></span>
               <Chip tone={RSVP[g.rsvp][0]}>{RSVP[g.rsvp][1]}</Chip>
-              {m.isHost && g.rsvp === 'pending' ? <Button size="sm" variant="ghost" onClick={async () => { await api.meetings.resendInvite(m.id, g.email); toast(`Invite sent again to ${g.person?.name ?? g.email}`, 'mail'); }}>Resend</Button> : <span />}
+              <span />
             </div>
           ))}
           {m.isHost && <Button size="sm" variant="ghost" icon="plus" className="mt-1" onClick={() => dialogs.open({ kind: 'schedule', meetingId: m.id })}>Add guests</Button>}
         </div>
       </div>
       <div className="rounded-[18px] bg-raised p-4 shadow-[inset_0_0_0_1px_var(--hair)]">
-        <h4 className="mb-3 text-[13px] font-bold">{m.isHost ? 'What guests received' : 'Your invite'}</h4>
+        <h4 className="mb-3 text-[13px] font-bold">Invite preview <span className="font-medium text-ink-3">· email invites aren’t connected yet</span></h4>
         <div className="max-w-[460px]"><InvitePreview title={m.title} when={`${fullDate(m.startsAt)} · ${hm(m.startsAt)} – ${hm(m.endsAt)}`} code={m.code} notes={m.notes} /></div>
       </div>
     </Card>
@@ -171,7 +170,7 @@ function NoMeetings() {
     <Card className="py-16">
       <EmptyState art={<EmptyCalendarArt />} title="No meetings yet"
         actions={<><Button icon="cal" onClick={() => dialogs.open({ kind: 'schedule' })}>Schedule a call</Button><Button variant="secondary" icon="cam" onClick={() => void start()}>Start one now</Button></>}>
-        Schedule a call and the invite goes out from {s?.user.email ?? 'your calendar'}. Calls you’re invited to show up here too.
+        Schedule a call ahead of time, or start one now. Your calls show up here, {s?.user.name.split(' ')[0] ?? 'with their notes'}.
       </EmptyState>
     </Card>
   );
