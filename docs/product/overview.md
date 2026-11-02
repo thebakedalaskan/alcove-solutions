@@ -14,7 +14,7 @@
 
 Native rich-text pages have a defined editable document format and immutable saved revisions. Supported text-oriented uploaded files retain their originals and derived text with source locators. Replacing an uploaded binary creates a version; the app is not a general binary document editor. The engineering limits define the accepted formats, maximum sizes and parser behavior.
 
-Chat is grounded in selected saved sources and private conversation history. The owner can inspect which file/page/transcript range supports an answer. Chat cannot silently expand its source selection, send content to an unapproved service or grant itself capture/payment authority. A narrow selection determines what the current job may use.
+Chat is private at its core. The owner can simply talk with the model, with no documents, and every conversation is encrypted and answered only through the approved confidential inference route. The owner can also attach saved pages, files or transcripts; then answers are grounded in those sources and the owner can inspect which file/page/transcript range supports each answer. Chat cannot silently expand its source selection, send content to an unapproved service or grant itself capture/payment authority. A narrow selection determines what the current job may use.
 
 For the meeting route, the owner supplies a meeting link, approves its bounded capture, and admits the visible guest participant in a supported test meeting. The app distinguishes waiting, recording actual samples, processing, partial, stopped and ready states. It saves timed text privately and lets the owner edit transcript text without overwriting the original media/time lineage.
 

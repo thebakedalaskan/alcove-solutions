@@ -1,0 +1,104 @@
+/*
+ * Alcove tokens. Light is "Mist", dark is "After hours", and "Dusk" is the brand ground used for
+ * covers and marketing. Every component reads these names; nothing hard-codes a colour.
+ * Layout idea: a quiet library with a folder tree on the left and one lit page at a time.
+ */
+:root {
+  color-scheme: light;
+  --al-bg: #EDF1F5;          /* Mist: ground */
+  --al-surface: #FAFBFD;     /* Paper: cards, the open page */
+  --al-sunken: #E1E7EE;      /* Plaster: sidebars, wells */
+  --al-raised: #FFFFFF;
+  --al-ink: #1C2533;         /* Evening */
+  --al-ink-2: #4A5567;       /* Slate */
+  --al-ink-3: #596478;       /* Haze */
+  --al-line: #D2DAE4;        /* Seam */
+  --al-line-strong: #B9C4D2;
+  --al-accent: #2D4A72;      /* Dusk: actions */
+  --al-accent-ink: #FAFBFD;
+  --al-accent-text: #2D4A72;
+  --al-accent-soft: #DCE6F4; /* Twilight wash */
+  --al-lamp: #E8A33C;        /* Lamp: lit, live */
+  --al-lamp-ink: #3A2600;
+  --al-lamp-text: #8A5600;
+  --al-lamp-soft: #FBEBD0;
+  --al-positive: #2F6B50;    /* Sage */
+  --al-positive-soft: #DCEEE3;
+  --al-unknown: #5D5592;     /* Heather */
+  --al-unknown-soft: #E6E4F4;
+  --al-negative: #B23A32;    /* Brick */
+  --al-negative-soft: #F8E1DE;
+  --al-info: #2D5F9A;        /* Window */
+  --al-focus: #2D5F9A;
+  --al-scrim: rgba(18, 26, 38, .42);
+  --al-shadow-1: 0 1px 2px rgba(10, 18, 30, .08);
+  --al-shadow-2: 0 1px 2px rgba(10, 18, 30, .08), 0 14px 34px -18px rgba(10, 18, 30, .35);
+  --al-shadow-3: 0 30px 70px -28px rgba(10, 18, 30, .5);
+  --al-glow: 0 0 0 4px rgba(232, 163, 60, .25), 0 0 18px rgba(232, 163, 60, .9);
+
+  --al-dusk: #223047;        /* brand ground, both themes */
+  --al-dusk-2: #2A3A55;
+  --al-dusk-ink: #F1F4F8;
+  --al-dusk-ink-2: #C5CEDB;
+
+  --al-font-ui: "Alegreya Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --al-font-read: "Alegreya", Georgia, "Times New Roman", serif;
+  --al-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --al-space-1: 4px; --al-space-2: 8px; --al-space-3: 12px; --al-space-4: 16px; --al-space-5: 20px;
+  --al-space-6: 24px; --al-space-8: 32px; --al-space-10: 40px; --al-space-12: 48px; --al-space-16: 64px;
+  --al-r-xs: 6px; --al-r-sm: 10px; --al-r-md: 14px; --al-r-lg: 18px; --al-r-xl: 26px; --al-r-pill: 999px;
+  --al-arch: 999px 999px 16px 16px / 86px 86px 16px 16px;
+  --al-stroke: 1.7;
+
+  --al-t-fast: 140ms; --al-t-soft: 200ms; --al-t-fade: 240ms; --al-t-rise: 320ms; --al-t-warm: 600ms;
+  --al-t-sheet: 280ms; --al-t-stagger: 40ms; --al-rise: 10px;
+  --al-ease-out: cubic-bezier(.2, .7, .2, 1);
+  --al-ease-warm: cubic-bezier(.2, .6, .2, 1);
+  --al-ease-in-out: cubic-bezier(.45, 0, .25, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --al-bg: #121A26; --al-surface: #19222F; --al-sunken: #0F1620; --al-raised: #202A39;
+    --al-ink: #EEF2F7; --al-ink-2: #B1BCCB; --al-ink-3: #8794A6; --al-line: #2B3749; --al-line-strong: #3A4860;
+    --al-accent: #9DBBE6; --al-accent-ink: #121A26; --al-accent-text: #A9C4EC; --al-accent-soft: #1F3350;
+    --al-lamp: #F4B45A; --al-lamp-ink: #2A1A00; --al-lamp-text: #F4B45A; --al-lamp-soft: #3A2A12;
+    --al-positive: #7CCBA2; --al-positive-soft: #163326; --al-unknown: #B7AEF0; --al-unknown-soft: #2A2547;
+    --al-negative: #F28C7F; --al-negative-soft: #3F1E1B; --al-info: #9DC3F0; --al-focus: #9DC3F0;
+    --al-scrim: rgba(0, 0, 0, .55);
+    --al-shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
+    --al-shadow-2: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 34px -18px rgba(0, 0, 0, .7);
+    --al-shadow-3: 0 30px 70px -28px rgba(0, 0, 0, .8);
+    --al-glow: 0 0 0 4px rgba(244, 180, 90, .22), 0 0 20px rgba(244, 180, 90, .85);
+  }
+}
+:root[data-theme="dark"], .t-dark {
+  color-scheme: dark;
+  --al-bg: #121A26; --al-surface: #19222F; --al-sunken: #0F1620; --al-raised: #202A39;
+  --al-ink: #EEF2F7; --al-ink-2: #B1BCCB; --al-ink-3: #8794A6; --al-line: #2B3749; --al-line-strong: #3A4860;
+  --al-accent: #9DBBE6; --al-accent-ink: #121A26; --al-accent-text: #A9C4EC; --al-accent-soft: #1F3350;
+  --al-lamp: #F4B45A; --al-lamp-ink: #2A1A00; --al-lamp-text: #F4B45A; --al-lamp-soft: #3A2A12;
+  --al-positive: #7CCBA2; --al-positive-soft: #163326; --al-unknown: #B7AEF0; --al-unknown-soft: #2A2547;
+  --al-negative: #F28C7F; --al-negative-soft: #3F1E1B; --al-info: #9DC3F0; --al-focus: #9DC3F0;
+  --al-scrim: rgba(0, 0, 0, .55);
+  --al-shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
+  --al-shadow-2: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 34px -18px rgba(0, 0, 0, .7);
+  --al-shadow-3: 0 30px 70px -28px rgba(0, 0, 0, .8);
+  --al-glow: 0 0 0 4px rgba(244, 180, 90, .22), 0 0 20px rgba(244, 180, 90, .85);
+}
+.t-light {
+  color-scheme: light;
+  --al-bg: #EDF1F5; --al-surface: #FAFBFD; --al-sunken: #E1E7EE; --al-raised: #FFFFFF;
+  --al-ink: #1C2533; --al-ink-2: #4A5567; --al-ink-3: #596478; --al-line: #D2DAE4; --al-line-strong: #B9C4D2;
+  --al-accent: #2D4A72; --al-accent-ink: #FAFBFD; --al-accent-text: #2D4A72; --al-accent-soft: #DCE6F4;
+  --al-lamp: #E8A33C; --al-lamp-ink: #3A2600; --al-lamp-text: #8A5600; --al-lamp-soft: #FBEBD0;
+  --al-positive: #2F6B50; --al-positive-soft: #DCEEE3; --al-unknown: #5D5592; --al-unknown-soft: #E6E4F4;
+  --al-negative: #B23A32; --al-negative-soft: #F8E1DE; --al-info: #2D5F9A; --al-focus: #2D5F9A;
+  --al-scrim: rgba(18, 26, 38, .42);
+  --al-shadow-1: 0 1px 2px rgba(10, 18, 30, .08);
+  --al-shadow-2: 0 1px 2px rgba(10, 18, 30, .08), 0 14px 34px -18px rgba(10, 18, 30, .35);
+  --al-shadow-3: 0 30px 70px -28px rgba(10, 18, 30, .5);
+  --al-glow: 0 0 0 4px rgba(232, 163, 60, .25), 0 0 18px rgba(232, 163, 60, .9);
+}

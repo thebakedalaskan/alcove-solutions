@@ -2,7 +2,7 @@
 
 [MVP guide](../README.md) · [Tasks](../delivery/tasks.md) · [Stack and setup](../references/stack-and-provider-setup.md)
 
-This is the implementation contract for the personal desktop MVP. One owner uses one installation to store supported files, edit native pages, ask questions over selected sources, authorize one supported meeting-attendance route, and buy prepaid credit for capped processing. The reference build is `CL-MAC` on arm64. The system deliberately accepts `C01`, `I01`, and `P01` as trusted provider boundaries while checking their supported attestation, encryption, identity, and settlement contracts.
+This is the implementation contract for the personal desktop MVP. One owner uses one installation to store supported files, edit native pages, chat privately with the model and ask questions over selected sources, authorize one supported meeting-attendance route, and buy prepaid credit for capped processing. The reference build is `CL-MAC` on arm64. The system deliberately accepts `C01`, `I01`, and `P01` as trusted provider boundaries while checking their supported attestation, encryption, identity, and settlement contracts.
 
 Everything here is specified, not implemented or tested. Source research and candidate versions live in References. The build must produce actual lockfiles, images, model digests, and evidence; this document supplies none of those results.
 
@@ -82,7 +82,7 @@ The API is one `R01` application with modules, not separate distributed services
 | Original uploads | PDF at most 25 MiB and 250 pages; TXT/MD at most 5 MiB. Each upload at most 100 chunks of 256 KiB. |
 | Native editor | Canonical JSON at most 2 MiB, depth 32, 20,000 nodes, 250,000 text code points. |
 | Search corpus | At most 250,000 extracted code points and 600 chunks per revision; 20,000 active indexed chunks per owner. |
-| Interactive context | At most 20 explicitly selected source revisions; 8 retrieved chunks and 3,000 source tokens; 8,000 total prompt tokens. |
+| Interactive context | Private chat needs no sources; at most 20 explicitly selected source revisions; 8 retrieved chunks and 3,000 source tokens; 8,000 total prompt tokens. |
 | Chat work | One provider request, at most 1,024 output tokens, 120-second dispatch deadline, maximum 132 service credits. |
 | Meeting | One active meeting run, 30-minute attendance cap; detailed audio and reservation bounds in Meetings and Payments. |
 

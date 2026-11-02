@@ -1,0 +1,22 @@
+{
+  "name": "alcove",
+  "private": true,
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@alcove/web",
+    "build": "turbo run build",
+    "typecheck": "node scripts/check-types.mjs && turbo run typecheck",
+    "test": "node scripts/check-tests.mjs && turbo run test",
+    "check": "node scripts/check-tests.mjs && node scripts/check-types.mjs && turbo run typecheck test build",
+    "check:tests": "node scripts/check-tests.mjs",
+    "check:types": "node scripts/check-types.mjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.10",
+    "typescript": "^7.0.2",
+    "typescript-parser": "npm:typescript@6.0.3"
+  }
+}

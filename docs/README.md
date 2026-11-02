@@ -1,13 +1,13 @@
 # MVP build guide
 
-**V2 — hackathon MVP.** Build one personal desktop workspace for documents and files, private contextual chat, meeting transcripts and prepaid usage. This is the complete build scope and acceptance target for this project.
+**V2 — hackathon MVP.** Build one personal desktop workspace for documents and files, private chat (optionally grounded in your files), meeting transcripts and prepaid usage. This is the complete build scope and acceptance target for this project.
 
 ## What we are building
 
 | Capability | Required result |
 | --- | --- |
 | Pages and files | Create/edit rich-text pages, upload supported files, organize them and reopen saved revisions |
-| Contextual chat | Ask questions across selected files, pages and meeting transcripts, with source and time citations |
+| Private chat | Talk privately with the model with no documents needed; optionally attach files, pages and meeting transcripts for answers with source and time citations |
 | Meeting transcription | Admit one visible confidential attendee to an authorized meeting, capture actual audio and save a timed private transcript |
 | Private payment | Buy the configured P01 credit pack, receive one account credit, and pay for bounded chat/transcription from that balance |
 | Application privacy | Readable content stays on the approved desktop client and approved confidential processing endpoints; ordinary storage, logs and edge receive ciphertext |

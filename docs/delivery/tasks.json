@@ -336,7 +336,7 @@
   },
   {
     "id": "MVP-018",
-    "title": "Deliver one bounded paid contextual chat end to end",
+    "title": "Deliver one bounded paid private chat end to end",
     "status": "Backlog",
     "lane": "Vault and agent",
     "priority": "P0",
@@ -349,7 +349,7 @@
     ],
     "specification": "docs/engineering/chat-and-inference.md",
     "acceptance": [
-      "Selected stored revisions produce a protected cited answer through one admitted bounded I01 request.",
+      "A message with no sources produces a protected general answer, and selected stored revisions produce a protected cited answer, each through one admitted bounded I01 request.",
       "Encrypted status/history exposes reservation, final debit and useful partial/failure states without leaking prompts or provider credentials.",
       "Interrupted or uncertain send preserves its action identity and cannot silently resubmit, double debit or use unselected sources."
     ],

@@ -1,0 +1,117 @@
+/*
+ * Alcove design tokens. Warm paper by day, warm ink by night.
+ * Raw values live in :root / .dark; @theme inline maps them to Tailwind utilities
+ * (bg-canvas, text-ink-2, shadow-lift, font-display, ease-soft ...).
+ * The amber lamp is the brand mark only. It never signals state.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --canvas: #F4F2EE; --card: #FFFFFF; --raised: #FAF9F7; --well: #ECE9E3;
+  --ink: #17140F; --ink-2: #5B544B; --ink-3: #6F675D;
+  --hair: #E6E1D9; --hair-2: #D6D0C6;
+  --btn: #17140F; --btn-ink: #FFFFFF;
+  --lamp: #FFA62B; --lamp-hot: #FFC766; --lamp-soft: #FFF0D6; --lamp-ink: #8A4B00;
+  --ok: #2B8657; --ok-soft: #DFF2E7; --bad: #C8452F; --bad-soft: #FBE3DD; --focus: #2F6FEB;
+  --sidebar: color-mix(in oklab, #F4F2EE 70%, #ECE9E3);
+  --feature: #17140F; --feature-line: transparent;
+  --sh-soft: 0 1px 2px rgb(23 20 15 / .06), 0 1px 1px rgb(23 20 15 / .04);
+  --sh-lift: 0 2px 4px rgb(23 20 15 / .04), 0 12px 32px -12px rgb(23 20 15 / .18);
+  --sh-float: 0 30px 80px -20px rgb(23 20 15 / .35), 0 0 0 1px rgb(23 20 15 / .04);
+  color-scheme: light;
+}
+.dark {
+  --canvas: #100E0C; --card: #1A1815; --raised: #211E1A; --well: #262320;
+  --ink: #F5F1EA; --ink-2: #BEB5A9; --ink-3: #8F877C;
+  --hair: #2C2823; --hair-2: #3A352F;
+  --btn: #F5F1EA; --btn-ink: #17140F;
+  --lamp: #FFAE3D; --lamp-hot: #FFD08A; --lamp-soft: #3A2810; --lamp-ink: #FFC56E;
+  --ok: #5FCB8E; --ok-soft: #12301F; --bad: #F07A63; --bad-soft: #3A1A14; --focus: #7EA6FF;
+  --sidebar: #131110;
+  --feature: #221E19; --feature-line: #2E2924;
+  --sh-soft: 0 1px 2px rgb(0 0 0 / .4);
+  --sh-lift: 0 2px 4px rgb(0 0 0 / .3), 0 14px 34px -12px rgb(0 0 0 / .6);
+  --sh-float: 0 30px 80px -20px rgb(0 0 0 / .8), 0 0 0 1px rgb(255 255 255 / .04);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas); --color-card: var(--card); --color-raised: var(--raised); --color-well: var(--well);
+  --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3);
+  --color-hair: var(--hair); --color-hair-2: var(--hair-2);
+  --color-btn: var(--btn); --color-btn-ink: var(--btn-ink);
+  --color-lamp: var(--lamp); --color-lamp-hot: var(--lamp-hot); --color-lamp-soft: var(--lamp-soft); --color-lamp-ink: var(--lamp-ink);
+  --color-ok: var(--ok); --color-ok-soft: var(--ok-soft); --color-bad: var(--bad); --color-bad-soft: var(--bad-soft);
+  --color-focus: var(--focus); --color-sidebar: var(--sidebar); --color-feature: var(--feature); --color-feature-line: var(--feature-line);
+  --shadow-soft: var(--sh-soft); --shadow-lift: var(--sh-lift); --shadow-float: var(--sh-float);
+}
+
+@theme {
+  /* The call stage is always dark, whatever the app theme. */
+  --color-stage: #0B0A09; --color-stage-2: #161411; --color-stage-3: #23201C; --color-stage-4: #2E2A25;
+  --color-stage-ink: #F2EEE7; --color-stage-mute: #A8A096; --color-stage-dim: #8F877C;
+  --color-rec: #E5484D; --color-rec-ink: #FF8A8E; --color-live: #8FD3AE;
+
+  --font-display: "Gabarito", "Onest", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Onest", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --ease-soft: cubic-bezier(.22, .8, .24, 1);
+  --ease-swing: cubic-bezier(.55, 0, .2, 1);
+  --ease-spring: cubic-bezier(.3, 1.3, .4, 1);
+
+  --radius-4xl: 2rem;
+
+  --animate-rise: rise .6s var(--ease-soft) both;
+  --animate-pop: pop .35s var(--ease-soft) both;
+  --animate-fade: fade .3s ease both;
+  --animate-recpulse: recpulse 1.6s ease-in-out infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-breathe: breathe 5.5s ease-in-out infinite;
+  --animate-glow: glowbreath 7s ease-in-out infinite;
+  --animate-spin-fast: spin .7s linear infinite;
+
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes recpulse { 50% { opacity: .35; } }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+  @keyframes breathe { 50% { transform: scale(1.012) translateY(-.4%); } }
+  @keyframes glowbreath { 50% { transform: scale(1.08) translate(-10px, 8px); opacity: .8; } }
+}
+
+@layer base {
+  html, body { height: 100%; }
+  body { background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; transition: background-color .3s, color .3s; }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 800; letter-spacing: -.035em; line-height: 1.05; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 8px; }
+  button { cursor: pointer; }
+  button:disabled { cursor: default; }
+  ::selection { background: var(--lamp-soft); color: var(--ink); }
+}
+
+@utility tabular { font-variant-numeric: tabular-nums; }
+@utility scrollbar-none { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+}
+
+/* Keyframes used through arbitrary animate-[...] values. */
+@keyframes drift { to { transform: translate(var(--dx, 0), var(--dy, 0)) scale(1.1); } }
+@keyframes talk { 0%, 100% { transform: translateX(-50%); } 30% { transform: translateX(-50%) translateY(-.8%) rotate(-.6deg); } 65% { transform: translateX(-50%) translateY(-.3%) rotate(.5deg); } }
+@keyframes wv { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+@keyframes rwv { 50% { height: 62%; } }
+@keyframes growdown { from { transform: scaleY(0); opacity: 0; } }
+@keyframes growup { from { transform: scaleY(0); } }
+@keyframes dot3 { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-3px); } }
+@keyframes ringin { from { stroke-dashoffset: var(--ring-full); } }
+@keyframes draw { from { stroke-dashoffset: 24; } }
+
+/* The mark lighting up on the welcome screen. */
+.alcove-mark-animate .mark-niche { animation: niche 1.1s var(--ease-soft) both; transform-origin: 50% 100%; transform-box: fill-box; }
+.alcove-mark-animate .mark-spill { animation: fade 1.8s var(--ease-soft) .7s both; }
+.alcove-mark-animate .mark-flame { animation: flamein 1.2s var(--ease-soft) .55s both; transform-origin: center; transform-box: fill-box; }
+@keyframes niche { from { transform: scaleY(0); opacity: 0; } }
+@keyframes flamein { 0% { opacity: 0; transform: scale(.2); } 60% { opacity: 1; transform: scale(1.12); } 100% { transform: none; } }
+@keyframes menuin { from { opacity: 0; transform: translateY(-6px) scale(.96); } }

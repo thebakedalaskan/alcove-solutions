@@ -18,13 +18,13 @@ A failed verification or inaccessible local key produces an actionable blocked s
 
 A network failure keeps the encrypted pending operation. An exact retry returns its original result. Changed content receives a new revision/operation identity. Deleting an item removes it from new retrieval immediately under the app's accepted state; queued work rechecks whether it may still publish.
 
-## Ask chat with selected context
+## Chat privately, optionally with sources
 
-The owner selects saved sources and sends a question. The app checks credit, resolves allowed source revisions, performs protected retrieval and submits a bounded I01 request. Show queued, working, verification/response pending, completed, failed or unknown status accurately.
+The owner opens a private chat and sends a message. No sources are needed: the app checks credit and submits a bounded I01 request with the chat's own history. If the owner attaches saved sources, the app also resolves allowed source revisions and performs protected retrieval before the request. Show queued, working, verification/response pending, completed, failed or unknown status accurately.
 
-A successful response includes file/page or transcript time references. The owner can open the exact cited source. Provider output remains untrusted text: citations and permitted structured responses are validated by application code. Chat cannot initiate an external message, purchase, meeting or broader source grant.
+A private chat answer is labelled as general knowledge. A sourced response includes file/page or transcript time references. The owner can open the exact cited source. Provider output remains untrusted text: citations and permitted structured responses are validated by application code. Chat cannot initiate an external message, purchase, meeting or broader source grant.
 
-Changing the selected source set starts a clean context so previous hidden turns or caches cannot sneak excluded text into a narrower request. Missing/failed indexes produce an honest coverage warning or a bounded permitted scan; they do not fabricate complete search.
+Attaching sources to a private chat or changing the selected source set starts a clean context so previous hidden turns or caches cannot sneak excluded text into a narrower request. Missing/failed indexes produce an honest coverage warning or a bounded permitted scan; they do not fabricate complete search.
 
 ## Buy and use prepaid credit
 

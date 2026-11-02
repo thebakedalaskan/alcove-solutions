@@ -27,7 +27,7 @@ Use the [CSV](tasks.csv) for a tracker import or the [JSON](tasks.json) for stru
 | [MVP-015](#mvp-015) | Prepare the real private credit purchase and wallet signature | Payments and accounting | P0 | [MVP-003](#mvp-003), [MVP-005](#mvp-005), [MVP-014](#mvp-014) |
 | [MVP-016](#mvp-016) | Submit and reconcile private purchases with one credit | Payments and accounting | P0 | [MVP-015](#mvp-015) |
 | [MVP-017](#mvp-017) | Account for operator supplier capacity and uncertain expense | Payments and accounting | P0 | [MVP-006](#mvp-006), [MVP-014](#mvp-014) |
-| [MVP-018](#mvp-018) | Deliver one bounded paid contextual chat end to end | Vault and agent | P0 | [MVP-012](#mvp-012), [MVP-013](#mvp-013), [MVP-014](#mvp-014), [MVP-017](#mvp-017) |
+| [MVP-018](#mvp-018) | Deliver one bounded paid private chat end to end | Vault and agent | P0 | [MVP-012](#mvp-012), [MVP-013](#mvp-013), [MVP-014](#mvp-014), [MVP-017](#mvp-017) |
 | [MVP-019](#mvp-019) | Build and isolate the single-run meeting attendee image | Audio and meetings | P0 | [MVP-002](#mvp-002), [MVP-003](#mvp-003), [MVP-006](#mvp-006) |
 | [MVP-020](#mvp-020) | Implement authorized guest admission and stop controls | Audio and meetings | P0 | [MVP-005](#mvp-005), [MVP-014](#mvp-014), [MVP-019](#mvp-019) |
 | [MVP-021](#mvp-021) | Capture encrypted meeting audio with truthful timing | Audio and meetings | P0 | [MVP-020](#mvp-020) |
@@ -320,7 +320,7 @@ Evidence to attach: source/build version, named checks and observed results. Kee
 
 ## MVP-018
 
-**Deliver one bounded paid contextual chat end to end**
+**Deliver one bounded paid private chat end to end**
 
 Lane: Vault and agent · Priority: P0 · Status: Backlog · Owner: Unassigned · Evidence: Not run
 
@@ -328,7 +328,7 @@ Specification: [Implementation contract](../engineering/chat-and-inference.md)
 
 Dependencies: [MVP-012](#mvp-012), [MVP-013](#mvp-013), [MVP-014](#mvp-014), [MVP-017](#mvp-017).
 
-- [ ] Selected stored revisions produce a protected cited answer through one admitted bounded I01 request.
+- [ ] A message with no sources produces a protected general answer, and selected stored revisions produce a protected cited answer, each through one admitted bounded I01 request.
 - [ ] Encrypted status/history exposes reservation, final debit and useful partial/failure states without leaking prompts or provider credentials.
 - [ ] Interrupted or uncertain send preserves its action identity and cannot silently resubmit, double debit or use unselected sources.
 

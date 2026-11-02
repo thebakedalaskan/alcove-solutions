@@ -1,0 +1,77 @@
+/*
+ * How Alcove moves. Light changes; things don't jump. What arrives rises a little and settles once,
+ * the lamp warms over 600 ms, glass clears from frost when a page unlocks, and progress fills along
+ * the arch. Nothing bounces or overshoots, and nothing waits on motion: every frame at rest is the
+ * finished state. Reduced motion turns every one of these into a cut.
+ */
+@keyframes al-rise { from { opacity: 0; transform: translateY(var(--al-rise)); } }
+@keyframes al-fade { from { opacity: 0; } }
+@keyframes al-fade-out { to { opacity: 0; } }
+@keyframes al-pop { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+@keyframes al-sheet { from { opacity: 0; transform: translateY(22px); } }
+@keyframes al-toast { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+@keyframes al-warm {
+  0% { opacity: .2; filter: saturate(.3) brightness(.7); }
+  60% { opacity: 1; }
+  100% { opacity: 1; filter: none; }
+}
+@keyframes al-glow-in { from { box-shadow: 0 0 0 0 transparent; } }
+@keyframes al-frost { from { filter: blur(8px); opacity: .45; } }
+@keyframes al-draw { from { stroke-dashoffset: var(--len, 300); } to { stroke-dashoffset: 0; } }
+@keyframes al-grow { from { transform: scaleX(0); } }
+@keyframes al-grow-y { from { transform: scaleY(0); } }
+@keyframes al-breathe {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 9px color-mix(in oklab, currentColor 0%, transparent); }
+}
+@keyframes al-pulse-soft { 50% { opacity: .55; } }
+@keyframes al-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@keyframes al-caret { 50% { opacity: 0; } }
+@keyframes al-run { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
+@keyframes al-spin { to { rotate: 360deg; } }
+@keyframes al-wave { 0%, 100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+@keyframes al-float { 50% { transform: translateY(-6px); } }
+@keyframes al-mote {
+  0% { opacity: 0; transform: translate(0, 0); }
+  20% { opacity: .9; }
+  100% { opacity: 0; transform: translate(var(--dx, 12px), -60px); }
+}
+@keyframes al-light-pool { 0% { opacity: 0; transform: scaleX(.6); } 100% { opacity: 1; transform: none; } }
+@keyframes al-land { from { opacity: 0; scale: .4; } }
+@keyframes al-tick { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+
+/* Anything marked to rise does so once, on its own beat (--i), as a page first draws. */
+[data-rise] {
+  animation: al-rise var(--al-t-rise) var(--al-ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 12) * var(--al-t-stagger));
+}
+.al-stagger > * { animation: al-rise var(--al-t-rise) var(--al-ease-out) both; }
+.al-stagger > :nth-child(1) { animation-delay: 0ms; }
+.al-stagger > :nth-child(2) { animation-delay: 40ms; }
+.al-stagger > :nth-child(3) { animation-delay: 80ms; }
+.al-stagger > :nth-child(4) { animation-delay: 120ms; }
+.al-stagger > :nth-child(5) { animation-delay: 160ms; }
+.al-stagger > :nth-child(6) { animation-delay: 200ms; }
+.al-stagger > :nth-child(7) { animation-delay: 240ms; }
+.al-stagger > :nth-child(8) { animation-delay: 280ms; }
+.al-stagger > :nth-child(9) { animation-delay: 320ms; }
+.al-stagger > :nth-child(10) { animation-delay: 360ms; }
+.al-stagger > :nth-child(n+11) { animation-delay: 400ms; }
+
+/* A beat: parts of a picture that arrive in order (--b is the beat, 1 beat = 320 ms). */
+[data-beat] { animation: al-rise var(--al-t-rise) var(--al-ease-out) both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-fade] { animation: al-fade var(--al-t-fade) ease-out both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-pop] { animation: al-pop var(--al-t-rise) var(--al-ease-out) both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-land] { animation: al-land 360ms var(--al-ease-out) both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-grow] { transform-origin: left center; animation: al-grow 900ms var(--al-ease-in-out) both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-frost] { animation: al-frost var(--al-t-warm) var(--al-ease-warm) both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-warm] { animation: al-warm var(--al-t-warm) var(--al-ease-warm) both; animation-delay: calc(var(--b, 0) * 320ms); }
+[data-beat-draw] { stroke-dasharray: var(--len, 300); animation: al-draw 1100ms var(--al-ease-in-out) both; animation-delay: calc(var(--b, 0) * 320ms); }
+
+/* Typing: a caret after text that a script reveals word by word. */
+.al-caret::after { content: ""; display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -2px; background: var(--al-lamp); animation: al-caret 900ms steps(1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+  .al-caret::after { display: none; }
+}

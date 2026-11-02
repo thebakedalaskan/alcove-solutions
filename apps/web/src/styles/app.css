@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "@alcove/ui/styles.css";
+
+/* Scan the design system's source for class names too. */
+@source "../../../../packages/ui/src";

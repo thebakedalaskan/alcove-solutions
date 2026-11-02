@@ -110,7 +110,7 @@ Each run records exact source/build/configuration, environment, test case, times
 | --- | --- |
 | Native identity and channel | Fresh install creates keys; lock/reopen works; wrong C01 app/image/key, replay and tampered frames reject before key release; UI cannot export native keys |
 | Files and pages | Owner uploads the supported text/PDF formats, opens originals, replaces a file version, creates/edits/saves/reopens a page; stale expected-parent write preserves the draft and reports conflict |
-| Contextual chat | An actual protected I01 answer uses selected source revisions and opens its citations; unauthorized/failed sources do not enter context; reservation and final debit are visible |
+| Private and contextual chat | An actual protected I01 answer to a private chat with no sources is labelled general; an answer with selected source revisions opens its citations; unauthorized/failed sources do not enter context; reservation and final debit are visible |
 | Real payment | Owner signs the exact configured quote intent; authenticated P01 SUCCESS matches the purchase; duplicate observation credits once; one subsequent paid chat consumes the expected service debit |
 | Actual meeting | Authorized host admits the visible guest into the qualified real M01 meeting; known spoken phrases yield recorded audio, timestamped transcript and contextual answer; stop/leave and any gaps are evidenced |
 | Ordinary-storage canaries | Unique synthetic document, prompt, transcript, meeting URL and secret markers do not appear in edge logs, ordinary D01/O01 exports, backups, host temp files, crash output or diagnostics; ciphertext intentionally retained is identified |
