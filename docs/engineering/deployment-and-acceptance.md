@@ -43,7 +43,8 @@ Application Load Balancer for production custom domains. See
    Cloud Run; check `/health` through its service URL. The migration job refuses a database built
    from a different version of the schema (it changes in place): reset that database first. Checking `run.app` first avoids making the initial
    deployment depend on an API domain mapping that needs the service to exist.
-5. **Web release.** Build against `https://api.alcove.solutions`, add that origin to the CSP and
+5. **Web release.** Build against `https://api.alcove.solutions`, write the CSP for that origin with
+   `apps/web/scripts/csp.mjs` (inline scripts by hash, nothing third-party) and
    publish the static SPA to Pages production branch `main` with pinned `pnpm dlx wrangler@4.157.0`.
    Credentials are scoped to the publishing step's environment; the verified SHA supplies commit
    attribution. Publishing does not add a workspace dependency.

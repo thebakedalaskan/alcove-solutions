@@ -3,7 +3,7 @@
  * client parses every response with them, so nothing crosses the network boundary unchecked.
  * Times are ISO-8601 strings in UTC; durations are seconds.
  */
-import { z } from 'zod';
+import { z } from './zod';
 
 export const IDSchema = z.string();
 export type ID = z.infer<typeof IDSchema>;

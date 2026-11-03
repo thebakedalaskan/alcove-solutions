@@ -17,6 +17,7 @@ import { closeSession, openSession } from '../sessions';
 import { createItem, listItems, saveRevision } from '../vault';
 import { openAccount } from './billing';
 import { create as createMeeting, upcoming } from './meetings';
+import { photoUrl } from './photos';
 import { portraitFor } from './portraits';
 
 const alog = log.child({ component: 'account' });
@@ -52,7 +53,9 @@ export async function updateProfile(o: Owner, fn: (p: Profile) => Profile): Prom
 
 export async function me(o: Owner): Promise<Person> {
   const p = await profile(o);
-  return { id: o.ownerId, name: p.name, email: p.email, ...(p.photoUrl ? { photoUrl: p.photoUrl } : {}), portrait: portraitFor(p.email) };
+  // A provider photo is served through Alcove (modules/photos.ts): browsers never fetch it from the provider.
+  const photo = photoUrl(o, p.photoUrl);
+  return { id: o.ownerId, name: p.name, email: p.email, ...(photo ? { photoUrl: photo } : {}), portrait: portraitFor(p.email) };
 }
 
 export async function sessionFor(o: Owner): Promise<Session> {

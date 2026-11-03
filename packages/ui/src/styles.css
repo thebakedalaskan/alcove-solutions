@@ -4,6 +4,7 @@
  * Crimson only ever means recording. Every colour, shadow, font and easing comes from here.
  * Screens' own styles live next to this file (styles/*.css) so the app holds no raw colours.
  */
+@import "./fonts.css";
 @import "./styles/kit.css";
 @import "./styles/welcome.css";
 @import "./styles/app.css";

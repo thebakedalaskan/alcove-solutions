@@ -192,7 +192,8 @@ Each deployment:
    instance, session affinity, and CPU between requests for key expiry and object cleanup.
 4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
    before custom-domain provisioning.
-5. Builds the web app against `API_ORIGIN`, adds that origin to the CSP, and publishes
+5. Builds the web app against `API_ORIGIN`, writes the CSP for that origin with `apps/web/scripts/csp.mjs`
+   (inline scripts allowed only by the hash of what the build produced; nothing third-party), and publishes
    `apps/web/dist/client` to Pages production branch `main` using `pnpm dlx wrangler@4.157.0`.
    The publisher receives its token/account/project through step-scoped environment variables and
    attributes the deployment to the verified Git commit without changing workspace dependencies.

@@ -25,6 +25,7 @@ import * as calls from './modules/calls';
 import * as meetings from './modules/meetings';
 import * as notes from './modules/notes';
 import * as people from './modules/people';
+import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
 import type { Clip } from './modules/transcripts';
 
@@ -238,6 +239,12 @@ export function createApp(d: Deps) {
     await account.signOut(c.get('owner'));
     deleteCookie(c, COOKIE, { path: '/', secure });
     return c.json({ signedOut: true });
+  });
+
+  /* Sign-in photos, fetched by Alcove so a browser never asks the provider for anyone's face. */
+  app.get('/v1/photos/:token', async (c) => {
+    const p = await photos.photo(d, c.req.param('token'));
+    return new Response(p.bytes.slice(), { headers: { 'content-type': p.type, 'cache-control': 'private, max-age=86400, immutable', 'x-content-type-options': 'nosniff' } });
   });
 
   /* account */
