@@ -119,9 +119,29 @@ describe('host controls', () => {
 
     await host.remove(guest.ticket.identity);
     expect(await guestRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
+    // Their pass goes with them: no more reading the call, chatting or catching up.
+    for (const attempt of [() => guest.refresh(), () => guest.sendChat('still here?'), () => guest.catchUp()]) {
+      expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
+    }
     await host.lock(false);
-    expect((await guestBrowserApi.calls.join(c, { mic: true, cam: false, name: 'Sam' })).ticket.role).toBe('guest');
+    const back = await guestBrowserApi.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    expect(back.ticket.role).toBe('guest');
     await host.leave();
+    // Once it's over, only the organizer can still read the call.
+    expect(code(await back.refresh().catch((e: unknown) => e))).toBe('conflict');
+  });
+
+  it('gives host powers only to the organizer’s current connection', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const laptop = await org.api.calls.join(c, { mic: true, cam: false });
+    const phone = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(phone);
+    for (const attempt of [() => laptop.lock(true), () => laptop.leave()]) {
+      expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
+    }
+    expect(await callState(phone.ticket.callId)).toBe('live');
+    expect((await phone.leave())?.duration).toBeGreaterThan(0);
   });
 });
 
@@ -192,8 +212,24 @@ describe('ending', () => {
     const { reconcile } = await import('./modules/calls');
     expect(await reconcile(h.deps, Date.now() + 30_000)).toBeGreaterThanOrEqual(1);
     expect(await callState(host.ticket.callId)).toBe('ended');
-    await guest.refresh();
-    expect(guest.getSnapshot().phase).toBe('ended');
+    expect(code(await guest.refresh().catch((e: unknown) => e))).toBe('conflict');
+  });
+
+  it('ends the call when the organizer never reaches the room', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const { reconcile } = await import('./modules/calls');
+    expect(await reconcile(h.deps)).toBe(0);
+    expect(await reconcile(h.deps, Date.now() + 30_000)).toBeGreaterThanOrEqual(1);
+    expect(await callState(host.ticket.callId)).toBe('ended');
+  });
+
+  it('ends the call when LiveKit says its room finished', async () => {
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({})).code, { mic: true, cam: false });
+    expect((await hook('room_finished', host.ticket.roomName)).status).toBe(200);
+    expect(await callState(host.ticket.callId)).toBe('ended');
   });
 
   it('rejects a forged webhook', async () => {
@@ -223,7 +259,7 @@ describe('joining by link', () => {
     const invitedEmail = unique('invited');
     const { code: c } = await org.api.calls.startNow({ guests: [invitedEmail] });
     const guest = guestBrowser();
-    expect(await guest.calls.card(c)).toMatchObject({ hostHere: false, status: 'scheduled', organizerName: org.session.user.name, locked: false });
+    expect(await guest.calls.card(c)).toMatchObject({ hostHere: false, organizerName: org.session.user.name, locked: false });
     const early = await guest.calls.join(c, { mic: true, cam: false, name: 'Sam' }).catch((e: unknown) => e);
     expect([code(early), message(early)]).toEqual(['conflict', 'Waiting for the host to start the call.']);
     const invited = await account(invitedEmail);
@@ -231,7 +267,7 @@ describe('joining by link', () => {
 
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     expect(host.ticket.role).toBe('host');
-    expect(await guest.calls.card(c)).toMatchObject({ hostHere: true, status: 'live' });
+    expect(await guest.calls.card(c)).toMatchObject({ hostHere: true });
     await host.leave();
   });
 
@@ -269,7 +305,8 @@ describe('joining by link', () => {
     expect(second.ticket.identity).not.toBe(first.ticket.identity);
     expect(await firstRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
     expect(second.getSnapshot().notes.recording.segment).toBe(1);
-    expect(code(await first.appendAudio(piece(audioBytes('late'), 0, 1)).catch((e: unknown) => e))).toBe('conflict');
+    // The replaced connection is no longer the organizer's: its late audio is refused.
+    expect(code(await first.appendAudio(piece(audioBytes('late'), 0, 1)).catch((e: unknown) => e))).toBe('forbidden');
     await second.appendAudio(piece(audioBytes('second-device'), 1, 0));
     await second.leave();
   });

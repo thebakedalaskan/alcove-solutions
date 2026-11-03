@@ -180,11 +180,11 @@ function InCall({ session }: { session: CallSession }) {
       media.stop();
       sessions.media = null;
       void qc.invalidateQueries();
-      if (r?.pendingNoteId) await navigate({ to: '/notes/$noteId', params: { noteId: r.pendingNoteId }, replace: true });
-      else if (!r) await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
+      if (!r) await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
+      else if (r.pendingNoteId) await navigate({ to: '/notes/$noteId', params: { noteId: r.pendingNoteId }, replace: true });
       else {
         await navigate({ to: '/home', replace: true });
-        if (r) toast(`Call ended after ${minutesLabel(r.duration)}. There are no notes from it.`, { icon: 'check' });
+        toast(`Call ended after ${minutesLabel(r.duration)}. There are no notes from it.`, { icon: 'check' });
       }
     } catch (e) {
       clog.error('leaving the call failed', { err: e });
@@ -193,17 +193,23 @@ function InCall({ session }: { session: CallSession }) {
     }
   };
 
-  /* The organizer ended the call, or removed you: everyone else is told, and goes back to the call's page. */
+  /*
+   * The organizer ended the call, or removed you: everyone else is told, and goes back to the call's page.
+   * The organizer is only ever removed by joining from another device; this screen then lets go of the call.
+   */
+  const hosting = session.ticket.role === 'host';
   useEffect(() => {
-    if (view.connection !== 'ended' || leaving || state.isOrganizer) return;
-    if (view.endReason !== 'ended-by-host' && view.endReason !== 'removed') return;
+    if (view.connection !== 'ended' || leaving) return;
+    if (view.endReason !== 'removed' && (hosting || view.endReason !== 'ended-by-host')) return;
+    recorder.current?.stop();
+    speech.current?.stop();
     guard.release();
     sessions.call = null;
     media.stop();
     sessions.media = null;
-    toast(view.endReason === 'removed' ? 'The host removed you from the call.' : 'The host ended the call.', { icon: 'leave' });
-    void navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
-  }, [view.connection, view.endReason, leaving, state.isOrganizer, state.code, guard, media, navigate, toast]);
+    toast(hosting ? 'You joined this call from another device.' : view.endReason === 'removed' ? 'The host removed you from the call.' : 'The host ended the call.', { icon: 'leave' });
+    void navigate(hosting ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
+  }, [view.connection, view.endReason, leaving, hosting, state.code, guard, media, navigate, toast]);
 
   const invited = meeting?.guests ?? [];
   const everyone = [...state.participants.map((p) => p.person)];
@@ -428,8 +434,14 @@ function NotesPanel({ session, state, media, live, uploadError, heardProblem, on
   );
 }
 
-function ChatPanel({ state, onSend }: { state: CallState; onSend: (text: string) => void }) {
+function ChatPanel({ state, onSend }: { state: CallState; onSend: (text: string) => Promise<void> }) {
   const [text, setText] = useState('');
+  const toast = useToast();
+  /* A message that isn't saved isn't sent: say so, and give the text back. */
+  const send = (t: string) => {
+    setText('');
+    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); setText((now) => now || t); });
+  };
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [state.chat.length]);
   return (
@@ -444,7 +456,7 @@ function ChatPanel({ state, onSend }: { state: CallState; onSend: (text: string)
         )) : <p className="py-2 text-[13.5px] text-[rgb(236_235_248/0.5)]">Messages here are seen by everyone in the call.</p>}
         <div ref={end} />
       </div>
-      <form className="cp-input" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { onSend(t); setText(''); } }}>
+      <form className="cp-input" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) send(t); }}>
         <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Message everyone" autoComplete="off" aria-label="Message everyone" />
         <button type="submit" className="rb sm" aria-label="Send"><Icon name="send" size={17} /></button>
       </form>

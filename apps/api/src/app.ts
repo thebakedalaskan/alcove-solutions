@@ -224,7 +224,7 @@ export function createApp(d: Deps) {
     // The organizer's pass counts as the organizer's only together with the organizer's own session.
     const owner = pass.role === 'host' ? await optionalOwner(c) : undefined;
     addLogContext({ callId: pass.callId, role: pass.role });
-    c.set('viewer', { pass, organizer: await openOwner(d, pass.ownerId, undefined), isOrganizer: pass.role === 'host' && owner?.ownerId === pass.ownerId });
+    c.set('viewer', await calls.viewerOf(d, pass, owner?.ownerId));
     await next();
   };
   app.use('/v1/live/calls/:id', viewerFor);

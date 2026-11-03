@@ -154,8 +154,8 @@ and secret; without them it doesn't start.
    and `alcove-livekit-api-secret`, from private environment variables (bootstrap prints the commands).
    The secret must be at least 32 characters.
 3. Settings › Webhooks › add `https://api.alcove.solutions/hooks/livekit`, signed with that same key.
-   The API ends a call when its room finishes or the organizer's connection is gone for 25 s; webhooks
-   carry this, and upkeep catches anything they miss.
+   The API ends a call when the organizer's connection is gone for 25 s, or when its room finishes
+   (20 s after everyone has left); webhooks carry this, and upkeep catches anything they miss.
 4. Only the API issues join tokens, and only for rooms it created, so the project's other defaults
    can stay as they are.
 

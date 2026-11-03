@@ -16,7 +16,7 @@ export async function indexCode(d: Deps, db: Db, m: { ownerId: string; meetingId
 }
 
 /** The meeting a code leads to, for anyone. */
-export async function lookupCode(d: Deps, code: string, db: Db = d.pool): Promise<{ ownerId: string; meetingId: string } | undefined> {
-  const r = await maybeOne(db, z.object({ owner_id: z.string(), meeting_item_id: z.string() }), 'SELECT owner_id, meeting_item_id FROM call_codes WHERE code_hash = $1', [hashOf(d, code)]);
+export async function lookupCode(d: Deps, code: string): Promise<{ ownerId: string; meetingId: string } | undefined> {
+  const r = await maybeOne(d.pool, z.object({ owner_id: z.string(), meeting_item_id: z.string() }), 'SELECT owner_id, meeting_item_id FROM call_codes WHERE code_hash = $1', [hashOf(d, code)]);
   return r ? { ownerId: r.owner_id, meetingId: r.meeting_item_id } : undefined;
 }

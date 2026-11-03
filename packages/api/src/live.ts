@@ -18,10 +18,8 @@ export type CallRole = z.infer<typeof CallRoleSchema>;
 
 /** What anyone with a call's link sees before joining. No account needed. */
 export const CallCardSchema = z.object({
-  meetingId: IDSchema,
   title: z.string(),
   organizerName: z.string(),
-  status: z.enum(['scheduled', 'live', 'ended']),
   /** Everyone but the organizer waits until this is true. */
   hostHere: z.boolean(),
   locked: z.boolean()
@@ -43,9 +41,6 @@ export const CallTicketSchema = z.object({
 export type CallTicket = z.infer<typeof CallTicketSchema>;
 export const CALL_PASS_HEADER = 'x-alcove-call' as const;
 
-/** Room metadata: written only by the server, so everyone in the room can trust it. */
-export const RoomMetadataSchema = z.object({ v: z.literal(1), host: z.string().nullable(), notes: z.enum(['off', 'on']), locked: z.boolean() });
-export type RoomMetadata = z.infer<typeof RoomMetadataSchema>;
 
 /** Sent by the server on CALL_TOPIC when the call changed (chat, notes, transcript, people): refetch it. */
 export const CALL_TOPIC = 'call' as const;
@@ -94,9 +89,6 @@ export const CallStateSchema = z.object({
   elapsed: z.number(),
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
-  /** This connection's LiveKit identity. */
-  me: z.string(),
-  role: CallRoleSchema,
   locked: z.boolean(),
   notes: z.object({
     status: CallNotesStatusSchema,

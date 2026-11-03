@@ -68,7 +68,7 @@ production). The call itself stays in the API: who's in it, notes, the transcrip
 - **Joining.** `GET /v1/calls/:code/card` (no account needed) gives the title, organizer's name, whether
   the organizer is there and whether the call is locked. `POST /v1/calls/:code/join` takes `{mic, cam}`
   and, without an account, a `name` (1–60 characters). It returns a ticket: the LiveKit URL, a token for
-  that one room (120 seconds, no admin rights) and a **call pass**.
+  that one room (120 seconds, no admin rights, no data messages) and a **call pass**.
 - **Who joins.** The organizer by their account; it starts the call and makes the room
   (`r_<random>`; LiveKit never creates rooms itself). Anyone invited, signed in with an invited address,
   and **guests** with only a name. Guests and invited people wait until the organizer is there
@@ -76,16 +76,20 @@ production). The call itself stays in the API: who's in it, notes, the transcrip
 - **The call pass** is an HMAC (a key derived from `KMASTER`) over the call, the organizer, the person's
   LiveKit identity, role and name, valid for 12 hours. It goes in the `x-alcove-call` header on every
   `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
-  from `KMASTER`, per request.
+  from `KMASTER`, per request. A removed person's pass stops working (they can join again, unless the call
+  is locked), and once the call has ended only the organizer can read it.
 - **What each role can do.** Everyone: read the call, chat, catch up and ask. Only the organizer (pass
-  role `host` and their own session): notes on/off, audio and speech uploads, mute someone's microphone,
+  role `host`, their own session and their current connection: joining from another device takes the
+  powers with it): notes on/off, audio and speech uploads, mute someone's microphone,
   remove someone, lock the call, and leave (which ends it). Notes come from the organizer's microphone
   only; link guests get no notes, invited people get them as before.
 - **Ending.** The organizer leaving ends the call for everyone: the normal ending above, then a nudge, then
   the room is deleted (everyone else is disconnected with "room deleted"). The organizer reloading
   doesn't end it: `POST /hooks/livekit` (signed by LiveKit with the API key) records when the organizer's
-  connection left, and the call ends only if they're gone for more than 25 seconds. A finished room ends
-  its call too, and upkeep ends calls whose room is gone.
+  connection left, and the call ends only if they're gone for more than 25 seconds (upkeep asks LiveKit
+  whether they're in the room before ending it). An organizer whose browser never reaches the room is
+  gone the same way. When everyone has left, LiveKit finishes the room after 20 seconds, which ends the
+  call too, and upkeep ends calls whose room is gone.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, plays everyone else's audio on the chosen speaker,
   and refetches the call on nudges, arrivals and departures. One screen is shared at a time.

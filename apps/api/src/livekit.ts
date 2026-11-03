@@ -2,7 +2,6 @@
  * LiveKit (group calls). The only module that holds the LiveKit API key and secret, as inference.ts is for
  * NEAR AI. LiveKit carries media, presence and nudges; the API decides who may join and keeps the call.
  */
-import type { RoomMetadata } from '@alcove/api';
 import { AccessToken, DataPacket_Kind, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
 import { AuthError } from './errors';
 import type { Config } from './config';
@@ -15,14 +14,10 @@ export interface LiveKit {
   reachable(): Promise<boolean>;
   /** Creates the room if it doesn't exist yet (creating an existing room is a no-op). */
   ensureRoom(roomName: string): Promise<void>;
-  /** Whether LiveKit still has this room. */
-  roomExists(roomName: string): Promise<boolean>;
   /** Who is connected to the room now; empty when the room doesn't exist. */
   participants(roomName: string): Promise<{ identity: string; name: string }[]>;
   /** A join token for one identity in one room. No admin rights: host powers stay in the API. */
   token(t: { roomName: string; identity: string; name: string }): Promise<string>;
-  /** Room metadata is server-only, so clients can trust it for who hosts, notes and lock. */
-  setMetadata(roomName: string, m: RoomMetadata): Promise<void>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
   /** Mutes one published track. Never unmutes: remote unmute stays off. */
   muteTrack(roomName: string, identity: string, trackSid: string): Promise<void>;
@@ -39,6 +34,8 @@ export interface LiveKit {
 export interface LiveKitEvent { event: string; roomName: string | null; identity: string | null }
 
 /** Seconds LiveKit keeps an empty room, and keeps a room after the last person leaves. */
+/** Join tokens only need to last until the browser connects; LiveKit refreshes them for connected participants itself. */
+const TOKEN_TTL_SECONDS = 120;
 export const ROOM_EMPTY_TIMEOUT = 300;
 export const ROOM_DEPARTURE_TIMEOUT = 20;
 
@@ -61,20 +58,14 @@ export function createLiveKit(cfg: Config): LiveKit {
     async ensureRoom(roomName) {
       await rooms.createRoom({ name: roomName, emptyTimeout: ROOM_EMPTY_TIMEOUT, departureTimeout: ROOM_DEPARTURE_TIMEOUT });
     },
-    async roomExists(roomName) {
-      return (await rooms.listRooms([roomName])).length > 0;
-    },
     async participants(roomName) {
       if (!(await rooms.listRooms([roomName])).length) return [];
       return (await rooms.listParticipants(roomName)).map((p) => ({ identity: p.identity, name: p.name }));
     },
     async token({ roomName, identity, name }) {
-      const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { identity, name, ttl: cfg.CALL_TOKEN_TTL_SECONDS });
-      t.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true, canUpdateOwnMetadata: true });
+      const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { identity, name, ttl: TOKEN_TTL_SECONDS });
+      t.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: false });
       return t.toJwt();
-    },
-    async setMetadata(roomName, m) {
-      await rooms.updateRoomMetadata(roomName, JSON.stringify(m));
     },
     async removeParticipant(roomName, identity) {
       await rooms.removeParticipant(roomName, identity);

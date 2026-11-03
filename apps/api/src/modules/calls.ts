@@ -13,8 +13,8 @@ import { me } from './account';
 import * as drafting from './drafting';
 import { personOf, portraitFor } from './portraits';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
-import { indexCode, lookupCode } from './codes';
-import { MeetingManifest, findByCode, updateManifest } from './meetings';
+import { lookupCode } from './codes';
+import { MeetingManifest, updateManifest } from './meetings';
 import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording } from './notes';
@@ -43,15 +43,17 @@ const Stored = z.object({
   /** `from` is the sender's LiveKit identity, resolved through `people` when shown. */
   chat: z.array(z.object({ id: z.string(), text: z.string(), at: z.number(), from: z.string() })),
   people: z.array(Joined),
+  /** Identities the organizer removed: their passes stop working. */
+  removed: z.array(z.string()),
   notices: z.array(Notice)
 });
 type Stored = z.infer<typeof Stored>;
 const Row = z.object({
   call_id: z.string(), meeting_item_id: z.string(), state: z.enum(['live', 'ended']), started_at: timestamp, ended_at: timestamp.nullable(), state_ciphertext: bytea,
-  room_name: z.string().nullable(), host_identity: z.string().nullable(), host_left_at: timestamp.nullable(), locked: z.boolean()
+  room_name: z.string().nullable(), host_identity: z.string().nullable(), host_joined_at: timestamp.nullable(), host_left_at: timestamp.nullable(), locked: z.boolean()
 });
 type Row = z.infer<typeof Row>;
-const COLUMNS = 'call_id, meeting_item_id, state, started_at, ended_at, state_ciphertext, room_name, host_identity, host_left_at, locked';
+const COLUMNS = 'call_id, meeting_item_id, state, started_at, ended_at, state_ciphertext, room_name, host_identity, host_joined_at, host_left_at, locked';
 const key = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call:${callId}`);
 const header = (o: Owner, callId: string) => ({ v: 1 as const, kind: 'call-state', ownerId: o.ownerId, callId });
 
@@ -71,13 +73,27 @@ async function nudge(o: Owner, roomName: string | null, callId: string): Promise
   await o.livekit.sendData(roomName, new TextEncoder().encode(JSON.stringify({ v: 1, kind: 'changed' })), CALL_TOPIC)
     .catch((e: unknown) => clog.warn('room not told about a change', { callId, err: e }));
 }
-const roomMetadata = (r: Pick<Row, 'host_identity' | 'locked'>, s: Stored) => ({ v: 1 as const, host: r.host_identity, notes: s.notes.status, locked: r.locked });
 
 /** Someone as the call shows them: the organizer and invited people by their account, guests by the name they typed. */
 function personFor(j: Joined | undefined, identity: string, fallbackName: string, organizer: Person): Person {
   if (j?.role === 'host') return organizer;
   if (j?.email) return { ...personOf(j.email, j.name), ...(j.photoUrl ? { photoUrl: j.photoUrl } : {}) };
   return { id: identity, name: j?.name ?? fallbackName, email: '', portrait: portraitFor(identity) };
+}
+
+/**
+ * Who a call pass belongs to, for this request. A removed person's pass stops working, and once the call is
+ * over only the organizer can read it. Host powers go with the organizer's current connection only, and
+ * only together with the organizer's own session.
+ */
+export async function viewerOf(d: Deps, pass: CallPass, sessionOwnerId: string | undefined): Promise<Viewer> {
+  const organizer = await openOwner(d, pass.ownerId, undefined);
+  const { row, state: s } = await load(organizer, organizer.pool, pass.callId);
+  const theOrganizer = pass.role === 'host' && sessionOwnerId === pass.ownerId;
+  const ctx = { callId: pass.callId, role: pass.role };
+  if (s.removed.includes(pass.identity)) throw new ForbiddenError('The host removed you from this call.', { context: ctx });
+  if (row.state !== 'live' && !theOrganizer) throw new ConflictError('This call has ended.', { context: ctx });
+  return { pass, organizer, isOrganizer: theOrganizer && pass.identity === row.host_identity };
 }
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
@@ -88,13 +104,16 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const end = row.ended_at ?? new Date();
   const heard = s.notes.noteId && row.state === 'live' ? (await transcripts.lines(o, db, s.notes.noteId)).slice(-transcripts.LIVE_LINES) : [];
   const joined = new Map(s.people.map((j) => [j.identity, j]));
-  const here = row.room_name && row.state === 'live' ? await o.livekit.participants(row.room_name) : [];
+  // Who's connected comes from LiveKit; if it can't be asked, the call still answers (with just you).
+  const here = row.room_name && row.state === 'live'
+    ? await o.livekit.participants(row.room_name).catch((e: unknown) => { clog.warn('could not ask LiveKit who is in the call', { callId, err: e }); return []; })
+    : [];
   if (row.state === 'live' && !here.some((p) => p.identity === v.pass.identity)) here.push({ identity: v.pass.identity, name: v.pass.name });
   return {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' : 'ended',
     participants: here.map((p) => ({ id: p.identity, person: personFor(joined.get(p.identity), p.identity, p.name, organizer), isMe: p.identity === v.pass.identity, isOrganizer: p.identity === row.host_identity })),
-    me: v.pass.identity, role: v.pass.role, locked: row.locked,
+    locked: row.locked,
     notes: { status: s.notes.status, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
     chat: s.chat.map((m) => ({ id: m.id, from: personFor(joined.get(m.from), m.from, 'Someone', organizer), isMe: m.from === v.pass.identity, text: m.text, at: m.at })),
     transcript: transcripts.spoken(heard, { name: organizer.name, person: organizer }),
@@ -117,11 +136,8 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
 
 /* ---------- joining by link: for anyone; the organizer's keys are opened with KMASTER ---------- */
 
-async function meetingFor(d: Deps, code: string, asker?: Owner | undefined) {
-  let link = await lookupCode(d, code);
-  // A meeting made before codes were indexed: its organizer joining by the code indexes it.
-  const own = !link && asker ? await findByCode(asker, code) : undefined;
-  if (own && asker) { await indexCode(d, d.pool, { ownerId: asker.ownerId, meetingId: own.itemId, code }); link = { ownerId: asker.ownerId, meetingId: own.itemId }; }
+async function meetingFor(d: Deps, code: string) {
+  const link = await lookupCode(d, code);
   if (!link) throw new NotFoundError('There’s no call with that code. Check the link and try again.');
   const organizer = await openOwner(d, link.ownerId, undefined);
   const meeting = await getItem(organizer, d.pool, 'meeting', link.meetingId, MeetingManifest, 'That meeting');
@@ -134,8 +150,7 @@ const liveCall = (o: Owner, db: Db, meetingId: string, lock = false) => maybeOne
 export async function card(d: Deps, code: string): Promise<CallCard> {
   const { organizer, meeting } = await meetingFor(d, code);
   const live = await liveCall(organizer, d.pool, meeting.itemId);
-  const status = meeting.manifest.status === 'live' || meeting.manifest.status === 'ended' ? meeting.manifest.status : 'scheduled';
-  return { meetingId: meeting.itemId, title: meeting.manifest.title, organizerName: (await me(organizer)).name, status, hostHere: live ? hostHere(live) : false, locked: live?.locked ?? false };
+  return { title: meeting.manifest.title, organizerName: (await me(organizer)).name, hostHere: live ? hostHere(live) : false, locked: live?.locked ?? false };
 }
 
 const GuestName = z.string().transform((n) => n.trim()).pipe(z.string().min(1).max(60));
@@ -146,7 +161,7 @@ const GuestName = z.string().transform((n) => n.trim()).pipe(z.string().min(1).m
  * name. Everyone but the organizer waits until the organizer is there, and is kept out while it's locked.
  */
 export async function join(d: Deps, code: string, who: { owner?: Owner | undefined; name?: string | undefined; mic: boolean; cam: boolean }): Promise<{ ticket: CallTicket; state: CallState }> {
-  const { organizer: o, meeting } = await meetingFor(d, code, who.owner);
+  const { organizer: o, meeting } = await meetingFor(d, code);
   const asker = who.owner ? await me(who.owner) : undefined;
   const role: CallRole = who.owner?.ownerId === o.ownerId ? 'host'
     : asker && meeting.manifest.guests.some((g) => g.toLowerCase() === asker.email.toLowerCase()) ? 'invited' : 'guest';
@@ -161,9 +176,10 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   const joined: Joined = { identity, role, name, ...(asker && role !== 'guest' ? { email: asker.email, ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}) };
 
   const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined);
+  // If the organizer's browser never reaches the room, the call doesn't carry on without them.
+  if (role === 'host') setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer joined failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous organizer connection already gone', { callId: j.callId, err: e }));
   await o.livekit.ensureRoom(j.roomName);
-  await o.livekit.setMetadata(j.roomName, roomMetadata(j.row, j.state));
   await nudge(o, j.roomName, j.callId);
   clog.info('call joined', { callId: j.callId, meetingId: meeting.itemId, role });
   const pass = issuePass(d.cfg, { callId: j.callId, ownerId: o.ownerId, identity, role, name });
@@ -180,8 +196,8 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     if (!live) {
       const callId = id128();
       const roomName = `r_${id128()}`;
-      let s: Stored = { chat: [], people: [joined], notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
-      await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6)`,
+      let s: Stored = { chat: [], people: [joined], removed: [], notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
+      await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
       if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting, 0), 'Notes are on. Everyone here can see that.');
       await save(o, c, callId, s);
@@ -195,7 +211,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     if (live.host_identity && s.notes.status === 'on' && s.notes.recordingId) s = { ...s, notes: { ...s.notes, segment: s.notes.segment + 1 } };
     await save(o, c, live.call_id, s);
     const roomName = live.room_name ?? `r_${id128()}`;
-    await exec(c, 'UPDATE calls SET host_identity = $3, host_left_at = NULL, room_name = $4, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, joined.identity, roomName]);
+    await exec(c, 'UPDATE calls SET host_identity = $3, host_joined_at = now(), host_left_at = NULL, room_name = $4, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, joined.identity, roomName]);
     clog.info('organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(live.host_identity), segment: s.notes.segment });
     return { callId: live.call_id, roomName, replaced: live.host_identity, row: { host_identity: joined.identity, locked: live.locked }, state: s };
   });
@@ -217,12 +233,11 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 export async function act(v: Viewer, callId: string, a: CallAction): Promise<CallState> {
   const o = v.organizer;
-  if (a.type === 'mute' || a.type === 'remove') {
+  if (a.type === 'mute') {
     // Carried out by LiveKit; nothing about the call changes here.
     const { row } = await load(o, o.pool, callId);
     if (row.state !== 'live' || !row.room_name) throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
-    if (a.type === 'mute') await o.livekit.muteTrack(row.room_name, a.identity, a.trackSid);
-    else await o.livekit.removeParticipant(row.room_name, a.identity);
+    await o.livekit.muteTrack(row.room_name, a.identity, a.trackSid);
     clog.info('host control', { callId, action: a.type, target: a.identity });
     return view(v, o.pool, callId);
   }
@@ -234,7 +249,11 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     // Chat from anyone in the call, saved with it under the organizer's keys.
     let locked = row.locked;
     if (a.type === 'chat') s = { ...s, chat: [...s.chat, { id: id128(), text: a.text, at, from: v.pass.identity }] };
-    else if (a.type === 'lock') {
+    else if (a.type === 'remove') {
+      // Their pass stops working here; LiveKit disconnects them once this is saved. They can join again unless it's locked.
+      if (a.identity === row.host_identity) throw new ValidationError('The organizer can’t remove themselves.', { context: { callId } });
+      s = { ...s, removed: [...s.removed, a.identity] };
+    } else if (a.type === 'lock') {
       locked = a.on;
       await exec(c, 'UPDATE calls SET locked = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, locked]);
     } else if (a.on !== (s.notes.status === 'on')) {
@@ -247,11 +266,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       }
     }
     await save(o, c, callId, s);
-    if (a.type !== 'chat' && row.room_name) await o.livekit.setMetadata(row.room_name, roomMetadata({ ...row, locked }, s)).catch((e: unknown) => clog.warn('room metadata not updated', { callId, err: e }));
     // Action type and resulting states only; chat text stays sealed.
     clog.at(a.type === 'chat' ? 'debug' : 'info', 'call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment });
     return row.room_name;
-  }).then((room) => nudge(o, room, callId));
+  }).then(async (room) => {
+    if (a.type === 'remove' && room) await o.livekit.removeParticipant(room, a.identity).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
+    await nudge(o, room, callId);
+  });
   return view(v, o.pool, callId);
 }
 
@@ -318,7 +339,7 @@ export async function catchUp(v: Viewer, callId: string, minutes: number | undef
   if (!read.length) return { summary: '', decided: [], proposed: [], open: [], next: [], ...base };
   const t0 = performance.now();
   const sorted = await drafting.catchUp(v.organizer.cfg, brief(read));
-  clog.info('caught up during a call', { callId, role: v.pass.role, minutes: minutes ?? null, lines: read.length, gaps: gaps.length, ms: Math.round(performance.now() - t0) });
+  clog.info('caught up during a call', { callId, minutes: minutes ?? null, lines: read.length, gaps: gaps.length, ms: Math.round(performance.now() - t0) });
   return { ...sorted, ...base };
 }
 
@@ -329,7 +350,7 @@ export async function askSoFar(v: Viewer, callId: string, question: string): Pro
   const asker: Person = v.isOrganizer ? person : { id: v.pass.identity, name: v.pass.name, email: '' };
   const t0 = performance.now();
   const parts = await drafting.answer(v.organizer.cfg, brief(all), asker, question);
-  clog.info('question answered during a call', { callId, role: v.pass.role, lines: all.length, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
+  clog.info('question answered during a call', { callId, lines: all.length, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
   return parts;
 }
 
@@ -337,10 +358,12 @@ export async function askSoFar(v: Viewer, callId: string, question: string): Pro
  * Ends the call for everyone: the recording stops, the transcript moves into the note, the note goes to
  * everyone invited, and the LiveKit room goes. The organizer leaving, a webhook and upkeep all end it here.
  */
-async function endCall(o: Owner, callId: string): Promise<CallEndResult> {
+async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): Promise<CallEndResult | null> {
   let room: string | null = null;
   const end = await tx(o.pool, async (c) => {
     const { row, state: s } = await load(o, c, callId, true);
+    // Upkeep decided from an earlier read; the organizer may have come back since.
+    if (unless?.(row)) return null;
     room = row.room_name;
     const duration = Math.max(1, Math.round((Date.now() - row.started_at.getTime()) / 1000));
     if (row.state === 'live') {
@@ -352,6 +375,7 @@ async function endCall(o: Owner, callId: string): Promise<CallEndResult> {
     clog.info(row.state === 'live' ? 'call ended' : 'left an ended call', { callId, meetingId: row.meeting_item_id, duration, noteId: s.notes.noteId });
     return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
   });
+  if (!end) return null;
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   await nudge(o, room, callId);
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
@@ -359,7 +383,11 @@ async function endCall(o: Owner, callId: string): Promise<CallEndResult> {
 }
 
 /** The organizer leaving ends the call for everyone. */
-export const leave = (v: Viewer, callId: string): Promise<CallEndResult> => endCall(v.organizer, callId);
+export async function leave(v: Viewer, callId: string): Promise<CallEndResult> {
+  const end = await endCall(v.organizer, callId);
+  if (!end) throw new ConflictError('This call has ended.', { context: { callId } });
+  return end;
+}
 
 /* ---------- the call's lifecycle from LiveKit: webhooks and upkeep, with nobody's session ---------- */
 
@@ -384,17 +412,30 @@ export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
   }
 }
 
-/** Ends live calls whose organizer has been gone past the grace period, or whose room LiveKit no longer has. */
+/**
+ * Ends live calls whose organizer has been gone past the grace period (left, or never reached the room),
+ * or whose room LiveKit no longer has. Whether the organizer is in the room is asked of LiveKit, so a
+ * missed webhook neither ends a call nor keeps one going.
+ */
 export async function reconcile(d: Deps, now = Date.now()): Promise<number> {
-  const Live = z.object({ owner_id: z.string(), call_id: z.string(), room_name: z.string().nullable(), host_left_at: timestamp.nullable(), started_at: timestamp });
-  const live = await rows(d.pool, Live, `SELECT owner_id, call_id, room_name, host_left_at, started_at FROM calls WHERE state = 'live' AND room_name IS NOT NULL ORDER BY started_at LIMIT 500`);
-  const rooms = await d.livekit.existingRooms(live.flatMap((c) => (c.room_name && now - c.started_at.getTime() > 60_000 ? [c.room_name] : [])));
+  const Live = z.object({ owner_id: z.string(), call_id: z.string(), room_name: z.string(), host_identity: z.string().nullable(), host_joined_at: timestamp.nullable(), host_left_at: timestamp.nullable(), started_at: timestamp });
+  const live = await rows(d.pool, Live, `SELECT owner_id, call_id, room_name, host_identity, host_joined_at, host_left_at, started_at FROM calls WHERE state = 'live' AND room_name IS NOT NULL ORDER BY started_at LIMIT 500`);
+  const rooms = await d.livekit.existingRooms(live.flatMap((c) => (now - c.started_at.getTime() > 60_000 ? [c.room_name] : [])));
   let ended = 0;
   for (const c of live) {
-    const hostGone = c.host_left_at !== null && now - c.host_left_at.getTime() > HOST_GRACE_MS;
-    const roomGone = now - c.started_at.getTime() > 60_000 && c.room_name !== null && !rooms.has(c.room_name);
+    const since = c.host_left_at ?? c.host_joined_at;
+    let hostGone = since !== null && now - since.getTime() > HOST_GRACE_MS;
+    if (hostGone) {
+      const inRoom = await d.livekit.participants(c.room_name).then((ps) => ps.some((p) => p.identity === c.host_identity), () => true);
+      if (inRoom) {
+        hostGone = false;
+        if (c.host_left_at) await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [c.owner_id, c.call_id, c.host_identity]);
+      }
+    }
+    const roomGone = now - c.started_at.getTime() > 60_000 && !rooms.has(c.room_name);
     if (!hostGone && !roomGone) continue;
-    await endCall(await openOwner(d, c.owner_id, undefined), c.call_id);
+    const end = await endCall(await openOwner(d, c.owner_id, undefined), c.call_id, (r) => !roomGone && r.host_identity !== c.host_identity);
+    if (!end) continue;
     clog.info('call ended without the organizer', { callId: c.call_id, reason: hostGone ? 'organizer gone' : 'room gone' });
     ended++;
   }

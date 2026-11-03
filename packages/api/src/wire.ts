@@ -24,7 +24,6 @@ export const TeamInviteBodySchema = z.object({ emails: z.array(z.string().trim()
 export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50) });
 
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
-/** Changes to a call: chat from anyone in it, notes from the organizer. Mic, camera, hand and screen live in LiveKit. */
 export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat'), text: z.string().trim().min(1).max(4000) }),
   z.object({ type: z.literal('notes'), on: z.boolean() }),

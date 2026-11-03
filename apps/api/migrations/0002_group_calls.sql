@@ -1,6 +1,6 @@
 -- Group calls on LiveKit (docs: Calls and recordings). Anyone with a call's link can look it up, not only its
 -- organizer, so codes get an index: a keyed hash under KMASTER, never the code itself. A call also knows its
--- LiveKit room, the organizer's current connection, when that connection left, and whether it's locked.
+-- LiveKit room, the organizer's current connection, when it joined and left, and whether it's locked.
 
 CREATE TABLE call_codes (
   code_hash bytea PRIMARY KEY,
@@ -13,6 +13,7 @@ CREATE TABLE call_codes (
 ALTER TABLE calls
   ADD COLUMN room_name text,
   ADD COLUMN host_identity text,
+  ADD COLUMN host_joined_at timestamptz,
   ADD COLUMN host_left_at timestamptz,
   ADD COLUMN locked boolean NOT NULL DEFAULT false;
 CREATE UNIQUE INDEX calls_room ON calls(room_name) WHERE room_name IS NOT NULL;

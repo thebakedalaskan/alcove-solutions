@@ -110,7 +110,7 @@ jobs:
             --execution-environment gen2 --port 8080 --timeout 300s --cpu 1 --memory 512Mi --no-cpu-throttling \
             --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
-      - name: Health check (API, database and LiveKit)
+      - name: Health check
         run: |
           SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"
           test -n "$SERVICE_URL"
@@ -132,7 +132,7 @@ jobs:
         env:
           VITE_ALCOVE_API_URL: ${{ vars.API_ORIGIN }}
         run: pnpm --filter @alcove/web build
-      - name: Content security policy for this API origin and LiveKit
+      - name: Content security policy for this API origin
         env:
           LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
         run: |

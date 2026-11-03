@@ -1,8 +1,8 @@
 /*
  * Test participants for LiveKit rooms (@livekit/rtc-node). Tests join with the tickets the API issues,
- * exactly as a browser would, and observe media, data and room metadata from the other side.
+ * exactly as a browser would, and observe media, and data from the other side.
  */
-import { CALL_TOPIC, CallNudgeSchema, RoomMetadataSchema, type CallTicket, type RoomMetadata } from '@alcove/api';
+import { CALL_TOPIC, CallNudgeSchema, type CallTicket } from '@alcove/api';
 import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, LocalAudioTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, dispose, type RemoteTrack
@@ -19,8 +19,6 @@ export interface TestParticipant {
   identity: string;
   room: Room;
   remoteIdentities(): string[];
-  /** Room metadata as the API last set it, parsed; null if absent or malformed. */
-  metadata(): RoomMetadata | null;
   /** Publishes a 440 Hz tone as this participant's microphone. Returns the track sid. */
   publishTone(): Promise<string>;
   /** Mean absolute sample of `identity`'s audio over `ms` (a tone at our amplitude is about 7600; silence is 0). */
@@ -31,16 +29,6 @@ export interface TestParticipant {
   /** Resolves with the reason once LiveKit disconnects this participant. */
   disconnectReason(): Promise<DisconnectReason>;
   disconnect(): Promise<void>;
-}
-
-function parseMetadata(raw: string | undefined): RoomMetadata | null {
-  if (!raw) return null;
-  try {
-    const r = RoomMetadataSchema.safeParse(JSON.parse(raw));
-    return r.success ? r.data : null;
-  } catch {
-    return null;
-  }
 }
 
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
@@ -74,7 +62,6 @@ export async function connect(ticket: CallTicket): Promise<TestParticipant> {
     identity: ticket.identity,
     room,
     remoteIdentities: () => [...room.remoteParticipants.keys()],
-    metadata: () => parseMetadata(room.metadata),
     async publishTone() {
       const source = new AudioSource(RATE, 1);
       const track = LocalAudioTrack.createAudioTrack('mic', source);
