@@ -99,7 +99,10 @@ logged at debug: being signed out is an ordinary state.
 
 ## Privacy rules for logs
 
-Logs are operator-readable, so they get the same rule as database columns: nothing readable.
+Logs are operator-readable, so they get the same rule as database columns: nothing readable. They're
+built to leave the confidential VM ([Privacy › Production requirements](privacy-keys-and-sessions.md#production-requirements)):
+whoever reads them can debug a request from its ID, timings, codes, states and sizes, and learns nothing
+about what anyone said, wrote or who they are.
 
 - Log IDs, codes, states, counts, sizes, durations and flags. Never titles, names, emails, guests, chat,
   search terms, questions, notes, transcripts, prompts or model replies, audio, request bodies or key
@@ -114,10 +117,19 @@ Logs are operator-readable, so they get the same rule as database columns: nothi
 - pino redacts common secret field names (`secret`, `root`, `wrapKey`, `key`, `krec`, `cookie`,
   `authorization`, `body`, `plaintext`, ...) as a backstop; the browser logger drops key-like and
   content-like fields and cuts strings to 300 characters.
+- A second backstop scrubs every string on its way out, wherever it came from (messages, fields,
+  browser reports, errors and their causes): email addresses become `[email]`, bearer and basic
+  credentials `Bearer [redacted]`, and signed tokens (JWTs) `[token]`. Errors are serialized with their
+  whole cause chain before scrubbing, so nothing is lost for debugging. Postgres's own explanations that
+  echo a row (`Failing row contains (…)`, `Key (…)=(…)`) are replaced by `[row hidden]`; the code
+  (`pgCode`) and the statement's static text stay.
+- Client addresses (IPs) and user agents are never logged. The rate limiter keys by address in memory
+  only.
 - The privacy-at-rest integration test runs at debug level and checks the captured log for every
   canary (names, emails, titles, guests, chat, speech, audio and search terms, and a Google account's ID,
   name, address and photo, in several encodings), every session and Google sign-in attempt cookie the
-  browser received, Google refresh tokens, and the call code.
+  browser received, Google refresh tokens, and the call code. It also checks that, across the whole test
+  run, the log holds no email address of anyone and no client address.
 
 ## Tests
 

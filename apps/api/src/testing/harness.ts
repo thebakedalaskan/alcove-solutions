@@ -93,7 +93,9 @@ export async function startHarness(): Promise<Harness> {
   const cfg = loadConfig(process.env, {
     DATABASE_URL: url, OBJECTS_BUCKET: 'alcove-test', WEB_ORIGIN: ORIGIN, API_URL: 'http://127.0.0.1',
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
-    NEAR_AI_BASE_URL: near.baseUrl, NEAR_AI_API_KEY: near.apiKey
+    NEAR_AI_BASE_URL: near.baseUrl, NEAR_AI_API_KEY: near.apiKey,
+    // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
+    PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1'
   });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');

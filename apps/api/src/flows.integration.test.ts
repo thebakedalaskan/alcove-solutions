@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cookieName } from './sessions';
-import type { GoogleUser, Spoil } from './testing/fake-google';
+import { PNG, type GoogleUser, type Spoil } from './testing/fake-google';
 import { speechWav } from './testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
@@ -246,7 +246,7 @@ describe('signing in with Google', () => {
     expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
 
     // Someone invites Ben to a call with notes before he has ever used Alcove.
-    const ben: GoogleUser = { sub: '104412233445566778899', email: 'Ben.Kay@Example.com', name: 'Ben Kay', picture: 'https://lh3.googleusercontent.com/a/ben-1' };
+    const ben: GoogleUser = { sub: '104412233445566778899', email: 'Ben.Kay@Example.com', name: 'Ben Kay', picture: `${h.google.issuer}/photo/ben-1` };
     const host = await account();
     const call = await host.api.calls.join((await host.api.calls.startNow({ notes: 'on', guests: ['ben.kay@example.com'] })).code, { mic: true, cam: false });
     await call.appendAudio(piece(audioBytes('for-ben'), 0, 0));
@@ -256,7 +256,19 @@ describe('signing in with Google', () => {
     // His first sign-in creates his account from what Google verified, and lands on the welcome step.
     expect(landed(await viaGoogle(b, ben))).toBe('/ready');
     const s = await b.api.auth.getSession();
-    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com', photoUrl: 'https://lh3.googleusercontent.com/a/ben-1' } });
+    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com' } });
+    // The photo comes from Alcove, not from Google: an opaque URL on the API that only works signed in.
+    const photo = s?.user.photoUrl ?? '';
+    expect(photo.startsWith(`${h.baseUrl}/v1/photos/`)).toBe(true);
+    expect(photo).not.toContain('ben-1');
+    const fetchesBefore = h.google.photoFetches();
+    const got = await b.fetch(photo);
+    expect([got.status, got.headers.get('content-type')]).toEqual([200, 'image/png']);
+    expect(Buffer.from(await got.arrayBuffer()).equals(PNG)).toBe(true);
+    await b.fetch(photo); // served from memory the second time
+    expect(h.google.photoFetches() - fetchesBefore).toBe(1);
+    expect((await h.browser().fetch(photo)).status).toBe(401);
+    expect((await b.fetch(`${photo.slice(0, -4)}AAAA`)).status).toBe(404);
     // A real account starts with no sample calls and no sample directory: its calendar is Google's.
     expect(await b.api.meetings.upcoming()).toEqual([]);
     expect(await b.api.people.team()).toBeNull();
@@ -265,8 +277,11 @@ describe('signing in with Google', () => {
 
     // Again, in another browser: the same account, straight to Home, with the photo Google has now.
     const later = h.browser();
-    expect(landed(await viaGoogle(later, { ...ben, picture: 'https://lh3.googleusercontent.com/a/ben-2' }))).toBe('/home');
-    expect(await later.api.auth.getSession()).toMatchObject({ ownerId: s?.ownerId, user: { photoUrl: 'https://lh3.googleusercontent.com/a/ben-2' } });
+    expect(landed(await viaGoogle(later, { ...ben, picture: `${h.google.issuer}/photo/ben-2` }))).toBe('/home');
+    const again = await later.api.auth.getSession();
+    expect(again?.ownerId).toBe(s?.ownerId);
+    // A new photo at Google is a new URL here too, and still never Google's own.
+    expect([again?.user.photoUrl === photo, again?.user.photoUrl?.startsWith(`${h.baseUrl}/v1/photos/`)]).toEqual([false, true]);
   });
 
   it('turns away a cancelled, stale, forged or replayed sign-in, and signs nobody in', async () => {
@@ -1002,6 +1017,9 @@ describe('privacy at rest', () => {
     expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie in logs').toBe(false);
+    // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
+    expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
+    expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);
     // Google refresh tokens are sealed in the vault and never logged.
     expect(h.google.refreshTokens().length).toBeGreaterThanOrEqual(1);
     for (const t of h.google.refreshTokens()) {

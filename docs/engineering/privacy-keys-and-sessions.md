@@ -222,6 +222,27 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   codes or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
   sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
 
+## What leaves the browser
+
+Only requests to Alcove itself: the web app's own origin and the API. Nothing third-party loads.
+
+- **Fonts** (Gabarito, Onest, Geist Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
+  font service, so no page load tells anyone else who's visiting.
+- **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),
+  where the token is the provider URL sealed under a key derived from `KMASTER`. It's stable, so the
+  browser caches it, and only this server can read it. The API fetches the image from an allowed host
+  (`PHOTO_HOSTS`), keeps it in memory for an hour and serves it only to signed-in browsers. Google sees
+  the API fetch a photo, not who looked at whom.
+- **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
+  photos). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
+  writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
+  runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
+- **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages can inject
+  its own Web Analytics beacon at the edge; the CSP blocks it from loading or sending anything, and it
+  should be switched off for the project in Cloudflare (Workers & Pages › alcove-web › Metrics).
+- **Diagnostics** go to Alcove's own API only (`POST /v1/telemetry`): warnings and errors with codes,
+  request IDs, statuses and timings, scrubbed like every other log line ([Logging](logging-and-errors.md)).
+
 ## What is still visible
 
 | Where | Visible |

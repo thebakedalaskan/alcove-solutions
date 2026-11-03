@@ -41,10 +41,15 @@ export interface FakeGoogle {
   revoke(sub: string): void;
   /** Refresh tokens issued so far, to check they never leak. */
   refreshTokens(): string[];
+  /** How many times a profile photo was fetched from here. */
+  photoFetches(): number;
   close(): Promise<void>;
 }
 
 const CALENDAR = 'https://www.googleapis.com/auth/calendar.events';
+/** A 1×1 PNG, as a profile photo. */
+export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+let photoFetches = 0;
 interface Grant { user: GoogleUser; nonce: string; challenge: string; redirectUri: string; spoil: Spoil | undefined; scopes: string[]; refresh: boolean }
 
 function send(res: ServerResponse, status: number, body: unknown) {
@@ -122,6 +127,12 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
       return send(res, 200, { issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, jwks_uri: `${issuer}/jwks` });
     }
     if (req.method === 'GET' && url.pathname === '/jwks') return send(res, 200, { keys: [jwk] });
+    // Profile photos, as lh3.googleusercontent.com serves them: a small PNG for any name.
+    if (req.method === 'GET' && url.pathname.startsWith('/photo/')) {
+      photoFetches++;
+      res.writeHead(200, { 'content-type': 'image/png' });
+      return res.end(PNG);
+    }
     if (url.pathname.startsWith('/calendar/v3/calendars/primary/events')) return calendarApi(req, res, url);
     if (req.method === 'GET' && url.pathname === '/authorize') {
       const q = url.searchParams;
@@ -197,6 +208,7 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
     expireAccess: () => accessTokens.clear(),
     revoke: (sub) => { for (const [t, v] of refreshTokens) if (v.sub === sub) refreshTokens.delete(t); for (const [t, v] of accessTokens) if (v.sub === sub) accessTokens.delete(t); },
     refreshTokens: () => [...refreshTokens.keys()],
+    photoFetches: () => photoFetches,
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }
