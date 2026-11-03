@@ -29,7 +29,7 @@ const rlog = log.child({ component: 'http' });
 const clog = log.child({ component: 'client', source: 'browser' });
 /** Call codes are join tokens: keep them out of logs. Every other path segment is a random ID. */
 const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code');
-const QUIET = new Set(['/healthz']);
+const QUIET = new Set(['/health', '/healthz']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /** POSTs that read rather than change state, so they don't need a stored receipt. */
 const NO_RECEIPT = new Set(['/v1/notes/search']);
@@ -116,7 +116,7 @@ export function createApp(d: Deps) {
     return c.json({ received: entries.length });
   });
 
-  app.get('/healthz', async (c) => {
+  app.on('GET', ['/health', '/healthz'], async (c) => {
     await exec(d.pool, 'SELECT 1');
     return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing' });
   });

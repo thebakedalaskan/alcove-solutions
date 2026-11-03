@@ -35,6 +35,23 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
   return call.getSnapshot();
 }
 
+describe('public readiness', () => {
+  it('reports public readiness before unlocking an account', async () => {
+    const client = h.client();
+    expect(await client.api.auth.getSession()).toBeNull();
+    for (const path of ['/health', '/healthz']) {
+      const response = await client.fetch(`${h.baseUrl}${path}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('application/json');
+      expect(response.headers.get(REQUEST_ID_HEADER)).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+      expect(response.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+      const health = z.object({ ok: z.literal(true), inference: z.enum(['configured', 'missing']) }).parse(await response.json());
+      expect(health.ok).toBe(true);
+    }
+    expect(await client.api.auth.getSession()).toBeNull();
+  });
+});
+
 describe('accounts and passkeys', () => {
   it('creates an account with a passkey, locks, and unlocks back into the same encrypted vault', async () => {
     const { api, session } = await newAccount();

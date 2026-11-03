@@ -6,8 +6,11 @@ Cloud Run, Cloud SQL, Artifact Registry and Secret Manager.
 
 **Setup status, November 3, 2026:** GCP backing resources and GitHub repository variables are configured.
 Pages project `alcove-web` exists at `alcove-web-bt8.pages.dev`. The GoDaddy nameserver change has been
-submitted; delegation and public HTTPS still need verification. `DEPLOY_ENABLED=false` keeps deployment
-off while runtime credentials and the first deployment are completed. The site is not yet verified live.
+submitted; delegation and public HTTPS still need verification. The first deployment completed
+migrations and API startup but stopped at its health check before publishing the web app. The probe
+now uses `/health`; the site is not yet verified live.
+Google Calendar and People APIs and the testing OAuth application/client have been configured
+separately; application sign-in and integration routes remain unimplemented.
 
 ```text
 GoDaddy registrar → Cloudflare DNS
@@ -39,7 +42,8 @@ The project must already exist and have billing linked. The script enables APIs 
   backups and point-in-time recovery. Existing instances are checked too; drift is repaired and setup
   stops if the resulting backup settings do not match.
 - Secret Manager entries `alcove-database-url`, `alcove-kservice`, `alcove-objects-access-key`,
-  `alcove-objects-secret-key` and optional `alcove-near-ai-api-key`.
+  `alcove-objects-secret-key`, optional `alcove-near-ai-api-key`, and optional Google provider entries
+  `alcove-google-client-id` and `alcove-google-client-secret`.
 - Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, with Cloud SQL access and
   access to those secrets. The deploy account can publish to the `alcove` registry, manage Cloud Run,
   and act as this runtime account.
@@ -89,7 +93,7 @@ CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
 Verify ownership of `alcove.solutions` with Google first if requested. Add the exact DNS records
 returned by the mapping to Cloudflare, using DNS-only records while Google's certificate provisions.
 A CNAME to an arbitrary `run.app` hostname does not replace domain mapping. Wait for mapping and
-certificate readiness, then verify `https://api.alcove.solutions/healthz`.
+certificate readiness, then verify `https://api.alcove.solutions/health`.
 
 Google lists native domain mappings as Preview and does not recommend them for production. This is
 the selected demo setup in supported region `us-central1`; a production rollout should move custom-domain
@@ -121,17 +125,37 @@ switch; environment-scoped variables are unavailable to the early job condition.
 | `API_ORIGIN` | `https://api.alcove.solutions` |
 | `RP_ID` | `alcove.solutions` |
 | `NEAR_AI_ENABLED` | `false` |
+| `GOOGLE_AUTH_ENABLED` | `false` on a new installation; `true` only after both Google credential versions exist |
 | `DEPLOY_ENABLED` | `false` during setup; `true` when ready to deploy |
 
 Store `CLOUDFLARE_API_TOKEN` as a **production environment secret**, with Pages edit permission for the
 intended account. R2 credentials stay in GCP Secret Manager. `NEAR_AI_ENABLED=false` omits the inference
 key from Cloud Run, so its unused secret needs no placeholder version. Enable it only after a real key
-exists and inference is implemented. Additional provider OAuth client secrets also belong in Secret
-Manager; creating a provider client alone does not connect an application flow.
+exists and inference is implemented.
 
 Import `.github/rulesets/main.json` through Settings › Rules › Rulesets to require a pull request and
 the four CI checks (Policy, Typecheck, Build, Integration tests) on an up-to-date branch. The file also
 forbids force pushes and deletion. Its presence in the repository does not prove the live rule is active.
+
+## Google provider preparation
+
+Calendar and People APIs have been enabled separately in `alcove-solutions`. The external OAuth app
+`Alcove` is in Testing with three test users and the configured scopes `openid`, `email`, `profile`,
+`calendar.events` and `directory.readonly`. Web client `AlcoveWeb` has local and
+`api.alcove.solutions` callback URIs registered. Keep client credential values and test-user addresses
+out of documentation.
+
+Store `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` as versions of `alcove-google-client-id` and
+`alcove-google-client-secret` in Secret Manager. Bootstrap creates the secret resources and grants the
+runtime account access; it does not create credential versions or the OAuth application. Commands to
+add versions from private environment variables are printed by bootstrap.
+
+Set repository variable `GOOGLE_AUTH_ENABLED=true` only after both latest versions are enabled. This
+binds both values into the API service and migration job on the next deployment. New installations
+default to `false` or an unset variable, omit both bindings and require no placeholder values. The flag
+only controls credential delivery: current `main` has no Google authorization/callback routes, so
+Google sign-in, Calendar access and People access are not working application features yet. Those
+flows still need implementation and acceptance evidence.
 
 ## Deployment and verification
 
@@ -146,10 +170,13 @@ Each deployment:
 2. Runs `alcove-migrate` once and waits for success before changing the API.
 3. Deploys `alcove-api`: gen2, port 8080, one CPU, 512 MiB, 300-second request timeout, min/max one
    instance, session affinity, and CPU between requests for key expiry and object cleanup.
-4. Checks `/healthz` at the deployed service's `run.app` URL, allowing the first deployment to finish
+4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
    before custom-domain provisioning.
 5. Builds the web app against `API_ORIGIN`, adds that origin to the CSP, and publishes
    `apps/web/dist/client` to Pages production branch `main`.
+
+Cloud Run reserves some URL paths ending in `z`, so the public health probe uses `/health`.
+See [Google's reserved-path guidance](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths).
 
 The service health check does not establish that public domains work. Before recording a release as
 live, verify DNS delegation, both HTTPS certificates, API health at the custom domain, CORS for the
