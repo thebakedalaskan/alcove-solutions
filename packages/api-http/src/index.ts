@@ -83,7 +83,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   function secretsFor(credentialId: string, prf: Uint8Array | null): { prf?: string; deviceSecret?: string } {
     const device = secrets.get(credentialId);
     const out: { prf?: string; deviceSecret?: string } = {};
-    if (prf && prf.length >= 32) out.prf = b64u(prf.slice(0, 32));
+    const key = usable(prf);
+    if (key) out.prf = b64u(key);
     if (device) out.deviceSecret = b64u(device);
     return out;
   }
@@ -91,12 +92,15 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const start = await req(CeremonyStartSchema, 'POST', startPath, startBody);
     const salt = await prfSalt();
     const made = await passkeys.create(start.options, salt);
-    let prf = made.prf;
+    let prf = usable(made.prf);
     // Some authenticators enable PRF at creation but only evaluate it on use: ask once more.
-    if (!prf && made.prfEnabled) prf = (await passkeys.get({ challenge: b64u(randomBytes(32)), userVerification: 'required' }, salt, [made.credential.id])).prf;
-    if (!prf) secrets.put(made.credential.id, randomBytes(32));
+    if (!prf && made.prfEnabled) prf = usable((await passkeys.get({ challenge: b64u(randomBytes(32)), userVerification: 'required' }, salt, [made.credential.id]).catch(() => ({ prf: null }))).prf);
+    // No usable PRF key: this passkey keeps its key in this browser instead. Never send neither.
+    if (!prf && !secrets.get(made.credential.id)) secrets.put(made.credential.id, randomBytes(32));
     secrets.remember(made.credential.id);
-    return { start, made, ...secretsFor(made.credential.id, prf) };
+    const keys = secretsFor(made.credential.id, prf);
+    if (!keys.prf && !keys.deviceSecret) throw new AlcoveApiError('unavailable', 'This browser can’t store the key for a new passkey (storage is blocked). Allow site data for Alcove and try again.');
+    return { start, made, ...keys };
   }
   /** Fresh proof with an existing passkey, required before adding or removing passkeys. */
   async function stepUp() {
@@ -187,6 +191,11 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     },
     stats: { week: () => req(WeekStatsSchema, 'GET', '/stats/week') }
   };
+}
+
+/** A PRF key is usable only if it is a full, non-zero 32 bytes. */
+function usable(prf: Uint8Array | null): Uint8Array | null {
+  return prf && prf.length >= 32 && prf.some((b) => b !== 0) ? prf.slice(0, 32) : null;
 }
 
 /* ---------- live call: server is the source of truth; the client keeps the clock ticking ---------- */

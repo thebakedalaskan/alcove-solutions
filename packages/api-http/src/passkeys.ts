@@ -35,10 +35,15 @@ export async function prfSalt(): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(d);
 }
 
-function bytesOf(v: BufferSource | undefined): Uint8Array | null {
-  if (!v) return null;
-  if (v instanceof ArrayBuffer) return new Uint8Array(v);
-  return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+/*
+ * PRF output arrives as an ArrayBuffer or a typed array, but password-manager extensions build it in
+ * their own JavaScript realm, where `instanceof ArrayBuffer` is false. Check the tag instead, and only
+ * accept a full 32-byte key; anything else counts as "no PRF" so the device-held key is used.
+ */
+const isArrayBuffer = (v: unknown): v is ArrayBuffer => Object.prototype.toString.call(v) === '[object ArrayBuffer]';
+export function prfKey(v: unknown): Uint8Array | null {
+  const bytes = isArrayBuffer(v) ? new Uint8Array(v) : ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : null;
+  return bytes && bytes.length >= 32 && bytes.some((b) => b !== 0) ? bytes.slice(0, 32) : null;
 }
 const hasJsonApi = (): boolean => typeof PublicKeyCredential !== 'undefined' && 'parseCreationOptionsFromJSON' in PublicKeyCredential;
 
@@ -52,7 +57,7 @@ export function browserPasskeys(): PasskeyDevice {
       const cred = await navigator.credentials.create({ publicKey }).catch(cancelled);
       if (!(cred instanceof PublicKeyCredential)) throw new AlcoveApiError('invalid', 'No passkey was created.');
       const prf = cred.getClientExtensionResults().prf;
-      return { credential: RegistrationCredentialSchema.parse(cred.toJSON()), prf: bytesOf(prf?.results?.first), prfEnabled: prf?.enabled === true || !!prf?.results };
+      return { credential: RegistrationCredentialSchema.parse(cred.toJSON()), prf: prfKey(prf?.results?.first), prfEnabled: prf?.enabled === true || !!prf?.results };
     },
     async get(options, salt, allow) {
       if (!hasJsonApi()) throw new AlcoveApiError('unavailable', 'This browser doesn’t support passkeys well enough. Use a current Chrome, Edge or Safari.');
@@ -61,7 +66,7 @@ export function browserPasskeys(): PasskeyDevice {
       publicKey.extensions = { ...publicKey.extensions, prf: { eval: { first: salt } } };
       const cred = await navigator.credentials.get({ publicKey }).catch(cancelled);
       if (!(cred instanceof PublicKeyCredential)) throw new AlcoveApiError('invalid', 'No passkey was used.');
-      return { credential: AssertionCredentialSchema.parse(cred.toJSON()), prf: bytesOf(cred.getClientExtensionResults().prf?.results?.first) };
+      return { credential: AssertionCredentialSchema.parse(cred.toJSON()), prf: prfKey(cred.getClientExtensionResults().prf?.results?.first) };
     }
   };
 }
