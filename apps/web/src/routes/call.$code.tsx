@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { CatchUpView } from '~/features/call/CatchUp';
+import { DeviceMenu } from '~/features/call/DevicePickers';
+import { useDevices } from '~/features/call/devices';
 import { CallLines } from '~/features/call/LiveLines';
 import { useCopyLink } from '~/features/call/links';
 import { Video, useLevels } from '~/features/call/Video';
@@ -45,7 +47,8 @@ function InCall({ session }: { session: CallSession }) {
   const me = selfIn(state);
   const on = state.notes.status === 'on';
   const [panel, setPanel] = useState<Panel | null>(() => (on && innerWidth >= 1100 ? 'notes' : null));
-  const [pop, setPop] = useState<'pill' | 'leave' | null>(null);
+  const [pop, setPop] = useState<'pill' | 'leave' | 'mic' | 'cam' | null>(null);
+  const devices = useDevices(m.camera);
   const [leaving, setLeaving] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
@@ -177,8 +180,14 @@ function InCall({ session }: { session: CallSession }) {
           )}
         </div>
         <div className="cl-bar">
-          <Round icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} off={!m.mic} onClick={() => setMic(!m.mic)} />
-          <Round icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => setCam(!m.cam)} />
+          <span className="rb-split">
+            <Round icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} off={!m.mic} onClick={() => setMic(!m.mic)} />
+            <DeviceMenu kind="mic" media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)} />
+          </span>
+          <span className="rb-split">
+            <Round icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => setCam(!m.cam)} />
+            <DeviceMenu kind="cam" media={media} m={m} devices={devices} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)} />
+          </span>
           <Round icon="screen" label={m.screen ? 'Stop presenting' : 'Share your screen'} on={!!m.screen} onClick={() => void share()} />
           <span className="sep" />
           <Round icon="notes" label="Notes" on={panel === 'notes'} onClick={() => flip('notes')} />
