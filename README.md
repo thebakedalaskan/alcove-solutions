@@ -12,9 +12,11 @@ Start with the **[docs](docs/README.md)**.
 | [Roadmap](docs/delivery/roadmap.md) | Done and next |
 | [Deploying](infra/README.md) | GCP + Cloudflare setup, CI/CD, merge rules |
 
-**Status:** a working local stack with passkey accounts, single-participant calls with real media,
-encrypted notes recordings, CI and a prepared deploy pipeline. Transcription and note writing (NEAR AI),
-multi-party end-to-end encrypted calls and confidential compute are next; see the roadmap.
+**Status:** a working local stack with Google, Microsoft and SSO sign-in (a demo identity until OAuth
+is connected), a demo calendar and company directory, single-participant calls with real media,
+encrypted notes recordings, sharing notes with everyone invited, CI and a prepared deploy pipeline.
+Transcription and note writing (NEAR AI), multi-party calls, invite emails and confidential compute are
+next; see the roadmap.
 
 ## Running the app
 
@@ -22,17 +24,19 @@ The app lives in a pnpm + Turborepo monorepo (see `AGENTS.md` for the full rules
 pnpm and Docker.
 
 ```
-cp .env.example .env   # then fill in KSERVICE (and NEAR_AI_API_KEY if you have one)
+cp .env.example .env   # then fill in KMASTER and KSERVICE (and NEAR_AI_API_KEY if you have one)
 pnpm install
 pnpm dev               # Postgres + RustFS in Docker, API on :8787, web app on http://localhost:3000
 pnpm check             # test policy, strict typing, typecheck, integration tests, builds
 ```
 
 - `apps/web`: TanStack Start, React 19, Tailwind v4, Motion
-- `apps/api`: the API (Hono, Postgres, S3-compatible objects, WebAuthn with PRF)
+- `apps/api`: the API (Hono, Postgres, S3-compatible objects, sessions and sealed records)
 - `packages/ui`: the Alcove design system
 - `packages/api`: the contract (zod schemas + `AlcoveApi`); `packages/api-http`: the browser client
 - `infra/` and `.github/`: deployment guide, GCP bootstrap, CI, deploy pipeline, branch ruleset
 
-Use a browser with passkey support (current Chrome, Edge or Safari). Calls need camera and microphone
-permission; everything else is in `docs/`.
+Sign in with **Continue with Google** (or Microsoft) to be Art Vandelay, with a calendar and a company
+directory already filled in. **Use single sign-on** with any work email to be a second person, for
+example to see notes shared with someone. Calls need camera and microphone permission; everything
+else is in `docs/`. After a change to `apps/api/migrations/`, run `pnpm db:reset`.

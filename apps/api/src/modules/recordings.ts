@@ -26,7 +26,7 @@ export async function view(o: Owner, recordingId: string): Promise<RoomRecording
 
 export async function start(o: Owner, title: string): Promise<RoomRecordingState> {
   const { recordingId } = await tx(o.pool, (c) => createNoteWithRecording(o, c,
-    (rid) => blankNote({ kind: 'room', title: title.trim() || 'Untitled recording', keep: 'full', audience: 'host', recordingId: rid }),
+    (rid) => blankNote({ kind: 'room', title: title.trim() || 'Untitled recording', recordingId: rid, invited: [] }),
     (nid) => createRecording(o, c, nid)));
   rlog.info('room recording started', { recordingId });
   return view(o, recordingId);

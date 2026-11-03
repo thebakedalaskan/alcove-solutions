@@ -1,141 +1,237 @@
-import { clock, type Note } from '@alcove/api';
-import { Avatar, AvatarStack, Button, CheckDraw, Chip, Icon, cn, useToast } from '@alcove/ui';
+import { errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type Note, type NoteProgress, type Person } from '@alcove/api';
+import { Button, Chip, GoneArch, Icon, IconButton, Popover, RecDot, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { motion } from 'motion/react';
-import { useRef, useState, type ReactNode } from 'react';
-import { AskBar } from '~/features/notes/AskBar';
+import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
+import { Player, usePlayer } from '~/features/notes/Player';
+import { askExample, exampleNote } from '~/features/notes/example';
+import { AskBar, Chapters, Decisions, DocHead, FollowUps, Recipients, Section, Transcript } from '~/features/notes/parts';
+import { PeoplePicker } from '~/features/people/PeoplePicker';
 import { api } from '~/lib/api';
-import { q, useActionDone } from '~/lib/queries';
-import { fullDate, hm, minutesLabel } from '~/lib/time';
+import { log } from '~/lib/log';
+import { listNames, sameEmail } from '~/lib/people';
+import { q, qk, useActionDone, useDeleteNote, useShareNote } from '~/lib/queries';
+import { noteWhen } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
-  loader: ({ context: { queryClient: qc }, params }) => qc.ensureQueryData(q.note(params.noteId)),
-  component: NotePage,
-  errorComponent: () => <p className="py-20 text-center text-ink-2">Those notes don’t exist, or you don’t have access. <Link to="/notes" className="font-semibold underline">All notes</Link></p>
+  loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(q.note(params.noteId))),
+  errorComponent: Missing,
+  component: NotePage
 });
 
-const reveal = { initial: { opacity: 0, y: 16 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: '-40px' }, transition: { duration: 0.5, ease: [0.22, 0.8, 0.24, 1] as const } };
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return <motion.section id={id} {...reveal} className="scroll-mt-6"><h2 className="mb-3 text-[22px] tracking-[-.02em]">{title}</h2>{children}</motion.section>;
-}
+const nlog = log.child({ component: 'note' });
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function NotePage() {
   const { noteId } = Route.useParams();
-  const { data: n } = useQuery(q.note(noteId));
-  const [hl, setHl] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const me = useQuery(q.session()).data?.user;
+  if (noteId === 'example') return me ? <Example me={me} /> : null;
+  return <Stored id={noteId} me={me?.email} />;
+}
+
+interface GoneInfo { kind: 'deleted' | 'removed'; audio: string; organizer: string }
+
+function Stored({ id, me }: { id: string; me: string | undefined }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
+  const [gone, setGone] = useState<GoneInfo | null>(null);
+  const note = useQuery({ ...q.note(id), enabled: !gone }).data;
+  useEffect(() => { if (gone) qc.removeQueries({ queryKey: qk.note(id), exact: true }); }, [gone, qc, id]);
+  if (gone) return <Gone {...gone} />;
+  if (!note) return null;
+  return <NoteView note={note} me={me} onGone={setGone} />;
+}
+
+/* Until the notes are written, the stream says honestly where they are. */
+function useProgress(note: Note): NoteProgress | null {
+  const qc = useQueryClient();
+  const [p, setP] = useState<NoteProgress | null>(null);
+  useEffect(() => {
+    if (note.status === 'ready') return;
+    let alive = true;
+    void (async () => {
+      try {
+        for await (const x of api.notes.progress(note.id)) {
+          if (!alive) return;
+          setP(x);
+          if (x.ready && note.status === 'recording') void qc.invalidateQueries({ queryKey: qk.note(note.id) });
+        }
+      } catch (e) { nlog.warn('note progress stopped', { err: e, noteId: note.id }); }
+    })();
+    return () => { alive = false; };
+  }, [note.id, note.status, qc]);
+  return p;
+}
+
+function asText(n: Note): string {
+  return [
+    n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
+    ...(n.decisions.length ? ['', 'Decided', ...n.decisions.map((d) => `- ${d}`)] : []),
+    ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text} (${a.owner.name}${a.due ? `, ${a.due}` : ''})`)] : [])
+  ].join('\n');
+}
+
+function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; onGone: (g: GoneInfo) => void }) {
   const toast = useToast();
-  const lines = useRef<Record<string, HTMLDivElement | null>>({});
-  if (!n) return null;
-  const cite = (at: number) => {
-    if (!n.transcript) { toast('The transcript wasn’t kept for this call', 'trash'); return; }
-    const line = [...n.transcript].reverse().find((l) => l.at <= at) ?? n.transcript[0];
-    if (!line) return;
-    lines.current[line.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setHl(line.id); setTimeout(() => setHl(null), 2400);
+  const share = useShareNote();
+  const del = useDeleteNote();
+  const done = useActionDone();
+  const player = usePlayer(note.id, note.audio);
+  const progress = useProgress(note);
+  const [pop, setPop] = useState<'share' | 'more' | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [going, setGoing] = useState(false);
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
+  const mine = !note.from;
+  const organizer = note.recipients.find((r) => r.role === 'organizer')?.person ?? note.from;
+  const myRole = note.recipients.find((r) => me && sameEmail(r.person, { email: me }))?.role;
+  const ready = note.status === 'ready';
+  const seek = note.audio.length ? (s: number) => player.seek(s) : undefined;
+  const open = note.actions.filter((a) => !a.done).length;
+
+  const remove = async () => {
+    try {
+      await del.mutateAsync(note.id);
+      setConfirm(false);
+      setGoing(true);
+      await sleep(900);
+      onGone({ kind: mine ? 'deleted' : 'removed', audio: minutesLabel(note.duration), organizer: organizer ? firstName(organizer.name) : 'The organizer' });
+    } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
-  const toc: { id: string; label: string }[] = n.status !== 'ready' ? [] : [{ id: 'sum', label: 'Summary' }, { id: 'dec', label: 'Decisions' }, { id: 'act', label: 'Action items' }, { id: 'chap', label: 'Chapters' }, ...(n.screens.length ? [{ id: 'scr', label: 'On screen' }] : []), { id: 'tr', label: 'Transcript' }];
+  const toggle = (a: ActionItem, on: boolean) => done.mutate({ noteId: note.id, actionId: a.id, done: on }, { onSuccess: () => { if (on) toast('Marked done', { ms: 2200 }); } });
+  const part = (i: number) => ({ className: going ? 'going' : undefined, style: { '--d': i } });
+
   return (
     <>
-      <div className="flex items-center gap-2.5">
-        <Link to="/notes" className="inline-flex h-[34px] items-center gap-1.5 rounded-[10px] px-3 text-[13.5px] font-semibold text-ink-2 hover:bg-well hover:text-ink"><Icon name="left" className="size-4" />All notes</Link>
-        <div className="flex-1" />
-
+      <div className="note-top" style={{ '--d': 0 }}>
+        <Link to="/notes" className="back"><Icon name="left" size={17} />Notes</Link>
+        <div className="note-acts">
+          <PeoplePicker open={pop === 'share'} onOpenChange={(o) => setPop(o ? 'share' : null)} align="end"
+            anchor={<Button variant="secondary" icon="share" disabled={note.status === 'recording'} title={note.status === 'recording' ? 'You can share these once the recording stops.' : undefined}>Share</Button>}
+            title="Share these notes" cta="Share" skip={note.recipients.map((r) => r.person.email)}
+            note="They find them in Alcove when they sign in with that email."
+            after={<div className="pick-have"><span>{note.recipients.length === 1 ? 'Only you have them' : `${note.recipients.length} people have them`}</span></div>}
+            onDone={(people: Person[]) => share.mutate({ id: note.id, emails: people.map((p) => p.email) }, {
+              onSuccess: () => { setFresh(new Set(people.map((p) => p.email))); toast(`Shared with ${listNames(people)}`, { icon: 'send' }); },
+              onError: (e) => toast(errorMessage(e), { icon: 'x' })
+            })} />
+          <Popover open={pop === 'more'} onOpenChange={(o) => setPop(o ? 'more' : null)} align="end" label="More" className="w-[264px]"
+            anchor={<IconButton icon="more" label="More" />}>
+            <button type="button" className="pop-item" disabled={!ready} onClick={() => { setPop(null); void navigator.clipboard?.writeText(asText(note)).then(() => toast('Copied as text')); }}>
+              <Icon name="copy" size={18} /><span><b>Copy as text</b>{!ready && <small>Once the notes are written.</small>}</span>
+            </button>
+            <div className="pop-sep" />
+            <button type="button" className="pop-item danger" onClick={() => { setPop(null); setConfirm(true); }}>
+              <Icon name="trash" size={18} /><span>{mine ? <><b>Delete notes</b><small>For everyone. Can’t be undone.</small></> : <><b>Remove from your notes</b><small>Everyone else keeps them.</small></>}</span>
+            </button>
+          </Popover>
+        </div>
       </div>
-      <div className="grid grid-cols-[170px_minmax(0,1fr)] gap-10 pb-[170px] max-[960px]:grid-cols-1">
-        <nav aria-label="Sections" className="sticky top-5 flex flex-col gap-0.5 self-start pt-[110px] max-[960px]:hidden">
-          {toc.map(({ id, label }) => <button key={id} type="button" onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })} className="rounded-lg px-2.5 py-1.5 text-left text-[13.5px] text-ink-3 hover:bg-well hover:text-ink">{label}</button>)}
-        </nav>
-        <article className="flex max-w-[720px] flex-col gap-7">
-          <motion.header {...reveal} className="flex flex-col gap-3.5 pt-10">
-            <div className="flex flex-wrap gap-2"><Chip icon={n.kind === 'room' ? 'room' : 'cam'}>{n.kind === 'room' ? 'Recorded in the room' : 'Call'}</Chip><Chip icon="notes">{n.keep === 'full' ? 'Notes + transcript' : 'Notes only'}</Chip></div>
-            <h1 className="text-[clamp(36px,4.4vw,52px)] leading-[1.02]">{n.title}</h1>
-            <div className="flex flex-wrap items-center gap-3.5 text-sm text-ink-2">
-              <span>{fullDate(n.startedAt)} · {hm(n.startedAt)}</span><i className="size-[3px] rounded-full bg-ink-3" /><span>{minutesLabel(n.duration)}</span><i className="size-[3px] rounded-full bg-ink-3" />
-              <AvatarStack people={n.people} size={26} /><span>{n.kind === 'room' || n.audience === 'host' ? 'Only you can read these' : 'For everyone in the call'}</span>
+      <div className="note" style={{ '--d': 1 }}>
+        <article className="doc">
+          <DocHead title={note.title} when={noteWhen(note.startedAt, note.duration)} people={note.people}
+            chip={note.status === 'recording' ? <div className="status writing mb-[18px]"><RecDot />Still recording</div>
+              : note.status === 'pending' ? <div className="status writing mb-[18px]"><span className="spin" />Waiting to be written</div>
+                : !mine && organizer ? <Chip tone="accent" className="mb-4">{myRole === 'shared' ? 'Shared with you' : `From ${firstName(organizer.name)}’s call`}</Chip> : null} />
+          {confirm && (
+            <div className="confirm" role="alertdialog" aria-label={mine ? 'Delete these notes' : 'Remove these notes'}>
+              <span className="ic"><Icon name="trash" size={19} /></span>
+              <div>
+                <b>{mine ? 'Delete these notes for everyone?' : 'Remove these notes from yours?'}</b>
+                <p>{mine ? `Removes the summary, the transcript and ${minutesLabel(note.duration)} of audio from Alcove. It can’t be undone.` : `${organizer ? firstName(organizer.name) : 'The organizer'} and everyone else who has them keep them.`}</p>
+              </div>
+              <div className="btns"><Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button><Button variant="danger" loading={del.isPending} onClick={() => void remove()}>{mine ? 'Delete' : 'Remove'}</Button></div>
             </div>
-          </motion.header>
-          {n.status !== 'ready' && (
-            <motion.section {...reveal} className="flex flex-col gap-4 rounded-[22px] bg-card px-6 py-[22px] shadow-[inset_0_0_0_1px_var(--hair),var(--sh-soft)]">
-              <div className="flex items-start gap-3"><Icon name="clock" className="mt-0.5 text-lamp-ink" /><div><b className="block text-[16px]">{n.status === 'recording' ? 'Still recording' : 'Waiting for the notes service'}</b><span className="text-[14.5px] text-ink-2">The recording is saved and encrypted. The summary, decisions and action items will appear here once the notes service is connected.</span></div></div>
-              {n.audio.length > 0 && (
-                <div className="flex flex-col gap-2.5 border-t border-hair pt-4">
-                  {n.audio.map((a) => (
-                    <div key={a.index} className="flex flex-col gap-1.5">
-                      <span className="text-[13px] font-semibold text-ink-3">{n.audio.length > 1 ? `Part ${a.index + 1} · ` : ''}{clock(a.seconds)} · {a.pieces} encrypted {a.pieces === 1 ? 'piece' : 'pieces'}</span>
-                      <audio controls preload="none" src={api.notes.audioUrl(n.id, a.index)} className="w-full" />
-                    </div>
-                  ))}
-                </div>
-              )}
-              {n.audio.length === 0 && <span className="text-[13.5px] text-ink-3">No audio was recorded.</span>}
-            </motion.section>
           )}
-          {n.summary && <motion.section id="sum" {...reveal} className="scroll-mt-6 rounded-[22px] bg-card px-6 py-[22px] text-[17px] leading-[1.6] shadow-[inset_0_0_0_1px_var(--hair),var(--sh-soft)]"><p className="m-0">{n.summary}</p></motion.section>}
-          {n.status === 'ready' && <>
-          <Section id="dec" title="Decisions">{n.decisions.map((d) => <div key={d} className="flex gap-3 border-b border-hair py-3 text-[15.5px]"><Icon name="okCircle" className="mt-0.5 size-[19px] text-ok" /><span>{d}</span></div>)}</Section>
-          <Section id="act" title="Action items"><Actions note={n} /></Section>
-          <Section id="chap" title="Chapters">
-            {n.chapters.map((c) => (
-              <button key={c.at} type="button" onClick={() => cite(c.at)} className="grid w-full grid-cols-[64px_1fr] gap-3.5 border-b border-hair py-3 text-left transition-colors hover:bg-raised">
-                <span className="pt-0.5 font-mono text-[13px] text-ink-3">{clock(c.at)}</span><span><b className="block text-[15.5px]">{c.title}</b><span className="text-sm text-ink-2">{c.summary}</span></span>
-              </button>
-            ))}
-          </Section>
-          {n.screens.length > 0 && (
-            <Section id="scr" title="On screen">
-              {n.screens.map((s) => (
-                <div key={s.at} className="grid grid-cols-[160px_1fr] items-center gap-4 rounded-[18px] bg-card p-3.5 shadow-[inset_0_0_0_1px_var(--hair)]">
-                  <div className="flex aspect-[16/10] flex-col gap-1.5 rounded-[10px] bg-[#F7F4EE] p-3 shadow-[inset_0_0_0_1px_var(--hair)]">
-                    <small className="text-[9px] font-bold text-[#6F675D]">{s.title}</small>
-                    {[[30, 0], [60, 25], [22, 72]].map(([w, ml]) => <i key={w} className="h-1.5 rounded-sm bg-lamp" style={{ width: `${w}%`, marginLeft: `${ml}%` }} />)}
-                  </div>
-                  <div><b>{s.title}</b><p className="m-0 mt-1 text-sm text-ink-3">Shared by {s.by} at <button type="button" onClick={() => cite(s.at)} className="font-mono underline">{clock(s.at)}</button></p><p className="m-0 mt-1 text-[14.5px]">{s.text}</p></div>
+          {ready ? (
+            <>
+              <Section title="Summary" {...part(0)}><p className="summary">{note.summary}</p></Section>
+              {note.decisions.length > 0 && <Section title="Decided" count={note.decisions.length} {...part(1)}><Decisions items={note.decisions} /></Section>}
+              {note.actions.length > 0 && <Section title="Follow-ups" count={`${open} open`} {...part(2)}><FollowUps actions={note.actions} me={me} onToggle={toggle} /></Section>}
+              {note.transcript?.length ? <section className={cn('sec', going && 'going')} style={{ '--d': 3 }}><Transcript lines={note.transcript} seconds={note.duration} onSeek={seek} /></section> : null}
+              {!going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} />}
+            </>
+          ) : (
+            <section className={cn('sec', going && 'going')}>
+              <div className="pending-note">
+                <Icon name="lock" size={18} />
+                <div>
+                  <b className="font-semibold text-ink">{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b>
+                  <p className="mt-1">Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.</p>
+                  {progress && (
+                    <ul className="mt-3 grid gap-1.5 text-[14px]">
+                      {progress.steps.map((s) => <li key={s.label} className={cn('flex items-center gap-2', s.done ? 'text-ink-2' : 'text-ink-3')}><Icon name={s.done ? 'check' : 'clock'} size={15} className={s.done ? 'text-accent' : undefined} />{s.label}</li>)}
+                    </ul>
+                  )}
                 </div>
-              ))}
-            </Section>
+              </div>
+            </section>
           )}
-          <Section id="tr" title="Transcript">
-            {n.transcript ? n.transcript.map((l) => (
-              <div key={l.id} ref={(el) => { lines.current[l.id] = el; }} className={cn('-ml-2.5 grid grid-cols-[64px_1fr] gap-3.5 rounded-xl py-2.5 pl-2.5 transition-colors duration-[1500ms]', hl === l.id && 'bg-lamp-soft duration-200')}>
-                <span className="pt-[3px] font-mono text-[13px] text-ink-3">{clock(l.at)}</span>
-                <div className="flex gap-2.5">{l.speaker.person && <Avatar person={l.speaker.person} size={24} ring={false} className="mt-0.5" />}<div><b className="text-[13px]">{l.speaker.name}</b><p className="m-0 mt-0.5 text-[15.5px] leading-[1.55]">{l.text}</p></div></div>
-              </div>
-            )) : (
-              <div className="flex gap-3 rounded-2xl bg-raised p-4 shadow-[inset_0_0_0_1px_var(--hair)]">
-                <Icon name="trash" className="mt-0.5 text-ink-3" />
-                <div><b className="block">Not kept for this call</b><span className="text-sm text-ink-2">The transcript was deleted inside the sealed server as soon as these notes were written. Times above still point to when things were said.</span></div>
-              </div>
-            )}
-          </Section>
-          </>}
-          <div className="flex justify-end pt-2"><Button size="sm" variant="danger-ghost" icon="trash" onClick={async () => { if (!confirmDelete) { setConfirmDelete(true); return; } await api.notes.delete(n.id); await qc.invalidateQueries({ queryKey: ['notes'] }); await navigate({ to: '/notes' }); toast('Notes and recording deleted', 'trash'); }}>{confirmDelete ? 'Delete for good' : 'Delete notes and recording'}</Button></div>
         </article>
+        <aside className="rail">
+          {player.total > 0 && <div className={cn(going && 'going')} style={{ '--d': 4 }}><Player noteId={note.id} cover={coverFor(note.id)} player={player} chapters={note.chapters} room={note.kind === 'room'} /></div>}
+          {note.chapters.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><Chapters chapters={note.chapters} pos={player.pos} onSeek={seek} /></div>}
+          <div className={cn(going && 'going')} style={{ '--d': 6 }}><Recipients recipients={note.recipients} me={me} fresh={fresh} /></div>
+        </aside>
       </div>
-      {n.status === 'ready' && <AskBar note={n} onCite={cite} />}
     </>
   );
 }
 
-function Actions({ note }: { note: Note }) {
-  const done = useActionDone();
-  const [local, setLocal] = useState<Record<string, boolean>>(() => Object.fromEntries(note.actions.map((a) => [a.id, a.done])));
+/* Delete is physical: say exactly what went. */
+function Gone({ kind, audio, organizer }: GoneInfo) {
+  return (
+    <div className="gone">
+      <GoneArch />
+      <h2>{kind === 'deleted' ? 'Deleted' : 'Removed'}</h2>
+      {kind === 'deleted' ? (
+        <>
+          <p className="text-ink-2">Gone from Alcove, for everyone who had them:</p>
+          <ul>
+            <li><Icon name="check" size={18} />Summary, decisions and follow-ups</li>
+            <li><Icon name="check" size={18} />The transcript</li>
+            <li><Icon name="check" size={18} />{audio} of audio</li>
+          </ul>
+        </>
+      ) : <p className="mb-4 text-ink-2">They’re out of your notes. {organizer} still has them.</p>}
+      <Link to="/notes" className="btn btn-secondary btn-lg">Back to notes</Link>
+    </div>
+  );
+}
+
+function Missing({ error }: ErrorComponentProps) {
+  const notFound = errorCode(error) === 'not-found';
+  return (
+    <div className="gone">
+      <GoneArch />
+      <h2>{notFound ? 'These notes aren’t here' : 'Couldn’t open these notes'}</h2>
+      <p className="mb-4 max-w-[42ch] text-ink-2">{notFound ? 'They were deleted, or they were never shared with you.' : errorMessage(error)}</p>
+      <Link to="/notes" className="btn btn-secondary btn-lg">Back to notes</Link>
+    </div>
+  );
+}
+
+/* The call from the welcome screen, written out. Nothing to share or delete. */
+function Example({ me }: { me: Person }) {
+  const [note] = useState(() => exampleNote(me));
+  const [actions, setActions] = useState(note.actions);
   return (
     <>
-      {note.actions.map((a) => {
-        const d = !!local[a.id];
-        return (
-          <button key={a.id} type="button" aria-pressed={d} onClick={() => { setLocal((s) => ({ ...s, [a.id]: !d })); done.mutate({ noteId: note.id, actionId: a.id, done: !d }); }}
-            className="grid w-full grid-cols-[22px_1fr_auto] items-center gap-3 border-b border-hair px-1 py-3 text-left text-[15.5px]">
-            <span className={cn('grid size-5 place-items-center rounded-md text-white transition-[background-color,box-shadow] duration-200', d ? 'bg-ok' : 'shadow-[inset_0_0_0_1.6px_var(--hair-2)]')}><CheckDraw done={d} /></span>
-            <span className={cn('transition-colors', d && 'text-ink-3 line-through')}>{a.text}</span>
-            <span className="inline-flex items-center gap-[7px] whitespace-nowrap text-[13px] text-ink-3">{a.owner.person && <Avatar person={a.owner.person} size={22} ring={false} />}{a.owner.name.split(' ')[0]}{a.due && ` · ${a.due}`}</span>
-          </button>
-        );
-      })}
+      <div className="note-top" style={{ '--d': 0 }}><Link to="/home" className="back"><Icon name="left" size={17} />Home</Link></div>
+      <div className="note" style={{ '--d': 1 }}>
+        <article className="doc">
+          <DocHead title={note.title} when="Example · 24 minutes" people={note.people} chip={<Chip tone="accent" className="mb-4">Example</Chip>} />
+          <Section title="Summary"><p className="summary">{note.summary}</p></Section>
+          <Section title="Decided" count={note.decisions.length}><Decisions items={note.decisions} /></Section>
+          <Section title="Follow-ups" count={`${actions.filter((a) => !a.done).length} open`}>
+            <FollowUps actions={actions} me={me.email} onToggle={(a, on) => setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: on } : x)))} />
+          </Section>
+          <AskBar suggestions={note.suggestedQuestions} ask={askExample} />
+        </article>
+        <aside className="rail">
+          <Chapters chapters={note.chapters} pos={0} />
+          <Recipients recipients={note.recipients} me={me.email} />
+        </aside>
+      </div>
     </>
   );
 }

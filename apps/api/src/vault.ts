@@ -28,8 +28,8 @@ export async function createItem(o: Owner, db: Db, kind: ItemKind, manifest: unk
   const itemId = id128(); const revisionId = id128();
   const { envelope, ct } = sealManifest(o, itemId, revisionId, manifest);
   await exec(db, `INSERT INTO items (owner_id, item_id, kind, current_revision_id, version) VALUES ($1,$2,$3,$4,0)`, [o.ownerId, itemId, kind, revisionId]);
-  await exec(db, `INSERT INTO revisions (owner_id, item_id, revision_id, parent_revision_id, key_envelope, manifest_ciphertext, index_state, created_at)
-                  VALUES ($1,$2,$3,NULL,$4,$5,'none',now())`, [o.ownerId, itemId, revisionId, envelope, ct]);
+  await exec(db, `INSERT INTO revisions (owner_id, item_id, revision_id, parent_revision_id, key_envelope, manifest_ciphertext, created_at)
+                  VALUES ($1,$2,$3,NULL,$4,$5,now())`, [o.ownerId, itemId, revisionId, envelope, ct]);
   return { itemId, revisionId };
 }
 
@@ -37,8 +37,8 @@ export async function createItem(o: Owner, db: Db, kind: ItemKind, manifest: unk
 export async function saveRevision(o: Owner, db: Db, itemId: string, expectedRevisionId: string, manifest: unknown): Promise<string> {
   const revisionId = id128();
   const { envelope, ct } = sealManifest(o, itemId, revisionId, manifest);
-  await exec(db, `INSERT INTO revisions (owner_id, item_id, revision_id, parent_revision_id, key_envelope, manifest_ciphertext, index_state, created_at)
-                  VALUES ($1,$2,$3,$4,$5,$6,'none',now())`, [o.ownerId, itemId, revisionId, expectedRevisionId, envelope, ct]);
+  await exec(db, `INSERT INTO revisions (owner_id, item_id, revision_id, parent_revision_id, key_envelope, manifest_ciphertext, created_at)
+                  VALUES ($1,$2,$3,$4,$5,$6,now())`, [o.ownerId, itemId, revisionId, expectedRevisionId, envelope, ct]);
   const n = await exec(db, `UPDATE items SET current_revision_id = $3, version = version + 1
                             WHERE owner_id = $1 AND item_id = $2 AND current_revision_id = $4 AND deleted_at IS NULL`, [o.ownerId, itemId, revisionId, expectedRevisionId]);
   if (n !== 1) throw conflict('That changed somewhere else. Reload and try again.');

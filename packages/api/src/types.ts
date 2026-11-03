@@ -10,101 +10,125 @@ export type ID = z.infer<typeof IDSchema>;
 export const ISODateSchema = z.string();
 export type ISODate = z.infer<typeof ISODateSchema>;
 
-/** What a call keeps when notes are on. */
-export const NotesModeSchema = z.enum(['full', 'notes', 'off']);
-export type NotesMode = z.infer<typeof NotesModeSchema>;
-export const NotesKeepSchema = z.enum(['full', 'notes']);
-export type NotesKeep = z.infer<typeof NotesKeepSchema>;
-/** A meeting's setting before it starts. `ask` means the host picks at join time. */
-export const MeetingNotesSettingSchema = z.enum(['full', 'notes', 'off', 'ask']);
-export type MeetingNotesSetting = z.infer<typeof MeetingNotesSettingSchema>;
-/** Who receives the notes when a call ends. */
-export const NotesAudienceSchema = z.enum(['everyone', 'host']);
-export type NotesAudience = z.infer<typeof NotesAudienceSchema>;
-/** The account-wide default applied to new calls. */
-export const NotesDefaultSchema = z.enum(['ask', 'always', 'never']);
-export type NotesDefault = z.infer<typeof NotesDefaultSchema>;
+/**
+ * Whether a call writes notes. It's decided when the call is scheduled; during the call only the
+ * organizer can change it, and anyone else can ask them to.
+ */
+export const NotesSettingSchema = z.enum(['on', 'off']);
+export type NotesSetting = z.infer<typeof NotesSettingSchema>;
 
-export const PortraitHairSchema = z.enum(['short', 'swept', 'curly', 'long', 'bob', 'afro', 'bun']);
+export const PortraitHairSchema = z.enum(['long', 'short', 'bun', 'curly', 'bob', 'wavy', 'side', 'buzz']);
 export type PortraitHair = z.infer<typeof PortraitHairSchema>;
-/** Appearance for illustrated portraits. Backends may omit it; the UI falls back to a letter tile. */
+/** Appearance for illustrated portraits, used when someone has no photo. */
 export const PortraitStyleSchema = z.object({
   bg: z.string(), skin: z.string(), hair: z.string(), shirt: z.string(), style: PortraitHairSchema,
-  beard: z.boolean().optional(), glasses: z.boolean().optional(),
+  beard: z.boolean().optional(), glasses: z.boolean().optional(), earrings: z.boolean().optional(),
   /** Colours of the room behind the person when their camera is on. */
   room: z.tuple([z.string(), z.string(), z.string()]).optional()
 });
 export type PortraitStyle = z.infer<typeof PortraitStyleSchema>;
 
-export const PersonSchema = z.object({ id: IDSchema, name: z.string(), email: z.string(), portrait: PortraitStyleSchema.optional() });
+export const PersonSchema = z.object({
+  /** The owner ID for Alcove users; the email address for everyone else. */
+  id: IDSchema,
+  name: z.string(),
+  email: z.string(),
+  /** A photo from the person's sign-in provider. Without one the UI draws their portrait. */
+  photoUrl: z.string().optional(),
+  portrait: PortraitStyleSchema.optional()
+});
 export type Person = z.infer<typeof PersonSchema>;
 
-/** Where the owner root came from: the passkey's PRF output, or a device-held secret when PRF is unsupported. */
-export const RootSourceSchema = z.enum(['prf', 'device']);
-export type RootSource = z.infer<typeof RootSourceSchema>;
+/** How someone signed in. Their account, calendar and company directory come from it. */
+export const SignInProviderSchema = z.enum(['google', 'microsoft', 'sso']);
+export type SignInProvider = z.infer<typeof SignInProviderSchema>;
 
-/** An unlocked owner session. Absent (null) when signed out or locked. */
+/** A signed-in session. Absent (null) when signed out. */
 export const SessionSchema = z.object({
   user: PersonSchema,
   ownerId: z.string(),
-  rootSource: RootSourceSchema,
+  provider: SignInProviderSchema,
+  /** A demo account, with a sample calendar and company directory instead of connected ones. */
+  sample: z.boolean(),
   createdAt: ISODateSchema,
-  /** The session closes at this time at the latest, even if active. */
+  /** The session ends at this time at the latest. */
   expiresAt: ISODateSchema
 });
 export type Session = z.infer<typeof SessionSchema>;
 
-export const PasskeySchema = z.object({ id: IDSchema, deviceName: z.string(), createdAt: ISODateSchema, lastUsedAt: ISODateSchema.nullable(), usesPrf: z.boolean() });
-export type Passkey = z.infer<typeof PasskeySchema>;
+export const SignInResultSchema = z.object({
+  session: SessionSchema,
+  /** True the first time this person signs in: the app shows what came with them. */
+  isNew: z.boolean()
+});
+export type SignInResult = z.infer<typeof SignInResultSchema>;
 
-export const PreferencesSchema = z.object({ notesDefault: NotesDefaultSchema, keep: NotesKeepSchema });
+export const PreferencesSchema = z.object({
+  /** Whether new calls start with notes on. Each call can still be set when it's scheduled. */
+  notesDefault: NotesSettingSchema
+});
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
-export const RsvpSchema = z.enum(['yes', 'pending', 'no']);
-export type Rsvp = z.infer<typeof RsvpSchema>;
+/* ---------- people ---------- */
 
-export const GuestSchema = z.object({
-  email: z.string(),
-  /** Present when the guest has an Alcove account or is in the user's contacts. */
-  person: PersonSchema.optional(),
-  rsvp: RsvpSchema
+/** Someone to invite or share with. */
+export const PersonSuggestionSchema = z.object({
+  person: PersonSchema,
+  /** team: your company's directory. met: you've had calls with them. new: an address you typed. */
+  source: z.enum(['team', 'met', 'new']),
+  onAlcove: z.boolean()
 });
-export type Guest = z.infer<typeof GuestSchema>;
+export type PersonSuggestion = z.infer<typeof PersonSuggestionSchema>;
 
-export const MeetingStatusSchema = z.enum(['scheduled', 'live', 'ended', 'cancelled']);
+/** Your company, from signing in with a work account. */
+export const TeamSchema = z.object({
+  name: z.string(),
+  domain: z.string(),
+  members: z.array(z.object({ person: PersonSchema, onAlcove: z.boolean(), invited: z.boolean() }))
+});
+export type Team = z.infer<typeof TeamSchema>;
+
+/* ---------- meetings ---------- */
+
+export const MeetingStatusSchema = z.enum(['scheduled', 'live', 'ended']);
+export type MeetingStatus = z.infer<typeof MeetingStatusSchema>;
 export const MeetingSchema = z.object({
   id: IDSchema,
   title: z.string(),
   startsAt: ISODateSchema,
   endsAt: ISODateSchema,
-  host: PersonSchema,
-  isHost: z.boolean(),
-  guests: z.array(GuestSchema),
-  notes: MeetingNotesSettingSchema,
-  audience: NotesAudienceSchema,
+  organizer: PersonSchema,
+  isOrganizer: z.boolean(),
+  /** Everyone invited besides the organizer. When notes are on, they all get them. */
+  guests: z.array(PersonSchema),
+  notes: NotesSettingSchema,
   /** Short code used in the join link, e.g. `kpw-rnzq-hte`. */
   code: z.string(),
-  /** Present once the call has happened and notes were written. */
-  noteId: IDSchema.optional(),
   status: MeetingStatusSchema,
+  /** Present once the call has happened with notes on. */
+  noteId: IDSchema.optional(),
   /** Seconds the call actually lasted, once ended. */
   duration: z.number().optional()
 });
 export type Meeting = z.infer<typeof MeetingSchema>;
 
 export const MeetingInputSchema = z.object({
-  title: z.string(), startsAt: ISODateSchema, durationMinutes: z.number(), guests: z.array(z.string()),
-  notes: MeetingNotesSettingSchema, audience: NotesAudienceSchema
+  title: z.string(),
+  startsAt: ISODateSchema,
+  durationMinutes: z.number(),
+  /** Email addresses. */
+  guests: z.array(z.string()),
+  notes: NotesSettingSchema
 });
 export type MeetingInput = z.infer<typeof MeetingInputSchema>;
 
-export const CallLinkSchema = z.object({
-  code: z.string(),
-  /** Full URL. The fragment carries the call key and is never sent to the server. */
-  url: z.string(),
-  notes: MeetingNotesSettingSchema
+/** A call that starts now. Everything is optional: a bare call is "<name>'s call" with your default notes setting. */
+export const InstantCallInputSchema = z.object({
+  title: z.string().optional(),
+  guests: z.array(z.string()).optional(),
+  notes: NotesSettingSchema.optional()
 });
-export type CallLink = z.infer<typeof CallLinkSchema>;
+export type InstantCallInput = z.infer<typeof InstantCallInputSchema>;
 
 /* ---------- notes ---------- */
 
@@ -136,26 +160,36 @@ export type NoteKind = z.infer<typeof NoteKindSchema>;
 export const NoteStatusSchema = z.enum(['recording', 'pending', 'ready']);
 export type NoteStatus = z.infer<typeof NoteStatusSchema>;
 
-/** One continuous stretch of recorded audio. Stopping and restarting notes starts a new segment. */
+/** One continuous stretch of recorded audio. Turning notes off and on again starts a new segment. */
 export const AudioSegmentSchema = z.object({ index: z.number(), seconds: z.number(), pieces: z.number(), mimeType: z.string() });
 export type AudioSegment = z.infer<typeof AudioSegmentSchema>;
 
+/** How someone came to have a note: they ran the call, were invited to it, or it was shared with them after. */
+export const RecipientRoleSchema = z.enum(['organizer', 'invited', 'shared']);
+export type RecipientRole = z.infer<typeof RecipientRoleSchema>;
+export const RecipientSchema = z.object({ person: PersonSchema, role: RecipientRoleSchema });
+export type Recipient = z.infer<typeof RecipientSchema>;
+
 export const NoteSummarySchema = z.object({
   id: IDSchema, kind: NoteKindSchema, status: NoteStatusSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
-  people: z.array(PersonSchema), excerpt: z.string(), openActions: z.number(), totalActions: z.number(),
-  keep: NotesKeepSchema, meetingId: IDSchema.optional()
+  /** Everyone who has the notes, organizer first. */
+  people: z.array(PersonSchema),
+  /** The start of the summary; empty until the notes are written. */
+  excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
+  /** Present when the note is someone else's and they shared it, or invited you to its call. */
+  from: PersonSchema.optional()
 });
 export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
 export const NoteSchema = NoteSummarySchema.extend({
+  recipients: z.array(RecipientSchema),
   summary: z.string(),
   decisions: z.array(z.string()),
   actions: z.array(ActionItemSchema),
   chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema),
-  /** Null when only notes were kept and the transcript was deleted. */
+  /** Null until the notes are written. */
   transcript: z.array(TranscriptLineSchema).nullable(),
-  audience: NotesAudienceSchema,
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
   audio: z.array(AudioSegmentSchema)
@@ -175,31 +209,9 @@ export type AnswerPart = z.infer<typeof AnswerPartSchema>;
 
 export const CreditBalanceSchema = z.object({
   balance: z.number(),
-  /** Credits charged per minute of notes or room recording. Calls are free. */
+  /** Every credit added to the account so far, so the app can show how much is left. */
+  granted: z.number(),
+  /** Credits charged per minute of notes or room recording. Calls without notes are free. */
   perMinute: z.number()
 });
 export type CreditBalance = z.infer<typeof CreditBalanceSchema>;
-
-export const CreditEventSchema = z.object({ id: IDSchema, at: ISODateSchema, label: z.string(), detail: z.string(), amount: z.number() });
-export type CreditEvent = z.infer<typeof CreditEventSchema>;
-
-export const CreditPackSchema = z.object({ id: IDSchema, credits: z.number(), priceUsdc: z.number(), badge: z.string().optional() });
-export type CreditPack = z.infer<typeof CreditPackSchema>;
-
-/* ---------- home ---------- */
-
-export const WeekStatsSchema = z.object({
-  /** Minutes in calls for each of the last 7 days, oldest first. */
-  minutesByDay: z.array(z.object({ date: ISODateSchema, minutes: z.number() })),
-  notes: z.number(),
-  actionItems: z.number(),
-  roomRecordings: z.number()
-});
-export type WeekStats = z.infer<typeof WeekStatsSchema>;
-
-export const SetupStepSchema = z.object({
-  id: z.enum(['passkey', 'first-call', 'second-passkey']),
-  label: z.string(),
-  done: z.boolean()
-});
-export type SetupStep = z.infer<typeof SetupStepSchema>;

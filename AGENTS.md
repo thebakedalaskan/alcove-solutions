@@ -4,10 +4,10 @@ Alcove is private video calls with an AI note taker. This repo is a pnpm + Turbo
 
 ```
 apps/web            TanStack Start app (React 19, Tailwind v4, Motion). SPA mode.
-apps/api            The API (@alcove/server): Hono, Postgres, S3-compatible objects, WebAuthn, crypto.
+apps/api            The API (@alcove/server): Hono, Postgres, S3-compatible objects, sign-in, crypto.
 packages/ui         The design system: tokens, components, illustrations. Everything visual lives here.
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
-packages/api-http   The browser client: REST, NDJSON, audio uploads, WebAuthn with PRF, live sessions.
+packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
 infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
 docs/               Product, engineering and design docs. Keep them true to the code.
 ```
@@ -24,6 +24,22 @@ pnpm build
 pnpm check          # all of the above
 ```
 
+## No backwards compatibility, no legacy code
+
+When something changes, change it everywhere and delete what it replaced, in the same change.
+
+- **Remove, don't keep.** No compatibility shims, deprecated aliases, fallbacks for an old shape, "kept
+  for now" fields, re-exports of moved code, or commented-out code. If nothing should use it any more,
+  it's deleted.
+- **One shape at a time.** A contract change in `packages/api` updates the server, `@alcove/api-http`
+  and the app together. Nothing parses or accepts both the old and the new form.
+- **No flags that keep an old flow alive** next to its replacement.
+- **The schema changes in place.** Alcove has no production data yet: `apps/api/migrations/` describes
+  today's database. Edit it directly, write no data migrations for old formats, and reset local
+  databases (`pnpm db:reset`) when it changes.
+- **Tests follow the same rule.** Integration tests only, never unit tests (see Testing). Delete tests
+  for removed behaviour instead of adapting them to keep it alive.
+
 ## Testing (enforced)
 
 - **Integration tests only.** No unit tests. A test must drive a whole user flow through a public
@@ -36,8 +52,9 @@ pnpm check          # all of the above
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
 - When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
-  `*.integration.test.ts`) with the flow it enables. Passkeys in tests come from the software
-  authenticator in `apps/api/src/testing/soft-passkey.ts`; never stub out verification.
+  `*.integration.test.ts`) with the flow it enables. Tests sign in through the real API
+  (`api.auth.signIn` on a `h.browser()` from `apps/api/src/testing/harness.ts`); never stub out
+  sessions or key checks.
 
 ## TypeScript (enforced)
 
@@ -87,7 +104,7 @@ Read `docs/engineering/privacy-keys-and-sessions.md` before touching anything th
   the owner and exact location.
 - New stored data gets a new record kind and header, and a canary in the leakage test.
 - Every query is scoped by `owner_id`; add a cross-owner test for every new ID that comes from a request.
-- Use the request's key copies (`Owner.root`, `Owner.wrapKey`), never the session's arrays.
+- Use the request's owner (`Owner.root`, `Owner.wrapKey`, opened per request from `KMASTER`); keys are never kept between requests.
 - Deleting must be physical: rows, receipts and objects (queue failed object deletes in `object_gc`).
 - Secrets never go in code or committed files. Local values live in `.env` (gitignored).
 
@@ -111,14 +128,17 @@ Read `docs/engineering/logging-and-errors.md`.
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app.
 - Colours, shadows, fonts and easing come from the tokens in `packages/ui/src/styles.css`
-  (`bg-canvas`, `text-ink-2`, `shadow-lift`, `font-display`, `ease-soft` ...). No raw hex in the app,
-  except on the always-dark call stage (`stage-*` tokens) and in illustrations.
-- Every screen must work in light and dark. Check both.
-- The amber lamp (`Mark`, `lamp` tokens) is branding only. Never use it to show state such as
-  "recording" or "notes on". Recording state uses `RecDot` / `Chip tone="rec"`.
-- Motion: use `motion/react` and the shared helpers (`Stagger`, `CountUp`, `CheckDraw`, `Ring`).
+  (`bg-canvas`, `text-ink-2`, `shadow-2`, `font-display`, `ease-soft` ...) and the component classes in
+  `packages/ui/src/styles/` (`kit`, `welcome`, `app`, `call`). No raw hex in the app, except on the
+  always-dark call stage and in illustrations.
+- Every screen must work in light and dark. Check both, and check phone and wide screens.
+- The sunrise mark (`Mark`, `Logo`) is branding, and sunrise orange (`accent`) is for actions. Neither
+  shows state such as "recording" or "notes on": recording uses `RecDot`, `Chip tone="rec"` and the
+  notes sign on the call stage. No lamps, no green.
+- Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`).
   Respect reduced motion; the global stylesheet already shortens CSS animations.
-- Every list or page needs a designed empty state (`EmptyState` + an illustration), not blank space.
+- Every list or page needs a designed empty state (`EmptyState`, which draws `EmptyArch` by default),
+  not blank space.
 
 ## Writing
 

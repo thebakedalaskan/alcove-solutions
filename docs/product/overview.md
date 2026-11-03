@@ -4,7 +4,8 @@
 
 Alcove is a private video call platform with confidential AI notes built in. Notes are a service of
 the call itself: no bot joins the meeting, nobody installs a recorder, and the notes are written inside
-confidential compute that Alcove's operators cannot read.
+confidential compute that Alcove's operators cannot read. Neither the notes service nor confidential compute
+is in place in this build yet; see [Status](#status-of-this-build).
 
 ## The problem
 
@@ -23,22 +24,26 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 
 | Capability | What the user gets |
 | --- | --- |
-| Calls | Start a call instantly or schedule one, join full screen with camera, mic and screen sharing, chat. |
-| Notes in calls | Choose per call: notes with transcript, notes only (transcript deleted after writing), or none. Everyone sees when notes are on, paused or stopped. Notes start only when someone starts them, never retroactively. |
-| Recording in the room | Record an in-person conversation into the same private notes. Only you can read them. |
-| Notes | Summary, decisions, action items, chapters, what was on the shared screen, and the transcript if kept, with questions answered from the call only. |
-| Privacy | A passkey is the only key to your notes. Content is encrypted before storage; the server holds your key only while you're unlocked. |
-| Credits | Calls are free. Notes and room recordings use credits (25 a minute); new accounts start with 10,000. |
+| Sign-in | Google, Microsoft or the company's single sign-on. The calendar and the company directory come with the account. |
+| Calls | Start a call now or schedule one from a single line; join full screen with camera, mic, screen sharing and chat. |
+| Notes in calls | On or off for each call, set when it's scheduled (new calls follow the account's default). During the call only the organizer can switch them, and everyone in the call sees the notes sign. Nothing is recorded while notes are off, and nothing from before they were turned on. |
+| Who gets the notes | Everyone invited, when the call ends. They find the notes in Alcove when they sign in with the invited address, and anyone who has them can share them on by email. |
+| Recording in the room | Record an in-person conversation into the same kind of notes. They stay yours alone until you share them. |
+| Notes | Summary, decisions, follow-ups, chapters and the transcript, with questions answered from the call only. |
+| Privacy | Content is encrypted before it's stored, under keys for each account. The server holds those keys, wrapped under one master key, so the promise that Alcove can't read notes depends on releasing that key only to attested confidential compute. |
+| Credits | Calls without notes are free. Notes and room recordings use credits (25 a minute); new accounts start with 10,000. |
 
 ## Status of this build
 
 | Area | State |
 | --- | --- |
-| Passkey accounts, lock and unlock, second passkeys | Working |
-| Scheduling, instant calls, call links | Working; email invites not sent yet |
-| Calls with real camera, microphone, screen sharing, chat | Working, one participant (you); multi-party is next |
+| Sign-in with Google, Microsoft and SSO | Stand-ins: Google and Microsoft sign in a demo person (Art Vandelay); SSO signs in whoever's work email is typed, unverified |
+| Calendar and company directory | Stand-ins: a demo day of calls is placed at sign-in when nothing is upcoming; `vandelay.industries` accounts see a demo directory |
+| Scheduling and instant calls | Working; invitation emails aren't sent yet |
+| Calls with real camera, microphone, screen sharing, chat | Working, one participant (the organizer); multi-party arrives with LiveKit |
 | Notes recording (encrypted audio pieces, playback) | Working |
-| Transcription and note writing (NEAR AI) | Key configured, not yet called; notes wait in "pending" |
+| Notes for everyone invited, sharing by email | Working |
+| Transcription and note writing (NEAR AI) | Not connected; notes stay "pending" with their audio saved and encrypted, and asking about notes answers "unavailable" |
 | Notes from shared screens | Planned (stretch goal; Scribe-style capture is a reference) |
-| Payments (USDC top-ups) | Not connected; balance and welcome credits only |
-| Confidential compute (TEE, attestation) | Required before real users; see deployment docs |
+| Payments (USDC top-ups) | Not connected; balance and welcome credits only, and nothing is charged yet |
+| Confidential compute (TEE, attestation, master key release) | Required before real users; see [Privacy › Production requirements](../engineering/privacy-keys-and-sessions.md#production-requirements) |

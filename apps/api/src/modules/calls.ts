@@ -1,4 +1,4 @@
-import { NotesAudienceSchema, type CallAction, type CallEndResult, type CallState, type NotesAudience, type NotesMode } from '@alcove/api';
+import { type CallAction, type CallEndResult, type CallState } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../crypto';
@@ -7,6 +7,7 @@ import { ConflictError, NotFoundError, notFound } from '../errors';
 import { me } from './account';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
 import { MeetingManifest, findByCode, updateManifest } from './meetings';
+import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording } from './notes';
 import { log } from '../log';
@@ -16,7 +17,7 @@ const clog = log.child({ component: 'calls' });
 const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']) });
 const Stored = z.object({
   mic: z.boolean(), cam: z.boolean(), hand: z.boolean(), sharing: z.object({ title: z.string() }).nullable(),
-  notes: z.object({ status: z.enum(['off', 'on', 'paused']), mode: z.enum(['full', 'notes']), audience: NotesAudienceSchema, everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number() }),
+  notes: z.object({ status: z.enum(['off', 'on']), everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number() }),
   chat: z.array(z.object({ id: z.string(), text: z.string(), at: z.number() })),
   notices: z.array(Notice)
 });
@@ -43,41 +44,40 @@ async function view(o: Owner, db: Db, callId: string): Promise<CallState> {
   return {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' : 'ended',
-    participants: [{ id: o.ownerId, person, isMe: true, isHost: true, mic: s.mic, cam: s.cam, hand: s.hand }],
+    participants: [{ id: o.ownerId, person, isMe: true, isOrganizer: true, mic: s.mic, cam: s.cam, hand: s.hand }],
     sharing: s.sharing,
-    notes: { status: s.notes.status, mode: s.notes.mode, audience: s.notes.audience, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
+    notes: { status: s.notes.status, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
     chat: s.chat.map((m) => ({ id: m.id, from: person, isMe: true, text: m.text, at: m.at })),
-    notices: s.notices, canControlNotes: true
+    notices: s.notices, isOrganizer: true
   };
 }
 
-async function startNotes(o: Owner, db: Db, s: Stored, meetingId: string, title: string, mode: 'full' | 'notes'): Promise<Stored> {
+/** Notes on: the first time a note and its recording are created; after that a new segment starts. */
+async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingManifest>): Promise<Stored> {
   if (s.notes.recordingId) {
     await setRecordingState(o, db, s.notes.recordingId, 'recording');
-    return { ...s, notes: { ...s.notes, status: 'on', mode, everOn: true, segment: s.notes.status === 'off' ? s.notes.segment + 1 : s.notes.segment } };
+    return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment: s.notes.segment + 1 } };
   }
   const { noteId, recordingId } = await createNoteWithRecording(o, db,
-    (rid) => blankNote({ kind: 'call', title, keep: mode, audience: s.notes.audience, recordingId: rid, meetingId }),
+    (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests }),
     (nid) => createRecording(o, db, nid));
-  return { ...s, notes: { ...s.notes, status: 'on', mode, everOn: true, noteId, recordingId, segment: 0 } };
+  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0 } };
 }
 
-export async function join(o: Owner, code: string, opts: { mic: boolean; cam: boolean; notes?: NotesMode | undefined; audience?: NotesAudience | undefined }): Promise<CallState> {
+export async function join(o: Owner, code: string, opts: { mic: boolean; cam: boolean }): Promise<CallState> {
   const callId = await tx(o.pool, async (c) => {
     const meeting = await findByCode(o, code, c);
     if (!meeting) throw new NotFoundError('There’s no call with that code. Check the link and try again.');
     const live = await maybeOne(c, z.object({ call_id: z.string() }), `SELECT call_id FROM calls WHERE owner_id = $1 AND meeting_item_id = $2 AND state = 'live'`, [o.ownerId, meeting.itemId]);
     if (live) { clog.info('rejoined call', { callId: live.call_id, meetingId: meeting.itemId }); return live.call_id; }
     const id = id128();
-    const audience = opts.audience ?? meeting.manifest.audience;
-    const mode = opts.notes ?? (meeting.manifest.notes === 'ask' ? 'off' : meeting.manifest.notes);
-    let s: Stored = { mic: opts.mic, cam: opts.cam, hand: false, sharing: null, chat: [], notices: [], notes: { status: 'off', mode: 'full', audience, everOn: false, noteId: null, recordingId: null, segment: 0 } };
+    let s: Stored = { mic: opts.mic, cam: opts.cam, hand: false, sharing: null, chat: [], notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0 } };
     await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext) VALUES ($1,$2,$3,'live',now(),0,$4)`,
       [o.ownerId, id, meeting.itemId, sealJson(key(o, id), header(o, id), toJson(s))]);
-    if (mode !== 'off') s = notice(await startNotes(o, c, s, meeting.itemId, meeting.manifest.title, mode), 'You started notes. Everyone in the call can see they’re on.');
+    if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting), 'Notes are on. Everyone here can see that.');
     await save(o, c, id, s);
     await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
-    clog.info('call started', { callId: id, meetingId: meeting.itemId, mic: opts.mic, cam: opts.cam, notes: mode, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
+    clog.info('call started', { callId: id, meetingId: meeting.itemId, mic: opts.mic, cam: opts.cam, notes: s.notes.status, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
     return id;
   });
   return view(o, o.pool, callId);
@@ -95,27 +95,17 @@ export async function act(o: Owner, callId: string, a: CallAction): Promise<Call
       case 'hand': s = { ...s, hand: a.up }; break;
       case 'sharing': s = a.on ? notice({ ...s, sharing: { title: a.title ?? 'Your screen' } }, s.notes.status === 'on' ? 'You’re presenting. The recording keeps running.' : 'You’re presenting.', 'info') : { ...s, sharing: null }; break;
       case 'chat': s = { ...s, chat: [...s.chat, { id: id128(), text: a.text, at }] }; break;
-      case 'notes-start': {
-        if (s.notes.status === 'on') break;
-        const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-        s = notice(await startNotes(o, c, s, row.meeting_item_id, meeting.manifest.title, a.mode), 'You started notes. Everyone in the call can see they’re on.');
+      case 'notes': {
+        if (a.on === (s.notes.status === 'on')) break;
+        if (a.on) {
+          const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+          s = notice(await startNotes(o, c, s, meeting), 'You turned on notes. Everyone here can see that.');
+        } else {
+          if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'paused');
+          s = notice({ ...s, notes: { ...s.notes, status: 'off' } }, 'You turned off notes. What was written so far is kept.');
+        }
         break;
       }
-      case 'notes-pause':
-        if (s.notes.status !== 'on' || !s.notes.recordingId) throw new ConflictError('Notes aren’t on.', { context: { callId, notes: s.notes.status } });
-        await setRecordingState(o, c, s.notes.recordingId, 'paused');
-        s = notice({ ...s, notes: { ...s.notes, status: 'paused' } }, 'Notes paused. Nothing is recorded until you resume.');
-        break;
-      case 'notes-resume':
-        if (s.notes.status !== 'paused' || !s.notes.recordingId) throw new ConflictError('Notes aren’t paused.', { context: { callId, notes: s.notes.status } });
-        await setRecordingState(o, c, s.notes.recordingId, 'recording');
-        s = notice({ ...s, notes: { ...s.notes, status: 'on' } }, 'Notes resumed.');
-        break;
-      case 'notes-stop':
-        if (s.notes.status === 'off') break;
-        if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'paused');
-        s = notice({ ...s, notes: { ...s.notes, status: 'off' } }, 'Notes stopped. What was recorded so far is kept.');
-        break;
       case 'dismiss': s = { ...s, notices: s.notices.filter((n) => n.id !== a.id) }; break;
     }
     await save(o, c, callId, s);

@@ -4,27 +4,20 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CallEndResultSchema, CallLinkSchema, CallStateSchema, CeremonyStartSchema, CreditBalanceSchema,
-  CreditEventSchema, CreditPackSchema, MeetingSchema, NoteProgressSchema, NoteSchema, NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PasskeySchema,
-  PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RoomRecordingStateSchema, SessionSchema, SetupStepSchema, WeekStatsSchema, isAlcoveErrorCode,
+  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CallEndResultSchema, CallStateSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
+  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
   type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState
 } from '@alcove/api';
 import { z } from 'zod';
-import { b64u, browserPasskeys, localSecrets, prfSalt, randomBytes, type PasskeyDevice, type SecretStore } from './passkeys';
-
-export { browserPasskeys, localSecrets, type PasskeyDevice, type SecretStore } from './passkeys';
 
 export interface HttpOptions {
-  /** e.g. "/api" behind the web app's proxy, or https://api.alcove.app */
+  /** e.g. "/api" behind the web app's proxy, or https://api.alcove.solutions */
   baseUrl: string;
   fetch?: typeof fetch;
-  passkeys?: PasskeyDevice;
-  secrets?: SecretStore;
-  /** Label stored (encrypted) for new passkeys, e.g. "Chrome on Mac". */
-  deviceName?: () => string;
   /**
-   * Diagnostics: every request (debug), failure (warn/error) and passkey ceremony outcome. Fields
-   * are methods, paths, statuses, codes, durations, request IDs and capability flags; never bodies.
+   * Diagnostics: every request (debug) and failure (warn/error). Fields are methods, paths,
+   * statuses, codes, durations and request IDs; never bodies.
    */
   onEvent?: (e: ClientEvent) => void;
 }
@@ -37,14 +30,13 @@ export interface ClientEvent {
 const ErrorBodySchema = z.object({ code: z.string().optional(), message: z.string().optional(), requestId: z.string().optional() }).catch({});
 /** IDs in paths are random; call codes are join tokens, so they're masked in diagnostics. */
 const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code');
+const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const opId = () => b64u(randomBytes(16));
 
 export function createHttpApi(o: HttpOptions): AlcoveApi {
   const f = o.fetch ?? globalThis.fetch.bind(globalThis);
   const base = o.baseUrl.replace(/\/$/, '') + '/v1';
-  const passkeys = o.passkeys ?? browserPasskeys();
-  const secrets = o.secrets ?? localSecrets();
-  const deviceName = o.deviceName ?? (() => 'This device');
 
   const emit = (level: ClientEvent['level'], msg: string, context: ClientEvent['context']) => { try { o.onEvent?.({ level, msg, context }); } catch { /* diagnostics never break a request */ } };
   const parse = <S extends z.ZodType>(schema: S, data: unknown, what: string): z.infer<S> => {
@@ -71,8 +63,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       const e = ErrorBodySchema.parse(await res.json().catch(() => null));
       const code = isAlcoveErrorCode(e.code) ? e.code : 'unknown';
       const id = e.requestId ?? requestId;
-      // Signed-out and locked are ordinary states, not problems.
-      const level = res.status >= 500 ? 'error' : code === 'unauthenticated' || code === 'locked' ? 'debug' : 'warn';
+      // Being signed out is an ordinary state, not a problem.
+      const level = res.status >= 500 ? 'error' : code === 'unauthenticated' ? 'debug' : 'warn';
       emit(level, 'request failed', { ...where, status: res.status, code, requestId: id ?? null, ms: Date.now() - t0 });
       throw new AlcoveApiError(code, e.message ?? res.statusText, { ...where, status: res.status, requestId: id });
     }
@@ -104,74 +96,22 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
 
-  /**
-   * Every secret this browser has for a passkey, possibly none. The server decides which one the
-   * passkey uses, and it is the one that can say why an unlock failed (unknown passkey, missing key).
-   */
-  function secretsFor(credentialId: string, prf: Uint8Array | null): { prf?: string; deviceSecret?: string } {
-    const device = secrets.get(credentialId);
-    const out: { prf?: string; deviceSecret?: string } = {};
-    const key = usable(prf);
-    if (key) out.prf = b64u(key);
-    if (device) out.deviceSecret = b64u(device);
-    return out;
-  }
-  async function register(startPath: string, startBody: unknown) {
-    const start = await req(CeremonyStartSchema, 'POST', startPath, startBody);
-    const salt = await prfSalt();
-    const made = await passkeys.create(start.options, salt);
-    let prf = usable(made.prf);
-    // Some authenticators enable PRF at creation but only evaluate it on use: ask once more.
-    if (!prf && made.prfEnabled) prf = usable((await passkeys.get({ challenge: b64u(randomBytes(32)), userVerification: 'required' }, salt, [made.credential.id]).catch(() => ({ prf: null }))).prf);
-    // No usable PRF key: this passkey keeps its key in this browser instead. Never send neither.
-    if (!prf && !secrets.get(made.credential.id)) secrets.put(made.credential.id, randomBytes(32));
-    secrets.remember(made.credential.id);
-    const keys = secretsFor(made.credential.id, prf);
-    // Capability facts only: these explain most "passkey didn't work" reports without any key material.
-    emit('info', 'passkey created', { prfEnabled: made.prfEnabled, prfAtCreate: Boolean(usable(made.prf)), prf: Boolean(prf), keySource: keys.prf ? 'prf' : keys.deviceSecret ? 'device' : 'none', authenticatorAttachment: made.credential.authenticatorAttachment ?? null });
-    if (!keys.prf && !keys.deviceSecret) throw new AlcoveApiError('unavailable', 'This browser can’t store the key for a new passkey (storage is blocked). Allow site data for Alcove and try again.');
-    return { start, made, ...keys };
-  }
-  /** Fresh proof with an existing passkey, required before adding or removing passkeys. */
-  async function stepUp() {
-    const start = await req(CeremonyStartSchema, 'POST', '/passkeys/verify/start', {});
-    const used = await passkeys.get(start.options, await prfSalt());
-    await req(z.unknown(), 'POST', '/passkeys/verify/finish', { challengeId: start.challengeId, credential: used.credential });
-  }
-
   return {
     auth: {
       getSession: () => req(SessionSchema.nullable(), 'GET', '/session'),
-      createAccount: async (name) => {
-        const { start, made, ...keys } = await register('/auth/register/start', { name });
-        return req(SessionSchema, 'POST', '/auth/register/finish', { challengeId: start.challengeId, credential: made.credential, ...keys, deviceName: deviceName() });
-      },
-      unlock: async () => {
-        const start = await req(CeremonyStartSchema, 'POST', '/auth/unlock/start', {});
-        // Offer only Alcove passkeys made in this browser when we know them; otherwise any (e.g. a synced passkey).
-        const known = secrets.known();
-        const used = await passkeys.get(start.options, await prfSalt(), known.length ? known : undefined);
-        secrets.remember(used.credential.id);
-        emit('info', 'passkey used to unlock', { knownCredentials: known.length, prf: Boolean(usable(used.prf)), deviceSecret: Boolean(secrets.get(used.credential.id)) });
-        return req(SessionSchema, 'POST', '/auth/unlock/finish', { challengeId: start.challengeId, credential: used.credential, ...secretsFor(used.credential.id, used.prf) });
-      },
-      lock: async () => { await req(z.unknown(), 'POST', '/session/lock', {}); }
+      signInUrl: (provider) => `${base}/auth/${provider}`,
+      signIn: (provider, opts) => req(SignInResultSchema, 'POST', '/auth/sign-in', { provider, ...(opts?.email ? { email: opts.email } : {}) }),
+      signOut: async () => { await req(z.unknown(), 'POST', '/session/sign-out', {}); }
     },
     account: {
       preferences: () => req(PreferencesSchema, 'GET', '/account/preferences'),
-      updatePreferences: (p) => req(PreferencesSchema, 'PATCH', '/account/preferences', p),
-      rename: (name) => req(SessionSchema, 'POST', '/account/name', { name }),
-      passkeys: () => req(z.array(PasskeySchema), 'GET', '/passkeys'),
-      addPasskey: async () => {
-        await stepUp();
-        const { start, made, ...keys } = await register('/passkeys/start', {});
-        return req(PasskeySchema, 'POST', '/passkeys/finish', { challengeId: start.challengeId, credential: made.credential, ...keys, deviceName: deviceName() });
-      },
-      removePasskey: async (id) => {
-        await stepUp();
-        await req(z.unknown(), 'DELETE', `/passkeys/${encodeURIComponent(id)}`, {});
-      },
-      setupSteps: () => req(z.array(SetupStepSchema), 'GET', '/account/setup')
+      updatePreferences: (p) => req(PreferencesSchema, 'PATCH', '/account/preferences', p)
+    },
+    people: {
+      // The query goes in the body so it never appears in URLs or access logs.
+      search: (query) => req(z.array(PersonSuggestionSchema), 'POST', '/people/search', { query }),
+      team: () => req(TeamSchema.nullable(), 'GET', '/team'),
+      inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails })
     },
     meetings: {
       upcoming: () => req(z.array(MeetingSchema), 'GET', '/meetings?range=upcoming'),
@@ -180,12 +120,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       byCode: (code) => req(MeetingSchema.nullable(), 'GET', `/calls/${encodeURIComponent(code)}/meeting`),
       create: (input) => req(MeetingSchema, 'POST', '/meetings', input),
       update: (id, input) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, input),
-      setNotes: (id, notes) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, { notes }),
       cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); }
     },
-    links: { create: (notes) => req(CallLinkSchema, 'POST', '/links', { notes }) },
     calls: {
-      createInstant: () => req(z.object({ code: z.string() }), 'POST', '/calls', {}),
+      startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       join: async (code, opts) => new HttpCall(await req(CallStateSchema, 'POST', `/calls/${encodeURIComponent(code)}/join`, opts), {
         act: (id, a) => req(CallStateSchema, 'POST', `/live/calls/${id}/actions`, a),
         audio: async (id, p) => parse(CallStateSchema, await audio(`/live/calls/${id}/audio`, p), 'call state'),
@@ -212,15 +150,12 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         const parts = await req(z.array(AnswerPartSchema), 'POST', `/notes/${encodeURIComponent(noteId)}/ask`, { question });
         yield* parts;
       },
+      share: (id, emails) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails }),
       delete: async (id) => { await req(z.unknown(), 'DELETE', `/notes/${encodeURIComponent(id)}`); }
     },
     credits: {
-      balance: () => req(CreditBalanceSchema, 'GET', '/credits'),
-      history: () => req(z.array(CreditEventSchema), 'GET', '/credits/history'),
-      packs: () => req(z.array(CreditPackSchema), 'GET', '/credits/packs'),
-      purchase: (packId) => req(CreditBalanceSchema, 'POST', '/credits/purchases', { packId })
+      balance: () => req(CreditBalanceSchema, 'GET', '/credits')
     },
-    stats: { week: () => req(WeekStatsSchema, 'GET', '/stats/week') },
     diagnostics: {
       // Straight to fetch, not through send(): a failed report must not produce another report.
       report: async (entries) => {
@@ -229,11 +164,6 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     }
   };
-}
-
-/** A PRF key is usable only if it is a full, non-zero 32 bytes. */
-function usable(prf: Uint8Array | null): Uint8Array | null {
-  return prf && prf.length >= 32 && prf.some((b) => b !== 0) ? prf.slice(0, 32) : null;
 }
 
 /* ---------- live call: server is the source of truth; the client keeps the clock ticking ---------- */
@@ -274,10 +204,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   setHand = (up: boolean) => this.act({ type: 'hand', up }, (s) => this.me(s, { hand: up }));
   setSharing = (on: boolean, title?: string) => this.act(title ? { type: 'sharing', on, title } : { type: 'sharing', on }, (s) => ({ ...s, sharing: on ? { title: title ?? 'Your screen' } : null }));
   sendChat = (text: string) => { if (text.trim()) this.act({ type: 'chat', text }); };
-  startNotes = (mode: 'full' | 'notes') => this.act({ type: 'notes-start', mode });
-  pauseNotes = () => this.act({ type: 'notes-pause' });
-  resumeNotes = () => this.act({ type: 'notes-resume' });
-  stopNotes = () => this.act({ type: 'notes-stop' });
+  setNotes = (on: boolean) => this.act({ type: 'notes', on });
   dismissNotice = (id: string) => this.act({ type: 'dismiss', id }, (s) => ({ ...s, notices: s.notices.filter((n) => n.id !== id) }));
   appendAudio = async (p: AudioPiece) => { this.apply(await this.t.audio(this.state.callId, p)); };
   leave = async () => {

@@ -8,7 +8,7 @@ How to find out what went wrong, anywhere in Alcove, without logging anything pr
   In the browser it is `AlcoveApiError.requestId` (`errorRequestId(e)` from `@alcove/api`).
 - Search the API log for that ID. Every line written while handling the request carries it: the access
   line, the error line (class, code, status, context, stack and cause chain), each database query and
-  object-store call, and the module events (`unlocked`, `call started`, `audio piece stored`, ...).
+  object-store call, and the module events (`signed in`, `call started`, `audio piece stored`, ...).
 - Browser warnings and errors are sent to the API (`POST /v1/telemetry`) and appear in the same log
   with `source: "browser"`, including the request ID of any failed request they mention.
 
@@ -20,15 +20,15 @@ script fails the build on it).
 ```ts
 import { log } from '../log';
 const clog = log.child({ component: 'calls' });
-clog.info('call started', { callId, meetingId, notes: mode });
+clog.info('call started', { callId, meetingId, notes: s.notes.status });
 clog.warn('object delete failed; queued for retry', { objectId, err: e });
 ```
 
 | Level | Use for |
 | --- | --- |
-| `debug` | Every query and object call with timing, request starts, audio pieces, ceremony details |
-| `info` | Things that happened: sessions opened/closed, account created, call started/ended, ordinary refusals (404, 409, 401) |
-| `warn` | Something is off but handled: failed passkey verification, forbidden requests, retries, slow queries (>250 ms), slow object calls (>1 s) |
+| `debug` | Every query and object call with timing, request starts, audio pieces, people searches |
+| `info` | Things that happened: sign-ins, accounts created, sessions opened and ended, calls started and ended, notes shared or deleted, ordinary refusals (400, 401, 404, 409) |
+| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet, retries, slow queries (>250 ms), slow object calls (>1 s) |
 | `error` | We failed: 5xx, integrity failures, lost data, maintenance failures, uncaught exceptions |
 
 - **Context.** The request middleware sets `requestId`, `method` and `path` with AsyncLocalStorage; the
@@ -36,8 +36,8 @@ clog.warn('object delete failed; queued for retry', { objectId, err: e });
   work. Errors go in `err` and are serialized with their `cause` chain.
 - **Config.** `LOG_LEVEL` (`debug | info | warn | error | silent`, default `info`) and `LOG_FORMAT`
   (`pretty` for a terminal, `json` in production, where Cloud Run parses each line).
-- **Lifecycle.** Startup, migrations, listening, maintenance runs, `SIGTERM`/`SIGINT` shutdown (sessions
-  zeroed, pool closed), unhandled rejections and uncaught exceptions are all logged.
+- **Lifecycle.** Startup, migrations, listening, maintenance runs, `SIGTERM`/`SIGINT` shutdown (server and
+  pool closed), unhandled rejections and uncaught exceptions are all logged.
 
 ## Errors: `apps/api/src/errors.ts`
 
@@ -48,7 +48,6 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | --- | --- | --- | --- |
 | `ValidationError` | `invalid` | 400 | info |
 | `AuthError` | `unauthenticated` | 401 | info |
-| `LockedError` | `locked` | 423 | info |
 | `ForbiddenError` | `forbidden` | 403 | warn |
 | `KeyError` | `key-unavailable` | 403 | warn |
 | `IntegrityError` | `key-unavailable` | 403 | error |
@@ -58,8 +57,8 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | `InternalError` (`DatabaseError`, `ObjectStoreError`) | `unknown` | 500 | error |
 
 ```ts
-throw new ConflictError('Notes aren’t on.', { context: { callId, notes: s.notes.status } });
-throw new AuthError('That passkey couldn’t be verified.', { cause: e, level: 'warn', context: { step: 'verify-assertion' } });
+throw new ConflictError('Notes aren’t recording right now.', { context: { callId, notes: state.notes.status } });
+throw new KeyError('This key can’t open that data.', { cause: err, context: { scopeId } });
 ```
 
 - The database layer wraps every failed query in `DatabaseError` with the statement's first words and
@@ -68,14 +67,14 @@ throw new AuthError('That passkey couldn’t be verified.', { cause: e, level: '
 - `app.onError` is the only place errors become responses: one log line at the error's level, and the
   client gets the code, the safe message and the request ID. Unexpected failures never leak their
   internal message.
-- Zod failures report field paths and issue codes only (no values); on passkey routes they log at warn,
-  which is how a password manager's malformed credential shows up.
+- Zod failures become a `ValidationError` that reports field paths and issue codes only (no values),
+  logged at info.
 
 ## Browser: `apps/web/src/lib/log.ts`
 
 The same four levels. `lib/api.ts` connects it to the API client's `onEvent` hook, so every failed
-request is logged with method, path, status, code, duration and request ID; passkey ceremonies log
-capability facts (PRF enabled, PRF key returned, key source, authenticator attachment).
+request is logged with method, path, status, code, duration and request ID. A `401 unauthenticated` is
+logged at debug: being signed out is an ordinary state.
 
 - Console shows `debug`+ in development and `warn`+ in production. Set `localStorage["alcove:log"] =
   "debug"` to see everything in a deployed app. `recentLogs()` holds the last 200 entries.
@@ -90,17 +89,17 @@ capability facts (PRF enabled, PRF key returned, key source, authenticator attac
 
 Logs are operator-readable, so they get the same rule as database columns: nothing readable.
 
-- Log IDs, codes, states, counts, sizes, durations and flags. Never titles, names, guests, chat, labels,
+- Log IDs, codes, states, counts, sizes, durations and flags. Never titles, names, emails, guests, chat,
   search terms, notes, transcripts, audio, request bodies or key material.
-- Session IDs are bearer secrets and are never logged; `ownerId` identifies a session. Credential IDs
-  appear as their first 8 characters. Call codes are join tokens: paths show `/v1/calls/:code`.
+- Session IDs are bearer secrets and are never logged; `ownerId` identifies a session. Call codes are join
+  tokens: paths show `/v1/calls/:code`.
 - SQL is logged as static text; parameters never are.
-- pino redacts common secret field names (`secret`, `prf`, `deviceSecret`, `root`, `key`, `cookie`,
-  `authorization`, `body`, ...) as a backstop; the browser logger drops key-like and content-like fields
-  and cuts strings to 300 characters.
+- pino redacts common secret field names (`secret`, `root`, `wrapKey`, `key`, `krec`, `cookie`,
+  `authorization`, `body`, `plaintext`, ...) as a backstop; the browser logger drops key-like and
+  content-like fields and cuts strings to 300 characters.
 - The privacy-at-rest integration test runs at debug level and checks the captured log for every
-  canary (in several encodings), every PRF and device secret sent on the wire, the session cookie and
-  the call code.
+  canary (names, emails, titles, guests, chat, audio and search terms, in several encodings), every
+  session cookie the browser received, and the call code.
 
 ## Tests
 

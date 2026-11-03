@@ -10,7 +10,16 @@ const EnvSchema = z.object({
   /** 127.0.0.1 locally; 0.0.0.0 in a container. */
   API_HOST: z.string().default('127.0.0.1'),
   WEB_ORIGIN: z.string().url(),
-  RP_ID: z.string(),
+  /** The API as browsers reach it, e.g. https://api.alcove.solutions, or http://localhost:3000/api behind the dev proxy. Google returns here. */
+  API_URL: z.string().url(),
+  /** Sign-in with Google. Without both, the Google button explains that it isn't set up here. */
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  /** Google's OpenID Connect issuer. Tests point it at a local stand-in (src/testing/fake-google.ts). */
+  GOOGLE_ISSUER: z.string().url().default('https://accounts.google.com'),
+  /** Wraps every account's root key. Production: released only to the attested confidential VM. */
+  KMASTER: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KMASTER must be 32 bytes, base64url'),
+  /** Seals billing state. Separate from KMASTER: billing never needs owner keys. */
   KSERVICE: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KSERVICE must be 32 bytes, base64url'),
   NEAR_AI_API_KEY: z.string().optional(),
   NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),

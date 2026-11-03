@@ -1,97 +1,97 @@
 import type { Person, PortraitHair, PortraitStyle } from '@alcove/api';
-import type { ReactNode } from 'react';
+import type { CSSProperties } from 'react';
 import { cn } from '../cn';
 
-/** Illustrated portrait, drawn on a 64px grid. Used at 20px in stacks and at 400px in call tiles. */
-export function PortraitArt({ p, background = true }: { p: PortraitStyle; background?: boolean }) {
-  const backs: Partial<Record<PortraitHair, ReactNode>> = {
-    long: <path d="M18 30c0-11 6-17.5 14-17.5S46 19 46 30v20H18z" fill={p.hair} />,
-    bob: <path d="M18.5 29c0-10.5 6-16.5 13.5-16.5S45.5 18.5 45.5 29v10.5c0 1.5-1.2 2.5-2.7 2.5H21.2c-1.5 0-2.7-1-2.7-2.5z" fill={p.hair} />,
-    afro: <circle cx="32" cy="24" r="16" fill={p.hair} />,
-    bun: <circle cx="32" cy="11" r="5.2" fill={p.hair} />
-  };
-  const back = backs[p.style];
-  const fronts: Record<PortraitHair, ReactNode> = {
-    short: <path d="M20.6 27.5C20 18 25.6 14 32 14s12 4 11.4 13.5c-1.8-4.6-6-7-11.4-7s-9.6 2.4-11.4 7z" fill={p.hair} />,
-    swept: <path d="M20.4 28c-.8-9.6 4.6-14.2 12-14.2 6.6 0 11.4 3.6 11.2 11.2-4.2-1-9.8-3.4-13.4-6.6-1.6 4-5.6 7.2-9.8 9.6z" fill={p.hair} />,
-    curly: <g fill={p.hair}>{[[21.5, 22], [24.5, 17.6], [29, 15], [34, 14.8], [38.8, 16.8], [42.2, 21]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="4.4" />)}</g>,
-    long: <path d="M20.6 28.5C20.4 18.5 25.6 14 32 14s11.6 4.5 11.4 14.5C40 24 36 21.4 31 20.6c-2.6 3.4-6.4 6-10.4 7.9z" fill={p.hair} />,
-    bob: <path d="M20.6 29C20 18.8 25.6 14 32.4 14c6.4 0 11.4 4.4 11 13.6-5.8-.6-11-3-14.2-6.4-1.6 3.6-4.6 6.2-8.6 7.8z" fill={p.hair} />,
-    afro: <path d="M21 26c1-7 5.4-10.4 11-10.4S42 19 43 26c-3.4-2.6-7-3.6-11-3.6S24.4 23.4 21 26z" fill={p.hair} />,
-    bun: <path d="M20.8 27.4C20.4 18.6 25.8 14.2 32 14.2s11.6 4.4 11.2 13.2c-2.6-4-6.6-6.2-11.2-6.2s-8.6 2.2-11.2 6.2z" fill={p.hair} />
-  };
-  const front = fronts[p.style];
+/** Darker or lighter by `amt` (-1..1) of full scale, for shading. */
+function shade(hex: string, amt: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  if (Number.isNaN(n)) return hex;
+  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
+  const r = f(n >> 16), g = f((n >> 8) & 255), b = f(n & 255);
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
+}
+
+const HAIR_BACK: Partial<Record<PortraitHair, string>> = {
+  long: 'M62 100C57 58 78 49 100 49C122 49 143 58 138 100L147 176C135 168 122 162 114 156H86C78 162 65 168 53 176Z',
+  bob: 'M61 102C58 62 79 51 100 51C121 51 142 62 139 102L140 132C132 130 126 125 124 119H76C74 125 68 130 60 132Z',
+  wavy: 'M63 106C57 64 79 51 100 51C122 51 143 64 137 106C142 120 134 129 129 134C127 121 125 112 123 106H77C75 114 73 123 71 134C65 127 58 119 63 106Z'
+};
+const HAIR_FRONT: Partial<Record<PortraitHair, string>> = {
+  long: 'M100 57C80 57 67 70 66 99C71 84 81 70 100 65ZM100 57C120 57 133 70 134 99C129 84 119 70 100 65Z',
+  short: 'M66 95C63 66 81 53 102 53C124 53 139 67 135 95C132 82 126 74 115 72C103 70 88 72 78 78C72 82 68 88 66 95ZM83 60C92 49 113 49 123 58C112 55 98 57 89 64Z',
+  bun: 'M66 97C64 68 80 56 100 56C120 56 136 68 134 97C130 80 118 68 100 68C82 68 70 80 66 97Z',
+  buzz: 'M67 93C66 68 82 58 100 58C118 58 134 68 133 93C128 78 116 70 100 70C84 70 72 78 67 93Z',
+  side: 'M66 95C64 66 82 54 104 55C126 56 138 70 134 95C130 79 120 69 106 70L95 66C82 70 70 80 66 95Z',
+  bob: 'M68 92C70 66 84 57 100 57C116 57 130 66 132 92C124 81 112 76 100 76C88 76 76 81 68 92Z',
+  wavy: 'M68 95C66 70 82 58 100 58C117 58 132 66 134 90C126 76 116 72 104 74C94 70 80 78 68 95Z'
+};
+const CURLS_BACK = [[69, 86, 16], [79, 65, 17], [100, 57, 18], [121, 65, 17], [131, 86, 16], [63, 108, 13], [137, 108, 13], [68, 127, 11], [132, 127, 11]] as const;
+const CURLS_FRONT = [[83, 70, 10], [100, 65, 11], [117, 70, 10]] as const;
+
+/** One illustrated person in a 200 × 200 box centred on x = 100. */
+export function PortraitArt({ p }: { p: PortraitStyle }) {
+  const skinDark = shade(p.skin, -0.12);
+  const hairDark = shade(p.hair, -0.06);
+  const shirtDark = shade(p.shirt, -0.1);
+  const back = HAIR_BACK[p.style];
+  const front = HAIR_FRONT[p.style];
   return (
-    <>
-      {background && <rect width="64" height="64" fill={p.bg} />}
-      {back}
-      <path d="M9 64c1.6-11 10-17 23-17s21.4 6 23 17z" fill={p.shirt} />
-      <path d="M27.6 38h8.8v9.4c0 2.4-2 4-4.4 4s-4.4-1.6-4.4-4z" fill={p.skin} style={{ filter: 'brightness(.9)' }} />
-      <ellipse cx="20.8" cy="30" rx="2" ry="2.8" fill={p.skin} />
-      <ellipse cx="43.2" cy="30" rx="2" ry="2.8" fill={p.skin} />
-      <ellipse cx="32" cy="29" rx="11.4" ry="13.2" fill={p.skin} />
-      {p.beard && <path d="M20.8 29.5c.6 10.4 5.4 14 11.2 14s10.6-3.6 11.2-14c-1.8 4.8-5 6.6-11.2 6.6S22.6 34.3 20.8 29.5z" fill={p.hair} />}
-      {front}
-      <circle cx="27.6" cy="30" r="1.35" fill="#2A1D15" />
-      <circle cx="36.4" cy="30" r="1.35" fill="#2A1D15" />
-      {!p.beard && <path d="M29.6 35.4q2.4 1.8 4.8 0" fill="none" stroke="#2A1D15" strokeWidth="1.2" strokeLinecap="round" opacity=".75" />}
-      {p.glasses && <g fill="none" stroke="#2A1D15" strokeWidth="1.1"><circle cx="27.4" cy="30" r="3.4" /><circle cx="36.6" cy="30" r="3.4" /><path d="M30.8 30h2.4" /></g>}
-    </>
+    <g>
+      {p.style === 'curly' ? <g fill={p.hair}>{CURLS_BACK.map(([x, y, r]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={r} />)}</g> : back && <path d={back} fill={p.hair} />}
+      <path d="M26 240C28 180 61 152 100 152C139 152 172 180 174 240Z" fill={p.shirt} />
+      <path d="M26 240C28 180 61 152 100 152C76 160 56 186 52 240Z" fill={shirtDark} opacity=".35" />
+      <path d="M88 122V148C92 153 108 153 112 148V122Z" fill={p.skin} />
+      <path d="M88 130C95 138 105 138 112 130V124C105 132 95 132 88 124Z" fill={skinDark} opacity=".45" />
+      <path d="M85 151C90 160 110 160 115 151C110 154 90 154 85 151Z" fill={shirtDark} opacity=".5" />
+      <ellipse cx="67" cy="101" rx="5.5" ry="8" fill={skinDark} />
+      <ellipse cx="133" cy="101" rx="5.5" ry="8" fill={skinDark} />
+      <ellipse cx="100" cy="97" rx="33" ry="38.5" fill={p.skin} />
+      <path d="M100 58.5C118 58.5 133 75 133 97C133 120 118 135.5 100 135.5C112 128 120 112 120 97C120 80 112 66 100 58.5Z" fill={skinDark} opacity=".18" />
+      {p.beard && <><path d="M69 106C71 131 85 144 100 144C115 144 129 131 131 106C127 119 116 126 100 127C84 126 73 119 69 106Z" fill={p.hair} opacity=".92" /><path d="M90 118Q100 113 110 118Q100 121 90 118Z" fill={p.hair} /></>}
+      <circle cx="83" cy="113" r="6.5" fill="#F07C7C" opacity=".16" />
+      <circle cx="117" cy="113" r="6.5" fill="#F07C7C" opacity=".16" />
+      <ellipse cx="88" cy="100" rx="3.1" ry="3.8" fill="#2A201B" />
+      <ellipse cx="112" cy="100" rx="3.1" ry="3.8" fill="#2A201B" />
+      <circle cx="89.1" cy="98.8" r=".9" fill="#fff" opacity=".7" />
+      <circle cx="113.1" cy="98.8" r=".9" fill="#fff" opacity=".7" />
+      <path d="M80 89.5Q88 85 95.5 88.5M104.5 88.5Q112 85 120 89.5" stroke={hairDark} strokeWidth="2.6" strokeLinecap="round" fill="none" opacity=".9" />
+      <path d="M100 103Q96.5 112 101 114.5" stroke={skinDark} strokeWidth="2" strokeLinecap="round" fill="none" opacity=".75" />
+      <path d="M91 121.5Q100 128 109 121.5" stroke="#7A3A2E" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      {p.style === 'curly' ? <g fill={p.hair}>{CURLS_FRONT.map(([x, y, r]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={r} />)}</g> : front && <path d={front} fill={p.hair} />}
+      {p.style === 'bun' && <><circle cx="100" cy="47" r="15" fill={p.hair} /><ellipse cx="100" cy="60" rx="9" ry="3" fill={hairDark} opacity=".6" /></>}
+      {p.glasses && (
+        <>
+          <g fill="rgb(255 255 255 / .12)" stroke="#2A201B" strokeWidth="2.2"><rect x="76.5" y="92" width="21" height="16" rx="6" /><rect x="102.5" y="92" width="21" height="16" rx="6" /></g>
+          <path d="M97.5 99.5H102.5" stroke="#2A201B" strokeWidth="2.2" />
+        </>
+      )}
+      {p.earrings && <><circle cx="67" cy="112.5" r="2.7" fill="#FFC35E" /><circle cx="133" cy="112.5" r="2.7" fill="#FFC35E" /></>}
+    </g>
   );
 }
 
-const TILE = ['#E8DCCB', '#DCE4DA', '#E4DAE6', '#DAE1EA'];
-type Who = Pick<Person, 'name'> & { portrait?: PortraitStyle | undefined; email?: string | undefined };
+export type AvatarPerson = Pick<Person, 'name'> & { email?: string | undefined; photoUrl?: string | undefined; portrait?: PortraitStyle | undefined };
 
-export type { Who as AvatarPerson };
-export function Avatar({ person, size = 30, ring = true, className }: { person: Who; size?: number; ring?: boolean; className?: string }) {
+/** A round avatar: the person's photo, else their illustrated portrait, else their initial. */
+export function Avatar({ person, size = 32, className, style }: { person: AvatarPerson; size?: number; className?: string; style?: CSSProperties }) {
   const label = person.name || person.email || '?';
-  const h = [...label].reduce((s, c) => s + c.charCodeAt(0), 0);
   return (
-    <span
-      title={label}
-      className={cn('relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-display font-bold text-[#3A322B]', ring && 'ring-2 ring-[var(--avatar-ring,var(--card))]', className)}
-      style={{ width: size, height: size, fontSize: size * 0.42, background: person.portrait ? undefined : TILE[h % TILE.length] }}
-    >
-      {person.portrait ? <svg viewBox="0 0 64 64" className="size-full" aria-hidden="true"><PortraitArt p={person.portrait} /></svg> : label[0]?.toUpperCase()}
+    <span className={cn('av', className)} style={{ '--s': `${size}px`, ...style }} title={label}>
+      {person.photoUrl ? <img src={person.photoUrl} alt="" draggable={false} referrerPolicy="no-referrer" />
+        : person.portrait ? <svg viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" fill={person.portrait.bg} /><g transform="translate(0 6)"><PortraitArt p={person.portrait} /></g></svg>
+          : <span className="grid size-full place-items-center font-display font-bold text-ink-2" style={{ fontSize: size * 0.42 }}>{label.charAt(0).toUpperCase()}</span>}
     </span>
   );
 }
 
-export function AvatarStack({ people, size = 26, max = 4, className }: { people: Who[]; size?: number; max?: number; className?: string }) {
+/** Overlapping faces, with "+n" when there are more than `max`. */
+export function Faces({ people, size = 28, max = 4, className }: { people: AvatarPerson[]; size?: number; max?: number; className?: string }) {
   const shown = people.slice(0, max);
   const more = people.length - shown.length;
   return (
-    <span className={cn('group/stack inline-flex items-center', className)}>
-      {shown.map((p, i) => (
-        <span key={(p.email ?? p.name) + i} className="transition-transform duration-300 ease-soft group-hover/stack:translate-x-[calc(var(--i)*2px)]" style={{ marginLeft: i ? -size * 0.28 : 0, '--i': i }}>
-          <Avatar person={p} size={size} />
-        </span>
-      ))}
-      {more > 0 && (
-        <span className="inline-flex items-center justify-center rounded-full bg-well font-semibold text-ink-2 ring-2 ring-[var(--avatar-ring,var(--card))]" style={{ width: size, height: size, marginLeft: -size * 0.28, fontSize: size * 0.36 }}>+{more}</span>
-      )}
+    <span className={cn('faces', className)} style={{ '--s': `${size}px` }}>
+      {shown.map((p, i) => <Avatar key={`${p.email ?? p.name}-${i}`} person={p} size={size} />)}
+      {more > 0 && <span className="more">+{more}</span>}
     </span>
-  );
-}
-
-/** A camera tile: a softly lit room behind the person, who breathes a little and moves when talking. */
-export function CameraScene({ person, speaking = false, className }: { person: Who; speaking?: boolean; className?: string }) {
-  const p = person.portrait;
-  const room = p?.room ?? ['#9C8A78', '#3A322B', '#D8C7B4'];
-  return (
-    <div className={cn('absolute inset-0 overflow-hidden', className)} style={{ background: `linear-gradient(170deg, ${room[1]}, #0F0C0A 92%)` }}>
-      <i className="absolute right-[-4%] top-[-10%] h-[60%] w-[46%] rounded-full opacity-85 blur-[46px] animate-[drift_9s_ease-in-out_infinite_alternate]" style={{ background: room[2], '--dx': '-6%', '--dy': '5%' }} />
-      <i className="absolute left-[-14%] top-[10%] h-[56%] w-[60%] rounded-full opacity-85 blur-[46px] animate-[drift_9s_ease-in-out_-4s_infinite_alternate]" style={{ background: room[0], '--dx': '7%', '--dy': '-4%' }} />
-      <span className="absolute inset-x-0 bottom-[30%] h-px bg-white/[.07]" />
-      {p ? (
-        <svg viewBox="8 6 48 58" preserveAspectRatio="xMidYMax meet" aria-hidden="true"
-          className={cn('absolute bottom-0 left-1/2 h-[74%] w-auto -translate-x-1/2 origin-bottom drop-shadow-[0_20px_40px_rgba(0,0,0,.35)]', speaking ? 'animate-[talk_.9s_ease-in-out_infinite]' : 'animate-breathe')}>
-          <PortraitArt p={p} background={false} />
-        </svg>
-      ) : (
-        <div className="absolute inset-0 grid place-items-center"><Avatar person={person} size={104} ring={false} /></div>
-      )}
-    </div>
   );
 }

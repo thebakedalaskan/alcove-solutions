@@ -1,16 +1,21 @@
-import { TooltipProvider, ThemeProvider, ToastProvider, themeBootScript } from '@alcove/ui';
+import { EmptyState, ThemeProvider, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
+import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import css from '~/styles/app.css?url';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
-    meta: [{ charSet: 'utf-8' }, { name: 'viewport', content: 'width=device-width, initial-scale=1' }, { title: 'Alcove' }, { name: 'theme-color', content: '#100E0C' }],
+    meta: [
+      { charSet: 'utf-8' },
+      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      { title: 'Alcove' },
+      { name: 'description', content: 'Private video calls that take their own notes.' }
+    ],
     links: [
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
-      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Geist+Mono:wght@400;500;600&family=Onest:wght@400;500;600;700&display=swap' },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800;900&family=Onest:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap' },
       { rel: 'stylesheet', href: css },
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }
     ],
@@ -18,11 +23,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   }),
   shellComponent: Document,
   component: Root,
-  notFoundComponent: () => (
-    <div className="grid min-h-screen place-items-center p-6 text-center">
-      <div><h1 className="text-4xl">Nothing here</h1><p className="mt-2 text-ink-2">That page doesn’t exist. <a className="font-semibold underline" href="/">Go home</a></p></div>
-    </div>
-  )
+  notFoundComponent: NotFound
 });
 
 function Document({ children }: { children: ReactNode }) {
@@ -46,5 +47,13 @@ function Root() {
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
+  );
+}
+
+function NotFound() {
+  return (
+    <main className="grid min-h-screen place-items-center p-6">
+      <EmptyState title="Nothing here" action={<Link to="/" className="btn btn-secondary">Go home</Link>}>That page doesn’t exist, or it was deleted.</EmptyState>
+    </main>
   );
 }

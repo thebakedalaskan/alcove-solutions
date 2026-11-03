@@ -1,34 +1,53 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 
-interface ToastItem { id: number; text: string; icon: IconName }
-const Ctx = createContext<(text: string, icon?: IconName) => void>(() => {});
+export interface ToastOptions {
+  /** `false` for no icon. */
+  icon?: IconName | false | undefined;
+  action?: { label: string; onClick: () => void } | undefined;
+  ms?: number | undefined;
+}
+type Push = (text: ReactNode, o?: ToastOptions) => void;
+interface ToastItem { id: number; text: ReactNode; o: ToastOptions }
 
+const PushCtx = createContext<Push>(() => {});
+const RaiseCtx = createContext<(raised: boolean) => void>(() => {});
+
+/** Short confirmations at the bottom of the screen, with an optional action such as Undo. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
+  const [raised, setRaised] = useState(false);
   const n = useRef(0);
-  const push = useCallback((text: string, icon: IconName = 'check') => {
+  const close = useCallback((id: number) => setItems((s) => s.filter((t) => t.id !== id)), []);
+  const push = useCallback<Push>((text, o = {}) => {
     const id = ++n.current;
-    setItems((s) => [...s.slice(-2), { id, text, icon }]);
-    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), 2800);
-  }, []);
-  const value = useMemo(() => push, [push]);
+    setItems((s) => [...s.slice(-2), { id, text, o }]);
+    setTimeout(() => close(id), o.ms ?? 3600);
+  }, [close]);
   return (
-    <Ctx.Provider value={value}>
-      {children}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-[70] flex flex-col items-center gap-2">
-        <AnimatePresence initial={false}>
-          {items.map((t) => (
-            <motion.div key={t.id} layout initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 34 }}
-              className="pointer-events-auto flex items-center gap-2.5 rounded-[14px] bg-[#17140F] px-4 py-[11px] text-sm font-medium text-[#F5F1EA] shadow-float dark:bg-[#F5F1EA] dark:text-[#17140F]">
-              <Icon name={t.icon} className="size-[18px]" />{t.text}
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-    </Ctx.Provider>
+    <PushCtx.Provider value={push}>
+      <RaiseCtx.Provider value={setRaised}>
+        {children}
+        <div aria-live="polite" className={cn('toasts', raised && 'on-stage')}>
+          <AnimatePresence initial={false}>
+            {items.map((t) => (
+              <motion.div key={t.id} layout className="toast" initial={{ opacity: 0, y: 14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }} transition={{ type: 'spring', stiffness: 520, damping: 34 }}>
+                {t.o.icon !== false && <Icon name={t.o.icon ?? 'check'} size={17} />}
+                <span>{t.text}</span>
+                {t.o.action && <button type="button" onClick={() => { t.o.action?.onClick(); close(t.id); }}>{t.o.action.label}</button>}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      </RaiseCtx.Provider>
+    </PushCtx.Provider>
   );
 }
-export const useToast = () => useContext(Ctx);
+export const useToast = (): Push => useContext(PushCtx);
+/** Lifts toasts above a bottom control bar while the calling screen is mounted. */
+export function useRaisedToasts() {
+  const set = useContext(RaiseCtx);
+  useEffect(() => { set(true); return () => set(false); }, [set]);
+}

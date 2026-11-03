@@ -9,3 +9,4 @@ export * from './components/toast';
 export * from './components/motion';
 export * from './components/theme';
 export * from './components/illustrations';
+export * from './components/empty';

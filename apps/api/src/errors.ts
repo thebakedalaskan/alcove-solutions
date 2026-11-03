@@ -6,8 +6,7 @@
  *
  *   AppError                code             status level  meaning
  *   ├─ ValidationError      invalid          400    info   bad input from the client
- *   ├─ AuthError            unauthenticated  401    info   no session / unknown passkey
- *   ├─ LockedError          locked           423    info   session ended
+ *   ├─ AuthError            unauthenticated  401    info   not signed in, or the session ended
  *   ├─ ForbiddenError       forbidden        403    warn   authenticated but not allowed
  *   ├─ KeyError             key-unavailable  403    warn   wrong or missing key material
  *   ├─ IntegrityError       key-unavailable  403    error  stored data failed verification
@@ -23,9 +22,9 @@
 import type { AlcoveErrorCode } from '@alcove/api';
 import type { Level, LogContext } from './log';
 
-type Status = 400 | 401 | 402 | 403 | 404 | 409 | 423 | 500 | 502 | 503;
+type Status = 400 | 401 | 402 | 403 | 404 | 409 | 500 | 502 | 503;
 const DEFAULTS: Record<AlcoveErrorCode, { status: Status; level: Level }> = {
-  invalid: { status: 400, level: 'info' }, unauthenticated: { status: 401, level: 'info' }, locked: { status: 423, level: 'info' },
+  invalid: { status: 400, level: 'info' }, unauthenticated: { status: 401, level: 'info' },
   forbidden: { status: 403, level: 'warn' }, 'key-unavailable': { status: 403, level: 'warn' }, 'not-found': { status: 404, level: 'info' },
   conflict: { status: 409, level: 'info' }, 'insufficient-credits': { status: 402, level: 'info' }, unavailable: { status: 503, level: 'warn' },
   network: { status: 502, level: 'error' }, unknown: { status: 500, level: 'error' }
@@ -49,7 +48,6 @@ export class AppError extends Error {
 }
 export class ValidationError extends AppError { constructor(m: string, o?: ErrorOptions) { super('invalid', m, o); } }
 export class AuthError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unauthenticated', m, o); } }
-export class LockedError extends AppError { constructor(m = 'Your session ended. Unlock with your passkey to continue.', o?: ErrorOptions) { super('locked', m, o); } }
 export class ForbiddenError extends AppError { constructor(m: string, o?: ErrorOptions) { super('forbidden', m, o); } }
 export class KeyError extends AppError { constructor(m: string, o?: ErrorOptions) { super('key-unavailable', m, o); } }
 export class NotFoundError extends AppError { constructor(m: string, o?: ErrorOptions) { super('not-found', m, o); } }
