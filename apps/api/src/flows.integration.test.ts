@@ -4,11 +4,13 @@
  * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
  */
 import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
-import type { ClientEvent } from '@alcove/api-http';
+import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { loadConfig } from './config';
 import { cookieName } from './sessions';
+import { startFakeDstack } from './testing/fake-dstack';
 import { PNG, type GoogleUser, type Spoil } from './testing/fake-google';
 import { speechWav } from './testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
@@ -1027,6 +1029,43 @@ describe('privacy at rest', () => {
       expect(logText.includes(t), 'a refresh token in logs').toBe(false);
     }
     expect(logText).not.toContain(m.code);
+  });
+});
+
+describe('confidential computing', () => {
+  it('says plainly when it isn’t running in a TEE, and which build it is', async () => {
+    const nonce = randomBytes(32).toString('hex');
+    expect(await h.browser().api.trust.attestation(nonce)).toEqual({ tee: 'none', nonce, build: { commit: 'dev' } });
+    expect((await h.browser().fetch(`${h.baseUrl}/v1/attestation?nonce=not-hex`)).status).toBe(400);
+    expect(await (await fetch(`${h.baseUrl}/health`)).json()).toMatchObject({ ok: true, tee: 'none', commit: 'dev' });
+  });
+
+  it('inside a TEE takes its keys only from the TEE, and attests to its build with the verifier’s nonce', async () => {
+    const tee = await startFakeDstack();
+    try {
+      // Whoever can set the environment would hold keys put there, so inside a TEE they're refused.
+      await expect(loadConfig({ ...process.env, TEE: 'dstack', DSTACK_SOCKET: tee.socket })).rejects.toThrow(/key service/);
+      const withoutKeys = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'KMASTER' && k !== 'KSERVICE'));
+      const cfg = await loadConfig({ ...withoutKeys, TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
+      expect([cfg.KMASTER, cfg.KSERVICE]).toEqual([tee.key('alcove/kmaster/v1'), tee.key('alcove/kservice/v1')]);
+      await expect(loadConfig({ ...withoutKeys, TEE: 'none' })).rejects.toThrow(/required outside a TEE/);
+
+      const server = await h.secondServer({ TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
+      try {
+        const nonce = randomBytes(32).toString('hex');
+        const a = await createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) }).trust.attestation(nonce);
+        if (a.tee !== 'dstack') throw new Error('expected a TEE attestation');
+        const expected = createHash('sha512').update(`alcove-attestation/v1\n${nonce}\nabc1234`).digest('hex');
+        expect(a).toMatchObject({ nonce, build: { commit: 'abc1234' }, reportData: expected, appId: tee.appId, instanceId: 'fake-instance', composeHash: 'ab'.repeat(32) });
+        // The quote vouches for exactly that: this nonce and this build.
+        expect(a.quote.endsWith(expected)).toBe(true);
+        expect(JSON.parse(a.eventLog)).toEqual([expect.objectContaining({ imr: 3, event: 'compose-hash' })]);
+      } finally {
+        await server.close();
+      }
+    } finally {
+      await tee.close();
+    }
   });
 });
 
