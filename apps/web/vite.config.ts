@@ -15,7 +15,7 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     // SPA mode: every screen needs the unlocked session, which only exists in the browser.
-    tanstackStart({ spa: { enabled: true } }),
+    tanstackStart({ spa: { enabled: true, prerender: { outputPath: '/index' } } }),
     viteReact()
   ]
 });

@@ -2,16 +2,12 @@
 
 [Docs home](../README.md) · [System architecture](system-architecture.md) · [Deployment runbook](../../infra/README.md)
 
-## Environment and current status
+## Environments
 
-The target is the apex `https://alcove.solutions`, with API `https://api.alcove.solutions`. As of
-November 3, 2026, GCP backing resources, GitHub variables and the Pages project exist. The GoDaddy
-nameserver change to Cloudflare has been submitted; public DNS, TLS and a complete deployment still
-need verification. The first deployment completed migrations and API startup but stopped at its
-health check before web publication. The corrected probe uses `/health`; this is not yet a verified
-live release.
-Google Calendar/People APIs and the external testing OAuth app/client are separately configured;
-Google authorization routes and user flows remain unimplemented.
+The target is the apex `https://alcove.solutions`, with API `https://api.alcove.solutions`. Acceptance
+requires matching deployed commits, valid public HTTPS and the user journeys below. A successful
+`/health` request through the API's `run.app` URL establishes service health; public-domain access
+requires its own verification.
 
 | | Local | Deployment target |
 | --- | --- | --- |
@@ -46,7 +42,15 @@ Application Load Balancer for production custom domains. See
    Cloud Run; check `/health` through its service URL. Checking `run.app` first avoids making the initial
    deployment depend on an API domain mapping that needs the service to exist.
 5. **Web release.** Build against `https://api.alcove.solutions`, add that origin to the CSP and
-   publish the static SPA to Pages production branch `main`.
+   publish the static SPA to Pages production branch `main` with pinned `pnpm dlx wrangler@4.157.0`.
+   Credentials are scoped to the publishing step's environment; the verified SHA supplies commit
+   attribution. Publishing does not add a workspace dependency.
+
+The static build emits `dist/client/index.html` through TanStack's SPA prerender output path `/index`.
+Pages' native SPA fallback serves the shell for client routes while matching existing assets directly;
+the deployment includes no catch-all `_redirects` or top-level `404.html`. Manage the www-to-apex
+redirect as a Cloudflare zone Single Redirect. See
+[Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
 Only the API deployment job can request a GCP OIDC token. Workload Identity Federation restricts the
 immutable repository and owner IDs, main ref, deploy workflow and permitted event types. GCP and
@@ -87,7 +91,7 @@ object upload, playback and physical deletion in the deployed environment.
 | Cross-owner isolation for calls, notes, audio and recordings | API integration suite |
 | At-rest leakage: canaries absent from tables/objects in plain, hex, base64 and base64url | API integration suite |
 | Physical row/receipt/object deletion and orphan maintenance | API integration suite; verify deployed R2 credentials and background CPU |
-| Public DNS, certificates, CORS, CSP, deep links and deployed commit | Pending live release verification |
+| Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit | Verify for each public release; assets must not redirect to the SPA shell |
 | Google sign-in, Calendar and People access | Provider configured separately; authorization/callback routes and integration flows **not implemented** |
 | Transcription and note writing | **Not implemented**; inference-key binding disabled |
 | Multi-party end-to-end encrypted calls | **Not implemented** |

@@ -28,8 +28,22 @@
 
 ## Tasks
 
-- [ ] Fix bootstrap edition, database secret generation/recovery, narrowly scoped IAM, and workspace credential exclusions. Verify shell syntax and run against the new project.
-- [ ] Fix deploy event trust checks, explicit project selection, background CPU, initial health checks and optional inference-key handling. Verify configuration, build and existing integration suite.
-- [ ] Configure Cloudflare zone, private storage and Pages; delegate nameservers at GoDaddy after checking imported records.
-- [ ] Configure GitHub production settings and main-restricted identity, then publish changes using the isolated repository identity.
-- [ ] Run an actual deployment, configure the API hostname, verify DNS/TLS, web deep links, API health, CORS and storage access; record precise live state in deployment docs.
+- [x] Fix bootstrap edition, database secret generation/recovery, backups/PITR, scoped IAM, bounded IAM retries and workspace credential exclusions; apply the setup to `alcove-solutions`.
+- [x] Configure trusted main-push deployment, current-commit checks, explicit project selection, singleton background CPU and optional provider credentials.
+- [x] Configure Cloudflare zone, private R2 storage and Pages project `alcove-web`; submit the GoDaddy nameserver change.
+- [x] Configure GitHub production variables/secrets and main-restricted Workload Identity Federation; publish infrastructure changes through the isolated repository identity.
+- [x] Prepare Google Calendar/People APIs, external testing app and OAuth client; store client credentials in Secret Manager and support optional binding to the API and migration job. Google application auth flows remain outside this setup task.
+- [x] Deploy the API and run migrations; verify `/health` through the deployed `run.app` URL.
+- [x] Replace the incompatible Pages publishing action with pinned `pnpm dlx wrangler@4.157.0`, step-scoped credentials and commit attribution.
+- [x] Configure the SPA shell as `index.html` and remove the asset-intercepting Pages redirect file.
+- [ ] Verify the publisher change through CI and an actual Pages deployment without changing workspace dependencies.
+- [ ] Rebuild and verify the native SPA fallback through a deployment: root and deep links load, and real JavaScript/CSS assets keep their own responses without redirect loops.
+- [ ] Configure and verify a Cloudflare zone Single Redirect from www to the apex, preserving paths and query strings.
+- [ ] Verify the live main ruleset and production environment restrictions against the intended merge/deployment policy.
+- [x] Confirm Cloudflare DNS delegation and preservation of existing non-hosting records; verify the API CNAME through public DNS and active apex/www Pages domain configuration.
+- [ ] Finish public API certificate provisioning and verify HTTPS at `api.alcove.solutions`.
+- [ ] Verify both public domains, HTTPS, web deep links/security headers, CORS and deployed storage/account/recording journeys.
+- [ ] Match API and Pages releases to the intended commit and record final acceptance evidence in deployment docs.
+
+API service health is established through `run.app`. Custom-domain certificate readiness, Pages
+publication and the complete public release remain open until the checks above pass.
