@@ -143,7 +143,6 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         return new HttpCall(joined.state, joined.ticket, {
           get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
           act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
-          chat: (id, text) => req(CallStateSchema, 'POST', `${live(id)}/chat`, { text }, p),
           audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
           transcribe: async (id, c) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, p), 'call state'),
           catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
@@ -194,7 +193,6 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
 interface CallTransport {
   get(id: string): Promise<CallState>;
   act(id: string, a: CallAction): Promise<CallState>;
-  chat(id: string, text: string): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
   transcribe(id: string, c: TranscriptClip): Promise<CallState>;
   catchUp(id: string, minutes: number | undefined): Promise<CatchUp>;
@@ -223,15 +221,16 @@ class HttpCall extends Live<CallState> implements CallSession {
   /** The server's state, minus notices this screen has dismissed. */
   private take(s: CallState) { this.apply({ ...s, notices: s.notices.filter((n) => !this.hidden.has(n.id)) }); }
   refresh = async () => { this.take(await this.t.get(this.state.callId)); };
-  sendChat = async (text: string) => { if (text.trim()) this.take(await this.t.chat(this.state.callId, text.trim())); };
-  setNotes = (on: boolean) => {
-    void this.t.act(this.state.callId, { type: 'notes', on }).then((s) => this.take(s), (e: unknown) => {
+  private act(a: CallAction) {
+    void this.t.act(this.state.callId, a).then((s) => this.take(s), (e: unknown) => {
       this.set({ ...this.state, notices: [...this.state.notices, { id: b64u(randomBytes(8)), kind: 'info', text: e instanceof Error ? e.message : 'That didn’t work.' }] });
     });
-  };
+  }
+  sendChat = async (text: string) => { if (text.trim()) this.take(await this.t.act(this.state.callId, { type: 'chat', text })); };
+  setNotes = (on: boolean) => this.act({ type: 'notes', on });
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
   appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
-  /** Takes only the transcript from the answer, so a slow clip can't undo a newer notes change. */
+  /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
   transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.callId, c); this.set({ ...this.state, transcript: s.transcript }); };
   catchUp = (minutes?: number | undefined) => this.t.catchUp(this.state.callId, minutes);
   askSoFar = (question: string) => this.t.askSoFar(this.state.callId, question);

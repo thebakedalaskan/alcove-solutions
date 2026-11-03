@@ -24,7 +24,7 @@ export const withLogContext = <T>(ctx: Record<string, Value>, fn: () => T): T =>
 export function addLogContext(ctx: Record<string, Value>) { const s = store.getStore(); if (s) Object.assign(s, ctx); }
 export const currentLogContext = (): Record<string, Value> => ({ ...store.getStore() });
 
-const REDACT = ['secret', 'pass', 'callPass', 'x-alcove-call', 'root', 'wrapKey', 'key', 'krec', 'password', 'cookie', 'authorization', 'sessionId', 'body', 'plaintext', 'NEAR_AI_API_KEY', 'KMASTER', 'KSERVICE', 'DATABASE_URL']
+const REDACT = ['secret', 'root', 'wrapKey', 'key', 'krec', 'password', 'cookie', 'authorization', 'sessionId', 'body', 'plaintext', 'NEAR_AI_API_KEY', 'KMASTER', 'KSERVICE', 'DATABASE_URL']
   .flatMap((k) => [k, `*.${k}`, `ctx.${k}`]);
 
 export interface LogOptions { level?: Level | 'silent'; format?: 'json' | 'pretty'; destination?: DestinationStream; service?: string }

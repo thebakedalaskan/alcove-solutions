@@ -12,8 +12,8 @@ import { me } from './account';
 import * as drafting from './drafting';
 import { personOf, portraitFor } from './portraits';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
-import { lookupCode } from './codes';
-import { MeetingManifest, updateManifest } from './meetings';
+import { indexCode, lookupCode } from './codes';
+import { MeetingManifest, findByCode, updateManifest } from './meetings';
 import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording } from './notes';
@@ -110,8 +110,11 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
 
 /* ---------- joining by link: for anyone; the organizer's keys are opened with KMASTER ---------- */
 
-async function meetingFor(d: Deps, code: string) {
-  const link = await lookupCode(d, code);
+async function meetingFor(d: Deps, code: string, asker?: Owner | undefined) {
+  let link = await lookupCode(d, code);
+  // A meeting made before codes were indexed: its organizer joining by the code indexes it.
+  const own = !link && asker ? await findByCode(asker, code) : undefined;
+  if (own && asker) { await indexCode(d, d.pool, { ownerId: asker.ownerId, meetingId: own.itemId, code }); link = { ownerId: asker.ownerId, meetingId: own.itemId }; }
   if (!link) throw new NotFoundError('There’s no call with that code. Check the link and try again.');
   const organizer = await openOwner(d, link.ownerId, undefined);
   const meeting = await getItem(organizer, d.pool, 'meeting', link.meetingId, MeetingManifest, 'That meeting');
@@ -136,7 +139,7 @@ const GuestName = z.string().transform((n) => n.trim()).pipe(z.string().min(1).m
  * name. Everyone but the organizer waits until the organizer is there, and is kept out while it's locked.
  */
 export async function join(d: Deps, code: string, who: { owner?: Owner | undefined; name?: string | undefined; mic: boolean; cam: boolean }): Promise<{ ticket: CallTicket; state: CallState }> {
-  const { organizer: o, meeting } = await meetingFor(d, code);
+  const { organizer: o, meeting } = await meetingFor(d, code, who.owner);
   const asker = who.owner ? await me(who.owner) : undefined;
   const role: CallRole = who.owner?.ownerId === o.ownerId ? 'host'
     : asker && meeting.manifest.guests.some((g) => g.toLowerCase() === asker.email.toLowerCase()) ? 'invited' : 'guest';
@@ -195,8 +198,6 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     const live = await liveCall(o, c, meeting.itemId, true);
     if (!live || !hostHere(live) || !live.room_name) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
     if (live.locked) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
-    const max = o.cfg.CALL_MAX_PARTICIPANTS;
-    if (max && (await o.livekit.participants(live.room_name)).length >= max) throw new ConflictError('This call is full.', { context: { callId: live.call_id, max } });
     const { state } = await load(o, c, live.call_id, true);
     const s: Stored = { ...state, people: [...state.people, joined] };
     await save(o, c, live.call_id, s);
@@ -213,7 +214,9 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
     const at = Math.round((Date.now() - row.started_at.getTime()) / 1000);
     let s = state;
-    if (a.on !== (s.notes.status === 'on')) {
+    // Chat from anyone in the call, saved with it under the organizer's keys.
+    if (a.type === 'chat') s = { ...s, chat: [...s.chat, { id: id128(), text: a.text, at, from: v.pass.identity }] };
+    else if (a.on !== (s.notes.status === 'on')) {
       if (a.on) {
         const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
         s = notice(await startNotes(o, c, s, meeting, at), 'The organizer turned on notes. Everyone here can see that.');
@@ -223,22 +226,10 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       }
     }
     await save(o, c, callId, s);
-    if (row.room_name) await o.livekit.setMetadata(row.room_name, roomMetadata(row, s)).catch((e: unknown) => clog.warn('room metadata not updated', { callId, err: e }));
-    clog.info('call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment });
+    if (a.type === 'notes' && row.room_name) await o.livekit.setMetadata(row.room_name, roomMetadata(row, s)).catch((e: unknown) => clog.warn('room metadata not updated', { callId, err: e }));
+    // Action type and resulting states only; chat text stays sealed.
+    clog.at(a.type === 'chat' ? 'debug' : 'info', 'call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment });
   });
-  return view(v, o.pool, callId);
-}
-
-/** Chat from anyone in the call, saved with it under the organizer's keys. */
-export async function chat(v: Viewer, callId: string, text: string): Promise<CallState> {
-  const o = v.organizer;
-  await tx(o.pool, async (c) => {
-    const { row, state } = await load(o, c, callId, true);
-    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId } });
-    const at = Math.round((Date.now() - row.started_at.getTime()) / 1000);
-    await save(o, c, callId, { ...state, chat: [...state.chat, { id: id128(), text, at, from: v.pass.identity }] });
-  });
-  clog.debug('chat message', { callId, role: v.pass.role });
   return view(v, o.pool, callId);
 }
 

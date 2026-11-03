@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import type { Deps } from '../context';
 import { blindIndex } from '../crypto';
-import { exec, maybeOne, rows, type Db } from '../db';
+import { exec, maybeOne, type Db } from '../db';
 import { masterKey } from '../owners';
 
 const hashOf = (d: Deps, code: string) => blindIndex(masterKey(d), 'call-code', code);
@@ -19,10 +19,4 @@ export async function indexCode(d: Deps, db: Db, m: { ownerId: string; meetingId
 export async function lookupCode(d: Deps, code: string, db: Db = d.pool): Promise<{ ownerId: string; meetingId: string } | undefined> {
   const r = await maybeOne(db, z.object({ owner_id: z.string(), meeting_item_id: z.string() }), 'SELECT owner_id, meeting_item_id FROM call_codes WHERE code_hash = $1', [hashOf(d, code)]);
   return r ? { ownerId: r.owner_id, meetingId: r.meeting_item_id } : undefined;
-}
-
-/** The organizer's meetings the index already has (older meetings get indexed when they're listed). */
-export async function indexed(db: Db, ownerId: string): Promise<Set<string>> {
-  const r = await rows(db, z.object({ meeting_item_id: z.string() }), 'SELECT meeting_item_id FROM call_codes WHERE owner_id = $1', [ownerId]);
-  return new Set(r.map((x) => x.meeting_item_id));
 }

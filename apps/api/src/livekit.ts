@@ -29,8 +29,8 @@ export interface LiveKit {
 export const ROOM_EMPTY_TIMEOUT = 300;
 export const ROOM_DEPARTURE_TIMEOUT = 20;
 
-/** LIVEKIT_API_URL, or LIVEKIT_URL with ws → http and wss → https. */
-export const apiUrl = (cfg: Config): string => cfg.LIVEKIT_API_URL ?? cfg.LIVEKIT_URL.replace(/^ws/, 'http');
+/** LiveKit's server API: LIVEKIT_URL with ws → http and wss → https. */
+export const apiUrl = (cfg: Config): string => cfg.LIVEKIT_URL.replace(/^ws/, 'http');
 
 export function createLiveKit(cfg: Config): LiveKit {
   const rooms = new RoomServiceClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
@@ -45,10 +45,7 @@ export function createLiveKit(cfg: Config): LiveKit {
       }
     },
     async ensureRoom(roomName) {
-      await rooms.createRoom({
-        name: roomName, emptyTimeout: ROOM_EMPTY_TIMEOUT, departureTimeout: ROOM_DEPARTURE_TIMEOUT,
-        ...(cfg.CALL_MAX_PARTICIPANTS ? { maxParticipants: cfg.CALL_MAX_PARTICIPANTS } : {})
-      });
+      await rooms.createRoom({ name: roomName, emptyTimeout: ROOM_EMPTY_TIMEOUT, departureTimeout: ROOM_DEPARTURE_TIMEOUT });
     },
     async roomExists(roomName) {
       return (await rooms.listRooms([roomName])).length > 0;

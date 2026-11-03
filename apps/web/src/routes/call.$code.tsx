@@ -94,7 +94,6 @@ function InCall({ session }: { session: CallSession }) {
     }
   }, [state.notices, session, toast]);
 
-  // Mic, camera and screen are the browser's own; LiveKit tells everyone else (features/call/livekit.ts).
   const setMic = (v: boolean) => { media.setMic(v); };
   const setCam = (v: boolean) => { void media.setCam(v); };
   const share = async () => {

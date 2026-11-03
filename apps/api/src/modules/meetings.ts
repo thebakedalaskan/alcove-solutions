@@ -13,7 +13,7 @@ import { log } from '../log';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
 import * as calendar from './calendar';
-import { indexCode, indexed, lookupCode } from './codes';
+import { indexCode } from './codes';
 import { personOf } from './portraits';
 
 const mlog = log.child({ component: 'meetings' });
@@ -54,17 +54,10 @@ async function toMeeting(o: Owner, m: Loaded<MeetingManifest>): Promise<Meeting>
   };
 }
 export const all = (o: Owner, db: Db = o.pool) => listItems(o, db, 'meeting', MeetingManifest);
-/** Meetings made before the call-code index existed get indexed the first time their organizer lists them. */
-async function indexOlder(o: Owner, ms: Loaded<MeetingManifest>[]): Promise<void> {
-  const have = await indexed(o.pool, o.ownerId);
-  for (const m of ms) if (!have.has(m.itemId)) await indexCode(o, o.pool, { ownerId: o.ownerId, meetingId: m.itemId, code: m.manifest.code });
-}
 
 export async function upcoming(o: Owner): Promise<Meeting[]> {
   const cutoff = Date.now() - 60 * 60_000;
-  const every = await all(o);
-  await indexOlder(o, every);
-  const ms = every.filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
+  const ms = (await all(o)).filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
   ms.sort((a, b) => a.manifest.startsAt.localeCompare(b.manifest.startsAt));
   return Promise.all(ms.map((m) => toMeeting(o, m)));
 }
@@ -74,11 +67,8 @@ export async function past(o: Owner): Promise<Meeting[]> {
   return Promise.all(ms.map((m) => toMeeting(o, m)));
 }
 export async function get(o: Owner, id: string): Promise<Meeting> { return toMeeting(o, await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting')); }
-/** One of your own meetings, by its code. */
 export async function findByCode(o: Owner, code: string, db: Db = o.pool): Promise<Loaded<MeetingManifest> | undefined> {
-  const link = await lookupCode(o, code, db);
-  if (!link || link.ownerId !== o.ownerId) return undefined;
-  return getItem(o, db, 'meeting', link.meetingId, MeetingManifest, 'That meeting');
+  return (await all(o, db)).find((m) => m.manifest.code === code);
 }
 export async function byCode(o: Owner, code: string): Promise<Meeting | null> {
   const m = await findByCode(o, code);

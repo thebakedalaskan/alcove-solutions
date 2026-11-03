@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CallChatBodySchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -229,8 +229,11 @@ export function createApp(d: Deps) {
     return v;
   };
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
-  app.post('/v1/live/calls/:id/actions', async (c) => c.json(await calls.act(organizerOnly(c), c.req.param('id'), await body(c, CallActionSchema))));
-  app.post('/v1/live/calls/:id/chat', async (c) => c.json(await calls.chat(c.get('viewer'), c.req.param('id'), (await body(c, CallChatBodySchema)).text)));
+  app.post('/v1/live/calls/:id/actions', async (c) => {
+    const a = await body(c, CallActionSchema);
+    // Anyone in the call can chat; only the organizer turns notes on and off.
+    return c.json(await calls.act(a.type === 'chat' ? c.get('viewer') : organizerOnly(c), c.req.param('id'), a));
+  });
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(organizerOnly(c), c.req.param('id'), await piece(c))));
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
     const v = organizerOnly(c);
