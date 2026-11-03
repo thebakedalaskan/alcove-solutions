@@ -49,7 +49,7 @@ export function PrejoinDevices({ media, m, devices }: { media: LocalMedia; m: Me
       <DeviceSelect kind="speaker" devices={devices.speaker} value={m.speakerId} onChange={(id) => media.chooseSpeaker(id)} />
       <button type="button" className={cn('pj-test', phase !== 'idle' && 'on')} disabled={!track || !m.mic || phase !== 'idle'}
         title={m.mic ? 'Records a few seconds and plays them back here. Nothing is uploaded or kept.' : 'Turn your microphone on to test it'} onClick={() => void test()}>
-        {phase === 'listening' ? <><i className="rec-dot" />Say something… {left}</> : phase === 'playing' ? <><Icon name="speaker" size={15} />Playing it back</> : <><Icon name="mic" size={15} />Test microphone</>}
+        {phase === 'listening' ? <><i className="ac-rec-dot" />Say something… {left}</> : phase === 'playing' ? <><Icon name="speaker" size={15} />Playing it back</> : <><Icon name="mic" size={15} />Test microphone</>}
       </button>
       {phase !== 'idle' && <p className="pj-dev-note"><Icon name="lock" size={13} />It plays back here only. Nothing is uploaded or kept.</p>}
       {m.notice && <p className="pj-dev-note warn"><Icon name="clock" size={13} />{m.notice}</p>}
@@ -66,19 +66,19 @@ export function DeviceMenu({ kind, media, m, devices, open, onOpenChange }: {
   const pick = (id: string) => { onOpenChange(false); void (kind === 'mic' ? media.chooseMic(id) : media.chooseCam(id)); };
   const speaker = current(devices.speaker, m.speakerId);
   const item = (d: Device, on: boolean, choose: (id: string) => void) => (
-    <button key={d.id} type="button" className={cn('pop-item dev-item', on && 'sel')} role="menuitemradio" aria-checked={on} onClick={() => choose(d.id)}>
+    <button key={d.id} type="button" className={cn('ac-pop-item dev-item', on && 'sel')} role="menuitemradio" aria-checked={on} onClick={() => choose(d.id)}>
       {on ? <Icon name="check" size={16} /> : <span />}<span><b>{d.label}</b></span>
     </button>
   );
   return (
-    <Popover open={open} onOpenChange={onOpenChange} side="top" align="start" dark label={kind === 'mic' ? 'Microphone and speaker' : 'Camera'} className="dev-pop"
-      anchor={<button type="button" className="rb-caret" aria-label={kind === 'mic' ? 'Choose a microphone' : 'Choose a camera'}><Icon name="down" size={12} /></button>}>
-      <div className="dev-h">{NAME[kind]}</div>
+    <Popover open={open} onOpenChange={onOpenChange} side="top" align="start" stage label={kind === 'mic' ? 'Microphone and speaker' : 'Camera'} className="dev-pop"
+      anchor={<button type="button" className="dock-caret" aria-label={kind === 'mic' ? 'Choose a microphone' : 'Choose a camera'}><Icon name="down" size={12} /></button>}>
+      <div className="ac-pop-h">{NAME[kind]}</div>
       {own.length ? own.map((d) => item(d, d.id === chosen, pick)) : <p className="dev-none">No {NAME[kind].toLowerCase()} found.</p>}
       {kind === 'mic' && devices.speaker.length > 0 && (
         <>
-          <div className="pop-sep" />
-          <div className="dev-h">Speaker</div>
+          <div className="ac-pop-sep" />
+          <div className="ac-pop-h">Speaker</div>
           {devices.speaker.map((d) => item(d, d.id === speaker, (id) => { onOpenChange(false); media.chooseSpeaker(id); }))}
         </>
       )}

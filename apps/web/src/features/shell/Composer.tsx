@@ -5,7 +5,7 @@
  * new one is typed.
  */
 import { NOTES_LABEL, errorMessage, type Meeting, type NotesSetting, type Person } from '@alcove/api';
-import { Avatar, Button, Icon, Popover, Sheet, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, ComposerLine, Icon, Popover, Sheet, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
@@ -118,12 +118,11 @@ function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | u
 
   return (
     <>
-      <div className="cmp-top">
-        <span className="ic"><Icon name="video" size={20} /></span>
-        <input ref={input} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe the call, or press Enter to start now"
+      <ComposerLine icon="video" className="cmp-line">
+        <input ref={input} className="text" autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe the call, or press Enter to start now"
           autoComplete="off" spellCheck={false} aria-label="Describe the call"
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submit(); } }} />
-      </div>
+      </ComposerLine>
       <div className="cmp-chips">
         {p.when ? (
           <>
@@ -148,7 +147,7 @@ function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | u
         <Popover open={pop === 'notes'} onOpenChange={(o) => setPop(o ? 'notes' : null)} label="Notes for this call" className="w-[330px]"
           anchor={<button type="button" className={cn('pchip', notesOn === 'on' && 'on-notes')}><Icon name={notesOn === 'on' ? 'pen' : 'x'} size={16} />{NOTES_LABEL[notesOn]}<Icon name="down" size={14} /></button>}>
           {([['on', 'pen', 'Notes on', 'Everyone invited gets them afterwards. Alcove can’t read them.'], ['off', 'x', 'No notes', 'Nothing is recorded. You can turn them on during the call.']] as const).map(([v, ic, t, d]) => (
-            <button key={v} type="button" className={cn('pop-item', notesOn === v && 'sel')} onClick={() => { setNotes(v); setPop(null); focus(); }}>
+            <button key={v} type="button" className={cn('ac-pop-item', notesOn === v && 'sel')} onClick={() => { setNotes(v); setPop(null); focus(); }}>
               <Icon name={ic} size={18} /><span><b>{t}</b><small>{d}</small></span>
             </button>
           ))}
@@ -160,8 +159,8 @@ function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | u
       <div className="cmp-foot">
         {editing ? (
           <Popover open={pop === 'cancel'} onOpenChange={(o) => setPop(o ? 'cancel' : null)} label="Cancel this call" side="top" className="w-[300px]"
-            anchor={<Button variant="ghost" icon="trash">Cancel call</Button>}>
-            <button type="button" className="pop-item danger" onClick={() => {
+            anchor={<Button variant="quiet" icon="trash">Cancel call</Button>}>
+            <button type="button" className="ac-pop-item is-caution" onClick={() => {
               setPop(null);
               cancel.mutate(editing.id, {
                 onSuccess: () => { onClose(); toast(editing.calendarUrl && editing.guests.length ? 'Call cancelled. Everyone invited is told.' : 'Call cancelled.', { icon: 'trash' }); },
@@ -171,7 +170,7 @@ function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | u
               <Icon name="trash" size={18} /><span><b>Cancel this call</b><small>{editing.calendarUrl ? 'It comes off your calendar, and everyone invited is told.' : 'It comes off your calendar.'}</small></span>
             </button>
           </Popover>
-        ) : <Button variant="ghost" icon="room" onClick={() => { onClose(); void navigate({ to: '/record' }); }}>Record in the room</Button>}
+        ) : <Button variant="quiet" icon="room" onClick={() => { onClose(); void navigate({ to: '/record' }); }}>Record in the room</Button>}
         <span className="hint"><Icon name={hint.icon} size={15} /><span>{hint.text}</span></span>
         <Button variant="primary" icon={p.when || editing ? undefined : 'video'} kb="↵" loading={busy} onClick={() => void submit()}>{editing ? 'Save changes' : p.when ? 'Schedule' : 'Start now'}</Button>
       </div>

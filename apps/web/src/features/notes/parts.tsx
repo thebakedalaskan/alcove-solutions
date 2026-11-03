@@ -3,7 +3,7 @@ import {
   errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
   type Recipient, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, Check, Faces, Icon, IconButton, Kbd, Popover, TimeChip, Words, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, TranscriptLine as SpokenLine, Words, buttonClass, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
@@ -15,7 +15,7 @@ export function DocHead({ title, when, people, chip }: { title: string; when: st
     <>
       {chip}
       <h1>{title}</h1>
-      <div className="doc-meta"><span className="mono">{when}</span><span className="who"><Faces people={people} size={26} />{listNames(people)}</span></div>
+      <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} />{listNames(people)}</span></div>
     </>
   );
 }
@@ -121,33 +121,33 @@ function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | u
   return (
     <Popover open={open} onOpenChange={setOpen} align="end" label="Change this follow-up" className="act-pop"
       anchor={<IconButton icon="more" label="Change this follow-up" size={16} className="act-more" />}>
-      <div className="pop-h">Who it’s for</div>
+      <div className="ac-pop-h">Who it’s for</div>
       {people.map((p) => {
         const on = !!owner && sameEmail(p, { email: owner });
         return (
-          <button key={p.email} type="button" className={cn('pop-item', on && 'sel')} onClick={() => apply({ owner: p.email })}>
+          <button key={p.email} type="button" className={cn('ac-pop-item', on && 'sel')} onClick={() => apply({ owner: p.email })}>
             <Avatar person={p} size={22} />
             <span><b>{p.name}{me && sameEmail(p, { email: me }) ? ' (you)' : ''}</b>{on && <small>{a.takenOn ? 'Took it on' : 'Hasn’t taken it on yet'}</small>}</span>
           </button>
         );
       })}
-      {a.owner && <button type="button" className="pop-item" onClick={() => apply({ owner: null })}><Icon name="x" size={18} /><span><b>Nobody yet</b></span></button>}
-      <div className="pop-sep" />
+      {a.owner && <button type="button" className="ac-pop-item" onClick={() => apply({ owner: null })}><Icon name="x" size={18} /><span><b>Nobody yet</b></span></button>}
+      <div className="ac-pop-sep" />
       <form className="act-field" onSubmit={(e) => { e.preventDefault(); apply({ due: due.trim() || null }); }}>
         <label htmlFor={`due-${a.id}`}>Due</label>
-        <input id={`due-${a.id}`} value={due} maxLength={40} placeholder="Wednesday, end of March…" autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDue(e.target.value)} />
+        <input id={`due-${a.id}`} className="ac-input" value={due} maxLength={40} placeholder="Wednesday, end of March…" autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDue(e.target.value)} />
         <Button type="submit" variant="secondary" size="sm">Save</Button>
       </form>
       <form className="act-field" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) apply({ text: t }); }}>
         <label htmlFor={`txt-${a.id}`}>Wording</label>
-        <input id={`txt-${a.id}`} value={text} maxLength={300} autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setText(e.target.value)} />
+        <input id={`txt-${a.id}`} className="ac-input" value={text} maxLength={300} autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setText(e.target.value)} />
         <Button type="submit" variant="secondary" size="sm">Save</Button>
       </form>
       {a.changes.length > 0 && (
         <>
-          <div className="pop-sep" />
-          <div className="pop-h">Changes</div>
-          <ul className="act-hist">{[...a.changes].reverse().slice(0, 8).map((c, i) => <li key={`${c.at}-${i}`}><span>{changeLine(c, me)}</span><span className="mono">{when(c.at)}</span></li>)}</ul>
+          <div className="ac-pop-sep" />
+          <div className="ac-pop-h">Changes</div>
+          <ul className="act-hist">{[...a.changes].reverse().slice(0, 8).map((c, i) => <li key={`${c.at}-${i}`}><span>{changeLine(c, me)}</span><span className="ac-mono">{when(c.at)}</span></li>)}</ul>
         </>
       )}
     </Popover>
@@ -172,7 +172,7 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
             <div className="act-b"><span className="t">{a.text}</span><span className="act-s">{actionLine(a, me)}</span></div>
             <span className="act-who">
               {a.owner && (
-                <span className={cn('owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
+                <span className={cn('ac-owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
                   <Avatar person={a.owner.person ?? { name: a.owner.name }} size={22} />{spokenName(a.owner, me)}
                 </span>
               )}
@@ -192,7 +192,7 @@ export function Transcript({ lines, seconds, me, onSeek }: { lines: TranscriptLi
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className="tr-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
+      <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
       {open && <TranscriptLines lines={lines} me={me} onSeek={onSeek} className="mt-3" />}
     </>
   );
@@ -203,17 +203,14 @@ const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.email.toLowerCase() 
 /** What was said, line by line. A speaker's lines in a row share one name; a room recording names nobody. */
 export function TranscriptLines({ lines, me, onSeek, className }: { lines: TranscriptLine[]; me: string | undefined; onSeek?: ((s: number) => void) | undefined; className?: string | undefined }) {
   return (
-    <div className={className}>
+    <div className={cn('tr', className)}>
       {lines.map((l, i) => {
         const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
-        if (!l.speaker) return <div key={l.id} className="tr-line plain"><p>{l.text}</p>{time}</div>;
+        if (!l.speaker) return <SpokenLine key={l.id} time={time}>{l.text}</SpokenLine>;
         const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker);
         return (
-          <div key={l.id} className={cn('tr-line', more && 'more')}>
-            {more ? <span /> : <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={30} />}
-            <div className="min-w-0">{!more && <b>{spokenName(l.speaker, me)}</b>}<p>{l.text}</p></div>
-            {time}
-          </div>
+          <SpokenLine key={l.id} className={cn(more && 'more')} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
+            name={more ? undefined : spokenName(l.speaker, me)} time={time}>{l.text}</SpokenLine>
         );
       })}
     </div>
@@ -223,24 +220,22 @@ export function TranscriptLines({ lines, me, onSeek, className }: { lines: Trans
 export function Chapters({ chapters, pos, onSeek }: { chapters: Chapter[]; pos: number; onSeek?: ((s: number) => void) | undefined }) {
   const current = chapters.findLastIndex((c) => c.at <= pos);
   return (
-    <section className="card" aria-labelledby="chH">
-      <div className="card-head"><h3 id="chH">Chapters</h3></div>
-      <div className="px-2 pb-2.5 pt-1">
+    <Card title="Chapters">
+      <div className="chaps">
         {chapters.map((c, i) => (
           <button key={`${c.at}-${c.title}`} type="button" className={cn('chap', i === Math.max(0, current) && 'on')} onClick={() => onSeek?.(c.at)} disabled={!onSeek}>
-            <span className="mono">{position(c.at)}</span><span><b>{c.title}</b><small>{c.summary}</small></span>
+            <span className="ac-mono">{position(c.at)}</span><span><b>{c.title}</b><small>{c.summary}</small></span>
           </button>
         ))}
       </div>
-    </section>
+    </Card>
   );
 }
 
 /** Who has a note, and how they got it. */
 export function Recipients({ recipients, me, fresh }: { recipients: Recipient[]; me: string | undefined; fresh?: ReadonlySet<string> | undefined }) {
   return (
-    <section className="card access" aria-labelledby="whoH">
-      <div className="acc-h"><h4 id="whoH">Who has these notes</h4><span className="cnt">{recipients.length}</span></div>
+    <Card title="Who has these notes" aside={<span className="ac-mono">{recipients.length}</span>}>
       <div className="rcpt">
         {recipients.map((r) => (
           <div key={r.person.email} className={cn('rc', fresh?.has(r.person.email) && 'fresh')}>
@@ -249,8 +244,8 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
           </div>
         ))}
       </div>
-      <div className="seal"><Icon name="lock" size={15} /><span>{PROMISE_MANY}</span></div>
-    </section>
+      <div className="seal"><SealedBadge inline title={PROMISE_MANY} /></div>
+    </Card>
   );
 }
 
@@ -285,21 +280,21 @@ export function AskBar({ suggestions, ask, onSeek }: { suggestions: string[]; as
   return (
     <div className="ask">
       {answer && (
-        <div className="answer">
+        <div className="ac-card answer">
           <div className="q"><Icon name="ask" size={15} />{answer.q}</div>
           <p>{answer.done ? <Words text={answer.text} /> : answer.text || '…'}</p>
           {answer.cites.length > 0 && <div className="mt-2.5 flex flex-wrap gap-1.5">{answer.cites.map((c) => <TimeChip key={c} seconds={c} onSeek={onSeek} />)}</div>}
         </div>
       )}
       {focus && suggestions.length > 0 && (
-        <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => void run(s)}>{s}</button>)}</div>
+        <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" className={buttonClass({ size: 'sm' })} onMouseDown={(e) => e.preventDefault()} onClick={() => void run(s)}>{s}</button>)}</div>
       )}
       <div className="ask-bar">
         <Icon name="ask" size={19} />
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
           onKeyDown={(e) => { if (e.key === 'Enter') void run(text); }} placeholder="Ask about this call" autoComplete="off" aria-label="Ask about this call" />
         <Kbd>⌘J</Kbd>
-        <button type="button" className="btn btn-primary btn-icon" aria-label="Ask" onClick={() => void run(text)}><Icon name="send" size={17} /></button>
+        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'w-11 px-0')} aria-label="Ask" onClick={() => void run(text)}><Icon name="send" size={18} /></button>
       </div>
     </div>
   );

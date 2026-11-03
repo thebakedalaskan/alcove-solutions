@@ -3,7 +3,7 @@
  * with, or any address. The same picker invites people to a call and shares notes afterwards.
  */
 import type { Person, PersonSuggestion } from '@alcove/api';
-import { Avatar, Button, Icon, Popover, cn } from '@alcove/ui';
+import { Avatar, Button, Chip, Icon, Popover, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { isEmail } from '~/lib/parse';
@@ -99,7 +99,7 @@ function Picker({ title, cta, note, skip, preset, query: initial, after, onDone 
           <button key={r.person.email} type="button" role="option" aria-selected={r === active} className={cn('pick-row', r === active && 'on')} onMouseMove={() => setAct(i)} onClick={() => add(r.person)}>
             <Avatar person={r.person} size={32} />
             <span className="min-w-0"><b>{r.source === 'new' ? r.person.email : r.person.name}</b><small>{r.source === 'new' ? 'New to you' : r.person.email}</small></span>
-            {r.source === 'team' && company ? <span className="pick-tag">{company}</span> : null}
+            {r.source === 'team' && company ? <Chip tone="outline">{company}</Chip> : null}
           </button>
         )) : <div className="pick-empty"><Icon name="mail" size={16} />{query.trim() ? 'Type their full email address' : 'Type an email address'}</div>}
       </div>

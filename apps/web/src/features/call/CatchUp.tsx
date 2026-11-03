@@ -124,7 +124,7 @@ export function CatchUpView({ session, elapsed, onBack }: { session: CallSession
       </div>
       <form className="cp-input" onSubmit={(e) => { e.preventDefault(); void ask(); }}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask about the call so far" autoComplete="off" aria-label="Ask about the call so far" />
-        <button type="submit" className="rb sm" aria-label="Ask" disabled={!text.trim() || asked?.parts === null}><Icon name="send" size={17} /></button>
+        <button type="submit" className="stage-btn sm" aria-label="Ask" disabled={!text.trim() || asked?.parts === null}><Icon name="send" size={17} /></button>
       </form>
     </div>
   );

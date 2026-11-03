@@ -1,0 +1,43 @@
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
+import { useToast } from '@alcove/ui';
+import { useEffect } from 'react';
+import { Landing } from '~/features/welcome/Landing';
+import { useAuth } from '~/features/welcome/WaysIn';
+import { q } from '~/lib/queries';
+
+/** Why a sign-in with Google came back without signing in, as the API reports it. */
+const REFUSED = {
+  cancelled: 'Google sign-in was cancelled.',
+  expired: 'That sign-in took too long or started in another tab. Try again.',
+  unverified: 'Google hasn’t verified that account’s email address, so Alcove can’t use it.',
+  unavailable: 'Google sign-in isn’t set up on this server.',
+  busy: 'Too many sign-in attempts. Wait a minute and try again.',
+  failed: 'Couldn’t sign in with Google. Try again.'
+} as const;
+type Refused = keyof typeof REFUSED;
+const isRefused = (v: unknown): v is Refused => typeof v === 'string' && Object.keys(REFUSED).includes(v);
+
+export const Route = createFileRoute('/welcome')({
+  validateSearch: (s: Record<string, unknown>): { signin?: Refused | undefined } => ({ signin: isRefused(s['signin']) ? s['signin'] : undefined }),
+  beforeLoad: async ({ context }) => {
+    if (await context.queryClient.ensureQueryData(q.session())) throw redirect({ to: '/home', replace: true });
+  },
+  component: Welcome
+});
+
+/* Signed out: the welcome page, with the ways in at the top and the bottom. */
+function Welcome() {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { signin } = Route.useSearch();
+
+  /* Back from Google without a session: say why once, then tidy the address. */
+  useEffect(() => {
+    if (!signin) return;
+    toast(REFUSED[signin], { icon: 'x', ms: 5200 });
+    void navigate({ to: '/welcome', search: {}, replace: true });
+  }, [signin, toast, navigate]);
+
+  return <Landing auth={auth} />;
+}

@@ -17,7 +17,9 @@ behind people's backs, and notes only the people in the call can read.
    written for the earlier desktop design; still the reference for NEAR AI's encrypted request mode, Phala and
    1Click details. How Alcove calls NEAR AI today is in [Notes and inference](engineering/notes-and-inference.md).
 
-Design work lives in [`design/`](design/) (interactive prototypes) and [`brand/`](brand/).
+The design system the app uses is [`packages/ui`](../packages/ui): tokens in `src/styles.css`, `ac-`
+components in `src/styles/kit.css` and `src/components/`, rules in [`AGENTS.md`](../AGENTS.md#design-system).
+[`design/`](design/) and [`brand/`](brand/) are earlier interactive prototypes, on the previous palette and type.
 Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AGENTS.md).
 
 ## Provider boundaries

@@ -3,7 +3,7 @@
  * written out in full. It isn't stored anywhere; asking about it answers from what's on the page.
  */
 import type { AnswerPart, Note, Person } from '@alcove/api';
-import { CAST } from './NoteCard';
+import { CAST } from './cast';
 
 const cast = (k: keyof typeof CAST): Person => ({ id: `example-${k}`, name: CAST[k].name, email: `${k}@example.com`, portrait: CAST[k].portrait });
 
