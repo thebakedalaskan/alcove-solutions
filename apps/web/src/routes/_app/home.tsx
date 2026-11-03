@@ -184,7 +184,7 @@ function NextEvent({ e, now }: { e: CalendarEvent; now: number }) {
         <div className="acts">
           {e.join && <a href={e.join.url} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg"><Icon name="video" />Join on {e.join.label}<span className="kb">J</span></a>}
           {e.isOrganizer && <Button variant={e.join ? 'secondary' : 'primary'} size="lg" icon="video" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove instead</Button>}
-          <a href={e.calendarUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-lg"><Icon name="cal" />Calendar</a>
+          <a href={e.calendarUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-icon self-center" aria-label="Open in Google Calendar" title="Open in Google Calendar"><Icon name="cal" /></a>
         </div>
       </div>
       <div className="count-ring" role="img" aria-label={mins <= 0 ? 'Happening now' : `Starts ${untilLabel(mins)}`}>

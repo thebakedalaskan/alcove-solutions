@@ -34,6 +34,8 @@
     "API_PORT",
     "WEB_ORIGIN",
     "API_URL",
+    "GOOGLE_API_URL",
+    "GOOGLE_ISSUER",
     "KSERVICE",
     "NEAR_AI_BASE_URL",
     "LOG_LEVEL",
