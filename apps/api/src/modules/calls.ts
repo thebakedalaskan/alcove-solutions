@@ -1,5 +1,5 @@
 import {
-  type AnswerPart, type CallAction, type CallCard, type CallEndResult, type CallRole, type CallState, type CallTicket, type CatchUp, type Person
+  CALL_TOPIC, type AnswerPart, type CallAction, type CallCard, type CallEndResult, type CallRole, type CallState, type CallTicket, type CatchUp, type Person
 } from '@alcove/api';
 import { z } from 'zod';
 import { issuePass, type CallPass } from '../callPass';
@@ -64,6 +64,12 @@ async function save(o: Owner, db: Db, callId: string, s: Stored) {
 }
 const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes'): Stored => ({ ...s, notices: [...s.notices.slice(-2), { id: id128(), text, kind }] });
 const hostHere = (r: Pick<Row, 'state' | 'host_identity' | 'host_left_at'>) => r.state === 'live' && r.host_identity !== null && r.host_left_at === null;
+/** Tells everyone in the room the call changed (chat, notes, transcript, people), so they fetch it again. */
+async function nudge(o: Owner, roomName: string | null, callId: string): Promise<void> {
+  if (!roomName) return;
+  await o.livekit.sendData(roomName, new TextEncoder().encode(JSON.stringify({ v: 1, kind: 'changed' })), CALL_TOPIC)
+    .catch((e: unknown) => clog.warn('room not told about a change', { callId, err: e }));
+}
 const roomMetadata = (r: Pick<Row, 'host_identity' | 'locked'>, s: Stored) => ({ v: 1 as const, host: r.host_identity, notes: s.notes.status, locked: r.locked });
 
 /** Someone as the call shows them: the organizer and invited people by their account, guests by the name they typed. */
@@ -157,6 +163,7 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous organizer connection already gone', { callId: j.callId, err: e }));
   await o.livekit.ensureRoom(j.roomName);
   await o.livekit.setMetadata(j.roomName, roomMetadata(j.row, j.state));
+  await nudge(o, j.roomName, j.callId);
   clog.info('call joined', { callId: j.callId, meetingId: meeting.itemId, role });
   const pass = issuePass(d.cfg, { callId: j.callId, ownerId: o.ownerId, identity, role, name });
   const ticket: CallTicket = { callId: j.callId, serverUrl: d.cfg.LIVEKIT_URL, token: await o.livekit.token({ roomName: j.roomName, identity, name }), roomName: j.roomName, identity, role, pass };
@@ -229,7 +236,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     if (a.type === 'notes' && row.room_name) await o.livekit.setMetadata(row.room_name, roomMetadata(row, s)).catch((e: unknown) => clog.warn('room metadata not updated', { callId, err: e }));
     // Action type and resulting states only; chat text stays sealed.
     clog.at(a.type === 'chat' ? 'debug' : 'info', 'call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment });
-  });
+    return row.room_name;
+  }).then((room) => nudge(o, room, callId));
   return view(v, o.pool, callId);
 }
 
@@ -253,6 +261,7 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   if (state.notes.status !== 'on' || !state.notes.recordingId || !state.notes.noteId) throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
   await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip);
+  await nudge(o, row.room_name, callId);
   return view(v, o.pool, callId);
 }
 

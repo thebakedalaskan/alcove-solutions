@@ -2,7 +2,7 @@
  * Test participants for LiveKit rooms (@livekit/rtc-node). Tests join with the tickets the API issues,
  * exactly as a browser would, and observe media, data and room metadata from the other side.
  */
-import { RoomMetadataSchema, type CallTicket, type RoomMetadata } from '@alcove/api';
+import { CALL_TOPIC, CallNudgeSchema, RoomMetadataSchema, type CallTicket, type RoomMetadata } from '@alcove/api';
 import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, LocalAudioTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, dispose, type RemoteTrack
@@ -22,6 +22,8 @@ export interface TestParticipant {
   /** Mean absolute sample of `identity`'s audio over `ms` (a tone at our amplitude is about 7600; silence is 0). */
   meanLevelFrom(identity: string, ms?: number): Promise<number>;
   waitFor(pred: () => boolean, what: string, ms?: number): Promise<void>;
+  /** Resolves on the next "the call changed" nudge the server sends to the room. */
+  nextNudge(): Promise<void>;
   /** Resolves with the reason once LiveKit disconnects this participant. */
   disconnectReason(): Promise<DisconnectReason>;
   disconnect(): Promise<void>;
@@ -49,6 +51,11 @@ export async function connect(ticket: CallTicket): Promise<TestParticipant> {
   const room = new Room();
   let pumps: ReturnType<typeof setInterval>[] = [];
   let reason: DisconnectReason | null = null;
+  let nudges = 0;
+  room.on(RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
+    if (topic !== CALL_TOPIC) return;
+    try { if (CallNudgeSchema.safeParse(JSON.parse(new TextDecoder().decode(payload))).success) nudges++; } catch { /* not a nudge */ }
+  });
   room.on(RoomEvent.Disconnected, (r) => { reason = r; });
   await room.connect(ticket.serverUrl, ticket.token, { autoSubscribe: true, dynacast: false });
 
@@ -96,6 +103,7 @@ export async function connect(ticket: CallTicket): Promise<TestParticipant> {
       return samples ? energy / samples : 0;
     },
     waitFor,
+    async nextNudge() { const seen = nudges; await waitFor(() => nudges > seen, 'a nudge from the server'); },
     async disconnectReason() {
       await waitFor(() => reason !== null, 'disconnect');
       return reason ?? DisconnectReason.UNKNOWN_REASON;

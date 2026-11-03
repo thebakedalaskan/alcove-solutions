@@ -53,6 +53,40 @@ describe('calls on LiveKit', () => {
   });
 });
 
+describe('chat', () => {
+  it('saves chat from everyone and tells the room', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    const hostRoom = await joinRoom(host);
+    await joinRoom(guest);
+    const told = hostRoom.nextNudge();
+    await guest.sendChat('CANARY-CHAT hi');
+    await told;
+    const s = await settle(host, (x) => x.chat.length === 1);
+    expect(s.chat).toEqual([expect.objectContaining({ text: 'CANARY-CHAT hi', isMe: false, from: expect.objectContaining({ name: 'Sam' }) })]);
+    await expectNotInRows(['calls'], ['CANARY-CHAT']);
+    await host.leave();
+  });
+
+  it('gives late joiners and rejoiners the chat so far, in order', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const first = guestBrowser();
+    const sam = await first.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await host.sendChat('one');
+    await sam.sendChat('two');
+    await host.sendChat('three');
+    const late = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    expect(late.getSnapshot().chat.map((m) => m.text)).toEqual(['one', 'two', 'three']);
+    const again = await first.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    expect(again.getSnapshot().chat.map((m) => m.text)).toEqual(['one', 'two', 'three']);
+    await host.leave();
+  });
+});
+
 describe('joining by link', () => {
   it('refuses everyone but the organizer until the organizer has joined', async () => {
     const org = await account();

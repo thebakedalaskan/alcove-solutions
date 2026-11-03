@@ -3,7 +3,7 @@
  * NEAR AI. LiveKit carries media, presence and nudges; the API decides who may join and keeps the call.
  */
 import type { RoomMetadata } from '@alcove/api';
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import { AccessToken, DataPacket_Kind, RoomServiceClient } from 'livekit-server-sdk';
 import type { Config } from './config';
 import { log } from './log';
 
@@ -23,6 +23,8 @@ export interface LiveKit {
   /** Room metadata is server-only, so clients can trust it for who hosts, notes and lock. */
   setMetadata(roomName: string, m: RoomMetadata): Promise<void>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
+  /** Sends a reliable data message to everyone in the room on `topic`. */
+  sendData(roomName: string, data: Uint8Array, topic: string): Promise<void>;
 }
 
 /** Seconds LiveKit keeps an empty room, and keeps a room after the last person leaves. */
@@ -64,6 +66,9 @@ export function createLiveKit(cfg: Config): LiveKit {
     },
     async removeParticipant(roomName, identity) {
       await rooms.removeParticipant(roomName, identity);
+    },
+    async sendData(roomName, data, topic) {
+      await rooms.sendData(roomName, data, DataPacket_Kind.RELIABLE, { topic });
     }
   };
 }
