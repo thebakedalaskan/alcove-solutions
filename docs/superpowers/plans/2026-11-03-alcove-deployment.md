@@ -36,14 +36,27 @@
 - [x] Deploy the API and run migrations; verify `/health` through the deployed `run.app` URL.
 - [x] Replace the incompatible Pages publishing action with pinned `pnpm dlx wrangler@4.157.0`, step-scoped credentials and commit attribution.
 - [x] Configure the SPA shell as `index.html` and remove the asset-intercepting Pages redirect file.
-- [ ] Verify the publisher change through CI and an actual Pages deployment without changing workspace dependencies.
-- [ ] Rebuild and verify the native SPA fallback through a deployment: root and deep links load, and real JavaScript/CSS assets keep their own responses without redirect loops.
-- [ ] Configure and verify a Cloudflare zone Single Redirect from www to the apex, preserving paths and query strings.
-- [ ] Verify the live main ruleset and production environment restrictions against the intended merge/deployment policy.
+- [x] Verify the publisher change through CI and an automatic API + Pages deployment without changing workspace dependencies: commit `bd0928e`, Deploy run `41669226228`.
+- [x] Rebuild and verify the native SPA fallback through a deployment: root and deep links load, and real JavaScript/CSS assets keep their own responses without redirect loops.
+- [x] Configure and verify a Cloudflare zone Single Redirect from www to the apex, preserving paths and query strings.
+- [x] Verify active main ruleset `26463921`: pull requests, all four required CI checks on an up-to-date branch, and no bypass actors. The deployment workflow and GCP identity remain restricted to main.
 - [x] Confirm Cloudflare DNS delegation and preservation of existing non-hosting records; verify the API CNAME through public DNS and active apex/www Pages domain configuration.
-- [ ] Finish public API certificate provisioning and verify HTTPS at `api.alcove.solutions`.
-- [ ] Verify both public domains, HTTPS, web deep links/security headers, CORS and deployed storage/account/recording journeys.
-- [ ] Match API and Pages releases to the intended commit and record final acceptance evidence in deployment docs.
+- [x] Finish public API certificate provisioning and verify HTTPS at `api.alcove.solutions`: `/health` returns 200.
+- [x] Verify public web HTTPS, native SPA routes, asset responses and security headers; render the welcome page in a real browser.
+- [x] Match API and Pages releases to the same intended commit, `bd0928e`.
+- [x] Reproduce the HTTPS session-lock and stale-cookie failures, preserve the secure attribute on cookie deletion, and pass all 23 integration tests and five package type checks.
+- [ ] Deploy the secure-cookie fix and repeat the public lock/unlock journey.
+- [ ] Complete the public-origin CORS/account/recording journey and prove private R2 upload, playback and physical deletion through the deployed API.
+- [ ] Record final acceptance evidence after the deployed user and storage journeys pass.
 
-API service health is established through `run.app`. Custom-domain certificate readiness, Pages
-publication and the complete public release remain open until the checks above pass.
+## Progress snapshot — 2026-11-03 16:04 UTC
+
+Automatic [Deploy run 41669226228](https://github.com/thebakedalaskan/the-privacy-suite/actions/runs/41669226228)
+succeeded for both API and web at commit `bd0928e`. The custom API hostname returns HTTPS 200 for
+`/health`, the web welcome page renders in a real browser, and main ruleset `26463921` is active with
+the required merge protections. DNS, native SPA routing, assets and the www redirect are verified.
+
+Full user-flow acceptance remains open. The production account journey exposed an HTTPS session-lock
+cookie bug; integration regressions and the minimal secure-cookie correction pass locally on
+`codex/alcove-secure-session`. Account lock/unlock, recording and private R2 storage acceptance must
+be rerun after that fix deploys. Successful infrastructure deployment is not final user-flow acceptance.

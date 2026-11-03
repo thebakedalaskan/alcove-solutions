@@ -12,7 +12,8 @@ import { createObjectStore, type ObjectStore } from '../objects';
 import { SessionStore } from '../sessions';
 import { cookieFetch, memorySecrets, softPasskeys } from './soft-passkey';
 
-export const ORIGIN = 'http://localhost:3000';
+// The HTTP test transport carries an HTTPS web origin to exercise production cookie rules.
+export const ORIGIN = 'https://localhost:3000';
 export interface Harness {
   baseUrl: string;
   pool: pg.Pool;
