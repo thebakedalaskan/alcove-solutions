@@ -314,7 +314,8 @@ How a client checks the server (the app doesn't do this yet):
 2. Verify the quote: its signature chain to Intel, its TCB status (for example with `dcap-qvl`), and that
    its report data is `SHA-512("alcove-attestation/v1\n" + nonce + "\n" + commit)`.
 3. Replay the event log: it must reproduce the quote's RTMR3, and its `compose-hash` event must match the
-   compose hash returned. That compose must run the image built from `commit`, named by digest.
+   compose hash returned, which is the published compose hashed as dstack does it (`getComposeHash` in
+   `@phala/dstack-sdk`). That compose must run the image built from `commit`, named by digest.
 4. Only then send anything, to the code at that commit.
 
 Moving, in order:
