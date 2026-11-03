@@ -67,7 +67,12 @@ export function createApp(d: Deps) {
 
   app.onError((e, c) => {
     if (e instanceof ApiError) return c.json({ code: e.code, message: e.message }, e.status);
-    if (e instanceof ZodError) return c.json({ code: 'invalid', message: 'Some of that input isn’t valid.', issues: e.issues.map((i) => i.path.join('.')) }, 400);
+    if (e instanceof ZodError) {
+      const issues = e.issues.map((i) => `${i.path.join('.')}: ${i.code}`);
+      // Field names and issue codes only, never values: enough to see why a passkey manager's response was refused.
+      if (c.req.path.startsWith('/v1/auth') || c.req.path.startsWith('/v1/passkeys')) console.warn(`rejected ${c.req.method} ${c.req.path}:`, issues.join('; '));
+      return c.json({ code: 'invalid', message: 'Some of that input isn’t valid.', issues }, 400);
+    }
     console.error(e);
     return c.json({ code: 'unknown', message: 'Something went wrong on our side.' }, 500);
   });

@@ -47,33 +47,86 @@ export function prfKey(v: unknown): Uint8Array | null {
 }
 const hasJsonApi = (): boolean => typeof PublicKeyCredential !== 'undefined' && 'parseCreationOptionsFromJSON' in PublicKeyCredential;
 
-/** WebAuthn in a real browser. */
+/*
+ * Reading credentials. Password managers (1Password, Bitwarden, Dashlane...) replace
+ * navigator.credentials and return their own objects: not `instanceof PublicKeyCredential`, often
+ * without toJSON(), with buffers from another realm. So read the standard WebAuthn fields directly.
+ */
+const get = (o: unknown, k: string): unknown => (typeof o === 'object' && o !== null ? Reflect.get(o, k) : undefined);
+const call = (o: unknown, k: string): unknown => { const f = get(o, k); return typeof f === 'function' ? Reflect.apply(f, o, []) : undefined; };
+const b64Field = (o: unknown, k: string): string | undefined => { const v = bytesOf(get(o, k)) ?? bytesOf(call(o, `get${k[0]?.toUpperCase() ?? ''}${k.slice(1)}`)); return v ? b64u(v) : undefined; };
+function bytesOf(v: unknown): Uint8Array | null {
+  if (isArrayBuffer(v)) return new Uint8Array(v);
+  if (ArrayBuffer.isView(v)) return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+  if (typeof v === 'string' && /^[A-Za-z0-9_-]+$/.test(v)) return unb64u(v);
+  return null;
+}
+function commonFields(cred: unknown): { id: string; rawId: string; type: 'public-key'; clientExtensionResults: Record<string, never>; authenticatorAttachment?: 'platform' | 'cross-platform' } {
+  const raw = bytesOf(get(cred, 'rawId'));
+  const id = raw ? b64u(raw) : String(get(cred, 'id') ?? '');
+  const att = get(cred, 'authenticatorAttachment');
+  return { id, rawId: id, type: 'public-key', clientExtensionResults: {}, ...(att === 'platform' || att === 'cross-platform' ? { authenticatorAttachment: att } : {}) };
+}
+function prfOf(cred: unknown): { key: Uint8Array | null; enabled: boolean } {
+  const prf = get(call(cred, 'getClientExtensionResults'), 'prf');
+  const results = get(prf, 'results');
+  return { key: prfKey(get(results, 'first')), enabled: get(prf, 'enabled') === true || results !== undefined };
+}
+function registrationOf(cred: unknown): RegistrationCredential {
+  const r = get(cred, 'response');
+  const transports = call(r, 'getTransports') ?? get(r, 'transports');
+  const alg = call(r, 'getPublicKeyAlgorithm') ?? get(r, 'publicKeyAlgorithm');
+  return RegistrationCredentialSchema.parse({
+    ...commonFields(cred),
+    response: {
+      clientDataJSON: b64Field(r, 'clientDataJSON'), attestationObject: b64Field(r, 'attestationObject'),
+      ...(b64Field(r, 'authenticatorData') ? { authenticatorData: b64Field(r, 'authenticatorData') } : {}),
+      ...(b64Field(r, 'publicKey') ? { publicKey: b64Field(r, 'publicKey') } : {}),
+      ...(typeof alg === 'number' ? { publicKeyAlgorithm: alg } : {}),
+      ...(Array.isArray(transports) ? { transports: transports.filter((t): t is string => typeof t === 'string' && ['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb'].includes(t)) } : {})
+    }
+  });
+}
+function assertionOf(cred: unknown): AssertionCredential {
+  const r = get(cred, 'response');
+  const userHandle = b64Field(r, 'userHandle');
+  return AssertionCredentialSchema.parse({
+    ...commonFields(cred),
+    response: { clientDataJSON: b64Field(r, 'clientDataJSON'), authenticatorData: b64Field(r, 'authenticatorData'), signature: b64Field(r, 'signature'), ...(userHandle ? { userHandle } : {}) }
+  });
+}
+const isCredential = (c: unknown): boolean => typeof get(c, 'response') === 'object' && get(c, 'rawId') !== undefined;
+
+/** WebAuthn in a real browser, including passkey managers that replace navigator.credentials. */
 export function browserPasskeys(): PasskeyDevice {
   return {
     async create(options, salt) {
       if (!hasJsonApi()) throw new AlcoveApiError('unavailable', 'This browser doesn’t support passkeys well enough. Use a current Chrome, Edge or Safari.');
       const publicKey = PublicKeyCredential.parseCreationOptionsFromJSON(creationJson(options));
       publicKey.extensions = { ...publicKey.extensions, prf: { eval: { first: salt } } };
-      const cred = await navigator.credentials.create({ publicKey }).catch(cancelled);
-      if (!(cred instanceof PublicKeyCredential)) throw new AlcoveApiError('invalid', 'No passkey was created.');
-      const prf = cred.getClientExtensionResults().prf;
-      return { credential: RegistrationCredentialSchema.parse(cred.toJSON()), prf: prfKey(prf?.results?.first), prfEnabled: prf?.enabled === true || !!prf?.results };
+      const cred: unknown = await navigator.credentials.create({ publicKey }).catch(cancelled);
+      if (!isCredential(cred)) throw new AlcoveApiError('invalid', 'Your passkey manager didn’t return a passkey.');
+      const prf = prfOf(cred);
+      return { credential: registrationOf(cred), prf: prf.key, prfEnabled: prf.enabled };
     },
     async get(options, salt, allow) {
       if (!hasJsonApi()) throw new AlcoveApiError('unavailable', 'This browser doesn’t support passkeys well enough. Use a current Chrome, Edge or Safari.');
       const publicKey = PublicKeyCredential.parseRequestOptionsFromJSON(requestJson(options));
       if (allow) publicKey.allowCredentials = allow.map((id) => ({ id: unb64u(id), type: 'public-key' }));
       publicKey.extensions = { ...publicKey.extensions, prf: { eval: { first: salt } } };
-      const cred = await navigator.credentials.get({ publicKey }).catch(cancelled);
-      if (!(cred instanceof PublicKeyCredential)) throw new AlcoveApiError('invalid', 'No passkey was used.');
-      return { credential: AssertionCredentialSchema.parse(cred.toJSON()), prf: prfKey(cred.getClientExtensionResults().prf?.results?.first) };
+      const cred: unknown = await navigator.credentials.get({ publicKey }).catch(cancelled);
+      if (!isCredential(cred)) throw new AlcoveApiError('invalid', 'Your passkey manager didn’t return a passkey.');
+      return { credential: assertionOf(cred), prf: prfOf(cred).key };
     }
   };
 }
+/* Errors may come from a passkey manager's own realm, so match on the name, not the class. */
 function cancelled(e: unknown): never {
-  if (e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'AbortError')) throw new AlcoveApiError('invalid', 'The passkey prompt was cancelled.');
-  if (e instanceof DOMException && e.name === 'InvalidStateError') throw new AlcoveApiError('conflict', 'That passkey is already registered.');
-  throw e;
+  const name = get(e, 'name');
+  if (name === 'NotAllowedError' || name === 'AbortError') throw new AlcoveApiError('invalid', 'The passkey prompt was cancelled or timed out.');
+  if (name === 'InvalidStateError') throw new AlcoveApiError('conflict', 'That passkey is already registered.');
+  const message = get(e, 'message');
+  throw new AlcoveApiError('unknown', `Your passkey manager reported an error${typeof message === 'string' && message ? `: ${message}` : '.'}`);
 }
 /* The server's options are WebAuthn's standard JSON forms; the browser validates them in parse*FromJSON. */
 function creationJson(o: Record<string, unknown>): PublicKeyCredentialCreationOptionsJSON {
