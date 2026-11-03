@@ -163,9 +163,14 @@ The hash is deterministic, so equal values show the same person across rows and 
   cancelled or declined, of the default type, and not Alcove's own. `POST /v1/calendar/events/:id/adopt`
   makes one of them an Alcove call, only if the account is its organizer (`403 forbidden` otherwise): the
   call takes the event's title, time and guests, and the event gets the Alcove link above its old
-  description, with the update sent to everyone. Adopting the same event twice returns the same call.
-- **Never logged:** ID tokens, refresh and access tokens, and Google's error descriptions. Only Google's error
-  code (such as `invalid_grant`) is.
+  description, with the update sent to everyone. Adopting the same event twice returns the same call. An
+  occurrence of a recurring event carries Google's ID for the whole recurring event (`recurringEventId`):
+  adopting one keeps that ID inside the call's sealed manifest, so every occurrence held in Alcove is in one
+  series, and the calendar view marks later occurrences with it
+  ([Notes and inference › Series](notes-and-inference.md#series)).
+- **Never logged:** ID tokens, refresh and access tokens, Google's error descriptions, and Google's event IDs
+  (an occurrence's ID begins with its recurring event's, so logged paths, the server's and the browser's,
+  show `/v1/calendar/events/:id`). Only Google's error code (such as `invalid_grant`) is.
 
 ## Who can read a note
 
@@ -184,13 +189,21 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   same answer as for a note that doesn't exist.
 - **The live transcript** is only in the organizer's own call or room recording; nobody else sees it until
   the note is finished and given to them.
-- **Decisions and follow-ups** are one list for everyone who has the note, and every change writes a new
-  revision in the organizer's vault with who made it (their name and address, inside the sealed manifest)
-  and when. What the notes model wrote is only a proposal: a decision stays `proposed` until someone who
-  has the note confirms it, and a follow-up's owner is a suggestion until that person takes it on. Only
-  the person a follow-up is for can take it on (`403 forbidden` for anyone else; giving it to yourself is
-  taking it on), and it can only go to someone who has the note. Refusals name nobody, so no name reaches
-  a log line.
+- **Decisions, open questions and follow-ups** are one list for everyone who has the note, and every
+  change writes a new revision in the organizer's vault with who made it (their name and address, inside
+  the sealed manifest) and when. What the notes model wrote is only a proposal: a decision stays
+  `proposed` until someone who has the note confirms it (and a confirmed one can later be said to no longer
+  hold), a question stays open until someone says it was answered, and a follow-up's owner is a suggestion
+  until that person takes it on. Only the person a follow-up is for can take it on (`403 forbidden` for
+  anyone else; giving it to yourself is taking it on), and it can only go to someone who has the note.
+  Refusals name nobody, so no name reaches a log line.
+- **Series.** What carries over from one call to the next is put together on each request from the notes
+  the asker can read at that moment, through this same check, and kept nowhere
+  ([Notes and inference › Series](notes-and-inference.md#series)). Being in a series opens nothing: someone
+  invited to one call sees that call's notes in it and no other, a note deleted or removed is gone from it at
+  once, and asking across a series sends the notes model only the calls the asker has. A series ID that
+  comes from a request is treated like a note ID: anyone with no notes from it gets `404 not-found`, and
+  only the organizer sees its next call.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
   else's note deletes only your own `note_access` row.
 
@@ -207,19 +220,21 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may
   hold copies of responses, so they are purged after 24 hours and whenever the owner deletes a note or cancels
-  a meeting. Note search, asking, audio pieces and transcript clips keep no receipt: searching and asking
-  only read, pieces and clips are already idempotent by their place in the recording, and their answers
-  carry the live transcript, which shouldn't be copied into receipts.
+  a meeting. Note search, asking (about a note, a call so far or a series), audio pieces and transcript
+  clips keep no receipt: searching and asking only read, pieces and clips are already idempotent by their
+  place in the recording, and their answers carry the live transcript, which shouldn't be copied into
+  receipts.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
   `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute
-  per account, calls and room recordings together. Questions about notes: 20 a minute per account. Over a
+  per account, calls and room recordings together. Questions and catch-ups (about notes, a call so far or a
+  series): 20 a minute per account, together. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB or a transcript clip over 30 seconds of WAV is refused from its
   `content-length` (`400 invalid`) before the body is read.
 - **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies.
   Logs hold IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs, call
-  codes or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
+  codes, Google event IDs or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
   sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
 
 ## What leaves the browser
@@ -253,7 +268,7 @@ Only requests to Alcove itself: the web app's own origin and the API. Nothing th
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds |
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
-| NEAR AI Cloud | Every transcript clip (the audio) and what was said in it. For notes and questions: the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Sent over TLS with a bearer key; Alcove doesn't yet use NEAR AI's end-to-end encrypted mode or check its attestation. |
+| NEAR AI Cloud | Every transcript clip (the audio) and what was said in it. For notes and questions: the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Asking across a series: the same for up to 12 of the calls in it that the asker has notes from, with their dates, decisions, open questions and follow-ups. Sent over TLS with a bearer key; Alcove doesn't yet use NEAR AI's end-to-end encrypted mode or check its attestation. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
@@ -270,6 +285,9 @@ Only requests to Alcove itself: the web app's own origin and the API. Nothing th
   receipts. With a connected calendar, its Google event is cancelled too, which tells the guests. Its notes
   stay. A live call can't be cancelled.
 - **Discarding a room recording** deletes its note in the same way as deleting your own note.
+- **Series** have no record of their own: a series is the ID its calls share inside their sealed manifests
+  (with Google's ID for a recurring event), so it goes when its calls do. What carries over is never stored,
+  so a deleted or removed note leaves every series at once, with nothing derived from it left behind.
 - **Google access** stays in the account's `connection` item until the account is deleted (not built yet).
   Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries

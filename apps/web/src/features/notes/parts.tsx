@@ -1,21 +1,22 @@
 /* The pieces of a note page, shared by real notes and the example. */
 import {
   errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
-  type Recipient, type Speaker, type TranscriptLine
+  type Question, type QuestionPatch, type Recipient, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { Avatar, Button, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, TranscriptLine as SpokenLine, Words, buttonClass, cn, useToast } from '@alcove/ui';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
 import { PROMISE_MANY } from './NoteCard';
 import { ROLE } from './meta';
 
-export function DocHead({ title, when, people, chip }: { title: string; when: string; people: Person[]; chip?: ReactNode }) {
+export function DocHead({ title, when, people, chip, series }: { title: string; when: string; people: Person[]; chip?: ReactNode; series?: ReactNode }) {
   return (
     <>
       {chip}
       <h1>{title}</h1>
-      <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} />{listNames(people)}</span></div>
+      <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} />{listNames(people)}</span>{series}</div>
     </>
   );
 }
@@ -29,7 +30,7 @@ export function Section({ title, count, children, className, style }: { title: s
   );
 }
 
-/* ---------- decisions and follow-ups: what the notes heard, until people say so ---------- */
+/* ---------- decisions, open questions and follow-ups: what the notes heard, until people say so ---------- */
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Who did something, as the reader sees them: "you", or a first name. */
@@ -44,6 +45,8 @@ function changeLine(c: Change, me: string | undefined): string {
   switch (c.what) {
     case 'confirmed': return `${who} confirmed it`;
     case 'rejected': return `${who} said it wasn’t decided`;
+    case 'superseded': return `${who} said it no longer holds`;
+    case 'answered': return `${who} said it was answered`;
     case 'reopened': return `${who} reopened it`;
     case 'reworded': return `${who} reworded it`;
     case 'took-on': return c.before ? `${who} took it on from ${named(c.before)}` : `${who} took it on`;
@@ -54,13 +57,16 @@ function changeLine(c: Change, me: string | undefined): string {
   }
 }
 
-/** Where a decision stands, in a sentence: confirmed by whom, said not to be decided, or nobody has confirmed it yet. */
-function decisionLine(d: Decision, me: string | undefined): string {
+/** Where a decision stands, in a sentence: confirmed by whom, said not to be decided or to no longer hold, or nobody has confirmed it yet. */
+export function decisionLine(d: Decision, me: string | undefined): string {
   const last = [...d.changes].reverse().find((c) => c.what !== 'reworded');
   if (d.state === 'confirmed' && last) return `Confirmed by ${byName(last.by, me)}`;
   if (d.state === 'rejected' && last) return `${cap(byName(last.by, me))} said this wasn’t decided`;
+  if (d.state === 'superseded' && last) return `${cap(byName(last.by, me))} said this no longer holds`;
   return 'Proposed by the notes. Nobody has confirmed it yet';
 }
+/** Every change to something, one per line, for its tooltip. */
+const history = (changes: Change[], me: string | undefined) => (changes.length ? changes.map((c) => `${changeLine(c, me)}, ${when(c.at)}`).join('\n') : undefined);
 
 function DecisionRow({ d, n, me, onChange, onSeek }: { d: Decision; n: number; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined }) {
   const [editing, setEditing] = useState(false);
@@ -75,14 +81,16 @@ function DecisionRow({ d, n, me, onChange, onSeek }: { d: Decision; n: number; m
           ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this decision" onChange={(e) => setText(e.target.value)} onBlur={save}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(d.text); setEditing(false); } }} />
           : <span className="t">{d.text}</span>}
-        <div className="dec-s" title={d.changes.length ? d.changes.map((c) => `${changeLine(c, me)}, ${when(c.at)}`).join('\n') : undefined}>
+        <div className="dec-s" title={history(d.changes, me)}>
           {d.state === 'confirmed' && <Icon name="check" size={14} />}
           <span>{decisionLine(d, me)}</span>
           {onChange && (
             <>
-              {d.state !== 'confirmed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>Confirm</button>}
+              {(d.state === 'proposed' || d.state === 'rejected') && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>Confirm</button>}
               {d.state === 'proposed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'rejected' })}>It wasn’t decided</button>}
-              {d.state !== 'proposed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'proposed' })}>{d.state === 'confirmed' ? 'Undo' : 'Reopen'}</button>}
+              {d.state === 'confirmed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'superseded' })}>It no longer holds</button>}
+              {d.state === 'superseded' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>It still holds</button>}
+              {(d.state === 'confirmed' || d.state === 'rejected') && <button type="button" className="lk quiet" onClick={() => onChange(d, { state: 'proposed' })}>{d.state === 'confirmed' ? 'Undo' : 'Reopen'}</button>}
               {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
             </>
           )}
@@ -100,8 +108,51 @@ export function Decisions({ items, me, onChange, onSeek }: {
   return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} />)}</>;
 }
 
+/** Where an open question stands, in a sentence: still open, reopened by someone, or answered. */
+export function questionLine(x: Question, me: string | undefined): string {
+  const last = [...x.changes].reverse().find((c) => c.what !== 'reworded');
+  if (x.state === 'answered') return last ? `${cap(byName(last.by, me))} said this was answered` : 'Answered';
+  return last?.what === 'reopened' ? `Reopened by ${byName(last.by, me)}` : 'Not answered yet';
+}
+
+function QuestionRow({ x, n, me, onChange, onSeek }: { x: Question; n: number; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(x.text);
+  useEffect(() => { if (!editing) setText(x.text); }, [x.text, editing]);
+  const save = () => { const t = text.trim(); setEditing(false); if (t && t !== x.text) onChange?.(x, { text: t }); };
+  return (
+    <div className={cn('dec', 'ques', x.state)}>
+      <span className="n">{String(n).padStart(2, '0')}</span>
+      <div className="dec-b">
+        {editing
+          ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this question" onChange={(e) => setText(e.target.value)} onBlur={save}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(x.text); setEditing(false); } }} />
+          : <span className="t">{x.text}</span>}
+        <div className="dec-s" title={history(x.changes, me)}>
+          {x.state === 'answered' && <Icon name="check" size={14} />}
+          <span>{questionLine(x, me)}</span>
+          {onChange && (
+            <>
+              <button type="button" className="lk" onClick={() => onChange(x, { state: x.state === 'open' ? 'answered' : 'open' })}>{x.state === 'open' ? 'It was answered' : 'Reopen'}</button>
+              {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
+            </>
+          )}
+        </div>
+      </div>
+      {x.at !== undefined ? <TimeChip seconds={x.at} onSeek={onSeek} /> : <span />}
+    </div>
+  );
+}
+
+/** What the call asked and didn't settle. Each stays open until someone who has the notes says it was answered. */
+export function Questions({ items, me, onChange, onSeek }: {
+  items: Question[]; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined;
+}) {
+  return <>{items.map((x, i) => <QuestionRow key={x.id} x={x} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} />)}</>;
+}
+
 /** Who a follow-up is for, in a sentence: suggested by the notes, given by someone, or taken on. */
-function actionLine(a: ActionItem, me: string | undefined): string {
+export function actionLine(a: ActionItem, me: string | undefined): string {
   if (!a.owner) return 'Nobody is on this yet';
   const mine = !!me && !!a.owner.person && sameEmail(a.owner.person, { email: me });
   const them = mine ? 'you' : spokenName(a.owner, me);
@@ -187,33 +238,56 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
   );
 }
 
-/** The transcript of a written note, folded away under its summary. */
-export function Transcript({ lines, seconds, me, onSeek }: { lines: TranscriptLine[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined }) {
-  const [open, setOpen] = useState(false);
+/** The transcript of a written note, folded away under its summary; open at `focus` when a link brought someone to a moment in it. */
+export function Transcript({ lines, seconds, me, onSeek, focus }: { lines: TranscriptLine[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined }) {
+  const [open, setOpen] = useState(focus !== undefined);
+  useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
   return (
     <>
       <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
-      {open && <TranscriptLines lines={lines} me={me} onSeek={onSeek} className="mt-3" />}
+      {open && <TranscriptLines lines={lines} me={me} onSeek={onSeek} focus={focus} className="mt-3" />}
     </>
   );
 }
 
 const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.email.toLowerCase() ?? `name:${s.name}`) : '');
 
-/** What was said, line by line. A speaker's lines in a row share one name; a room recording names nobody. */
-export function TranscriptLines({ lines, me, onSeek, className }: { lines: TranscriptLine[]; me: string | undefined; onSeek?: ((s: number) => void) | undefined; className?: string | undefined }) {
+/** Where a link to a moment lands: the transcript line said then, which the router scrolls to the middle of the view. */
+const MOMENT = 'moment';
+const CENTER: ScrollIntoViewOptions = { block: 'center' };
+/** The parts of a link to a note that open it at a moment. */
+const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT, hashScrollIntoView: CENTER });
+
+/**
+ * What was said, line by line. A speaker's lines in a row share one name; a room recording names
+ * nobody. With `focus`, the line said at that moment is marked, and is where a moment's link lands.
+ */
+export function TranscriptLines({ lines, me, onSeek, focus, className }: {
+  lines: TranscriptLine[]; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; className?: string | undefined;
+}) {
+  const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
   return (
     <div className={cn('tr', className)}>
       {lines.map((l, i) => {
         const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
-        if (!l.speaker) return <SpokenLine key={l.id} time={time}>{l.text}</SpokenLine>;
-        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker);
+        const mark = i === here ? { id: MOMENT, className: 'here' } : {};
+        if (!l.speaker) return <SpokenLine key={l.id} {...mark} time={time}>{l.text}</SpokenLine>;
+        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here;
         return (
-          <SpokenLine key={l.id} className={cn(more && 'more')} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
+          <SpokenLine key={l.id} id={mark.id} className={cn(more && 'more', mark.className)} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
             name={more ? undefined : spokenName(l.speaker, me)} time={time}>{l.text}</SpokenLine>
         );
       })}
     </div>
+  );
+}
+
+/** A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. */
+export function MomentLink({ noteId, at }: { noteId: string; at: number }) {
+  return (
+    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at)} className="ac-time-chip" title={`Open the notes at ${position(at)}`}>
+      {position(at)}
+    </Link>
   );
 }
 
@@ -249,13 +323,32 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
   );
 }
 
-/** Ask about a call. Answers stream in, with the moments they come from. */
-export function AskBar({ suggestions, ask, onSeek }: { suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart>; onSeek?: ((s: number) => void) | undefined }) {
+/** Where an answer comes from: a moment in this call, or (asking across a series) one of its calls, at a moment when it can tell. */
+type Cite = Exclude<AnswerPart | SeriesAnswerPart, { type: 'text' }>;
+const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.at}` : `${c.noteId}@${c.at ?? ''}`);
+
+/** One of a series' calls an answer comes from: its day, and the moment when the answer could tell. */
+function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
+  const day = shortDay(new Date(c.startedAt));
+  return (
+    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...(c.at === undefined ? {} : atMoment(c.at))} className="src-chip" title={`Open the notes from ${c.title}, ${day}`}>
+      <Icon name="notes" size={13} />{day}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
+    </Link>
+  );
+}
+
+/**
+ * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
+ * moments in this call to play, or the calls (and moments) to open.
+ */
+export function AskBar({ suggestions, ask, onSeek, label = 'Ask about this call' }: {
+  suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined; label?: string | undefined;
+}) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [focus, setFocus] = useState(false);
   const [text, setText] = useState('');
-  const [answer, setAnswer] = useState<{ q: string; text: string; cites: number[]; done: boolean } | null>(null);
+  const [answer, setAnswer] = useState<{ q: string; text: string; cites: Cite[]; done: boolean } | null>(null);
   useEffect(() => {
     const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
     addEventListener('keydown', on);
@@ -269,7 +362,7 @@ export function AskBar({ suggestions, ask, onSeek }: { suggestions: string[]; as
     setAnswer({ q: qn, text: '', cites: [], done: false });
     try {
       for await (const part of ask(qn)) {
-        setAnswer((a) => a && (part.type === 'text' ? { ...a, text: a.text + part.text } : { ...a, cites: [...a.cites, part.at] }));
+        setAnswer((a) => a && (part.type === 'text' ? { ...a, text: a.text + part.text } : { ...a, cites: [...a.cites, part] }));
       }
       setAnswer((a) => a && { ...a, done: true });
     } catch (e) {
@@ -283,7 +376,11 @@ export function AskBar({ suggestions, ask, onSeek }: { suggestions: string[]; as
         <div className="ac-card answer">
           <div className="q"><Icon name="ask" size={15} />{answer.q}</div>
           <p>{answer.done ? <Words text={answer.text} /> : answer.text || '…'}</p>
-          {answer.cites.length > 0 && <div className="mt-2.5 flex flex-wrap gap-1.5">{answer.cites.map((c) => <TimeChip key={c} seconds={c} onSeek={onSeek} />)}</div>}
+          {answer.cites.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} /> : <SourceLink key={citeKey(c)} c={c} />))}
+            </div>
+          )}
         </div>
       )}
       {focus && suggestions.length > 0 && (
@@ -292,7 +389,7 @@ export function AskBar({ suggestions, ask, onSeek }: { suggestions: string[]; as
       <div className="ask-bar">
         <Icon name="ask" size={19} />
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void run(text); }} placeholder="Ask about this call" autoComplete="off" aria-label="Ask about this call" />
+          onKeyDown={(e) => { if (e.key === 'Enter') void run(text); }} placeholder={label} autoComplete="off" aria-label={label} />
         <Kbd>⌘J</Kbd>
         <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'w-11 px-0')} aria-label="Ask" onClick={() => void run(text)}><Icon name="send" size={18} /></button>
       </div>

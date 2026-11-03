@@ -172,6 +172,8 @@ a.nflag:hover { background: var(--sun-soft); color: var(--sun-text); }
 .dec .t, .act .t { text-wrap: pretty; }
 .dec.proposed .t { color: var(--ink-2); }
 .dec.rejected .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+/* A decision that no longer holds, and a question someone said was answered: kept, but quieter. */
+.dec.superseded .t, .dec.ques.answered .t { color: var(--ink-3); }
 .dec-s, .act-s { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
 .dec.confirmed .dec-s { color: var(--ink-2); }
 .dec-s .ac-i { margin-right: -7px; color: var(--sun-text); }
@@ -194,6 +196,9 @@ a.nflag:hover { background: var(--sun-soft); color: var(--sun-text); }
 .tr { display: grid; }
 .tr .ac-line { padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
 .tr .ac-line.more { border-top: 0; padding-top: 0; }
+/* The line a link brought someone to: marked at the edge, and lit for a moment. */
+.tr .ac-line.here { position: relative; margin-inline: -12px; padding-inline: 12px; border-radius: var(--radius-md); animation: line-here 2600ms var(--ease-out) both; }
+.tr .ac-line.here::before { content: ""; position: absolute; left: -4px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--horizon); }
 .write-in { animation: write-in 600ms var(--ease-out) both; animation-delay: calc(var(--d, 0) * 120ms); }
 .ask { position: sticky; bottom: 22px; z-index: 5; margin-top: 46px; }
 .ask-bar { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 18px; border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
@@ -243,6 +248,60 @@ a.nflag:hover { background: var(--sun-soft); color: var(--sun-text); }
 .gone li { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--ink-2); }
 .gone li .ac-i { color: var(--sun-text); }
 
+/* ---------------------------------------------------------------- series */
+/* What carries over from one call to the next: each thing with the call it came from, and the moment. */
+.prep-groups { display: grid; gap: 18px; margin-top: 12px; }
+.prep-g > .ac-eyebrow { display: flex; align-items: center; gap: 8px; }
+.prep-g > .ac-eyebrow span::before { content: "·"; margin-right: 8px; }
+.prep-g > .ac-eyebrow + .carry { border-top: 0; }
+.prep-more { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 8px; font: 600 13px/1.4 var(--font-sans); }
+.prep-more a { color: var(--ink-3); transition: color var(--duration-1); }
+.prep-more a:hover { color: var(--sun-text); }
+.prep-empty { padding: 14px 12px 8px; }
+.carry { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-top: 1px solid var(--line); }
+.carry .g { display: grid; place-items: center; width: 22px; height: 21px; color: var(--ink-3); }
+.carry.confirmed .g { color: var(--ink-2); }
+.carry-b { display: grid; gap: 4px; min-width: 0; }
+.carry .t { font-size: 14.5px; font-weight: 500; line-height: 1.4; text-wrap: pretty; }
+.carry.proposed .t, .carry.superseded .t { color: var(--ink-2); }
+.carry.superseded .t { font-weight: 400; }
+.carry.done .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.carry .m { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+.carry .m .ac-chip { height: 22px; padding: 0 8px; font-size: 12px; }
+.carry .m .lk { font-size: 12.5px; }
+/* Rarer changes wait under the pointer, or for focus; a touch screen shows them. */
+.carry .m .on-hover { opacity: 0; transition: opacity var(--duration-1); }
+.carry:hover .m .on-hover, .carry:focus-within .m .on-hover { opacity: 1; }
+@media (hover: none) { .carry .m .on-hover { opacity: 1; } }
+.carry-from { font-weight: 600; color: var(--ink-2); border-radius: 4px; transition: color var(--duration-1); }
+.carry-from:hover { color: var(--sun-text); text-decoration: underline; text-underline-offset: 3px; }
+.carry > .ac-time-chip { margin-top: 1px; }
+.carry.maybe .g .ac-avatar { opacity: 0.7; }
+.carry .g .ac-check { margin-top: 1px; }
+/* Nobody has confirmed it, or nobody is on it: an open ring. */
+.pend { width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed var(--line-control); }
+.carry-list .carry { padding: 13px 0; }
+.carry-list .carry .t { font-size: 15.5px; }
+.carry-list .grp + .carry { border-top: 0; }
+.ser-p { margin-top: 2px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
+.ser-btn { margin-top: 14px; }
+.ser-next { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: var(--ink-2); }
+.ser-next > .ac-i { flex: none; color: var(--ink-3); }
+.ser-next b { margin-left: 4px; font-weight: 500; color: var(--ink); }
+.ser-go { display: inline-flex; align-items: center; gap: 4px; margin-top: 14px; font: 600 13px/1 var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
+.ser-go:hover { color: var(--sun-text); }
+.ser-link { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink-2); transition: color var(--duration-1); }
+.ser-link:hover { color: var(--sun-text); }
+.ser-when { display: grid; gap: 5px; margin-top: 6px; }
+.ser-when b { font-size: 15px; font-weight: 600; }
+.ser-when .ac-mono { font-size: 13px; color: var(--ink-3); }
+.ser-acts { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.ser-calls { margin-top: 6px; }
+.ser-calls .nrow b { font-size: 14px; }
+.src-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 8px; background: var(--sunk); color: var(--ink-2); font: 500 12.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.src-chip .ac-mono { font-size: 11.5px; color: var(--ink-3); transition: color var(--duration-1); }
+.src-chip:hover, .src-chip:hover .ac-mono { background: var(--sun-soft); color: var(--sun-text); }
+
 /* --------------------------------------------------------------- account */
 .acct { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
 .pane > h3 { margin-bottom: 6px; font: 600 18px/24px var(--font-sans); letter-spacing: -0.01em; }
@@ -272,6 +331,7 @@ a.nflag:hover { background: var(--sun-soft); color: var(--sun-text); }
 @keyframes row-new { 0% { opacity: 0; transform: translateY(-6px); background: var(--sun-soft); } 30% { opacity: 1; transform: none; background: var(--sun-soft); } 100% { background: transparent; } }
 @keyframes write-in { from { opacity: 0; transform: translateY(8px); } }
 @keyframes going { 40% { opacity: 0.4; } to { opacity: 0; transform: translateY(-6px); height: 0; margin: 0; padding: 0; } }
+@keyframes line-here { 0%, 55% { background: var(--horizon-soft); } 100% { background: transparent; } }
 @keyframes rc-in { 0% { opacity: 0; transform: translateY(6px); background: var(--sun-soft); box-shadow: 0 0 0 6px var(--sun-soft); } 40% { opacity: 1; transform: none; } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
 
 /* ---------------------------------------------------------- responsive */

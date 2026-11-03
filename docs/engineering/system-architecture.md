@@ -47,7 +47,7 @@ flowchart TB
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
 The API is one application with modules (account, people, meetings, calendar, calls, recordings, audio,
-transcripts, notes, drafting, writer, billing), not separate services. Modules share one database pool and
+transcripts, notes, drafting, writer, series, billing), not separate services. Modules share one database pool and
 one object store, and receive the owner context (the account's keys, opened for this request) explicitly.
 Billing is given only the owner ID and seals its state under `Kservice`. Google sign-in and Calendar live
 in `apps/api/src/google.ts` and `modules/calendar.ts`; only `apps/api/src/inference.ts` talks to NEAR AI.

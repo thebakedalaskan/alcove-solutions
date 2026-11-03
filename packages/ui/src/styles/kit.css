@@ -262,7 +262,7 @@
 .ac-meter i { display: block; height: 100%; border-radius: inherit; background: var(--sun); transform-origin: left; animation: ac-grow-x var(--duration-4) var(--ease-out) 300ms both; }
 .ac-kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: var(--radius-xs); background: var(--sunk); color: var(--ink-3); font: 500 11px/1 var(--font-mono); box-shadow: inset 0 -1px 0 var(--line); }
 .ac-time-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 7px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1), color var(--duration-1); }
-button.ac-time-chip:hover { background: var(--sun-soft); color: var(--sun-text); }
+button.ac-time-chip:hover, a.ac-time-chip:hover { background: var(--sun-soft); color: var(--sun-text); }
 .ac-stage .ac-time-chip { background: rgba(255, 255, 255, .08); color: var(--stage-ink-2); }
 .ac-stage .ac-avatar { background: var(--stage-tile); }
 .ac-stage .ac-avatar .initial { color: var(--stage-ink-2); }

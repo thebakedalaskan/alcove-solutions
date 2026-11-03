@@ -988,6 +988,18 @@ describe('privacy at rest', () => {
     // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too.
     const g = tapped();
     expect(landed(await viaGoogle(g, { sub: 'canary-google-sub-31337', email: 'canary.googler@canary.example', name: 'Canary Googler', picture: 'https://lh3.googleusercontent.com/a/canary-photo' }))).toBe('/ready');
+    // A series: a question its call left open, the next call in it, and a question asked across it. A
+    // recurring Google event's ID, which names its series, stays sealed and out of logged paths.
+    const sync = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    await sync.transcribe(speech('CANARY-QUESTION who signs the merger?', 0, 0));
+    const synced = await sync.leave();
+    await written(c.api, synced?.pendingNoteId ?? '');
+    expect((await c.api.notes.get(synced?.pendingNoteId ?? '')).questions.map((x) => x.text)).toEqual(['CANARY-QUESTION who signs the merger?']);
+    const following = await c.api.meetings.scheduleNext(sync.getSnapshot().meetingId);
+    for await (const part of c.api.series.ask(following.seriesId ?? '', 'CANARY-SERIES-ASK who signs it?')) expect(part.type).toMatch(/text|source/);
+    const tomorrow = Date.now() + 86_400_000;
+    h.google.calendar('canary-google-sub-31337').push({ id: 'canary-recurring-id_1', recurringEventId: 'canary-recurring-id', summary: 'Standing call', start: { dateTime: new Date(tomorrow).toISOString() }, end: { dateTime: new Date(tomorrow + 1_800_000).toISOString() }, organizer: { email: 'canary.googler@canary.example', self: true } });
+    expect((await g.api.calendar.adopt('canary-recurring-id_1', 'off')).seriesId).toBeTruthy();
 
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
       SELECT row_to_json(x)::text AS t FROM owners x UNION ALL SELECT row_to_json(x)::text FROM identities x UNION ALL
@@ -1003,7 +1015,8 @@ describe('privacy at rest', () => {
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
-      'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo'
+      'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo',
+      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'canary-recurring-id'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
 

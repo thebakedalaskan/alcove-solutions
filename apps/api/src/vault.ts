@@ -64,10 +64,15 @@ function decode<S extends z.ZodType>(o: Owner, r: z.infer<typeof HeadRow>, schem
 export async function listItems<S extends z.ZodType>(o: Owner, db: Db, kind: ItemKind, schema: S): Promise<Loaded<z.infer<S>>[]> {
   return (await rows(db, HeadRow, HEAD_SQL, [o.ownerId, kind])).map((r) => decode(o, r, schema));
 }
-export async function getItem<S extends z.ZodType>(o: Owner, db: Db, kind: ItemKind, itemId: string, schema: S, what: string): Promise<Loaded<z.infer<S>>> {
+/** One live item of a kind, decrypted, or undefined when the owner has none with that ID. */
+export async function findItem<S extends z.ZodType>(o: Owner, db: Db, kind: ItemKind, itemId: string, schema: S): Promise<Loaded<z.infer<S>> | undefined> {
   const r = await maybeOne(db, HeadRow, `${HEAD_SQL} AND i.item_id = $3`, [o.ownerId, kind, itemId]);
-  if (!r) throw notFound(what);
-  return decode(o, r, schema);
+  return r ? decode(o, r, schema) : undefined;
+}
+export async function getItem<S extends z.ZodType>(o: Owner, db: Db, kind: ItemKind, itemId: string, schema: S, what: string): Promise<Loaded<z.infer<S>>> {
+  const item = await findItem(o, db, kind, itemId, schema);
+  if (!item) throw notFound(what);
+  return item;
 }
 /** Locks the item row for the rest of the transaction, so concurrent writers queue. */
 export async function lockItem(o: Owner, db: Db, itemId: string): Promise<void> {

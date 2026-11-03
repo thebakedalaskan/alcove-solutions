@@ -1,19 +1,27 @@
-import { errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person } from '@alcove/api';
+import {
+  errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person, type Question,
+  type QuestionPatch
+} from '@alcove/api';
 import { Button, Chip, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, Spinner, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Player, usePlayer } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
-import { AskBar, Chapters, Decisions, DocHead, FollowUps, Recipients, Section, Transcript, TranscriptLines } from '~/features/notes/parts';
+import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines } from '~/features/notes/parts';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
+import { SeriesCard } from '~/features/series/cards';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
-import { q, qk, useDeleteNote, useShareNote, useUpdateAction, useUpdateDecision } from '~/lib/queries';
+import { q, qk, useDeleteNote, useShareNote, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
 import { noteWhen } from '~/lib/time';
 
+/** `at`: a moment to open the notes at (seconds into the call), from a link in a series or an answer. */
+const atOf = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
+
 export const Route = createFileRoute('/_app/notes/$noteId')({
+  validateSearch: (s: Record<string, unknown>): { at?: number | undefined } => ({ at: atOf(s['at']) }),
   loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(q.note(params.noteId))),
   errorComponent: Missing,
   component: NotePage
@@ -24,21 +32,22 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function NotePage() {
   const { noteId } = Route.useParams();
+  const { at } = Route.useSearch();
   const me = useQuery(q.session()).data?.user;
   if (noteId === 'example') return me ? <Example me={me} /> : null;
-  return <Stored id={noteId} me={me?.email} />;
+  return <Stored key={noteId} id={noteId} me={me?.email} at={at} />;
 }
 
 interface GoneInfo { kind: 'deleted' | 'removed'; audio: string; organizer: string }
 
-function Stored({ id, me }: { id: string; me: string | undefined }) {
+function Stored({ id, me, at }: { id: string; me: string | undefined; at: number | undefined }) {
   const qc = useQueryClient();
   const [gone, setGone] = useState<GoneInfo | null>(null);
   const note = useQuery({ ...q.note(id), enabled: !gone }).data;
   useEffect(() => { if (gone) qc.removeQueries({ queryKey: qk.note(id), exact: true }); }, [gone, qc, id]);
   if (gone) return <Gone {...gone} />;
   if (!note) return null;
-  return <NoteView note={note} me={me} onGone={setGone} />;
+  return <NoteView note={note} me={me} at={at} onGone={setGone} />;
 }
 
 /*
@@ -81,22 +90,34 @@ function useProgress(note: Note): NoteProgress | null {
 
 function asText(n: Note): string {
   const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due].filter((x): x is string => !!x).join(', ');
-  // What people said wasn't decided stays out; what nobody has confirmed yet says so.
+  // What people said wasn't decided stays out; what nobody has confirmed yet, or no longer holds, says so.
   const decided = n.decisions.filter((d) => d.state !== 'rejected');
+  const open = n.questions.filter((x) => x.state === 'open');
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
-    ...(decided.length ? ['', 'Decided', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : ''}`)] : []),
+    ...(decided.length ? ['', 'Decided', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`)] : []),
+    ...(open.length ? ['', 'Still open', ...open.map((x) => `- ${x.text}`)] : []),
     ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`)] : [])
   ].join('\n');
 }
 
-function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; onGone: (g: GoneInfo) => void }) {
+function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined; at: number | undefined; onGone: (g: GoneInfo) => void }) {
   const toast = useToast();
   const share = useShareNote();
   const del = useDeleteNote();
   const updateAction = useUpdateAction();
   const updateDecision = useUpdateDecision();
+  const updateQuestion = useUpdateQuestion();
   const player = usePlayer(note.id, note.audio);
+  // Brought here to a moment: the audio waits there, ready to play. Once per link, so a refresh doesn't move it back.
+  const { seek: cue } = player;
+  const cued = useRef('');
+  useEffect(() => {
+    const key = `${note.id}@${at ?? ''}`;
+    if (at === undefined || !note.audio.length || cued.current === key) return;
+    cued.current = key;
+    cue(at, false);
+  }, [at, note.id, note.audio.length, cue]);
   const progress = useProgress(note);
   const [pop, setPop] = useState<'share' | 'more' | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -126,7 +147,9 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
     onSuccess: () => { if (patch.takeOn) toast('It’s yours. Everyone with the notes sees that.', { icon: 'check' }); }, onError: failed
   });
   const changeDecision = (d: Decision, patch: DecisionPatch) => updateDecision.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
+  const changeQuestion = (x: Question, patch: QuestionPatch) => updateQuestion.mutate({ noteId: note.id, questionId: x.id, patch }, { onError: failed });
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
+  const stillOpen = note.questions.filter((x) => x.state === 'open').length;
   const part = (i: number) => ({ className: going ? 'going' : undefined, style: { '--d': i } });
 
   return (
@@ -158,6 +181,7 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
       <div className="note" style={{ '--d': 1 }}>
         <article className="doc">
           <DocHead title={note.title} when={noteWhen(note.startedAt, note.duration)} people={note.people}
+            series={note.seriesId ? <Link to="/notes/series/$seriesId" params={{ seriesId: note.seriesId }} className="ser-link"><Icon name="repeat" size={15} />In a series</Link> : undefined}
             chip={note.status === 'recording' ? <NotesSign className="lead-chip">Still recording</NotesSign>
               : note.status === 'pending' ? <Chip className="lead-chip"><Spinner className="size-3" />Waiting to be written</Chip>
                 : !mine && organizer ? <Chip tone="sun" className="lead-chip">{myRole === 'shared' ? 'Shared with you' : `From ${firstName(organizer.name)}’s call`}</Chip> : null} />
@@ -179,12 +203,17 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
                   <Decisions items={note.decisions} me={me} onChange={changeDecision} onSeek={seek} />
                 </Section>
               )}
+              {note.questions.length > 0 && (
+                <Section title="Still open" count={stillOpen ? `${stillOpen} open` : 'All answered'} {...part(2)}>
+                  <Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} />
+                </Section>
+              )}
               {note.actions.length > 0 && (
-                <Section title="Follow-ups" count={`${open} open`} {...part(2)}>
+                <Section title="Follow-ups" count={`${open} open`} {...part(3)}>
                   <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} />
                 </Section>
               )}
-              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 3 }}><Transcript lines={lines} seconds={note.duration} me={me} onSeek={seek} /></section>}
+              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}><Transcript lines={lines} seconds={note.duration} me={me} onSeek={seek} focus={at} /></section>}
             </>
           ) : ready && lines.length ? (
             <>
@@ -193,7 +222,7 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
                   <b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
                 </Notice>
               </section>
-              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} me={me} onSeek={seek} /></Section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} me={me} onSeek={seek} focus={at} /></Section>
             </>
           ) : ready ? (
             <section className={cn('sec', going && 'going')}>
@@ -222,6 +251,7 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
           {player.total > 0 && <div className={cn(going && 'going')} style={{ '--d': 4 }}><Player noteId={note.id} player={player} chapters={note.chapters} room={note.kind === 'room'} /></div>}
           {note.chapters.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><Chapters chapters={note.chapters} pos={player.pos} onSeek={seek} /></div>}
           <div className={cn(going && 'going')} style={{ '--d': 6 }}><Recipients recipients={note.recipients} me={me} fresh={fresh} /></div>
+          {!going && <div style={{ '--d': 7 }}><SeriesCard note={note} /></div>}
         </aside>
       </div>
     </>
@@ -273,6 +303,7 @@ function Example({ me }: { me: Person }) {
           <DocHead title={note.title} when="Example · 24 minutes" people={note.people} chip={<Chip tone="sun" className="lead-chip">Example</Chip>} />
           <Section title="Summary"><p className="summary">{note.summary}</p></Section>
           <Section title="Decided" count={note.decisions.length}><Decisions items={note.decisions} me={me.email} /></Section>
+          <Section title="Still open" count={`${note.questions.length} open`}><Questions items={note.questions} me={me.email} /></Section>
           <Section title="Follow-ups" count={`${actions.filter((a) => !a.done).length} open`}>
             <FollowUps actions={actions} me={me.email} onToggle={(a, on) => setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: on } : x)))} />
           </Section>

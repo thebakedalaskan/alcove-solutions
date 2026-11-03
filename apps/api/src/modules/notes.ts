@@ -4,9 +4,9 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, DecisionSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  ActionItemSchema, ChapterSchema, DecisionSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type Change, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type Recipient
+  type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -17,7 +17,7 @@ import { inference } from '../inference';
 import { nameFrom } from '../identity';
 import { log } from '../log';
 import { masterKey, openOwner } from '../owners';
-import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
+import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile } from './account';
 import { queueDelete, recordingObjects, segments } from './audio';
 import { answer, briefOf } from './drafting';
@@ -34,7 +34,7 @@ export const NoteManifest = z.object({
   invited: z.array(z.string()),
   /** Email addresses the notes were shared with afterwards. */
   shared: z.array(z.string()),
-  summary: z.string(), decisions: z.array(DecisionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
+  summary: z.string(), decisions: z.array(DecisionSchema), questions: z.array(QuestionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string())
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
@@ -43,7 +43,7 @@ export function blankNote(o: { kind: NoteKind; title: string; recordingId: strin
   return {
     kind: o.kind, title: o.title, startedAt: new Date().toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
-    status: 'recording', summary: '', decisions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: []
+    status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -95,12 +95,13 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
 /* ---------- finding a note: your own, or one you have access to ---------- */
 
 /** A note, the vault it lives in, and whether that vault is yours. */
-interface Located { owner: Owner; note: Loaded<NoteManifest>; mine: boolean }
+export interface Located { owner: Owner; note: Loaded<NoteManifest>; mine: boolean }
 const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
 
 async function myIndex(o: Owner): Promise<Uint8Array> { return emailIndex(o, (await profile(o)).email); }
 
-async function sharedWithMe(o: Owner): Promise<Located[]> {
+/** Every note someone else gave you, by invitation or by sharing it with you: each found by your email's index right now. */
+export async function sharedWithMe(o: Owner): Promise<Located[]> {
   const access = await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [await myIndex(o), o.ownerId]);
   const out: Located[] = [];
   for (const a of access) {
@@ -149,12 +150,18 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
   all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
   return Promise.all(all.map(summary));
 }
+/** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
+export async function seriesOf(l: Located): Promise<string | undefined> {
+  const meetingId = l.note.manifest.meetingId;
+  return meetingId ? (await findItem(l.owner, l.owner.pool, 'meeting', meetingId, MeetingManifest))?.manifest.seriesId : undefined;
+}
 export async function get(o: Owner, id: string): Promise<Note> {
   const l = await locate(o, id);
   const m = l.note.manifest;
+  const seriesId = await seriesOf(l);
   return {
-    ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, actions: m.actions, chapters: m.chapters,
-    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId)
+    ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
+    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), ...(seriesId ? { seriesId } : {})
   };
 }
 /** The vault and recording to stream a note's audio from, after the access check. */
@@ -216,8 +223,8 @@ async function writtenNote(o: Owner, noteId: string) {
 }
 
 /**
- * Confirms a decision, says it wasn't decided, puts it back to proposed, or rewords it. Anyone who
- * has the notes can, and everyone sees who did.
+ * Confirms a decision, says it wasn't decided, puts it back to proposed, rewords it, or says a
+ * confirmed one no longer holds. Anyone who has the notes can, and everyone sees who did.
  */
 export async function updateDecision(o: Owner, noteId: string, decisionId: string, patch: DecisionPatch): Promise<Note> {
   const { owner, by, at } = await writtenNote(o, noteId);
@@ -229,13 +236,33 @@ export async function updateDecision(o: Owner, noteId: string, decisionId: strin
     let next: Decision = d;
     if (patch.text !== undefined && patch.text !== d.text) { changes.push({ by, at, what: 'reworded', before: d.text, after: patch.text }); next = { ...next, text: patch.text }; }
     if (patch.state !== undefined && patch.state !== d.state) {
-      changes.push({ by, at, what: patch.state === 'confirmed' ? 'confirmed' : patch.state === 'rejected' ? 'rejected' : 'reopened' });
+      // Only something that was decided can stop holding; what nobody confirmed is reopened or said not to be decided.
+      if (patch.state === 'superseded' && d.state !== 'confirmed') throw new ConflictError('Only a confirmed decision can stop holding.', { context: { noteId, decisionId, state: d.state } });
+      changes.push({ by, at, what: patch.state === 'proposed' ? 'reopened' : patch.state });
       next = { ...next, state: patch.state };
     }
     made = changes.slice(d.changes.length).map((x) => x.what);
     return made.length ? { ...n, decisions: n.decisions.map((x) => (x.id === decisionId ? { ...next, changes } : x)) } : n;
   }));
   nlog.info('decision changed', { noteId, decisionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can, and everyone sees who did. */
+export async function updateQuestion(o: Owner, noteId: string, questionId: string, patch: QuestionPatch): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  let made: Change['what'][] = [];
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    const q = n.questions.find((x) => x.id === questionId);
+    if (!q) throw new NotFoundError('That question doesn’t exist.', { context: { noteId, questionId } });
+    const changes = [...q.changes];
+    let next: Question = q;
+    if (patch.text !== undefined && patch.text !== q.text) { changes.push({ by, at, what: 'reworded', before: q.text, after: patch.text }); next = { ...next, text: patch.text }; }
+    if (patch.state !== undefined && patch.state !== q.state) { changes.push({ by, at, what: patch.state === 'answered' ? 'answered' : 'reopened' }); next = { ...next, state: patch.state }; }
+    made = changes.slice(q.changes.length).map((x) => x.what);
+    return made.length ? { ...n, questions: n.questions.map((x) => (x.id === questionId ? { ...next, changes } : x)) } : n;
+  }));
+  nlog.info('question changed', { noteId, questionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
   return get(o, noteId);
 }
 

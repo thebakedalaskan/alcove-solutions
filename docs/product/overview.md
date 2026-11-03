@@ -30,7 +30,8 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Notes in calls | On or off for each call, set when it's scheduled (new calls follow the account's default). During the call only the organizer can switch them, and everyone in the call sees the notes sign. While they're on, what's said is transcribed as the call goes. Nothing is recorded while notes are off, and nothing from before they were turned on. |
 | Who gets the notes | Everyone invited, when the call ends. They find the notes in Alcove when they sign in with the invited address, and anyone who has them can share them on by email. |
 | Recording in the room | Record an in-person conversation into the same kind of notes. They stay yours alone until you share them. |
-| Notes | Summary, decisions, follow-ups, chapters and the transcript, with questions answered from the call only, citing the moments they come from. |
+| Notes | Summary, decisions, open questions, follow-ups, chapters and the transcript, with questions answered from the call only, citing the moments they come from. |
+| Series | Calls that follow on from each other, from a recurring calendar event or by scheduling the next one. Before the next call, Home shows what earlier ones decided, left open and handed out, each with where it was said, and anyone can ask across the calls. Everyone sees only the calls whose notes they have. |
 | Privacy | Content is encrypted before it's stored, under keys for each account. The server holds those keys, wrapped under one master key, so the promise that Alcove can't read notes depends on releasing that key only to attested confidential compute. Speech and transcripts go to private inference (NEAR AI Cloud) to be transcribed and written up. |
 | Credits | Calls without notes are free. Notes and room recordings use credits (25 a minute); new accounts start with 10,000. |
 
@@ -46,7 +47,8 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Calls with real camera, microphone, screen sharing, chat | Working, one participant (the organizer): people invited can't join yet; multi-party arrives with LiveKit |
 | Notes recording (encrypted audio pieces, playback) | Working |
 | Live transcript (NEAR AI) | Working while notes are on, in calls and room recordings. Call lines are all attributed to the organizer; room recordings don't say who spoke |
-| Written notes and questions (NEAR AI) | Working: summary, decisions, follow-ups, chapters and suggested questions, written when the recording stops; answers cite moments in the recording. If the notes service fails three times, the note keeps its transcript and audio without a summary. Requests to NEAR AI aren't end-to-end encrypted or attestation-checked yet |
+| Written notes and questions (NEAR AI) | Working: summary, decisions, open questions, follow-ups, chapters and suggested questions, written when the recording stops; answers cite moments in the recording. If the notes service fails three times, the note keeps its transcript and audio without a summary. Requests to NEAR AI aren't end-to-end encrypted or attestation-checked yet |
+| Series | Working on Home, the notes and the series page: recurring Google events held in Alcove and calls scheduled as the next one. Not in the call or at pre-join yet |
 | Notes for everyone invited, sharing by email | Working |
 | Notes from shared screens | Planned (stretch goal; Scribe-style capture is a reference) |
 | Credits and payments | Notes are charged 25 credits a minute when they're written; nothing checks the balance first, and USDC top-ups aren't connected |

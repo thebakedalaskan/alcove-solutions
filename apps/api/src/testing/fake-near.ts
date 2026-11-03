@@ -128,6 +128,7 @@ export async function startFakeNear(): Promise<FakeNear> {
           reply = {
             summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
             decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map((h) => ({ text: h.text, at: h.at })),
+            questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
             actions: heard.flatMap((h) => {
               const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
               if (!m) return [];
@@ -137,6 +138,12 @@ export async function startFakeNear(): Promise<FakeNear> {
             chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
             suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?']
           };
+        } else if (system.startsWith('You answer a question about a series')) {
+          // Answers from the first transcript line, newest meeting first, that shares a word with the question.
+          const words = (/\nQuestion: (.*)$/s.exec(user)?.[1] ?? '').toLowerCase().split(/\W+/).filter((w) => w.length > 3);
+          const hit = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => heardIn(block).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), h })))
+            .find(({ h }) => words.some((w) => h.text.toLowerCase().includes(w)));
+          reply = { answer: hit ? `From meeting ${hit.meeting}: ${hit.h.text}` : 'That wasn’t covered in these meetings.', sources: hit ? [{ meeting: hit.meeting, at: hit.h.at }] : [] };
         } else {
           const question = /\nQuestion: (.*)$/s.exec(user)?.[1] ?? '';
           const words = question.toLowerCase().split(/\W+/).filter((w) => w.length > 3);

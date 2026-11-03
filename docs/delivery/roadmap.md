@@ -14,9 +14,13 @@
   meetings on Home, scheduled calls on the organizer's calendar with Google's invitations, changes and
   cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
-  the recording stops, a notes worker writes the summary, decisions, follow-ups, chapters and suggested
-  questions, retries a failed attempt twice, and charges 25 credits a minute; anyone with the note can ask
-  about the call ([Notes and inference](../engineering/notes-and-inference.md)).
+  the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and
+  suggested questions, retries a failed attempt twice, and charges 25 credits a minute; anyone with the note
+  can ask about the call ([Notes and inference](../engineering/notes-and-inference.md)).
+- Memory across a series: the occurrences of a recurring Google event held in Alcove, and calls scheduled as
+  the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
+  series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
+  calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
@@ -42,3 +46,4 @@
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
 | 10 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference |
+| 11 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |

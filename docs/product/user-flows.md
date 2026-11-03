@@ -34,7 +34,14 @@ screen. Signing in on another browser doesn't end the first session.
   **Join** (**J**), **Copy link** and, before it starts, **Change this call**. Another calendar meeting
   shows **Join on Google Meet** (or Zoom, Teams, Webex) when it has a video link, **Use Alcove instead** when
   you organized it, and a link to it in Google Calendar.
+- When the call that's up next is in a series, **From earlier calls** sits under it: the decisions people
+  confirmed, the questions still open (marked once they've stayed open through two calls), and the
+  follow-ups someone took on, with a count of the rest (not confirmed yet, not taken on yet, done since the
+  last call). Each names the call it came from, which opens its notes, and the moment it was said, which
+  opens them at that line. **N calls** opens the series. Before a series has notes, the card says nothing
+  carries over yet.
 - Below it, the rest of today, then tomorrow and later, with Alcove calls and calendar meetings together.
+  A later call in a series has a link to what carries over into it.
   **Use Alcove** on a meeting you organized makes it an Alcove call: the calendar event gets the Alcove
   link, and Google tells everyone on it.
 - Signed in with Google without sharing the calendar, a card offers **Connect Google Calendar**.
@@ -107,13 +114,25 @@ panels for notes, chat (**C**) and people, and **End**.
   stopped. Anyone who has the notes can share them.
 - **More › Delete notes** deletes your own notes for everyone, audio included, and then lists what went. For
   notes from someone else it's **Remove from your notes**: everyone else keeps them.
-- A written note shows the summary, decisions, follow-ups, chapters and transcript, and takes questions
-  about the call: a suggested question or your own. Answers cite the moments in the recording they come from.
+- A written note shows the summary, decisions, open questions, follow-ups, chapters and transcript, and
+  takes questions about the call: a suggested question or your own. Answers cite the moments in the recording
+  they come from.
 - What the notes heard is a proposal until people say so. Each decision shows **Proposed by the notes** until
   someone who has the notes taps **Confirm** (or **It wasn’t decided**); it says who did, and can be reworded,
-  undone or reopened. A follow-up shows who the notes suggest, dashed, until that person taps **Take it on**.
-  Its menu gives it to anyone who has the notes (giving it to yourself takes it on), sets a due date, rewords
-  it, and lists every change: who did what, and when.
+  undone or reopened. A confirmed decision that a later one replaced can be marked **It no longer holds**. An
+  open question shows **Not answered yet** until someone taps **It was answered**. A follow-up shows who the
+  notes suggest, dashed, until that person taps **Take it on**. Its menu gives it to anyone who has the notes
+  (giving it to yourself takes it on), sets a due date, rewords it, and lists every change: who did what, and
+  when.
+- A call's notes say when it's **In a series**, with how much is still open and, for the organizer, the next
+  call. When it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people
+  and notes setting, a week on, on the calendar; **Change** in the confirmation moves it or cancels it.
+- The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
+  confirmed yet, and no longer holding), questions still open, and follow-ups taken on, not taken on yet and
+  done since the last call, each with the call and moment it came from. Things can be settled there, and
+  questions asked across the calls, with answers that cite the calls and moments they come from. Someone
+  invited to only some of the calls sees only those. The organizer also sees the next call, with **Join** and
+  **Change this call**, or **Schedule next week’s call**.
 
 ## 8. Record in the room
 
