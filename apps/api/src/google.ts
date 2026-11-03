@@ -3,8 +3,9 @@
  * for Google from /v1/auth/google and comes back to /v1/auth/google/callback with a one-time code.
  * The server swaps the code for an ID token, checks Google's signature, the issuer, the audience,
  * the expiry and the nonce, and accepts only an email address Google has verified, because notes
- * are shared by email. Alcove asks for the identity scopes only: it reads nothing else from the
- * Google account.
+ * are shared by email. It also asks for the Calendar (events only) with offline access, so Alcove
+ * can show someone's meetings and put the calls they schedule on their calendar. Someone can
+ * decline the calendar on Google's consent screen and still sign in.
  */
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
@@ -19,21 +20,32 @@ import { masterKey } from './owners';
 const glog = log.child({ component: 'google' });
 /** How long a browser has to come back from Google. */
 export const ATTEMPT_MINUTES = 10;
-const SCOPE = 'openid email profile';
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+const SCOPE = `openid email profile ${CALENDAR_SCOPE}`;
 
 /** Why a sign-in didn't happen, as the welcome screen explains it. */
 export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | 'failed' | 'busy';
-export type Finish = { ok: true; identity: Identity } | { ok: false; reason: Refusal };
+/** What Google granted: a short-lived access token, the scopes, and (on consent) a refresh token for later. */
+export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
+export type Finish = { ok: true; identity: Identity; grant: Grant; consented: boolean; next?: '/ready' | '/home' | undefined } | { ok: false; reason: Refusal };
 
 const Discovery = z.object({ issuer: z.string().min(1), authorization_endpoint: z.string().url(), token_endpoint: z.string().url(), jwks_uri: z.string().url() });
-const TokenReply = z.object({ id_token: z.string().min(1) });
+const TokenReply = z.object({
+  id_token: z.string().min(1), access_token: z.string().min(1), expires_in: z.number().default(3600),
+  refresh_token: z.string().min(1).optional(), scope: z.string().default('')
+});
+const RefreshReply = z.object({ access_token: z.string().min(1), expires_in: z.number().default(3600), scope: z.string().optional() });
 /** Google's error code (e.g. invalid_grant) is safe to log; descriptions aren't kept. */
 const TokenError = z.object({ error: z.string().max(80) }).catch({ error: 'unknown' });
 const Claims = z.object({
   sub: z.string().min(1).max(255), email: z.string().email().max(254), email_verified: z.boolean().optional(),
   name: z.string().max(200).optional(), picture: z.string().url().max(2000).optional(), nonce: z.string()
 });
-const Attempt = z.object({ state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number() });
+const Attempt = z.object({
+  state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
+  /** A second pass that asked Google for consent again, and where it should land afterwards. */
+  consent: z.boolean().default(false), next: z.enum(['/ready', '/home']).optional()
+});
 const HEADER = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
 
 type Ready = Config & { GOOGLE_CLIENT_ID: string; GOOGLE_CLIENT_SECRET: string };
@@ -68,19 +80,46 @@ function refuse(reason: Refusal, context: Record<string, string | number | boole
   return { ok: false, reason };
 }
 
-/** Where to send the browser, and the sealed attempt it keeps in a cookie until it comes back. */
-export async function begin(d: Deps): Promise<{ url: string; attempt: string }> {
+/**
+ * Where to send the browser, and the sealed attempt it keeps in a cookie until it comes back. With
+ * `consent`, Google asks again even if the person agreed before, which is the only way to get a new
+ * refresh token; `hint` picks the account so they aren't asked which one.
+ */
+export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: '/ready' | '/home' | undefined } = {}): Promise<{ url: string; attempt: string }> {
   const cfg = d.cfg;
   if (!configured(cfg)) throw new UnavailableError('Google sign-in isn’t set up on this server.');
   const { endpoints } = await provider(cfg.GOOGLE_ISSUER);
-  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000 };
+  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000, consent: !!o.consent, ...(o.next ? { next: o.next } : {}) };
   const url = new URL(endpoints.authorization_endpoint);
   url.search = new URLSearchParams({
     client_id: cfg.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(cfg), response_type: 'code', scope: SCOPE,
-    state: a.state, nonce: a.nonce, code_challenge: b64u(sha(utf8(a.verifier))), code_challenge_method: 'S256', prompt: 'select_account'
+    access_type: 'offline', include_granted_scopes: 'true', prompt: o.consent ? 'consent' : 'select_account',
+    ...(o.hint ? { login_hint: o.hint } : {}),
+    state: a.state, nonce: a.nonce, code_challenge: b64u(sha(utf8(a.verifier))), code_challenge_method: 'S256'
   }).toString();
-  glog.debug('google sign-in started');
+  glog.debug('google sign-in started', { consent: !!o.consent });
   return { url: url.toString(), attempt: b64u(sealJson(signInAttemptKey(masterKey(d)), HEADER, a)) };
+}
+
+/** A fresh access token from a stored refresh token; `revoked` when Google no longer honours it. */
+export async function refreshAccess(d: Deps, refreshToken: string): Promise<{ ok: true; accessToken: string; expiresIn: number } | { ok: false; revoked: boolean }> {
+  const cfg = d.cfg;
+  if (!configured(cfg)) return { ok: false, revoked: false };
+  const p = await provider(cfg.GOOGLE_ISSUER);
+  const res = await fetch(p.endpoints.token_endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: cfg.GOOGLE_CLIENT_ID, client_secret: cfg.GOOGLE_CLIENT_SECRET }),
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!res.ok) {
+    const error = TokenError.parse(await res.json().catch(() => ({}))).error;
+    glog.warn('google access refresh refused', { status: res.status, googleError: error });
+    return { ok: false, revoked: error === 'invalid_grant' };
+  }
+  const r = RefreshReply.safeParse(await res.json().catch(() => null));
+  if (!r.success) return { ok: false, revoked: false };
+  return { ok: true, accessToken: r.data.access_token, expiresIn: r.data.expires_in };
 }
 
 function openAttempt(d: Deps, cookie: string | undefined): z.infer<typeof Attempt> | null {
@@ -127,6 +166,13 @@ export async function finish(d: Deps, q: Record<string, string>, cookie: string 
   if (claims.data.email_verified !== true) return refuse('unverified');
 
   const email = claims.data.email.trim().toLowerCase();
-  glog.debug('google sign-in checked');
-  return { ok: true, identity: { subject: `google:${claims.data.sub}`, email, name: claims.data.name?.trim() || nameFrom(email), photoUrl: claims.data.picture, sample: false } };
+  const grant: Grant = {
+    accessToken: token.data.access_token, expiresIn: token.data.expires_in, refreshToken: token.data.refresh_token,
+    scopes: token.data.scope.split(/\s+/).filter(Boolean)
+  };
+  glog.debug('google sign-in checked', { calendar: grant.scopes.includes(CALENDAR_SCOPE), refresh: !!grant.refreshToken });
+  return {
+    ok: true, grant, consented: attempt.consent, next: attempt.next,
+    identity: { subject: `google:${claims.data.sub}`, email, name: claims.data.name?.trim() || nameFrom(email), photoUrl: claims.data.picture, sample: false }
+  };
 }

@@ -38,11 +38,11 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_owner ON sessions(owner_id);
 CREATE INDEX sessions_expiry ON sessions(expires_at);
 
--- Encrypted items (profile, meetings, notes) and their immutable revisions.
+-- Encrypted items (profile, meetings, notes, connected accounts) and their immutable revisions.
 CREATE TABLE items (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   item_id alcove_id128 NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('profile', 'meeting', 'note')),
+  kind text NOT NULL CHECK (kind IN ('profile', 'meeting', 'note', 'connection')),
   current_revision_id alcove_id128 NOT NULL,
   deleted_at timestamptz,
   version bigint NOT NULL CHECK (version >= 0),

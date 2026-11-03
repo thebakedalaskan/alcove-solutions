@@ -1,4 +1,4 @@
-import { firstName, type Meeting, type NoteSummary, type OpenAction, type Team } from '@alcove/api';
+import { errorMessage, firstName, type CalendarEvent, type Meeting, type NoteSummary, type OpenAction, type Team } from '@alcove/api';
 import { ArchThumb, Button, Check, EmptyState, Faces, Icon, IconButton, Kbd, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -9,7 +9,7 @@ import { noteMeta } from '~/features/notes/meta';
 import { freshCalls, useOpenComposer } from '~/features/shell/context';
 import { useNow } from '~/lib/live';
 import { listNames } from '~/lib/people';
-import { q, useActionDone, useInviteTeam } from '~/lib/queries';
+import { calendarConnectUrl, q, useActionDone, useAdoptEvent, useInviteTeam } from '~/lib/queries';
 import { daysFromToday, greeting, hm, longDay, minutesUntil, noteDay, shortDay, untilLabel } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/home')({
@@ -19,18 +19,27 @@ export const Route = createFileRoute('/_app/home')({
 
 const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea');
 
+/** Alcove's calls and someone's other calendar events, as one agenda. */
+type Item = { kind: 'call'; id: string; startsAt: string; endsAt: string; m: Meeting } | { kind: 'event'; id: string; startsAt: string; endsAt: string; e: CalendarEvent };
+
 function Home() {
   const session = useQuery(q.session()).data;
   const upcoming = useQuery(q.upcoming()).data ?? [];
+  const calendar = useQuery(q.calendar()).data;
   const notes = useQuery(q.notes()).data ?? [];
   const actions = useQuery(q.openActions()).data ?? [];
   const team = useQuery(q.team()).data ?? null;
   const navigate = useNavigate();
   const now = useNow();
-  const calls = upcoming.filter((m) => new Date(m.endsAt).getTime() > now);
-  const next = calls[0];
-  const rest = calls.slice(1);
-  const day = (m: Meeting) => daysFromToday(new Date(m.startsAt));
+  const items: Item[] = [
+    ...upcoming.map((m): Item => ({ kind: 'call', id: m.id, startsAt: m.startsAt, endsAt: m.endsAt, m })),
+    ...(calendar?.events ?? []).map((e): Item => ({ kind: 'event', id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, e }))
+  ].filter((i) => new Date(i.endsAt).getTime() > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const next = items[0];
+  const rest = items.slice(1);
+  const day = (i: Item) => daysFromToday(new Date(i.startsAt));
+  const fromCalendar = calendar?.source === 'google' && !calendar.needsAccess;
+  const row = (i: Item, withDay = false) => i.kind === 'call' ? <CallRow key={i.id} m={i.m} day={withDay} /> : <EventRow key={i.id} e={i.e} day={withDay} />;
   const firstDay = notes.length === 0;
   const pending = team ? team.members.some((m) => !m.onAlcove && !m.invited) : false;
 
@@ -38,7 +47,8 @@ function Home() {
     const on = (e: KeyboardEvent) => {
       if (e.key !== 'j' || e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || !next || document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
-      void navigate({ to: '/join/$code', params: { code: next.code } });
+      if (next.kind === 'call') void navigate({ to: '/join/$code', params: { code: next.m.code } });
+      else if (next.e.join) window.open(next.e.join.url, '_blank', 'noopener');
     };
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
@@ -53,15 +63,16 @@ function Home() {
       </div>
       <div className="home" style={{ '--d': 1 }}>
         <div className="hcol">
-          {next ? <NextCall m={next} now={now} /> : <NothingScheduled />}
+          {calendar?.needsAccess && <ConnectCalendar />}
+          {next ? (next.kind === 'call' ? <NextCall m={next.m} now={now} /> : <NextEvent e={next.e} now={now} />) : <NothingScheduled />}
           {next && (
             <section className="card" aria-labelledby="laterH">
-              <div className="card-head"><h3 id="laterH">Later today</h3>{firstDay && <span className="src"><Icon name="cal" size={14} />From your calendar</span>}</div>
+              <div className="card-head"><h3 id="laterH">Later today</h3>{(firstDay || fromCalendar) && <span className="src"><Icon name="cal" size={14} />{fromCalendar ? 'With Google Calendar' : 'From your calendar'}</span>}</div>
               <div className="list">
-                {rest.filter((m) => day(m) <= 0).map((m) => <CallRow key={m.id} m={m} />)}
-                {!rest.some((m) => day(m) <= 0) && <p className="px-3.5 py-3 text-[14px] text-ink-3">Nothing else today.</p>}
-                {rest.some((m) => day(m) === 1) && <><div className="grp">Tomorrow</div>{rest.filter((m) => day(m) === 1).map((m) => <CallRow key={m.id} m={m} />)}</>}
-                {rest.some((m) => day(m) > 1) && <><div className="grp">Later</div>{rest.filter((m) => day(m) > 1).map((m) => <CallRow key={m.id} m={m} day />)}</>}
+                {rest.filter((i) => day(i) <= 0).map((i) => row(i))}
+                {!rest.some((i) => day(i) <= 0) && <p className="px-3.5 py-3 text-[14px] text-ink-3">Nothing else today.</p>}
+                {rest.some((i) => day(i) === 1) && <><div className="grp">Tomorrow</div>{rest.filter((i) => day(i) === 1).map((i) => row(i))}</>}
+                {rest.some((i) => day(i) > 1) && <><div className="grp">Later</div>{rest.filter((i) => day(i) > 1).map((i) => row(i, true))}</>}
               </div>
             </section>
           )}
@@ -93,6 +104,7 @@ function Home() {
 
 function NextCall({ m, now }: { m: Meeting; now: number }) {
   const copy = useCopyLink();
+  const open = useOpenComposer();
   const cover = coverFor(m.id);
   const mins = minutesUntil(m.startsAt, now);
   const started = mins <= 0;
@@ -101,7 +113,7 @@ function NextCall({ m, now }: { m: Meeting; now: number }) {
   // The ring fills over the last quarter of an hour before the call.
   const C = 226.2;
   const offset = started ? 0 : C * Math.min(1, mins / 15);
-  const [n, unit] = started ? ['Now', 'live'] : mins < 60 ? [String(mins), 'min'] : mins < 1440 ? [String(Math.floor(mins / 60)), Math.floor(mins / 60) === 1 ? 'hour' : 'hours'] : [String(Math.floor(mins / 1440)), Math.floor(mins / 1440) === 1 ? 'day' : 'days'];
+  const [n, unit] = ringLabel(mins);
   return (
     <section className={`next cover-${cover}`} aria-label="Up next">
       <ArchThumb cover={cover} width={98} />
@@ -116,6 +128,7 @@ function NextCall({ m, now }: { m: Meeting; now: number }) {
         <div className="acts">
           <Link to="/join/$code" params={{ code: m.code }} className="btn btn-primary btn-lg"><Icon name="video" />Join<span className="kb">J</span></Link>
           <Button variant="secondary" size="lg" icon="link" onClick={() => copy(m.code)}>Copy link</Button>
+          {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" onClick={() => open(m)} />}
         </div>
       </div>
       <div className="count-ring" role="img" aria-label={started ? 'Happening now' : `Starts ${untilLabel(mins)}`}>
@@ -126,11 +139,102 @@ function NextCall({ m, now }: { m: Meeting; now: number }) {
   );
 }
 
+/** Countdown label for the ring: minutes, hours or days until something starts. */
+function ringLabel(mins: number): [string, string] {
+  if (mins <= 0) return ['Now', 'live'];
+  if (mins < 60) return [String(mins), 'min'];
+  if (mins < 1440) { const h = Math.floor(mins / 60); return [String(h), h === 1 ? 'hour' : 'hours']; }
+  const d = Math.floor(mins / 1440);
+  return [String(d), d === 1 ? 'day' : 'days'];
+}
+
+/** Making one of your own calendar events an Alcove call. */
+function useAdopt() {
+  const adopt = useAdoptEvent();
+  const toast = useToast();
+  return {
+    pending: (id: string) => adopt.isPending && adopt.variables?.eventId === id,
+    run: (e: CalendarEvent) => adopt.mutate({ eventId: e.id }, {
+      onSuccess: (m) => toast(`${m.title} is an Alcove call now.${m.guests.length ? ` ${listNames(m.guests)} ${m.guests.length > 1 ? 'get' : 'gets'} the new link.` : ''}`, { icon: 'video' }),
+      onError: (err) => toast(errorMessage(err), { icon: 'x' })
+    })
+  };
+}
+
+/** The next thing on someone's calendar when it isn't an Alcove call. */
+function NextEvent({ e, now }: { e: CalendarEvent; now: number }) {
+  const adopt = useAdopt();
+  const cover = coverFor(e.id);
+  const mins = minutesUntil(e.startsAt, now);
+  const [n, unit] = ringLabel(mins);
+  const [armed, setArmed] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setArmed(true), 350); return () => clearTimeout(t); }, []);
+  const C = 226.2;
+  const offset = mins <= 0 ? 0 : C * Math.min(1, mins / 15);
+  return (
+    <section className={`next cover-${cover}`} aria-label="Up next">
+      <ArchThumb cover={cover} width={98} />
+      <div className="min-w-0">
+        <div className="eyebrow">{mins <= 0 ? <b>Happening now</b> : <>Up next ·<b>{untilLabel(mins)}</b></>}</div>
+        <h2>{e.title}</h2>
+        <div className="meta">
+          <span className="mono">{daysFromToday(new Date(e.startsAt)) === 0 ? '' : `${shortDay(new Date(e.startsAt))} · `}{hm(e.startsAt)} – {hm(e.endsAt)}</span>
+          <span className="who"><Faces people={e.isOrganizer ? e.guests : [e.organizer, ...e.guests]} size={26} />{e.isOrganizer ? (e.guests.length ? listNames(e.guests) : 'Just you') : `${firstName(e.organizer.name)}’s call`}</span>
+        </div>
+        <div className="acts">
+          {e.join && <a href={e.join.url} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg"><Icon name="video" />Join on {e.join.label}<span className="kb">J</span></a>}
+          {e.isOrganizer && <Button variant={e.join ? 'secondary' : 'primary'} size="lg" icon="video" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove instead</Button>}
+          <a href={e.calendarUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-icon self-center" aria-label="Open in Google Calendar" title="Open in Google Calendar"><Icon name="cal" /></a>
+        </div>
+      </div>
+      <div className="count-ring" role="img" aria-label={mins <= 0 ? 'Happening now' : `Starts ${untilLabel(mins)}`}>
+        <svg viewBox="0 0 84 84"><circle className="bg" cx="42" cy="42" r="36" /><circle className="fg" cx="42" cy="42" r="36" strokeDasharray={C} strokeDashoffset={armed ? offset : C} /></svg>
+        <b>{n}<small>{unit}</small></b>
+      </div>
+    </section>
+  );
+}
+
+/** One of someone's other calendar events in the day's list. */
+function EventRow({ e, day = false }: { e: CalendarEvent; day?: boolean }) {
+  const adopt = useAdopt();
+  const who = e.isOrganizer ? (e.guests.length ? listNames(e.guests) : 'Just you') : `${firstName(e.organizer.name)}’s call${e.guests.length ? ` · ${listNames(e.guests)}` : ''}`;
+  return (
+    <div className="row">
+      <div className="tm">{hm(e.startsAt)}<small>{day ? shortDay(new Date(e.startsAt)).replace(/ \d+ \w+$/, '') : hm(e.endsAt)}</small></div>
+      <div className="min-w-0"><a href={e.calendarUrl} target="_blank" rel="noreferrer" className="t block">{e.title}</a><div className="s">{who}</div></div>
+      <div className="r">
+        {e.isOrganizer && <Button variant="ghost" size="sm" className="hov" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove</Button>}
+        {(e.isOrganizer ? e.guests : [e.organizer, ...e.guests]).length > 0 && <Faces people={e.isOrganizer ? e.guests : [e.organizer, ...e.guests]} size={26} max={3} />}
+        {e.join
+          ? <a href={e.join.url} target="_blank" rel="noreferrer" className="nflag"><Icon name="video" size={15} />{e.join.label}</a>
+          : <span className="nflag off">Calendar</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Signed in with Google but the calendar wasn't shared: one place to ask for it. */
+function ConnectCalendar() {
+  return (
+    <section className="card">
+      <div className="flex items-center gap-4 px-5 py-4">
+        <span className="grid size-11 flex-none place-items-center rounded-[13px] bg-sunk text-ink-2"><Icon name="cal" size={20} /></span>
+        <div className="min-w-0 flex-1">
+          <b className="block text-[15px] font-semibold">Connect Google Calendar</b>
+          <p className="text-[13.5px] text-ink-3">See your meetings here, and put the calls you schedule on your calendar, with invitations.</p>
+        </div>
+        <Button variant="primary" size="sm" onClick={() => location.assign(calendarConnectUrl())}>Connect</Button>
+      </div>
+    </section>
+  );
+}
+
 function NothingScheduled() {
   const open = useOpenComposer();
   return (
     <section className="card">
-      <EmptyState title="Nothing on your calendar" action={<Button variant="primary" icon="plus" onClick={open}>New call</Button>}>
+      <EmptyState title="Nothing on your calendar" action={<Button variant="primary" icon="plus" onClick={() => open()}>New call</Button>}>
         Start a call now, or describe one to schedule it.
       </EmptyState>
     </section>
@@ -140,6 +244,7 @@ function NothingScheduled() {
 function CallRow({ m, day = false }: { m: Meeting; day?: boolean }) {
   const navigate = useNavigate();
   const copy = useCopyLink();
+  const open = useOpenComposer();
   const [fresh] = useState(() => freshCalls.delete(m.id));
   const join = () => void navigate({ to: '/join/$code', params: { code: m.code } });
   return (
@@ -150,6 +255,7 @@ function CallRow({ m, day = false }: { m: Meeting; day?: boolean }) {
         <div className="s">{m.guests.length ? listNames(m.guests) : 'Just you'}</div>
       </div>
       <div className="r">
+        <IconButton icon="pen" size={17} label={`Change ${m.title}`} className="hov" onClick={(e) => { e.stopPropagation(); open(m); }} />
         <IconButton icon="link" size={17} label={`Copy link for ${m.title}`} className="hov" onClick={(e) => { e.stopPropagation(); copy(m.code); }} />
         {m.guests.length > 0 && <Faces people={m.guests} size={26} max={3} />}
         <NotesFlag notes={m.notes} />

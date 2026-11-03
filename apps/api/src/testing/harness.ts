@@ -88,7 +88,7 @@ export async function startHarness(): Promise<Harness> {
   const google = await startFakeGoogle();
   const cfg = loadConfig(process.env, {
     DATABASE_URL: url, OBJECTS_BUCKET: 'alcove-test', WEB_ORIGIN: ORIGIN, API_URL: 'http://127.0.0.1',
-    GOOGLE_ISSUER: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret
+    GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret
   });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');

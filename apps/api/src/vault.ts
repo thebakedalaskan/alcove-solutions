@@ -10,7 +10,7 @@ import { id128, openJson, openKey, random, sealJson, sealKey, toJson, type Recor
 import { conflict, notFound } from './errors';
 import type { Owner } from './context';
 
-export type ItemKind = 'profile' | 'meeting' | 'note';
+export type ItemKind = 'profile' | 'meeting' | 'note' | 'connection';
 
 const header = (o: Owner, itemId: string, revisionId: string): RecordHeader =>
   ({ v: 1, kind: 'manifest', ownerId: o.ownerId, itemId, revisionId, recordId: revisionId, keyVersion: '1' });

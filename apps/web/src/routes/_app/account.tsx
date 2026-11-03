@@ -2,7 +2,7 @@ import { errorMessage, type NotesSetting, type SignInProvider, type Team } from 
 import { Avatar, Button, Chip, Icon, Meter, ProviderMark, Segmented, useTheme, useToast, type ThemeChoice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { q, useInviteTeam, usePreferences, useSignOut } from '~/lib/queries';
+import { calendarConnectUrl, q, useInviteTeam, usePreferences, useSignOut } from '~/lib/queries';
 import { hoursAndMinutes } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/account')({
@@ -17,6 +17,7 @@ function Account() {
   const prefs = useQuery(q.prefs()).data;
   const credits = useQuery(q.balance()).data;
   const team = useQuery(q.team()).data ?? null;
+  const calendar = useQuery(q.calendar()).data;
   const setPrefs = usePreferences();
   const signOut = useSignOut();
   const navigate = useNavigate();
@@ -40,6 +41,15 @@ function Account() {
               <div className="min-w-0"><b>{session.user.name}</b><small>{session.user.email}</small></div>
               <span className="via">{session.provider === 'sso' ? <Icon name="key" size={15} /> : <ProviderMark provider={session.provider} />}Signed in with {via}</span>
             </div>
+            {calendar?.source === 'google' && (
+              <div className="pk">
+                <span className="ic"><Icon name="cal" size={20} /></span>
+                <span className="min-w-0"><b>Google Calendar</b><small>{calendar.needsAccess ? 'Alcove can’t see your calendar yet' : 'Your meetings show on Home; calls you schedule go on it, with invitations'}</small></span>
+                {calendar.needsAccess
+                  ? <Button variant="secondary" size="sm" icon="cal" onClick={() => location.assign(calendarConnectUrl())}>Connect</Button>
+                  : <Chip tone="accent" icon="check">Connected</Chip>}
+              </div>
+            )}
             {session.sample && (
               <div className="pk">
                 <span className="ic"><Icon name="cal" size={20} /></span>

@@ -45,16 +45,25 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
 const SessionReply = z.object({ ownerId: z.string() });
 /**
  * Signs in with Google the way a browser does: off to Google and back, following each redirect by
- * hand so the browser's cookies see every hop. Returns where the API finally sends the browser.
+ * hand so the browser's cookies see every hop (a second pass to Google included). Returns where the
+ * API finally sends the browser. `tamper` and `deliverIn` apply to the first return from Google.
  */
-async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser } = {}): Promise<URL> {
+async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean } = {}): Promise<URL> {
   h.google.next(user, o.spoil);
-  const start = await b.fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
-  const atGoogle = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
-  const back = new URL(atGoogle.headers.get('location') ?? '');
-  o.tamper?.(back);
-  const done = await (o.deliverIn ?? b).fetch(back, { redirect: 'manual' });
-  return new URL(done.headers.get('location') ?? '');
+  let url = new URL(`${h.baseUrl}/v1/auth/google${o.consent ? '?consent=1' : ''}`);
+  let first = true;
+  for (let hop = 0; hop < 10; hop++) {
+    if (url.origin === new URL(ORIGIN).origin) return url;
+    let res: Response;
+    if (url.origin === h.google.issuer) res = await fetch(url, { redirect: 'manual' });
+    else if (url.pathname.endsWith('/callback') && first) {
+      first = false;
+      o.tamper?.(url);
+      res = await (o.deliverIn ?? b).fetch(url, { redirect: 'manual' });
+    } else res = await b.fetch(url, { redirect: 'manual' });
+    url = new URL(res.headers.get('location') ?? '', url);
+  }
+  throw new Error('Too many redirects while signing in with Google.');
 }
 /** Where a sign-in ended up, without the origin. */
 const landed = (u: URL) => `${u.pathname}${u.search}`;
@@ -193,14 +202,15 @@ describe('signing in', () => {
 
 describe('signing in with Google', () => {
   it('goes to Google and back, believes only what Google signed, and keeps one account per Google account', async () => {
-    // Off to Google with a fresh state, nonce and PKCE challenge, and only the identity scopes.
+    // Off to Google with a fresh state, nonce and PKCE challenge, asking for identity and calendar events.
     const b = h.browser();
     const start = await b.fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
     expect(start.status).toBe(302);
     const to = new URL(start.headers.get('location') ?? '');
     expect(to.origin).toBe(h.google.issuer);
     expect(Object.fromEntries(to.searchParams)).toMatchObject({
-      client_id: h.google.clientId, redirect_uri: `${h.baseUrl}/v1/auth/google/callback`, response_type: 'code', scope: 'openid email profile', code_challenge_method: 'S256'
+      client_id: h.google.clientId, redirect_uri: `${h.baseUrl}/v1/auth/google/callback`, response_type: 'code',
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.events', access_type: 'offline', code_challenge_method: 'S256'
     });
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
@@ -217,7 +227,7 @@ describe('signing in with Google', () => {
     expect(landed(await viaGoogle(b, ben))).toBe('/ready');
     const s = await b.api.auth.getSession();
     expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com', photoUrl: 'https://lh3.googleusercontent.com/a/ben-1' } });
-    // A real account starts empty: no sample calendar and no sample directory.
+    // A real account starts with no sample calls and no sample directory: its calendar is Google's.
     expect(await b.api.meetings.upcoming()).toEqual([]);
     expect(await b.api.people.team()).toBeNull();
     // The notes he was invited to are his, because Google verified that address.
@@ -264,6 +274,113 @@ describe('signing in with Google', () => {
     const res = await fetch(`${bare.baseUrl}/v1/auth/google`, { redirect: 'manual' });
     expect(res.headers.get('location')).toBe(`${ORIGIN}/welcome?signin=unavailable`);
     await bare.close();
+  });
+});
+
+describe('Google Calendar', () => {
+  const at = (days: number, hour: number, minute = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(hour, minute, 0, 0); return d.toISOString(); };
+  const person = (n: string): GoogleUser => ({ sub: `g-cal-${n}-${seq++}`, email: `${n}.${seq}@calendar.example`, name: `Cal ${n}` });
+
+  it('shows the coming week’s meetings beside Alcove’s calls, and leaves out what isn’t a call', async () => {
+    const ana = person('ana');
+    const self = { email: ana.email, self: true };
+    h.google.calendar(ana.sub).push(
+      { id: 'design', summary: 'Design sync', start: { dateTime: at(1, 10) }, end: { dateTime: at(1, 10, 30) }, hangoutLink: 'https://meet.google.com/abc-defg-hij',
+        organizer: { email: 'lead@calendar.example', displayName: 'Lead Person' }, attendees: [self, { email: 'lead@calendar.example' }, { email: 'kim@calendar.example', displayName: 'Kim Park' }] },
+      { id: 'one-on-one', summary: '1:1 with Kim', start: { dateTime: at(2, 9) }, end: { dateTime: at(2, 9, 30) }, location: 'https://us02web.zoom.us/j/123456789',
+        organizer: { email: ana.email, self: true }, attendees: [self, { email: 'kim@calendar.example' }] },
+      { id: 'offsite', summary: 'Offsite', start: { date: at(3, 0).slice(0, 10) }, end: { date: at(4, 0).slice(0, 10) } },
+      { id: 'declined', summary: 'Not going', start: { dateTime: at(1, 15) }, end: { dateTime: at(1, 16) }, attendees: [{ ...self, responseStatus: 'declined' }] },
+      { id: 'focus', summary: 'Focus', eventType: 'focusTime', start: { dateTime: at(1, 12) }, end: { dateTime: at(1, 13) } },
+      { id: 'alcove', summary: 'Already an Alcove call', start: { dateTime: at(1, 17) }, end: { dateTime: at(1, 17, 30) }, extendedProperties: { private: { alcoveMeeting: 'x' } } },
+      { id: 'far', summary: 'Next month', start: { dateTime: at(20, 10) }, end: { dateTime: at(20, 11) } }
+    );
+    const b = h.browser();
+    expect(landed(await viaGoogle(b, ana))).toBe('/ready');
+    const cal = await b.api.calendar.get();
+    expect([cal.source, cal.needsAccess]).toEqual(['google', false]);
+    expect(cal.events.map((e) => [e.title, e.isOrganizer, e.join?.label])).toEqual([['Design sync', false, 'Google Meet'], ['1:1 with Kim', true, 'Zoom']]);
+    expect(cal.events[0]).toMatchObject({ organizer: { name: 'Lead Person' }, guests: [{ name: 'Kim Park' }], join: { url: 'https://meet.google.com/abc-defg-hij' } });
+  });
+
+  it('puts scheduled calls on the calendar, so Google invites everyone, and keeps the event in step', async () => {
+    const ben = person('ben');
+    const b = h.browser();
+    await viaGoogle(b, ben);
+    const calls = () => h.google.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.sendUpdates]);
+    const before = h.google.calls.length;
+
+    const m = await b.api.meetings.create({ title: 'Pricing review', startsAt: at(1, 14), durationMinutes: 45, guests: ['priya@example.com', 'kofi@example.com'], notes: 'on' });
+    expect(m.calendarUrl).toMatch(/^https:\/\/calendar\.google\.com\//);
+    const [event] = h.google.calendar(ben.sub);
+    expect(event).toMatchObject({
+      summary: 'Pricing review', location: `${ORIGIN}/join/${m.code}`, attendees: [{ email: 'priya@example.com' }, { email: 'kofi@example.com' }],
+      start: { dateTime: m.startsAt }, end: { dateTime: m.endsAt }, extendedProperties: { private: { alcoveMeeting: m.id } }
+    });
+    expect(event?.description).toContain(`${ORIGIN}/join/${m.code}`);
+    expect(event?.description).toContain('Notes are on');
+
+    // Changes go to everyone through the calendar.
+    const moved = await b.api.meetings.update(m.id, { startsAt: at(1, 16), durationMinutes: 30, guests: ['priya@example.com'], notes: 'off' });
+    expect(h.google.calendar(ben.sub)[0]).toMatchObject({ start: { dateTime: moved.startsAt }, attendees: [{ email: 'priya@example.com' }] });
+    expect(h.google.calendar(ben.sub)[0]?.description).not.toContain('Notes are on');
+    // Alcove's own calls aren't listed twice.
+    expect((await b.api.calendar.get()).events).toEqual([]);
+
+    await b.api.meetings.cancel(m.id);
+    expect(h.google.calendar(ben.sub)).toEqual([]);
+    expect(h.google.calls.slice(before).filter((c) => c.method !== 'GET').map((c) => [c.method, c.sendUpdates])).toEqual([['POST', 'all'], ['PATCH', 'all'], ['DELETE', 'all']]);
+    expect(calls().length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('makes an organizer’s own event an Alcove call, once, and only theirs', async () => {
+    const cleo = person('cleo');
+    h.google.calendar(cleo.sub).push(
+      { id: 'mine', summary: 'Hiring sync', description: 'Agenda: two candidates.', start: { dateTime: at(1, 11) }, end: { dateTime: at(1, 11, 45) }, htmlLink: 'https://calendar.google.com/calendar/event?eid=mine',
+        organizer: { email: cleo.email, self: true }, attendees: [{ email: cleo.email, self: true }, { email: 'sam@example.com' }, { email: 'room-4@resource.calendar.google.com', resource: true }] },
+      { id: 'theirs', summary: 'Their standup', start: { dateTime: at(1, 9) }, end: { dateTime: at(1, 9, 15) }, organizer: { email: 'boss@example.com' }, attendees: [{ email: cleo.email, self: true }] }
+    );
+    const b = h.browser();
+    await viaGoogle(b, cleo);
+    const m = await b.api.calendar.adopt('mine', 'on');
+    expect(m).toMatchObject({ title: 'Hiring sync', notes: 'on', guests: [{ email: 'sam@example.com' }], calendarUrl: 'https://calendar.google.com/calendar/event?eid=mine' });
+    expect(m.startsAt).toBe(new Date(at(1, 11)).toISOString());
+    const event = h.google.calendar(cleo.sub).find((e) => e.id === 'mine');
+    expect(event).toMatchObject({ location: `${ORIGIN}/join/${m.code}`, extendedProperties: { private: { alcoveMeeting: m.id } } });
+    expect(event?.description).toContain('Agenda: two candidates.');
+    expect((await b.api.meetings.upcoming()).map((x) => x.id)).toContain(m.id);
+    expect((await b.api.calendar.get()).events.map((e) => e.id)).toEqual(['theirs']);
+    expect((await b.api.calendar.adopt('mine')).id).toBe(m.id);
+    expect(code(await b.api.calendar.adopt('theirs').catch((e: unknown) => e))).toBe('forbidden');
+  });
+
+  it('keeps working after the access token expires, asks again when Google forgot, and says when access is gone', async () => {
+    // Google remembered an earlier yes and sends no refresh token: Alcove asks once more, then lands where it was going.
+    const dee = person('dee');
+    h.google.preconsent(dee.sub);
+    const b = h.browser();
+    expect(landed(await viaGoogle(b, dee))).toBe('/ready');
+    h.google.expireAccess();
+    expect((await b.api.calendar.get()).source).toBe('google');
+    await b.api.meetings.create({ title: 'After an hour', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' });
+    expect(h.google.calendar(dee.sub)).toHaveLength(1);
+
+    // Someone who unticks calendar access still signs in; the app can ask for it, and calls stay in Alcove.
+    const eli = person('eli');
+    const e = h.browser();
+    expect(landed(await viaGoogle(e, eli, { spoil: 'no-calendar' }))).toBe('/ready');
+    expect(await e.api.calendar.get()).toEqual({ source: 'google', needsAccess: true, events: [] });
+    expect((await e.api.meetings.create({ title: 'Local only', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' })).calendarUrl).toBeUndefined();
+    expect(e.api.calendar.connectUrl()).toBe(`${h.baseUrl}/v1/auth/google?consent=1`);
+    expect(landed(await viaGoogle(e, eli, { consent: true }))).toBe('/home');
+    expect((await e.api.calendar.get()).needsAccess).toBe(false);
+
+    // Access withdrawn at Google: the next read says so instead of failing.
+    h.google.revoke(dee.sub);
+    expect(await b.api.calendar.get()).toEqual({ source: 'google', needsAccess: true, events: [] });
+
+    // Demo accounts have their sample day instead.
+    expect((await (await account()).api.calendar.get()).source).toBe('sample');
   });
 });
 
@@ -560,6 +677,12 @@ describe('privacy at rest', () => {
     expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie in logs').toBe(false);
+    // Google refresh tokens are sealed in the vault and never logged.
+    expect(h.google.refreshTokens().length).toBeGreaterThanOrEqual(1);
+    for (const t of h.google.refreshTokens()) {
+      for (const enc of encodings(t)) expect(rowsText.includes(enc), 'a refresh token in rows').toBe(false);
+      expect(logText.includes(t), 'a refresh token in logs').toBe(false);
+    }
     expect(logText).not.toContain(m.code);
   });
 });

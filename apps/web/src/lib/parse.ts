@@ -12,6 +12,8 @@ export interface ParsedCall {
   title: string;
   /** Present when a day or a time was typed: the call is scheduled instead of starting now. */
   when?: { start: Date; minutes: number } | undefined;
+  /** A length that was typed ("for 45 min"), whether or not a time was. */
+  duration?: number | undefined;
   guests: Guest[];
   /** The sentence says "no notes" or "without notes". */
   notesOff: boolean;
@@ -117,7 +119,7 @@ export function parseCall(raw: string, now: Date, known: Known[]): ParsedCall {
     else start.setHours(10, 0);
     when = { start, minutes: minutes ?? 30 };
   }
-  return { title, when, guests, notesOff };
+  return { title, when, duration: minutes, guests, notesOff };
 }
 
 /** Takes one guest back out of the sentence: their name, their address, and the "and" before it. */
