@@ -42,17 +42,17 @@ export function Dialog({ open, onOpenChange, title, description, children, width
 }
 
 /* ---------- Menu ---------- */
-export interface MenuItem { icon: IconName; label: string; description?: string; shortcut?: string; onSelect: () => void }
-export function Menu({ trigger, items, align = 'start' }: { trigger: ReactNode; items: MenuItem[]; align?: 'start' | 'end' }) {
+export interface MenuItem { icon: IconName; label: string; description?: string; shortcut?: string; disabled?: boolean | undefined; onSelect: () => void }
+export function Menu({ trigger, items, align = 'start', side = 'bottom', className }: { trigger: ReactNode; items: MenuItem[]; align?: 'start' | 'end'; side?: 'top' | 'bottom'; className?: string | undefined }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content align={align} sideOffset={8}
-          className="z-50 w-[310px] origin-[var(--radix-dropdown-menu-content-transform-origin)] rounded-2xl bg-card p-1.5 shadow-float data-[state=open]:animate-[menuin_.28s_var(--ease-spring)_both]">
+        <DropdownMenu.Content align={align} side={side} sideOffset={8}
+          className={cn('z-50 w-[310px] origin-[var(--radix-dropdown-menu-content-transform-origin)] rounded-2xl bg-card p-1.5 shadow-float data-[state=open]:animate-[menuin_.28s_var(--ease-spring)_both]', className)}>
           {items.map((it, i) => (
-            <DropdownMenu.Item key={it.label} onSelect={it.onSelect}
-              className="grid cursor-pointer grid-cols-[36px_1fr_auto] items-center gap-3 rounded-[11px] p-2.5 outline-none transition-colors data-[highlighted]:bg-well animate-rise"
+            <DropdownMenu.Item key={it.label} onSelect={it.onSelect} disabled={it.disabled}
+              className="grid cursor-pointer grid-cols-[36px_1fr_auto] items-center gap-3 rounded-[11px] p-2.5 outline-none transition-colors data-[highlighted]:bg-well data-[disabled]:cursor-default data-[disabled]:opacity-50 animate-rise"
               style={{ animationDelay: `${i * 40}ms`, animationDuration: '.35s' }}>
               <span className="grid size-9 place-items-center rounded-[10px] bg-well"><Icon name={it.icon} /></span>
               <span><b className="block text-[14.5px] font-semibold">{it.label}</b>{it.description && <span className="text-[12.5px] text-ink-3">{it.description}</span>}</span>

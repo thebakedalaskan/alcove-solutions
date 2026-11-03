@@ -1,11 +1,11 @@
 import { errorMessage } from '@alcove/api';
 import { Avatar, Button, Card, CardHeader, Chip, CountUp, Icon, Input, Segmented, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { useState } from 'react';
 import { api } from '~/lib/api';
-import { q, qk, usePreferences } from '~/lib/queries';
+import { q, qk, useLock, usePreferences } from '~/lib/queries';
 import { fullDate, hoursOfNotes } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/account')({ component: Account });
@@ -19,7 +19,7 @@ function Account() {
   const savePrefs = usePreferences();
   const qc = useQueryClient();
   const toast = useToast();
-  const navigate = useNavigate();
+  const lock = useLock();
   const [name, setName] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const rename = async () => {
@@ -33,12 +33,10 @@ function Account() {
     catch (e) { toast(errorMessage(e), 'x'); }
     setAdding(false);
   };
-  // Leave the app first, so mounted screens don't refetch into a locked session.
   const removePasskey = async (id: string, label: string) => {
     try { await api.account.removePasskey(id); await qc.invalidateQueries({ queryKey: qk.passkeys }); toast(`${label} removed`, 'fingerprint'); }
     catch (e) { toast(errorMessage(e), 'x'); }
   };
-  const lock = async () => { await api.auth.lock(); qc.setQueryData(qk.session, null); await navigate({ to: '/welcome' }); qc.clear(); };
   return (
     <>
       <h1 className="pb-6 pt-1.5 text-[44px] leading-none">Account</h1>
@@ -100,7 +98,7 @@ function Account() {
             <p className="mb-0 mt-2 text-[13px] text-ink-3">Adding or removing a passkey asks you to confirm with one you already have.</p>
             {passkeys.some((p) => !p.usesPrf) && <p className="mb-0 mt-2 text-[13px] text-lamp-ink">A passkey marked “Key on this device” keeps its key in this browser. Clearing site data removes it, so keep a second passkey.</p>}
           </Card>
-          <Button variant="ghost" icon="lock" className="self-start" onClick={lock}>Lock Alcove</Button>
+          <Button variant="ghost" icon="lock" className="self-start" loading={lock.isPending} onClick={() => lock.mutate(undefined, { onError: (e) => toast(errorMessage(e), 'x') })}>Lock Alcove</Button>
         </div>
       </div>
     </>

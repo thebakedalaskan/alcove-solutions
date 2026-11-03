@@ -1,9 +1,10 @@
-import { Avatar, Icon, IconButton, Logo, cn, useTheme, type IconName } from '@alcove/ui';
+import { errorMessage } from '@alcove/api';
+import { Avatar, Icon, IconButton, Logo, Menu, cn, useToast, useTheme, type IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { CountUp } from '@alcove/ui';
-import { q } from '~/lib/queries';
+import { q, useLock } from '~/lib/queries';
 import { hoursOfNotes } from '~/lib/time';
 import { NewCallMenu } from './NewCallMenu';
 
@@ -20,6 +21,8 @@ export function Sidebar() {
   const { data: upcoming } = useQuery(q.upcoming());
   const { data: balance } = useQuery(q.balance());
   const { resolved, toggle } = useTheme();
+  const lock = useLock();
+  const toast = useToast();
   return (
     <aside className="sticky top-0 flex h-screen flex-col gap-1.5 border-r border-hair bg-sidebar px-3.5 pb-3.5 pt-[18px] max-[900px]:static max-[900px]:h-auto max-[900px]:flex-row max-[900px]:flex-wrap max-[900px]:items-center max-[900px]:border-b max-[900px]:border-r-0">
       <Link to="/home" aria-label="Alcove home" className="self-start rounded-[10px] px-2 pb-3.5 pt-1.5 max-[900px]:pb-1.5"><Logo size={24} /></Link>
@@ -47,10 +50,17 @@ export function Sidebar() {
         <span className="h-2 overflow-hidden rounded bg-well"><motion.i className="block h-full rounded bg-gradient-to-r from-lamp to-lamp-hot" initial={{ width: 0 }} animate={{ width: `${Math.min(100, (balance?.balance ?? 0) / 100)}%` }} transition={{ duration: 1, ease: [0.22, 0.8, 0.24, 1] }} /></span>
         <span className="text-xs text-ink-3">About {hoursOfNotes(balance?.balance ?? 0, balance?.perMinute)} of notes</span>
       </Link>
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-1 pt-3 max-[900px]:hidden">
-        {session && <Avatar person={session.user} size={34} ring={false} />}
-        <span className="min-w-0"><b className="block text-[13.5px]">{session?.user.name}</b><span className="block truncate text-xs text-ink-3">{session?.user.email}</span></span>
-        <IconButton icon={resolved === 'dark' ? 'sun' : 'moon'} label="Switch theme" onClick={toggle} />
+      <div className="relative pt-2 max-[900px]:hidden">
+        <Menu side="top" className="w-[var(--radix-dropdown-menu-trigger-width)]" trigger={
+          <button type="button" className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-xl p-1 pr-11 text-left transition-colors hover:bg-well/70 data-[state=open]:bg-well">
+            {session && <Avatar person={session.user} size={34} ring={false} />}
+            <span className="min-w-0"><b className="block truncate text-[13.5px]">{session?.user.name}</b><span className="block truncate text-xs text-ink-3">{session?.user.email}</span></span>
+          </button>
+        } items={[
+          { icon: 'pen', label: 'Edit profile', description: 'Not available yet', disabled: true, onSelect: () => undefined },
+          { icon: 'signOut', label: 'Log out', onSelect: () => lock.mutate(undefined, { onError: (e) => toast(errorMessage(e), 'x') }) }
+        ]} />
+        <IconButton icon={resolved === 'dark' ? 'sun' : 'moon'} label="Switch theme" onClick={toggle} className="absolute right-1 top-1/2 mt-1 -translate-y-1/2" />
       </div>
     </aside>
   );
