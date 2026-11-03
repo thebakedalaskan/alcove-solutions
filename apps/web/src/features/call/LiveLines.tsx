@@ -86,7 +86,7 @@ export function CallLines({ lines, me }: { lines: TranscriptLine[]; me: string |
             <div key={l.id} className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in')}>
               {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
               <div className="min-w-0">
-                {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="mono">{position(l.at)}</span></div>}
+                {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="ac-mono">{position(l.at)}</span></div>}
                 <p>{l.text}</p>
               </div>
             </div>

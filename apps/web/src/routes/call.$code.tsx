@@ -1,5 +1,5 @@
 import { clock, errorMessage, minutesLabel, type CallSession, type CallState, type Person } from '@alcove/api';
-import { Avatar, Faces, Icon, Popover, cn, useRaisedToasts, useToast, type IconName } from '@alcove/ui';
+import { Avatar, CallDock, CallTile, DockButton, DockLeave, DockSeparator, Faces, Icon, NotesSign, Popover, SealedBadge, buttonClass, cn, useRaisedToasts, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -157,10 +157,10 @@ function InCall({ session }: { session: CallSession }) {
   const invited = meeting?.guests ?? [];
   const everyone = [...state.participants.map((p) => p.person)];
   return (
-    <div className="stage">
+    <div className="stage ac-stage">
       <div className={cn('stg call', leaving && 'ending')}>
         <header className="stg-top">
-          <div className="cl-title"><b>{state.title}</b><span className="mono">{clock(state.elapsed)}</span></div>
+          <div className="cl-title"><b>{state.title}</b><span className="ac-time">{clock(state.elapsed)}</span></div>
           <div className="stg-mid">
             <NotesPill state={state} invited={invited} stopping={stopping} open={pop === 'pill'} onOpenChange={(o) => setPop(o ? 'pill' : null)}
               onSet={(v) => { setPop(null); void switchNotes(v); }} />
@@ -180,39 +180,32 @@ function InCall({ session }: { session: CallSession }) {
           )}
         </div>
         <div className="cl-bar">
-          <span className="rb-split">
-            <Round icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} off={!m.mic} onClick={() => setMic(!m.mic)} />
+          <CallDock>
+          <span className="dock-split">
+            <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} off={!m.mic} onClick={() => setMic(!m.mic)} />
             <DeviceMenu kind="mic" media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)} />
           </span>
-          <span className="rb-split">
-            <Round icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => setCam(!m.cam)} />
+          <span className="dock-split">
+            <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => setCam(!m.cam)} />
             <DeviceMenu kind="cam" media={media} m={m} devices={devices} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)} />
           </span>
-          <Round icon="screen" label={m.screen ? 'Stop presenting' : 'Share your screen'} on={!!m.screen} onClick={() => void share()} />
-          <span className="sep" />
-          <Round icon="notes" label="Notes" on={panel === 'notes'} onClick={() => flip('notes')} />
-          <Round icon="chat" label="Chat" on={panel === 'chat'} onClick={() => flip('chat')} badge={unread} />
-          <Round icon="people" label="People" on={panel === 'people'} onClick={() => flip('people')} />
-          <span className="sep" />
-          <Popover open={pop === 'leave'} onOpenChange={(o) => { setPop(o ? 'leave' : null); if (!o) guard.stay(); }} side="top" align="end" dark label="End the call" className="lv-pop"
-            anchor={<button type="button" className="leave" disabled={leaving}><Icon name="leave" size={22} /><span>End</span></button>}>
-            <button type="button" className="pop-item danger" onClick={() => void end()}>
-              <Icon name="leave" size={18} />
-              <span><b>End call</b><small>{state.notes.everOn ? 'Notes go to everyone invited as soon as it ends.' : 'No notes were taken.'}</small></span>
+          <DockButton icon="screen" label={m.screen ? 'Stop presenting' : 'Share your screen'} on={!!m.screen} onClick={() => void share()} />
+          <DockSeparator />
+          <DockButton icon="notes" label="Notes" on={panel === 'notes'} onClick={() => flip('notes')} />
+          <DockButton icon="chat" label="Chat" on={panel === 'chat'} onClick={() => flip('chat')} badge={unread} />
+          <DockButton icon="people" label="People" on={panel === 'people'} onClick={() => flip('people')} />
+          <DockSeparator />
+          <Popover open={pop === 'leave'} onOpenChange={(o) => { setPop(o ? 'leave' : null); if (!o) guard.stay(); }} side="top" align="end" stage label="End the call" className="w-[290px]"
+            anchor={<DockLeave disabled={leaving}><span>Leave</span></DockLeave>}>
+            <button type="button" className="ac-pop-item" onClick={() => void end()}>
+              <Icon name="signOut" size={18} />
+              <span><b>Leave the call</b><small>{state.notes.everOn ? 'Notes go to everyone invited as soon as it ends.' : 'No notes were taken.'}</small></span>
             </button>
           </Popover>
+          </CallDock>
         </div>
       </div>
     </div>
-  );
-}
-
-function Round({ icon, label, onClick, off = false, on = false, badge = 0 }: { icon: IconName; label: string; onClick: () => void; off?: boolean; on?: boolean; badge?: number }) {
-  return (
-    <button type="button" className={cn('rb', off && 'off', on && 'on')} aria-label={label} title={label} aria-pressed={off ? false : on || undefined} onClick={onClick}>
-      <Icon name={icon} size={21} />
-      {badge > 0 && <span className="badge">{badge}</span>}
-    </button>
   );
 }
 
@@ -221,19 +214,19 @@ function NotesPill({ state, invited, stopping, open, onOpenChange, onSet }: { st
   const on = state.notes.status === 'on';
   const getting = [...state.participants.map((p) => p.person), ...invited.filter((g) => !state.participants.some((p) => sameEmail(p.person, g)))];
   return (
-    <Popover open={open} onOpenChange={onOpenChange} align="center" dark label={on ? 'Notes are on' : 'No notes'} className="pill-pop"
+    <Popover open={open} onOpenChange={onOpenChange} align="center" stage label={on ? 'Notes are on' : 'No notes'} className="pill-pop"
       anchor={on
-        ? <button type="button" className="npill" aria-label="Notes are on"><i /><span>{stopping ? 'Turning off…' : 'Notes on'}</span></button>
-        : <button type="button" className="npill off" aria-label="No notes"><span>No notes</span><Icon name="down" size={14} /></button>}>
+        ? <button type="button" className="sign-btn" aria-label="Notes are on"><NotesSign stage>{stopping ? 'Turning off…' : 'Notes on'}</NotesSign></button>
+        : <button type="button" className="npill" aria-label="No notes"><span>No notes</span><Icon name="down" size={14} /></button>}>
       {on ? (
         <>
           <div className="pp-h"><b>Notes are on</b><p>{state.isOrganizer ? 'Everyone here can see it.' : 'The organizer turned them on. Everyone here can see it.'}</p></div>
           <div className="pp-who"><Faces people={getting} size={24} max={5} /><span>They go to everyone invited</span></div>
-          <div className="pp-promise"><Icon name="lock" size={14} /><span>{PROMISE_MANY}</span></div>
+          <div className="pp-promise"><SealedBadge inline title={PROMISE_MANY} /></div>
           {state.isOrganizer && (
             <>
-              <div className="pop-sep" />
-              <button type="button" className="pop-item" onClick={() => onSet(false)}><Icon name="x" size={18} /><span><b>Turn off notes</b><small>What’s written so far is kept.</small></span></button>
+              <div className="ac-pop-sep" />
+              <button type="button" className="ac-pop-item" onClick={() => onSet(false)}><Icon name="x" size={18} /><span><b>Turn off notes</b><small>What’s written so far is kept.</small></span></button>
             </>
           )}
         </>
@@ -242,8 +235,8 @@ function NotesPill({ state, invited, stopping, open, onOpenChange, onSet }: { st
           <div className="pp-h"><b>No notes for this call</b><p>{state.isOrganizer ? 'Nothing is being recorded.' : 'Only the organizer can turn them on.'}</p></div>
           {state.isOrganizer && (
             <>
-              <div className="pop-sep" />
-              <button type="button" className="pop-item" onClick={() => onSet(true)}><Icon name="pen" size={18} /><span><b>Turn on notes</b><small>Everyone here sees it, and everyone invited gets them.</small></span></button>
+              <div className="ac-pop-sep" />
+              <button type="button" className="ac-pop-item" onClick={() => onSet(true)}><Icon name="pen" size={18} /><span><b>Turn on notes</b><small>Everyone here sees it, and everyone invited gets them.</small></span></button>
             </>
           )}
         </>
@@ -256,15 +249,14 @@ function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapsho
   const others = state.participants.filter((p) => !p.isMe);
   const me = selfIn(state);
   const self = me && (
-    <div className="tile self">
-      {media.cam && media.camera ? <Video stream={media.camera} /> : <div className="feed-off"><Avatar person={me.person} size={56} /></div>}
-      <span className="nm">{!media.mic && <Icon name="micOff" size={14} />}You</span>
-    </div>
+    <CallTile className="self" person={me.person} name="You" muted={!media.mic}>
+      {media.cam && media.camera ? <Video stream={media.camera} /> : undefined}
+    </CallTile>
   );
   if (media.screen) {
     return (
       <div className="tiles one">
-        <div className="tile"><Video stream={media.screen} className="screen" /><span className="nm"><Icon name="screen" size={14} />Your screen</span></div>
+        <CallTile person={me?.person ?? { name: 'You' }} name="Your screen"><Video stream={media.screen} className="screen" /></CallTile>
         {self}
       </div>
     );
@@ -272,12 +264,12 @@ function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapsho
   if (!others.length) {
     return (
       <div className="tiles one">
-        <div className="tile wait">
+        <div className="ac-tile wait">
           <div className="wait-in">
             <Icon name="link" size={22} />
             <b>Waiting for others</b>
             <p>People you invited appear here when they join.</p>
-            <button type="button" className="btn btn-secondary" onClick={onCopy}><Icon name="copy" size={16} />Copy link</button>
+            <button type="button" className={buttonClass()} onClick={onCopy}><Icon name="copy" size={18} />Copy link</button>
           </div>
         </div>
         {self}
@@ -286,12 +278,7 @@ function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapsho
   }
   return (
     <div className={cn('tiles grid', (others.length + 1) % 2 === 1 && 'odd')}>
-      {others.map((p) => (
-        <div key={p.id} className={cn('tile', p.hand && 'hand-up')}>
-          <div className="feed-off"><Avatar person={p.person} size={96} /></div>
-          <span className="nm">{!p.mic && <Icon name="micOff" size={14} />}{p.person.name.split(' ')[0] ?? p.person.name}</span>
-        </div>
-      ))}
+      {others.map((p) => <CallTile key={p.id} person={p.person} name={p.person.name.split(' ')[0] ?? p.person.name} muted={!p.mic} hand={p.hand} />)}
       {self}
     </div>
   );
@@ -313,7 +300,7 @@ function NotesPanel({ session, state, media, live, uploadError, heardProblem, on
   if (catching) {
     return (
       <>
-        <div className="cp-head"><b>Catch up</b>{on ? <span className="live"><i />Recording</span> : <span className="cnt">Notes off</span>}</div>
+        <div className="cp-head"><b>Catch up</b>{on ? <NotesSign stage>Recording</NotesSign> : <span className="cnt">Notes off</span>}</div>
         <CatchUpView session={session} elapsed={state.elapsed} onBack={() => setCatching(false)} />
       </>
     );
@@ -326,7 +313,7 @@ function NotesPanel({ session, state, media, live, uploadError, heardProblem, on
           <span className="cpo-ic"><Icon name="pen" size={22} /></span>
           <b>{state.notes.everOn ? 'Notes are off' : 'No notes for this call'}</b>
           <p>{state.isOrganizer ? 'Turn them on and everyone here sees it. Everyone invited gets them afterwards.' : 'Only the organizer can turn them on.'}</p>
-          {state.isOrganizer && <button type="button" className="btn c-ok" onClick={onTurnOn}>Turn on notes</button>}
+          {state.isOrganizer && <button type="button" className={buttonClass({ variant: 'primary' })} onClick={onTurnOn}>Turn on notes</button>}
           {state.notes.everOn && lines.length > 0 && <button type="button" className="cp-catch" onClick={() => setCatching(true)}><Icon name="ask" size={14} />Catch up on what was said</button>}
         </div>
       </>
@@ -338,7 +325,7 @@ function NotesPanel({ session, state, media, live, uploadError, heardProblem, on
         <b>Notes</b>
         <span className="cp-head-r">
           {lines.length > 0 && <button type="button" className="cp-catch" onClick={() => setCatching(true)}><Icon name="ask" size={14} />Catch up</button>}
-          <span className="live"><i />Recording</span>
+          <NotesSign stage>Recording</NotesSign>
         </span>
       </div>
       <div className="cp-kept"><b>{clock(state.notes.recording.seconds)}</b><span>kept, encrypted</span></div>
@@ -356,7 +343,7 @@ function NotesPanel({ session, state, media, live, uploadError, heardProblem, on
           {heardProblem && <p><Icon name="clock" size={14} />{heardProblem}</p>}
         </div>
       )}
-      <div className="cp-foot"><Icon name="lock" size={14} /><span>Written privately. They go to everyone invited.</span></div>
+      <div className="cp-foot"><SealedBadge inline title="Written in confidential compute. They go to everyone invited." /></div>
     </>
   );
 }
@@ -374,12 +361,12 @@ function ChatPanel({ state, onSend }: { state: CallState; onSend: (text: string)
             {!c.isMe && <Avatar person={c.from} size={26} />}
             <div><b>{c.isMe ? 'You' : (c.from.name.split(' ')[0] ?? c.from.name)}</b><p>{c.text}</p></div>
           </div>
-        )) : <p className="py-2 text-[13.5px] text-[rgb(236_235_248/0.5)]">Messages here are seen by everyone in the call.</p>}
+        )) : <p className="chat-empty">Messages here are seen by everyone in the call.</p>}
         <div ref={end} />
       </div>
       <form className="cp-input" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { onSend(t); setText(''); } }}>
         <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Message everyone" autoComplete="off" aria-label="Message everyone" />
-        <button type="submit" className="rb sm" aria-label="Send"><Icon name="send" size={17} /></button>
+        <button type="submit" className="stage-btn sm" aria-label="Send"><Icon name="send" size={17} /></button>
       </form>
     </>
   );

@@ -4,7 +4,7 @@
  * a signed-in recipient only, and streamed straight into the page.
  */
 import { minutesLabel, type AudioSegment, type Chapter } from '@alcove/api';
-import { Icon, type Cover } from '@alcove/ui';
+import { Icon } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
@@ -88,14 +88,14 @@ function bars(seed: string, n = 64): number[] {
   return Array.from({ length: n }, (_, i) => { s = (s * 9301 + 49_297) % 233_280; return Math.round(18 + Math.abs(Math.sin(i * 0.37)) * 40 + (s / 233_280) * 36); });
 }
 
-export function Player({ noteId, cover, player, chapters, room }: { noteId: string; cover: Cover; player: PlayerState; chapters: Chapter[]; room: boolean }) {
+export function Player({ noteId, player, chapters, room }: { noteId: string; player: PlayerState; chapters: Chapter[]; room: boolean }) {
   const heights = useMemo(() => bars(noteId), [noteId]);
   const { pos, total, playing, toggle, seek } = player;
   const k = total ? Math.round((pos / total) * heights.length) : 0;
   const chapter = chapters.findLast((c) => c.at <= pos);
   return (
-    <section className={`player cover-${cover}`} aria-label="Audio">
-      <div className="player-top"><span className="inline-flex items-center gap-[7px]"><Icon name="lock" size={14} />Private audio</span><span className="mono">{minutesLabel(total)}</span></div>
+    <section className="player" aria-label="Audio">
+      <div className="player-top"><span className="inline-flex items-center gap-[7px]"><Icon name="lock" size={14} />Private audio</span><span className="ac-mono">{minutesLabel(total)}</span></div>
       <div className="wave" role="slider" tabIndex={0} aria-label="Position" aria-valuemin={0} aria-valuemax={Math.round(total)} aria-valuenow={Math.round(pos)} aria-valuetext={position(pos)}
         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * total, playing); }}
         onKeyDown={(e) => { if (e.key === 'ArrowRight') seek(pos + 10, playing); if (e.key === 'ArrowLeft') seek(pos - 10, playing); }}>

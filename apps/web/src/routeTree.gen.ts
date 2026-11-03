@@ -11,12 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
-import { Route as IntroRouteImport } from './routes/_intro'
+import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as RecordRouteImport } from './routes/record'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppAccountRouteImport } from './routes/_app/account'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
-import { Route as IntroReadyRouteImport } from './routes/_intro/ready'
-import { Route as IntroWelcomeRouteImport } from './routes/_intro/welcome'
 import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
@@ -31,13 +30,19 @@ const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IntroRoute = IntroRouteImport.update({
-  id: '/_intro',
+const ReadyRoute = ReadyRouteImport.update({
+  id: '/ready',
+  path: '/ready',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecordRoute = RecordRouteImport.update({
   id: '/record',
   path: '/record',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAccountRoute = AppAccountRouteImport.update({
@@ -49,16 +54,6 @@ const AppHomeRoute = AppHomeRouteImport.update({
   id: '/home',
   path: '/home',
   getParentRoute: () => AppRoute,
-} as any)
-const IntroReadyRoute = IntroReadyRouteImport.update({
-  id: '/ready',
-  path: '/ready',
-  getParentRoute: () => IntroRoute,
-} as any)
-const IntroWelcomeRoute = IntroWelcomeRouteImport.update({
-  id: '/welcome',
-  path: '/welcome',
-  getParentRoute: () => IntroRoute,
 } as any)
 const CallCodeRoute = CallCodeRouteImport.update({
   id: '/call/$code',
@@ -83,11 +78,11 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ready': typeof ReadyRoute
   '/record': typeof RecordRoute
+  '/welcome': typeof WelcomeRoute
   '/account': typeof AppAccountRoute
   '/home': typeof AppHomeRoute
-  '/ready': typeof IntroReadyRoute
-  '/welcome': typeof IntroWelcomeRoute
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -95,11 +90,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ready': typeof ReadyRoute
   '/record': typeof RecordRoute
+  '/welcome': typeof WelcomeRoute
   '/account': typeof AppAccountRoute
   '/home': typeof AppHomeRoute
-  '/ready': typeof IntroReadyRoute
-  '/welcome': typeof IntroWelcomeRoute
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -109,12 +104,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
-  '/_intro': typeof IntroRouteWithChildren
+  '/ready': typeof ReadyRoute
   '/record': typeof RecordRoute
+  '/welcome': typeof WelcomeRoute
   '/_app/account': typeof AppAccountRoute
   '/_app/home': typeof AppHomeRoute
-  '/_intro/ready': typeof IntroReadyRoute
-  '/_intro/welcome': typeof IntroWelcomeRoute
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
@@ -124,11 +118,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ready'
     | '/record'
+    | '/welcome'
     | '/account'
     | '/home'
-    | '/ready'
-    | '/welcome'
     | '/call/$code'
     | '/join/$code'
     | '/notes/$noteId'
@@ -136,11 +130,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ready'
     | '/record'
+    | '/welcome'
     | '/account'
     | '/home'
-    | '/ready'
-    | '/welcome'
     | '/call/$code'
     | '/join/$code'
     | '/notes/$noteId'
@@ -149,12 +143,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
-    | '/_intro'
+    | '/ready'
     | '/record'
+    | '/welcome'
     | '/_app/account'
     | '/_app/home'
-    | '/_intro/ready'
-    | '/_intro/welcome'
     | '/call/$code'
     | '/join/$code'
     | '/_app/notes/$noteId'
@@ -164,8 +157,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
-  IntroRoute: typeof IntroRouteWithChildren
+  ReadyRoute: typeof ReadyRoute
   RecordRoute: typeof RecordRoute
+  WelcomeRoute: typeof WelcomeRoute
   CallCodeRoute: typeof CallCodeRoute
   JoinCodeRoute: typeof JoinCodeRoute
 }
@@ -186,11 +180,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_intro': {
-      id: '/_intro'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof IntroRouteImport
+    '/ready': {
+      id: '/ready'
+      path: '/ready'
+      fullPath: '/ready'
+      preLoaderRoute: typeof ReadyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/record': {
@@ -198,6 +192,13 @@ declare module '@tanstack/react-router' {
       path: '/record'
       fullPath: '/record'
       preLoaderRoute: typeof RecordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/account': {
@@ -213,20 +214,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/home'
       preLoaderRoute: typeof AppHomeRouteImport
       parentRoute: typeof AppRoute
-    }
-    '/_intro/ready': {
-      id: '/_intro/ready'
-      path: '/ready'
-      fullPath: '/ready'
-      preLoaderRoute: typeof IntroReadyRouteImport
-      parentRoute: typeof IntroRoute
-    }
-    '/_intro/welcome': {
-      id: '/_intro/welcome'
-      path: '/welcome'
-      fullPath: '/welcome'
-      preLoaderRoute: typeof IntroWelcomeRouteImport
-      parentRoute: typeof IntroRoute
     }
     '/call/$code': {
       id: '/call/$code'
@@ -275,23 +262,12 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
-interface IntroRouteChildren {
-  IntroReadyRoute: typeof IntroReadyRoute
-  IntroWelcomeRoute: typeof IntroWelcomeRoute
-}
-
-const IntroRouteChildren: IntroRouteChildren = {
-  IntroReadyRoute: IntroReadyRoute,
-  IntroWelcomeRoute: IntroWelcomeRoute,
-}
-
-const IntroRouteWithChildren = IntroRoute._addFileChildren(IntroRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
-  IntroRoute: IntroRouteWithChildren,
+  ReadyRoute: ReadyRoute,
   RecordRoute: RecordRoute,
+  WelcomeRoute: WelcomeRoute,
   CallCodeRoute: CallCodeRoute,
   JoinCodeRoute: JoinCodeRoute,
 }

@@ -1,4 +1,4 @@
-import { EmptyState, ThemeProvider, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
+import { EmptyState, ThemeProvider, buttonClass, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
@@ -10,7 +10,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Alcove' },
-      { name: 'description', content: 'Private video calls that take their own notes.' }
+      { name: 'description', content: 'Meetings, powered by confidential AI: notes that write themselves, live translation and breakout rooms, and nobody else can read a word.' }
     ],
     links: [
       { rel: 'stylesheet', href: css },
@@ -50,7 +50,7 @@ function Root() {
 function NotFound() {
   return (
     <main className="grid min-h-screen place-items-center p-6">
-      <EmptyState title="Nothing here" action={<Link to="/" className="btn btn-secondary">Go home</Link>}>That page doesn’t exist, or it was deleted.</EmptyState>
+      <EmptyState title="Nothing here" action={<Link to="/" className={buttonClass()}>Go home</Link>}>That page doesn’t exist, or it was deleted.</EmptyState>
     </main>
   );
 }

@@ -1,8 +1,10 @@
 /*
- * Alcove's look: an arched window at sunrise. The page is the sky (indigo and lavender warming to
- * peach); anything you can press is the sun coming up (orange to red); covers are small sunrises.
- * Crimson only ever means recording. Every colour, shadow, font and easing comes from here.
- * Screens' own styles live next to this file (styles/*.css) so the app holds no raw colours.
+ * Alcove's look: an arched window at sunrise. Pages sit on `ground`, cards on `surface`; `sun` is the
+ * only colour you can press, and `rec` only ever means notes or recording. The call is always night
+ * (`stage`). Every colour, shadow, font, radius and easing comes from here. Light values live on
+ * :root, dark values on .dark (set on <html> by ThemeProvider); .light and .dark on any element
+ * scope one theme to that part of the page. Components are styled in
+ * styles/kit.css with the `ac-` prefix; screens in styles/{app,call,welcome}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -11,149 +13,190 @@
 @import "./styles/call.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --canvas: #F2EEFA;
-  /* The page is a dawn sky: lavender up top, warming to peach where the sun comes up. */
-  --sky-bg: radial-gradient(85% 60% at 100% 106%, rgb(255 178 140 / 0.55) 0%, transparent 62%),
-    radial-gradient(70% 55% at 0% 0%, rgb(196 190 255 / 0.6) 0%, transparent 62%),
-    linear-gradient(165deg, #ECE8FF 0%, #F3EEFA 45%, #FDEEE9 100%);
+/* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
+:root, .light {
+  /* Grounds */
+  --ground: #F6F5FA;
   --surface: #FFFFFF;
-  --card-bg: rgb(255 255 255 / 0.8);
-  --raised: rgb(76 56 170 / 0.04);
-  --sunk: rgb(76 56 170 / 0.07);
-  --sunk-2: rgb(76 56 170 / 0.11);
-  --sidebar: rgb(255 255 255 / 0.42);
-  --line: rgb(76 56 170 / 0.1);
-  --line-2: rgb(76 56 170 / 0.17);
-  --ink: #1A1640;
-  --ink-2: #57507A;
-  --ink-3: #8A84AA;
-  --ink-4: #B7B1CF;
+  --surface-raised: #FFFFFF;
+  --sunk: #ECEAF3;
+  /* Edges */
+  --line: #E1DEEA;
+  --line-control: #8C86A3;
+  /* Text */
+  --ink: #1A1633;
+  --ink-2: #4D4868;
+  --ink-3: #686282;
+  /* Action: the sun is the only colour you can press. */
+  --sun: #C4461B;
+  --on-sun: #FFFFFF;
+  --sun-soft: #FDEBE3;
+  --sun-text: #A83A12;
+  --sun-glow: #FF7A45;
+  /* Information and focus */
+  --horizon: #5B4BE0;
+  --horizon-soft: #ECE9FF;
+  /* Notes and recording, nothing else */
+  --rec: #C8213F;
+  --rec-soft: #FCE4E9;
+  /* Problems, explained calmly */
+  --caution: #8A5300;
+  --caution-soft: #FFF0D6;
+  --gold: #FFB547;
+  /* The call stage: night in both themes */
+  --stage: #0B0A18;
+  --stage-tile: #1A1732;
+  --stage-raised: #25213F;
+  --stage-ink: #EEEDF8;
+  --stage-ink-2: #A7A2C0;
+  --speak: #A9B2FF;
+  /* The sky: illustration, tour art and covers only */
+  --dawn-1: #141148;
+  --dawn-2: #3B2EA6;
+  --dawn-3: #C46CA8;
+  --dawn-4: #FFA06A;
+  --focus: var(--horizon);
 
-  /* Anything you can press is the rising sun: orange warming to red. */
-  --accent: #F26A3D;
-  --accent-grad: linear-gradient(135deg, #FF9548 0%, #F7703F 50%, #EC5141 100%);
-  --accent-grad-hover: linear-gradient(135deg, #FFA058 0%, #FA7C4C 50%, #F05E4E 100%);
-  --accent-glow: rgb(242 106 61 / 0.55);
-  --accent-ink: #C14A22;
-  --accent-soft: #FFEADF;
-  --accent-line: #FFCDB7;
-  --on-accent: #FFFFFF;
+  --shadow-1: 0 1px 2px rgba(26, 22, 51, 0.06), 0 1px 1px rgba(26, 22, 51, 0.04);
+  --shadow-2: 0 2px 6px rgba(26, 22, 51, 0.05), 0 18px 40px -18px rgba(26, 22, 51, 0.28);
+  --shadow-3: 0 40px 90px -30px rgba(26, 22, 51, 0.45), 0 0 0 1px rgba(26, 22, 51, 0.06);
+  --shadow-sun: 0 14px 30px -12px rgba(242, 100, 58, 0.55);
 
-  /* Recording is a true crimson with a pulsing dot, so it never reads as a button. */
-  --rec: #E33554;
-  --rec-ink: #C42443;
-  --rec-soft: #FCE4EA;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --space-32: 128px;
 
-  --sun: #FFB547;
-  --sun-hot: #FFD58A;
+  --radius-xs: 5px;
+  --radius-sm: 9px;
+  --radius-md: 13px;
+  --radius-lg: 22px;
+  --radius-xl: 32px;
+  --radius-arch: 999px;
+  --radius-pill: 999px;
 
-  --scrim: rgb(26 20 64 / 0.34);
-  --toast-bg: #1E1A44;
-  --toast-ink: #F4F1FF;
-  --sh-1: 0 1px 2px rgb(40 28 100 / 0.06), 0 1px 1px rgb(40 28 100 / 0.04);
-  --sh-2: 0 2px 6px rgb(40 28 100 / 0.05), 0 14px 34px -16px rgb(40 28 100 / 0.26);
-  --sh-3: 0 30px 80px -24px rgb(30 20 80 / 0.42), 0 0 0 1px rgb(40 28 100 / 0.06);
+  --duration-1: 140ms;
+  --duration-2: 240ms;
+  --duration-3: 420ms;
+  --duration-4: 900ms;
+  --duration-5: 2400ms;
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
 
-  /* Covers: one sunrise sky, at different moments. Same in both themes. */
-  --c-night: linear-gradient(170deg, #121130 0%, #2C2878 52%, #5847E0 100%);
-  --c-dawn: linear-gradient(170deg, #2C2878 0%, #6F5FEA 48%, #D98CB8 82%, #FFCBA6 100%);
-  --c-first: linear-gradient(170deg, #3D35A8 0%, #8F9BF3 55%, #FFD8BF 100%);
-  --c-morning: linear-gradient(170deg, #4859D6 0%, #8EA6FF 58%, #C7D6FF 100%);
-  --c-dusk: linear-gradient(170deg, #1D1A4A 0%, #6A4FC9 52%, #DD8FB5 100%);
-  --c-haze: linear-gradient(170deg, #7584E8 0%, #BDB9F6 55%, #FFD6BF 100%);
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* Washes: a pane of each cover's sky, light enough to let the page's sky through. */
-  --wash-night: linear-gradient(110deg, rgb(226 222 255 / 0.95) 0%, rgb(240 236 252 / 0.82) 48%, rgb(250 244 250 / 0.72) 100%);
-  --wash-dawn: linear-gradient(110deg, rgb(230 224 255 / 0.95) 0%, rgb(245 233 248 / 0.82) 48%, rgb(255 236 228 / 0.75) 100%);
-  --wash-first: linear-gradient(110deg, rgb(226 228 255 / 0.95) 0%, rgb(240 238 252 / 0.82) 48%, rgb(255 240 230 / 0.75) 100%);
-  --wash-morning: linear-gradient(110deg, rgb(222 232 255 / 0.95) 0%, rgb(236 240 253 / 0.82) 48%, rgb(248 245 252 / 0.72) 100%);
-  --wash-dusk: linear-gradient(110deg, rgb(233 224 255 / 0.95) 0%, rgb(246 232 246 / 0.82) 48%, rgb(253 236 242 / 0.74) 100%);
-  --wash-haze: linear-gradient(110deg, rgb(236 234 255 / 0.95) 0%, rgb(247 240 250 / 0.82) 48%, rgb(255 242 234 / 0.75) 100%);
+  /*
+   * Illustration: note covers, each a different moment of the one sky (dawn-1 to dawn-4). Used by
+   * ArchThumb only; never behind text.
+   */
+  --cover-night: linear-gradient(170deg, var(--dawn-1) 0%, var(--dawn-2) 100%);
+  --cover-dawn: linear-gradient(170deg, var(--dawn-1) 0%, var(--dawn-2) 45%, var(--dawn-3) 80%, var(--dawn-4) 100%);
+  --cover-first: linear-gradient(170deg, var(--dawn-2) 0%, var(--dawn-3) 62%, var(--dawn-4) 100%);
+  --cover-morning: linear-gradient(170deg, var(--dawn-2) 0%, var(--dawn-3) 100%);
+  --cover-dusk: linear-gradient(170deg, var(--dawn-1) 0%, var(--dawn-2) 55%, var(--dawn-3) 100%);
+  --cover-haze: linear-gradient(170deg, var(--dawn-3) 0%, var(--dawn-4) 100%);
 
-  /* The welcome stage: a pane of morning light. */
-  --stage-pane: radial-gradient(70% 52% at 50% 114%, #FFE1C8 0%, rgb(255 225 200 / 0) 70%), radial-gradient(52% 44% at 88% 74%, #FADDEA 0%, transparent 72%),
-    radial-gradient(60% 50% at 14% 18%, #DCE1FF 0%, transparent 70%), radial-gradient(50% 40% at 82% 10%, #E8E2FF 0%, transparent 70%), rgb(255 255 255 / 0.42);
-  --stage-glass: rgb(255 255 255 / 0.72);
-  --stage-glass-2: rgb(255 255 255 / 0.66);
-  --stage-ink: #15142B;
-  --stage-ink-2: rgb(21 20 43 / 0.58);
-  --bubble-ink: #15142B;
-
-  --font-display-stack: "Gabarito", "Onest", ui-sans-serif, system-ui, sans-serif;
-  --font-sans-stack: "Onest", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono-stack: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --ease-soft-v: cubic-bezier(0.22, 0.8, 0.24, 1);
-  --ease-in-v: cubic-bezier(0.4, 0, 1, 1);
-  --spring: cubic-bezier(0.3, 1.3, 0.4, 1);
-  --t1: 140ms;
-  --t2: 200ms;
   color-scheme: light;
 }
+
 .dark {
-  --canvas: #1A1640;
-  --sky-bg: radial-gradient(90% 55% at 88% 108%, rgb(255 128 82 / 0.34) 0%, transparent 62%),
-    radial-gradient(70% 50% at 8% -4%, rgb(98 80 232 / 0.42) 0%, transparent 62%),
-    linear-gradient(168deg, #14113A 0%, #1D1748 38%, #2C1B4C 72%, #45203F 100%);
-  --surface: #241F50; --card-bg: rgb(32 27 74 / 0.56); --raised: rgb(255 255 255 / 0.04);
-  --sunk: rgb(255 255 255 / 0.07); --sunk-2: rgb(255 255 255 / 0.11);
-  --sidebar: rgb(12 10 34 / 0.3); --line: rgb(255 255 255 / 0.09); --line-2: rgb(255 255 255 / 0.15);
-  --ink: #F4F1FF; --ink-2: #C7C1E8; --ink-3: #958EBF; --ink-4: #665F92;
-  --accent: #FF7A4A; --accent-ink: #FFAC86;
-  --accent-soft: rgb(255 122 74 / 0.16); --accent-line: rgb(255 122 74 / 0.34); --accent-glow: rgb(255 110 60 / 0.5);
-  --rec-soft: rgb(227 53 84 / 0.2);
-  --scrim: rgb(6 4 20 / 0.6); --toast-bg: #2A2458;
-  --sh-1: 0 1px 2px rgb(0 0 0 / 0.35);
-  --sh-2: 0 2px 6px rgb(0 0 0 / 0.25), 0 16px 36px -16px rgb(0 0 0 / 0.6);
-  --sh-3: 0 30px 80px -24px rgb(0 0 0 / 0.75), 0 0 0 1px rgb(255 255 255 / 0.07);
-  --wash-night: linear-gradient(110deg, rgb(48 40 120 / 0.85) 0%, rgb(34 28 84 / 0.7) 50%, rgb(30 24 70 / 0.55) 100%);
-  --wash-dawn: linear-gradient(110deg, rgb(56 42 128 / 0.85) 0%, rgb(52 32 88 / 0.7) 50%, rgb(74 34 70 / 0.6) 100%);
-  --wash-first: linear-gradient(110deg, rgb(44 46 128 / 0.85) 0%, rgb(38 32 90 / 0.7) 50%, rgb(70 40 66 / 0.6) 100%);
-  --wash-morning: linear-gradient(110deg, rgb(36 50 128 / 0.85) 0%, rgb(32 34 92 / 0.7) 50%, rgb(30 26 72 / 0.55) 100%);
-  --wash-dusk: linear-gradient(110deg, rgb(54 38 124 / 0.85) 0%, rgb(52 30 86 / 0.7) 50%, rgb(76 32 72 / 0.6) 100%);
-  --wash-haze: linear-gradient(110deg, rgb(50 46 126 / 0.85) 0%, rgb(44 36 90 / 0.7) 50%, rgb(70 42 66 / 0.6) 100%);
-  --stage-pane: radial-gradient(70% 52% at 50% 114%, rgb(255 170 120 / 0.2) 0%, transparent 70%), radial-gradient(52% 44% at 88% 74%, rgb(220 120 170 / 0.18) 0%, transparent 72%),
-    radial-gradient(60% 50% at 14% 18%, rgb(88 71 224 / 0.36) 0%, transparent 70%), radial-gradient(50% 40% at 82% 10%, rgb(120 100 240 / 0.22) 0%, transparent 70%), rgb(20 16 56 / 0.45);
-  --stage-glass: rgb(30 26 70 / 0.72);
-  --stage-glass-2: rgb(30 26 70 / 0.62);
-  --stage-ink: #F4F1FF;
-  --stage-ink-2: rgb(244 241 255 / 0.6);
+  --ground: #0E0C1F;
+  --surface: #17142B;
+  --surface-raised: #211D3B;
+  --sunk: #0A0917;
+  --line: #2A2645;
+  --line-control: #77719C;
+  --ink: #F1EFF8;
+  --ink-2: #C2BCDA;
+  --ink-3: #9690B5;
+  --sun: #FF8A5B;
+  --on-sun: #1E0F0A;
+  --sun-soft: #3A1F1C;
+  --sun-text: #FFA582;
+  --horizon: #A99FFF;
+  --horizon-soft: #262058;
+  --rec: #FF6B83;
+  --rec-soft: #3D1621;
+  --caution: #F3B85A;
+  --caution-soft: #3A2A0E;
+  --gold: #FFC774;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
+  --shadow-3: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
+
   color-scheme: dark;
 }
 
+/*
+ * Tailwind utilities on the same names: bg-ground, text-ink-2, bg-sun, text-on-sun, shadow-2, shadow-sun, font-display, ease-out ...
+ * Tailwind also writes the non-colour names into its theme layer as var(--x) of themselves; the unlayered
+ * :root and .dark declarations above win the cascade, so the values are always the ones defined here.
+ */
 @theme inline {
-  --color-canvas: var(--canvas); --color-surface: var(--surface); --color-raised: var(--raised); --color-sunk: var(--sunk); --color-sunk-2: var(--sunk-2);
-  --color-line: var(--line); --color-line-2: var(--line-2);
-  --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3); --color-ink-4: var(--ink-4);
-  --color-accent: var(--accent); --color-accent-ink: var(--accent-ink); --color-accent-soft: var(--accent-soft); --color-accent-line: var(--accent-line);
-  --color-rec: var(--rec); --color-rec-ink: var(--rec-ink); --color-rec-soft: var(--rec-soft); --color-sun: var(--sun);
-  --shadow-1: var(--sh-1); --shadow-2: var(--sh-2); --shadow-3: var(--sh-3);
-  --font-display: var(--font-display-stack); --font-sans: var(--font-sans-stack); --font-mono: var(--font-mono-stack);
-  --ease-soft: var(--ease-soft-v); --ease-in: var(--ease-in-v);
+  --color-ground: var(--ground); --color-surface: var(--surface); --color-surface-raised: var(--surface-raised); --color-sunk: var(--sunk);
+  --color-line: var(--line); --color-line-control: var(--line-control);
+  --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3);
+  --color-sun: var(--sun); --color-on-sun: var(--on-sun); --color-sun-soft: var(--sun-soft); --color-sun-text: var(--sun-text); --color-sun-glow: var(--sun-glow);
+  --color-horizon: var(--horizon); --color-horizon-soft: var(--horizon-soft);
+  --color-rec: var(--rec); --color-rec-soft: var(--rec-soft);
+  --color-caution: var(--caution); --color-caution-soft: var(--caution-soft); --color-gold: var(--gold);
+  --color-stage: var(--stage); --color-stage-tile: var(--stage-tile); --color-stage-raised: var(--stage-raised);
+  --color-stage-ink: var(--stage-ink); --color-stage-ink-2: var(--stage-ink-2); --color-speak: var(--speak);
+  --color-dawn-1: var(--dawn-1); --color-dawn-2: var(--dawn-2); --color-dawn-3: var(--dawn-3); --color-dawn-4: var(--dawn-4); --color-focus: var(--focus);
+  --shadow-1: var(--shadow-1); --shadow-2: var(--shadow-2); --shadow-3: var(--shadow-3); --shadow-sun: var(--shadow-sun);
+  --radius-xs: var(--radius-xs); --radius-sm: var(--radius-sm); --radius-md: var(--radius-md); --radius-lg: var(--radius-lg); --radius-xl: var(--radius-xl);
+  --radius-arch: var(--radius-arch); --radius-pill: var(--radius-pill);
+  --font-display: var(--font-display); --font-sans: var(--font-sans); --font-mono: var(--font-mono);
+  --ease-out: var(--ease-out); --ease-in-out: var(--ease-in-out); --ease-in: var(--ease-in);
 }
 
+*, *::before, *::after { box-sizing: border-box; }
+
 @layer base {
-  * { box-sizing: border-box; }
   html, body { min-height: 100%; margin: 0; }
   body {
-    background-color: var(--canvas); background-image: var(--sky-bg); background-attachment: fixed;
-    color: var(--ink); font: 15px/1.55 var(--font-sans-stack); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden;
+    background: var(--ground); color: var(--ink); font: 400 15px/22px var(--font-sans);
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden;
   }
-  h1, h2, h3, h4 { margin: 0; font-family: var(--font-display-stack); font-weight: 800; letter-spacing: -0.035em; line-height: 1.06; text-wrap: balance; }
+  /* Page-level headings are Newsreader; smaller headings inside components set the sans `title` style. */
+  h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 450; font-optical-sizing: auto; letter-spacing: -0.02em; line-height: 1.08; text-wrap: balance; }
+  h4 { margin: 0; font: 600 15px/1.3 var(--font-sans); }
   p { margin: 0; }
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
   button:disabled { cursor: default; }
-  input, textarea { font: inherit; color: inherit; }
+  input, textarea, select { font: inherit; color: inherit; }
   a { color: inherit; text-decoration: none; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
-  ::selection { background: var(--accent-soft); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+  ::selection { background: var(--sun-soft); color: var(--ink); }
 }
+
+/* Type styles, from tokens.json. One ac-display-xl per page at most. */
+.ac-display-xl { font: 420 76px/1.0 var(--font-display); letter-spacing: -0.025em; font-variation-settings: 'opsz' 72; }
+.ac-display-l { font: 420 56px/1.04 var(--font-display); letter-spacing: -0.022em; font-variation-settings: 'opsz' 60; }
+.ac-display-m { font: 450 40px/1.08 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 40; }
+.ac-display-s { font: 480 28px/1.15 var(--font-display); letter-spacing: -0.015em; font-variation-settings: 'opsz' 28; }
+.ac-title { font: 600 18px/24px var(--font-sans); letter-spacing: -0.01em; }
+.ac-body-l { font: 400 18px/28px var(--font-sans); }
+.ac-body { font: 400 15px/22px var(--font-sans); }
+.ac-body-s { font: 400 13.5px/19px var(--font-sans); }
+.ac-label { font: 600 14px/18px var(--font-sans); }
+.ac-caption { font: 500 12px/16px var(--font-sans); }
+.ac-data { font: 400 13px/18px var(--font-mono); }
 
 @utility tabular { font-variant-numeric: tabular-nums; }
 @utility scrollbar-none { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
 
-
+/* Under reduced motion every change still happens, instantly. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
 }

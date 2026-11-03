@@ -39,7 +39,7 @@ function Notes() {
     return (
       <>
         <div className="head" style={{ '--d': 0 }}><div><h1>Notes</h1></div></div>
-        <section className="card" style={{ '--d': 1 }}>
+        <section className="ac-card" style={{ '--d': 1 }}>
           <EmptyState title="No notes yet" action={<Button variant="primary" icon="plus" onClick={() => open()}>New call</Button>}>
             Calls with notes on, and recordings in the room, land here.
           </EmptyState>
@@ -52,10 +52,10 @@ function Notes() {
     <>
       <div className="head" style={{ '--d': 0 }}><div><h1>Notes</h1></div></div>
       <div className="lib-tools" style={{ '--d': 1 }}>
-        <label className="lib-search"><Icon name="search" size={17} /><input ref={search} className="field" value={text} onChange={(e) => setText(e.target.value)} placeholder="Search titles, summaries and transcripts" autoComplete="off" aria-label="Search notes" /></label>
+        <label className="lib-search"><Icon name="search" size={17} /><input ref={search} className="ac-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Search titles, summaries and transcripts" autoComplete="off" aria-label="Search notes" /></label>
         <Segmented<Filter> value={filter} onChange={setFilter} label="Filter" options={[{ value: 'all', label: 'All' }, { value: 'call', label: 'Calls' }, { value: 'room', label: 'In the room' }]} />
       </div>
-      <section className="card lib" style={{ '--d': 2 }} aria-live="polite">
+      <section className="ac-card lib" style={{ '--d': 2 }} aria-live="polite">
         {list.length ? groups.map((g) => (
           <div key={g}>
             <div className="grp">{g}</div>

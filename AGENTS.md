@@ -126,17 +126,30 @@ Read `docs/engineering/logging-and-errors.md`.
 ## Design system
 
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
-  to `packages/ui`, not to the app.
-- Colours, shadows, fonts and easing come from the tokens in `packages/ui/src/styles.css`
-  (`bg-canvas`, `text-ink-2`, `shadow-2`, `font-display`, `ease-soft` ...) and the component classes in
-  `packages/ui/src/styles/` (`kit`, `welcome`, `app`, `call`). No raw hex in the app, except on the
-  always-dark call stage and in illustrations.
+  to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
+  links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `SealedBadge`, `Notice`, `Toast`, `Avatar`
+  and `Faces` (the arch), `CallTile`, `CallDock`, `Caption`, `NotesPanel`, `TranscriptLine`, `Card`,
+  `CalendarRow`, `SidebarNav`, `ComposerLine`, `Field`, `Tabs`, `Segmented`, `TourDialog`, `Coachmark`,
+  `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+- Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
+  values on `:root`, dark on `.dark` (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
+  `bg-surface`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `shadow-sun`, `rounded-lg`,
+  `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
+  `packages/ui/src/styles/kit.css`; screens are styled in `styles/app.css`, `call.css` and `welcome.css`.
+  No raw hex in the app, except on the always-night call stage and in illustrations.
+- Icons come from Lucide through `Icon` in `@alcove/ui` (one stroke family, 1.8 stroke). Add a name to its map
+  rather than drawing an SVG; use an icon button with a tooltip, not a text label, for tile and toolbar actions.
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
-- The sunrise mark (`Mark`, `Logo`) is branding, and sunrise orange (`accent`) is for actions. Neither
-  shows state such as "recording" or "notes on": recording uses `RecDot`, `Chip tone="rec"` and the
-  notes sign on the call stage. No lamps, no green.
-- Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`).
-  Respect reduced motion; the global stylesheet already shortens CSS animations.
+- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `shadow-sun`, one
+  per view. `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
+  information and focus use `horizon`. The mark (`Mark`, `Logo`) is branding, never state. No green.
+- Type: Newsreader (`font-display`) for page-level headings only, Hanken Grotesk for everything you read
+  and operate, IBM Plex Mono for times, data and eyebrows. Fonts are served from `packages/ui/src/fonts`.
+- The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
+  `stage-ink-2`, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
+- Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
+  `RevealGroup`, the `EASE` curves) with the `duration-*` and `ease-*` tokens. Respect reduced motion; the global stylesheet already shortens CSS
+  animations.
 - Every list or page needs a designed empty state (`EmptyState`, which draws `EmptyArch` by default),
   not blank space.
 

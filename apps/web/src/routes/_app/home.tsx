@@ -1,10 +1,10 @@
 import { errorMessage, firstName, type CalendarEvent, type Meeting, type NoteSummary, type OpenAction, type Team } from '@alcove/api';
-import { ArchThumb, Button, Check, EmptyState, Faces, Icon, IconButton, Kbd, coverFor, cn, useToast } from '@alcove/ui';
+import { ArchThumb, Button, CalendarRow, Card, Check, EmptyState, Faces, Icon, IconButton, Kbd, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { NotesFlag, useCopyLink } from '~/features/call/links';
-import { CARD_DONE, NoteCard } from '~/features/notes/NoteCard';
+import { NoteCard } from '~/features/notes/NoteCard';
 import { noteMeta } from '~/features/notes/meta';
 import { freshCalls, useOpenComposer } from '~/features/shell/context';
 import { useNow } from '~/lib/live';
@@ -58,7 +58,7 @@ function Home() {
   return (
     <>
       <div className="head" style={{ '--d': 0 }}>
-        <div><div className="date">{longDay(new Date(now))}</div><h1>{firstDay ? 'Welcome' : greeting(new Date(now))}, {first}</h1></div>
+        <div><div className="date ac-eyebrow">{longDay(new Date(now))}</div><h1>{firstDay ? 'Welcome' : greeting(new Date(now))}, {first}</h1></div>
         {!firstDay && <button type="button" className="search-btn" onClick={() => void navigate({ to: '/notes', search: { find: true } })}><Icon name="search" size={16} />Search notes<Kbd>⌘K</Kbd></button>}
       </div>
       <div className="home" style={{ '--d': 1 }}>
@@ -66,11 +66,11 @@ function Home() {
           {calendar?.needsAccess && <ConnectCalendar />}
           {next ? (next.kind === 'call' ? <NextCall m={next.m} now={now} /> : <NextEvent e={next.e} now={now} />) : <NothingScheduled />}
           {next && (
-            <section className="card" aria-labelledby="laterH">
-              <div className="card-head"><h3 id="laterH">Later today</h3>{(firstDay || fromCalendar) && <span className="src"><Icon name="cal" size={14} />{fromCalendar ? 'With Google Calendar' : 'From your calendar'}</span>}</div>
+            <section className="ac-card" aria-labelledby="laterH">
+              <div className="ac-card-head"><h3 id="laterH">Later today</h3>{(firstDay || fromCalendar) && <span className="src"><Icon name="cal" size={14} />{fromCalendar ? 'With Google Calendar' : 'From your calendar'}</span>}</div>
               <div className="list">
                 {rest.filter((i) => day(i) <= 0).map((i) => row(i))}
-                {!rest.some((i) => day(i) <= 0) && <p className="px-3.5 py-3 text-[14px] text-ink-3">Nothing else today.</p>}
+                {!rest.some((i) => day(i) <= 0) && <p className="none">Nothing else today.</p>}
                 {rest.some((i) => day(i) === 1) && <><div className="grp">Tomorrow</div>{rest.filter((i) => day(i) === 1).map((i) => row(i))}</>}
                 {rest.some((i) => day(i) > 1) && <><div className="grp">Later</div>{rest.filter((i) => day(i) > 1).map((i) => row(i, true))}</>}
               </div>
@@ -80,16 +80,16 @@ function Home() {
         <div className="hcol">
           {firstDay ? (
             <section className="ex-wrap" aria-labelledby="exH">
-              <div className="card-head px-1.5 pb-0.5 pt-0"><h3 id="exH">Notes</h3></div>
+              <div className="ac-card-head"><h3 id="exH">Notes</h3></div>
               <Link to="/notes/$noteId" params={{ noteId: 'example' }} id="exampleNote" className="block rounded-[24px]" aria-label="Open the example note">
-                <NoteCard progress={CARD_DONE} you={session?.user} example className="ex-note" />
+                <NoteCard you={session?.user} example className="ex-note" />
               </Link>
               <p className="ex-cap"><Icon name="notes" size={15} />Notes from your calls will look like this.</p>
             </section>
           ) : (
             <>
-              <section className="card" aria-labelledby="notesH">
-                <div className="card-head"><h3 id="notesH">Recent notes</h3><Link to="/notes" className="link">All notes <Icon name="right" size={14} /></Link></div>
+              <section className="ac-card" aria-labelledby="notesH">
+                <div className="ac-card-head"><h3 id="notesH">Recent notes</h3><Link to="/notes">All notes <Icon name="right" size={14} /></Link></div>
                 <div className="list">{notes.slice(0, 4).map((n) => <NoteRow key={n.id} n={n} />)}</div>
               </section>
               {actions.length > 0 && <FollowUps actions={actions} />}
@@ -115,18 +115,18 @@ function NextCall({ m, now }: { m: Meeting; now: number }) {
   const offset = started ? 0 : C * Math.min(1, mins / 15);
   const [n, unit] = ringLabel(mins);
   return (
-    <section className={`next cover-${cover}`} aria-label="Up next">
+    <section className="ac-card next" aria-label="Up next">
       <ArchThumb cover={cover} width={98} />
       <div className="min-w-0">
-        <div className="eyebrow">{started ? <b>Happening now</b> : <>Up next ·<b>{untilLabel(mins)}</b></>}</div>
+        <div className="ac-eyebrow">{started ? <b>Happening now</b> : <>Up next ·<b>{untilLabel(mins)}</b></>}</div>
         <h2>{m.title}</h2>
         <div className="meta">
-          <span className="mono">{daysFromToday(new Date(m.startsAt)) === 0 ? '' : `${shortDay(new Date(m.startsAt))} · `}{hm(m.startsAt)} – {hm(m.endsAt)}</span>
+          <span className="ac-mono">{daysFromToday(new Date(m.startsAt)) === 0 ? '' : `${shortDay(new Date(m.startsAt))} · `}{hm(m.startsAt)} – {hm(m.endsAt)}</span>
           {m.guests.length > 0 && <span className="who"><Faces people={m.guests} size={26} />{m.guests.length > 2 ? listNames(m.guests) : m.guests.map((g) => g.name).join(', ')}</span>}
           <NotesFlag notes={m.notes} />
         </div>
         <div className="acts">
-          <Link to="/join/$code" params={{ code: m.code }} className="btn btn-primary btn-lg"><Icon name="video" />Join<span className="kb">J</span></Link>
+          <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ variant: 'primary', size: 'lg' })}><Icon name="video" />Join<span className="kb">J</span></Link>
           <Button variant="secondary" size="lg" icon="link" onClick={() => copy(m.code)}>Copy link</Button>
           {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" onClick={() => open(m)} />}
         </div>
@@ -172,19 +172,19 @@ function NextEvent({ e, now }: { e: CalendarEvent; now: number }) {
   const C = 226.2;
   const offset = mins <= 0 ? 0 : C * Math.min(1, mins / 15);
   return (
-    <section className={`next cover-${cover}`} aria-label="Up next">
+    <section className="ac-card next" aria-label="Up next">
       <ArchThumb cover={cover} width={98} />
       <div className="min-w-0">
-        <div className="eyebrow">{mins <= 0 ? <b>Happening now</b> : <>Up next ·<b>{untilLabel(mins)}</b></>}</div>
+        <div className="ac-eyebrow">{mins <= 0 ? <b>Happening now</b> : <>Up next ·<b>{untilLabel(mins)}</b></>}</div>
         <h2>{e.title}</h2>
         <div className="meta">
-          <span className="mono">{daysFromToday(new Date(e.startsAt)) === 0 ? '' : `${shortDay(new Date(e.startsAt))} · `}{hm(e.startsAt)} – {hm(e.endsAt)}</span>
+          <span className="ac-mono">{daysFromToday(new Date(e.startsAt)) === 0 ? '' : `${shortDay(new Date(e.startsAt))} · `}{hm(e.startsAt)} – {hm(e.endsAt)}</span>
           <span className="who"><Faces people={e.isOrganizer ? e.guests : [e.organizer, ...e.guests]} size={26} />{e.isOrganizer ? (e.guests.length ? listNames(e.guests) : 'Just you') : `${firstName(e.organizer.name)}’s call`}</span>
         </div>
         <div className="acts">
-          {e.join && <a href={e.join.url} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg"><Icon name="video" />Join on {e.join.label}<span className="kb">J</span></a>}
+          {e.join && <a href={e.join.url} target="_blank" rel="noreferrer" className={buttonClass({ variant: 'primary', size: 'lg' })}><Icon name="video" />Join on {e.join.label}<span className="kb">J</span></a>}
           {e.isOrganizer && <Button variant={e.join ? 'secondary' : 'primary'} size="lg" icon="video" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove instead</Button>}
-          <a href={e.calendarUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-icon self-center" aria-label="Open in Google Calendar" title="Open in Google Calendar"><Icon name="cal" /></a>
+          <a href={e.calendarUrl} target="_blank" rel="noreferrer" className="ac-icon-btn" aria-label="Open in Google Calendar" title="Open in Google Calendar"><Icon name="cal" /></a>
         </div>
       </div>
       <div className="count-ring" role="img" aria-label={mins <= 0 ? 'Happening now' : `Starts ${untilLabel(mins)}`}>
@@ -200,40 +200,37 @@ function EventRow({ e, day = false }: { e: CalendarEvent; day?: boolean }) {
   const adopt = useAdopt();
   const who = e.isOrganizer ? (e.guests.length ? listNames(e.guests) : 'Just you') : `${firstName(e.organizer.name)}’s call${e.guests.length ? ` · ${listNames(e.guests)}` : ''}`;
   return (
-    <div className="row">
-      <div className="tm">{hm(e.startsAt)}<small>{day ? shortDay(new Date(e.startsAt)).replace(/ \d+ \w+$/, '') : hm(e.endsAt)}</small></div>
-      <div className="min-w-0"><a href={e.calendarUrl} target="_blank" rel="noreferrer" className="t block">{e.title}</a><div className="s">{who}</div></div>
-      <div className="r">
-        {e.isOrganizer && <Button variant="ghost" size="sm" className="hov" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove</Button>}
-        {(e.isOrganizer ? e.guests : [e.organizer, ...e.guests]).length > 0 && <Faces people={e.isOrganizer ? e.guests : [e.organizer, ...e.guests]} size={26} max={3} />}
+    <CalendarRow when={hm(e.startsAt)} whenNote={day ? shortDay(new Date(e.startsAt)).replace(/ \d+ \w+$/, '') : hm(e.endsAt)}
+      title={<a href={e.calendarUrl} target="_blank" rel="noreferrer">{e.title}</a>} people={e.isOrganizer ? e.guests : [e.organizer, ...e.guests]} who={who}
+      end={<>
+        {e.isOrganizer && <Button variant="quiet" size="sm" className="hov" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove</Button>}
         {e.join
-          ? <a href={e.join.url} target="_blank" rel="noreferrer" className="nflag"><Icon name="video" size={15} />{e.join.label}</a>
+          ? <a href={e.join.url} target="_blank" rel="noreferrer" className="nflag"><Icon name="video" size={14} />{e.join.label}</a>
           : <span className="nflag off">Calendar</span>}
-      </div>
-    </div>
+      </>} />
   );
 }
 
 /** Signed in with Google but the calendar wasn't shared: one place to ask for it. */
 function ConnectCalendar() {
   return (
-    <section className="card">
-      <div className="flex items-center gap-4 px-5 py-4">
-        <span className="grid size-11 flex-none place-items-center rounded-[13px] bg-sunk text-ink-2"><Icon name="cal" size={20} /></span>
+    <Card label="Connect Google Calendar">
+      <div className="connect">
+        <span className="ic"><Icon name="cal" size={20} /></span>
         <div className="min-w-0 flex-1">
-          <b className="block text-[15px] font-semibold">Connect Google Calendar</b>
-          <p className="text-[13.5px] text-ink-3">See your meetings here, and put the calls you schedule on your calendar, with invitations.</p>
+          <b>Connect Google Calendar</b>
+          <p>See your meetings here, and put the calls you schedule on your calendar, with invitations.</p>
         </div>
         <Button variant="primary" size="sm" onClick={() => location.assign(calendarConnectUrl())}>Connect</Button>
       </div>
-    </section>
+    </Card>
   );
 }
 
 function NothingScheduled() {
   const open = useOpenComposer();
   return (
-    <section className="card">
+    <section className="ac-card">
       <EmptyState title="Nothing on your calendar" action={<Button variant="primary" icon="plus" onClick={() => open()}>New call</Button>}>
         Start a call now, or describe one to schedule it.
       </EmptyState>
@@ -248,19 +245,15 @@ function CallRow({ m, day = false }: { m: Meeting; day?: boolean }) {
   const [fresh] = useState(() => freshCalls.delete(m.id));
   const join = () => void navigate({ to: '/join/$code', params: { code: m.code } });
   return (
-    <div className={cn('row cursor-pointer', fresh && 'new')} onClick={join}>
-      <div className="tm">{hm(m.startsAt)}<small>{day ? shortDay(new Date(m.startsAt)).replace(/ \d+ \w+$/, '') : hm(m.endsAt)}</small></div>
-      <div className="min-w-0">
-        <Link to="/join/$code" params={{ code: m.code }} className="t block" onClick={(e) => e.stopPropagation()}>{m.title}</Link>
-        <div className="s">{m.guests.length ? listNames(m.guests) : 'Just you'}</div>
-      </div>
-      <div className="r">
+    <CalendarRow className={cn('clickable', fresh && 'new')} onClick={join}
+      when={hm(m.startsAt)} whenNote={day ? shortDay(new Date(m.startsAt)).replace(/ \d+ \w+$/, '') : hm(m.endsAt)}
+      title={<Link to="/join/$code" params={{ code: m.code }} onClick={(e) => e.stopPropagation()}>{m.title}</Link>}
+      people={m.guests} who={m.guests.length ? listNames(m.guests) : 'Just you'}
+      end={<>
         <IconButton icon="pen" size={17} label={`Change ${m.title}`} className="hov" onClick={(e) => { e.stopPropagation(); open(m); }} />
         <IconButton icon="link" size={17} label={`Copy link for ${m.title}`} className="hov" onClick={(e) => { e.stopPropagation(); copy(m.code); }} />
-        {m.guests.length > 0 && <Faces people={m.guests} size={26} max={3} />}
         <NotesFlag notes={m.notes} />
-      </div>
-    </div>
+      </>} />
   );
 }
 
@@ -285,8 +278,8 @@ function FollowUps({ actions }: { actions: OpenAction[] }) {
     if (on) toast('Marked done', { ms: 2200 });
   };
   return (
-    <section className="card" aria-labelledby="fuH">
-      <div className="card-head"><h3 id="fuH">Your follow-ups</h3><span className="eyebrow">{open ? `${open} open` : 'All done'}</span></div>
+    <section className="ac-card" aria-labelledby="fuH">
+      <div className="ac-card-head"><h3 id="fuH">Your follow-ups</h3><span className="ac-eyebrow">{open ? `${open} open` : 'All done'}</span></div>
       <div className="list">
         {actions.map((a) => (
           <div key={a.id} className={cn('todo', ticked.has(a.id) && 'done')}>
@@ -308,8 +301,8 @@ function TeamCard({ team }: { team: Team }) {
   const asked = yet.filter((m) => !m.invited);
   const send = () => invite.mutate(asked.map((m) => m.person.email), { onSuccess: () => toast(`${listNames(asked.map((m) => m.person))} ${asked.length > 1 ? 'are' : 'is'} invited`, { icon: 'mail' }) });
   return (
-    <section className="card team" aria-labelledby="teamH">
-      <div className="card-head"><h3 id="teamH">{team.name} on Alcove</h3><span className="src">{team.domain}</span></div>
+    <section className="ac-card team" aria-labelledby="teamH">
+      <div className="ac-card-head"><h3 id="teamH">{team.name} on Alcove</h3><span className="src">{team.domain}</span></div>
       {on.length > 0 && <div className="tm-row"><Faces people={on.map((m) => m.person)} size={30} /><span><b>{listNames(on.map((m) => m.person))}</b> already use it</span></div>}
       {yet.length > 0 && (
         <div className="tm-row">

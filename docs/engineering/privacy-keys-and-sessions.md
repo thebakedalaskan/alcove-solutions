@@ -226,7 +226,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 
 Only requests to Alcove itself: the web app's own origin and the API. Nothing third-party loads.
 
-- **Fonts** (Gabarito, Onest, Geist Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
+- **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
 - **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),
   where the token is the provider URL sealed under a key derived from `KMASTER`. It's stable, so the

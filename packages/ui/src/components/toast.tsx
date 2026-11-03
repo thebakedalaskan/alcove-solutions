@@ -15,7 +15,7 @@ interface ToastItem { id: number; text: ReactNode; o: ToastOptions }
 const PushCtx = createContext<Push>(() => {});
 const RaiseCtx = createContext<(raised: boolean) => void>(() => {});
 
-/** Short confirmations at the bottom of the screen, with an optional action such as Undo. */
+/** Short confirmations in past tense, bottom-centre and inverted, with an optional action such as Undo. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const [raised, setRaised] = useState(false);
@@ -30,10 +30,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <PushCtx.Provider value={push}>
       <RaiseCtx.Provider value={setRaised}>
         {children}
-        <div aria-live="polite" className={cn('toasts', raised && 'on-stage')}>
+        <div aria-live="polite" className={cn('ac-toasts', raised && 'on-stage')}>
           <AnimatePresence initial={false}>
             {items.map((t) => (
-              <motion.div key={t.id} layout className="toast" initial={{ opacity: 0, y: 14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }} transition={{ type: 'spring', stiffness: 520, damping: 34 }}>
+              <motion.div key={t.id} layout className="ac-toast" initial={{ opacity: 0, y: 14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }} transition={{ type: 'spring', stiffness: 520, damping: 34 }}>
                 {t.o.icon !== false && <Icon name={t.o.icon ?? 'check'} size={17} />}
                 <span>{t.text}</span>
                 {t.o.action && <button type="button" onClick={() => { t.o.action?.onClick(); close(t.id); }}>{t.o.action.label}</button>}

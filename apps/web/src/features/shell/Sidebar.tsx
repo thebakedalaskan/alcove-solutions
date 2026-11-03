@@ -1,4 +1,4 @@
-import { Avatar, Icon, Kbd, Logo, Meter } from '@alcove/ui';
+import { Avatar, Icon, Kbd, Logo, Meter, NavItemContent, SidebarNav, buttonClass, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { q } from '~/lib/queries';
@@ -11,11 +11,11 @@ export function Sidebar({ onNew }: { onNew: () => void }) {
   return (
     <aside className="side">
       <Logo />
-      <button type="button" className="btn btn-primary new" onClick={onNew} aria-label="New call"><Icon name="plus" size={17} /><span>New call</span><Kbd>N</Kbd></button>
-      <nav aria-label="Main">
-        <Link to="/home" className="nav-item"><Icon name="home" /><span>Home</span></Link>
-        <Link to="/notes" className="nav-item"><Icon name="notes" /><span>Notes</span>{notes?.length ? <span className="count">{notes.length}</span> : null}</Link>
-      </nav>
+      <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'new')} onClick={onNew} aria-label="New call"><Icon name="plus" size={18} /><span>New call</span><Kbd>N</Kbd></button>
+      <SidebarNav>
+        <Link to="/home" className="ac-nav-item"><NavItemContent icon="home" label="Home" /></Link>
+        <Link to="/notes" className="ac-nav-item"><NavItemContent icon="notes" label="Notes" count={notes?.length} /></Link>
+      </SidebarNav>
       <div className="side-foot">
         {credits && (
           <Link to="/account" className="credits">

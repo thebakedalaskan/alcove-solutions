@@ -1,6 +1,40 @@
-import { animate, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { animate, motion, useReducedMotion, type Variants } from 'motion/react';
+import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../cn';
+
+/**
+ * The easing curves, for motion/react. `out` for arrivals, `inOut` for moves, `expo` for long
+ * entrances and glides, `in` for leaving. Nothing snaps.
+ */
+export const EASE = {
+  out: [0.22, 0.8, 0.24, 1],
+  inOut: [0.65, 0, 0.35, 1],
+  expo: [0.16, 1, 0.3, 1],
+  in: [0.4, 0, 1, 1]
+} as const;
+
+const VIEW = { once: true, margin: '0px 0px -12% 0px' } as const;
+const rise: Variants = { hidden: { opacity: 0, y: 36 }, shown: { opacity: 1, y: 0, transition: { duration: 1.1, ease: EASE.expo } } };
+const lift: Variants = { hidden: { opacity: 0, y: 70, scale: 0.97 }, shown: { opacity: 1, y: 0, scale: 1, transition: { duration: 1.4, ease: EASE.expo } } };
+
+/**
+ * Rises into place the first time it scrolls into view. `lift` for a large frame or picture, which
+ * comes up from further and grows slightly. Under reduced motion it's simply there.
+ */
+export function Reveal({ lift: isLift = false, className, children }: { lift?: boolean; className?: string | undefined; children: ReactNode }) {
+  const reduce = useReducedMotion();
+  return <motion.div className={className} variants={isLift ? lift : rise} initial={reduce ? false : 'hidden'} whileInView="shown" viewport={VIEW}>{children}</motion.div>;
+}
+
+/** Each child rises into place in turn, the first time the group scrolls into view. */
+export function RevealGroup({ className, children }: { className?: string | undefined; children: ReactNode }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div className={className} initial={reduce ? false : 'hidden'} whileInView="shown" viewport={VIEW} variants={{ hidden: {}, shown: { transition: { staggerChildren: 0.12 } } }}>
+      {Children.map(children, (c) => c === null || c === false ? null : <motion.div variants={rise}>{c}</motion.div>)}
+    </motion.div>
+  );
+}
 
 /** Counts up to `value` from wherever it last was. */
 export function CountUp({ value, format = (v) => Math.round(v).toLocaleString('en-US'), duration = 1.2, className }: { value: number; format?: (v: number) => string; duration?: number; className?: string }) {
@@ -21,7 +55,7 @@ export function Words({ text, from = 0, className }: { text: string; from?: numb
   const words = text.split(' ');
   return (
     <span className={className}>
-      {words.map((w, i) => <span key={`${i}-${w}`} className="word" style={{ '--w': i, '--from': `${from}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
+      {words.map((w, i) => <span key={`${i}-${w}`} className="ac-word" style={{ '--w': i, '--from': `${from}ms` }}>{w}{i < words.length - 1 ? ' ' : ''}</span>)}
     </span>
   );
 }
@@ -36,4 +70,4 @@ export function CheckDraw({ done, size = 12, className }: { done: boolean; size?
 }
 
 /** Three dots for "listening" and other waits. */
-export const Dots = ({ className }: { className?: string }) => <span aria-hidden="true" className={cn('dots', className)}><i /><i /><i /></span>;
+export const Dots = ({ className }: { className?: string }) => <span aria-hidden="true" className={cn('ac-dots', className)}><i /><i /><i /></span>;

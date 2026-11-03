@@ -1,5 +1,5 @@
 import { clock, errorMessage, type RoomRecording, type TranscriptLine } from '@alcove/api';
-import { Icon, Popover, Spinner, cn, useRaisedToasts, useToast } from '@alcove/ui';
+import { Icon, Popover, Spinner, buttonClass, cn, useRaisedToasts, useToast } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -38,13 +38,13 @@ function Record() {
   }, [media]);
   if (failed) {
     return (
-      <div className="stage"><div className="stg room-stg">
+      <div className="stage ac-stage"><div className="stg room-stg">
         <Top />
-        <div className="room-wait"><div className="wait-in"><Icon name="x" size={22} /><b>Couldn’t start recording</b><p>{failed}</p><Link to="/home" className="btn btn-secondary">Go home</Link></div></div>
+        <div className="room-wait"><div className="wait-in"><Icon name="x" size={22} /><b>Couldn’t start recording</b><p>{failed}</p><Link to="/home" className={buttonClass()}>Go home</Link></div></div>
       </div></div>
     );
   }
-  if (!rec) return <div className="stage"><div className="stg room-stg"><Top /><div className="room-wait"><Spinner /></div></div></div>;
+  if (!rec) return <div className="stage ac-stage"><div className="stg room-stg"><Top /><div className="room-wait"><Spinner /></div></div></div>;
   return <Recorder rec={rec} media={media} />;
 }
 
@@ -127,13 +127,13 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
   };
 
   return (
-    <div className="stage">
+    <div className="stage ac-stage">
       <div className="stg room-stg">
         <Top right={
-          <Popover open={leave} onOpenChange={(o) => { setLeave(o); if (!o) guard.stay(); }} dark label="Leave the room" className="w-[290px]"
+          <Popover open={leave} onOpenChange={(o) => { setLeave(o); if (!o) guard.stay(); }} stage label="Leave the room" className="w-[290px]"
             anchor={<button type="button" className="stg-back"><Icon name="left" size={17} />Home</button>}>
-            <button type="button" className="pop-item" onClick={() => { setLeave(false); void finish(); }}><Icon name="stop" size={18} /><span><b>Finish and write notes</b><small>Keeps what was recorded.</small></span></button>
-            <button type="button" className="pop-item danger" onClick={() => void discard()}><Icon name="trash" size={18} /><span><b>Discard recording</b><small>Nothing is kept.</small></span></button>
+            <button type="button" className="ac-pop-item" onClick={() => { setLeave(false); void finish(); }}><Icon name="stop" size={18} /><span><b>Finish and write notes</b><small>Keeps what was recorded.</small></span></button>
+            <button type="button" className="ac-pop-item is-caution" onClick={() => void discard()}><Icon name="trash" size={18} /><span><b>Discard recording</b><small>Nothing is kept.</small></span></button>
           </Popover>
         } />
         <div className={cn('room', paused && 'paused')}>
@@ -143,11 +143,11 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
             <input className="rm-name" value={title} aria-label="Name these notes" spellCheck={false}
               onChange={(e) => setTitle(e.target.value)} onBlur={() => { const t = title.trim(); if (t && t !== s.title) rec.rename(t); else setTitle(s.title); }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
-            <div className="rm-time mono">{clock(s.elapsed)}</div>
+            <div className="rm-time ac-mono">{clock(s.elapsed)}</div>
             <div className="rm-wave" aria-hidden="true">{bars.map((h, i) => <i key={i} style={{ height: `${paused ? 6 : h}%` }} />)}</div>
-            {m.error ? <p className="rm-note text-[#FFB3B5]">{m.error}</p> : <p className="rm-note">Let everyone here know before you start talking.</p>}
+            {m.error ? <p className="rm-note bad">{m.error}</p> : <p className="rm-note">Let everyone here know before you start talking.</p>}
             <div className="rm-ctrls">
-              <button type="button" className="rb lg" aria-label={paused ? 'Resume' : 'Pause'} disabled={holding} onClick={() => (paused ? rec.resume() : void pause())}><Icon name={paused ? 'dot' : 'pause'} size={paused ? 20 : 24} /></button>
+              <button type="button" className="stage-btn lg" aria-label={paused ? 'Resume' : 'Pause'} disabled={holding} onClick={() => (paused ? rec.resume() : void pause())}><Icon name={paused ? 'dot' : 'pause'} size={paused ? 20 : 24} /></button>
               <button type="button" className="rm-stop" disabled={busy} onClick={() => void finish()}>{busy ? <Spinner /> : <Icon name="stop" size={18} />}Finish and write notes</button>
             </div>
           </div>

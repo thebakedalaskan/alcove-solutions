@@ -73,28 +73,29 @@ export function PortraitArt({ p }: { p: PortraitStyle }) {
 export type AvatarPerson = Pick<Person, 'name'> & { email?: string | undefined; photoUrl?: string | undefined; portrait?: PortraitStyle | undefined };
 
 /**
- * A round avatar: the person's photo, else their illustrated portrait, else their initial. A photo
- * that doesn't load (gone, blocked, offline) falls back the same way.
+ * A person in the arch: their photo, else their illustrated portrait on their own colour, else their
+ * initial. Never a plain circle. A photo that doesn't load (gone, blocked, offline) falls back the same way.
  */
 export function Avatar({ person, size = 32, className, style }: { person: AvatarPerson; size?: number; className?: string; style?: CSSProperties }) {
   const label = person.name || person.email || '?';
   const [failed, setFailed] = useState<string | null>(null);
   const photo = person.photoUrl && person.photoUrl !== failed ? person.photoUrl : undefined;
+  const bg = !photo && person.portrait ? person.portrait.bg : undefined;
   return (
-    <span className={cn('av', className)} style={{ '--s': `${size}px`, ...style }} title={label}>
+    <span className={cn('ac-avatar', className)} style={{ '--size': `${size}px`, ...(bg ? { background: bg } : {}), ...style }} title={label}>
       {photo ? <img src={photo} alt="" draggable={false} referrerPolicy="no-referrer" onError={() => setFailed(photo)} />
-        : person.portrait ? <svg viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" fill={person.portrait.bg} /><g transform="translate(0 6)"><PortraitArt p={person.portrait} /></g></svg>
-          : <span className="grid size-full place-items-center font-display font-bold text-ink-2" style={{ fontSize: size * 0.42 }}>{label.charAt(0).toUpperCase()}</span>}
+        : person.portrait ? <svg viewBox="20 26 160 166" aria-hidden="true"><PortraitArt p={person.portrait} /></svg>
+          : <span className="initial">{label.charAt(0).toUpperCase()}</span>}
     </span>
   );
 }
 
-/** Overlapping faces, with "+n" when there are more than `max`. */
+/** Overlapping arches, each 6px over the last, with "+n" when there are more than `max`. */
 export function Faces({ people, size = 28, max = 4, className }: { people: AvatarPerson[]; size?: number; max?: number; className?: string }) {
   const shown = people.slice(0, max);
   const more = people.length - shown.length;
   return (
-    <span className={cn('faces', className)} style={{ '--s': `${size}px` }}>
+    <span className={cn('ac-faces', className)}>
       {shown.map((p, i) => <Avatar key={`${p.email ?? p.name}-${i}`} person={p} size={size} />)}
       {more > 0 && <span className="more">+{more}</span>}
     </span>

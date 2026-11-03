@@ -1,5 +1,5 @@
 import type { NotesSetting } from '@alcove/api';
-import { Icon, cn, useToast } from '@alcove/ui';
+import { Chip, useToast } from '@alcove/ui';
 
 export const joinUrl = (code: string) => `${location.origin}/join/${code}`;
 
@@ -8,13 +8,13 @@ export function useCopyLink() {
   const toast = useToast();
   return (code: string) => {
     void navigator.clipboard?.writeText(joinUrl(code)).catch(() => undefined);
-    toast(<>Link copied <span className="mono opacity-60">{joinUrl(code).replace(/^https?:\/\//, '')}</span></>, { icon: 'link' });
+    toast(<>Link copied <span className="ac-mono opacity-60">{joinUrl(code).replace(/^https?:\/\//, '')}</span></>, { icon: 'link' });
   };
 }
 
-/** Whether a call has notes, as a quiet label. */
+/** Whether a call has notes, as a chip: chosen (sun) or switched off (outline). */
 export function NotesFlag({ notes, className }: { notes: NotesSetting; className?: string }) {
   return notes === 'on'
-    ? <span className={cn('nflag', className)}><Icon name="pen" size={15} />Notes</span>
-    : <span className={cn('nflag off', className)}>No notes</span>;
+    ? <Chip tone="sun" icon="notes" className={className}>Notes</Chip>
+    : <Chip tone="outline" className={className}>No notes</Chip>;
 }

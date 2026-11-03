@@ -7,12 +7,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
 
 ## 1. Sign in
 
-1. Open Alcove. Choose **Continue with Google**, **Continue with Microsoft** or **Use single sign-on (SSO)**,
-   which asks for a work email.
+1. Open Alcove. Signed out, the welcome page shows what Alcove does (offline calls in the room, live notes,
+   layouts, breakout rooms, live translation and privacy), each with a scene that plays while it's on screen.
+   Choose **Continue with Google**, **Continue with Microsoft** or **Use single sign-on**, at the top or the
+   bottom of the page; single sign-on asks for a work email in place.
 2. **Google** goes to Google's account chooser and consent screen, which also asks for the calendar (events
    only); unticking it still signs in. If the sign-in doesn't happen (cancelled, too slow, an email Google
    hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
-3. The first time, a welcome says what came along (the calendar, and the team when there's a company
+3. The first time, a short screen says what came along (the calendar, and the team when there's a company
    directory), and **Open Alcove** goes to Home. After that, signing in goes straight to Home.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
