@@ -33,7 +33,7 @@
     "OBJECTS_SECRET_KEY",
     "API_PORT",
     "WEB_ORIGIN",
-    "RP_ID",
+    "API_URL",
     "KSERVICE",
     "NEAR_AI_BASE_URL",
     "LOG_LEVEL",
@@ -41,6 +41,9 @@
     "TEST_LOGS"
   ],
   "globalPassThroughEnv": [
-    "NEAR_AI_API_KEY"
+    "KMASTER",
+    "NEAR_AI_API_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET"
   ]
 }
