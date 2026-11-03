@@ -2,7 +2,10 @@
  * Stand-ins for Microsoft and company SSO until they're connected. Delete this file then.
  *
  * Microsoft always signs in Art Vandelay. Single sign-on signs in whoever's work email was typed,
- * so a second account is a click away. Everyone at vandelay.industries shares Art's company
+ * so a second account is a click away, but only at an address no real person can have: a domain
+ * reserved for examples, or the demo company. Nothing checks the address, and notes are shared by
+ * address, so a real one would let anyone read what was shared with its owner. Everyone at
+ * vandelay.industries shares Art's company
  * directory. A demo account's calendar is a day of Alcove calls placed around the moment they sign
  * in, so the app opens on a day that looks real. Nothing here leaves the server: the calls are
  * ordinary sealed meetings in the account's vault. Google sign-in is real (../google.ts).
@@ -20,12 +23,18 @@ const ART: Identity = {
   sample: true
 };
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Domains that can't belong to anyone (RFC 2606 and RFC 6761), and the demo company's. */
+const DEMO_DOMAIN = /(?:^|\.)(?:example|test|invalid|localhost)$|(?:^|\.)example\.(?:com|net|org)$|^vandelay\.industries$/;
 
 export function demoIdentity(provider: DemoProvider, email: string | undefined): Identity {
   if (provider === 'microsoft') return ART;
   const e = (email ?? '').trim().toLowerCase();
   if (!EMAIL.test(e)) throw new ValidationError('Enter your full work email.', { context: { provider } });
-  return e === ART.email ? ART : { subject: `demo:sso:${e}`, email: e, name: nameFrom(e), sample: true };
+  if (e === ART.email) return ART;
+  if (!DEMO_DOMAIN.test(e.slice(e.lastIndexOf('@') + 1))) {
+    throw new ValidationError('Company sign-in isn’t connected yet. Sign in with Google, or try single sign-on with an address at example.com.', { context: { provider, reason: 'real-domain' } });
+  }
+  return { subject: `demo:sso:${e}`, email: e, name: nameFrom(e), sample: true };
 }
 
 export const COMPANY = { name: 'Vandelay Industries', domain: 'vandelay.industries' } as const;

@@ -1,5 +1,5 @@
 import type { Person, PortraitHair, PortraitStyle } from '@alcove/api';
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { cn } from '../cn';
 
 /** Darker or lighter by `amt` (-1..1) of full scale, for shading. */
@@ -72,12 +72,17 @@ export function PortraitArt({ p }: { p: PortraitStyle }) {
 
 export type AvatarPerson = Pick<Person, 'name'> & { email?: string | undefined; photoUrl?: string | undefined; portrait?: PortraitStyle | undefined };
 
-/** A round avatar: the person's photo, else their illustrated portrait, else their initial. */
+/**
+ * A round avatar: the person's photo, else their illustrated portrait, else their initial. A photo
+ * that doesn't load (gone, blocked, offline) falls back the same way.
+ */
 export function Avatar({ person, size = 32, className, style }: { person: AvatarPerson; size?: number; className?: string; style?: CSSProperties }) {
   const label = person.name || person.email || '?';
+  const [failed, setFailed] = useState<string | null>(null);
+  const photo = person.photoUrl && person.photoUrl !== failed ? person.photoUrl : undefined;
   return (
     <span className={cn('av', className)} style={{ '--s': `${size}px`, ...style }} title={label}>
-      {person.photoUrl ? <img src={person.photoUrl} alt="" draggable={false} referrerPolicy="no-referrer" />
+      {photo ? <img src={photo} alt="" draggable={false} referrerPolicy="no-referrer" onError={() => setFailed(photo)} />
         : person.portrait ? <svg viewBox="0 0 200 200" aria-hidden="true"><rect width="200" height="200" fill={person.portrait.bg} /><g transform="translate(0 6)"><PortraitArt p={person.portrait} /></g></svg>
           : <span className="grid size-full place-items-center font-display font-bold text-ink-2" style={{ fontSize: size * 0.42 }}>{label.charAt(0).toUpperCase()}</span>}
     </span>

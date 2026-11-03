@@ -1,5 +1,9 @@
 # Alcove deployment implementation plan
 
+> **Note (November 2026):** the passkeys, session lock and lock/unlock journey this plan mentions were removed
+> when the app moved to Google sign-in (OpenID Connect). The open acceptance items now use a Google sign-in
+> and recording journey; see [Deployment and acceptance](../../engineering/deployment-and-acceptance.md).
+
 > **For agentic workers:** Execute the infrastructure tasks in this chat; use independent reviewers for the deployment configuration and runtime verification.
 
 **Goal:** Deploy the current app to https://alcove.solutions and its API to https://api.alcove.solutions automatically after successful CI on main.

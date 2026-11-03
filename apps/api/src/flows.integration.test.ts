@@ -168,15 +168,21 @@ describe('signing in', () => {
     expect(seen.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
   });
 
-  it('signs in with single sign-on as whoever’s work email was typed', async () => {
-    const r = await h.browser().api.auth.signIn('sso', { email: '  Dana.Wu@Harbourline.co ' });
-    expect(r).toMatchObject({ isNew: true, session: { provider: 'sso', user: { name: 'Dana Wu', email: 'dana.wu@harbourline.co' } } });
+  it('signs in with single sign-on as whoever’s work email was typed, but never at an address someone could own', async () => {
+    const r = await h.browser().api.auth.signIn('sso', { email: '  Dana.Wu@Harbourline.example ' });
+    expect(r).toMatchObject({ isNew: true, session: { provider: 'sso', user: { name: 'Dana Wu', email: 'dana.wu@harbourline.example' } } });
     expect(r.session.user.photoUrl).toBeUndefined();
     expect(r.session.user.portrait).toBeDefined();
-    const back = await h.browser().api.auth.signIn('sso', { email: 'dana.wu@harbourline.co' });
+    const back = await h.browser().api.auth.signIn('sso', { email: 'dana.wu@harbourline.example' });
     expect([back.isNew, back.session.ownerId]).toEqual([false, r.session.ownerId]);
     expect(code(await h.browser().api.auth.signIn('sso').catch((e: unknown) => e))).toBe('invalid');
     expect(code(await h.browser().api.auth.signIn('sso', { email: 'not-an-email' }).catch((e: unknown) => e))).toBe('invalid');
+    // Nothing checks the address, so a real person's can't be claimed (and with it the notes shared with them).
+    for (const email of ['dana.wu@harbourline.co', 'someone@gmail.com', 'x@example.com.attacker.io']) {
+      expect(code(await h.browser().api.auth.signIn('sso', { email }).catch((e: unknown) => e)), email).toBe('invalid');
+    }
+    // The demo company's addresses still work, so a demo has colleagues to share with.
+    expect((await h.browser().api.auth.signIn('sso', { email: 'theo@vandelay.industries' })).session.user.email).toBe('theo@vandelay.industries');
   });
 
   it('keeps sessions across a restart and refuses a cookie after sign-out', async () => {
@@ -416,8 +422,8 @@ describe('people and team', () => {
     expect(await art.api.people.search('jamie@harbourline.co')).toEqual([expect.objectContaining({ source: 'new', onAlcove: false, person: expect.objectContaining({ email: 'jamie@harbourline.co' }) })]);
 
     // An address that belongs to an Alcove account says so.
-    await account('jordan.lee@harbourline.co');
-    expect((await art.api.people.search('jordan.lee@harbourline.co'))[0]).toMatchObject({ source: 'new', onAlcove: true });
+    await account('jordan.lee@harbourline.example');
+    expect((await art.api.people.search('jordan.lee@harbourline.example'))[0]).toMatchObject({ source: 'new', onAlcove: true });
   });
 
   it('shows the company directory and invites colleagues', async () => {
@@ -598,11 +604,11 @@ describe('live transcript and written notes', () => {
     expect(prompt).not.toContain(guestEmail);
     expect(prompt).not.toContain(org.session.user.email);
 
-    // The live transcript moved into the note, the job is done, and the recorded minutes were charged.
+    // The live transcript moved into the note, the job is done, and the minutes recorded (not the call's length) were charged.
     expect((await h.pool.query('SELECT count(*)::int AS n FROM transcript_clips WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
     expect((await h.pool.query('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n).toBe(0);
     const credits = await org.api.credits.balance();
-    expect(credits.balance).toBe(credits.granted - Math.max(1, Math.ceil(note.duration / 60)) * credits.perMinute);
+    expect(credits.balance).toBe(credits.granted - Math.max(1, Math.ceil(note.audio.reduce((n, a) => n + a.seconds, 0) / 60)) * credits.perMinute);
 
     // Anyone with the notes can ask about the call, and hear where the answer comes from.
     expect(await asked(org.api, noteId, 'When is the launch now?')).toEqual([{ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' }, { type: 'cite', at: 0 }]);

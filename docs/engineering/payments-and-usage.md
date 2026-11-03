@@ -14,14 +14,17 @@ New accounts receive **10,000 credits** (about 6½ hours of notes). Credit packs
 | --- | --- |
 | Billing account per owner, welcome grant, history | Working |
 | Balance and history sealed under `Kservice` (never under owner keys) | Working |
-| Charging for notes | Not yet: charges are applied when the notes worker writes a note |
-| Buying credits (USDC through NEAR Intents 1Click, `P01`) | Not connected; `POST /v1/credits/purchases` returns `503 unavailable` |
+| Charging for notes | Working. When the notes worker writes a note, `billing.charge` takes 25 credits a minute (rounded up, at least one) in the same transaction, under a row lock, as a history entry "Notes, N min". A note finished without notes (nothing was transcribed, or the notes model failed three times) costs nothing, and neither do the live transcript or asking. |
+| Minutes charged | The minutes recorded: the seconds of encrypted audio across every segment of the note's recording, rounded up. Time in a call with notes off is free. |
+| Admission | Not built: nothing checks the balance before recording or transcribing, and a charge can take it below zero |
+| Buying credits (USDC through NEAR Intents 1Click, `P01`) | Not connected; there is no purchase endpoint |
 
 ## Design to implement
 
-- **Admission before work.** The notes worker reserves the maximum cost of a job before calling inference, and
-  settles to the actual recorded minutes afterwards. Reservations and settlements are entries in the sealed
-  billing state, applied under a row lock with a version check.
+- **Admission before work.** Transcription now runs during the recording, so the check belongs where notes or
+  a room recording start: reserve the maximum cost then, and settle to the actual recorded minutes when the
+  notes are written. Reservations and settlements are entries in the sealed billing state, applied under a
+  row lock with a version check.
 - **Privacy of accounting.** The billing module receives quantities and purchase bindings, never content or
   owner keys. Before payments ship, key billing rows by a random account ID with a separate owner tag rather
   than the clear `owner_id`, and keep amounts as integer strings rather than floating-point numbers.

@@ -26,11 +26,6 @@ export const Route = createFileRoute('/_intro/welcome')({
   component: Welcome
 });
 
-/** The company behind a work email: vandelay.industries → Vandelay. */
-function orgName(email: string): string {
-  const w = (email.split('@')[1] ?? '').split('.')[0] ?? '';
-  return w ? w.charAt(0).toUpperCase() + w.slice(1) : 'your company';
-}
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /* The ways in. One click each: there's nothing to set up first. */
@@ -102,12 +97,12 @@ function Welcome() {
   const ok = isEmail(email);
   const sso = [
     <h1 key="h" className="in-title mid">Sign in with SSO</h1>,
-    <p key="p" className="in-body">Enter your work email. We’ll take you to your company’s sign-in page.</p>,
-    <input key="i" ref={input} className="in-input" type="email" placeholder="you@company.com" autoComplete="email" spellCheck={false} aria-label="Work email"
+    <p key="p" className="in-body">Company sign-in isn’t connected yet. To try it, use any address at example.com.</p>,
+    <input key="i" ref={input} className="in-input" type="email" placeholder="you@example.com" autoComplete="off" spellCheck={false} aria-label="Email at example.com"
       value={email} disabled={busy !== null} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok && busy === null) void go('sso'); }} />,
     <div key="a" className="in-actions">
       <button type="button" className={cn('in-cta', busy === 'sso' && 'busy')} disabled={!ok || busy !== null} onClick={() => void go('sso')}>
-        {busy === 'sso' ? <><span className="spin" aria-hidden="true" />Opening {orgName(email)}…</> : <>Continue <Icon name="right" size={18} /></>}
+        {busy === 'sso' ? <><span className="spin" aria-hidden="true" />Signing in…</> : <>Continue <Icon name="right" size={18} /></>}
       </button>
       <button type="button" className="in-link" disabled={busy !== null} onClick={() => moments.show('ways')}>Back</button>
     </div>

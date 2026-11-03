@@ -9,22 +9,33 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
 
 1. Open Alcove. Choose **Continue with Google**, **Continue with Microsoft** or **Use single sign-on (SSO)**,
    which asks for a work email.
-2. The first time, a welcome says the calendar came along (and the team, when there's a company directory),
-   and **Open Alcove** goes to Home. After that, signing in goes straight to Home.
+2. **Google** goes to Google's account chooser and consent screen, which also asks for the calendar (events
+   only); unticking it still signs in. If the sign-in doesn't happen (cancelled, too slow, an email Google
+   hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
+3. The first time, a welcome says what came along (the calendar, and the team when there's a company
+   directory), and **Open Alcove** goes to Home. After that, signing in goes straight to Home.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
-the notes default (on) and 10,000 credits. Until the providers are connected, sign-in is a stand-in: Google
-and Microsoft sign in Art Vandelay (art@vandelay.industries), and SSO signs in whoever's work email was typed,
-with a name made from the address. Whenever nothing is coming up at sign-in, a demo day of five calls goes on
-the calendar, the first about 12 minutes later.
+the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. Microsoft
+and SSO are still stand-ins: Microsoft signs in Art Vandelay (art@vandelay.industries), and SSO signs in
+whoever's email was typed, with a name made from the address, as long as it's an address no real person can
+have (at example.com or another domain reserved for examples, or at vandelay.industries). These demo accounts get a sample day of
+five calls whenever nothing is coming up at sign-in, the first about 12 minutes later.
 
 A session lasts until sign-out, 14 days without use, or 30 days in all; then the app goes back to the welcome
 screen. Signing in on another browser doesn't end the first session.
 
 ## 2. Home
 
-- The date, a greeting, and **Up next**: the next call with a countdown, who is invited, whether it has
-  notes, **Join** (**J**) and **Copy link**. Below it, the rest of today, then tomorrow and later.
+- The date, a greeting, and **Up next**: the next Alcove call or, with Google Calendar connected, the next
+  meeting on the calendar, with a countdown and who is invited. An Alcove call shows whether it has notes,
+  **Join** (**J**), **Copy link** and, before it starts, **Change this call**. Another calendar meeting
+  shows **Join on Google Meet** (or Zoom, Teams, Webex) when it has a video link, **Use Alcove instead** when
+  you organized it, and a link to it in Google Calendar.
+- Below it, the rest of today, then tomorrow and later, with Alcove calls and calendar meetings together.
+  **Use Alcove** on a meeting you organized makes it an Alcove call: the calendar event gets the Alcove
+  link, and Google tells everyone on it.
+- Signed in with Google without sharing the calendar, a card offers **Connect Google Calendar**.
 - Until there are notes, an example note shows what notes look like. After that, **Recent notes** and
   **Your follow-ups**: the open follow-ups from your notes, which can be ticked off.
 - With a company directory, a team card shows who already uses Alcove, with **Invite** for the rest.
@@ -37,10 +48,15 @@ screen. Signing in on another browser doesn't end the first session.
    from past calls by name, anyone by email address) and notes on or off (from your default, or "no notes" in
    the sentence). A name without a known address asks for an email.
 2. **Enter** starts the call now and opens pre-join, unless a day or time was typed. Then it schedules the
-   call: it goes on Home, with **Undo** for a few seconds. If nobody was invited, the link is copied.
+   call: it goes on Home and, with Google Calendar connected, on the calendar, where Google sends everyone
+   invited an invitation. For a few seconds, **Undo** cancels it. If nobody was invited, the link is copied.
+3. **Change this call** opens the same line for a scheduled call, which keeps its time unless a new one is
+   typed. **Save changes** updates it, and the calendar sends everyone the update. **Cancel call** takes it
+   off the calendar and tells everyone invited.
 
-Invitations aren't sent yet, and people invited can't join the call: calls have one participant, the
-organizer, for now. Everyone invited still gets the notes (flow 6).
+Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
+started now don't go on the calendar. People invited can't join the call either: calls have one participant,
+the organizer, for now. Everyone invited still gets the notes (flow 6).
 
 ## 4. Join
 
@@ -55,18 +71,23 @@ The call opens full screen. The notes sign at the top shows **Notes on** or **No
 call; only the organizer can switch it. Controls: microphone (**M**), camera (**V**), share your screen,
 panels for notes, chat (**C**) and people, and **End**.
 
-- While notes are on, the notes panel shows how much encrypted audio has been kept, with a live waveform.
-- Turning notes off keeps what was recorded. Turning them on again records a new part.
+- While notes are on, what's said appears as a live transcript, and the notes panel shows how much encrypted
+  audio has been kept, with a live waveform. If the browser can't transcribe, the call says so and the
+  recording carries on.
+- Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - Changes show as short notices, like "Notes are on. Everyone here can see that."
 
 ## 6. End the call and get the notes
 
-1. **End › End call** uploads the last audio and ends the call.
-2. With notes, the note opens. Without, Home says how long the call was and that there are no notes from it.
+1. **End › End call** sends the last audio and speech and ends the call.
+2. With notes, the note opens: "Waiting to be written", with the steps so far (call ended, audio saved, the
+   transcript's length, the notes being written), playback of the decrypted recording, and who has it. The
+   notes appear once they're written. Without notes, Home says how long the call was and that there are no
+   notes from it.
 3. Everyone invited gets the notes as the call ends. They find them under Notes when they sign in with the
    invited address, marked as from the organizer.
-4. Until the notes service is connected, a note shows "Waiting to be written" and the steps so far, plays back
-   the decrypted recording, and lists who has it.
+4. If the notes service fails three times, the note is finished with its transcript and recording and no
+   summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
 
 ## 7. Notes
 
@@ -76,18 +97,19 @@ panels for notes, chat (**C**) and people, and **End**.
   stopped. Anyone who has the notes can share them.
 - **More › Delete notes** deletes your own notes for everyone, audio included, and then lists what went. For
   notes from someone else it's **Remove from your notes**: everyone else keeps them.
-- Once the notes service writes them, a note shows the summary, decisions, follow-ups and transcript, and
-  takes questions about the call.
+- A written note shows the summary, decisions, follow-ups, chapters and transcript, and takes questions
+  about the call: a suggested question or your own. Answers cite the moments in the recording they come from.
 
 ## 8. Record in the room
 
 **New call › Record in the room** starts recording the microphone straight away, in 5-second encrypted pieces
-with a live waveform. Rename by editing the title, pause and resume, then **Finish and write notes** (opens the
-note) or **Home › Discard recording** (nothing is kept). Room notes are yours alone until you share them.
+with a live waveform, and transcribes what's said as it goes, without naming who spoke. Rename by editing the
+title, pause and resume, then **Finish and write notes** (opens the note) or **Home › Discard recording**
+(nothing is kept). Room notes are yours alone until you share them.
 
 ## 9. Account
 
-The profile from the sign-in (name, email, photo, provider) and the calendar that came with it (the demo
-calendar for now); notes for new calls (on or off); credits, shown as the time of notes left; appearance
-(system, light or dark); with a company directory, the team, with **Invite** for each colleague; what Alcove
-knows and what it can't read; and **Sign out**.
+The profile from the sign-in (name, email, photo, provider); for a Google account, Google Calendar (connected,
+or **Connect**), and for a demo account, the sample calendar; notes for new calls (on or off); credits, shown
+as the time of notes left; appearance (system, light or dark); with a company directory, the team, with
+**Invite** for each colleague; what Alcove knows and what it can't read; and **Sign out**.

@@ -16,6 +16,7 @@ import { log } from '../log';
 import { openOwner } from '../owners';
 import { getItem } from '../vault';
 import { me } from './account';
+import { segments } from './audio';
 import * as billing from './billing';
 import { draft, type Written } from './drafting';
 import { NoteManifest, updateNote } from './notes';
@@ -44,14 +45,19 @@ async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefin
     RETURNING j.owner_id, j.job_id, j.revision_id, j.job_ciphertext, j.attempt, due.attempt AS tried`, [ownerId, LEASE_SECONDS, ATTEMPTS]);
 }
 
-/** Writes the notes into the note (or finishes it without them), charges for them and closes the job, together. */
-async function settle(o: Owner, jobId: string, noteId: string, notes: Written | undefined): Promise<void> {
+/**
+ * Writes the notes into the note (or finishes it without them), charges for them and closes the
+ * job, together. The charge is for the minutes recorded, not the length of the call: time with
+ * notes off is free.
+ */
+async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined): Promise<void> {
+  const recorded = notes ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
-    const n = await updateNote(o, c, noteId, (m) => ({ ...m, status: 'ready', ...(notes ?? {}) }));
+    await updateNote(o, c, noteId, (m) => ({ ...m, status: 'ready', ...(notes ?? {}) }));
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (notes) {
-      const minutes = Math.max(1, Math.ceil(n.duration / 60));
-      await billing.charge(o, c, o.ownerId, { amount: minutes * billing.PER_MINUTE, label: `Notes, ${minutes} min` });
+      const minutes = Math.max(1, Math.ceil(recorded / 60));
+      await billing.charge({ cfg: o.cfg }, c, o.ownerId, { amount: minutes * billing.PER_MINUTE, label: `Notes, ${minutes} min` });
     }
   });
 }
@@ -74,11 +80,11 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     const at = { ...ctx, noteId, recordingId, lines, seconds: note.manifest.duration };
     if (job.tried >= ATTEMPTS) {
       wlog.error('notes job outlived its last attempt; finishing the note without a summary', at);
-      await settle(o, job.job_id, noteId, undefined);
+      await settle(o, job.job_id, noteId, recordingId, undefined);
       return;
     }
     if (!lines) {
-      await settle(o, job.job_id, noteId, undefined);
+      await settle(o, job.job_id, noteId, recordingId, undefined);
       wlog.info('nothing was transcribed; note finished without notes', at);
       return;
     }
@@ -86,12 +92,12 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       const t0 = performance.now();
       const organizer = await me(o);
       const notes = await draft(o.cfg, note.manifest, organizer, note.manifest.invited.map((e) => personOf(e)));
-      await settle(o, job.job_id, noteId, notes);
+      await settle(o, job.job_id, noteId, recordingId, notes);
       wlog.info('notes written', { ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, ms: Math.round(performance.now() - t0) });
     } catch (e) {
       if (job.attempt >= ATTEMPTS) {
         wlog.error('notes could not be written after three attempts; finishing the note without a summary', { ...at, err: e });
-        await settle(o, job.job_id, noteId, undefined);
+        await settle(o, job.job_id, noteId, recordingId, undefined);
         return;
       }
       const wait = RETRY_SECONDS[job.attempt - 1] ?? 90;

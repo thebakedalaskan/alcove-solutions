@@ -2,7 +2,7 @@
 
 [MVP guide](../README.md) · [Roadmap](roadmap.md) · [Stack and setup](../references/stack-and-provider-setup.md)
 
-> **Note (November 2026):** written for the earlier desktop design (documents, chat, a meeting bot). The product is now Alcove, private calls with built-in notes; see [docs/README.md](../README.md). Provider details here (NEAR AI, Phala, 1Click, R2) remain the reference.
+> **Note (November 2026):** written for the earlier desktop design (documents, chat, a meeting bot). The product is now Alcove, private calls with built-in notes; see [docs/README.md](../README.md). Provider details here (NEAR AI, Phala, 1Click, R2) remain the reference. Speech is no longer a local engine: Alcove transcribes and writes notes with NEAR AI Cloud, as described in [Notes and inference](../engineering/notes-and-inference.md).
 
 
 ## Frozen choices
