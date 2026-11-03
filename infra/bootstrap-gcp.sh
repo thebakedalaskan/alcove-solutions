@@ -108,7 +108,7 @@ fi
 unset DB_PASSWORD DB_URL NORMALIZED_DB_URL ALCOVE_DB_PASSWORD
 
 echo "› Secrets (values you add once)"
-for s in alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key; do
+for s in alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
   ensure_secret "$s"
 done
 KSERVICE_VERSION="$(latest_secret_version alcove-kservice)"
@@ -124,7 +124,7 @@ gcp iam service-accounts describe "alcove-api@$PROJECT_ID.iam.gserviceaccount.co
 gcp iam service-accounts describe "alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-deploy --display-name "Alcove GitHub deploys"
 RUNTIME="alcove-api@$PROJECT_ID.iam.gserviceaccount.com"; DEPLOY="alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME" --role roles/cloudsql.client --condition None >/dev/null
-for s in alcove-database-url alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key; do
+for s in alcove-database-url alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
   gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
 done
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.admin --condition None >/dev/null
@@ -153,11 +153,15 @@ Done. Add these as GitHub repository variables (Settings › Secrets and variabl
   variable GCP_RUNTIME_SERVICE_ACCOUNT    = $RUNTIME
   variable GCP_CLOUDSQL_INSTANCE          = $CONN
   variable NEAR_AI_ENABLED                = false (optional; enable only with a real key)
+  variable GOOGLE_AUTH_ENABLED            = false (optional; enable only after Google credential versions exist)
 Then add the R2 keys (never print their values):
   printf %s "\$R2_ACCESS_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-objects-access-key --data-file=-
   printf %s "\$R2_SECRET_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-objects-secret-key --data-file=-
 Optional, once inference is implemented:
   printf %s "\$NEAR_AI_API_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-near-ai-api-key --data-file=-
+Optional Google provider credentials (enabling their binding does not implement sign-in):
+  printf %s "\$GOOGLE_CLIENT_ID" | gcloud --project="$PROJECT_ID" secrets versions add alcove-google-client-id --data-file=-
+  printf %s "\$GOOGLE_CLIENT_SECRET" | gcloud --project="$PROJECT_ID" secrets versions add alcove-google-client-secret --data-file=-
 Set CLOUDFLARE_ACCOUNT_ID as a repository variable and CLOUDFLARE_API_TOKEN as a production environment secret.
 Set DEPLOY_ENABLED=true as a repository variable only after the remaining infrastructure is configured.
 OUT

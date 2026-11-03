@@ -68,6 +68,7 @@ jobs:
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
       RP_ID: ${{ vars.RP_ID }}
       NEAR_AI_ENABLED: ${{ vars.NEAR_AI_ENABLED }}
+      GOOGLE_AUTH_ENABLED: ${{ vars.GOOGLE_AUTH_ENABLED }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ needs.prepare.outputs.sha }}', persist-credentials: false }
@@ -82,18 +83,25 @@ jobs:
         run: docker build -f apps/api/Dockerfile -t "$IMAGE" . && docker push "$IMAGE"
       - name: Run database migrations
         run: |
+          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest'
+          if [ "$GOOGLE_AUTH_ENABLED" = true ]; then
+            SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_CLIENT_ID=alcove-google-client-id:latest,GOOGLE_CLIENT_SECRET=alcove-google-client-secret:latest"
+          fi
           gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-migrate --image "$IMAGE" --region "$GCP_REGION" \
             --command node --args dist/migrate-cli.js \
             --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
             --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
             --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,RP_ID=$RP_ID,LOG_FORMAT=json,LOG_LEVEL=info" \
-            --set-secrets DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest --quiet
+            --set-secrets "$SECRET_BINDINGS" --quiet
           gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
       - name: Deploy the API
         run: |
           SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest'
           if [ "$NEAR_AI_ENABLED" = true ]; then
             SECRET_BINDINGS="$SECRET_BINDINGS,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest"
+          fi
+          if [ "$GOOGLE_AUTH_ENABLED" = true ]; then
+            SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_CLIENT_ID=alcove-google-client-id:latest,GOOGLE_CLIENT_SECRET=alcove-google-client-secret:latest"
           fi
           gcloud --project="$GCP_PROJECT_ID" run deploy alcove-api --image "$IMAGE" --region "$GCP_REGION" \
             --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
@@ -105,7 +113,7 @@ jobs:
         run: |
           SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"
           test -n "$SERVICE_URL"
-          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 30 "$SERVICE_URL/healthz"
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 30 "$SERVICE_URL/health"
 
   web:
     name: Web → Cloudflare Pages
