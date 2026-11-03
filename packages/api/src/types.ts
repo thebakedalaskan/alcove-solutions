@@ -180,13 +180,45 @@ export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
 export const ScreenCaptureSchema = z.object({ at: z.number(), by: z.string(), title: z.string(), text: z.string() });
 export type ScreenCapture = z.infer<typeof ScreenCaptureSchema>;
 
+/** Someone changing a note's decisions or follow-ups: who, when, what, and what it was before. */
+export const ChangeSchema = z.object({
+  by: z.object({ name: z.string(), email: z.string() }),
+  at: ISODateSchema,
+  what: z.enum(['confirmed', 'rejected', 'reopened', 'reworded', 'took-on', 'reassigned', 'due', 'done', 'undone']),
+  /** The wording, owner or due date before a change to it, and after. */
+  before: z.string().optional(),
+  after: z.string().optional()
+});
+export type Change = z.infer<typeof ChangeSchema>;
+
+/**
+ * Something the call settled, as the notes heard it. It stays proposed until someone who has the
+ * notes confirms it, or says it wasn't decided.
+ */
+export const DecisionSchema = z.object({
+  id: IDSchema,
+  text: z.string(),
+  /** When it was said, in seconds into the recording, if the notes could tell. */
+  at: z.number().optional(),
+  state: z.enum(['proposed', 'confirmed', 'rejected']),
+  /** Who confirmed, rejected, reopened or reworded it, oldest first. */
+  changes: z.array(ChangeSchema)
+});
+export type Decision = z.infer<typeof DecisionSchema>;
+
 export const ActionItemSchema = z.object({
   id: IDSchema, text: z.string(),
-  /** Who said they'd do it. Absent when the call didn't say. */
+  /** Who it's for: suggested by the notes, or given to them by someone with the notes. Absent when nobody said. */
   owner: SpeakerSchema.optional(),
+  /** The owner said they'll do it. The notes only suggest; nobody but the owner can take it on for them. */
+  takenOn: z.boolean(),
   /** When it's due, as said in the call ("Wed", "end of March"). */
   due: z.string().optional(),
-  done: z.boolean()
+  /** When it came up, in seconds into the recording, if the notes could tell. */
+  at: z.number().optional(),
+  done: z.boolean(),
+  /** Who took it on, gave it to someone, changed it or ticked it, oldest first. */
+  changes: z.array(ChangeSchema)
 });
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
@@ -224,7 +256,7 @@ export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
-  decisions: z.array(z.string()),
+  decisions: z.array(DecisionSchema),
   actions: z.array(ActionItemSchema),
   chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema),

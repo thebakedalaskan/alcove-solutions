@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { DemoProvider, InstantCallInput, MeetingInput, NoteKind, NotesSetting, Patch, Preferences } from '@alcove/api';
+import type { ActionPatch, DecisionPatch, DemoProvider, InstantCallInput, MeetingInput, NoteKind, NotesSetting, Patch, Preferences } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 
@@ -88,11 +88,20 @@ export function useStartNow() {
 
 /* ---------- notes ---------- */
 
-export function useActionDone() {
+/** Confirms, rejects, reopens or rewords a decision; the answer is the note as it is now. */
+export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { noteId: string; actionId: string; done: boolean }) => api.notes.setActionDone(v.noteId, v.actionId, v.done),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes })
+    mutationFn: (v: { noteId: string; decisionId: string; patch: DecisionPatch }) => api.notes.updateDecision(v.noteId, v.decisionId, v.patch),
+    onSuccess: (n) => { qc.setQueryData(qk.note(n.id), n); void qc.invalidateQueries({ queryKey: ['notes', 'list'] }); }
+  });
+}
+/** Takes on, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
+export function useUpdateAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; actionId: string; patch: ActionPatch }) => api.notes.updateAction(v.noteId, v.actionId, v.patch),
+    onSuccess: (n) => { qc.setQueryData(qk.note(n.id), n); void qc.invalidateQueries({ queryKey: ['notes', 'list'] }); void qc.invalidateQueries({ queryKey: qk.openActions }); }
   });
 }
 export function useShareNote() {

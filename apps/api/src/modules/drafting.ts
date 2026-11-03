@@ -5,7 +5,7 @@
  * inference.ts and accepts only the JSON shapes below; anything else is refused (docs:
  * notes-and-inference › Prompts).
  */
-import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type NoteKind, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
+import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type Decision, type NoteKind, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
 import { id128 } from '../crypto';
@@ -14,7 +14,7 @@ import { completeJson } from '../inference';
 import type { NoteManifest } from './notes';
 
 /** What the notes model writes into a note. */
-export interface Written { summary: string; decisions: string[]; actions: ActionItem[]; chapters: Chapter[]; suggestedQuestions: string[] }
+export interface Written { summary: string; decisions: Decision[]; actions: ActionItem[]; chapters: Chapter[]; suggestedQuestions: string[] }
 
 /** What the model is told about a meeting: who it's with, how long it's been, and what was said. */
 export interface Brief {
@@ -79,20 +79,23 @@ const moment = (b: Brief) => {
 const issues = (e: z.ZodError) => e.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ');
 
 const NOTES_PROMPT = `You write the notes for a meeting from its transcript. Reply with a single JSON object and nothing else, in this shape:
-{"summary": string, "decisions": [string], "actions": [{"text": string, "owner": string | null, "due": string | null}], "chapters": [{"at": number, "title": string, "summary": string}], "suggestedQuestions": [string]}
+{"summary": string, "decisions": [{"text": string, "at": number}], "actions": [{"text": string, "owner": string | null, "due": string | null, "at": number}], "chapters": [{"at": number, "title": string, "summary": string}], "suggestedQuestions": [string]}
 
 summary: two to four plain sentences on what the meeting was about and where it landed. Start with the substance, not "The meeting" or "In this call".
-decisions: what the people agreed or settled, one short sentence each. An empty list if nothing was decided.
-actions: what someone said they, or someone else, would do. text starts with a verb, like "Send the new screens". owner is that person's name as the transcript gives it, or null if it doesn't say. due is when, as it was said ("Wednesday", "end of March"), or null.
+decisions: what the people agreed or settled, one short sentence each, with the second it was settled. An empty list if nothing was decided; something only suggested is not a decision.
+actions: what someone said they, or someone else, would do. text starts with a verb, like "Send the new screens". owner is that person's name as the transcript gives it, or null if it doesn't say. due is when, as it was said ("Wednesday", "end of March"), or null. at is the second it came up.
+Every at is read from the transcript's [mm:ss] marks.
 chapters: the parts of the meeting in order, two to six of them (one for a short meeting). at is the second the part starts, read from the transcript's [mm:ss] marks. title is two to five words; summary is one short sentence.
 suggestedQuestions: three short questions someone might ask about this meeting afterwards.
 
 Write in the language of the transcript. Use only what the transcript says: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke.`;
 
+/** A second the model points at, if it gave one. */
+const At = z.coerce.number().nullish().catch(null);
 const Draft = z.object({
   summary: z.string().min(1),
-  decisions: z.array(z.string()).catch([]),
-  actions: z.array(z.object({ text: z.string(), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null) })).catch([]),
+  decisions: z.array(z.union([z.string().transform((text) => ({ text, at: null })), z.object({ text: z.string(), at: At })])).catch([]),
+  actions: z.array(z.object({ text: z.string(), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null), at: At })).catch([]),
   chapters: z.array(z.object({ at: z.coerce.number(), title: z.string(), summary: z.string().catch('') })).catch([]),
   suggestedQuestions: z.array(z.string()).catch([])
 });
@@ -125,13 +128,16 @@ export async function draft(cfg: Config, b: Brief): Promise<Written> {
     .sort((a, b) => a.at - b.at)
     .filter((c, i, all) => i === 0 || c.at !== all[i - 1]?.at)
     .slice(0, 8);
+  const when = moment(b);
+  const said = (s: number | null | undefined) => { const m = s === null || s === undefined ? undefined : when(s); return m === undefined ? {} : { at: m }; };
   return {
     summary: clip(d.summary.trim(), 1500),
-    decisions: d.decisions.map((x) => clip(x.trim(), 300)).filter(Boolean).slice(0, 12),
-    actions: d.actions.filter((a) => a.text.trim()).slice(0, 20).map((a) => {
+    // What the notes heard is only proposed: people who have the notes confirm it, or say it wasn't decided.
+    decisions: d.decisions.filter((x) => x.text.trim()).slice(0, 12).map((x): Decision => ({ id: id128(), text: clip(x.text.trim(), 300), ...said(x.at), state: 'proposed', changes: [] })),
+    actions: d.actions.filter((a) => a.text.trim()).slice(0, 20).map((a): ActionItem => {
       const who = owner(a.owner);
       const due = a.due?.trim();
-      return { id: id128(), text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), ...(due ? { due: clip(due, 40) } : {}), done: false };
+      return { id: id128(), text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...said(a.at), done: false, changes: [] };
     }),
     chapters,
     suggestedQuestions: d.suggestedQuestions.map((q) => clip(q.trim(), 120)).filter(Boolean).slice(0, 3)

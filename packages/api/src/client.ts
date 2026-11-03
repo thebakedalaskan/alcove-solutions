@@ -1,5 +1,5 @@
 import type { CallSession, NoteProgress, RoomRecording } from './live';
-import type { ClientLogEntry, DemoProvider } from './wire';
+import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider } from './wire';
 import type {
   AnswerPart, Calendar, CreditBalance, ID, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
   Preferences, Session, SignInResult, Team
@@ -71,7 +71,10 @@ export interface AlcoveApi {
     progress(id: ID): AsyncIterable<NoteProgress>;
     /** URL that streams one decrypted audio segment to a signed-in browser. */
     audioUrl(id: ID, segment: number): string;
-    setActionDone(noteId: ID, actionId: ID, done: boolean): Promise<void>;
+    /** Confirms a decision, says it wasn't decided, reopens or rewords it. Anyone who has the notes can. */
+    updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
+    /** Takes on (owner only), gives, rewords, dates or ticks a follow-up. */
+    updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     openActions(): Promise<OpenAction[]>;
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
     /** Shares the notes with more people, by email. They find them in Alcove when they sign in. */

@@ -1,9 +1,12 @@
 /* The pieces of a note page, shared by real notes and the example. */
-import { errorMessage, type ActionItem, type AnswerPart, type Chapter, type Person, type Recipient, type Speaker, type TranscriptLine } from '@alcove/api';
-import { Avatar, Check, Faces, Icon, Kbd, TimeChip, Words, cn, useToast } from '@alcove/ui';
+import {
+  errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
+  type Recipient, type Speaker, type TranscriptLine
+} from '@alcove/api';
+import { Avatar, Button, Check, Faces, Icon, IconButton, Kbd, Popover, TimeChip, Words, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
-import { position } from '~/lib/time';
+import { hm, position, shortDay } from '~/lib/time';
 import { PROMISE_MANY } from './NoteCard';
 import { ROLE } from './meta';
 
@@ -26,21 +29,160 @@ export function Section({ title, count, children, className, style }: { title: s
   );
 }
 
-export function Decisions({ items }: { items: string[] }) {
-  return <>{items.map((d, i) => <div key={d} className="dec"><span className="n">{String(i + 1).padStart(2, '0')}</span><span>{d}</span><span /></div>)}</>;
+/* ---------- decisions and follow-ups: what the notes heard, until people say so ---------- */
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** Who did something, as the reader sees them: "you", or a first name. */
+const byName = (by: Change['by'], me: string | undefined) => (me && sameEmail(by, { email: me }) ? 'you' : firstName(by.name));
+/** A name as kept in a change; someone known only by their address goes by the part before the @. */
+const named = (s: string | undefined) => (s ? (s.includes('@') ? s.slice(0, s.indexOf('@')) : firstName(s)) : 'nobody');
+const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)}, ${hm(d)}`; };
+
+/** One change, as a sentence. */
+function changeLine(c: Change, me: string | undefined): string {
+  const who = cap(byName(c.by, me));
+  switch (c.what) {
+    case 'confirmed': return `${who} confirmed it`;
+    case 'rejected': return `${who} said it wasn’t decided`;
+    case 'reopened': return `${who} reopened it`;
+    case 'reworded': return `${who} reworded it`;
+    case 'took-on': return c.before ? `${who} took it on from ${named(c.before)}` : `${who} took it on`;
+    case 'reassigned': return c.after ? `${who} gave it to ${named(c.after)}` : `${who} took the owner off`;
+    case 'due': return c.after ? `${who} set it due ${c.after}` : `${who} removed the due date`;
+    case 'done': return `${who} ticked it`;
+    case 'undone': return `${who} unticked it`;
+  }
 }
 
-export function FollowUps({ actions, me, onToggle }: { actions: ActionItem[]; me: string | undefined; onToggle?: ((a: ActionItem, done: boolean) => void) | undefined }) {
+/** Where a decision stands, in a sentence: confirmed by whom, said not to be decided, or nobody has confirmed it yet. */
+function decisionLine(d: Decision, me: string | undefined): string {
+  const last = [...d.changes].reverse().find((c) => c.what !== 'reworded');
+  if (d.state === 'confirmed' && last) return `Confirmed by ${byName(last.by, me)}`;
+  if (d.state === 'rejected' && last) return `${cap(byName(last.by, me))} said this wasn’t decided`;
+  return 'Proposed by the notes. Nobody has confirmed it yet';
+}
+
+function DecisionRow({ d, n, me, onChange, onSeek }: { d: Decision; n: number; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(d.text);
+  useEffect(() => { if (!editing) setText(d.text); }, [d.text, editing]);
+  const save = () => { const t = text.trim(); setEditing(false); if (t && t !== d.text) onChange?.(d, { text: t }); };
+  return (
+    <div className={cn('dec', d.state)}>
+      <span className="n">{String(n).padStart(2, '0')}</span>
+      <div className="dec-b">
+        {editing
+          ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this decision" onChange={(e) => setText(e.target.value)} onBlur={save}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(d.text); setEditing(false); } }} />
+          : <span className="t">{d.text}</span>}
+        <div className="dec-s" title={d.changes.length ? d.changes.map((c) => `${changeLine(c, me)}, ${when(c.at)}`).join('\n') : undefined}>
+          {d.state === 'confirmed' && <Icon name="check" size={14} />}
+          <span>{decisionLine(d, me)}</span>
+          {onChange && (
+            <>
+              {d.state !== 'confirmed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>Confirm</button>}
+              {d.state === 'proposed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'rejected' })}>It wasn’t decided</button>}
+              {d.state !== 'proposed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'proposed' })}>{d.state === 'confirmed' ? 'Undo' : 'Reopen'}</button>}
+              {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
+            </>
+          )}
+        </div>
+      </div>
+      {d.at !== undefined ? <TimeChip seconds={d.at} onSeek={onSeek} /> : <span />}
+    </div>
+  );
+}
+
+/** What the call settled. Each stays proposed until someone who has the notes confirms it. */
+export function Decisions({ items, me, onChange, onSeek }: {
+  items: Decision[]; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined;
+}) {
+  return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} />)}</>;
+}
+
+/** Who a follow-up is for, in a sentence: suggested by the notes, given by someone, or taken on. */
+function actionLine(a: ActionItem, me: string | undefined): string {
+  if (!a.owner) return 'Nobody is on this yet';
+  const mine = !!me && !!a.owner.person && sameEmail(a.owner.person, { email: me });
+  const them = mine ? 'you' : spokenName(a.owner, me);
+  if (a.takenOn) return mine ? 'You took this on' : `${them} took this on`;
+  const gave = [...a.changes].reverse().find((c) => c.what === 'reassigned');
+  const ask = mine ? 'Take it on if it’s yours' : `Waiting for ${them} to take it on`;
+  return gave ? `${cap(byName(gave.by, me))} gave this to ${them}. ${ask}` : `The notes suggest ${them}. ${ask}`;
+}
+
+function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | undefined; people: Person[]; onChange: (a: ActionItem, patch: ActionPatch) => void }) {
+  const [open, setOpen] = useState(false);
+  const [due, setDue] = useState(a.due ?? '');
+  const [text, setText] = useState(a.text);
+  useEffect(() => { if (open) { setDue(a.due ?? ''); setText(a.text); } }, [open, a.due, a.text]);
+  const apply = (patch: ActionPatch) => { setOpen(false); onChange(a, patch); };
+  const owner = a.owner?.person?.email;
+  return (
+    <Popover open={open} onOpenChange={setOpen} align="end" label="Change this follow-up" className="act-pop"
+      anchor={<IconButton icon="more" label="Change this follow-up" size={16} className="act-more" />}>
+      <div className="pop-h">Who it’s for</div>
+      {people.map((p) => {
+        const on = !!owner && sameEmail(p, { email: owner });
+        return (
+          <button key={p.email} type="button" className={cn('pop-item', on && 'sel')} onClick={() => apply({ owner: p.email })}>
+            <Avatar person={p} size={22} />
+            <span><b>{p.name}{me && sameEmail(p, { email: me }) ? ' (you)' : ''}</b>{on && <small>{a.takenOn ? 'Took it on' : 'Hasn’t taken it on yet'}</small>}</span>
+          </button>
+        );
+      })}
+      {a.owner && <button type="button" className="pop-item" onClick={() => apply({ owner: null })}><Icon name="x" size={18} /><span><b>Nobody yet</b></span></button>}
+      <div className="pop-sep" />
+      <form className="act-field" onSubmit={(e) => { e.preventDefault(); apply({ due: due.trim() || null }); }}>
+        <label htmlFor={`due-${a.id}`}>Due</label>
+        <input id={`due-${a.id}`} value={due} maxLength={40} placeholder="Wednesday, end of March…" autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDue(e.target.value)} />
+        <Button type="submit" variant="secondary" size="sm">Save</Button>
+      </form>
+      <form className="act-field" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) apply({ text: t }); }}>
+        <label htmlFor={`txt-${a.id}`}>Wording</label>
+        <input id={`txt-${a.id}`} value={text} maxLength={300} autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setText(e.target.value)} />
+        <Button type="submit" variant="secondary" size="sm">Save</Button>
+      </form>
+      {a.changes.length > 0 && (
+        <>
+          <div className="pop-sep" />
+          <div className="pop-h">Changes</div>
+          <ul className="act-hist">{[...a.changes].reverse().slice(0, 8).map((c, i) => <li key={`${c.at}-${i}`}><span>{changeLine(c, me)}</span><span className="mono">{when(c.at)}</span></li>)}</ul>
+        </>
+      )}
+    </Popover>
+  );
+}
+
+/**
+ * What people said they'd do. The notes only suggest who: the person it's for takes it on, and
+ * anyone who has the notes can give it to someone else, date it, reword it or tick it.
+ */
+export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
+  actions: ActionItem[]; me: string | undefined; people?: Person[] | undefined;
+  onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined;
+}) {
   return (
     <>
-      {actions.map((a) => (
-        <div key={a.id} className={cn('act', a.done && 'done')}>
-          <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
-          <span className="t">{a.text}</span>
-          {a.owner ? <span className="owner"><Avatar person={a.owner.person ?? { name: a.owner.name }} size={22} />{spokenName(a.owner, me)}</span> : <span />}
-          <span className="due">{a.due ?? ''}</span>
-        </div>
-      ))}
+      {actions.map((a) => {
+        const mine = !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me });
+        return (
+          <div key={a.id} className={cn('act', a.done && 'done')}>
+            <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
+            <div className="act-b"><span className="t">{a.text}</span><span className="act-s">{actionLine(a, me)}</span></div>
+            <span className="act-who">
+              {a.owner && (
+                <span className={cn('owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
+                  <Avatar person={a.owner.person ?? { name: a.owner.name }} size={22} />{spokenName(a.owner, me)}
+                </span>
+              )}
+              {mine && !a.takenOn && onChange && <Button variant="secondary" size="sm" onClick={() => onChange(a, { takeOn: true })}>Take it on</Button>}
+            </span>
+            <span className="due">{a.due ?? ''}</span>
+            {onChange ? <ActionMenu a={a} me={me} people={people} onChange={onChange} /> : <span />}
+          </div>
+        );
+      })}
     </>
   );
 }

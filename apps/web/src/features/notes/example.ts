@@ -18,8 +18,11 @@ export function exampleNote(me: Person): Note {
     people: [me, theo, priya, kofi], excerpt: 'Sign-ups are back up, and the launch moves to the 18th.', openActions: 1, totalActions: 1,
     recipients: [{ person: me, role: 'organizer' }, { person: theo, role: 'invited' }, { person: priya, role: 'invited' }, { person: kofi, role: 'invited' }],
     summary: 'Sign-ups are back up since Tuesday’s fix, so the launch moves to the 18th. Kofi sends the new screens by Wednesday.',
-    decisions: ['The launch moves to the 18th.'],
-    actions: [{ id: 'screens', text: 'Send the new screens', owner: { name: kofi.name, person: kofi }, due: 'Wed', done: false }],
+    decisions: [{ id: 'launch', text: 'The launch moves to the 18th.', at: 252, state: 'confirmed', changes: [{ by: { name: theo.name, email: theo.email }, at: started.toISOString(), what: 'confirmed' }] }],
+    actions: [{
+      id: 'screens', text: 'Send the new screens', owner: { name: kofi.name, person: kofi }, takenOn: true, due: 'Wed', at: 302, done: false,
+      changes: [{ by: { name: kofi.name, email: kofi.email }, at: started.toISOString(), what: 'took-on' }]
+    }],
     chapters: [
       { at: 0, title: 'Sign-ups', summary: 'Back up since the fix.' },
       { at: 210, title: 'The launch date', summary: 'Moves to the 18th.' },

@@ -1,5 +1,5 @@
 import {
-  AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -329,10 +329,9 @@ export function createApp(d: Deps) {
     c.header('cache-control', 'no-store');
     return stream(c, async (s) => { for await (const chunk of audioMod.stream(source.owner, source.recordingId, segment)) await s.write(chunk); });
   });
-  app.patch('/v1/notes/:id/actions/:actionId', async (c) => {
-    await notes.setActionDone(c.get('owner'), c.req.param('id'), c.req.param('actionId'), (await body(c, z.object({ done: z.boolean() }))).done);
-    return c.json({ ok: true });
-  });
+  /* Confirming what the notes say: anyone who has them can, and everyone sees who did. */
+  app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(c.get('owner'), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
+  app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
   app.post('/v1/notes/:id/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask');
     return c.json(await notes.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));

@@ -184,8 +184,13 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   same answer as for a note that doesn't exist.
 - **The live transcript** is only in the organizer's own call or room recording; nobody else sees it until
   the note is finished and given to them.
-- **Follow-ups** are one list for everyone who has the note: ticking one writes a new revision in the
-  organizer's vault.
+- **Decisions and follow-ups** are one list for everyone who has the note, and every change writes a new
+  revision in the organizer's vault with who made it (their name and address, inside the sealed manifest)
+  and when. What the notes model wrote is only a proposal: a decision stays `proposed` until someone who
+  has the note confirms it, and a follow-up's owner is a suggestion until that person takes it on. Only
+  the person a follow-up is for can take it on (`403 forbidden` for anyone else; giving it to yourself is
+  taking it on), and it can only go to someone who has the note. Refusals name nobody, so no name reaches
+  a log line.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
   else's note deletes only your own `note_access` row.
 

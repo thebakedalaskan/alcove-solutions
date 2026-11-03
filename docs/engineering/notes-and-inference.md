@@ -184,10 +184,14 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room). A transcript over 120,000
   characters (about 30,000 tokens) keeps its beginning and end, with a marker for the lines left out.
 - **Writing notes.** One JSON object: `summary` (two to four plain sentences, substance first),
-  `decisions`, `actions` (text that starts with a verb, an owner as the transcript names them or null, a
-  due date as it was said or null), `chapters` (two to six, each starting at a second read from the
+  `decisions` (each with the second it was settled; something only suggested isn't one), `actions` (text
+  that starts with a verb, an owner as the transcript names them or null, a due date as it was said or
+  null, and the second it came up), `chapters` (two to six, each starting at a second read from the
   `[mm:ss]` marks) and three `suggestedQuestions`. In the transcript's language, using only what it says,
-  never inventing names, numbers, dates or decisions.
+  never inventing names, numbers, dates or decisions. What comes back is stored as proposals: decisions
+  are `proposed` and follow-ups not `takenOn` until people say so (`PATCH /v1/notes/:id/decisions/:id` and
+  `PATCH /v1/notes/:id/actions/:id`, each answering with the note; see
+  [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)).
 - **Answering.** The summary, the asker's name and the question are added. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
   such as an email), "I" and "me" meaning the asker, answering from what's been said so far when the call is

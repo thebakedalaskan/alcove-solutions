@@ -127,12 +127,12 @@ export async function startFakeNear(): Promise<FakeNear> {
         } else if (system.startsWith('You write the notes')) {
           reply = {
             summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
-            decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map((h) => h.text),
+            decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map((h) => ({ text: h.text, at: h.at })),
             actions: heard.flatMap((h) => {
               const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
               if (!m) return [];
               const rest = m[2] ?? '';
-              return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null }];
+              return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at }];
             }),
             chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
             suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?']

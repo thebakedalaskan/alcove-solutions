@@ -1,4 +1,4 @@
-import { errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type Note, type NoteProgress, type Person } from '@alcove/api';
+import { errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person } from '@alcove/api';
 import { Button, Chip, EmptyState, GoneArch, Icon, IconButton, Popover, RecDot, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
@@ -10,7 +10,7 @@ import { PeoplePicker } from '~/features/people/PeoplePicker';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
-import { q, qk, useActionDone, useDeleteNote, useShareNote } from '~/lib/queries';
+import { q, qk, useDeleteNote, useShareNote, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { noteWhen } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
@@ -80,10 +80,12 @@ function useProgress(note: Note): NoteProgress | null {
 }
 
 function asText(n: Note): string {
-  const about = (a: ActionItem) => [a.owner?.name, a.due].filter((x): x is string => !!x).join(', ');
+  const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due].filter((x): x is string => !!x).join(', ');
+  // What people said wasn't decided stays out; what nobody has confirmed yet says so.
+  const decided = n.decisions.filter((d) => d.state !== 'rejected');
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
-    ...(n.decisions.length ? ['', 'Decided', ...n.decisions.map((d) => `- ${d}`)] : []),
+    ...(decided.length ? ['', 'Decided', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : ''}`)] : []),
     ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`)] : [])
   ].join('\n');
 }
@@ -92,7 +94,8 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
   const toast = useToast();
   const share = useShareNote();
   const del = useDeleteNote();
-  const done = useActionDone();
+  const updateAction = useUpdateAction();
+  const updateDecision = useUpdateDecision();
   const player = usePlayer(note.id, note.audio);
   const progress = useProgress(note);
   const [pop, setPop] = useState<'share' | 'more' | null>(null);
@@ -117,7 +120,13 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
       onGone({ kind: mine ? 'deleted' : 'removed', audio: minutesLabel(note.duration), organizer: organizer ? firstName(organizer.name) : 'The organizer' });
     } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
-  const toggle = (a: ActionItem, on: boolean) => done.mutate({ noteId: note.id, actionId: a.id, done: on }, { onSuccess: () => { if (on) toast('Marked done', { ms: 2200 }); } });
+  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
+  const toggle = (a: ActionItem, on: boolean) => updateAction.mutate({ noteId: note.id, actionId: a.id, patch: { done: on } }, { onSuccess: () => { if (on) toast('Marked done', { ms: 2200 }); }, onError: failed });
+  const changeAction = (a: ActionItem, patch: ActionPatch) => updateAction.mutate({ noteId: note.id, actionId: a.id, patch }, {
+    onSuccess: () => { if (patch.takeOn) toast('It’s yours. Everyone with the notes sees that.', { icon: 'check' }); }, onError: failed
+  });
+  const changeDecision = (d: Decision, patch: DecisionPatch) => updateDecision.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
+  const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
   const part = (i: number) => ({ className: going ? 'going' : undefined, style: { '--d': i } });
 
   return (
@@ -165,8 +174,16 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
           {ready && written ? (
             <>
               <Section title="Summary" {...part(0)}><p className="summary">{note.summary}</p></Section>
-              {note.decisions.length > 0 && <Section title="Decided" count={note.decisions.length} {...part(1)}><Decisions items={note.decisions} /></Section>}
-              {note.actions.length > 0 && <Section title="Follow-ups" count={`${open} open`} {...part(2)}><FollowUps actions={note.actions} me={me} onToggle={toggle} /></Section>}
+              {note.decisions.length > 0 && (
+                <Section title="Decided" count={toConfirm ? `${toConfirm} to confirm` : note.decisions.length} {...part(1)}>
+                  <Decisions items={note.decisions} me={me} onChange={changeDecision} onSeek={seek} />
+                </Section>
+              )}
+              {note.actions.length > 0 && (
+                <Section title="Follow-ups" count={`${open} open`} {...part(2)}>
+                  <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} />
+                </Section>
+              )}
               {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 3 }}><Transcript lines={lines} seconds={note.duration} me={me} onSeek={seek} /></section>}
             </>
           ) : ready && lines.length ? (
@@ -263,7 +280,7 @@ function Example({ me }: { me: Person }) {
         <article className="doc">
           <DocHead title={note.title} when="Example · 24 minutes" people={note.people} chip={<Chip tone="accent" className="mb-4">Example</Chip>} />
           <Section title="Summary"><p className="summary">{note.summary}</p></Section>
-          <Section title="Decided" count={note.decisions.length}><Decisions items={note.decisions} /></Section>
+          <Section title="Decided" count={note.decisions.length}><Decisions items={note.decisions} me={me.email} /></Section>
           <Section title="Follow-ups" count={`${actions.filter((a) => !a.done).length} open`}>
             <FollowUps actions={actions} me={me.email} onToggle={(a, on) => setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: on } : x)))} />
           </Section>

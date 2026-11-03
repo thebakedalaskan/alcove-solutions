@@ -9,7 +9,7 @@ import { noteMeta } from '~/features/notes/meta';
 import { freshCalls, useOpenComposer } from '~/features/shell/context';
 import { useNow } from '~/lib/live';
 import { listNames } from '~/lib/people';
-import { calendarConnectUrl, q, useActionDone, useAdoptEvent, useInviteTeam } from '~/lib/queries';
+import { calendarConnectUrl, q, useAdoptEvent, useInviteTeam, useUpdateAction } from '~/lib/queries';
 import { daysFromToday, greeting, hm, longDay, minutesUntil, noteDay, shortDay, untilLabel } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/home')({
@@ -275,13 +275,13 @@ function NoteRow({ n }: { n: NoteSummary }) {
 }
 
 function FollowUps({ actions }: { actions: OpenAction[] }) {
-  const done = useActionDone();
+  const done = useUpdateAction();
   const toast = useToast();
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const open = actions.filter((a) => !ticked.has(a.id)).length;
   const toggle = (a: OpenAction, on: boolean) => {
     setTicked((s) => { const n = new Set(s); if (on) n.add(a.id); else n.delete(a.id); return n; });
-    done.mutate({ noteId: a.noteId, actionId: a.id, done: on });
+    done.mutate({ noteId: a.noteId, actionId: a.id, patch: { done: on } });
     if (on) toast('Marked done', { ms: 2200 });
   };
   return (
