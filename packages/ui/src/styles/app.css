@@ -174,6 +174,9 @@
 .summary { font-size: 18.5px; line-height: 1.62; color: var(--ink); text-wrap: pretty; }
 .pending-note { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px; border-radius: 18px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font-size: 15px; line-height: 1.5; }
 .pending-note .i { color: var(--accent); margin-top: 2px; }
+.pending-note.quiet .i { color: var(--ink-3); }
+.note-empty { margin-top: 8px; padding: 40px 24px 44px; border-radius: 22px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+.note-empty p { max-width: 34ch; }
 .dec { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 13px 0; border-top: 1px solid var(--line); font-size: 16px; }
 .dec .n { font: 500 13px/1 var(--font-mono-stack); color: var(--ink-4); }
 .act { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); font-size: 15.5px; }
@@ -185,9 +188,13 @@
 .tr-toggle .i { transition: transform var(--t2) var(--ease); }
 .tr-toggle[aria-expanded="true"] .i { transform: rotate(180deg); }
 .tr-line { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
-.tr-line:first-child { margin-top: 12px; }
 .tr-line b { font-size: 13.5px; font-weight: 650; }
 .tr-line p { margin-top: 2px; font-size: 15px; color: var(--ink-2); line-height: 1.5; }
+/* The same speaker again: no new name, and no rule between their lines. */
+.tr-line.more { border-top: 0; padding-top: 0; }
+/* Nobody named (a room recording): just what was said, and when. */
+.tr-line.plain { grid-template-columns: minmax(0, 1fr) auto; }
+.tr-line.plain p { margin-top: 0; }
 .skel { display: grid; gap: 10px; }
 .skel i { display: block; height: 14px; border-radius: 7px; }
 .write-in { animation: write-in 600ms var(--ease-soft-v) both; animation-delay: calc(var(--d, 0) * 120ms); }

@@ -1,11 +1,11 @@
 import { errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type Note, type NoteProgress, type Person } from '@alcove/api';
-import { Button, Chip, GoneArch, Icon, IconButton, Popover, RecDot, coverFor, cn, useToast } from '@alcove/ui';
+import { Button, Chip, EmptyState, GoneArch, Icon, IconButton, Popover, RecDot, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { Player, usePlayer } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
-import { AskBar, Chapters, Decisions, DocHead, FollowUps, Recipients, Section, Transcript } from '~/features/notes/parts';
+import { AskBar, Chapters, Decisions, DocHead, FollowUps, Recipients, Section, Transcript, TranscriptLines } from '~/features/notes/parts';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
@@ -41,32 +41,50 @@ function Stored({ id, me }: { id: string; me: string | undefined }) {
   return <NoteView note={note} me={me} onGone={setGone} />;
 }
 
-/* Until the notes are written, the stream says honestly where they are. */
+/*
+ * Until the notes are written, the stream says honestly where they are. Each step it finishes (the
+ * recording stopping, the notes being written) brings the note up to date; a stream that ends
+ * before they're written is followed again a few seconds later, for as long as the page is open.
+ */
 function useProgress(note: Note): NoteProgress | null {
   const qc = useQueryClient();
   const [p, setP] = useState<NoteProgress | null>(null);
   useEffect(() => {
     if (note.status === 'ready') return;
     let alive = true;
-    void (async () => {
+    let again: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => void qc.invalidateQueries({ queryKey: qk.notes });
+    const follow = async () => {
+      let done = -1;
       try {
         for await (const x of api.notes.progress(note.id)) {
           if (!alive) return;
           setP(x);
-          if (x.ready && note.status === 'recording') void qc.invalidateQueries({ queryKey: qk.note(note.id) });
+          if (x.ready) { refresh(); return; }
+          const n = x.steps.filter((s) => s.done).length;
+          if (done >= 0 && n > done) refresh();
+          done = n;
         }
-      } catch (e) { nlog.warn('note progress stopped', { err: e, noteId: note.id }); }
-    })();
-    return () => { alive = false; };
+        nlog.debug('note progress ended before the notes were written', { noteId: note.id });
+      } catch (e) {
+        const code = errorCode(e);
+        nlog.at(code === 'network' ? 'info' : 'warn', 'note progress stopped', { err: e, noteId: note.id });
+        if (code === 'not-found' || code === 'forbidden' || code === 'unauthenticated') return;
+      }
+      if (alive) again = setTimeout(() => void follow(), 4000);
+    };
+    void follow();
+    return () => { alive = false; clearTimeout(again); };
   }, [note.id, note.status, qc]);
   return p;
 }
 
 function asText(n: Note): string {
+  const about = (a: ActionItem) => [a.owner?.name, a.due].filter((x): x is string => !!x).join(', ');
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
     ...(n.decisions.length ? ['', 'Decided', ...n.decisions.map((d) => `- ${d}`)] : []),
-    ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text} (${a.owner.name}${a.due ? `, ${a.due}` : ''})`)] : [])
+    ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`)] : [])
   ].join('\n');
 }
 
@@ -87,6 +105,8 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
   const ready = note.status === 'ready';
   const seek = note.audio.length ? (s: number) => player.seek(s) : undefined;
   const open = note.actions.filter((a) => !a.done).length;
+  const lines = note.transcript ?? [];
+  const written = note.summary.trim() !== '';
 
   const remove = async () => {
     try {
@@ -142,30 +162,52 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
               <div className="btns"><Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button><Button variant="danger" loading={del.isPending} onClick={() => void remove()}>{mine ? 'Delete' : 'Remove'}</Button></div>
             </div>
           )}
-          {ready ? (
+          {ready && written ? (
             <>
               <Section title="Summary" {...part(0)}><p className="summary">{note.summary}</p></Section>
               {note.decisions.length > 0 && <Section title="Decided" count={note.decisions.length} {...part(1)}><Decisions items={note.decisions} /></Section>}
               {note.actions.length > 0 && <Section title="Follow-ups" count={`${open} open`} {...part(2)}><FollowUps actions={note.actions} me={me} onToggle={toggle} /></Section>}
-              {note.transcript?.length ? <section className={cn('sec', going && 'going')} style={{ '--d': 3 }}><Transcript lines={note.transcript} seconds={note.duration} onSeek={seek} /></section> : null}
-              {!going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} />}
+              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 3 }}><Transcript lines={lines} seconds={note.duration} me={me} onSeek={seek} /></section>}
             </>
-          ) : (
-            <section className={cn('sec', going && 'going')}>
-              <div className="pending-note">
-                <Icon name="lock" size={18} />
-                <div>
-                  <b className="font-semibold text-ink">{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b>
-                  <p className="mt-1">Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.</p>
-                  {progress && (
-                    <ul className="mt-3 grid gap-1.5 text-[14px]">
-                      {progress.steps.map((s) => <li key={s.label} className={cn('flex items-center gap-2', s.done ? 'text-ink-2' : 'text-ink-3')}><Icon name={s.done ? 'check' : 'clock'} size={15} className={s.done ? 'text-accent' : undefined} />{s.label}</li>)}
-                    </ul>
-                  )}
+          ) : ready && lines.length ? (
+            <>
+              <section className={cn('sec', going && 'going')}>
+                <div className="pending-note quiet">
+                  <Icon name="pen" size={18} />
+                  <div>
+                    <b className="font-semibold text-ink">The summary couldn’t be written.</b>
+                    <p className="mt-1">The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.</p>
+                  </div>
                 </div>
-              </div>
+              </section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} me={me} onSeek={seek} /></Section>
+            </>
+          ) : ready ? (
+            <section className={cn('sec', going && 'going')}>
+              <EmptyState className="note-empty" title={note.kind === 'room' ? 'Nothing was said while recording.' : 'Nothing was said while notes were on.'}>
+                {note.audio.length ? 'So there’s no summary or transcript. You can still play the audio.' : 'So there’s no summary or transcript.'}
+              </EmptyState>
             </section>
+          ) : (
+            <>
+              <section className={cn('sec', going && 'going')}>
+                <div className="pending-note">
+                  <Icon name="lock" size={18} />
+                  <div>
+                    <b className="font-semibold text-ink">{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b>
+                    <p className="mt-1">Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.</p>
+                    {progress && (
+                      <ul className="mt-3 grid gap-1.5 text-[14px]">
+                        {progress.steps.map((s) => <li key={s.label} className={cn('flex items-center gap-2', s.done ? 'text-ink-2' : 'text-ink-3')}><Icon name={s.done ? 'check' : 'clock'} size={15} className={s.done ? 'text-accent' : undefined} />{s.label}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </section>
+              {lines.length > 0 && <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} me={me} onSeek={seek} /></Section>}
+            </>
           )}
+          {ready && lines.length > 0 && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} />}
         </article>
         <aside className="rail">
           {player.total > 0 && <div className={cn(going && 'going')} style={{ '--d': 4 }}><Player noteId={note.id} cover={coverFor(note.id)} player={player} chapters={note.chapters} room={note.kind === 'room'} /></div>}

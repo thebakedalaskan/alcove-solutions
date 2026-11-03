@@ -3,12 +3,14 @@ import { Avatar, Faces, Icon, Popover, cn, useRaisedToasts, useToast, type IconN
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
+import { CallLines } from '~/features/call/LiveLines';
 import { useCopyLink } from '~/features/call/links';
 import { Video, useLevels } from '~/features/call/Video';
 import { LocalMedia, NotesRecorder, type MediaSnapshot } from '~/features/call/media';
+import { SpeechClips } from '~/features/call/speech';
 import { PROMISE_MANY } from '~/features/notes/NoteCard';
 import { requireAccount } from '~/lib/guards';
-import { selfIn, sessions, useLive } from '~/lib/live';
+import { selfIn, sessions, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
@@ -45,6 +47,11 @@ function InCall({ session }: { session: CallSession }) {
   const [pop, setPop] = useState<'pill' | 'leave' | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [heardProblem, setHeardProblem] = useState<string | null>(null);
+  /** Turning notes off waits for the last audio and speech to be sent; the sign says so meanwhile. */
+  const [stopping, setStopping] = useState(false);
+  /* Back, or anywhere else, asks to end the call first: the recorder can't pick up where it left off. */
+  const guard = useLeaveGuard(() => setPop('leave'));
   const seenChat = useRef(state.chat.length);
   if (panel === 'chat') seenChat.current = state.chat.length;
   const unread = Math.max(0, state.chat.length - seenChat.current);
@@ -56,16 +63,22 @@ function InCall({ session }: { session: CallSession }) {
     if (!media.getSnapshot().camera) void media.start(first.current);
   }, [media]);
 
-  /* The recorder follows the call's notes: everyone in the call sees the same sign. */
+  /* The recorder and the live transcript follow the call's notes: everyone in the call sees the same sign. */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError);
+  const speech = useRef<SpeechClips | null>(null);
+  if (!speech.current) speech.current = new SpeechClips((c) => session.transcribe(c), setHeardProblem);
   const micTrack = media.micTrack();
+  const segment = state.notes.recording.segment;
   useEffect(() => {
     const r = recorder.current;
-    if (!r) return;
-    if (on && micTrack) r.start(micTrack, state.notes.recording.segment);
-    else if (!on) r.stop();
-  }, [on, state.notes.recording.segment, micTrack]);
+    const s = speech.current;
+    if (!r || !s) return;
+    if (on && micTrack) { r.start(micTrack, segment); s.start(micTrack, segment); }
+    else if (!on) { r.stop(); s.stop(); }
+  }, [on, segment, micTrack]);
+  useEffect(() => () => speech.current?.stop(), []);
+  useEffect(() => { if (!on) setStopping(false); }, [on]);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. */
   const shown = useRef(new Set<string>());
@@ -86,9 +99,14 @@ function InCall({ session }: { session: CallSession }) {
     if (title) session.setSharing(true, title);
   };
   const flip = (p: Panel) => setPanel((x) => (x === p ? null : p));
-  /* Turning notes off keeps everything said while they were on: the last piece is uploaded first. */
+  /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
   const switchNotes = async (v: boolean) => {
-    if (!v) await recorder.current?.flush();
+    if (!v) {
+      setStopping(true);
+      await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
+      // If the call keeps notes on after all, the sign goes back to saying so.
+      setTimeout(() => setStopping(false), 6000);
+    }
     session.setNotes(v);
     if (v && !panel && innerWidth >= 1100) setPanel('notes');
   };
@@ -113,8 +131,9 @@ function InCall({ session }: { session: CallSession }) {
     setPop(null);
     setLeaving(true);
     try {
-      await recorder.current?.flush();
+      await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
       const r = await session.leave();
+      guard.release();
       sessions.call = null;
       media.stop();
       sessions.media = null;
@@ -139,7 +158,7 @@ function InCall({ session }: { session: CallSession }) {
         <header className="stg-top">
           <div className="cl-title"><b>{state.title}</b><span className="mono">{clock(state.elapsed)}</span></div>
           <div className="stg-mid">
-            <NotesPill state={state} invited={invited} open={pop === 'pill'} onOpenChange={(o) => setPop(o ? 'pill' : null)}
+            <NotesPill state={state} invited={invited} stopping={stopping} open={pop === 'pill'} onOpenChange={(o) => setPop(o ? 'pill' : null)}
               onSet={(v) => { setPop(null); void switchNotes(v); }} />
           </div>
           <div className="stg-right"><Faces people={everyone} size={28} /></div>
@@ -150,7 +169,7 @@ function InCall({ session }: { session: CallSession }) {
           </div>
           {panel && (
             <aside className="cl-panel" aria-label={panel === 'notes' ? 'Notes' : panel === 'chat' ? 'Chat' : 'People'}>
-              {panel === 'notes' && <NotesPanel state={state} media={media} live={m.mic} uploadError={uploadError} onTurnOn={() => void switchNotes(true)} />}
+              {panel === 'notes' && <NotesPanel state={state} media={media} live={m.mic} uploadError={uploadError} heardProblem={heardProblem} onTurnOn={() => void switchNotes(true)} />}
               {panel === 'chat' && <ChatPanel state={state} onSend={(t) => session.sendChat(t)} />}
               {panel === 'people' && <PeoplePanel state={state} invited={invited} />}
             </aside>
@@ -165,7 +184,7 @@ function InCall({ session }: { session: CallSession }) {
           <Round icon="chat" label="Chat" on={panel === 'chat'} onClick={() => flip('chat')} badge={unread} />
           <Round icon="people" label="People" on={panel === 'people'} onClick={() => flip('people')} />
           <span className="sep" />
-          <Popover open={pop === 'leave'} onOpenChange={(o) => setPop(o ? 'leave' : null)} side="top" align="end" dark label="End the call" className="lv-pop"
+          <Popover open={pop === 'leave'} onOpenChange={(o) => { setPop(o ? 'leave' : null); if (!o) guard.stay(); }} side="top" align="end" dark label="End the call" className="lv-pop"
             anchor={<button type="button" className="leave" disabled={leaving}><Icon name="leave" size={22} /><span>End</span></button>}>
             <button type="button" className="pop-item danger" onClick={() => void end()}>
               <Icon name="leave" size={18} />
@@ -188,13 +207,13 @@ function Round({ icon, label, onClick, off = false, on = false, badge = 0 }: { i
 }
 
 /* The notes sign, top centre, the same for everyone. Only the organizer can switch it. */
-function NotesPill({ state, invited, open, onOpenChange, onSet }: { state: CallState; invited: Person[]; open: boolean; onOpenChange: (o: boolean) => void; onSet: (on: boolean) => void }) {
+function NotesPill({ state, invited, stopping, open, onOpenChange, onSet }: { state: CallState; invited: Person[]; stopping: boolean; open: boolean; onOpenChange: (o: boolean) => void; onSet: (on: boolean) => void }) {
   const on = state.notes.status === 'on';
   const getting = [...state.participants.map((p) => p.person), ...invited.filter((g) => !state.participants.some((p) => sameEmail(p.person, g)))];
   return (
     <Popover open={open} onOpenChange={onOpenChange} align="center" dark label={on ? 'Notes are on' : 'No notes'} className="pill-pop"
       anchor={on
-        ? <button type="button" className="npill" aria-label="Notes are on"><i /><span>Notes on</span></button>
+        ? <button type="button" className="npill" aria-label="Notes are on"><i /><span>{stopping ? 'Turning off…' : 'Notes on'}</span></button>
         : <button type="button" className="npill off" aria-label="No notes"><span>No notes</span><Icon name="down" size={14} /></button>}>
       {on ? (
         <>
@@ -270,10 +289,13 @@ function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapsho
 
 const wave = (l: number, i: number) => Math.max(8, Math.min(100, 10 + l * 90 * (0.55 + Math.abs(Math.sin(i * 1.7 + Date.now() / 260)) * 0.6)));
 
-/* While notes are on: what's been kept so far. The writing itself happens after the call. */
-function NotesPanel({ state, media, live, uploadError, onTurnOn }: { state: CallState; media: LocalMedia; live: boolean; uploadError: string | null; onTurnOn: () => void }) {
+/* While notes are on: what's being said, a few seconds behind. The notes themselves are written after the call. */
+function NotesPanel({ state, media, live, uploadError, heardProblem, onTurnOn }: {
+  state: CallState; media: LocalMedia; live: boolean; uploadError: string | null; heardProblem: string | null; onTurnOn: () => void;
+}) {
   const on = state.notes.status === 'on';
-  const bars = useLevels(media, 28, on && live, wave);
+  const lines = state.transcript;
+  const bars = useLevels(media, 28, on && live && !lines.length, wave);
   if (!on) {
     return (
       <>
@@ -287,18 +309,24 @@ function NotesPanel({ state, media, live, uploadError, onTurnOn }: { state: Call
       </>
     );
   }
-  const r = state.notes.recording;
   return (
     <>
       <div className="cp-head"><b>Notes</b><span className="live"><i />Recording</span></div>
-      <div className="cp-body">
-        <div className="cp-rec">
-          <div className="stat"><b>{clock(r.seconds)}</b><span>kept so far, encrypted</span></div>
+      <div className="cp-kept"><b>{clock(state.notes.recording.seconds)}</b><span>kept, encrypted</span></div>
+      {lines.length ? <CallLines lines={lines} me={selfIn(state)?.person.email} /> : (
+        <div className="cp-listen">
           <div className="wavebars" aria-hidden="true">{bars.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
-          <p>The summary, decisions and follow-ups are written when the call ends.</p>
-          {uploadError && <p className="text-[#FFB3B5]">{uploadError}</p>}
+          {live ? <><b>Listening</b><p>What’s said appears here a few seconds later.</p></>
+            : <><b>Your microphone is off</b><p>Turn it on, and what you say appears here a few seconds later.</p></>}
+          <small>The summary, decisions and follow-ups are written when the call ends.</small>
         </div>
-      </div>
+      )}
+      {(uploadError || heardProblem) && (
+        <div className="cp-problems">
+          {uploadError && <p className="bad"><Icon name="x" size={14} />{uploadError}</p>}
+          {heardProblem && <p><Icon name="clock" size={14} />{heardProblem}</p>}
+        </div>
+      )}
       <div className="cp-foot"><Icon name="lock" size={14} /><span>Written privately. They go to everyone invited.</span></div>
     </>
   );
