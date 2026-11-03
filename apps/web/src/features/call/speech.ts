@@ -7,6 +7,7 @@
  */
 import { MAX_TRANSCRIPT_CLIP_MS, errorCode, errorMessage, type TranscriptClip } from '@alcove/api';
 import { log } from '~/lib/log';
+import { wakeAudio } from './media';
 
 const slog = log.child({ component: 'speech' });
 
@@ -158,7 +159,7 @@ export class SpeechClips {
       return null;
     }
     const ctx = new AudioContext();
-    wake(ctx);
+    wakeAudio(ctx);
     const node = ctx.audioWorklet.addModule('/pcm-capture.js').then(() => {
       const n = new AudioWorkletNode(ctx, 'pcm-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
       n.port.onmessage = (e: MessageEvent<unknown>) => { if (this.graph?.ctx === ctx && e.data instanceof Float32Array) this.take(e.data); };
@@ -311,10 +312,3 @@ function wav(pcm: Float32Array): Blob {
   return new Blob([bytes], { type: 'audio/wav' });
 }
 
-/** Audio starts suspended on a page nobody has clicked yet; the first click or key press wakes it. */
-function wake(ctx: AudioContext) {
-  const go = () => { if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined); };
-  go();
-  addEventListener('pointerdown', go, { once: true, capture: true });
-  addEventListener('keydown', go, { once: true, capture: true });
-}

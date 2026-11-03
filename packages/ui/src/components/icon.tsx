@@ -34,6 +34,7 @@ const PATHS = {
   trash: <path d="M4.4 7h15.2M9.4 7V4.6h5.2V7M6.6 7l.9 12.4c.1.9.8 1.6 1.7 1.6h5.6c.9 0 1.6-.7 1.7-1.6L17.4 7" />,
   more: <><circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /><circle cx="18" cy="12" r="1.5" fill="currentColor" stroke="none" /></>,
   play: <path d="M8.4 5.6v12.8l10.2-6.4z" fill="currentColor" stroke="none" />,
+  speaker: <><path d="M4.4 9.4h3.4l4.6-4v13.2l-4.6-4H4.4z" /><path d="M15.6 9.2a4 4 0 0 1 0 5.6M18.2 6.6a7.6 7.6 0 0 1 0 10.8" /></>,
   sun: <><circle cx="12" cy="12" r="4.2" /><path d="M12 2.6v2.2M12 19.2v2.2M4.4 4.4 6 6M18 18l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.4 19.6 6 18M18 6l1.6-1.6" /></>,
   moon: <path d="M19.4 14.6A7.6 7.6 0 0 1 9.4 4.6a7.6 7.6 0 1 0 10 10z" />,
   ask: <><path d="M4.4 5.4h15.2v10.2H9.6l-5.2 4.2z" /><path d="M10 9.2a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.2M12 14.2v.1" /></>,

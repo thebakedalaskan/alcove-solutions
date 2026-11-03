@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { openJson, stateKey } from '../crypto';
 import { bytea, exec, maybeOne, tx } from '../db';
+import { NotFoundError } from '../errors';
 import { inference } from '../inference';
 import { log } from '../log';
 import { openOwner } from '../owners';
@@ -95,6 +96,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       await settle(o, job.job_id, noteId, recordingId, notes);
       wlog.info('notes written', { ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, ms: Math.round(performance.now() - t0) });
     } catch (e) {
+      if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
       if (job.attempt >= ATTEMPTS) {
         wlog.error('notes could not be written after three attempts; finishing the note without a summary', { ...at, err: e });
         await settle(o, job.job_id, noteId, recordingId, undefined);

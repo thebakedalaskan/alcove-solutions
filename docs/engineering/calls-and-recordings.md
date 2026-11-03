@@ -70,9 +70,19 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
 `apps/web/src/features/call/media.ts` owns one `LocalMedia` instance from pre-join through the call:
 
 - `getUserMedia` with echo cancellation and noise suppression; camera off releases the camera.
+- The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
+  isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
+  (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
+- Switching microphones keeps mute as it was; switching cameras with the camera off is remembered for later.
+  The speaker is applied where the browser can choose one (`setSinkId`; not Safari).
+- The microphone test (`apps/web/src/features/call/devices.ts`) records three seconds in memory and plays
+  them back through the chosen speaker. Nothing is uploaded or kept.
 - `getDisplayMedia` for screen sharing; ending it from the browser's own control updates the call.
 - A Web Audio analyser drives the mic meter, the speaking ring and the recorder waveform.
-- `NotesRecorder` picks the first supported codec (Opus in WebM, then MP4, then Ogg) at 32 kbps.
+- `NotesRecorder` picks the first supported codec (Opus in WebM, then MP4, then Ogg) at 32 kbps. It records
+  through a Web Audio graph (a `MediaStreamAudioDestinationNode`), so switching microphones mid-recording
+  carries on in the same recording instead of going silent; MediaRecorder can't change its input track.
+- Per-person playback volume waits for multi-party calls.
 
 Beside it, `SpeechClips` (`apps/web/src/features/call/speech.ts`) feeds the live transcript: an
 AudioWorklet (`apps/web/public/pcm-capture.js`) mixes the microphone to mono, filters and resamples it to

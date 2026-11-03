@@ -37,6 +37,11 @@ async function asked(api: AlcoveApi, noteId: string, question: string): Promise<
   for await (const p of api.notes.ask(noteId, question)) parts.push(p);
   return parts;
 }
+/** Pauses or resumes a room recording and waits for the server to have done it (the app shows it at once). */
+async function settled(b: Browser, recordingId: string, type: 'pause' | 'resume') {
+  const r = await b.fetch(`${h.baseUrl}/v1/recordings/${recordingId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type }) });
+  expect(r.status).toBe(200);
+}
 /** Polls until `ok` holds, for background work such as the notes worker. */
 async function until(ok: () => Promise<boolean>, what: string): Promise<void> {
   for (let i = 0; i < 200; i++) { if (await ok()) return; await new Promise((r) => setTimeout(r, 25)); }
@@ -666,16 +671,17 @@ describe('live transcript and written notes', () => {
   });
 
   it('transcribes a room recording without naming who spoke, and writes its notes when it stops', async () => {
-    const { api } = await account();
+    const b = await account();
+    const { api } = b;
     const rec = await api.recordings.start('Design crit');
     await rec.appendAudio(piece(audioBytes('room-a'), 0, 0));
     await rec.transcribe(speech('Sam will tidy the spacing by Friday.', 0, 0));
     expect(rec.getSnapshot().transcript).toEqual([{ id: expect.any(String), at: 0, text: 'Sam will tidy the spacing by Friday.' }]);
     rec.pause();
-    await new Promise((r) => setTimeout(r, 150));
+    await settled(b, rec.getSnapshot().id, 'pause');
     expect(code(await rec.transcribe(speech('While paused.', 0, 4000)).catch((e: unknown) => e))).toBe('conflict');
     rec.resume();
-    await new Promise((r) => setTimeout(r, 150));
+    await settled(b, rec.getSnapshot().id, 'resume');
     await rec.transcribe(speech('We decided to keep the darker header.', 0, 4000));
     const { pendingNoteId } = await rec.stop();
     expect((await rec.stop()).pendingNoteId).toBe(pendingNoteId); // stopping twice finishes it once
@@ -716,6 +722,21 @@ describe('live transcript and written notes', () => {
     }
     await call.leave();
     expect(code(await call.transcribe(speech('Too late.', 0, 0)).catch((e: unknown) => e))).toBe('conflict');
+  });
+
+  it('deletes a note while its notes are still being written', async () => {
+    const { api, session } = await account();
+    h.near.slowNext(800);
+    const rec = await api.recordings.start('Gone quickly');
+    await rec.transcribe(speech('We agreed to delete this right away.', 0, 0));
+    const { pendingNoteId } = await rec.stop();
+    await until(async () => (await h.pool.query("SELECT 1 FROM content_jobs WHERE owner_id = $1 AND state = 'writing'", [session.ownerId])).rowCount === 1, 'the notes to start being written');
+    await api.notes.delete(pendingNoteId);
+    expect(code(await api.notes.get(pendingNoteId).catch((e: unknown) => e))).toBe('not-found');
+    // The worker finds the note gone, drops its job and doesn't try again.
+    await until(async () => (await h.pool.query('SELECT 1 FROM content_jobs WHERE owner_id = $1', [session.ownerId])).rowCount === 0, 'the job to be dropped');
+    await new Promise((r) => setTimeout(r, 900));
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND item_id = $2', [session.ownerId, pendingNoteId])).rows[0]?.n).toBe(0);
   });
 
   it('tries again when the notes model fails, and keeps the transcript if it never answers', async () => {
@@ -804,15 +825,16 @@ describe('who has the notes', () => {
 
 describe('room recordings', () => {
   it('records in the room, renames, stops into a private note, and can be discarded', async () => {
-    const { api, session } = await account();
+    const b = await account();
+    const { api, session } = b;
     const rec = await api.recordings.start('Board prep');
     await rec.appendAudio(piece(audioBytes('room-0'), 0, 0));
     rec.rename('Board prep with Dana');
     rec.pause();
-    await new Promise((r) => setTimeout(r, 150));
+    await settled(b, rec.getSnapshot().id, 'pause');
     expect(code(await rec.appendAudio(piece(audioBytes('while paused'), 0, 1)).catch((e: unknown) => e))).toBe('conflict');
     rec.resume();
-    await new Promise((r) => setTimeout(r, 150));
+    await settled(b, rec.getSnapshot().id, 'resume');
     const { pendingNoteId } = await rec.stop();
     await written(api, pendingNoteId);
     expect(await api.notes.get(pendingNoteId)).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'ready' });

@@ -245,6 +245,12 @@ export const AnswerPartSchema = z.discriminatedUnion('type', [
 ]);
 export type AnswerPart = z.infer<typeof AnswerPartSchema>;
 
+/* ---------- this browser's devices ---------- */
+
+/** The microphone, camera and speaker someone chose, remembered in their browser only: never sent anywhere. */
+export const DevicePrefsSchema = z.object({ mic: z.string().max(300).optional(), cam: z.string().max(300).optional(), speaker: z.string().max(300).optional() });
+export type DevicePrefs = z.infer<typeof DevicePrefsSchema>;
+
 /* ---------- credits ---------- */
 
 export const CreditBalanceSchema = z.object({

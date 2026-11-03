@@ -61,7 +61,11 @@ the organizer, for now. Everyone invited still gets the notes (flow 6).
 ## 4. Join
 
 Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title and time, who
-is invited, and whether the call has notes and who gets them. **Join now** opens the call; **Copy link**
+is invited, and whether the call has notes and who gets them. Under the preview you pick a microphone,
+camera and speaker (where the browser allows choosing one), and **Test microphone** records three seconds
+and plays them back, without uploading or keeping anything. Alcove remembers the choices in this browser and
+says when one isn't plugged in. In the call, the small arrow on the microphone and camera buttons switches
+devices without leaving the call or interrupting the notes. **Join now** opens the call; **Copy link**
 copies the join link. A link to a call that isn't on your calendar says so: only the person who set it up can
 join it.
 

@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useCopyLink } from '~/features/call/links';
+import { PrejoinDevices } from '~/features/call/DevicePickers';
 import { Video, useLevels } from '~/features/call/Video';
+import { useDevices } from '~/features/call/devices';
 import { LocalMedia } from '~/features/call/media';
 import { api } from '~/lib/api';
 import { requireAccount } from '~/lib/guards';
@@ -43,6 +45,8 @@ function Prejoin({ meeting, me }: { meeting: Meeting; me: Person }) {
   const m = useLive(media);
   const [joining, setJoining] = useState(false);
   const levels = useLevels(media, 5, m.mic && !!m.camera, shape);
+  // Named once the browser has been allowed the devices, so read again when they start.
+  const devices = useDevices(m.camera);
   useRaisedToasts();
 
   useEffect(() => {
@@ -73,6 +77,7 @@ function Prejoin({ meeting, me }: { meeting: Meeting; me: Person }) {
       <div className="stg">
         <Top />
         <div className="pj">
+          <div className="pj-main">
           <div className={cn('feed', !m.mic && 'muted')}>
             {m.cam && m.camera ? <Video stream={m.camera} /> : <div className="feed-off"><Avatar person={me} size={120} /><span>Your camera is off</span></div>}
             {m.error && <p className="media-error">{m.error}</p>}
@@ -81,6 +86,8 @@ function Prejoin({ meeting, me }: { meeting: Meeting; me: Person }) {
               <button type="button" className={cn('rb', !m.mic && 'off')} aria-pressed={m.mic} aria-label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} onClick={() => media.setMic(!m.mic)}><Icon name={m.mic ? 'mic' : 'micOff'} size={21} /></button>
               <button type="button" className={cn('rb', !m.cam && 'off')} aria-pressed={m.cam} aria-label={m.cam ? 'Turn camera off' : 'Turn camera on'} onClick={() => void media.setCam(!m.cam)}><Icon name={m.cam ? 'video' : 'videoOff'} size={21} /></button>
             </div>
+          </div>
+          <PrejoinDevices media={media} m={m} devices={devices} />
           </div>
           <div className="pj-side">
             <h1>{meeting.title}</h1>

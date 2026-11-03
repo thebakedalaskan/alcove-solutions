@@ -17,6 +17,8 @@ export interface FakeNear {
   prompts: string[];
   /** The next `n` chat replies fail: the service is down, or the model answers in prose instead of JSON. */
   failNext(n: number, how: 'down' | 'prose'): void;
+  /** The next chat reply takes this long, as a busy model does. */
+  slowNext(ms: number): void;
   close(): Promise<void>;
 }
 
@@ -71,6 +73,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const prompts: string[] = [];
   let failing = 0;
   let failure: 'down' | 'prose' = 'down';
+  let slow = 0;
 
   const server = createServer((req, res) => {
     void (async () => {
@@ -104,6 +107,7 @@ export async function startFakeNear(): Promise<FakeNear> {
         const user = text('user');
         calls.push({ path: url.pathname, model, bytes: body.length });
         prompts.push(user);
+        if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
         if (failing > 0) {
           failing--;
           if (failure === 'down') return send(res, 503, { error: { message: 'Service unavailable' } });
@@ -150,6 +154,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`, apiKey, calls, prompts,
     failNext(n, how) { failing = n; failure = how; },
+    slowNext(ms) { slow = ms; },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }
