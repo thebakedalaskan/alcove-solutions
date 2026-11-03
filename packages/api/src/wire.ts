@@ -3,6 +3,7 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
+import { CaptionLanguageSchema } from './types';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
  * Vandelay, and single sign-on is whoever's work email is typed. Google is real: the browser goes
@@ -31,7 +32,15 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('sharing'), on: z.boolean(), title: z.string().max(120).optional() }),
   z.object({ type: z.literal('chat'), text: z.string().trim().min(1).max(4000) }),
   z.object({ type: z.literal('notes'), on: z.boolean() }),
-  z.object({ type: z.literal('dismiss'), id: z.string() })
+  z.object({ type: z.literal('dismiss'), id: z.string() }),
+  z.object({ type: z.literal('spotlight'), participantId: z.string().max(200).nullable() }),
+  z.object({
+    type: z.literal('rooms-open'),
+    rooms: z.array(z.object({ name: z.string().trim().min(1).max(40), emails: z.array(z.string().trim().toLowerCase().max(254)).max(50) })).min(2).max(8),
+    minutes: z.number().int().min(1).max(60)
+  }),
+  z.object({ type: z.literal('rooms-close') }),
+  z.object({ type: z.literal('rooms-message'), text: z.string().trim().min(1).max(300) })
 ]);
 export type CallAction = z.infer<typeof CallActionSchema>;
 
@@ -72,6 +81,9 @@ export const ActionPatchSchema = z.object({
   text: z.string().trim().min(1).max(300).optional()
 }).refine((p) => Object.values(p).some((v) => v !== undefined), 'Nothing to change.');
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
+
+/** Captions in another language: which live transcript lines, and into what. */
+export const TranslateBodySchema = z.object({ language: CaptionLanguageSchema, lines: z.array(z.string().max(64)).min(1).max(20) });
 
 /** Catching up during a call: how far back to read, or the whole call. */
 export const CatchUpBodySchema = z.object({ minutes: z.number().int().min(1).max(600).optional() });

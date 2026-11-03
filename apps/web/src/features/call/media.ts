@@ -5,7 +5,7 @@
  */
 import type { AudioPiece } from '@alcove/api';
 import { log } from '~/lib/log';
-import { readPrefs, rememberDevice } from './devices';
+import { canChooseSpeaker, readPrefs, rememberDevice } from './devices';
 
 const mlog = log.child({ component: 'media' });
 
@@ -22,11 +22,36 @@ export interface MediaSnapshot {
   error: string | null;
   /** Set when a chosen device isn't plugged in and another is used instead. */
   notice: string | null;
+  /** The browser cleans up the microphone (noise suppression). */
+  noiseReduction: boolean;
+  /** The camera can blur what's behind you (the browser or system does it), and whether it is. */
+  canBlur: boolean;
+  blur: boolean;
+  /** What's being shared: the browser's name for it, and whether it's a tab, a window or a screen. */
+  screenLabel: string | null;
+  screenSurface: ShareSurface | null;
 }
 
+/** What someone chooses to share. The browser's own picker then asks which one. */
+export type ShareSurface = 'browser' | 'window' | 'monitor';
+export interface ShareChoice { surface: ShareSurface; audio: boolean }
+
 const VIDEO = { width: { ideal: 1280 }, height: { ideal: 720 } } as const;
-const AUDIO = { echoCancellation: true, noiseSuppression: true } as const;
+const audioFor = (noiseSuppression: boolean): MediaTrackConstraints => ({ echoCancellation: true, noiseSuppression });
 const deviceOf = (t: MediaStreamTrack | null) => t?.getSettings().deviceId ?? null;
+/** Blur that the browser can switch both ways: a camera that only reports the system's setting can't be changed from here. */
+function blurOf(t: MediaStreamTrack | null): { canBlur: boolean; blur: boolean } {
+  if (!t || typeof t.getCapabilities !== 'function') return { canBlur: false, blur: false };
+  const can = t.getCapabilities().backgroundBlur ?? [];
+  return { canBlur: can.includes(true) && can.includes(false), blur: t.getSettings().backgroundBlur === true };
+}
+/** Browsers name shared tabs and screens by internal IDs; those read as what was chosen instead. */
+function shareLabel(t: MediaStreamTrack, surface: ShareSurface | null): string {
+  const internal = /^(web-contents-media-stream|screen|window):/i.test(t.label) || !t.label.trim();
+  if (!internal) return t.label;
+  return surface === 'browser' ? 'a tab' : surface === 'window' ? 'a window' : 'your screen';
+}
+const surfaceOf = (v: unknown): ShareSurface | null => (v === 'browser' || v === 'window' || v === 'monitor' ? v : null);
 
 function explain(e: unknown, what: string): string {
   if (e instanceof DOMException) {
@@ -38,7 +63,10 @@ function explain(e: unknown, what: string): string {
 }
 
 export class LocalMedia {
-  private snap: MediaSnapshot = { camera: null, screen: null, mic: true, cam: true, micId: null, camId: null, speakerId: readPrefs().speaker ?? null, error: null, notice: null };
+  private snap: MediaSnapshot = {
+    camera: null, screen: null, mic: true, cam: true, micId: null, camId: null, speakerId: readPrefs().speaker ?? null, error: null, notice: null,
+    noiseReduction: readPrefs().noiseReduction ?? true, canBlur: false, blur: false, screenLabel: null, screenSurface: null
+  };
   private listeners = new Set<() => void>();
   private audio: MediaStreamTrack | null = null;
   private video: MediaStreamTrack | null = null;
@@ -61,7 +89,7 @@ export class LocalMedia {
     const prefs = readPrefs();
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        audio: { ...AUDIO, ...(prefs.mic ? { deviceId: { ideal: prefs.mic } } : {}) },
+        audio: { ...audioFor(this.snap.noiseReduction), ...(prefs.mic ? { deviceId: { ideal: prefs.mic } } : {}) },
         video: opts.cam ? { ...VIDEO, ...(prefs.cam ? { deviceId: { ideal: prefs.cam } } : { facingMode: 'user' }) } : false
       });
       this.audio = s.getAudioTracks()[0] ?? null;
@@ -73,7 +101,8 @@ export class LocalMedia {
       const camId = deviceOf(this.video);
       // A remembered device that isn't plugged in: the browser picked another, and the screen says which.
       const missing = [prefs.mic && micId && prefs.mic !== micId ? `microphone (now ${this.audio?.label || 'the default'})` : '', prefs.cam && camId && prefs.cam !== camId ? `camera (now ${this.video?.label || 'the default'})` : ''].filter(Boolean);
-      this.set({ micId, camId, notice: missing.length ? `The ${missing.join(' and ')} you chose before isn’t connected, so Alcove is using another.` : null });
+      if (prefs.blur) await this.applyBlur(true);
+      this.set({ micId, camId, ...blurOf(this.video), notice: missing.length ? `The ${missing.join(' and ')} you chose before isn’t connected, so Alcove is using another.` : null });
       mlog.info('devices started', { mic: Boolean(this.audio), cam: Boolean(this.video), remembered: Boolean(prefs.mic || prefs.cam), substituted: missing.length });
     } catch (e) {
       mlog.warn('could not start devices', { err: e, wantedCam: opts.cam });
@@ -87,7 +116,8 @@ export class LocalMedia {
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: { ...VIDEO, ...(pref ? { deviceId: { ideal: pref } } : { facingMode: 'user' }) } });
       this.video = s.getVideoTracks()[0] ?? null;
-      this.set({ cam: !!this.video, camId: deviceOf(this.video), error: null });
+      if (readPrefs().blur) await this.applyBlur(true);
+      this.set({ cam: !!this.video, camId: deviceOf(this.video), error: null, ...blurOf(this.video) });
       this.rebuild();
     } catch (e) { mlog.warn('could not turn the camera on', { err: e }); this.set({ cam: false, error: explain(e, 'camera') }); }
   }
@@ -98,7 +128,7 @@ export class LocalMedia {
   async chooseMic(deviceId: string): Promise<void> {
     if (deviceId === this.snap.micId) return;
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: { ...AUDIO, deviceId: { exact: deviceId } } });
+      const s = await navigator.mediaDevices.getUserMedia({ audio: { ...audioFor(this.snap.noiseReduction), deviceId: { exact: deviceId } } });
       const next = s.getAudioTracks()[0];
       if (!next) return;
       next.enabled = this.snap.mic;
@@ -125,33 +155,92 @@ export class LocalMedia {
       if (!next) return;
       this.video?.stop();
       this.video = next;
+      if (this.snap.blur) await this.applyBlur(true);
       this.rebuild();
-      this.set({ camId: deviceOf(next), error: null, notice: null });
+      this.set({ camId: deviceOf(next), error: null, notice: null, ...blurOf(next) });
       mlog.info('camera changed');
     } catch (e) {
       mlog.warn('could not switch cameras', { err: e });
       this.set({ error: explain(e, 'camera') });
     }
   }
-  /** Where the microphone test (and, in calls with others, their voices) plays. */
+  /** Where the test sound (and, in calls with others, their voices) plays. */
   chooseSpeaker(deviceId: string) { rememberDevice('speaker', deviceId); this.set({ speakerId: deviceId }); }
-  /** Starts screen sharing. Resolves false if the user cancelled the picker. */
-  async shareScreen(onEnded: () => void): Promise<string | false> {
+  /** Noise suppression on the microphone in use, changed in place: the recording and the transcript carry on. */
+  async setNoiseReduction(on: boolean): Promise<void> {
+    rememberDevice('noiseReduction', on);
+    this.set({ noiseReduction: on });
+    try { await this.audio?.applyConstraints({ ...audioFor(on), ...(this.snap.micId ? { deviceId: { exact: this.snap.micId } } : {}) }); } catch (e) { mlog.warn('could not change noise reduction', { err: e, on }); }
+  }
+  /** Background blur, where the browser can switch it (Chrome with the system's camera effects). */
+  async setBlur(on: boolean): Promise<void> {
+    rememberDevice('blur', on);
+    await this.applyBlur(on);
+    this.set(blurOf(this.video));
+  }
+  private async applyBlur(on: boolean) {
+    const t = this.video;
+    if (!t || !blurOf(t).canBlur) return;
+    const blur: MediaTrackConstraintSet = { backgroundBlur: on };
+    try { await t.applyConstraints({ advanced: [blur] }); } catch (e) { mlog.warn('could not change background blur', { err: e, on }); }
+  }
+  /**
+   * Shares a tab, a window or a screen: the browser's own picker opens on that kind and asks which
+   * one. Sharing again while sharing swaps what's shared. Resolves false if the picker was cancelled.
+   */
+  async shareScreen(choice: ShareChoice, onEnded: () => void): Promise<string | false> {
+    // Hints the picker understands; the ones it doesn't are ignored, and the picker decides in the end.
+    const options = {
+      video: { displaySurface: choice.surface },
+      audio: choice.audio && choice.surface !== 'window',
+      preferCurrentTab: false, selfBrowserSurface: 'exclude', surfaceSwitching: 'include',
+      systemAudio: choice.audio && choice.surface === 'monitor' ? 'include' : 'exclude'
+    };
     try {
-      const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const s = await navigator.mediaDevices.getDisplayMedia(options);
       const track = s.getVideoTracks()[0];
       if (!track) return false;
-      track.addEventListener('ended', () => { this.set({ screen: null }); onEnded(); });
-      this.set({ screen: s });
-      mlog.info('screen sharing started', { surface: track.getSettings().displaySurface ?? null });
-      return track.label || 'Your screen';
+      const before = this.snap.screen;
+      const surface = surfaceOf(track.getSettings().displaySurface) ?? choice.surface;
+      const label = shareLabel(track, surface);
+      track.addEventListener('ended', () => { if (this.snap.screen === s) { this.set({ screen: null, screenLabel: null, screenSurface: null }); onEnded(); } });
+      this.set({ screen: s, screenLabel: label, screenSurface: surface });
+      before?.getTracks().forEach((t) => t.stop());
+      mlog.info('screen sharing started', { surface, asked: choice.surface, audio: s.getAudioTracks().length > 0, swapped: Boolean(before) });
+      return label;
     } catch (e) {
       // Cancelling the picker is a NotAllowedError; anything else is worth knowing about.
-      mlog.at(e instanceof DOMException && e.name === 'NotAllowedError' ? 'debug' : 'warn', 'screen sharing not started', { err: e });
+      mlog.at(e instanceof DOMException && e.name === 'NotAllowedError' ? 'debug' : 'warn', 'screen sharing not started', { err: e, asked: choice.surface });
       return false;
     }
   }
-  stopScreen() { this.snap.screen?.getTracks().forEach((t) => t.stop()); this.set({ screen: null }); }
+  stopScreen() { this.snap.screen?.getTracks().forEach((t) => t.stop()); this.set({ screen: null, screenLabel: null, screenSurface: null }); }
+  /** A short chime through the chosen speaker (where the browser lets a page choose), so you know you'll hear people. */
+  async playTestSound(): Promise<void> {
+    const ctx = new AudioContext();
+    try {
+      const dest = ctx.createMediaStreamDestination();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 660;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.9);
+      osc.connect(gain).connect(dest);
+      const audio = new Audio();
+      audio.srcObject = dest.stream;
+      if (this.snap.speakerId && canChooseSpeaker()) await audio.setSinkId(this.snap.speakerId).catch((e: unknown) => mlog.warn('could not play through the chosen speaker', { err: e }));
+      await audio.play();
+      osc.start();
+      osc.stop(ctx.currentTime + 1);
+      await new Promise((r) => setTimeout(r, 1100));
+      audio.pause();
+    } catch (e) {
+      mlog.warn('the test sound could not play', { err: e });
+    } finally {
+      void ctx.close().catch(() => undefined);
+    }
+  }
   /** Microphone level, 0..1. */
   level(): number {
     if (!this.analyser || !this.snap.mic) return 0;

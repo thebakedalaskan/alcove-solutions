@@ -18,8 +18,9 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | `revisions` | owner, item, revision, parent revision, `created_at` | `key_envelope`, `manifest_ciphertext` |
 | `operations` | owner, operation ID, method, completion time | `request_commitment` (HMAC), `result_ciphertext` |
 | `transcript_clips` | owner, note item | `clip_tag` (keyed hash of the clip's segment and start), `clip_ciphertext` (its transcript lines) |
+| `transcript_translations` | owner, note item | `line_tag` (keyed hash of the line and the caption language), `translation_ciphertext` (the line in that language) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
-| `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version` | `state_ciphertext` (mic, camera, hand, presentation, notes state, chat, notices) |
+| `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version` | `state_ciphertext` (mic, camera, hand, presentation, spotlight, breakout rooms and their messages, notes state, chat, notices) |
 | `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start and end, `version` | `key_envelope` (`Krec`) |
 | `recording_pieces` | owner, recording, segment, seq, object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
@@ -39,7 +40,7 @@ transcript clips and its `note_access` rows.
 | --- | --- |
 | `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (`notesDefault`), colleagues invited to Alcove |
 | `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID, and the Google Calendar event ID and link when it's on a calendar |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions, action items (text, owner when known, due date as said, done), chapters, screens, transcript (lines with time, speaker when known and text; null while recording), suggested questions |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions, action items (text, owner when known, due date as said, done), chapters, screens, transcript (lines with time, speaker when known and text; null while recording), suggested questions, breakout rooms (kept from the end of the call until the notes are written) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
@@ -56,6 +57,8 @@ item of a kind.
 - **Transcript clips** are sealed under the note's transcript key, one row per clip that had speech in it. The
   live call or recording state opens them all; stopping moves the lines into the note's manifest and deletes
   the rows in the same transaction.
+- **Caption translations** are sealed under the same transcript key, one row per line and language, and are
+  deleted with the transcript clips when the recording stops.
 - **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
 - **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never

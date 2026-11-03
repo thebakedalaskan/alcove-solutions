@@ -36,7 +36,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>` |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -57,6 +57,7 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `audio` | `Krec` | recording, segment, seq, object |
 | `call-state` | state key `call:<id>` | call |
 | `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
+| `transcript-translation` | state key `transcript:<noteId>` | note, line-and-language tag |
 | `job` | state key `job:<noteId>` | note |
 | `operation-result` | operation-result key | operation |
 | `billing` | billing key | owner |
@@ -207,8 +208,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may
   hold copies of responses, so they are purged after 24 hours and whenever the owner deletes a note or cancels
-  a meeting. Note search, asking, audio pieces and transcript clips keep no receipt: searching and asking
-  only read, pieces and clips are already idempotent by their place in the recording, and their answers
+  a meeting. Note search, asking, catching up, caption translations, audio pieces and transcript clips keep
+  no receipt: searching, asking and translating only read, pieces and clips are already idempotent by their place in the recording, and their answers
   carry the live transcript, which shouldn't be copied into receipts.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
   `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute

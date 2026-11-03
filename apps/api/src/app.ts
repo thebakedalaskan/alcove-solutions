@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -43,7 +43,7 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * the live transcript, which shouldn't be copied into receipts).
  */
 const NO_RECEIPT = [
-  /^\/v1\/notes\/search$/, /^\/v1\/notes\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask)$/,
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
@@ -79,6 +79,8 @@ export function createApp(d: Deps) {
   /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
   const speechLimiter = rateLimit(120, 60_000);
   const askLimiter = rateLimit(20, 60_000);
+  /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
+  const captionLimiter = rateLimit(90, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -299,6 +301,12 @@ export function createApp(d: Deps) {
   app.post('/v1/live/calls/:id/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask');
     return c.json(await calls.askSoFar(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
+  });
+  /* Captions in someone's own language: translated for them alone, so no receipt keeps a copy. */
+  app.post('/v1/live/calls/:id/translate', async (c) => {
+    const { language, lines } = await body(c, TranslateBodySchema);
+    captionLimiter(c.get('owner').ownerId, 'translate');
+    return c.json(await calls.translate(c.get('owner'), c.req.param('id'), language, lines));
   });
   app.post('/v1/live/calls/:id/leave', async (c) => c.json(await calls.leave(c.get('owner'), c.req.param('id'))));
 

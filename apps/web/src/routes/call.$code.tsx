@@ -1,21 +1,29 @@
-import { clock, errorMessage, minutesLabel, type CallSession, type CallState, type Person } from '@alcove/api';
-import { Avatar, CallDock, CallTile, DockButton, DockLeave, DockSeparator, Faces, Icon, NotesSign, Popover, SealedBadge, buttonClass, cn, useRaisedToasts, useToast } from '@alcove/ui';
+import { CAPTION_LANGUAGES, errorMessage, type CallSession, type CaptionLanguage, type Person } from '@alcove/api';
+import {
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Icon, Popover, cn, useRaisedToasts, useToast
+} from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
-import { CatchUpView } from '~/features/call/CatchUp';
-import { DeviceMenu } from '~/features/call/DevicePickers';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCaptions } from '~/features/call/captions';
+import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
 import { useDevices } from '~/features/call/devices';
-import { CallLines } from '~/features/call/LiveLines';
-import { useCopyLink } from '~/features/call/links';
-import { Video, useLevels } from '~/features/call/Video';
-import { LocalMedia, NotesRecorder, type MediaSnapshot } from '~/features/call/media';
+import { LeaveSheet, type Ended } from '~/features/call/LeaveSheet';
+import { useLiveNotes } from '~/features/call/liveNotes';
+import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
+import { MultipartyPreview, isPreviewId, previewEnabled } from '~/features/call/multiparty-preview';
+import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type PanelPerson, type PanelView } from '~/features/call/Panel';
+import { RoomsLive, RoomsSetup, type RoomActivity } from '~/features/call/Rooms';
+import { SharePicker } from '~/features/call/SharePicker';
 import { SpeechClips } from '~/features/call/speech';
-import { PROMISE_MANY } from '~/features/notes/NoteCard';
+import { Stage, type StageParticipant, type StageRooms } from '~/features/call/Stage';
+import { TopBar } from '~/features/call/TopBar';
+import { isCustom, useCallView } from '~/features/call/view';
 import { requireAccount } from '~/lib/guards';
 import { selfIn, sessions, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
-import { listNames, sameEmail } from '~/lib/people';
+import { callName, sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
 
 export const Route = createFileRoute('/call/$code')({
@@ -24,14 +32,33 @@ export const Route = createFileRoute('/call/$code')({
 });
 
 const clog = log.child({ component: 'call' });
-type Panel = 'notes' | 'chat' | 'people';
-const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea');
+const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable]');
+type Pop = 'mic' | 'cam' | 'cc' | 'cap' | 'more' | 'devices' | null;
+const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 
 function Call() {
   const { code } = Route.useParams();
   const active = sessions.call;
   if (!active || active.code !== code) return <Navigate to="/join/$code" params={{ code }} replace />;
   return <InCall session={active.session} />;
+}
+
+/** Whether you're talking now, from the real microphone level. */
+function useSpeaking(media: LocalMedia, on: boolean): boolean {
+  const [speaking, setSpeaking] = useState(false);
+  useEffect(() => {
+    if (!on) { setSpeaking(false); return; }
+    const t = setInterval(() => setSpeaking(media.level() > 0.09), 160);
+    return () => clearInterval(t);
+  }, [media, on]);
+  return speaking;
+}
+
+/** How wide the panel is, and whether it covers the stage (phones) instead of sitting beside it. */
+function useWidth() {
+  const [w, setW] = useState(() => innerWidth);
+  useEffect(() => { const on = () => setW(innerWidth); addEventListener('resize', on); return () => removeEventListener('resize', on); }, []);
+  return w;
 }
 
 function InCall({ session }: { session: CallSession }) {
@@ -42,23 +69,38 @@ function InCall({ session }: { session: CallSession }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const copy = useCopyLink();
+  const reduce = useReducedMotion();
   useRaisedToasts();
   const me = selfIn(state);
+  const meId = me?.id ?? 'me';
   const on = state.notes.status === 'on';
-  const [panel, setPanel] = useState<Panel | null>(() => (on && innerWidth >= 1100 ? 'notes' : null));
-  const [pop, setPop] = useState<'pill' | 'leave' | 'mic' | 'cam' | null>(null);
-  const devices = useDevices(m.camera);
+  const width = useWidth();
+  const narrow = width < 760;
+  const sideW = narrow ? width : width < 1100 ? 360 : 400;
+  const [panel, setPanel] = useState<PanelView | null>(() => (on && innerWidth >= 1100 ? 'notes' : null));
+  const [pop, setPop] = useState<Pop>(null);
+  const [sharePick, setSharePick] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [ended, setEnded] = useState<Ended | null>(null);
+  const [cc, setCc] = useState(false);
+  const [lang, setLang] = useState<CaptionLanguage | null>(null);
+  const [asks, setAsks] = useState<Asked[]>([]);
+  const [hit, setHit] = useState<{ at: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
-  /** Turning notes off waits for the last audio and speech to be sent; the sign says so meanwhile. */
-  const [stopping, setStopping] = useState(false);
-  /* Back, or anywhere else, asks to end the call first: the recorder can't pick up where it left off. */
-  const guard = useLeaveGuard(() => setPop('leave'));
+  const view = useCallView(meId);
+  const devices = useDevices(m.camera);
+  const speaking = useSpeaking(media, m.mic);
+  const guard = useLeaveGuard(() => setLeaveOpen(true));
   const seenChat = useRef(state.chat.length);
   if (panel === 'chat') seenChat.current = state.chat.length;
   const unread = Math.max(0, state.chat.length - seenChat.current);
+
+  // TODO(multi-party): replace with LiveKit participants
+  const [preview] = useState(() => new MultipartyPreview());
+  useEffect(() => { if (previewEnabled()) preview.start(); return () => preview.stop(); }, [preview]);
+  const pv = useLive(preview);
 
   /* Media comes from pre-join; it starts here if the call page was opened directly. */
   const first = useRef({ mic: me?.mic ?? true, cam: me?.cam ?? true });
@@ -74,15 +116,15 @@ function InCall({ session }: { session: CallSession }) {
   if (!speech.current) speech.current = new SpeechClips((c) => session.transcribe(c), setHeardProblem);
   const micTrack = media.micTrack();
   const segment = state.notes.recording.segment;
+  const live = state.phase === 'in-call';
   useEffect(() => {
     const r = recorder.current;
     const s = speech.current;
     if (!r || !s) return;
-    if (on && micTrack) { r.start(micTrack, segment); s.start(micTrack, segment); }
+    if (on && live && micTrack) { r.start(micTrack, segment); s.start(micTrack, segment); }
     else if (!on) { r.stop(); s.stop(); }
-  }, [on, segment, micTrack]);
+  }, [on, live, segment, micTrack]);
   useEffect(() => () => speech.current?.stop(), []);
-  useEffect(() => { if (!on) setStopping(false); }, [on]);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. */
   const shown = useRef(new Set<string>());
@@ -90,316 +132,352 @@ function InCall({ session }: { session: CallSession }) {
     for (const n of state.notices) {
       if (shown.current.has(n.id)) continue;
       shown.current.add(n.id);
-      toast(n.text, { icon: n.kind === 'notes' ? 'pen' : n.kind === 'people' ? 'people' : 'screen', ms: 3000 });
+      toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
       session.dismissNotice(n.id);
     }
   }, [state.notices, session, toast]);
 
+  /* ---------- who is on the stage ---------- */
+  const stagePeople: StageParticipant[] = [
+    ...state.participants.map((p) => ({
+      id: p.id, person: p.person, isMe: p.isMe, mic: p.isMe ? m.mic : p.mic, hand: p.hand, speaking: p.isMe ? speaking : false,
+      video: p.isMe && m.cam && m.camera ? m.camera : null
+    })),
+    // TODO(multi-party): replace with LiveKit participants
+    ...pv.people.map((p) => ({ id: p.id, person: p.person, isMe: false, mic: p.mic, hand: p.hand, speaking: pv.speaking === p.id, video: null }))
+  ];
+  const byId = new Map(stagePeople.map((p) => [p.id, p.person]));
+  const byIdRef = useRef(byId);
+  byIdRef.current = byId;
+  const others = stagePeople.filter((p) => !p.isMe);
+  // TODO(multi-party): replace with LiveKit participants (the server's spotlight will cover everyone)
+  const spotlight = state.spotlight ?? pv.spotlight;
+  const invited = meeting?.guests ?? [];
+  const getting: Person[] = [...(me ? [me.person] : []), ...invited.filter((g) => !me || !sameEmail(g, me.person))];
+
+  /* ---------- actions ---------- */
   const setMic = (v: boolean) => { media.setMic(v); session.setMic(v); };
   const setCam = (v: boolean) => { void media.setCam(v); session.setCam(v); };
-  const share = async () => {
-    if (media.getSnapshot().screen) { media.stopScreen(); session.setSharing(false); return; }
-    const title = await media.shareScreen(() => session.setSharing(false));
-    if (title) session.setSharing(true, title);
+  const share = (c: ShareChoice) => {
+    setSharePick(false);
+    // The browser's picker needs this click: nothing is awaited before it opens.
+    void media.shareScreen(c, () => { session.setSharing(false); toast('You stopped sharing', { icon: 'stopShare' }); }).then((label) => {
+      if (label) session.setSharing(true, label);
+    });
   };
-  const flip = (p: Panel) => setPanel((x) => (x === p ? null : p));
+  const stopShare = () => { media.stopScreen(); session.setSharing(false); toast('You stopped sharing', { icon: 'stopShare' }); };
+  const setHand = (up: boolean) => { session.setHand(up); toast(up ? 'Your hand is raised. Everyone can see it.' : 'Your hand is lowered', { icon: 'hand' }); };
+  const setSpot = (id: string | null) => {
+    const name = id ? (id === meId ? 'You’re' : `${callName(byId.get(id) ?? { name: 'Someone', email: '' })} is`) : '';
+    // TODO(multi-party): replace with LiveKit participants (spotlight anyone through the server)
+    if (id && isPreviewId(id)) { preview.setSpotlight(id); if (state.spotlight) session.setSpotlight(null); }
+    else { preview.setSpotlight(null); session.setSpotlight(id); }
+    toast(id ? `${name} spotlighted for everyone` : 'Spotlight stopped for everyone', { icon: 'spotlight' });
+  };
+  const setPin = (id: string | null) => {
+    const was = view.view.pinned;
+    view.setPinned(id);
+    const who = (x: string) => callName(byId.get(x) ?? { name: 'Someone', email: '' });
+    if (id) toast(`${who(id)} is pinned for you. Only your view changes.`, { icon: 'pin' });
+    else if (was) toast(`${who(was)} is unpinned`, { icon: 'pinOff' });
+  };
+  const hinted = useRef(false);
+  const onCustom = () => { if (!hinted.current) { hinted.current = true; toast('Only your view changes. Reset it from the top bar.', { icon: 'eye' }); } };
+
   /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
   const switchNotes = async (v: boolean) => {
-    if (!v) {
-      setStopping(true);
-      await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
-      // If the call keeps notes on after all, the sign goes back to saying so.
-      setTimeout(() => setStopping(false), 6000);
-    }
+    if (!v) await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
     session.setNotes(v);
     if (v && !panel && innerWidth >= 1100) setPanel('notes');
   };
+  const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
+  const flip = (v: PanelView) => setPanel((x) => (x === v ? null : v));
 
+  /* ---------- asking ---------- */
+  const askId = useRef(0);
+  const askQuestion = (question: string) => {
+    const id = ++askId.current;
+    setAsks((a) => [...a, { id, kind: 'question', q: question, parts: null, error: null }]);
+    session.askSoFar(question).then(
+      (parts) => setAsks((a) => a.map((x) => (x.id === id && x.kind === 'question' ? { ...x, parts } : x))),
+      (e: unknown) => { clog.warn('question during a call failed', { err: e }); setAsks((a) => a.map((x) => (x.id === id ? { ...x, error: errorMessage(e) } : x))); }
+    );
+  };
+  const catchUp = () => {
+    openPanel('ask');
+    const id = ++askId.current;
+    setAsks((a) => [...a, { id, kind: 'catch-up', c: null, error: null }]);
+    session.catchUp(5).then(
+      (c) => setAsks((a) => a.map((x) => (x.id === id && x.kind === 'catch-up' ? { ...x, c } : x))),
+      (e: unknown) => { clog.warn('catch-up failed', { err: e }); setAsks((a) => a.map((x) => (x.id === id ? { ...x, error: errorMessage(e) } : x))); }
+    );
+  };
+  const seek = (at: number) => { setPanel('transcript'); setHit({ at }); };
+  const liveNotes = useLiveNotes(session, state.transcript.length, on && live, panel === 'notes');
+
+  /* ---------- captions ---------- */
+  const caption = useCaptions(session, state.transcript, lang, cc && live);
+  const realAt = useRef(0);
+  const previewAt = useRef(0);
+  const lastReal = useRef<string | null>(null);
+  const lastPreview = useRef<string | null>(null);
+  if (caption && caption.line.id !== lastReal.current) { lastReal.current = caption.line.id; realAt.current = Date.now(); }
+  if (pv.caption && pv.caption.id !== lastPreview.current) { lastPreview.current = pv.caption.id; previewAt.current = Date.now(); }
+  const langName = (l: CaptionLanguage | null) => (l ? CAPTION_LANGUAGES.find((x) => x.code === l)?.name ?? l : 'As spoken');
+  const langMenu = (
+    <>
+      <div className="ac-eyebrow">Captions in</div>
+      {[null, ...CAPTION_LANGUAGES.map((l) => l.code)].map((code) => {
+        const info = CAPTION_LANGUAGES.find((x) => x.code === code);
+        return (
+          <button key={code ?? 'spoken'} type="button" className="ic-opt" role="menuitemradio" aria-checked={lang === code}
+            onClick={() => { setLang(code); setPop(null); toast(code ? `Captions in ${info?.english ?? code} for you` : 'Captions as they’re spoken', { icon: 'translate' }); }}>
+            <span className="nm">{info ? info.name : 'As spoken'}{info && info.name !== info.english && <span className="sub"> · {info.english}</span>}</span><Icon name="check" size={16} className="tick" />
+          </button>
+        );
+      })}
+      <p className="hint">Translated in confidential compute. Everyone picks their own language. The call is still transcribed for notes when captions are off.</p>
+    </>
+  );
+  const capButton = (
+    <Popover open={pop === 'cap'} onOpenChange={(o) => setPop(o ? 'cap' : null)} side="top" align="end" label="Caption language" className="ic-dmenu"
+      anchor={<button type="button" className="ic-capbtn" aria-label="Choose the caption language"><Icon name="translate" size={14} />{langName(lang)}</button>}>{langMenu}</Popover>
+  );
+  // TODO(multi-party): replace with LiveKit participants (each person's own captions)
+  const showPreview = !!pv.caption && previewAt.current >= realAt.current;
+  const capNode = !cc || state.breakouts.open ? null : showPreview && pv.caption ? (() => {
+    const c = pv.caption;
+    const who = byId.get(c.who);
+    const text = (lang ? c.text[lang] : undefined) ?? c.text[c.lang] ?? '';
+    const translated = !!lang && lang !== c.lang && !!c.text[lang];
+    return (
+      <Caption who={<>{who && <Avatar person={who} size={18} />}<span className="name">{who ? callName(who) : ''}</span>{translated && lang && <span className="lang">{c.lang.toUpperCase()} → {lang.toUpperCase()}</span>}{capButton}</>}
+        original={translated ? c.text[c.lang] : undefined}>{text}</Caption>
+    );
+  })() : caption ? (
+    <Caption who={<>{caption.line.speaker?.person && <Avatar person={caption.line.speaker.person} size={18} />}<span className="name">{caption.line.speaker ? callName(caption.line.speaker.person ?? { name: caption.line.speaker.name, email: '' }) : ''}</span>{caption.translated && lang && <span className="lang">→ {lang.toUpperCase()}</span>}{capButton}</>}
+      original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
+  ) : (
+    <Caption who={<><Icon name="captions" size={15} /><span className="name">Captions</span>{capButton}</>}>
+      <span className="ic-cap-wait">{on ? 'What’s said appears here as people talk.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
+    </Caption>
+  );
+
+  /* ---------- breakout rooms ---------- */
+  const open = state.breakouts.open;
+  const left = open ? Math.max(0, open.until - state.elapsed) : 0;
+  const warned = useRef(false);
+  const closing = useRef(false);
+  useEffect(() => {
+    if (!open) { warned.current = false; closing.current = false; return; }
+    if (left <= 30 && !warned.current) { warned.current = true; toast('Rooms close in 30 seconds', { icon: 'timer' }); }
+    if (left <= 0 && !closing.current && state.isOrganizer) { closing.current = true; session.closeRooms(); }
+  }, [open, left, state.isOrganizer, session, toast]);
+  const wasOpen = useRef(!!open);
+  // TODO(multi-party): replace with LiveKit participants (the server's rooms will list everyone who was in them)
+  const heldPreview = useRef(new Map<number, Person[][]>());
+  useEffect(() => {
+    if (wasOpen.current && !open) {
+      const held = state.breakouts.held.at(-1);
+      const assign = preview.getSnapshot().rooms?.assign;
+      if (held && assign) heldPreview.current.set(held.from, assign.map((ids) => ids.flatMap((id) => { const p = byIdRef.current.get(id); return p ? [p] : []; })));
+      preview.closeRooms();
+      if (on) { setPanel('notes'); toast('Everyone is back. The rooms go into the call’s notes.', { icon: 'notesPen' }); }
+      else toast('Everyone is back from the rooms', { icon: 'door' });
+    }
+    wasOpen.current = !!open;
+  }, [open, on, preview, toast, state.breakouts.held]);
+  const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number) => {
+    const email = (id: string) => byId.get(id)?.email ?? '';
+    // Only people invited to the call go to the server; the preview's people stay in this browser.
+    session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids.filter((id) => !isPreviewId(id)).map(email).filter(Boolean) })), minutes });
+    // TODO(multi-party): replace with LiveKit participants
+    preview.openRooms(rooms.map((r) => r.ids.filter(isPreviewId)));
+    if (view.view.pinned) view.setPinned(null);
+    toast(`${rooms.length} rooms are open for ${minutes} min`, { icon: 'door' });
+  };
+  // TODO(multi-party): replace with LiveKit participants (who is in which room comes from the call)
+  const roomIds = open ? open.rooms.map((r, k) => [...(pv.rooms?.assign[k] ?? []), ...stagePeople.filter((p) => !p.isMe && !isPreviewId(p.id) && r.people.some((x) => sameEmail(x, p.person))).map((p) => p.id)]) : [];
+  const activity: RoomActivity | null = pv.rooms ? { talking: pv.rooms.talking, notes: pv.rooms.notes, help: pv.rooms.help, joined: pv.rooms.joined } : open ? { talking: [], notes: [], help: null, joined: null } : null;
+  const stageRooms: StageRooms | null = open && me ? {
+    rooms: open.rooms.map((r, k) => ({ name: r.name, ids: roomIds[k] ?? [], talking: activity?.talking[k] ?? null, help: activity?.help?.room === k ? activity.help.id : null })),
+    joined: activity?.joined ?? null, left,
+    message: open.message && state.elapsed - open.message.at < 6 ? { from: me.person, text: open.message.text } : null, notesOn: on
+  } : null;
+
+  /* ---------- keys ---------- */
+  const keys = useRef({ panel, pinned: view.view.pinned, setPin, setPanel });
+  keys.current = { panel, pinned: view.view.pinned, setPin, setPanel };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const s = media.getSnapshot();
       const k = e.key.toLowerCase();
+      if (k === 'escape') {
+        // Popovers and sheets close themselves first; then Escape unpins, then closes the panel.
+        if (document.querySelector('[data-radix-popper-content-wrapper], [role="dialog"]')) return;
+        if (keys.current.pinned) keys.current.setPin(null);
+        else if (keys.current.panel) keys.current.setPanel(null);
+        return;
+      }
       if (k !== 'm' && k !== 'v' && k !== 'c') return;
-      // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
       if (k === 'm') { media.setMic(!s.mic); session.setMic(!s.mic); }
       if (k === 'v') { void media.setCam(!s.cam); session.setCam(!s.cam); }
-      if (k === 'c') setPanel((x) => (x === 'chat' ? null : 'chat'));
+      if (k === 'c') keys.current.setPanel(keys.current.panel === 'chat' ? null : 'chat');
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, [media, session]);
 
+  /* ---------- leaving ---------- */
   const end = async () => {
-    setPop(null);
     setLeaving(true);
     try {
       await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
       const r = await session.leave();
       guard.release();
-      sessions.call = null;
       media.stop();
+      preview.stop();
       sessions.media = null;
       void qc.invalidateQueries();
-      if (r.pendingNoteId) await navigate({ to: '/notes/$noteId', params: { noteId: r.pendingNoteId }, replace: true });
-      else {
-        await navigate({ to: '/home', replace: true });
-        toast(`Call ended after ${minutesLabel(r.duration)}. There are no notes from it.`, { icon: 'check' });
-      }
+      setEnded({ noteId: r.pendingNoteId, duration: r.duration });
     } catch (e) {
       clog.error('leaving the call failed', { err: e });
       toast(errorMessage(e), { icon: 'x' });
+    } finally {
       setLeaving(false);
     }
   };
+  const away = async (to: { noteId: string } | null) => {
+    sessions.call = null;
+    if (to) await navigate({ to: '/notes/$noteId', params: { noteId: to.noteId }, replace: true });
+    else await navigate({ to: '/home', replace: true });
+  };
 
-  const invited = meeting?.guests ?? [];
-  const everyone = [...state.participants.map((p) => p.person)];
+  /* ---------- the panel's people ---------- */
+  const micLabel = devices.mic.find((d) => d.id === m.micId)?.label;
+  const panelPeople: PanelPerson[] = stagePeople.map((p) => ({
+    id: p.id, person: p.person, isMe: p.isMe, organizer: p.isMe && state.isOrganizer, mic: p.mic, hand: p.hand, speaking: p.speaking,
+    detail: p.isMe ? [state.isOrganizer ? 'Organizer' : 'Invited', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : ''].filter(Boolean).join(' · ') : 'In the call',
+    tags: [spotlight === p.id ? 'Spotlight · everyone' : '', view.view.pinned === p.id ? 'Pinned for you' : '', p.hand ? 'Hand raised' : ''].filter(Boolean)
+  }));
+
+  /* ---------- the status bar ---------- */
+  const spotName = spotlight ? (spotlight === meId ? null : callName(byId.get(spotlight) ?? { name: 'Someone', email: '' })) : null;
+  const bar = (m.screen || spotlight) && !open ? (
+    <>
+      {m.screen && (
+        <div className="ic-spill"><Icon name="screen" size={15} /><span className="tx2">You’re sharing <b>{m.screenLabel ?? 'your screen'}</b></span>
+          <button type="button" className="sp-btn" onClick={() => setSharePick(true)}>Change</button>
+          <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
+        </div>
+      )}
+      {spotlight && (
+        <div className="ic-spill"><Icon name="spotlight" size={15} /><span className="tx2">{spotName ? <><b>{spotName}</b> is spotlighted for everyone</> : <><b>You’re</b> spotlighted for everyone</>}</span>
+          {state.isOrganizer && <button type="button" className="sp-btn is-strong" onClick={() => setSpot(null)}>Stop spotlight</button>}
+        </div>
+      )}
+    </>
+  ) : null;
+
+  const shownPanel = panel === 'rooms' && others.length === 0 ? null : panel;
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [mainW, setMainW] = useState(0);
+  useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setMainW(el.clientWidth));
+    ro.observe(el);
+    setMainW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const stageW = shownPanel && !narrow ? Math.max(0, mainW - sideW - 16) : mainW;
+
   return (
     <div className="stage ac-stage">
-      <div className={cn('stg call', leaving && 'ending')}>
-        <header className="stg-top">
-          <div className="cl-title"><b>{state.title}</b><span className="ac-time">{clock(state.elapsed)}</span></div>
-          <div className="stg-mid">
-            <NotesPill state={state} invited={invited} stopping={stopping} open={pop === 'pill'} onOpenChange={(o) => setPop(o ? 'pill' : null)}
-              onSet={(v) => { setPop(null); void switchNotes(v); }} />
-          </div>
-          <div className="stg-right"><Faces people={everyone} size={28} /></div>
-        </header>
-        <div className="cl">
-          <div className="cl-main">
-            <Tiles state={state} media={m} onCopy={() => copy(state.code)} />
-          </div>
-          {panel && (
-            <aside className="cl-panel" aria-label={panel === 'notes' ? 'Notes' : panel === 'chat' ? 'Chat' : 'People'}>
-              {panel === 'notes' && <NotesPanel session={session} state={state} media={media} live={m.mic} uploadError={uploadError} heardProblem={heardProblem} onTurnOn={() => void switchNotes(true)} />}
-              {panel === 'chat' && <ChatPanel state={state} onSend={(t) => session.sendChat(t)} />}
-              {panel === 'people' && <PeoplePanel state={state} invited={invited} />}
-            </aside>
-          )}
+      <div className={cn('ic-call', ended && 'is-ended')}>
+        <TopBar title={state.title} elapsed={state.elapsed} notesOn={on} mode={view.view.mode} custom={isCustom(view.view)} people={stagePeople.map((p) => p.person)} peopleOpen={shownPanel === 'people'}
+          onNotes={() => openPanel('notes')} onMode={(mode) => { if (open) toast('Your view comes back when the rooms close', { icon: 'door' }); else view.setMode(mode); }}
+          onReset={() => { view.reset(); toast('Your view is back to Auto', { icon: 'reset' }); }} onCatchUp={catchUp} onPeople={() => flip('people')} />
+        <div ref={mainRef} className="ic-main">
+          <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
+            <Stage people={stagePeople} spotlight={spotlight} view={view} organizer={state.isOrganizer}
+              screen={m.screen ? { stream: m.screen, label: m.screenLabel ?? 'your screen' } : null}
+              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onCustom={onCustom} />
+          </motion.div>
+          <AnimatePresence>
+            {shownPanel && (
+              <motion.aside key="side" className="ic-side" aria-label="Call panel" style={{ width: sideW }}
+                initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
+                <SidePanel view={shownPanel} onView={openPanel} onClose={() => setPanel(null)} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
+                  {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} roomPeople={(from, k, invited) => [...invited, ...(heldPreview.current.get(from)?.[k] ?? [])]} problems={[uploadError, heardProblem].filter((x): x is string => !!x)}
+                    onNotes={(v) => void switchNotes(v)} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
+                  {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
+                  {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
+                  {shownPanel === 'chat' && <ChatView state={state} onSend={(t) => session.sendChat(t)} />}
+                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} organizer={meeting?.organizer} />}
+                  {shownPanel === 'rooms' && (open && me
+                    ? <RoomsLive open={open} elapsed={state.elapsed} members={roomIds.map((ids, k) => [...(open.rooms[k]?.people ?? []).filter((x) => !ids.some((id) => sameEmail(byId.get(id) ?? x, x))), ...ids.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; })])}
+                      people={byId} activity={activity} me={me.person}
+                      // TODO(multi-party): replace with LiveKit participants (joining a room moves your media to it)
+                      onJoin={(k) => { preview.joinRoom(k); toast(k === null ? 'You’re back in the main room' : `You joined ${open.rooms[k]?.name ?? 'a room'}`, { icon: k === null ? 'left' : 'door' }); }}
+                      onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
+                    : <RoomsSetup people={others.map((p) => ({ id: p.id, person: p.person }))} onOpen={openRooms} />)}
+                </SidePanel>
+              </motion.aside>
+            )}
+          </AnimatePresence>
         </div>
-        <div className="cl-bar">
+        <footer className="ic-dockbar">
           <CallDock>
-          <span className="dock-split">
-            <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} off={!m.mic} onClick={() => setMic(!m.mic)} />
-            <DeviceMenu kind="mic" media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)} />
-          </span>
-          <span className="dock-split">
-            <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => setCam(!m.cam)} />
-            <DeviceMenu kind="cam" media={media} m={m} devices={devices} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)} />
-          </span>
-          <DockButton icon="screen" label={m.screen ? 'Stop presenting' : 'Share your screen'} on={!!m.screen} onClick={() => void share()} />
-          <DockSeparator />
-          <DockButton icon="notes" label="Notes" on={panel === 'notes'} onClick={() => flip('notes')} />
-          <DockButton icon="chat" label="Chat" on={panel === 'chat'} onClick={() => flip('chat')} badge={unread} />
-          <DockButton icon="people" label="People" on={panel === 'people'} onClick={() => flip('people')} />
-          <DockSeparator />
-          <Popover open={pop === 'leave'} onOpenChange={(o) => { setPop(o ? 'leave' : null); if (!o) guard.stay(); }} side="top" align="end" stage label="End the call" className="w-[290px]"
-            anchor={<DockLeave disabled={leaving}><span>Leave</span></DockLeave>}>
-            <button type="button" className="ac-pop-item" onClick={() => void end()}>
-              <Icon name="signOut" size={18} />
-              <span><b>Leave the call</b><small>{state.notes.everOn ? 'Notes go to everyone invited as soon as it ends.' : 'No notes were taken.'}</small></span>
-            </button>
-          </Popover>
+            <DockSplit>
+              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Mute' : 'Unmute'} tip={`${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} off={!m.mic} onClick={() => setMic(!m.mic)} />
+              <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
+                onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
+            </DockSplit>
+            <DockSplit>
+              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => setCam(!m.cam)}
+                tip={`${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
+              <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
+                onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
+            </DockSplit>
+            <DockButton icon="screen" label={m.screen ? 'Change what you share' : 'Share a tab, window or screen'} tip={m.screen ? 'Change what you share' : 'Share a tab, window or screen'} on={!!m.screen} onClick={() => setSharePick(true)} />
+            <DockButton icon="hand" label={me?.hand ? 'Lower your hand' : 'Raise your hand'} tip={me?.hand ? 'Lower your hand' : 'Raise your hand'} on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
+            <DockSplit>
+              <DockButton icon="captions" label={cc ? 'Turn off captions' : 'Turn on captions'} tip={`${cc ? 'Turn off captions' : 'Turn on captions'} · the call is still transcribed for notes`} on={cc}
+                onClick={() => { const v = !cc; setCc(v); if (!v && pop === 'cc') setPop(null); toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' }); }} />
+              <Popover open={pop === 'cc'} onOpenChange={(o) => setPop(o ? 'cc' : null)} side="top" align="start" label="Caption language" className="ic-dmenu"
+                anchor={<DockChevron label="Caption language" on={pop === 'cc'} />}>{langMenu}</Popover>
+            </DockSplit>
+            <DockSeparator />
+            {others.length > 0 && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={shownPanel === 'rooms' || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
+            <DockButton icon="notesPen" label="Notes" tip="Notes" on={shownPanel === 'notes' || shownPanel === 'transcript' || shownPanel === 'ask'} onClick={() => setPanel((x) => (x === 'notes' || x === 'transcript' || x === 'ask' ? null : 'notes'))} />
+            <DockButton icon="chat" label="Chat" tip="Chat" on={shownPanel === 'chat'} badge={unread} onClick={() => flip('chat')} />
+            <Popover open={pop === 'more' || pop === 'devices'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More" className={pop === 'devices' ? 'ic-dmenu ic-devices' : 'ic-menu'}
+              anchor={<DockButton icon="more" label="More: catch up, settings" on={pop === 'more' || pop === 'devices'} />}>
+              {pop === 'devices' ? (
+                <>
+                  <MicOptions media={media} m={m} devices={devices} live onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
+                  <div className="ic-msep" />
+                  <CamOptions media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} preview={false} onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
+                </>
+              ) : (
+                <>
+                  <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on the last few minutes</span></button>
+                  <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
+                  {others.length > 0 && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
+                </>
+              )}
+            </Popover>
+            <DockSeparator />
+            <DockLeave disabled={leaving || !!ended} onClick={() => setLeaveOpen(true)}>Leave</DockLeave>
           </CallDock>
-        </div>
+        </footer>
       </div>
+      <SharePicker open={sharePick} onOpenChange={setSharePick} sharing={!!m.screen} onShare={share} />
+      <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed} others={others.length}
+        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
     </div>
-  );
-}
-
-/* The notes sign, top centre, the same for everyone. Only the organizer can switch it. */
-function NotesPill({ state, invited, stopping, open, onOpenChange, onSet }: { state: CallState; invited: Person[]; stopping: boolean; open: boolean; onOpenChange: (o: boolean) => void; onSet: (on: boolean) => void }) {
-  const on = state.notes.status === 'on';
-  const getting = [...state.participants.map((p) => p.person), ...invited.filter((g) => !state.participants.some((p) => sameEmail(p.person, g)))];
-  return (
-    <Popover open={open} onOpenChange={onOpenChange} align="center" stage label={on ? 'Notes are on' : 'No notes'} className="pill-pop"
-      anchor={on
-        ? <button type="button" className="sign-btn" aria-label="Notes are on"><NotesSign stage>{stopping ? 'Turning off…' : 'Notes on'}</NotesSign></button>
-        : <button type="button" className="npill" aria-label="No notes"><span>No notes</span><Icon name="down" size={14} /></button>}>
-      {on ? (
-        <>
-          <div className="pp-h"><b>Notes are on</b><p>{state.isOrganizer ? 'Everyone here can see it.' : 'The organizer turned them on. Everyone here can see it.'}</p></div>
-          <div className="pp-who"><Faces people={getting} size={24} max={5} /><span>They go to everyone invited</span></div>
-          <div className="pp-promise"><SealedBadge inline title={PROMISE_MANY} /></div>
-          {state.isOrganizer && (
-            <>
-              <div className="ac-pop-sep" />
-              <button type="button" className="ac-pop-item" onClick={() => onSet(false)}><Icon name="x" size={18} /><span><b>Turn off notes</b><small>What’s written so far is kept.</small></span></button>
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="pp-h"><b>No notes for this call</b><p>{state.isOrganizer ? 'Nothing is being recorded.' : 'Only the organizer can turn them on.'}</p></div>
-          {state.isOrganizer && (
-            <>
-              <div className="ac-pop-sep" />
-              <button type="button" className="ac-pop-item" onClick={() => onSet(true)}><Icon name="pen" size={18} /><span><b>Turn on notes</b><small>Everyone here sees it, and everyone invited gets them.</small></span></button>
-            </>
-          )}
-        </>
-      )}
-    </Popover>
-  );
-}
-
-function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapshot; onCopy: () => void }) {
-  const others = state.participants.filter((p) => !p.isMe);
-  const me = selfIn(state);
-  const self = me && (
-    <CallTile className="self" person={me.person} name="You" muted={!media.mic}>
-      {media.cam && media.camera ? <Video stream={media.camera} /> : undefined}
-    </CallTile>
-  );
-  if (media.screen) {
-    return (
-      <div className="tiles one">
-        <CallTile person={me?.person ?? { name: 'You' }} name="Your screen"><Video stream={media.screen} className="screen" /></CallTile>
-        {self}
-      </div>
-    );
-  }
-  if (!others.length) {
-    return (
-      <div className="tiles one">
-        <div className="ac-tile wait">
-          <div className="wait-in">
-            <Icon name="link" size={22} />
-            <b>Waiting for others</b>
-            <p>People you invited appear here when they join.</p>
-            <button type="button" className={buttonClass()} onClick={onCopy}><Icon name="copy" size={18} />Copy link</button>
-          </div>
-        </div>
-        {self}
-      </div>
-    );
-  }
-  return (
-    <div className={cn('tiles grid', (others.length + 1) % 2 === 1 && 'odd')}>
-      {others.map((p) => <CallTile key={p.id} person={p.person} name={p.person.name.split(' ')[0] ?? p.person.name} muted={!p.mic} hand={p.hand} />)}
-      {self}
-    </div>
-  );
-}
-
-const wave = (l: number, i: number) => Math.max(8, Math.min(100, 10 + l * 90 * (0.55 + Math.abs(Math.sin(i * 1.7 + Date.now() / 260)) * 0.6)));
-
-/*
- * While notes are on: what's being said, a few seconds behind. The notes themselves are written
- * after the call. Catching up reads the transcript so far, for you alone.
- */
-function NotesPanel({ session, state, media, live, uploadError, heardProblem, onTurnOn }: {
-  session: CallSession; state: CallState; media: LocalMedia; live: boolean; uploadError: string | null; heardProblem: string | null; onTurnOn: () => void;
-}) {
-  const on = state.notes.status === 'on';
-  const lines = state.transcript;
-  const [catching, setCatching] = useState(false);
-  const bars = useLevels(media, 28, on && live && !lines.length && !catching, wave);
-  if (catching) {
-    return (
-      <>
-        <div className="cp-head"><b>Catch up</b>{on ? <NotesSign stage>Recording</NotesSign> : <span className="cnt">Notes off</span>}</div>
-        <CatchUpView session={session} elapsed={state.elapsed} onBack={() => setCatching(false)} />
-      </>
-    );
-  }
-  if (!on) {
-    return (
-      <>
-        <div className="cp-head"><b>Notes</b></div>
-        <div className="cp-off">
-          <span className="cpo-ic"><Icon name="pen" size={22} /></span>
-          <b>{state.notes.everOn ? 'Notes are off' : 'No notes for this call'}</b>
-          <p>{state.isOrganizer ? 'Turn them on and everyone here sees it. Everyone invited gets them afterwards.' : 'Only the organizer can turn them on.'}</p>
-          {state.isOrganizer && <button type="button" className={buttonClass({ variant: 'primary' })} onClick={onTurnOn}>Turn on notes</button>}
-          {state.notes.everOn && lines.length > 0 && <button type="button" className="cp-catch" onClick={() => setCatching(true)}><Icon name="ask" size={14} />Catch up on what was said</button>}
-        </div>
-      </>
-    );
-  }
-  return (
-    <>
-      <div className="cp-head">
-        <b>Notes</b>
-        <span className="cp-head-r">
-          {lines.length > 0 && <button type="button" className="cp-catch" onClick={() => setCatching(true)}><Icon name="ask" size={14} />Catch up</button>}
-          <NotesSign stage>Recording</NotesSign>
-        </span>
-      </div>
-      <div className="cp-kept"><b>{clock(state.notes.recording.seconds)}</b><span>kept, encrypted</span></div>
-      {lines.length ? <CallLines lines={lines} me={selfIn(state)?.person.email} /> : (
-        <div className="cp-listen">
-          <div className="wavebars" aria-hidden="true">{bars.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div>
-          {live ? <><b>Listening</b><p>What’s said appears here a few seconds later.</p></>
-            : <><b>Your microphone is off</b><p>Turn it on, and what you say appears here a few seconds later.</p></>}
-          <small>The summary, decisions and follow-ups are written when the call ends.</small>
-        </div>
-      )}
-      {(uploadError || heardProblem) && (
-        <div className="cp-problems">
-          {uploadError && <p className="bad"><Icon name="x" size={14} />{uploadError}</p>}
-          {heardProblem && <p><Icon name="clock" size={14} />{heardProblem}</p>}
-        </div>
-      )}
-      <div className="cp-foot"><SealedBadge inline title="Written in confidential compute. They go to everyone invited." /></div>
-    </>
-  );
-}
-
-function ChatPanel({ state, onSend }: { state: CallState; onSend: (text: string) => void }) {
-  const [text, setText] = useState('');
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [state.chat.length]);
-  return (
-    <>
-      <div className="cp-head"><b>Chat</b></div>
-      <div className="cp-body chat-body">
-        {state.chat.length ? state.chat.map((c) => (
-          <div key={c.id} className={cn('msg', c.isMe && 'mine')}>
-            {!c.isMe && <Avatar person={c.from} size={26} />}
-            <div><b>{c.isMe ? 'You' : (c.from.name.split(' ')[0] ?? c.from.name)}</b><p>{c.text}</p></div>
-          </div>
-        )) : <p className="chat-empty">Messages here are seen by everyone in the call.</p>}
-        <div ref={end} />
-      </div>
-      <form className="cp-input" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { onSend(t); setText(''); } }}>
-        <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Message everyone" autoComplete="off" aria-label="Message everyone" />
-        <button type="submit" className="stage-btn sm" aria-label="Send"><Icon name="send" size={17} /></button>
-      </form>
-    </>
-  );
-}
-
-function PeoplePanel({ state, invited }: { state: CallState; invited: Person[] }) {
-  const away = invited.filter((g) => !state.participants.some((p) => sameEmail(p.person, g)));
-  const on = state.notes.everOn;
-  return (
-    <>
-      <div className="cp-head"><b>People</b><span className="cnt">{state.participants.length} here</span></div>
-      <div className="cp-body">
-        {state.participants.map((p) => (
-          <div key={p.id} className="person">
-            <Avatar person={p.person} size={32} />
-            <span className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{p.isOrganizer ? 'Organizer' : 'Invited'}</small></span>
-            <Icon name={p.mic ? 'mic' : 'micOff'} size={16} />
-          </div>
-        ))}
-        {away.length > 0 && (
-          <>
-            <div className="cp-sub">Invited, not here</div>
-            {away.map((g) => (
-              <div key={g.email} className="person away">
-                <Avatar person={g} size={32} />
-                <span className="min-w-0"><b>{g.name}</b><small>{on ? 'Gets the notes' : 'Invited'}</small></span>
-                <span />
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-      <div className="cp-foot"><Icon name={on ? 'send' : 'people'} size={14} /><span>{on ? `Notes go to ${away.length ? `everyone invited, including ${listNames(away)}` : 'everyone invited'}` : 'Everyone invited can see who’s here'}</span></div>
-    </>
   );
 }

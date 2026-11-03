@@ -27,9 +27,9 @@ export function readPrefs(): DevicePrefs {
     return {};
   }
 }
-export function rememberDevice(kind: DeviceKind, id: string): void {
+export function rememberDevice<K extends keyof DevicePrefs>(kind: K, value: DevicePrefs[K]): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ ...readPrefs(), [kind]: id }));
+    localStorage.setItem(KEY, JSON.stringify({ ...readPrefs(), [kind]: value }));
   } catch (e) {
     dlog.debug('device choice not remembered', { err: e, kind });
   }

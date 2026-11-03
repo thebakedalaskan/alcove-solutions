@@ -101,7 +101,9 @@ sequenceDiagram
 1. The note becomes `pending` with its duration: for a call, its length from start to leave; for a room
    recording, the seconds recorded.
 2. The transcript rows are opened, sorted by `at` and written into the note's sealed manifest (in a call
-   every line is the organizer's; in a room nobody is named). Then the `transcript_clips` rows are deleted.
+   every line is the organizer's; in a room nobody is named). Then the `transcript_clips` rows, and any
+   `transcript_translations` made for captions, are deleted. A call's breakout rooms are written into the
+   manifest too, in recording time, until the notes are written.
 3. Everyone invited gets a `note_access` row.
 4. A `content_jobs` row is inserted for the note's new head revision: kind `notes`, state `queued`,
    attempt 0, with `{noteId, recordingId}` sealed under the state key `job:<noteId>`.
@@ -126,7 +128,8 @@ account.
 - **Writing.** A job whose account can't be opened, or whose note was deleted, is dropped. A note without
   transcript lines is finished straight away, without notes and without a charge. Otherwise `draft` in
   `apps/api/src/modules/drafting.ts` asks the notes model, and one transaction writes the note `ready`
-  with what it wrote, deletes the job and charges the account.
+  with what it wrote, deletes the job and charges the account. The call's breakout rooms join the chapters
+  in that transaction (one chapter per time rooms were open: who was in which room, and for how long).
 - **Retries.** A failed attempt (NEAR AI unreachable, busy or refusing, or a reply that isn't the expected
   JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds after the
   second, with a timer that starts the worker again then. The third failure finishes the note `ready`
@@ -160,8 +163,10 @@ app can play from. Questions and answers are not stored, keep no operation recei
 
 ## Catching up during a call
 
-While a call is on, the notes panel's **Catch up** reads the live transcript for the person asking alone
-(`apps/api/src/modules/calls.ts`):
+While a call is on, **Catch up** (top bar, the More menu, and "Catch me up" in the Ask view) reads the live
+transcript for the person asking alone (`apps/api/src/modules/calls.ts`). The Notes view during a call uses
+the same request over the whole call to show what's decided, the follow-ups (with who and when, as said)
+and a summary, refreshed as new lines arrive (at most every 30 seconds, only while it's open):
 
 - `POST /v1/live/calls/:id/catch-up` with `{minutes?}` (1 to 600; none means the whole call) reads the lines
   from `through − minutes` onwards, where `through` is the newest line, and returns a `CatchUp`: a short
@@ -172,7 +177,16 @@ While a call is on, the notes panel's **Catch up** reads the live transcript for
 - `POST /v1/live/calls/:id/ask` with `{question}` answers from the transcript so far, with cited moments.
 - Both need a live call that has had notes on (`409 conflict` otherwise) and share the 20-a-minute limit
   with asking about notes. Nothing is stored and neither keeps an operation receipt: an answer goes only to
-  the person who asked. The app offers the last 5 minutes, the last 15 or the whole call, and **Back to live**.
+  the person who asked. Catch up reads the last 5 minutes; the Notes view reads the whole call.
+
+## Captions in another language
+
+`POST /v1/live/calls/:id/translate` with `{language, lines}` (one of `en`, `es`, `fr`, `de`, `pt`, `it`, `ja`,
+`zh`; up to 20 line IDs from the live transcript) returns those lines in that language, for the person
+asking. Lines already translated into that language come from their sealed `transcript_translations` row;
+the rest go to the notes model in one request and are kept the same way, until the recording stops. Line IDs
+that aren't in this call's live transcript are left out. 90 requests a minute per account; nothing is
+charged, and no operation receipt is kept.
 
 ## Prompts
 
@@ -199,8 +213,12 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   comes from.
 - **Catching up.** The transcript so far, told the meeting is still going on. One JSON object: a one- or
   two-sentence `summary` and four lists, `decided`, `proposed` (never counted as decided), `open` questions
-  and `next` steps, each item a short sentence with the second it was said. At most 8 items a list; times
-  must fall within the recording.
+  and `next` steps, each item a short sentence with the second it was said; a next step also has its
+  `owner` and `due` as said, or null. At most 8 items a list; times must fall within the recording.
+- **Translating captions.** The language's English name and the lines as `{id, text}` JSON. One JSON
+  object, `{lines: [{id, text}]}`: every line translated, ids kept, names, numbers and dates exact, a line
+  already in that language returned as it is, nothing added or left out. Lines with an unknown id or empty
+  text are dropped.
 
 Replies are checked before anything is kept:
 
@@ -221,7 +239,7 @@ Replies are checked before anything is kept:
 | `NEAR_AI_API_KEY` | none | The bearer key. Without it nothing is sent. |
 | `NEAR_AI_BASE_URL` | `https://cloud-api.near.ai/v1` | NEAR AI Cloud's OpenAI-style API |
 | `NEAR_AI_STT_MODEL` | `openai/whisper-large-v3` | The live transcript |
-| `NEAR_AI_NOTES_MODEL` | `z-ai/glm-5.3-flash` | Writing notes and answering questions |
+| `NEAR_AI_NOTES_MODEL` | `z-ai/glm-5.3-flash` | Writing notes, answering questions, catching up and translating captions |
 
 The deploy pipeline sets the base URL and uses the default models.
 
@@ -230,6 +248,8 @@ The deploy pipeline sets the base URL and uses the default models.
 | Transcribe a clip | `POST /audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, `file` (`clip.wav`, `audio/wav`) | 20 s |
 | Write notes | `POST /chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}` | 90 s |
 | Answer a question | The same, with `max_tokens` 1,200 | 60 s |
+| Catch up | The same, with `max_tokens` 1,500 | 60 s |
+| Translate captions | The same, with `max_tokens` 2,000 | 30 s |
 
 NEAR AI's answers map onto Alcove's errors: `400`, `413` and `422` become `400 invalid`; `401` and `403`
 become a `500` (the key was refused); being unreachable, a timeout, a reply that can't be parsed and any
@@ -259,7 +279,9 @@ writes notes from the transcript it was sent, and can fail its next replies (dow
 JSON). The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a
 call and a room recording, retried and silent clips, notes off and on again, the clip format and access
 checks, a server without a key, writing and charging, asking (also by someone invited), and retries up to
-the third failure.
+the third failure. `in the call: hands, spotlight, breakout rooms and captions` covers translating captions
+(once per line and language, cross-account, gone when the call ends) and breakout rooms ending up in the
+notes' chapters.
 
 ## What's left
 

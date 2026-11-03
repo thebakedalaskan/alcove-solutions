@@ -46,3 +46,23 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
     </RTooltip.Root>
   );
 }
+
+/**
+ * A modal over the page: centred for a choice that needs room (what to share), or rising from the
+ * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil.
+ */
+export function Modal({ open, onOpenChange, label, children, placement = 'center', className }: {
+  open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; placement?: 'center' | 'bottom'; className?: string | undefined;
+}) {
+  return (
+    <RDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RDialog.Portal>
+        <RDialog.Overlay className="ac-scrim" />
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', className)}>
+          <RDialog.Title className="sr-only">{label}</RDialog.Title>
+          {children}
+        </RDialog.Content>
+      </RDialog.Portal>
+    </RDialog.Root>
+  );
+}
