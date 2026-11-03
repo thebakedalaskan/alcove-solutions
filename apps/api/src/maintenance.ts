@@ -11,6 +11,7 @@ import type { Deps } from './context';
 import { exec, rows } from './db';
 import { errorMessage } from '@alcove/api';
 import { log } from './log';
+import { reconcile } from './modules/calls';
 import { work } from './modules/writer';
 import { sweepSessions } from './sessions';
 
@@ -45,5 +46,6 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
     }
   }
   const notes = await work(d);
-  return { sessions, receipts, retried, orphans, notes };
+  const calls = await reconcile(d);
+  return { sessions, receipts, retried, orphans, notes, calls };
 }

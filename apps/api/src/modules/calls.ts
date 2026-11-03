@@ -4,8 +4,9 @@ import {
 import { z } from 'zod';
 import { issuePass, type CallPass } from '../callPass';
 import type { Deps, Owner } from '../context';
+import type { LiveKitEvent } from '../livekit';
 import { id128, openJson, sealJson, stateKey, toJson } from '../crypto';
-import { bytea, exec, maybeOne, timestamp, tx, type Db } from '../db';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
 import { me } from './account';
@@ -332,11 +333,15 @@ export async function askSoFar(v: Viewer, callId: string, question: string): Pro
   return parts;
 }
 
-/** The organizer leaving ends the call: the recording stops and the notes go to everyone invited. */
-export async function leave(v: Viewer, callId: string): Promise<CallEndResult> {
-  const o = v.organizer;
+/**
+ * Ends the call for everyone: the recording stops, the transcript moves into the note, the note goes to
+ * everyone invited, and the LiveKit room goes. The organizer leaving, a webhook and upkeep all end it here.
+ */
+async function endCall(o: Owner, callId: string): Promise<CallEndResult> {
+  let room: string | null = null;
   const end = await tx(o.pool, async (c) => {
     const { row, state: s } = await load(o, c, callId, true);
+    room = row.room_name;
     const duration = Math.max(1, Math.round((Date.now() - row.started_at.getTime()) / 1000));
     if (row.state === 'live') {
       await exec(c, `UPDATE calls SET state = 'ended', ended_at = now(), version = version + 1 WHERE owner_id = $1 AND call_id = $2`, [o.ownerId, callId]);
@@ -348,6 +353,51 @@ export async function leave(v: Viewer, callId: string): Promise<CallEndResult> {
     return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
   });
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
+  await nudge(o, room, callId);
+  if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
   return end;
+}
+
+/** The organizer leaving ends the call for everyone. */
+export const leave = (v: Viewer, callId: string): Promise<CallEndResult> => endCall(v.organizer, callId);
+
+/* ---------- the call's lifecycle from LiveKit: webhooks and upkeep, with nobody's session ---------- */
+
+/** How long the organizer's connection may be gone before the call ends: LiveKit's 20 s departure timeout, plus margin. */
+const HOST_GRACE_MS = 25_000;
+const ByRoom = z.object({ owner_id: z.string(), call_id: z.string(), host_identity: z.string().nullable() });
+
+/** Applies a verified LiveKit webhook. Rooms are unique, so the room finds the call (and its organizer). */
+export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
+  if (!e.roomName) return;
+  const r = await maybeOne(d.pool, ByRoom, `SELECT owner_id, call_id, host_identity FROM calls WHERE room_name = $1 AND state = 'live'`, [e.roomName]);
+  if (!r) { clog.debug('livekit event for no live call', { event: e.event }); return; }
+  if (e.event === 'room_finished') { await endCall(await openOwner(d, r.owner_id, undefined), r.call_id); return; }
+  if (!e.identity || e.identity !== r.host_identity) return;
+  if (e.event === 'participant_left') {
+    // A reload or a dropped connection: the call ends only if the organizer doesn't come back in time.
+    await exec(d.pool, 'UPDATE calls SET host_left_at = now() WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [r.owner_id, r.call_id, e.identity]);
+    clog.info('organizer connection left', { callId: r.call_id });
+    setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer left failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
+  } else if (e.event === 'participant_joined') {
+    await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [r.owner_id, r.call_id, e.identity]);
+  }
+}
+
+/** Ends live calls whose organizer has been gone past the grace period, or whose room LiveKit no longer has. */
+export async function reconcile(d: Deps, now = Date.now()): Promise<number> {
+  const Live = z.object({ owner_id: z.string(), call_id: z.string(), room_name: z.string().nullable(), host_left_at: timestamp.nullable(), started_at: timestamp });
+  const live = await rows(d.pool, Live, `SELECT owner_id, call_id, room_name, host_left_at, started_at FROM calls WHERE state = 'live' AND room_name IS NOT NULL ORDER BY started_at LIMIT 500`);
+  const rooms = await d.livekit.existingRooms(live.flatMap((c) => (c.room_name && now - c.started_at.getTime() > 60_000 ? [c.room_name] : [])));
+  let ended = 0;
+  for (const c of live) {
+    const hostGone = c.host_left_at !== null && now - c.host_left_at.getTime() > HOST_GRACE_MS;
+    const roomGone = now - c.started_at.getTime() > 60_000 && c.room_name !== null && !rooms.has(c.room_name);
+    if (!hostGone && !roomGone) continue;
+    await endCall(await openOwner(d, c.owner_id, undefined), c.call_id);
+    clog.info('call ended without the organizer', { callId: c.call_id, reason: hostGone ? 'organizer gone' : 'room gone' });
+    ended++;
+  }
+  return ended;
 }
 export const state = (v: Viewer, callId: string) => view(v, v.organizer.pool, callId);

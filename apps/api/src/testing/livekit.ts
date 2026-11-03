@@ -7,6 +7,10 @@ import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, LocalAudioTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, dispose, type RemoteTrack
 } from '@livekit/rtc-node';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import { createHash } from 'node:crypto';
+import type { Config } from '../config';
+import { apiUrl } from '../livekit';
 
 const RATE = 48_000;
 const FRAME = 480; // 10 ms
@@ -119,4 +123,16 @@ export async function connect(ticket: CallTicket): Promise<TestParticipant> {
 /** Releases the native LiveKit runtime. Call once, after every room has disconnected. */
 export async function disposeLiveKit(): Promise<void> {
   await dispose();
+}
+
+/** Signs a webhook body the way LiveKit does: a JWT from the API key whose sha256 claim is the body's digest. */
+export async function signWebhook(cfg: Config, body: string): Promise<string> {
+  const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
+  t.sha256 = createHash('sha256').update(body).digest('base64');
+  return t.toJwt();
+}
+
+/** Deletes a room behind the API's back, as LiveKit does when a room empties out. */
+export async function deleteRoomDirectly(cfg: Config, roomName: string): Promise<void> {
+  await new RoomServiceClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET).deleteRoom(roomName);
 }

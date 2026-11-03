@@ -3,7 +3,8 @@
  * NEAR AI. LiveKit carries media, presence and nudges; the API decides who may join and keeps the call.
  */
 import type { RoomMetadata } from '@alcove/api';
-import { AccessToken, DataPacket_Kind, RoomServiceClient } from 'livekit-server-sdk';
+import { AccessToken, DataPacket_Kind, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
+import { AuthError } from './errors';
 import type { Config } from './config';
 import { log } from './log';
 
@@ -27,7 +28,15 @@ export interface LiveKit {
   muteTrack(roomName: string, identity: string, trackSid: string): Promise<void>;
   /** Sends a reliable data message to everyone in the room on `topic`. */
   sendData(roomName: string, data: Uint8Array, topic: string): Promise<void>;
+  /** Disconnects everyone. A room that's already gone is fine. */
+  deleteRoom(roomName: string): Promise<void>;
+  /** Which of these rooms LiveKit still has. */
+  existingRooms(names: string[]): Promise<Set<string>>;
+  /** Checks a webhook's signature (a JWT from our key over the body's SHA-256) and reads the event. */
+  verifyWebhook(body: string, authorization: string | undefined): Promise<LiveKitEvent>;
 }
+
+export interface LiveKitEvent { event: string; roomName: string | null; identity: string | null }
 
 /** Seconds LiveKit keeps an empty room, and keeps a room after the last person leaves. */
 export const ROOM_EMPTY_TIMEOUT = 300;
@@ -38,6 +47,7 @@ export const apiUrl = (cfg: Config): string => cfg.LIVEKIT_URL.replace(/^ws/, 'h
 
 export function createLiveKit(cfg: Config): LiveKit {
   const rooms = new RoomServiceClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
+  const webhooks = new WebhookReceiver(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
   return {
     async reachable() {
       try {
@@ -74,6 +84,17 @@ export function createLiveKit(cfg: Config): LiveKit {
     },
     async sendData(roomName, data, topic) {
       await rooms.sendData(roomName, data, DataPacket_Kind.RELIABLE, { topic });
+    },
+    async deleteRoom(roomName) {
+      if ((await rooms.listRooms([roomName])).length) await rooms.deleteRoom(roomName);
+    },
+    async existingRooms(names) {
+      if (!names.length) return new Set();
+      return new Set((await rooms.listRooms(names)).map((r) => r.name));
+    },
+    async verifyWebhook(body, authorization) {
+      const ev = await webhooks.receive(body, authorization).catch((e: unknown) => { throw new AuthError('Webhook signature is not valid.', { cause: e, level: 'warn' }); });
+      return { event: ev.event, roomName: ev.room?.name ?? null, identity: ev.participant?.identity ?? null };
     }
   };
 }

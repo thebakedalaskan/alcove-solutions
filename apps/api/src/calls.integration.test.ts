@@ -3,13 +3,13 @@
  * object store, a real LiveKit server (docker-compose.yml) and main's fake Google and NEAR AI. Participants
  * are @livekit/rtc-node rooms joined with the tickets the API hands out, so media and data travel for real.
  */
-import { AlcoveApiError, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
 import { DisconnectReason } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { speechWav } from './testing/fake-near';
 import { startHarness, type Harness } from './testing/harness';
-import { connect, disposeLiveKit, type TestParticipant } from './testing/livekit';
+import { connect, deleteRoomDirectly, disposeLiveKit, signWebhook, type TestParticipant } from './testing/livekit';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
@@ -122,6 +122,98 @@ describe('host controls', () => {
     await host.lock(false);
     expect((await guestBrowserApi.calls.join(c, { mic: true, cam: false, name: 'Sam' })).ticket.role).toBe('guest');
     await host.leave();
+  });
+});
+
+/** Every progress step of a note until it's written. */
+async function written(api: AlcoveApi, noteId: string) { const steps = []; for await (const p of api.notes.progress(noteId)) steps.push(p); return steps; }
+const callState = async (callId: string) => String((await h.pool.query('SELECT state FROM calls WHERE call_id = $1', [callId])).rows[0]?.state);
+/** A webhook signed the way LiveKit signs them, posted to the API. */
+async function hook(event: string, roomName: string, identity?: string) {
+  const body = JSON.stringify({ event, room: { name: roomName }, ...(identity ? { participant: { identity } } : {}) });
+  return fetch(`${h.baseUrl}/hooks/livekit`, { method: 'POST', headers: { 'content-type': 'application/webhook+json', authorization: await signWebhook(h.deps.cfg, body) }, body });
+}
+
+describe('ending', () => {
+  it('ends the call for everyone when the organizer leaves, and runs the normal ending', async () => {
+    const org = await account();
+    const invitedEmail = unique('invited');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [invitedEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(host);
+    const invited = await account(invitedEmail);
+    const inv = await invited.api.calls.join(c, { mic: true, cam: false });
+    const invRoom = await joinRoom(inv);
+    await host.appendAudio(piece(audioBytes('ending'), 0, 0));
+    await host.transcribe(speech('We agreed to ship on Friday.', 0, 0));
+
+    const end = await host.leave();
+    expect(end?.pendingNoteId).toBeTruthy();
+    expect(await invRoom.disconnectReason()).toBe(DisconnectReason.ROOM_DELETED);
+    const noteId = end?.pendingNoteId ?? '';
+    expect((await written(org.api, noteId)).at(-1)?.ready).toBe(true);
+    expect((await invited.api.notes.get(noteId)).id).toBe(noteId);
+  });
+
+  it('keeps the call going when someone other than the organizer leaves', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(host);
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    const guestRoom = await joinRoom(guest);
+    await guestRoom.disconnect();
+    expect((await hook('participant_left', host.ticket.roomName, guest.ticket.identity)).status).toBe(200);
+    const { reconcile } = await import('./modules/calls');
+    await reconcile(h.deps, Date.now() + 60_000);
+    expect(await callState(host.ticket.callId)).toBe('live');
+    await host.leave();
+  });
+
+  it('doesn’t end the call when the organizer reconnects within the grace period', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const first = await org.api.calls.join(c, { mic: true, cam: false });
+    expect((await hook('participant_left', first.ticket.roomName, first.ticket.identity)).status).toBe(200);
+    const again = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(again);
+    const { reconcile } = await import('./modules/calls');
+    await reconcile(h.deps, Date.now() + 60_000);
+    expect(await callState(again.ticket.callId)).toBe('live');
+    await again.leave();
+  });
+
+  it('ends the call when the organizer’s connection is gone for good', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    expect((await hook('participant_left', host.ticket.roomName, host.ticket.identity)).status).toBe(200);
+    const { reconcile } = await import('./modules/calls');
+    expect(await reconcile(h.deps, Date.now() + 30_000)).toBeGreaterThanOrEqual(1);
+    expect(await callState(host.ticket.callId)).toBe('ended');
+    await guest.refresh();
+    expect(guest.getSnapshot().phase).toBe('ended');
+  });
+
+  it('rejects a forged webhook', async () => {
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({})).code, { mic: true, cam: false });
+    const body = JSON.stringify({ event: 'room_finished', room: { name: host.ticket.roomName } });
+    const r = await fetch(`${h.baseUrl}/hooks/livekit`, { method: 'POST', headers: { 'content-type': 'application/webhook+json', authorization: 'Bearer not-a-jwt' }, body });
+    expect(r.status).toBe(401);
+    expect(await callState(host.ticket.callId)).toBe('live');
+    await host.leave();
+  });
+
+  it('ends calls whose room is gone during upkeep', async () => {
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({})).code, { mic: true, cam: false });
+    await h.pool.query(`UPDATE calls SET started_at = now() - interval '2 minutes' WHERE call_id = $1`, [host.ticket.callId]);
+    await deleteRoomDirectly(h.deps.cfg, host.ticket.roomName);
+    const { maintain } = await import('./maintenance');
+    expect((await maintain(h.deps)).calls).toBeGreaterThanOrEqual(1);
+    expect(await callState(host.ticket.callId)).toBe('ended');
   });
 });
 

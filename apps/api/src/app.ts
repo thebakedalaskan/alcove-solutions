@@ -200,6 +200,12 @@ export function createApp(d: Deps) {
     }
   });
 
+  /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
+  app.post('/hooks/livekit', async (c) => {
+    await calls.onRoomEvent(d, await d.livekit.verifyWebhook(await c.req.text(), c.req.header('authorization')));
+    return c.json({ ok: true });
+  });
+
   /* ---------- group calls: by link (no account needed) and by call pass ---------- */
   const optionalOwner = async (c: Context): Promise<Owner | undefined> => {
     const s = await findSession(d, getCookie(c, COOKIE));
