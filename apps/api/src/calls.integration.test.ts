@@ -131,6 +131,26 @@ describe('host controls', () => {
     expect(code(await back.refresh().catch((e: unknown) => e))).toBe('conflict');
   });
 
+  it('never tells a guest anyone’s email address', async () => {
+    const org = await account();
+    const invitedEmail = unique('invited');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [invitedEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(host);
+    const invited = await (await account(invitedEmail)).api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(invited);
+    await host.sendChat('From the organizer');
+    await invited.sendChat('From someone invited');
+    await host.transcribe(speech('Hello everyone.', 0, 0));
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await joinRoom(guest);
+    const seen = await settle(guest, (s) => s.participants.length === 3 && s.chat.length === 2);
+    // Signed-in people see each other's addresses; a guest with only the link sees names.
+    expect(JSON.stringify(seen)).not.toContain('@');
+    expect(JSON.stringify(invited.getSnapshot())).toContain(org.session.user.email);
+    await host.leave();
+  });
+
   it('gives host powers only to the organizer’s current connection', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});

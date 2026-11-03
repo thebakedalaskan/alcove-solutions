@@ -96,11 +96,14 @@ export async function viewerOf(d: Deps, pass: CallPass, sessionOwnerId: string |
   return { pass, organizer, isOrganizer: theOrganizer && pass.identity === row.host_identity };
 }
 
-/** Photos are served only to signed-in browsers, so guests see everyone by name and portrait. */
-function forViewer(v: Viewer, p: Person): Person {
+/**
+ * Someone as this viewer may see them. A guest has only the link, so they see people by name and portrait
+ * under their call identity: no email address (nor an ID made from one), and no photo, which loads only
+ * for signed-in browsers anyway.
+ */
+function forViewer(v: Viewer, p: Person, identity: string): Person {
   if (v.pass.role !== 'guest') return p;
-  const { photoUrl, ...rest } = p;
-  return photoUrl === undefined ? p : rest;
+  return { id: identity, name: p.name, email: '', ...(p.portrait ? { portrait: p.portrait } : {}) };
 }
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
@@ -119,11 +122,11 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   return {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' : 'ended',
-    participants: here.map((p) => ({ id: p.identity, person: forViewer(v, personFor(joined.get(p.identity), p.identity, p.name, organizer)), isMe: p.identity === v.pass.identity, isOrganizer: p.identity === row.host_identity })),
+    participants: here.map((p) => ({ id: p.identity, person: forViewer(v, personFor(joined.get(p.identity), p.identity, p.name, organizer), p.identity), isMe: p.identity === v.pass.identity, isOrganizer: p.identity === row.host_identity })),
     locked: row.locked,
     notes: { status: s.notes.status, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
-    chat: s.chat.map((m) => ({ id: m.id, from: forViewer(v, personFor(joined.get(m.from), m.from, 'Someone', organizer)), isMe: m.from === v.pass.identity, text: m.text, at: m.at })),
-    transcript: transcripts.spoken(heard, { name: organizer.name, person: forViewer(v, organizer) }),
+    chat: s.chat.map((m) => ({ id: m.id, from: forViewer(v, personFor(joined.get(m.from), m.from, 'Someone', organizer), m.from), isMe: m.from === v.pass.identity, text: m.text, at: m.at })),
+    transcript: transcripts.spoken(heard, { name: organizer.name, person: forViewer(v, organizer, row.host_identity ?? 'organizer') }),
     notices: s.notices, isOrganizer: v.isOrganizer
   };
 }
