@@ -6,11 +6,14 @@ import { z } from 'zod';
 import type { Owner } from '../context';
 import { id128, sealJson, stateKey, toJson } from '../crypto';
 import { exec, tx, type Db } from '../db';
-import { ApiError } from '../errors';
+import { NotFoundError } from '../errors';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me } from './account';
 import { queueDelete, recordingObjects, segments } from './audio';
 import { MeetingManifest } from './meetings';
+import { log } from '../log';
+
+const nlog = log.child({ component: 'notes' });
 
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
@@ -50,6 +53,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   await exec(db, `INSERT INTO content_jobs (owner_id, job_id, revision_id, kind, state, attempt, job_ciphertext) VALUES ($1,$2,$3,'notes','awaiting_inference',0,$4)
                   ON CONFLICT (owner_id, revision_id, kind) DO NOTHING`,
     [o.ownerId, id128(), head.revisionId, sealJson(stateKey(o.root, o.ownerId, `job:${noteId}`), { v: 1, kind: 'job', ownerId: o.ownerId, noteId }, toJson(job))]);
+  nlog.info('notes job queued', { noteId, recordingId: next.recordingId, seconds: durationSeconds, keep: next.keep });
 }
 
 const PENDING_EXCERPT = 'Recording saved and encrypted. Notes will be written once the notes service is connected.';
@@ -94,7 +98,7 @@ export async function openActions(o: Owner): Promise<OpenAction[]> {
 }
 export async function setActionDone(o: Owner, noteId: string, actionId: string, done: boolean): Promise<void> {
   await tx(o.pool, (c) => updateNote(o, c, noteId, (n) => {
-    if (!n.actions.some((a) => a.id === actionId)) throw new ApiError('not-found', 'That action item doesn’t exist.');
+    if (!n.actions.some((a) => a.id === actionId)) throw new NotFoundError('That action item doesn’t exist.', { context: { noteId, actionId } });
     return { ...n, actions: n.actions.map((a) => (a.id === actionId ? { ...a, done } : a)) };
   }));
 }
@@ -119,4 +123,5 @@ export async function remove(o: Owner, id: string): Promise<void> {
     return objs.ids;
   });
   await queueDelete(o, objects);
+  nlog.info('note deleted', { noteId: id, recordingId, objects: objects.length });
 }

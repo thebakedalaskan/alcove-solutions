@@ -72,8 +72,9 @@ enroll an attacker's passkey. The last passkey can't be removed.
   purged after 24 hours and whenever the owner deletes content.
 - **Rate limits.** Passkey ceremony starts are rate-limited per client address. The pending-challenge map is
   bounded at 10,000 entries with a 60-second lifetime.
-- **No content in URLs.** Note search uses a POST body. Logs record only verification failure reasons, never
-  bodies, keys or secrets.
+- **No content in URLs.** Note search uses a POST body. Logs hold IDs, codes, states, counts and timings: never
+  content, bodies, keys, session IDs or call codes. The privacy test checks the debug-level log for
+  canaries and wire secrets ([Logging and errors](logging-and-errors.md)).
 
 ## What is still visible
 

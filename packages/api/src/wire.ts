@@ -93,3 +93,20 @@ export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq',
 /** Mutations carry an operation ID so a retried request never applies twice (docs: Network and API contract). */
 export const OPERATION_HEADER = 'x-alcove-operation';
 export const MAX_AUDIO_PIECE_BYTES = 2 * 1024 * 1024;
+
+/* ---------- logging ---------- */
+/** Every response carries this header; error bodies repeat it as `requestId`. Quote it when reporting a problem. */
+export const REQUEST_ID_HEADER = 'x-request-id';
+const ClientLogValueSchema = z.union([z.string().max(300), z.number(), z.boolean(), z.null()]);
+/**
+ * A warning or error the browser reports so it lands in the server log next to the request it came
+ * from. Codes, names, sizes and states only: never titles, names, chat, notes or keys.
+ */
+export const ClientLogEntrySchema = z.object({
+  level: z.enum(['debug', 'info', 'warn', 'error']),
+  msg: z.string().min(1).max(200),
+  at: z.string().max(40),
+  context: z.record(z.string().max(40), ClientLogValueSchema).refine((r) => Object.keys(r).length <= 30, 'Too many fields.').default({})
+});
+export type ClientLogEntry = z.infer<typeof ClientLogEntrySchema>;
+export const ClientLogBatchSchema = z.object({ entries: z.array(ClientLogEntrySchema).min(1).max(20) });

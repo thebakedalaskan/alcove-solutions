@@ -3,6 +3,9 @@
  * pre-join screen through the call, so permission is asked once and the preview carries over.
  */
 import type { AudioPiece } from '@alcove/api';
+import { log } from '~/lib/log';
+
+const mlog = log.child({ component: 'media' });
 
 export interface MediaSnapshot {
   camera: MediaStream | null;
@@ -49,7 +52,9 @@ export class LocalMedia {
       if (this.audio) this.audio.enabled = opts.mic;
       this.meter();
       this.rebuild();
+      mlog.info('devices started', { mic: Boolean(this.audio), cam: Boolean(this.video) });
     } catch (e) {
+      mlog.warn('could not start devices', { err: e, wantedCam: opts.cam });
       this.set({ error: explain(e, opts.cam ? 'camera and microphone' : 'microphone'), cam: false });
     }
   }
@@ -61,7 +66,7 @@ export class LocalMedia {
       this.video = s.getVideoTracks()[0] ?? null;
       this.set({ cam: !!this.video, error: null });
       this.rebuild();
-    } catch (e) { this.set({ cam: false, error: explain(e, 'camera') }); }
+    } catch (e) { mlog.warn('could not turn the camera on', { err: e }); this.set({ cam: false, error: explain(e, 'camera') }); }
   }
   /** Starts screen sharing. Resolves false if the user cancelled the picker. */
   async shareScreen(onEnded: () => void): Promise<string | false> {
@@ -71,8 +76,11 @@ export class LocalMedia {
       if (!track) return false;
       track.addEventListener('ended', () => { this.set({ screen: null }); onEnded(); });
       this.set({ screen: s });
+      mlog.info('screen sharing started', { surface: track.getSettings().displaySurface ?? null });
       return track.label || 'Your screen';
-    } catch {
+    } catch (e) {
+      // Cancelling the picker is a NotAllowedError; anything else is worth knowing about.
+      mlog.at(e instanceof DOMException && e.name === 'NotAllowedError' ? 'debug' : 'warn', 'screen sharing not started', { err: e });
       return false;
     }
   }
@@ -134,7 +142,9 @@ export class NotesRecorder {
       this.last = now;
       this.queue = this.queue.then(() => this.send(p));
     });
+    this.rec.addEventListener('error', (e) => mlog.error('notes recorder failed', { err: e.error }));
     this.rec.start(PIECE_MS);
+    mlog.info('notes recorder started', { mimeType, segment: this.segment });
   }
   pause() { if (this.rec?.state === 'recording') { this.rec.requestData(); this.rec.pause(); } }
   stop() { if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); this.rec = null; }
@@ -142,7 +152,8 @@ export class NotesRecorder {
   async flush(): Promise<void> { this.stop(); await new Promise((r) => setTimeout(r, 50)); await this.queue; }
   private async send(p: AudioPiece) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      try { await this.upload(p); return; } catch (e) {
+      try { await this.upload(p); mlog.debug('audio piece uploaded', { segment: p.segment, seq: p.seq, bytes: p.data.size, attempt }); return; } catch (e) {
+        mlog.at(attempt === 2 ? 'error' : 'warn', attempt === 2 ? 'audio piece lost after 3 attempts' : 'audio piece upload failed; retrying', { err: e, segment: p.segment, seq: p.seq, bytes: p.data.size, attempt });
         if (attempt === 2) this.onError(e instanceof Error ? e.message : 'A piece of the recording couldn’t be saved.');
         await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
       }

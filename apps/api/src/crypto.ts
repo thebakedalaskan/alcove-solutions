@@ -12,16 +12,16 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes } from '@noble/hashes/utils.js';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { ApiError } from './errors';
+import { IntegrityError, KeyError, LockedError, ValidationError } from './errors';
 
 export const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 export const fromUtf8 = (b: Uint8Array): string => new TextDecoder('utf-8', { fatal: true }).decode(b);
 export const b64u = (b: Uint8Array): string => Buffer.from(b).toString('base64url');
 /** Strict base64url decode: rejects padding, bad characters and non-canonical encodings. */
 export function unb64u(s: string, length?: number): Uint8Array {
-  if (!/^[A-Za-z0-9_-]*$/.test(s)) throw new ApiError('invalid', 'Malformed base64url value.');
+  if (!/^[A-Za-z0-9_-]*$/.test(s)) throw new ValidationError('Malformed base64url value.');
   const b = new Uint8Array(Buffer.from(s, 'base64url'));
-  if (b64u(b) !== s || (length !== undefined && b.length !== length)) throw new ApiError('invalid', 'Malformed base64url value.');
+  if (b64u(b) !== s || (length !== undefined && b.length !== length)) throw new ValidationError('Malformed base64url value.');
   return b;
 }
 export function random(n: number): Uint8Array<ArrayBuffer> {
@@ -44,7 +44,7 @@ export const equalBytes = (a: Uint8Array, b: Uint8Array): boolean => a.length ==
 const isZero = (k: Uint8Array): boolean => k.every((x) => x === 0);
 /** Never seal or open with a wiped key: a closed session must not silently produce public-key ciphertext. */
 function live(k: Uint8Array): Uint8Array {
-  if (k.length !== 32 || isZero(k)) throw new ApiError('locked', 'Your session ended. Unlock with your passkey to continue.');
+  if (k.length !== 32 || isZero(k)) throw new LockedError('Your session ended. Unlock with your passkey to continue.');
   return k;
 }
 
@@ -52,7 +52,7 @@ function live(k: Uint8Array): Uint8Array {
 export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 export function jcs(v: Json): string {
   if (v === null || typeof v === 'boolean' || typeof v === 'string') return JSON.stringify(v);
-  if (typeof v === 'number') { if (!Number.isFinite(v)) throw new ApiError('invalid', 'Non-finite number.'); return JSON.stringify(v); }
+  if (typeof v === 'number') { if (!Number.isFinite(v)) throw new ValidationError('Non-finite number.'); return JSON.stringify(v); }
   if (Array.isArray(v)) return `[${v.map(jcs).join(',')}]`;
   return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${jcs(v[k] ?? null)}`).join(',')}}`;
 }
@@ -85,12 +85,12 @@ export function sealKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, k
 }
 export function openKey(wrapKey: Uint8Array, ownerId: string, scopeId: string, envelope: Uint8Array): Uint8Array {
   const e = EnvelopeSchema.parse(JSON.parse(fromUtf8(envelope)));
-  if (e.ownerId !== ownerId || e.scopeId !== scopeId) throw new ApiError('forbidden', 'Key envelope belongs to another scope.');
+  if (e.ownerId !== ownerId || e.scopeId !== scopeId) throw new IntegrityError('Key envelope belongs to another scope.', { context: { scopeId } });
   const header = { v: 1, ownerId, scopeId, keyVersion: '1' };
   try {
     return xchacha20poly1305(live(wrapKey), unb64u(e.nonce, 24), utf8(jcs(header))).decrypt(unb64u(e.ciphertext));
-  } catch {
-    throw new ApiError('key-unavailable', 'This key can’t open that data.');
+  } catch (err) {
+    throw new KeyError('This key can’t open that data.', { cause: err, context: { scopeId } });
   }
 }
 
@@ -106,11 +106,11 @@ export function sealRecord(key: Uint8Array, header: RecordHeader, plaintext: Uin
 /** Opens a record and checks that its header is exactly the one expected. */
 export function openRecord(key: Uint8Array, expected: RecordHeader, record: Uint8Array): Uint8Array {
   const r = RecordSchema.parse(JSON.parse(fromUtf8(record)));
-  if (jcs(toJson(r.header)) !== jcs(expected)) throw new ApiError('forbidden', 'Record header doesn’t match its location.');
+  if (jcs(toJson(r.header)) !== jcs(expected)) throw new IntegrityError('Record header doesn’t match its location.', { context: { kind: expected.kind } });
   try {
     return xchacha20poly1305(live(key), unb64u(r.nonce, 24), utf8(jcs(expected))).decrypt(unb64u(r.ciphertext));
-  } catch {
-    throw new ApiError('key-unavailable', 'A record failed its integrity check.');
+  } catch (err) {
+    throw new IntegrityError('A record failed its integrity check.', { cause: err, context: { kind: expected.kind } });
   }
 }
 export const sealJson = (key: Uint8Array, header: RecordHeader, value: Json): Uint8Array => sealRecord(key, header, utf8(jcs(value)));

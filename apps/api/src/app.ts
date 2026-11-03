@@ -1,7 +1,7 @@
 import {
   AddPasskeyFinishBodySchema, AUDIO_HEADERS, CallActionSchema, MAX_AUDIO_PIECE_BYTES, MeetingInputSchema, MeetingNotesSettingSchema, NoteKindSchema,
   NotesAudienceSchema, NotesModeSchema, OPERATION_HEADER, PreferencesSchema, RecordingActionSchema, RegisterFinishBodySchema, RegisterStartBodySchema,
-  StepUpFinishBodySchema, UnlockFinishBodySchema, isAlcoveErrorCode
+  StepUpFinishBodySchema, UnlockFinishBodySchema, isAlcoveErrorCode, ClientLogBatchSchema, REQUEST_ID_HEADER
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -9,9 +9,10 @@ import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
 import { z, ZodError } from 'zod';
 import type { Deps, Owner } from './context';
-import { equalBytes, fromUtf8, mac, operationCommitKey, operationResultKey, openJson, sealJson, utf8 } from './crypto';
+import { b64u, equalBytes, fromUtf8, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, utf8 } from './crypto';
 import { bytea, exec, maybeOne } from './db';
-import { ApiError } from './errors';
+import { AuthError, ConflictError, ForbiddenError, LockedError, NotFoundError, UnavailableError, ValidationError, toAppError, type AppError } from './errors';
+import { addLogContext, log, withLogContext } from './log';
 import { inference } from './inference';
 import { ABSOLUTE_MS, cookieName } from './sessions';
 import * as account from './modules/account';
@@ -23,7 +24,12 @@ import * as notes from './modules/notes';
 import * as recordings from './modules/recordings';
 import * as stats from './modules/stats';
 
-type Env = { Variables: { owner: Owner } };
+type Env = { Variables: { owner: Owner; requestId: string } };
+const rlog = log.child({ component: 'http' });
+const clog = log.child({ component: 'client', source: 'browser' });
+/** Call codes are join tokens: keep them out of logs. Every other path segment is a random ID. */
+const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code');
+const QUIET = new Set(['/healthz']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /** POSTs that read rather than change state, so they don't need a stored receipt. */
 const NO_RECEIPT = new Set(['/v1/notes/search']);
@@ -32,12 +38,12 @@ const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 /** A small fixed-window limiter for unauthenticated ceremony starts, keyed by client address. */
 function rateLimit(max: number, windowMs: number) {
   const hits = new Map<string, { n: number; until: number }>();
-  return (c: Context) => {
+  return (c: Context, what = 'request') => {
     const key = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'direct';
     const now = Date.now();
     const h = hits.get(key);
     if (!h || h.until < now) { hits.set(key, { n: 1, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
-    if (++h.n > max) throw new ApiError('unavailable', 'Too many attempts. Wait a minute and try again.');
+    if (++h.n > max) throw new UnavailableError('Too many attempts. Wait a minute and try again.', { context: { limit: what, max, windowMs } });
   };
 }
 const StoredResult = z.object({ status: z.number(), body: z.string() });
@@ -48,33 +54,66 @@ export function createApp(d: Deps) {
   const COOKIE = cookieName(secure);
   const startSession = (c: Context, o: Owner) => setCookie(c, COOKIE, o.session.id, { httpOnly: true, sameSite: 'Strict', path: '/', secure, maxAge: ABSOLUTE_MS / 1000 });
   const limiter = rateLimit(30, 60_000);
-  const body = async <S extends z.ZodType>(c: Context, schema: S): Promise<z.infer<S>> => schema.parse(await c.req.json().catch(() => { throw new ApiError('invalid', 'Expected a JSON body.'); }));
+  const telemetryLimiter = rateLimit(60, 60_000);
+
+  /* Request context and access log. Runs first, so every later log line carries the request ID. */
+  app.use('*', async (c, next) => {
+    const incoming = c.req.header(REQUEST_ID_HEADER);
+    const requestId = incoming && /^[A-Za-z0-9_-]{8,64}$/.test(incoming) ? incoming : b64u(random(12));
+    c.set('requestId', requestId);
+    const path = safePath(c.req.path);
+    const t0 = performance.now();
+    await withLogContext({ requestId, method: c.req.method, path }, async () => {
+      rlog.debug('request started', { bytes: Number(c.req.header('content-length') ?? 0) || undefined });
+      await next();
+      c.res.headers.set(REQUEST_ID_HEADER, requestId);
+      const ms = Math.round(performance.now() - t0);
+      const status = c.res.status;
+      const line = { status, ms };
+      if (QUIET.has(c.req.path) && status < 400) rlog.debug('request', line);
+      else if (status >= 500) rlog.error('request failed', line);
+      else if (status >= 400) rlog.info('request refused', line);
+      else rlog.info('request', line);
+    });
+  });
+  const body = async <S extends z.ZodType>(c: Context, schema: S): Promise<z.infer<S>> => schema.parse(await c.req.json().catch(() => { throw new ValidationError('Expected a JSON body.'); }));
 
   // Only the web app's own origin may call the API with credentials (matters when they're on different subdomains).
-  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, allowHeaders: ['content-type', OPERATION_HEADER, ...Object.values(AUDIO_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
+  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, ...Object.values(AUDIO_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
   app.use('/v1/*', async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
     const origin = c.req.header('origin');
-    if (origin !== d.cfg.WEB_ORIGIN) throw new ApiError('forbidden', 'Requests must come from the Alcove app.');
+    if (origin !== d.cfg.WEB_ORIGIN) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/')) throw new ApiError('invalid', 'Unsupported content type.');
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/')) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 
+  /* One place turns every failure into { code, message, requestId } and one log line at the error's level. */
   app.onError((e, c) => {
-    if (e instanceof ApiError) return c.json({ code: e.code, message: e.message }, e.status);
-    if (e instanceof ZodError) {
-      const issues = e.issues.map((i) => `${i.path.join('.')}: ${i.code}`);
-      // Field names and issue codes only, never values: enough to see why a passkey manager's response was refused.
-      if (c.req.path.startsWith('/v1/auth') || c.req.path.startsWith('/v1/passkeys')) console.warn(`rejected ${c.req.method} ${c.req.path}:`, issues.join('; '));
-      return c.json({ code: 'invalid', message: 'Some of that input isn’t valid.', issues }, 400);
-    }
-    console.error(e);
-    return c.json({ code: 'unknown', message: 'Something went wrong on our side.' }, 500);
+    const requestId = c.get('requestId');
+    // Field names and issue codes only, never values: enough to see why a passkey manager's response was refused.
+    const issues = e instanceof ZodError ? e.issues.map((i) => `${i.path.join('.')}: ${i.code}`) : undefined;
+    const ceremony = c.req.path.startsWith('/v1/auth') || c.req.path.startsWith('/v1/passkeys');
+    const err: AppError = e instanceof ZodError
+      ? new ValidationError('Some of that input isn’t valid.', { cause: e, context: { issues }, level: ceremony ? 'warn' : 'info' })
+      : toAppError(e);
+    // Stacks and cause chains for anything unexpected; a one-liner for ordinary refusals.
+    const withStack = err.level !== 'info' && !(e instanceof ZodError);
+    rlog.at(err.level, err.message, { errorClass: err.name, code: err.code, status: err.status, ...err.context, ...(withStack ? { err } : {}) });
+    return c.json({ code: err.code, message: err.message, requestId, ...(issues ? { issues } : {}) }, err.status);
+  });
+
+  /* The browser's own warnings and errors, so one request ID tells the whole story. Public and rate limited. */
+  app.post('/v1/telemetry', async (c) => {
+    telemetryLimiter(c, 'telemetry');
+    const { entries } = await body(c, ClientLogBatchSchema);
+    for (const en of entries) clog.at(en.level, en.msg, { ...en.context, clientAt: en.at });
+    return c.json({ received: entries.length });
   });
 
   app.get('/healthz', async (c) => {
@@ -106,9 +145,10 @@ export function createApp(d: Deps) {
     const s = d.sessions.touch(cookie);
     if (!s) {
       if (cookie) deleteCookie(c, COOKIE, { path: '/' });
-      throw cookie ? new ApiError('locked', 'Your session ended. Unlock with your passkey to continue.') : new ApiError('unauthenticated', 'Unlock Alcove with your passkey first.');
+      throw cookie ? new LockedError('Your session ended. Unlock with your passkey to continue.') : new AuthError('Unlock Alcove with your passkey first.');
     }
     c.set('owner', account.ownerOf(d, s));
+    addLogContext({ ownerId: s.ownerId });
     await next();
   });
 
@@ -116,14 +156,14 @@ export function createApp(d: Deps) {
   app.use('/v1/*', async (c, next) => {
     const opId = c.req.header(OPERATION_HEADER);
     if (!opId || !MUTATING.has(c.req.method) || NO_RECEIPT.has(c.req.path)) return next();
-    if (!/^[A-Za-z0-9_-]{22}$/.test(opId)) throw new ApiError('invalid', 'Malformed operation ID.');
+    if (!/^[A-Za-z0-9_-]{22}$/.test(opId)) throw new ValidationError('Malformed operation ID.');
     const o = c.get('owner');
     const reqBytes = new Uint8Array(await c.req.raw.clone().arrayBuffer());
     const commitment = mac(operationCommitKey(o.root, o.ownerId), new Uint8Array([...utf8(`${c.req.method} ${c.req.path}\n`), ...reqBytes]));
     const hdr = { v: 1 as const, kind: 'operation-result', ownerId: o.ownerId, operationId: opId };
     const prior = await maybeOne(d.pool, z.object({ request_commitment: bytea, result_ciphertext: bytea }), 'SELECT request_commitment, result_ciphertext FROM operations WHERE owner_id = $1 AND operation_id = $2', [o.ownerId, opId]);
     if (prior) {
-      if (!equalBytes(prior.request_commitment, commitment)) throw new ApiError('conflict', 'That operation ID was already used for a different request.');
+      if (!equalBytes(prior.request_commitment, commitment)) throw new ConflictError('That operation ID was already used for a different request.');
       const r = openJson(operationResultKey(o.root, o.ownerId), hdr, prior.result_ciphertext, StoredResult);
       return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json' } });
     }
@@ -208,7 +248,7 @@ export function createApp(d: Deps) {
     const segment = z.coerce.number().int().min(0).parse(c.req.param('segment'));
     const n = await notes.get(o, c.req.param('id'));
     const seg = n.audio.find((a) => a.index === segment);
-    if (!seg) throw new ApiError('not-found', 'No audio in that part of the recording.');
+    if (!seg) throw new NotFoundError('No audio in that part of the recording.');
     const recordingId = await notes.recordingOf(o, n.id);
     const mime = seg.mimeType.split(';')[0] ?? '';
     c.header('content-type', AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream');
@@ -220,14 +260,14 @@ export function createApp(d: Deps) {
     await notes.setActionDone(c.get('owner'), c.req.param('id'), c.req.param('actionId'), (await body(c, z.object({ done: z.boolean() }))).done);
     return c.json({ ok: true });
   });
-  app.post('/v1/notes/:id/ask', () => { throw new ApiError('unavailable', 'Asking about notes needs the notes service, which isn’t connected yet.'); });
+  app.post('/v1/notes/:id/ask', () => { throw new UnavailableError('Asking about notes needs the notes service, which isn’t connected yet.'); });
   app.delete('/v1/notes/:id', async (c) => { await notes.remove(c.get('owner'), c.req.param('id')); return c.json({ deleted: true }); });
 
   /* credits and stats */
   app.get('/v1/credits', async (c) => c.json(await billing.balance(d, c.get('owner').ownerId)));
   app.get('/v1/credits/history', async (c) => c.json(await billing.history(d, c.get('owner').ownerId)));
   app.get('/v1/credits/packs', (c) => c.json(billing.PACKS));
-  app.post('/v1/credits/purchases', () => { throw new ApiError('unavailable', 'Buying credits needs payments, which aren’t connected yet.'); });
+  app.post('/v1/credits/purchases', () => { throw new UnavailableError('Buying credits needs payments, which aren’t connected yet.'); });
   app.get('/v1/stats/week', async (c) => c.json(await stats.week(c.get('owner'))));
 
   return app;
@@ -237,9 +277,9 @@ export function createApp(d: Deps) {
 async function piece(c: Context): Promise<audioMod.Piece> {
   const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
   const mimeType = c.req.header('content-type') ?? '';
-  if (!/^audio\/(webm|mp4|ogg)/.test(mimeType)) throw new ApiError('invalid', 'Audio must be WebM, MP4 or Ogg.');
+  if (!/^audio\/(webm|mp4|ogg)/.test(mimeType)) throw new ValidationError('Audio must be WebM, MP4 or Ogg.');
   const bytes = new Uint8Array(await c.req.arrayBuffer());
-  if (!bytes.length || bytes.length > MAX_AUDIO_PIECE_BYTES) throw new ApiError('invalid', 'That piece of audio is empty or too large.');
+  if (!bytes.length || bytes.length > MAX_AUDIO_PIECE_BYTES) throw new ValidationError('That piece of audio is empty or too large.');
   return { segment: num(AUDIO_HEADERS.segment), seq: num(AUDIO_HEADERS.seq), durationMs: num(AUDIO_HEADERS.duration), mimeType, bytes };
 }
 export { fromUtf8, isAlcoveErrorCode };

@@ -1,7 +1,7 @@
 import type { AssertionCredential, RegistrationCredential } from '@alcove/api';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { id128 } from './crypto';
-import { ApiError } from './errors';
+import { UnavailableError, ValidationError } from './errors';
 
 const TTL_MS = 60_000;
 /** Unauthenticated callers can create challenges, so the map is bounded. */
@@ -17,7 +17,7 @@ export class Challenges {
   private map = new Map<string, Pending & { expires: number }>();
   issue(p: Pending): string {
     for (const [k, v] of this.map) if (v.expires < Date.now()) this.map.delete(k);
-    if (this.map.size >= MAX_PENDING) throw new ApiError('unavailable', 'Too many sign-in attempts right now. Try again in a minute.');
+    if (this.map.size >= MAX_PENDING) throw new UnavailableError('Too many sign-in attempts right now. Try again in a minute.');
     const id = id128();
     this.map.set(id, { ...p, expires: Date.now() + TTL_MS });
     return id;
@@ -25,8 +25,8 @@ export class Challenges {
   take<K extends Pending['kind']>(id: string, kind: K): Extract<Pending, { kind: K }> {
     const p = this.map.get(id);
     this.map.delete(id);
-    if (!p || p.expires < Date.now()) throw new ApiError('invalid', 'That passkey prompt expired. Try again.');
-    if (!isKind(p, kind)) throw new ApiError('invalid', 'That passkey prompt was for something else.');
+    if (!p || p.expires < Date.now()) throw new ValidationError('That passkey prompt expired. Try again.');
+    if (!isKind(p, kind)) throw new ValidationError('That passkey prompt was for something else.');
     return p;
   }
 }

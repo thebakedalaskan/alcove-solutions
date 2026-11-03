@@ -47,14 +47,17 @@ owner context explicitly; billing never receives owner keys.
 
 ## Request lifecycle
 
-1. The browser sends `GET/POST/PATCH/DELETE /v1/...` with the HttpOnly session cookie.
+1. The browser sends `GET/POST/PATCH/DELETE /v1/...` with the HttpOnly session cookie. The first
+   middleware assigns a request ID (or keeps a well-formed `x-request-id`), returns it as a header, and
+   binds it to every log line for the request ([Logging and errors](logging-and-errors.md)).
 2. Auth middleware resolves the in-memory session. No session: `401 unauthenticated`. Expired session:
    `423 locked`, and the app returns to the unlock screen.
 3. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
    commitment of method, path and body plus the encrypted response; a retry returns the same response,
    and a different request under the same ID is `409 conflict`.
 4. The handler reads and writes through the vault (encrypted manifests), the audio pipeline (encrypted
-   objects) or Kservice-sealed billing. Errors are `{ code, message }` with stable codes.
+   objects) or Kservice-sealed billing. Failures are `AppError` subclasses; `onError` logs each once at
+   its level and answers `{ code, message, requestId }` with a stable code.
 
 ## Fixed limits in this build
 

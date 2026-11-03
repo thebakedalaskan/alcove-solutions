@@ -8,7 +8,11 @@ import { z } from 'zod';
 import type { Owner } from '../context';
 import { equalBytes, id128, openKey, openRecord, random, sealKey, sealRecord, sha, type RecordHeader } from '../crypto';
 import { bytea, exec, maybeOne, rows, type Db } from '../db';
-import { ApiError, conflict } from '../errors';
+import { errorMessage } from '@alcove/api';
+import { InternalError, IntegrityError, NotFoundError, conflict } from '../errors';
+import { log } from '../log';
+
+const alog = log.child({ component: 'audio' });
 
 const scope = (recordingId: string) => `recording:${recordingId}`;
 const header = (o: Owner, recordingId: string, segment: number, seq: number, objectId: string): RecordHeader =>
@@ -30,7 +34,7 @@ export async function setRecordingState(o: Owner, db: Db, recordingId: string, s
 const RecRow = z.object({ key_envelope: bytea, state: z.string() });
 async function krecOf(o: Owner, recordingId: string): Promise<{ krec: Uint8Array; state: string }> {
   const r = await maybeOne(o.pool, RecRow, 'SELECT key_envelope, state FROM recordings WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
-  if (!r) throw new ApiError('not-found', 'That recording doesn’t exist.');
+  if (!r) throw new NotFoundError('That recording doesn’t exist.');
   return { krec: openKey(o.wrapKey, o.ownerId, scope(recordingId), r.key_envelope), state: r.state };
 }
 
@@ -39,22 +43,31 @@ export interface Piece { segment: number; seq: number; durationMs: number; mimeT
 /** Encrypts, stores and verifies one piece. Re-sending the same slot is a no-op, so retries are safe. */
 export async function appendPiece(o: Owner, recordingId: string, p: Piece): Promise<void> {
   const { krec, state } = await krecOf(o, recordingId);
-  if (state !== 'recording') { krec.fill(0); throw conflict(state === 'paused' ? 'Recording is paused.' : 'This recording has already stopped.'); }
+  if (state !== 'recording') { krec.fill(0); throw conflict(state === 'paused' ? 'Recording is paused.' : 'This recording has already stopped.', { recordingId, state, segment: p.segment, seq: p.seq }); }
   const exists = await maybeOne(o.pool, z.object({ seq: z.number() }), 'SELECT seq FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 AND seq = $4', [o.ownerId, recordingId, p.segment, p.seq]);
-  if (exists) { krec.fill(0); return; }
+  if (exists) { krec.fill(0); alog.debug('audio piece already stored', { recordingId, segment: p.segment, seq: p.seq }); return; }
   const objectId = id128();
   const ct = sealRecord(krec, header(o, recordingId, p.segment, p.seq, objectId), p.bytes);
   krec.fill(0);
   await o.objects.put(objectId, ct);
   const back = await o.objects.get(objectId);
   const digest = sha(ct);
-  if (back.length !== ct.length || !equalBytes(sha(back), digest)) { await queueDelete(o, [objectId]); throw new ApiError('unknown', 'The encrypted audio didn’t store correctly. It will be retried.'); }
+  if (back.length !== ct.length || !equalBytes(sha(back), digest)) {
+    await queueDelete(o, [objectId]);
+    throw new InternalError('The encrypted audio didn’t store correctly. It will be retried.', { context: { recordingId, objectId, segment: p.segment, seq: p.seq, wrote: ct.length, readBack: back.length } });
+  }
   try {
     const inserted = await exec(o.pool, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
                                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, objectId, digest, ct.length, p.durationMs, p.mimeType]);
-    if (inserted === 1) await exec(o.pool, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
-    else await queueDelete(o, [objectId]); // a concurrent retry won the slot
+    if (inserted === 1) {
+      await exec(o.pool, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
+      alog.debug('audio piece stored', { recordingId, segment: p.segment, seq: p.seq, bytes: ct.length, durationMs: p.durationMs });
+    } else {
+      alog.info('audio piece raced a retry; dropping the duplicate', { recordingId, segment: p.segment, seq: p.seq });
+      await queueDelete(o, [objectId]);
+    }
   } catch (e) {
+    alog.warn('audio piece not recorded; deleting its object', { recordingId, objectId, segment: p.segment, seq: p.seq, err: e });
     await queueDelete(o, [objectId]);
     throw e;
   }
@@ -64,7 +77,8 @@ export async function appendPiece(o: Owner, recordingId: string, p: Piece): Prom
 export async function queueDelete(o: Pick<Owner, 'pool' | 'objects' | 'ownerId'>, objectIds: string[]): Promise<void> {
   await Promise.all(objectIds.map(async (id) => {
     try { await o.objects.delete(id); } catch (e) {
-      await exec(o.pool, 'INSERT INTO object_gc (object_id, owner_id, last_error) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [id, o.ownerId, e instanceof Error ? e.message.slice(0, 200) : 'delete failed']);
+      alog.warn('object delete failed; queued for retry', { objectId: id, err: e });
+      await exec(o.pool, 'INSERT INTO object_gc (object_id, owner_id, last_error) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [id, o.ownerId, errorMessage(e).slice(0, 200)]);
     }
   }));
 }
@@ -85,12 +99,12 @@ export async function progress(o: Owner, recordingId: string | null, segment: nu
 export async function* stream(o: Owner, recordingId: string, segment: number): AsyncGenerator<Uint8Array> {
   const pieces = await rows(o.pool, z.object({ seq: z.number(), object_id: z.string(), cipher_sha256: bytea }),
     'SELECT seq, object_id, cipher_sha256 FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 ORDER BY seq', [o.ownerId, recordingId, segment]);
-  if (!pieces.length) throw new ApiError('not-found', 'No audio in that part of the recording.');
+  if (!pieces.length) throw new NotFoundError('No audio in that part of the recording.');
   const { krec } = await krecOf(o, recordingId);
   try {
     for (const p of pieces) {
       const ct = await o.objects.get(p.object_id);
-      if (!equalBytes(sha(ct), p.cipher_sha256)) throw new ApiError('key-unavailable', 'A piece of this recording failed its integrity check.');
+      if (!equalBytes(sha(ct), p.cipher_sha256)) throw new IntegrityError('A piece of this recording failed its integrity check.', { context: { recordingId, segment, seq: p.seq, objectId: p.object_id } });
       yield openRecord(krec, header(o, recordingId, segment, p.seq, p.object_id), ct);
     }
   } finally {

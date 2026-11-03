@@ -13,7 +13,11 @@ const EnvSchema = z.object({
   RP_ID: z.string(),
   KSERVICE: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KSERVICE must be 32 bytes, base64url'),
   NEAR_AI_API_KEY: z.string().optional(),
-  NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1')
+  NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),
+  /** debug | info | warn | error | silent. */
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
+  /** json for log collectors (Cloud Run), pretty for a terminal. */
+  LOG_FORMAT: z.enum(['json', 'pretty']).default('pretty')
 });
 export type Config = z.infer<typeof EnvSchema>;
 

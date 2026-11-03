@@ -91,6 +91,21 @@ Read `docs/engineering/privacy-keys-and-sessions.md` before touching anything th
 - Deleting must be physical: rows, receipts and objects (queue failed object deletes in `object_gc`).
 - Secrets never go in code or committed files. Local values live in `.env` (gitignored).
 
+## Logging and errors (enforced)
+
+Read `docs/engineering/logging-and-errors.md`.
+
+- No `console.*` anywhere except the browser logger's sink; `scripts/check-types.mjs` fails the build.
+  Server code uses `log` from `apps/api/src/log.ts`, app code `log` from `apps/web/src/lib/log.ts`.
+- Make a child logger per module (`log.child({ component: 'calls' })`) and log events with structured
+  context: IDs, codes, states, counts, sizes, durations. Never content, request bodies, keys or session IDs.
+- Throw the most specific `AppError` subclass from `apps/api/src/errors.ts` with `context` (and `cause`
+  when wrapping). Don't throw bare `Error`s from request paths; don't catch and swallow without a log line.
+- Pick the level by meaning: debug for traces, info for events and ordinary refusals, warn for handled
+  problems, error when we failed.
+- When you add a flow, make sure a failure in it can be found by request ID, and keep the privacy test's
+  log check passing.
+
 ## Design system
 
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it

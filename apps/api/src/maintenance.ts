@@ -8,6 +8,10 @@
 import { z } from 'zod';
 import type { Deps } from './context';
 import { exec, rows } from './db';
+import { errorMessage } from '@alcove/api';
+import { log } from './log';
+
+const mlog = log.child({ component: 'maintenance' });
 
 const ORPHAN_AGE_MS = 24 * 60 * 60_000;
 
@@ -22,7 +26,8 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
       await exec(d.pool, 'DELETE FROM object_gc WHERE object_id = $1', [g.object_id]);
       retried++;
     } catch (e) {
-      await exec(d.pool, 'UPDATE object_gc SET attempts = attempts + 1, last_error = $2 WHERE object_id = $1', [g.object_id, e instanceof Error ? e.message.slice(0, 200) : 'delete failed']);
+      mlog.warn('object delete retry failed', { objectId: g.object_id, err: e });
+      await exec(d.pool, 'UPDATE object_gc SET attempts = attempts + 1, last_error = $2 WHERE object_id = $1', [g.object_id, errorMessage(e).slice(0, 200)]);
     }
   }
 
@@ -32,7 +37,10 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
     if (obj.lastModified.getTime() > cutoff) continue;
     const ref = await rows(d.pool, z.object({ n: z.number() }), `SELECT 1 AS n FROM recording_pieces WHERE object_id = $1
       UNION ALL SELECT 1 FROM object_refs WHERE object_id = $1 UNION ALL SELECT 1 FROM upload_parts WHERE object_id = $1 LIMIT 1`, [obj.id]);
-    if (!ref.length) { await d.objects.delete(obj.id).catch(() => undefined); orphans++; }
+    if (!ref.length) {
+      mlog.info('deleting orphaned object', { objectId: obj.id, ageH: Math.round((Date.now() - obj.lastModified.getTime()) / 3_600_000) });
+      await d.objects.delete(obj.id).then(() => { orphans++; }, (e: unknown) => mlog.warn('orphan delete failed', { objectId: obj.id, err: e }));
+    }
   }
   return { sessions, receipts, retried, orphans };
 }

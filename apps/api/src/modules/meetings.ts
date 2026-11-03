@@ -6,9 +6,12 @@ import { z } from 'zod';
 import type { Owner } from '../context';
 import { b64u, random } from '../crypto';
 import { exec, tx, type Db } from '../db';
-import { ApiError, notFound } from '../errors';
+import { ConflictError, ValidationError, notFound } from '../errors';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
+import { log } from '../log';
+
+const mlog = log.child({ component: 'meetings' });
 
 export const MeetingManifest = z.object({
   title: z.string(), startsAt: z.string(), endsAt: z.string(),
@@ -57,7 +60,7 @@ export async function byCode(o: Owner, code: string): Promise<Meeting | null> {
 
 function validTimes(startsAt: string, minutes: number) {
   const start = new Date(startsAt);
-  if (Number.isNaN(start.getTime()) || minutes < 5 || minutes > 600) throw new ApiError('invalid', 'Pick a valid start time and length.');
+  if (Number.isNaN(start.getTime()) || minutes < 5 || minutes > 600) throw new ValidationError('Pick a valid start time and length.', { context: { validStart: !Number.isNaN(start.getTime()), minutes } });
   return { startsAt: start.toISOString(), endsAt: new Date(start.getTime() + minutes * 60_000).toISOString() };
 }
 export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
@@ -67,6 +70,7 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
     notes: input.notes, audience: input.audience, code: makeCode(), status: 'scheduled'
   };
   const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes });
   return get(o, itemId);
 }
 
@@ -93,10 +97,11 @@ export async function cancel(o: Owner, id: string): Promise<void> {
   await tx(o.pool, async (c) => {
     await lockItem(o, c, id);
     const m = await getItem(o, c, 'meeting', id, MeetingManifest, 'That meeting');
-    if (m.manifest.status === 'live') throw new ApiError('conflict', 'That call is happening now. Leave it first.');
+    if (m.manifest.status === 'live') throw new ConflictError('That call is happening now. Leave it first.', { context: { meetingId: id } });
     await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
     await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
   });
+  mlog.info('meeting cancelled', { meetingId: id });
 }
 
 /** A call that starts now: used by "Start a call now" and "Get a link to share". */
@@ -109,7 +114,8 @@ export async function startNow(o: Owner, notes?: MeetingNotesSetting): Promise<{
     notes: notes ?? (prefs.notesDefault === 'always' ? prefs.keep : prefs.notesDefault === 'never' ? 'off' : 'ask'),
     audience: 'everyone', code: makeCode(), status: 'scheduled'
   };
-  await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  mlog.info('instant call created', { meetingId: itemId, notes: manifest.notes });
   return { code: manifest.code };
 }
 export async function createLink(o: Owner, notes: MeetingNotesSetting): Promise<CallLink> {

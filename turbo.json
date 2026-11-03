@@ -35,7 +35,10 @@
     "WEB_ORIGIN",
     "RP_ID",
     "KSERVICE",
-    "NEAR_AI_BASE_URL"
+    "NEAR_AI_BASE_URL",
+    "LOG_LEVEL",
+    "LOG_FORMAT",
+    "TEST_LOGS"
   ],
   "globalPassThroughEnv": [
     "NEAR_AI_API_KEY"

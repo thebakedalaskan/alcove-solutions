@@ -11,6 +11,7 @@ import { Notices, ReadyCard } from '~/features/call/Overlays';
 import { ChatPanel, NotesPanel, PeoplePanel, type Panel } from '~/features/call/SidePanel';
 import { Stage } from '~/features/call/Stage';
 import { selfIn, sessions, useLive } from '~/lib/live';
+import { log } from '~/lib/log';
 
 export const Route = createFileRoute('/call/$code')({ component: Call });
 
@@ -84,6 +85,7 @@ function InCall({ session, media }: { session: CallSession; media: LocalMedia })
       if (r.pendingNoteId) await navigate({ to: '/writing/$noteId', params: { noteId: r.pendingNoteId }, replace: true });
       else await navigate({ to: '/ended', search: { title: state.title, minutes: Math.max(1, Math.round(r.duration / 60)), code: state.code }, replace: true });
     } catch (e) {
+      log.error('leaving the call failed', { err: e });
       toast(e instanceof Error ? e.message : 'Couldn’t leave the call cleanly. Try again.', 'x');
       setLeaving(false);
     }

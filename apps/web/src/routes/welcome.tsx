@@ -5,6 +5,7 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
 import { api } from '~/lib/api';
+import { log } from '~/lib/log';
 import { q, qk } from '~/lib/queries';
 
 export const Route = createFileRoute('/welcome')({
@@ -37,6 +38,8 @@ function Welcome() {
       await navigate({ to: '/home' });
     } catch (e) {
       setBusy(false);
+      // API failures are logged by the client with their request ID; this adds the passkey prompt's own errors (cancelled, not allowed, no PRF).
+      log.warn(mode === 'unlock' ? 'unlock failed' : 'account creation failed', { err: e, mode });
       if (errorCode(e) === 'unauthenticated' && mode === 'unlock') { setUnknownPasskey(errorMessage(e)); return; }
       toast(errorMessage(e), 'x');
     }

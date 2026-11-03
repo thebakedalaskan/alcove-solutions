@@ -3,12 +3,15 @@ import { z } from 'zod';
 import type { Owner } from '../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../crypto';
 import { bytea, exec, maybeOne, timestamp, tx, type Db } from '../db';
-import { ApiError, notFound } from '../errors';
+import { ConflictError, NotFoundError, notFound } from '../errors';
 import { me } from './account';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
 import { MeetingManifest, findByCode, updateManifest } from './meetings';
 import { getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording } from './notes';
+import { log } from '../log';
+
+const clog = log.child({ component: 'calls' });
 
 const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']) });
 const Stored = z.object({
@@ -62,9 +65,9 @@ async function startNotes(o: Owner, db: Db, s: Stored, meetingId: string, title:
 export async function join(o: Owner, code: string, opts: { mic: boolean; cam: boolean; notes?: NotesMode | undefined; audience?: NotesAudience | undefined }): Promise<CallState> {
   const callId = await tx(o.pool, async (c) => {
     const meeting = await findByCode(o, code, c);
-    if (!meeting) throw new ApiError('not-found', 'There’s no call with that code. Check the link and try again.');
+    if (!meeting) throw new NotFoundError('There’s no call with that code. Check the link and try again.');
     const live = await maybeOne(c, z.object({ call_id: z.string() }), `SELECT call_id FROM calls WHERE owner_id = $1 AND meeting_item_id = $2 AND state = 'live'`, [o.ownerId, meeting.itemId]);
-    if (live) return live.call_id;
+    if (live) { clog.info('rejoined call', { callId: live.call_id, meetingId: meeting.itemId }); return live.call_id; }
     const id = id128();
     const audience = opts.audience ?? meeting.manifest.audience;
     const mode = opts.notes ?? (meeting.manifest.notes === 'ask' ? 'off' : meeting.manifest.notes);
@@ -74,6 +77,7 @@ export async function join(o: Owner, code: string, opts: { mic: boolean; cam: bo
     if (mode !== 'off') s = notice(await startNotes(o, c, s, meeting.itemId, meeting.manifest.title, mode), 'You started notes. Everyone in the call can see they’re on.');
     await save(o, c, id, s);
     await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
+    clog.info('call started', { callId: id, meetingId: meeting.itemId, mic: opts.mic, cam: opts.cam, notes: mode, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
     return id;
   });
   return view(o, o.pool, callId);
@@ -82,7 +86,7 @@ export async function join(o: Owner, code: string, opts: { mic: boolean; cam: bo
 export async function act(o: Owner, callId: string, a: CallAction): Promise<CallState> {
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
-    if (row.state !== 'live') throw new ApiError('conflict', 'This call has ended.');
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
     const at = Math.round((Date.now() - row.started_at.getTime()) / 1000);
     let s = state;
     switch (a.type) {
@@ -98,12 +102,12 @@ export async function act(o: Owner, callId: string, a: CallAction): Promise<Call
         break;
       }
       case 'notes-pause':
-        if (s.notes.status !== 'on' || !s.notes.recordingId) throw new ApiError('conflict', 'Notes aren’t on.');
+        if (s.notes.status !== 'on' || !s.notes.recordingId) throw new ConflictError('Notes aren’t on.', { context: { callId, notes: s.notes.status } });
         await setRecordingState(o, c, s.notes.recordingId, 'paused');
         s = notice({ ...s, notes: { ...s.notes, status: 'paused' } }, 'Notes paused. Nothing is recorded until you resume.');
         break;
       case 'notes-resume':
-        if (s.notes.status !== 'paused' || !s.notes.recordingId) throw new ApiError('conflict', 'Notes aren’t paused.');
+        if (s.notes.status !== 'paused' || !s.notes.recordingId) throw new ConflictError('Notes aren’t paused.', { context: { callId, notes: s.notes.status } });
         await setRecordingState(o, c, s.notes.recordingId, 'recording');
         s = notice({ ...s, notes: { ...s.notes, status: 'on' } }, 'Notes resumed.');
         break;
@@ -115,15 +119,18 @@ export async function act(o: Owner, callId: string, a: CallAction): Promise<Call
       case 'dismiss': s = { ...s, notices: s.notices.filter((n) => n.id !== a.id) }; break;
     }
     await save(o, c, callId, s);
+    // Action type and resulting states only; chat text and titles stay sealed.
+    clog.at(a.type === 'dismiss' || a.type === 'chat' ? 'debug' : 'info', 'call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment, sharing: Boolean(s.sharing) });
   });
   return view(o, o.pool, callId);
 }
 
 export async function audio(o: Owner, callId: string, piece: Piece): Promise<CallState> {
   const { row, state } = await load(o, o.pool, callId);
-  if (row.state !== 'live') throw new ApiError('conflict', 'This call has ended.');
-  if (state.notes.status !== 'on' || !state.notes.recordingId) throw new ApiError('conflict', 'Notes aren’t recording right now.');
-  if (piece.segment !== state.notes.segment) throw new ApiError('conflict', 'That audio belongs to an earlier part of the recording.');
+  const ctx = { callId, segment: piece.segment, seq: piece.seq, notes: state.notes.status, currentSegment: state.notes.segment };
+  if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+  if (state.notes.status !== 'on' || !state.notes.recordingId) throw new ConflictError('Notes aren’t recording right now.', { context: ctx });
+  if (piece.segment !== state.notes.segment) throw new ConflictError('That audio belongs to an earlier part of the recording.', { context: ctx });
   await appendPiece(o, state.notes.recordingId, piece);
   return view(o, o.pool, callId);
 }
@@ -138,6 +145,7 @@ export async function leave(o: Owner, callId: string): Promise<CallEndResult> {
       if (s.notes.noteId) await finishRecording(o, c, s.notes.noteId, duration);
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }
+    clog.info(row.state === 'live' ? 'call ended' : 'left an ended call', { callId, meetingId: row.meeting_item_id, duration, noteId: s.notes.noteId });
     return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
   });
 }

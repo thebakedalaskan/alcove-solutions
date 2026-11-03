@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import { z } from 'zod';
 import { exec, rows, tx } from './db';
+import { log } from './log';
 
 const DIR = fileURLToPath(new URL('../migrations/', import.meta.url));
 
@@ -20,6 +21,7 @@ export async function migrate(pool: pg.Pool): Promise<string[]> {
       await exec(c, 'INSERT INTO schema_migrations (name) VALUES ($1)', [f]);
     });
     applied.push(f);
+    log.info('migration applied', { component: 'migrate', migration: f });
   }
   return applied;
 }

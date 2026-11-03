@@ -3,10 +3,12 @@
  * tests only). Passkeys are real WebAuthn from a software authenticator. Leakage checks plant
  * canaries and confirm they never reach database rows or stored objects in plaintext.
  */
-import { AlcoveApiError, OPERATION_HEADER, type AudioPiece, type CallSession, type CallState } from '@alcove/api';
+import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, type AudioPiece, type CallSession, type CallState } from '@alcove/api';
+import type { ClientEvent } from '@alcove/api-http';
+import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { softPasskeys } from './testing/soft-passkey';
+import { cookieFetch, softPasskeys } from './testing/soft-passkey';
 import { ORIGIN, startHarness, type Harness } from './testing/harness';
 
 let h: Harness;
@@ -21,6 +23,10 @@ function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
 }
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, seq: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
+/** The API's log lines, parsed. */
+const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
+const logLines = () => h.logs.flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+const linesFor = (requestId: string) => logLines().filter((l) => l['requestId'] === requestId);
 const soft = (prf = true) => softPasskeys({ origin: ORIGIN, rpId: 'localhost', prf });
 async function newAccount(name = 'Maya Chen') { const c = h.client(); return { ...c, session: await c.api.auth.createAccount(name) }; }
 /** Waits until optimistic call actions have been confirmed by the server. */
@@ -267,7 +273,18 @@ describe('room recordings', () => {
 
 describe('privacy at rest', () => {
   it('keeps names, titles, guests, chat, labels and audio out of rows and objects in any encoding', async () => {
-    const c = h.client(soft(), undefined, 'CANARY-DEVICE laptop');
+    // Watch the wire for the secrets a browser sends, so the logs can be checked for them too.
+    const secrets: string[] = [];
+    const jar = cookieFetch(ORIGIN);
+    const tap: typeof fetch = async (input, init) => {
+      const sent = typeof init?.body === 'string' ? z.record(z.string(), z.unknown()).safeParse(JSON.parse(init.body)) : undefined;
+      if (sent?.success) for (const k of ['prf', 'deviceSecret']) { const v = sent.data[k]; if (typeof v === 'string') secrets.push(v); }
+      const res = await jar(input, init);
+      const cookie = /alcove_session=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1];
+      if (cookie) secrets.push(cookie);
+      return res;
+    };
+    const c = h.client(soft(), tap, 'CANARY-DEVICE laptop');
     const { ownerId } = await c.api.auth.createAccount('CANARY-NAME Person');
     const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'full', audience: 'everyone' });
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
@@ -302,6 +319,14 @@ describe('privacy at rest', () => {
       for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
     }
     expect(ownerId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+    // And the logs, which ran at debug level for this whole flow: no content, no keys, no session cookie.
+    expect(secrets.length).toBeGreaterThanOrEqual(2);
+    const logText = h.logs.join('');
+    expect(logText).toContain(ownerId);
+    for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
+    for (const secret of secrets) expect(logText.includes(secret), 'a secret in logs').toBe(false);
+    expect(logText).not.toContain(m.code);
   });
 });
 
@@ -328,3 +353,66 @@ describe('home data', () => {
   });
 });
 
+
+describe('logging and errors', () => {
+  it('ties a failed request to its log line by request ID, with the error class and context', async () => {
+    const events: ClientEvent[] = [];
+    const c = h.client(soft(), undefined, undefined, (e) => events.push(e));
+    await c.api.auth.createAccount('Log Reader');
+    expect(events.find((e) => e.msg === 'passkey created')?.context).toMatchObject({ prf: true, keySource: 'prf' });
+
+    const err = await c.api.meetings.get('AAAAAAAAAAAAAAAAAAAAAA').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AlcoveApiError);
+    const requestId = err instanceof AlcoveApiError ? err.requestId : undefined;
+    expect(requestId).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+    expect(err instanceof AlcoveApiError ? [err.code, err.status, err.method] : []).toEqual(['not-found', 404, 'GET']);
+    expect(events.find((e) => e.msg === 'request failed' && e.context['requestId'] === requestId)?.context).toMatchObject({ code: 'not-found', status: 404 });
+
+    const lines = linesFor(requestId ?? '');
+    expect(lines.find((l) => l['errorClass'] === 'NotFoundError')).toMatchObject({ code: 'not-found', status: 404, path: expect.stringMatching(/^\/v1\/meetings\//) });
+    expect(lines.find((l) => l.msg === 'request refused')).toMatchObject({ status: 404, ownerId: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
+    // Database queries made for that request carry its ID too.
+    expect(lines.some((l) => l['component'] === 'db')).toBe(true);
+  });
+
+  it('keeps a request ID the caller sends, and masks call codes in logged paths', async () => {
+    const { api, fetch } = await newAccount('Header Echo');
+    const { code: callCode } = await api.calls.createInstant();
+    const res = await fetch(`${h.baseUrl}/v1/calls/${callCode}/meeting`, { headers: { [REQUEST_ID_HEADER]: 'trace-abc-123' } });
+    expect(res.headers.get(REQUEST_ID_HEADER)).toBe('trace-abc-123');
+    expect(linesFor('trace-abc-123').find((l) => l.msg === 'request')).toMatchObject({ path: '/v1/calls/:code/meeting', status: 200 });
+    expect(h.logs.join('')).not.toContain(callCode);
+    const bad = await fetch(`${h.baseUrl}/v1/session`, { headers: { [REQUEST_ID_HEADER]: 'bad id with spaces' } });
+    expect(bad.headers.get(REQUEST_ID_HEADER)).not.toBe('bad id with spaces');
+  });
+
+  it('records browser reports in the server log and refuses malformed or cross-site ones', async () => {
+    const f = cookieFetch(ORIGIN);
+    const post = (body: unknown, headers: Record<string, string> = {}) => f(`${h.baseUrl}/v1/telemetry`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+    const ok = await post({ entries: [{ level: 'error', msg: 'audio piece lost after 3 attempts', at: new Date().toISOString(), context: { component: 'media', seq: 7, requestId: 'req-from-browser' } }] });
+    expect(ok.status).toBe(200);
+    expect(logLines().find((l) => l.msg === 'audio piece lost after 3 attempts')).toMatchObject({ level: 50, source: 'browser', seq: 7, requestId: expect.any(String) });
+    expect((await post({ entries: [{ level: 'error', msg: 'x'.repeat(500), at: 'now', context: {} }] })).status).toBe(400);
+    expect((await post({ entries: [] })).status).toBe(400);
+    expect((await post({ entries: [{ level: 'warn', msg: 'hi', at: 'now' }] }, { origin: 'http://evil.example' })).status).toBe(403);
+  });
+
+  it('logs unexpected server failures with their cause, and tells the client only a request ID', async () => {
+    const { api } = await newAccount('Broken Store');
+    const call = await api.calls.join((await api.calls.createInstant()).code, { mic: true, cam: false, notes: 'full' });
+    const realPut = h.deps.objects.put;
+    h.deps.objects.put = () => Promise.reject(new Error('disk on fire'));
+    const err = await call.appendAudio(piece(audioBytes('x'), 0, 0)).catch((e: unknown) => e).finally(() => { h.deps.objects.put = realPut; });
+    expect(err).toBeInstanceOf(AlcoveApiError);
+    if (!(err instanceof AlcoveApiError)) return;
+    expect([err.code, err.status]).toEqual(['unknown', 500]);
+    expect(err.message).not.toContain('disk on fire');
+    // Anything that isn't an AppError becomes an InternalError whose cause is the original.
+    const line = linesFor(err.requestId ?? '').find((l) => l['errorClass'] === 'InternalError');
+    expect(line).toMatchObject({ level: 50, code: 'unknown', status: 500, component: 'http' });
+    // The serialized error carries the whole chain, stack included.
+    expect(JSON.stringify(line?.['err'])).toContain('disk on fire');
+    expect(linesFor(err.requestId ?? '').some((l) => l.msg === 'audio piece not recorded; deleting its object' || l.msg === 'request failed')).toBe(true);
+    await call.leave();
+  });
+});

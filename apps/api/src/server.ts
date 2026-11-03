@@ -3,21 +3,45 @@ import { createApp } from './app';
 import { loadConfig } from './config';
 import { createPool } from './db';
 import { inference } from './inference';
+import { configureLogging, flushLogs, log } from './log';
 import { maintain } from './maintenance';
 import { migrate } from './migrate';
 import { createObjectStore } from './objects';
 import { SessionStore } from './sessions';
 
+const slog = log.child({ component: 'server' });
+process.on('unhandledRejection', (e) => slog.error('unhandled promise rejection', { err: e }));
+process.on('uncaughtException', (e) => { slog.error('uncaught exception, exiting', { err: e }); flushLogs(); process.exit(1); });
+
 const cfg = loadConfig();
+configureLogging({ level: cfg.LOG_LEVEL, format: cfg.LOG_FORMAT });
+slog.info('starting', { node: process.version, logLevel: cfg.LOG_LEVEL, webOrigin: cfg.WEB_ORIGIN, rpId: cfg.RP_ID });
+
 const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);
-if (applied.length) console.log(`Migrated: ${applied.join(', ')}`);
+slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
 const deps = { cfg, pool, objects, sessions: new SessionStore() };
 const app = createApp(deps);
-const upkeep = () => maintain(deps).catch((e: unknown) => console.error('maintenance failed:', e instanceof Error ? e.message : e));
+
+const mlog = log.child({ component: 'maintenance' });
+const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_000)
+  .then((r) => (r.sessions || r.retried || r.orphans || r.receipts ? mlog.info('maintenance done', r) : mlog.debug('maintenance done', r)))
+  .catch((e: unknown) => mlog.error('maintenance failed', { err: e }));
 void upkeep();
-setInterval(() => void upkeep(), 5 * 60_000).unref();
-serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_HOST }, (info) => {
-  console.log(`Alcove API on http://${cfg.API_HOST}:${info.port} · NEAR AI ${inference(cfg).configured ? 'configured' : 'not configured'}`);
+const timer = setInterval(() => void upkeep(), 5 * 60_000);
+timer.unref();
+
+const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_HOST }, (info) => {
+  slog.info('listening', { url: `http://${cfg.API_HOST}:${info.port}`, inference: inference(cfg).configured ? 'configured' : 'not configured' });
 });
+
+function shutdown(signal: string) {
+  slog.info('shutting down', { signal, sessions: deps.sessions.size });
+  clearInterval(timer);
+  deps.sessions.closeAll();
+  server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); });
+  setTimeout(() => { slog.warn('forced exit after 10s'); flushLogs(); process.exit(1); }, 10_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

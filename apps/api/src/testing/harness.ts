@@ -1,11 +1,12 @@
 import type { AlcoveApi } from '@alcove/api';
-import { createHttpApi, type PasskeyDevice } from '@alcove/api-http';
+import { createHttpApi, type ClientEvent, type PasskeyDevice } from '@alcove/api-http';
 import { serve, type ServerType } from '@hono/node-server';
 import pg from 'pg';
 import { createApp } from '../app';
 import type { Deps } from '../context';
 import { loadConfig } from '../config';
 import { createPool } from '../db';
+import { configureLogging } from '../log';
 import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
 import { SessionStore } from '../sessions';
@@ -17,9 +18,11 @@ export interface Harness {
   pool: pg.Pool;
   objects: ObjectStore;
   deps: Deps;
+  /** Every log line the API wrote (at debug level), raw JSON text, oldest first. */
+  logs: string[];
   /** A fresh "browser": its own cookie jar and passkeys. */
   /** A fresh "browser" with its own cookie jar, or the same browser (pass its fetch) with another passkey. */
-  client(device?: PasskeyDevice, sameBrowser?: typeof fetch, deviceName?: string): { api: AlcoveApi; device: PasskeyDevice; fetch: typeof fetch };
+  client(device?: PasskeyDevice, sameBrowser?: typeof fetch, deviceName?: string, onEvent?: (e: ClientEvent) => void): { api: AlcoveApi; device: PasskeyDevice; fetch: typeof fetch };
   close(): Promise<void>;
 }
 
@@ -34,6 +37,9 @@ export async function startHarness(): Promise<Harness> {
   if (!exists.rowCount) await admin.query(`CREATE DATABASE "${name.replace(/"/g, '')}"`);
   await admin.end();
 
+  // Capture every line at debug level, so tests can check what the logs explain and that they leak nothing.
+  const logs: string[] = [];
+  configureLogging({ level: 'debug', destination: { write: (line: string) => { logs.push(line); if (process.env['TEST_LOGS']) process.stdout.write(line); } } });
   const cfg = loadConfig(process.env, { DATABASE_URL: url, OBJECTS_BUCKET: 'alcove-test', WEB_ORIGIN: ORIGIN, RP_ID: 'localhost' });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -46,11 +52,11 @@ export async function startHarness(): Promise<Harness> {
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   const baseUrl = `http://127.0.0.1:${port}`;
   return {
-    baseUrl, pool, objects, deps,
-    client(device, sameBrowser, deviceName) {
+    baseUrl, pool, objects, deps, logs,
+    client(device, sameBrowser, deviceName, onEvent) {
       const d = device ?? softPasskeys({ origin: ORIGIN, rpId: 'localhost' });
       const f = sameBrowser ?? cookieFetch(ORIGIN);
-      return { api: createHttpApi({ baseUrl, fetch: f, passkeys: d, secrets: memorySecrets(), deviceName: () => deviceName ?? 'Test laptop' }), device: d, fetch: f };
+      return { api: createHttpApi({ baseUrl, fetch: f, passkeys: d, secrets: memorySecrets(), deviceName: () => deviceName ?? 'Test laptop', ...(onEvent ? { onEvent } : {}) }), device: d, fetch: f };
     },
     async close() {
       await new Promise<void>((r) => server.close(() => r()));

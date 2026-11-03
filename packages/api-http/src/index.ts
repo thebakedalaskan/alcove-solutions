@@ -6,7 +6,7 @@
 import {
   AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CallEndResultSchema, CallLinkSchema, CallStateSchema, CeremonyStartSchema, CreditBalanceSchema,
   CreditEventSchema, CreditPackSchema, MeetingSchema, NoteProgressSchema, NoteSchema, NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PasskeySchema,
-  PreferencesSchema, RecordingStopResultSchema, RoomRecordingStateSchema, SessionSchema, SetupStepSchema, WeekStatsSchema, isAlcoveErrorCode,
+  PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RoomRecordingStateSchema, SessionSchema, SetupStepSchema, WeekStatsSchema, isAlcoveErrorCode,
   type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState
 } from '@alcove/api';
 import { z } from 'zod';
@@ -22,9 +22,21 @@ export interface HttpOptions {
   secrets?: SecretStore;
   /** Label stored (encrypted) for new passkeys, e.g. "Chrome on Mac". */
   deviceName?: () => string;
+  /**
+   * Diagnostics: every request (debug), failure (warn/error) and passkey ceremony outcome. Fields
+   * are methods, paths, statuses, codes, durations, request IDs and capability flags; never bodies.
+   */
+  onEvent?: (e: ClientEvent) => void;
+}
+export interface ClientEvent {
+  level: 'debug' | 'info' | 'warn' | 'error';
+  msg: string;
+  context: Record<string, string | number | boolean | null>;
 }
 
-const ErrorBodySchema = z.object({ code: z.string().optional(), message: z.string().optional() }).catch({});
+const ErrorBodySchema = z.object({ code: z.string().optional(), message: z.string().optional(), requestId: z.string().optional() }).catch({});
+/** IDs in paths are random; call codes are join tokens, so they're masked in diagnostics. */
+const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code');
 const opId = () => b64u(randomBytes(16));
 
 export function createHttpApi(o: HttpOptions): AlcoveApi {
@@ -34,21 +46,37 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   const secrets = o.secrets ?? localSecrets();
   const deviceName = o.deviceName ?? (() => 'This device');
 
-  const fail = (code: unknown, message: string) => new AlcoveApiError(isAlcoveErrorCode(code) ? code : 'unknown', message);
+  const emit = (level: ClientEvent['level'], msg: string, context: ClientEvent['context']) => { try { o.onEvent?.({ level, msg, context }); } catch { /* diagnostics never break a request */ } };
   const parse = <S extends z.ZodType>(schema: S, data: unknown, what: string): z.infer<S> => {
     const r = schema.safeParse(data);
-    if (!r.success) throw new AlcoveApiError('unknown', `The server sent an unexpected ${what}.`);
+    if (!r.success) {
+      emit('error', 'response did not match the contract', { what, issues: r.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ') });
+      throw new AlcoveApiError('unknown', `The server sent an unexpected ${what}.`, { cause: r.error });
+    }
     return r.data;
   };
   async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}): Promise<Response> {
     const mutating = method !== 'GET';
+    const where = { method, path: safePath(path) };
+    const t0 = Date.now();
     let res: Response;
     try {
       res = await f(base + path, { method, credentials: 'include', headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null });
-    } catch {
-      throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+    } catch (cause) {
+      emit('warn', 'request could not reach the API', { ...where, ms: Date.now() - t0, error: cause instanceof Error ? cause.name : 'unknown' });
+      throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { ...where, cause });
     }
-    if (!res.ok) { const e = ErrorBodySchema.parse(await res.json().catch(() => null)); throw fail(e.code, e.message ?? res.statusText); }
+    const requestId = res.headers.get(REQUEST_ID_HEADER) ?? undefined;
+    if (!res.ok) {
+      const e = ErrorBodySchema.parse(await res.json().catch(() => null));
+      const code = isAlcoveErrorCode(e.code) ? e.code : 'unknown';
+      const id = e.requestId ?? requestId;
+      // Signed-out and locked are ordinary states, not problems.
+      const level = res.status >= 500 ? 'error' : code === 'unauthenticated' || code === 'locked' ? 'debug' : 'warn';
+      emit(level, 'request failed', { ...where, status: res.status, code, requestId: id ?? null, ms: Date.now() - t0 });
+      throw new AlcoveApiError(code, e.message ?? res.statusText, { ...where, status: res.status, requestId: id });
+    }
+    emit('debug', 'request', { ...where, status: res.status, requestId: requestId ?? null, ms: Date.now() - t0 });
     return res;
   }
   async function req<S extends z.ZodType>(schema: S, method: string, path: string, body?: unknown): Promise<z.infer<S>> {
@@ -99,6 +127,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     if (!prf && !secrets.get(made.credential.id)) secrets.put(made.credential.id, randomBytes(32));
     secrets.remember(made.credential.id);
     const keys = secretsFor(made.credential.id, prf);
+    // Capability facts only: these explain most "passkey didn't work" reports without any key material.
+    emit('info', 'passkey created', { prfEnabled: made.prfEnabled, prfAtCreate: Boolean(usable(made.prf)), prf: Boolean(prf), keySource: keys.prf ? 'prf' : keys.deviceSecret ? 'device' : 'none', authenticatorAttachment: made.credential.authenticatorAttachment ?? null });
     if (!keys.prf && !keys.deviceSecret) throw new AlcoveApiError('unavailable', 'This browser can’t store the key for a new passkey (storage is blocked). Allow site data for Alcove and try again.');
     return { start, made, ...keys };
   }
@@ -122,6 +152,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         const known = secrets.known();
         const used = await passkeys.get(start.options, await prfSalt(), known.length ? known : undefined);
         secrets.remember(used.credential.id);
+        emit('info', 'passkey used to unlock', { knownCredentials: known.length, prf: Boolean(usable(used.prf)), deviceSecret: Boolean(secrets.get(used.credential.id)) });
         return req(SessionSchema, 'POST', '/auth/unlock/finish', { challengeId: start.challengeId, credential: used.credential, ...secretsFor(used.credential.id, used.prf) });
       },
       lock: async () => { await req(z.unknown(), 'POST', '/session/lock', {}); }
@@ -189,7 +220,14 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       packs: () => req(z.array(CreditPackSchema), 'GET', '/credits/packs'),
       purchase: (packId) => req(CreditBalanceSchema, 'POST', '/credits/purchases', { packId })
     },
-    stats: { week: () => req(WeekStatsSchema, 'GET', '/stats/week') }
+    stats: { week: () => req(WeekStatsSchema, 'GET', '/stats/week') },
+    diagnostics: {
+      // Straight to fetch, not through send(): a failed report must not produce another report.
+      report: async (entries) => {
+        if (!entries.length) return;
+        await f(`${base}/telemetry`, { method: 'POST', credentials: 'include', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ entries: entries.slice(0, 20) }) }).catch(() => undefined);
+      }
+    }
   };
 }
 

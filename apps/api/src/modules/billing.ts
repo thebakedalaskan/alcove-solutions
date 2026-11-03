@@ -4,7 +4,7 @@ import { CreditEventSchema } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../crypto';
-import { ApiError } from '../errors';
+import { NotFoundError } from '../errors';
 import { bytea, exec, maybeOne, type Db } from '../db';
 
 export const PER_MINUTE = 25;
@@ -19,7 +19,7 @@ export async function openAccount(d: Deps, db: Db, ownerId: string): Promise<voi
 }
 async function read(d: Deps, ownerId: string) {
   const r = await maybeOne(d.pool, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM billing_accounts WHERE owner_id = $1', [ownerId]);
-  if (!r) throw new ApiError('not-found', 'No billing account.');
+  if (!r) throw new NotFoundError('No billing account.');
   return openJson(key(d), header(ownerId), r.state_ciphertext, State);
 }
 export async function balance(d: Deps, ownerId: string): Promise<CreditBalance> { return { balance: (await read(d, ownerId)).balance, perMinute: PER_MINUTE }; }
