@@ -74,6 +74,10 @@ panels for notes, chat (**C**) and people, and **End**.
 - While notes are on, what's said appears as a live transcript, and the notes panel shows how much encrypted
   audio has been kept, with a live waveform. If the browser can't transcribe, the call says so and the
   recording carries on.
+- **Catch up** in the notes panel reads the transcript so far, for you alone: the last 5 minutes, the last 15
+  or the whole call, sorted into what was decided, what was suggested but not agreed, what's still open and
+  what's next, each with when it was said. It says how current it is and when notes were off, and you can ask
+  about the call so far. Nothing is saved, and nobody else sees it. **Back to live** returns to the transcript.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - Changes show as short notices, like "Notes are on. Everyone here can see that."
 

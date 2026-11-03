@@ -1,10 +1,11 @@
 /*
  * What Alcove asks the notes model, and how its replies are checked before anything is kept:
- * writing a call's notes from its transcript, and answering a question about a call. Both send the
- * transcript to NEAR AI Cloud through inference.ts and accept only the JSON shapes below; anything
- * else is refused and tried again (docs: notes-and-inference › Prompts).
+ * writing a call's notes from its transcript, answering a question about a call (finished or still
+ * going), and catching someone up during a call. Each sends the transcript to NEAR AI Cloud through
+ * inference.ts and accepts only the JSON shapes below; anything else is refused (docs:
+ * notes-and-inference › Prompts).
  */
-import { firstName, type ActionItem, type AnswerPart, type Chapter, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
+import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type NoteKind, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
 import { id128 } from '../crypto';
@@ -14,6 +15,24 @@ import type { NoteManifest } from './notes';
 
 /** What the notes model writes into a note. */
 export interface Written { summary: string; decisions: string[]; actions: ActionItem[]; chapters: Chapter[]; suggestedQuestions: string[] }
+
+/** What the model is told about a meeting: who it's with, how long it's been, and what was said. */
+export interface Brief {
+  title: string;
+  kind: NoteKind;
+  organizer: Person;
+  /** Everyone invited besides the organizer. */
+  people: Person[];
+  seconds: number;
+  lines: TranscriptLine[];
+  /** The written summary, for questions after the notes are written. */
+  summary?: string | undefined;
+  /** The meeting is still going on. */
+  live?: boolean | undefined;
+}
+/** A finished note, as the model reads it. */
+export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief =>
+  ({ title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], summary: m.summary });
 
 /** About 30,000 tokens of transcript; longer calls keep their beginning and end. */
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -42,16 +61,22 @@ function transcriptText(lines: TranscriptLine[]): string {
 /** A person as the model needs them: their name, or the name part of an address nobody named. */
 const called = (p: Person) => (p.name === p.email ? p.email.split('@')[0] ?? p.name : p.name);
 
-function about(m: NoteManifest, organizer: Person, people: Person[]): string {
-  const invited = people.length ? people.map(called).join(', ') : 'nobody else';
+function about(b: Brief): string {
+  const invited = b.people.length ? b.people.map(called).join(', ') : 'nobody else';
   return [
-    `Meeting: ${m.title}`,
-    `Kind: ${m.kind === 'room' ? 'an in-person meeting, recorded on one device in the room' : 'a video call'}`,
-    `Organizer: ${organizer.name}`,
+    `Meeting: ${b.title}`,
+    `Kind: ${b.kind === 'room' ? 'an in-person meeting, recorded on one device in the room' : 'a video call'}`,
+    `Organizer: ${b.organizer.name}`,
     `Invited: ${invited}`,
-    `Length: ${Math.max(1, Math.round(m.duration / 60))} minutes`
+    b.live ? `Going on for: ${Math.max(1, Math.round(b.seconds / 60))} minutes so far` : `Length: ${Math.max(1, Math.round(b.seconds / 60))} minutes`
   ].join('\n');
 }
+/** Seconds the model may point at: within what was recorded. */
+const moment = (b: Brief) => {
+  const last = Math.max(b.seconds, b.lines.at(-1)?.at ?? 0);
+  return (s: number): number | undefined => (Number.isFinite(s) && s >= 0 && s <= last + 1 ? Math.round(s) : undefined);
+};
+const issues = (e: z.ZodError) => e.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ');
 
 const NOTES_PROMPT = `You write the notes for a meeting from its transcript. Reply with a single JSON object and nothing else, in this shape:
 {"summary": string, "decisions": [string], "actions": [{"text": string, "owner": string | null, "due": string | null}], "chapters": [{"at": number, "title": string, "summary": string}], "suggestedQuestions": [string]}
@@ -76,15 +101,14 @@ const Draft = z.object({
 const NOBODY = new Set(['', 'unknown', 'unassigned', 'none', 'n/a', 'someone', 'somebody', 'everyone', 'team', 'the team', 'all', 'null']);
 
 /** Writes a note's summary, decisions, follow-ups, chapters and questions from its transcript. */
-export async function draft(cfg: Config, m: NoteManifest, organizer: Person, people: Person[]): Promise<Written> {
-  const lines = m.transcript ?? [];
+export async function draft(cfg: Config, b: Brief): Promise<Written> {
   const reply = Draft.safeParse(await completeJson(cfg, [
     { role: 'system', content: NOTES_PROMPT },
-    { role: 'user', content: `${about(m, organizer, people)}\n\nTranscript:\n${transcriptText(lines)}` }
+    { role: 'user', content: `${about(b)}\n\nTranscript:\n${transcriptText(b.lines)}` }
   ], { what: 'notes', maxTokens: 2500 }));
-  if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: reply.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ') } });
+  if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
   const d = reply.data;
-  const everyone = [organizer, ...people];
+  const everyone = [b.organizer, ...b.people];
   const owner = (name: string | null | undefined): Speaker | undefined => {
     const n = name?.trim() ?? '';
     if (NOBODY.has(fold(n))) return undefined;
@@ -94,7 +118,7 @@ export async function draft(cfg: Config, m: NoteManifest, organizer: Person, peo
     // Someone known only by their address is shown by the name the call used for them.
     return p ? { name: p.name === p.email ? clip(n, 80) : p.name, person: p } : { name: clip(n, 80) };
   };
-  const last = Math.max(m.duration, lines.at(-1)?.at ?? 0);
+  const last = Math.max(b.seconds, b.lines.at(-1)?.at ?? 0);
   const chapters = d.chapters
     .filter((c) => Number.isFinite(c.at) && c.title.trim())
     .map((c) => ({ at: Math.round(Math.min(Math.max(0, c.at), last)), title: clip(c.title.trim(), 60), summary: clip(c.summary.trim(), 160) }))
@@ -116,19 +140,49 @@ export async function draft(cfg: Config, m: NoteManifest, organizer: Person, peo
 
 const ASK_PROMPT = `You answer a question about one meeting, using only its transcript and notes. Reply with a single JSON object and nothing else: {"answer": string, "moments": [number]}
 
-answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the transcript doesn't cover it, say so plainly.
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the meeting is still going on, answer from what has been said so far. If the transcript doesn't cover it, say so plainly.
 moments: the seconds the answer comes from, read from the transcript's [mm:ss] marks; at most four, in order. An empty list if there are none.`;
 
 const Answer = z.object({ answer: z.string().min(1), moments: z.array(z.coerce.number()).catch([]) });
 
-/** Answers a question about a written note, with the moments in the recording it comes from. */
-export async function answer(cfg: Config, m: NoteManifest, organizer: Person, people: Person[], asker: Person, question: string): Promise<AnswerPart[]> {
+/** Answers a question about a call, written up or still going, with the moments in the recording it comes from. */
+export async function answer(cfg: Config, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
   const reply = Answer.safeParse(await completeJson(cfg, [
     { role: 'system', content: ASK_PROMPT },
-    { role: 'user', content: `${about(m, organizer, people)}\n\nSummary: ${m.summary || '(none)'}\n\nTranscript:\n${transcriptText(m.transcript ?? [])}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
-  ], { what: 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
-  if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: reply.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ') } });
-  const last = Math.max(m.duration, m.transcript?.at(-1)?.at ?? 0);
-  const moments = [...new Set(reply.data.moments.filter((s) => Number.isFinite(s) && s >= 0 && s <= last + 1).map((s) => Math.round(s)))].sort((a, b) => a - b).slice(0, 4);
-  return [{ type: 'text', text: reply.data.answer.trim() }, ...moments.map((at): AnswerPart => ({ type: 'cite', at }))];
+    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${transcriptText(b.lines)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
+  ], { what: b.live ? 'ask-live' : 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
+  if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: issues(reply.error) } });
+  const at = moment(b);
+  const moments = [...new Set(reply.data.moments.flatMap((s) => { const m = at(s); return m === undefined ? [] : [m]; }))].sort((x, y) => x - y).slice(0, 4);
+  return [{ type: 'text', text: reply.data.answer.trim() }, ...moments.map((m): AnswerPart => ({ type: 'cite', at: m }))];
+}
+
+const CATCH_UP_PROMPT = `You help someone catch up on a meeting that is still going on, from its transcript so far. Reply with a single JSON object and nothing else, in this shape:
+{"summary": string, "decided": [{"text": string, "at": number}], "proposed": [{"text": string, "at": number}], "open": [{"text": string, "at": number}], "next": [{"text": string, "at": number}]}
+
+summary: one or two plain sentences on where the conversation is now.
+decided: what the people agreed or settled.
+proposed: what someone suggested that hasn't been agreed yet. Something only suggested is never decided.
+open: questions that were asked and haven't been answered yet.
+next: what someone said they, or someone else, would do.
+Each item is one short sentence, and at is the second it was said, read from the transcript's [mm:ss] marks. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions.`;
+
+const Items = z.array(z.object({ text: z.string(), at: z.coerce.number().nullish().catch(null) })).catch([]);
+const CatchUpReply = z.object({ summary: z.string().catch(''), decided: Items, proposed: Items, open: Items, next: Items });
+type Sorted = Pick<CatchUp, 'summary' | 'decided' | 'proposed' | 'open' | 'next'>;
+
+/** Where a call in progress has got to, sorted into decided, proposed, still open, and what's next. */
+export async function catchUp(cfg: Config, b: Brief): Promise<Sorted> {
+  const reply = CatchUpReply.safeParse(await completeJson(cfg, [
+    { role: 'system', content: CATCH_UP_PROMPT },
+    { role: 'user', content: `${about({ ...b, live: true })}\n\nTranscript so far:\n${transcriptText(b.lines)}` }
+  ], { what: 'catch-up', maxTokens: 1500, timeoutMs: 60_000 }));
+  if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
+  const at = moment(b);
+  const items = (xs: z.infer<typeof Items>): CatchUpItem[] => xs.filter((x) => x.text.trim()).slice(0, 8).map((x) => {
+    const m = x.at === null || x.at === undefined ? undefined : at(x.at);
+    return { text: clip(x.text.trim(), 300), ...(m === undefined ? {} : { at: m }) };
+  });
+  const d = reply.data;
+  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next) };
 }

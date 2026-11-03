@@ -55,6 +55,8 @@ export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
 export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
+/** Catching up during a call: how far back to read, or the whole call. */
+export const CatchUpBodySchema = z.object({ minutes: z.number().int().min(1).max(600).optional() });
 
 /* ---------- logging ---------- */
 /** Every response carries this header; error bodies repeat it as `requestId`. Quote it when reporting a problem. */

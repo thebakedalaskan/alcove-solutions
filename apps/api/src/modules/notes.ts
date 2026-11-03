@@ -18,7 +18,7 @@ import { masterKey, openOwner } from '../owners';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile } from './account';
 import { queueDelete, recordingObjects, segments } from './audio';
-import { answer } from './drafting';
+import { answer, briefOf } from './drafting';
 import { MeetingManifest } from './meetings';
 import { personOf } from './portraits';
 import * as transcripts from './transcripts';
@@ -192,7 +192,7 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
   if (!m.transcript?.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
   const t0 = performance.now();
-  const parts = await answer(o.cfg, m, await me(owner), m.invited.map((e) => personOf(e)), await me(o), question);
+  const parts = await answer(o.cfg, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
   nlog.info('question answered', { noteId: id, mine: owner.ownerId === o.ownerId, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
   return parts;
 }

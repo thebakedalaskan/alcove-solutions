@@ -1,10 +1,12 @@
-import { type CallAction, type CallEndResult, type CallState } from '@alcove/api';
+import { type AnswerPart, type CallAction, type CallEndResult, type CallState, type CatchUp } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../crypto';
 import { bytea, exec, maybeOne, timestamp, tx, type Db } from '../db';
 import { ConflictError, NotFoundError, notFound } from '../errors';
 import { me } from './account';
+import * as drafting from './drafting';
+import { personOf } from './portraits';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
 import { MeetingManifest, findByCode, updateManifest } from './meetings';
 import type { Loaded } from '../vault';
@@ -19,7 +21,11 @@ const clog = log.child({ component: 'calls' });
 const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']) });
 const Stored = z.object({
   mic: z.boolean(), cam: z.boolean(), hand: z.boolean(), sharing: z.object({ title: z.string() }).nullable(),
-  notes: z.object({ status: z.enum(['off', 'on']), everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number() }),
+  notes: z.object({
+    status: z.enum(['off', 'on']), everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number(),
+    /** Each time notes went on or off, in seconds since the call started, so a catch-up can say what it's missing. */
+    history: z.array(z.object({ at: z.number(), on: z.boolean() }))
+  }),
   chat: z.array(z.object({ id: z.string(), text: z.string(), at: z.number() })),
   notices: z.array(Notice)
 });
@@ -56,16 +62,17 @@ async function view(o: Owner, db: Db, callId: string): Promise<CallState> {
   };
 }
 
-/** Notes on: the first time a note and its recording are created; after that a new segment starts. */
-async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingManifest>): Promise<Stored> {
+/** Notes on, `at` seconds into the call: the first time a note and its recording are created; after that a new segment starts. */
+async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingManifest>, at: number): Promise<Stored> {
+  const history = [...s.notes.history, { at, on: true }];
   if (s.notes.recordingId) {
     await setRecordingState(o, db, s.notes.recordingId, 'recording');
-    return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment: s.notes.segment + 1 } };
+    return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment: s.notes.segment + 1, history } };
   }
   const { noteId, recordingId } = await createNoteWithRecording(o, db,
     (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests }),
     (nid) => createRecording(o, db, nid));
-  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0 } };
+  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, history } };
 }
 
 export async function join(o: Owner, code: string, opts: { mic: boolean; cam: boolean }): Promise<CallState> {
@@ -75,10 +82,10 @@ export async function join(o: Owner, code: string, opts: { mic: boolean; cam: bo
     const live = await maybeOne(c, z.object({ call_id: z.string() }), `SELECT call_id FROM calls WHERE owner_id = $1 AND meeting_item_id = $2 AND state = 'live'`, [o.ownerId, meeting.itemId]);
     if (live) { clog.info('rejoined call', { callId: live.call_id, meetingId: meeting.itemId }); return live.call_id; }
     const id = id128();
-    let s: Stored = { mic: opts.mic, cam: opts.cam, hand: false, sharing: null, chat: [], notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0 } };
+    let s: Stored = { mic: opts.mic, cam: opts.cam, hand: false, sharing: null, chat: [], notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
     await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext) VALUES ($1,$2,$3,'live',now(),0,$4)`,
       [o.ownerId, id, meeting.itemId, sealJson(key(o, id), header(o, id), toJson(s))]);
-    if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting), 'Notes are on. Everyone here can see that.');
+    if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting, 0), 'Notes are on. Everyone here can see that.');
     await save(o, c, id, s);
     await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
     clog.info('call started', { callId: id, meetingId: meeting.itemId, mic: opts.mic, cam: opts.cam, notes: s.notes.status, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
@@ -103,10 +110,10 @@ export async function act(o: Owner, callId: string, a: CallAction): Promise<Call
         if (a.on === (s.notes.status === 'on')) break;
         if (a.on) {
           const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-          s = notice(await startNotes(o, c, s, meeting), 'You turned on notes. Everyone here can see that.');
+          s = notice(await startNotes(o, c, s, meeting, at), 'You turned on notes. Everyone here can see that.');
         } else {
           if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'paused');
-          s = notice({ ...s, notes: { ...s.notes, status: 'off' } }, 'You turned off notes. What was written so far is kept.');
+          s = notice({ ...s, notes: { ...s.notes, status: 'off', history: [...s.notes.history, { at, on: false }] } }, 'You turned off notes. What was written so far is kept.');
         }
         break;
       }
@@ -138,6 +145,59 @@ export async function transcribe(o: Owner, callId: string, clip: transcripts.Cli
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
   await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip);
   return view(o, o.pool, callId);
+}
+
+/** When notes were off, from the start of the call until `now`, in seconds since it started. */
+function gapsOf(history: Stored['notes']['history'], now: number): CatchUp['gaps'] {
+  const gaps: CatchUp['gaps'] = [];
+  let offSince: number | null = 0;
+  for (const h of history) {
+    if (h.on && offSince !== null) { if (h.at > offSince) gaps.push({ from: offSince, to: h.at }); offSince = null; }
+    else if (!h.on && offSince === null) offSince = h.at;
+  }
+  if (offSince !== null && now > offSince) gaps.push({ from: offSince, to: now });
+  return gaps;
+}
+
+/** A live call and its transcript so far, for the person asking. Nothing about catching up is stored. */
+async function sofar(o: Owner, callId: string, what: string) {
+  const { row, state: s } = await load(o, o.pool, callId);
+  const ctx = { callId, what };
+  if (row.state !== 'live') throw new ConflictError('This call has ended. Its notes have everything.', { context: ctx });
+  if (!s.notes.noteId) throw new ConflictError('Notes haven’t been on in this call, so nothing has been transcribed.', { context: ctx });
+  const asOf = Math.max(0, Math.round((Date.now() - row.started_at.getTime()) / 1000));
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const person = await me(o);
+  const all = await transcripts.lines(o, o.pool, s.notes.noteId);
+  const brief = (ls: transcripts.Line[]): drafting.Brief => ({
+    title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
+    seconds: asOf, lines: transcripts.spoken(ls, { name: person.name, person }), live: true
+  });
+  return { all, asOf, gaps: gapsOf(s.notes.history, asOf), person, brief };
+}
+
+/** Where the call has got to, from the live transcript: the last `minutes`, or all of it. For the person asking alone. */
+export async function catchUp(o: Owner, callId: string, minutes: number | undefined): Promise<CatchUp> {
+  const { all, asOf, gaps, brief } = await sofar(o, callId, 'catch-up');
+  const through = all.at(-1)?.at ?? 0;
+  const from = minutes ? Math.max(0, through - minutes * 60) : 0;
+  const read = all.filter((l) => l.at >= from);
+  const base = { from, through, lines: read.length, gaps, asOf };
+  if (!read.length) return { summary: '', decided: [], proposed: [], open: [], next: [], ...base };
+  const t0 = performance.now();
+  const sorted = await drafting.catchUp(o.cfg, brief(read));
+  clog.info('caught up during a call', { callId, minutes: minutes ?? null, lines: read.length, gaps: gaps.length, ms: Math.round(performance.now() - t0) });
+  return { ...sorted, ...base };
+}
+
+/** Answers a question about the call so far, from the live transcript, for the person asking alone. */
+export async function askSoFar(o: Owner, callId: string, question: string): Promise<AnswerPart[]> {
+  const { all, person, brief } = await sofar(o, callId, 'ask');
+  if (!all.length) throw new ConflictError('Nothing has been transcribed yet, so there’s nothing to ask about.', { context: { callId } });
+  const t0 = performance.now();
+  const parts = await drafting.answer(o.cfg, brief(all), person, question);
+  clog.info('question answered during a call', { callId, lines: all.length, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
+  return parts;
 }
 
 export async function leave(o: Owner, callId: string): Promise<CallEndResult> {
