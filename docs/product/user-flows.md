@@ -66,34 +66,62 @@ Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera swit
 is invited, and whether the call has notes and who gets them. Under the preview you pick a microphone,
 camera and speaker (where the browser allows choosing one), and **Test microphone** records three seconds
 and plays them back, without uploading or keeping anything. Alcove remembers the choices in this browser and
-says when one isn't plugged in. In the call, the small arrow on the microphone and camera buttons switches
+says when one isn't plugged in. In the call, the arrow beside the microphone and camera buttons switches
 devices without leaving the call or interrupting the notes. **Join now** opens the call; **Copy link**
 copies the join link. A link to a call that isn't on your calendar says so: only the person who set it up can
 join it.
 
 ## 5. In the call
 
-The call opens full screen. The notes sign at the top shows **Notes on** or **No notes** to everyone in the
-call; only the organizer can switch it. Controls: microphone (**M**), camera (**V**), share your screen,
-panels for notes, chat (**C**) and people, and **End**.
+The call opens full screen: the stage with everyone's tiles, a side panel that slides in beside it, and one
+dock at the bottom.
 
-- While notes are on, what's said appears as a live transcript, and the notes panel shows how much encrypted
-  audio has been kept, with a live waveform. If the browser can't transcribe, the call says so and the
-  recording carries on.
-- **Catch up** in the notes panel reads the transcript so far, for you alone: the last 5 minutes, the last 15
-  or the whole call, sorted into what was decided, what was suggested but not agreed, what's still open and
-  what's next, each with when it was said. It says how current it is and when notes were off, and you can ask
-  about the call so far. Nothing is saved, and nobody else sees it. **Back to live** returns to the transcript.
+- **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, or **Notes off**), the same for
+  everyone, which opens the notes; your view: **Auto**, **Speaker** or **Grid**, which change only your
+  screen, and **Reset my view** once you've arranged it; **Catch up**; the shield, whose hover says what
+  confidential compute covers (verified only when the server's hardware check is bound to this browser's
+  request); and who is here, which opens People.
+- **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
+  speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
+  browser can do it, **Blur my background**. Then **Share** (a tab, a window or a screen; the browser's own
+  picker asks which one), **Raise hand**, **Captions** (with an arrow to pick the caption language), breakout
+  rooms (once someone else is in the call), **Notes**, **Chat** (**C**), **More** (Catch up, Audio and video
+  settings) and **Leave**.
+- **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
+  screen. A tile's **⋯** menu says what each choice changes: **Pin for me** and **Make bigger** (Only you),
+  **Spotlight for everyone** (Everyone; organizer only). A pin or a spotlight shows on the tile with an ×, a
+  spotlight also as a bar with **Stop spotlight**, and **Escape** unpins. Alcove remembers your view in this
+  browser.
+- **Sharing.** A bar says what you're sharing, with **Change** and **Stop sharing**.
+- **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
+  call is still transcribed. Captions show the newest line, in the language you pick (translated in
+  confidential compute, for you alone), with the original underneath. Captions need notes on.
+- **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
+  and a summary, read from the transcript as the call goes; each time jumps to the transcript. The organizer's
+  **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
+- **Transcript**, **Ask** (questions about the call so far, and **Catch me up** for the last few minutes, for
+  you alone and not saved), **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
+  who is invited and not here).
+- **Breakout rooms.** Pick two or three rooms and how long, drag people between rooms and rename them, then
+  **Open rooms**. While they're open: a shared timer, each room and who is in it, **Join room** and **Back to
+  main room**, **Message every room**, and **Bring everyone back now**. Everyone comes back when time is up,
+  and the rooms go into the call's notes.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
-- Changes show as short notices, like "Notes are on. Everyone here can see that."
+- Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
+
+Calls have one participant today. In development builds, five of Alcove's illustrated cast join a call so
+the parts that need other people (their tiles, captions, raised hands, spotlight and rooms) can be seen;
+nothing they "say" reaches the transcript or the notes
+([Calls and recordings › Multi-party preview](../engineering/calls-and-recordings.md#multi-party-preview)).
 
 ## 6. End the call and get the notes
 
-1. **End › End call** sends the last audio and speech and ends the call.
-2. With notes, the note opens: "Waiting to be written", with the steps so far (call ended, audio saved, the
-   transcript's length, the notes being written), playback of the decrypted recording, and who has it. The
-   notes appear once they're written. Without notes, Home says how long the call was and that there are no
-   notes from it.
+1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
+   speech and ends the call. **Stay in the call** goes back.
+2. The sheet becomes **Call ended**: who gets the notes, and how they're coming along until "Notes are
+   ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
+   saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
+   has it. Without notes, the sheet says there's nothing to send.
 3. Everyone invited gets the notes as the call ends. They find them under Notes when they sign in with the
    invited address, marked as from the organizer.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no

@@ -798,6 +798,123 @@ describe('live transcript and written notes', () => {
   });
 });
 
+describe('in the call: hands, spotlight, breakout rooms and captions', () => {
+  /** Sends one call action straight to the API and returns its status (the app's session turns refusals into notices). */
+  const act = async (b: Browser, callId: string, action: unknown) => (await b.fetch(`${h.baseUrl}/v1/live/calls/${callId}/actions`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(action)
+  })).status;
+
+  it('raises a hand, spotlights only someone in the call, and keeps both to the organizer’s own call', async () => {
+    const a = await account();
+    const call = await a.api.calls.join((await a.api.calls.startNow()).code, { mic: true, cam: false });
+    const s0 = call.getSnapshot();
+    expect(s0).toMatchObject({ spotlight: null, breakouts: { open: null, held: [] }, isOrganizer: true });
+    const me = s0.participants[0]?.id ?? '';
+    call.setHand(true);
+    call.setSpotlight(me);
+    let s = await settle(call, (x) => x.participants[0]?.hand === true && x.spotlight === me && x.notices.length === 0);
+    expect(s.participants[0]).toMatchObject({ hand: true, isOrganizer: true });
+    expect(s.spotlight).toBe(me);
+    // Nobody who isn't in the call can be spotlighted.
+    expect(await act(a, s.callId, { type: 'spotlight', participantId: 'someone-else' })).toBe(400);
+    call.setSpotlight(null);
+    s = await settle(call, (x) => x.spotlight === null);
+    expect(s.spotlight).toBeNull();
+    // Another account can't raise a hand, spotlight or open rooms in this call.
+    const b = await account();
+    expect(await act(b, s.callId, { type: 'spotlight', participantId: null })).toBe(404);
+    expect(await act(b, s.callId, { type: 'hand', up: true })).toBe(404);
+    expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).toBe(404);
+    await call.leave();
+    expect(await act(a, s.callId, { type: 'hand', up: false })).toBe(409);
+  });
+
+  it('opens breakout rooms for invited people only, messages them, brings them back, and puts the rooms in the notes', async () => {
+    const org = await account(unique('organizer'));
+    const kofi = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
+    const lena = `lena@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [kofi, lena] })).code, { mic: true, cam: false });
+    const id = call.getSnapshot().callId;
+    await call.transcribe(speech('We agreed to split into two rooms.', 0, 0));
+
+    // Only people invited to the call, each in one room, in two to eight rooms.
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5 })).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5 })).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5 })).toBe(400);
+    expect(await act(org, id, { type: 'rooms-message', text: 'Nobody to tell' })).toBe(409);
+
+    call.setSpotlight(call.getSnapshot().participants[0]?.id ?? null);
+    await settle(call, (x) => x.spotlight !== null);
+    call.openRooms({ rooms: [{ name: 'Design', emails: [kofi.toUpperCase()] }, { name: 'Support', emails: [lena] }], minutes: 5 });
+    let s = await settle(call, (x) => x.breakouts.open !== null);
+    const open = s.breakouts.open;
+    expect(open?.rooms.map((r) => [r.name, r.people.map((p) => p.email)])).toEqual([['Design', [kofi]], ['Support', [lena]]]);
+    expect((open?.until ?? 0) - (open?.from ?? 0)).toBe(300);
+    expect(s.spotlight).toBeNull(); // opening rooms ends a spotlight: everyone's stage changes
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).toBe(409);
+
+    call.messageRooms('Two minutes left');
+    s = await settle(call, (x) => x.breakouts.open?.message?.text === 'Two minutes left');
+    expect(s.breakouts.open?.message).toMatchObject({ text: 'Two minutes left', at: expect.any(Number) });
+
+    call.closeRooms();
+    s = await settle(call, (x) => x.breakouts.open === null);
+    expect(s.breakouts.held.map((h) => h.rooms.map((r) => r.name))).toEqual([['Design', 'Support']]);
+
+    // Rooms still open when the call ends come back too; every room the call held goes into its notes.
+    call.openRooms({ rooms: [{ name: 'Pairs A', emails: [lena] }, { name: 'Pairs B', emails: [] }], minutes: 10 });
+    await settle(call, (x) => x.breakouts.open !== null);
+    const noteId = (await call.leave()).pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    const rooms = note.chapters.filter((c) => c.title === '2 breakout rooms');
+    expect(rooms).toHaveLength(2);
+    expect(rooms[0]?.summary).toBe('Design: Kofi. Support: Lena. 1 min.');
+    expect(rooms[1]?.summary).toBe('Pairs A: Lena. Pairs B: nobody invited. 1 min.');
+    expect(note.chapters.map((c) => c.at)).toEqual([...note.chapters.map((c) => c.at)].sort((x, y) => x - y));
+  });
+
+  it('translates live captions for the person asking, once per line and language, and keeps them only while the call records', async () => {
+    const a = await account();
+    const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const id = call.getSnapshot().callId;
+    await call.transcribe(speech('The launch moves to the 18th. // Kofi will send the screens.', 0, 0));
+    const lines = call.getSnapshot().transcript;
+    const ids = lines.map((l) => l.id);
+    const translated = () => h.near.calls.filter((x) => x.path.endsWith('/chat/completions')).length;
+    const before = translated();
+    expect(await call.translate(ids, 'es')).toEqual([
+      { id: ids[0], text: '[Spanish] The launch moves to the 18th.' }, { id: ids[1], text: '[Spanish] Kofi will send the screens.' }
+    ]);
+    expect(translated() - before).toBe(1);
+    // Asking again comes from the sealed copy; another language is translated once more; unknown lines are left out.
+    expect(await call.translate([ids[1] ?? '', 'not-a-line'], 'es')).toEqual([{ id: ids[1], text: '[Spanish] Kofi will send the screens.' }]);
+    expect(translated() - before).toBe(1);
+    expect((await call.translate(ids, 'ja')).map((x) => x.text)).toEqual(['[Japanese] The launch moves to the 18th.', '[Japanese] Kofi will send the screens.']);
+    expect(translated() - before).toBe(2);
+    const rows = async () => (await h.pool.query('SELECT count(*)::int AS n FROM transcript_translations WHERE owner_id = $1', [a.session.ownerId])).rows[0]?.n;
+    expect(await rows()).toBe(4);
+
+    // Another account can't read this call's captions, even with the line IDs; its own call doesn't have them.
+    const b = await account();
+    const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: 'es', lines: ids }) });
+    expect(steal.status).toBe(404);
+    const theirs = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    await theirs.transcribe(speech('Something else entirely.', 0, 0));
+    expect(await theirs.translate(ids, 'es')).toEqual([]);
+    await theirs.leave();
+    expect((await a.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: 'xx', lines: ids }) })).status).toBe(400);
+
+    // When the call ends the captions go with the live transcript.
+    await call.leave();
+    expect(await rows()).toBe(0);
+    expect(code(await call.translate(ids, 'es').catch((e: unknown) => e))).toBe('conflict');
+    const quiet = await a.api.calls.join((await a.api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
+    expect(code(await quiet.translate(['x'], 'es').catch((e: unknown) => e))).toBe('conflict');
+    await quiet.leave();
+  });
+});
+
 describe('confirming what the notes say', () => {
   it('lets people confirm decisions and take on follow-ups, and remembers who did what', async () => {
     const org = await account(unique('organizer'));
@@ -970,12 +1087,22 @@ describe('privacy at rest', () => {
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0));
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
     // While the call is on, the live transcript is sealed rows too.
-    const live = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
-    expect(live).not.toBe('');
+    const liveClips = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
+    expect(liveClips).not.toBe('');
     call.sendChat('CANARY-CHAT private remark');
     await settle(call, (x) => x.chat.length === 1);
+    // Captions in another language, and breakout room names and messages, are sealed too.
+    expect((await call.translate(call.getSnapshot().transcript.map((l) => l.id), 'de'))[0]?.text).toContain('CANARY-SPEECH');
+    call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5 });
+    await settle(call, (x) => x.breakouts.open !== null);
+    call.messageRooms('CANARY-BROADCAST to every room');
+    await settle(call, (x) => x.breakouts.open?.message !== null);
     expect((await call.catchUp()).lines).toBe(1);
     await call.askSoFar('What closes on Friday?');
+    const translations = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_translations x`)).rows[0]?.all ?? '');
+    expect(translations).not.toBe('');
+    const callRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM calls x`)).rows[0]?.all ?? '');
+    const live = `${liveClips} ${translations} ${callRows}`;
     await call.leave();
     const rec = await c.api.recordings.start('Room');
     rec.rename('CANARY-ROOM title');
@@ -996,12 +1123,13 @@ describe('privacy at rest', () => {
       SELECT row_to_json(x)::text FROM recordings x UNION ALL SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL
       SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL SELECT row_to_json(x)::text FROM content_jobs x UNION ALL
       SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM note_access x UNION ALL
-      SELECT row_to_json(x)::text FROM transcript_clips x) q`);
+      SELECT row_to_json(x)::text FROM transcript_clips x UNION ALL SELECT row_to_json(x)::text FROM transcript_translations x) q`);
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo'
     ];

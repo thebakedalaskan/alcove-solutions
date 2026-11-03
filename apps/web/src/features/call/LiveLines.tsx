@@ -72,18 +72,33 @@ function groupStarts(lines: TranscriptLine[]): Set<string> {
   return starts;
 }
 
-/** A call's transcript: who spoke ("You" for the reader) and what they said. */
-export function CallLines({ lines, me }: { lines: TranscriptLine[]; me: string | undefined }) {
+/**
+ * A call's transcript: who spoke ("You" for the reader) and what they said. Each new `hit` (seconds into
+ * the recording) scrolls to the line said then and marks it for a moment, for a time chip that points here.
+ */
+export function CallLines({ lines, me, hit = null }: { lines: TranscriptLine[]; me: string | undefined; hit?: { at: number } | null | undefined }) {
   const { ref, onScroll, away, jump } = useFollow(lines.length);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
+  const reduce = useReducedMotion();
+  const [marked, setMarked] = useState<string | null>(null);
+  useEffect(() => {
+    if (hit === null) return;
+    const line = [...lines].reverse().find((l) => l.at <= hit.at + 0.5) ?? lines[0];
+    if (!line) return;
+    setMarked(line.id);
+    ref.current?.querySelector(`[data-line="${line.id}"]`)?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    const t = setTimeout(() => setMarked(null), 2200);
+    return () => clearTimeout(t);
+    // Only a new jump moves the list; new lines arriving don't.
+  }, [hit]);
   return (
     <div className="tx-wrap">
       <div ref={ref} className="tx" onScroll={onScroll} role="log" aria-label="What’s been said">
         {lines.map((l) => {
           const start = starts.has(l.id);
           return (
-            <div key={l.id} className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in')}>
+            <div key={l.id} data-line={l.id} className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', marked === l.id && 'is-hit')}>
               {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
               <div className="min-w-0">
                 {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="ac-mono">{position(l.at)}</span></div>}

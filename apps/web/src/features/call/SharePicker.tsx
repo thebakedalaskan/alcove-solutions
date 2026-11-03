@@ -1,0 +1,46 @@
+/*
+ * Choosing what to share: a tab, a window or a whole screen. Alcove only says which kind; the
+ * browser's own picker then shows the real tabs, windows and screens to choose from, so nothing here
+ * pretends to know what's open on someone's computer.
+ */
+import { Button, Icon, IconButton, Modal, Switch, type IconName } from '@alcove/ui';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useState } from 'react';
+import type { ShareChoice, ShareSurface } from './media';
+
+const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: string; body: string; go: string; audio: string | null }[] = [
+  { surface: 'browser', label: 'Tab', icon: 'tab', title: 'One browser tab', body: 'Good for a page, a doc or a design. You can switch tabs while you share.', go: 'Choose a tab', audio: 'Share tab audio' },
+  { surface: 'window', label: 'Window', icon: 'window', title: 'One app window', body: 'Only that window is shown, even when others are on top of it.', go: 'Choose a window', audio: null },
+  { surface: 'monitor', label: 'Screen', icon: 'monitor', title: 'Your whole screen', body: 'Everything on that screen, notifications included.', go: 'Choose a screen', audio: 'Share computer sound, where your browser allows it' }
+];
+const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
+
+export function SharePicker({ open, onOpenChange, sharing, onShare }: { open: boolean; onOpenChange: (o: boolean) => void; sharing: boolean; onShare: (c: ShareChoice) => void }) {
+  const [surface, setSurface] = useState<ShareSurface>('browser');
+  const [audio, setAudio] = useState(true);
+  const reduce = useReducedMotion();
+  const kind = KINDS.find((k) => k.surface === surface) ?? KINDS[0];
+  if (!kind) return null;
+  return (
+    <Modal open={open} onOpenChange={onOpenChange} label="Choose what to share" className="ic-share">
+      <div className="pk-h"><h2 className="ac-title">{sharing ? 'Share something else' : 'Choose what to share'}</h2><IconButton icon="x" label="Close" onClick={() => onOpenChange(false)} /></div>
+      <div className="ac-tabs" role="tablist" aria-label="What to share">
+        {KINDS.map((k) => <button key={k.surface} type="button" role="tab" className="ac-tab" aria-selected={k.surface === surface} onClick={() => setSurface(k.surface)}>{k.label}</button>)}
+      </div>
+      <div className="pk-body">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={kind.surface} className="pk-kind" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : UI}>
+            <span className="pk-ic"><Icon name={kind.icon} size={28} /></span>
+            <div><b>{kind.title}</b><p>{kind.body}</p><p className="sub">Your browser asks which one next, and shows what it will share.</p></div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <div className="pk-f">
+        {kind.audio && <div className="ic-srow"><span>{kind.audio}</span><Switch checked={audio} label={kind.audio} onChange={setAudio} /></div>}
+        <span className="pk-note">Everyone in the call sees what you share.</span>
+        <Button variant="quiet" onClick={() => onOpenChange(false)}>Cancel</Button>
+        <Button variant="primary" icon="screen" onClick={() => onShare({ surface: kind.surface, audio: !!kind.audio && audio })}>{kind.go}</Button>
+      </div>
+    </Modal>
+  );
+}

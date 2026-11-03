@@ -71,7 +71,45 @@ export async function lines(o: Owner, db: Db, noteId: string): Promise<Line[]> {
 export const spoken = (ls: Line[], speaker: Speaker | undefined): TranscriptLine[] =>
   ls.map((l) => ({ id: l.id, at: l.at, ...(speaker ? { speaker } : {}), text: l.text }));
 
-/** Removes a note's live transcript once its lines are in the note. */
+/** Removes a note's live transcript, and its lines in other languages, once its lines are in the note. */
 export async function clear(o: Owner, db: Db, noteId: string): Promise<number> {
+  await exec(db, 'DELETE FROM transcript_translations WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, noteId]);
   return exec(db, 'DELETE FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, noteId]);
+}
+
+/* ---------- the live transcript in other languages ---------- */
+
+const Translated = z.object({ lineId: z.string(), language: z.string(), text: z.string() });
+const lineTag = (o: Owner, noteId: string, lineId: string, language: string) => mac(key(o, noteId), utf8(`translation:${lineId}:${language}`));
+const translationHeader = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, kind: 'transcript-translation', ownerId: o.ownerId, noteId, tag: b64u(tag) });
+
+/** Lines of a note's live transcript already translated into `language`, by line ID. */
+export async function translations(o: Owner, noteId: string, lineIds: string[], language: string): Promise<Map<string, string>> {
+  const tags = lineIds.map((id) => Buffer.from(lineTag(o, noteId, id, language)));
+  const found = await rows(o.pool, z.object({ line_tag: bytea, translation_ciphertext: bytea }),
+    'SELECT line_tag, translation_ciphertext FROM transcript_translations WHERE owner_id = $1 AND note_item_id = $2 AND line_tag = ANY($3::bytea[])', [o.ownerId, noteId, tags]);
+  const k = key(o, noteId);
+  const out = new Map<string, string>();
+  for (const r of found) {
+    const t = openJson(k, translationHeader(o, noteId, r.line_tag), r.translation_ciphertext, Translated);
+    if (t.language === language) out.set(t.lineId, t.text);
+  }
+  return out;
+}
+
+/**
+ * Keeps lines translated into `language`, sealed, while the note is being recorded. Once the
+ * recording has stopped they aren't kept: the live transcript they belong to is gone.
+ */
+export async function keepTranslations(o: Owner, t: Target, language: string, lines: { lineId: string; text: string }[]): Promise<void> {
+  if (!lines.length) return;
+  await tx(o.pool, async (c) => {
+    const r = await maybeOne(c, z.object({ state: z.string() }), 'SELECT state FROM recordings WHERE owner_id = $1 AND recording_id = $2 FOR SHARE', [o.ownerId, t.recordingId]);
+    if (!r || r.state === 'stopped') return;
+    for (const l of lines) {
+      const tag = lineTag(o, t.noteId, l.lineId, language);
+      await exec(c, 'INSERT INTO transcript_translations (owner_id, note_item_id, line_tag, translation_ciphertext) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+        [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), translationHeader(o, t.noteId, tag), toJson({ lineId: l.lineId, language, text: l.text }))]);
+    }
+  });
 }

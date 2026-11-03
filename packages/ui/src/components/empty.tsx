@@ -11,7 +11,7 @@ export function EmptyState({ title, children, action, art = <EmptyArch />, class
       {art}
       <b>{title}</b>
       {children && <p>{children}</p>}
-      {action && <div className="act">{action}</div>}
+      {action && <div className="ac-empty-act">{action}</div>}
     </div>
   );
 }

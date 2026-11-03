@@ -160,3 +160,11 @@ export function coverFor(id: string): Cover {
 export function ArchThumb({ cover, width = 34, room = false, className }: { cover: Cover; width?: number; room?: boolean; className?: string }) {
   return <span aria-hidden="true" className={cn('ac-arch-thumb', room && 'in-room', className)} style={{ '--w': `${width}px`, '--cover': `var(--cover-${cover})` }} />;
 }
+
+/** An on/off switch, labelled for screen readers. The sun fills it when it's on. */
+export function Switch({ checked, onChange, label, disabled = false, className }: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean; className?: string | undefined }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className={cn('ac-switch', className)} onClick={() => onChange(!checked)} />;
+}
+
+/** Who an action changes: only you, or everyone in the call. */
+export const Scope = ({ everyone = false, children }: { everyone?: boolean; children: ReactNode }) => <span className={cn('ac-scope', everyone && 'is-all')}>{children}</span>;

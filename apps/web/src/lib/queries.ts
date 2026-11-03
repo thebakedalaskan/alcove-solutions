@@ -16,8 +16,21 @@ export const qk = {
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
   openActions: ['notes', 'actions'] as const,
-  balance: ['credits'] as const
+  balance: ['credits'] as const,
+  trust: ['trust'] as const
 };
+
+/** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
+export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
+async function checkTrust(): Promise<Trust> {
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+  const a = await api.trust.attestation(nonce);
+  if (a.tee === 'none') return { tee: 'none', bound: false, at: Date.now() };
+  // The quote's report data must be SHA-512 of this request's nonce and the running commit.
+  const want = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${a.build.commit}`));
+  const hex = Array.from(new Uint8Array(want), (b) => b.toString(16).padStart(2, '0')).join('');
+  return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0, at: Date.now() };
+}
 
 export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
@@ -31,7 +44,9 @@ export const q = {
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
   openActions: () => queryOptions({ queryKey: qk.openActions, queryFn: () => api.notes.openActions() }),
-  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() })
+  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
+  /** Checked once a call opens, then every ten minutes. */
+  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 })
 };
 
 /* ---------- account ---------- */

@@ -1,8 +1,9 @@
 /* Choosing a microphone, camera and speaker: on the pre-join screen, and from the call's controls. */
-import { Icon, Popover, cn, type IconName } from '@alcove/ui';
-import { useEffect, useRef, useState } from 'react';
+import { CallTile, DockChevron, Icon, Popover, Switch, cn, type AvatarPerson, type IconName } from '@alcove/ui';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TEST_SECONDS, testMicrophone, type Device, type DeviceKind, type Devices, type TestPhase } from './devices';
 import type { LocalMedia, MediaSnapshot } from './media';
+import { Video, useLevels } from './Video';
 
 const NAME: Record<DeviceKind, string> = { mic: 'Microphone', cam: 'Camera', speaker: 'Speaker' };
 const ICON: Record<DeviceKind, IconName> = { mic: 'mic', cam: 'video', speaker: 'speaker' };
@@ -57,31 +58,95 @@ export function PrejoinDevices({ media, m, devices }: { media: LocalMedia; m: Me
   );
 }
 
-/** The little arrow on the call's microphone and camera buttons: which device, and (for sound) which speaker. */
-export function DeviceMenu({ kind, media, m, devices, open, onOpenChange }: {
-  kind: 'mic' | 'cam'; media: LocalMedia; m: MediaSnapshot; devices: Devices; open: boolean; onOpenChange: (open: boolean) => void;
-}) {
-  const own = kind === 'mic' ? devices.mic : devices.cam;
-  const chosen = current(own, kind === 'mic' ? m.micId : m.camId);
-  const pick = (id: string) => { onOpenChange(false); void (kind === 'mic' ? media.chooseMic(id) : media.chooseCam(id)); };
-  const speaker = current(devices.speaker, m.speakerId);
-  const item = (d: Device, on: boolean, choose: (id: string) => void) => (
-    <button key={d.id} type="button" className={cn('ac-pop-item dev-item', on && 'sel')} role="menuitemradio" aria-checked={on} onClick={() => choose(d.id)}>
-      {on ? <Icon name="check" size={16} /> : <span />}<span><b>{d.label}</b></span>
+const bars = (l: number, i: number) => Math.max(18, Math.min(100, 18 + l * 120 * (0.6 + ((i * 37) % 10) / 20)));
+
+/** The real microphone level, as three bars beside the microphone in use. */
+function Level({ media, live }: { media: LocalMedia; live: boolean }) {
+  const h = useLevels(media, 3, live, bars);
+  return <span className="ic-meter" aria-hidden="true">{h.map((x, i) => <i key={i} style={{ height: `${x}%` }} />)}</span>;
+}
+
+function Option({ on, label, onPick, extra }: { on: boolean; label: string; onPick: () => void; extra?: ReactNode }) {
+  return (
+    <button type="button" className="ic-opt" role="menuitemradio" aria-checked={on} onClick={onPick}>
+      <span className="nm">{label}</span>{extra}<Icon name="check" size={16} className="tick" />
     </button>
   );
+}
+
+interface MicProps { media: LocalMedia; m: MediaSnapshot; devices: Devices; live: boolean; onSwitched: (what: 'mic' | 'speaker', label: string) => void }
+
+/** Which microphone, which speaker, a test sound, and noise reduction. */
+export function MicOptions({ media, m, devices, live, onSwitched }: MicProps) {
+  const mic = current(devices.mic, m.micId);
+  const speaker = current(devices.speaker, m.speakerId);
+  const [playing, setPlaying] = useState(false);
+  const speakerName = devices.speaker.find((d) => d.id === speaker)?.label ?? 'your speaker';
+  const test = async () => { setPlaying(true); try { await media.playTestSound(); } finally { setPlaying(false); } };
   return (
-    <Popover open={open} onOpenChange={onOpenChange} side="top" align="start" stage label={kind === 'mic' ? 'Microphone and speaker' : 'Camera'} className="dev-pop"
-      anchor={<button type="button" className="dock-caret" aria-label={kind === 'mic' ? 'Choose a microphone' : 'Choose a camera'}><Icon name="down" size={12} /></button>}>
-      <div className="ac-pop-h">{NAME[kind]}</div>
-      {own.length ? own.map((d) => item(d, d.id === chosen, pick)) : <p className="dev-none">No {NAME[kind].toLowerCase()} found.</p>}
-      {kind === 'mic' && devices.speaker.length > 0 && (
+    <>
+      <div className="ac-eyebrow">Microphone</div>
+      {devices.mic.length ? devices.mic.map((d) => (
+        <Option key={d.id} on={d.id === mic} label={d.label} extra={d.id === mic ? <Level media={media} live={live && m.mic} /> : undefined}
+          onPick={() => { if (d.id !== mic) { void media.chooseMic(d.id); onSwitched('mic', d.label); } }} />
+      )) : <p className="ic-none">No microphone found.</p>}
+      <div className="ac-eyebrow mt">Speaker</div>
+      {devices.speaker.length ? devices.speaker.map((d) => (
+        <Option key={d.id} on={d.id === speaker} label={d.label} onPick={() => { if (d.id !== speaker) { media.chooseSpeaker(d.id); onSwitched('speaker', d.label); } }} />
+      )) : <p className="ic-none">Sound plays through the speaker your system uses.</p>}
+      <div className="ic-srow">
+        <button type="button" className="ac-btn is-quiet is-sm" disabled={playing} onClick={() => void test()}>
+          {playing ? <><span className="ac-level" aria-hidden="true"><i /><i /><i /></span><span>Playing on {speakerName}</span></> : <><Icon name="speaker" size={16} /><span>Play test sound</span></>}
+        </button>
+      </div>
+      <div className="ic-msep" />
+      <div className="ic-srow"><span>Noise reduction</span><Switch className="end" checked={m.noiseReduction} label="Noise reduction" onChange={(on) => void media.setNoiseReduction(on)} /></div>
+    </>
+  );
+}
+
+/** The microphone's menu, from the chevron beside it. */
+export function MicMenu({ open, onOpenChange, ...rest }: Omit<MicProps, 'live'> & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange} side="top" align="start" label="Microphone and speaker" className="ic-dmenu"
+      anchor={<DockChevron label="Microphone and speaker" on={open} />}>
+      <MicOptions {...rest} live={open} />
+    </Popover>
+  );
+}
+
+interface CamProps { media: LocalMedia; m: MediaSnapshot; devices: Devices; me: AvatarPerson; preview?: boolean; onSwitched: (label: string) => void }
+
+/** Your own preview, which camera, and background blur where the browser can do it. */
+export function CamOptions({ media, m, devices, me, preview = true, onSwitched }: CamProps) {
+  const cam = current(devices.cam, m.camId);
+  return (
+    <>
+      {preview && (
+        <div className="ic-cprev">
+          <CallTile person={me} name="Your camera">{m.cam && m.camera ? <Video stream={m.camera} /> : undefined}</CallTile>
+        </div>
+      )}
+      <div className={cn('ac-eyebrow', preview && 'mt')}>Camera</div>
+      {devices.cam.length ? devices.cam.map((d) => (
+        <Option key={d.id} on={d.id === cam} label={d.label} onPick={() => { if (d.id !== cam) { void media.chooseCam(d.id); onSwitched(d.label); } }} />
+      )) : <p className="ic-none">No camera found.</p>}
+      {m.canBlur && (
         <>
-          <div className="ac-pop-sep" />
-          <div className="ac-pop-h">Speaker</div>
-          {devices.speaker.map((d) => item(d, d.id === speaker, (id) => { onOpenChange(false); media.chooseSpeaker(id); }))}
+          <div className="ic-msep" />
+          <div className="ic-srow"><span>Blur my background</span><Switch className="end" checked={m.blur} label="Blur my background" onChange={(on) => void media.setBlur(on)} /></div>
         </>
       )}
+    </>
+  );
+}
+
+/** The camera's menu, from the chevron beside it. */
+export function CamMenu({ open, onOpenChange, ...rest }: CamProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange} side="top" align="start" label="Camera" className="ic-dmenu"
+      anchor={<DockChevron label="Camera and background" on={open} />}>
+      <CamOptions {...rest} />
     </Popover>
   );
 }

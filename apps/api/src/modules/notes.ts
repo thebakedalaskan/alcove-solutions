@@ -5,7 +5,7 @@
  */
 import {
   ActionItemSchema, ChapterSchema, DecisionSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
-  type ActionItem, type ActionPatch, type AnswerPart, type Change, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
+  type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
   type NoteSummary, type OpenAction, type Recipient
 } from '@alcove/api';
 import { z } from 'zod';
@@ -27,6 +27,23 @@ import * as transcripts from './transcripts';
 
 const nlog = log.child({ component: 'notes' });
 
+/**
+ * Breakout rooms a call held: each room's name and the invited people sent to it (by email), and
+ * when. A call keeps the times in seconds since it started; its note, in seconds into the recording.
+ */
+export const HeldRooms = z.object({ rooms: z.array(z.object({ id: z.string(), name: z.string(), emails: z.array(z.string()) })), from: z.number(), to: z.number() });
+export type HeldRooms = z.infer<typeof HeldRooms>;
+
+/** The rooms a call held, as chapters of its notes: when they opened, and who was in which room. */
+export function roomChapters(held: HeldRooms[]): Chapter[] {
+  return held.map((h) => {
+    const minutes = Math.max(1, Math.round((h.to - h.from) / 60));
+    const who = h.rooms.map((r) => `${r.name}: ${r.emails.length ? r.emails.map((e) => { const p = personOf(e); return p.name === p.email ? nameFrom(e) : p.name; }).join(', ') : 'nobody invited'}`).join('. ');
+    const summary = `${who}. ${minutes} min.`;
+    return { at: Math.max(0, Math.round(h.from)), title: `${h.rooms.length} breakout rooms`, summary: summary.length > 160 ? `${summary.slice(0, 159).trimEnd()}…` : summary };
+  });
+}
+
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
   meetingId: z.string().optional(), recordingId: z.string(), status: NoteStatusSchema,
@@ -35,7 +52,9 @@ export const NoteManifest = z.object({
   /** Email addresses the notes were shared with afterwards. */
   shared: z.array(z.string()),
   summary: z.string(), decisions: z.array(DecisionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
-  screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string())
+  screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string()),
+  /** Breakout rooms the call held, in seconds into the recording, kept until the notes are written and merged into their chapters. */
+  breakouts: z.array(HeldRooms)
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 
@@ -43,7 +62,7 @@ export function blankNote(o: { kind: NoteKind; title: string; recordingId: strin
   return {
     kind: o.kind, title: o.title, startedAt: new Date().toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
-    status: 'recording', summary: '', decisions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: []
+    status: 'recording', summary: '', decisions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -74,11 +93,11 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
  * The recording is complete: its live transcript moves into the note, everyone invited gets the
  * note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
  */
-export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number): Promise<void> {
+export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = []): Promise<void> {
   const heard = await transcripts.lines(o, db, noteId);
   const organizer = await me(o);
   const next = await updateNote(o, db, noteId, (n) => ({
-    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds),
+    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts,
     // Calls have one person in them today, so whoever's microphone it was spoke; a room has no one to name.
     transcript: transcripts.spoken(heard, n.kind === 'call' ? { name: organizer.name, person: organizer } : undefined)
   }));

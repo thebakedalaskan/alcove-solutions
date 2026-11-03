@@ -297,9 +297,44 @@ export type Attestation = z.infer<typeof AttestationSchema>;
 
 /* ---------- this browser's devices ---------- */
 
-/** The microphone, camera and speaker someone chose, remembered in their browser only: never sent anywhere. */
-export const DevicePrefsSchema = z.object({ mic: z.string().max(300).optional(), cam: z.string().max(300).optional(), speaker: z.string().max(300).optional() });
+/**
+ * The microphone, camera and speaker someone chose, and whether the browser should reduce noise and
+ * blur their background: remembered in their browser only, never sent anywhere.
+ */
+export const DevicePrefsSchema = z.object({
+  mic: z.string().max(300).optional(), cam: z.string().max(300).optional(), speaker: z.string().max(300).optional(),
+  noiseReduction: z.boolean().optional(), blur: z.boolean().optional()
+});
 export type DevicePrefs = z.infer<typeof DevicePrefsSchema>;
+
+/** How someone arranges a call on their own screen. Kept in their browser only: nobody else's view changes. */
+export const CallViewModeSchema = z.enum(['auto', 'speaker', 'grid']);
+export type CallViewMode = z.infer<typeof CallViewModeSchema>;
+export const CallViewPrefsSchema = z.object({
+  mode: CallViewModeSchema,
+  /** Tiles in the order they were dragged into, by participant ID. Anyone not listed follows. */
+  order: z.array(z.string().max(200)).max(100),
+  /** Tiles made bigger, by participant ID. */
+  big: z.array(z.string().max(200)).max(100),
+  /** How much of the stage a shared screen takes beside the people, 0.42 to 0.8. */
+  ratio: z.number().min(0.3).max(0.85),
+  /** The participant you keep on your main stage, by participant ID. */
+  pinned: z.string().max(200).nullable()
+});
+export type CallViewPrefs = z.infer<typeof CallViewPrefsSchema>;
+
+/* ---------- captions ---------- */
+
+/** Languages captions can be translated into. Each person picks their own; nobody else's captions change. */
+export const CaptionLanguageSchema = z.enum(['en', 'es', 'fr', 'de', 'pt', 'it', 'ja', 'zh']);
+export type CaptionLanguage = z.infer<typeof CaptionLanguageSchema>;
+/** Each caption language, named in itself and in English. */
+export const CAPTION_LANGUAGES: readonly { code: CaptionLanguage; name: string; english: string }[] = [
+  { code: 'en', name: 'English', english: 'English' }, { code: 'es', name: 'Español', english: 'Spanish' },
+  { code: 'fr', name: 'Français', english: 'French' }, { code: 'de', name: 'Deutsch', english: 'German' },
+  { code: 'pt', name: 'Português', english: 'Portuguese' }, { code: 'it', name: 'Italiano', english: 'Italian' },
+  { code: 'ja', name: '日本語', english: 'Japanese' }, { code: 'zh', name: '中文', english: 'Chinese' }
+];
 
 /* ---------- credits ---------- */
 

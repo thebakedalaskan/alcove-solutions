@@ -1,5 +1,5 @@
 import { z } from './zod';
-import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema, type AnswerPart } from './types';
+import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema, type AnswerPart, type CaptionLanguage } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -43,6 +43,24 @@ export const RecordingProgressSchema = z.object({
 });
 export type RecordingProgress = z.infer<typeof RecordingProgressSchema>;
 
+/** One breakout room: its name and the invited people sent to it. */
+export const BreakoutRoomSchema = z.object({ id: IDSchema, name: z.string(), people: z.array(PersonSchema) });
+export type BreakoutRoom = z.infer<typeof BreakoutRoomSchema>;
+export const BreakoutsSchema = z.object({
+  /** Rooms that are open now, or null. Times are seconds since the call started. */
+  open: z.object({
+    rooms: z.array(BreakoutRoomSchema),
+    from: z.number(),
+    /** Everyone comes back at this time, unless the organizer brings them back sooner. */
+    until: z.number(),
+    /** The organizer's latest message to every room. */
+    message: z.object({ text: z.string(), at: z.number() }).nullable()
+  }).nullable(),
+  /** Rooms that have closed, oldest first. Each goes into the call's notes. */
+  held: z.array(z.object({ rooms: z.array(BreakoutRoomSchema), from: z.number(), to: z.number() }))
+});
+export type Breakouts = z.infer<typeof BreakoutsSchema>;
+
 export const CallStateSchema = z.object({
   callId: IDSchema,
   meetingId: IDSchema,
@@ -54,6 +72,9 @@ export const CallStateSchema = z.object({
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
   sharing: z.object({ title: z.string() }).nullable(),
+  /** The participant the organizer put on everyone's main stage, or null. */
+  spotlight: IDSchema.nullable(),
+  breakouts: BreakoutsSchema,
   notes: z.object({
     status: CallNotesStatusSchema,
     /** True once notes have been on at any point, so the call produces a note. */
@@ -102,8 +123,11 @@ export interface AudioPiece {
   mimeType: string;
 }
 
-/** One thing a catch-up points out, and when it was said (seconds into the recording, as transcript lines count). */
-export const CatchUpItemSchema = z.object({ text: z.string(), at: z.number().optional() });
+/**
+ * One thing a catch-up points out, and when it was said (seconds into the recording, as transcript
+ * lines count). Something to do also says who it's for and when it's due, when the call said so.
+ */
+export const CatchUpItemSchema = z.object({ text: z.string(), at: z.number().optional(), owner: z.string().optional(), due: z.string().optional() });
 export type CatchUpItem = z.infer<typeof CatchUpItemSchema>;
 
 /**
@@ -132,6 +156,13 @@ export const CatchUpSchema = z.object({
 });
 export type CatchUp = z.infer<typeof CatchUpSchema>;
 
+/** A live transcript line in someone's caption language. Only the person who asked sees it. */
+export const CaptionTranslationSchema = z.object({ id: IDSchema, text: z.string() });
+export type CaptionTranslation = z.infer<typeof CaptionTranslationSchema>;
+
+/** Rooms to open: who goes where (invited people, by email), and for how long. */
+export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; minutes: number }
+
 export interface CallSession extends LiveStore<CallState> {
   setMic(on: boolean): void;
   setCam(on: boolean): void;
@@ -140,6 +171,16 @@ export interface CallSession extends LiveStore<CallState> {
   sendChat(text: string): void;
   /** Organizer only. Everyone in the call sees the change. */
   setNotes(on: boolean): void;
+  /** Organizer only: puts one participant on everyone's main stage, or nobody (null). */
+  setSpotlight(participantId: string | null): void;
+  /** Organizer only: splits the invited people into rooms for a while. */
+  openRooms(plan: BreakoutPlan): void;
+  /** Organizer only: brings everyone back from the rooms now. */
+  closeRooms(): void;
+  /** Organizer only: a message every room sees. */
+  messageRooms(text: string): void;
+  /** Live transcript lines in `language`, for you alone. Each line is translated once and kept sealed until the call ends. */
+  translate(lineIds: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** Encrypts and stores one piece of the notes recording. */
   appendAudio(piece: AudioPiece): Promise<void>;
   /** Transcribes a few seconds of speech into the live transcript. Only while notes are on. */

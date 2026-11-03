@@ -164,16 +164,18 @@ export async function answer(cfg: Config, b: Brief, asker: Person, question: str
 }
 
 const CATCH_UP_PROMPT = `You help someone catch up on a meeting that is still going on, from its transcript so far. Reply with a single JSON object and nothing else, in this shape:
-{"summary": string, "decided": [{"text": string, "at": number}], "proposed": [{"text": string, "at": number}], "open": [{"text": string, "at": number}], "next": [{"text": string, "at": number}]}
+{"summary": string, "decided": [{"text": string, "at": number}], "proposed": [{"text": string, "at": number}], "open": [{"text": string, "at": number}], "next": [{"text": string, "owner": string | null, "due": string | null, "at": number}]}
 
 summary: one or two plain sentences on where the conversation is now.
 decided: what the people agreed or settled.
 proposed: what someone suggested that hasn't been agreed yet. Something only suggested is never decided.
 open: questions that were asked and haven't been answered yet.
-next: what someone said they, or someone else, would do.
+next: what someone said they, or someone else, would do. owner is that person's name as the transcript gives it, or null if it doesn't say; due is when, as it was said ("Friday"), or null.
 Each item is one short sentence, and at is the second it was said, read from the transcript's [mm:ss] marks. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions.`;
 
-const Items = z.array(z.object({ text: z.string(), at: z.coerce.number().nullish().catch(null) })).catch([]);
+const Items = z.array(z.object({
+  text: z.string(), at: z.coerce.number().nullish().catch(null), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
+})).catch([]);
 const CatchUpReply = z.object({ summary: z.string().catch(''), decided: Items, proposed: Items, open: Items, next: Items });
 type Sorted = Pick<CatchUp, 'summary' | 'decided' | 'proposed' | 'open' | 'next'>;
 
@@ -185,10 +187,32 @@ export async function catchUp(cfg: Config, b: Brief): Promise<Sorted> {
   ], { what: 'catch-up', maxTokens: 1500, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
   const at = moment(b);
-  const items = (xs: z.infer<typeof Items>): CatchUpItem[] => xs.filter((x) => x.text.trim()).slice(0, 8).map((x) => {
+  const items = (xs: z.infer<typeof Items>, todo = false): CatchUpItem[] => xs.filter((x) => x.text.trim()).slice(0, 8).map((x) => {
     const m = x.at === null || x.at === undefined ? undefined : at(x.at);
-    return { text: clip(x.text.trim(), 300), ...(m === undefined ? {} : { at: m }) };
+    const owner = x.owner?.trim() ?? '';
+    const due = x.due?.trim() ?? '';
+    return {
+      text: clip(x.text.trim(), 300), ...(m === undefined ? {} : { at: m }),
+      ...(todo && owner && !NOBODY.has(fold(owner)) ? { owner: clip(owner, 80) } : {}), ...(todo && due ? { due: clip(due, 40) } : {})
+    };
   });
   const d = reply.data;
-  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next) };
+  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true) };
+}
+
+const TRANSLATE_PROMPT = `You translate live captions of a meeting. You get a JSON object with the language to translate into and the lines, each with an id. Reply with a single JSON object and nothing else: {"lines": [{"id": string, "text": string}]}
+
+Translate every line, keeping its id. Keep names, numbers and dates exactly. A line already in that language comes back as it is. Translate only: never add, explain or leave out anything.`;
+
+const Translation = z.object({ lines: z.array(z.object({ id: z.string(), text: z.string() })).catch([]) });
+
+/** Live transcript lines in another language, by line ID. Lines the model left out or emptied aren't returned. */
+export async function translate(cfg: Config, lines: { id: string; text: string }[], language: string): Promise<Map<string, string>> {
+  const reply = Translation.safeParse(await completeJson(cfg, [
+    { role: 'system', content: TRANSLATE_PROMPT },
+    { role: 'user', content: JSON.stringify({ language, lines }) }
+  ], { what: 'translate', maxTokens: 2000, timeoutMs: 30_000 }));
+  if (!reply.success) throw new UnavailableError('The captions came back in the wrong shape.', { context: { what: 'translate', issues: issues(reply.error) } });
+  const wanted = new Set(lines.map((l) => l.id));
+  return new Map(reply.data.lines.filter((l) => wanted.has(l.id) && l.text.trim()).map((l) => [l.id, clip(l.text.trim(), 1000)]));
 }

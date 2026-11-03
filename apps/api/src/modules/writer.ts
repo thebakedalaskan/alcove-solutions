@@ -20,7 +20,7 @@ import { me } from './account';
 import { segments } from './audio';
 import * as billing from './billing';
 import { briefOf, draft, type Written } from './drafting';
-import { NoteManifest, updateNote } from './notes';
+import { NoteManifest, roomChapters, updateNote } from './notes';
 import { personOf } from './portraits';
 
 const wlog = log.child({ component: 'writer' });
@@ -54,7 +54,11 @@ async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefin
 async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined): Promise<void> {
   const recorded = notes ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
-    await updateNote(o, c, noteId, (m) => ({ ...m, status: 'ready', ...(notes ?? {}) }));
+    // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
+    await updateNote(o, c, noteId, (m) => {
+      const chapters = [...(notes?.chapters ?? m.chapters), ...roomChapters(m.breakouts)].sort((a, b) => a.at - b.at);
+      return { ...m, status: 'ready', ...(notes ?? {}), chapters, breakouts: [] };
+    });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (notes) {
       const minutes = Math.max(1, Math.ceil(recorded / 60));

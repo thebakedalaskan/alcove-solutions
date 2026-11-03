@@ -122,8 +122,15 @@ export async function startFakeNear(): Promise<FakeNear> {
             decided: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(item),
             proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(item),
             open: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
-            next: heard.filter((h) => /\bwill\b/i.test(h.text)).map(item)
+            next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...item(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
           };
+        } else if (system.startsWith('You translate')) {
+          // "Translates" by tagging each line with the language, so tests can see which lines went and came back.
+          const asked: unknown = JSON.parse(user);
+          const o2 = typeof asked === 'object' && asked !== null ? asked : {};
+          const language = 'language' in o2 ? str(o2.language) : '';
+          const lines = 'lines' in o2 && Array.isArray(o2.lines) ? o2.lines : [];
+          reply = { lines: lines.flatMap((l: unknown) => (typeof l === 'object' && l !== null && 'id' in l && 'text' in l ? [{ id: str(l.id), text: `[${language}] ${str(l.text)}` }] : [])) };
         } else if (system.startsWith('You write the notes')) {
           reply = {
             summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,

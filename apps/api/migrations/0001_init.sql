@@ -90,6 +90,18 @@ CREATE TABLE transcript_clips (
   FOREIGN KEY (owner_id, note_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
 );
 
+-- Live transcript lines in someone's caption language, while the note is still being recorded: one
+-- sealed row per line and language, found by a keyed tag of both, so each is translated once. They
+-- go with the live transcript when the recording stops.
+CREATE TABLE transcript_translations (
+  owner_id alcove_owner_id NOT NULL,
+  note_item_id alcove_id128 NOT NULL,
+  line_tag bytea NOT NULL,
+  translation_ciphertext bytea NOT NULL,
+  PRIMARY KEY (owner_id, note_item_id, line_tag),
+  FOREIGN KEY (owner_id, note_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
+);
+
 -- Notes waiting to be written from a finished recording's transcript. A worker claims a job by
 -- setting it to writing with a lease; a failed attempt goes back to queued, not to be tried again
 -- before lease_until. A job is deleted once its notes are written, or after its third attempt.

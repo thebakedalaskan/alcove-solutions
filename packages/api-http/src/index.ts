@@ -4,10 +4,10 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CalendarSchema, CallEndResultSchema, CallStateSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CalendarSchema, CallEndResultSchema, CaptionTranslationSchema, CallStateSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
-  type AlcoveApi, type AnswerPart, type AudioPiece, type CallAction, type CallSession, type CallState, type CatchUp, type RecordingAction, type RoomRecording,
+  type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptionTranslation, type CallSession, type CallState, type CatchUp, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type TranscriptClip
 } from '@alcove/api';
 import { z } from 'zod';
@@ -140,6 +140,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         transcribe: async (id, c) => parse(CallStateSchema, await clip(`/live/calls/${id}/transcribe`, c), 'call state'),
         catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `/live/calls/${id}/catch-up`, minutes ? { minutes } : {}),
         askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `/live/calls/${id}/ask`, { question }),
+        translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `/live/calls/${id}/translate`, { language, lines }),
         leave: (id) => req(CallEndResultSchema, 'POST', `/live/calls/${id}/leave`, {})
       })
     },
@@ -191,6 +192,7 @@ interface CallTransport {
   transcribe(id: string, c: TranscriptClip): Promise<CallState>;
   catchUp(id: string, minutes: number | undefined): Promise<CatchUp>;
   askSoFar(id: string, question: string): Promise<AnswerPart[]>;
+  translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   leave(id: string): Promise<z.infer<typeof CallEndResultSchema>>;
 }
 class Live<S extends { elapsed: number }> {
@@ -226,6 +228,11 @@ class HttpCall extends Live<CallState> implements CallSession {
   setSharing = (on: boolean, title?: string) => this.act(title ? { type: 'sharing', on, title } : { type: 'sharing', on }, (s) => ({ ...s, sharing: on ? { title: title ?? 'Your screen' } : null }));
   sendChat = (text: string) => { if (text.trim()) this.act({ type: 'chat', text }); };
   setNotes = (on: boolean) => this.act({ type: 'notes', on });
+  setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId }, (s) => ({ ...s, spotlight: participantId }));
+  openRooms = (plan: BreakoutPlan) => this.act({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes });
+  closeRooms = () => this.act({ type: 'rooms-close' });
+  messageRooms = (text: string) => { if (text.trim()) this.act({ type: 'rooms-message', text }); };
+  translate = (lineIds: string[], language: CaptionLanguage) => this.t.translate(this.state.callId, lineIds, language);
   dismissNotice = (id: string) => this.act({ type: 'dismiss', id }, (s) => ({ ...s, notices: s.notices.filter((n) => n.id !== id) }));
   appendAudio = async (p: AudioPiece) => { this.apply(await this.t.audio(this.state.callId, p)); };
   /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
