@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { Config } from './config';
+import type { LiveKit } from './livekit';
 import type { ObjectStore } from './objects';
 import type { Session } from './sessions';
 
@@ -7,6 +8,7 @@ export interface Deps {
   cfg: Config;
   pool: pg.Pool;
   objects: ObjectStore;
+  livekit: LiveKit;
 }
 /** Everything an owner-scoped handler needs: the account and its keys, opened for this request. */
 export interface Owner extends Deps {

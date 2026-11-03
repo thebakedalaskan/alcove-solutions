@@ -11,6 +11,7 @@ import { createApp } from '../app';
 import type { Deps } from '../context';
 import { loadConfig, type Config } from '../config';
 import { createPool } from '../db';
+import { createLiveKit } from '../livekit';
 import { configureLogging } from '../log';
 import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
@@ -99,7 +100,7 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const objects = await createObjectStore(cfg);
-  const deps: Deps = { cfg, pool, objects };
+  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg) };
   const { server, baseUrl } = await listen(deps);
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };

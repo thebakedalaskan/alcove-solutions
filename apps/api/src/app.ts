@@ -137,7 +137,7 @@ export function createApp(d: Deps) {
   // Cloud Run's front end keeps /healthz for itself, so /health answers the same.
   app.on('GET', ['/health', '/healthz'], async (c) => {
     await exec(d.pool, 'SELECT 1');
-    return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing' });
+    return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing', livekit: (await d.livekit.reachable()) ? 'reachable' : 'unreachable' });
   });
 
   /* ---------- public: the session and signing in ---------- */

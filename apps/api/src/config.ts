@@ -27,6 +27,16 @@ const EnvSchema = z.object({
   /** Seals billing state. Separate from KMASTER: billing never needs owner keys. */
   KSERVICE: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KSERVICE must be 32 bytes, base64url'),
   /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
+  /** ws:// or wss:// URL of the LiveKit server, handed to clients with their join tickets. */
+  LIVEKIT_URL: z.string().regex(/^wss?:\/\/\S+$/, 'LIVEKIT_URL must be a ws:// or wss:// URL'),
+  /** HTTP(S) URL for LiveKit's server API; defaults to LIVEKIT_URL with ws → http, wss → https. */
+  LIVEKIT_API_URL: z.string().url().optional(),
+  LIVEKIT_API_KEY: z.string().min(1),
+  LIVEKIT_API_SECRET: z.string().min(32, 'LIVEKIT_API_SECRET must be at least 32 characters'),
+  /** People allowed in one call at once. Unset: no limit. */
+  CALL_MAX_PARTICIPANTS: z.coerce.number().int().min(2).max(500).optional(),
+  /** Lifetime of a LiveKit join token; LiveKit refreshes tokens for connected participants itself. */
+  CALL_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(120),
   NEAR_AI_API_KEY: optional,
   NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),
   /** Speech to text for the live transcript. */
