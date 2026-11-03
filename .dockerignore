@@ -8,3 +8,4 @@
 !.env.example
 docs
 .git
+gha-creds-*.json
