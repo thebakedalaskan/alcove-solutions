@@ -65,7 +65,8 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 2. CORS answers only `WEB_ORIGIN`. A state-changing request must come from `WEB_ORIGIN` with a JSON or
    audio body.
 3. Public routes come first: `GET /health` and `/healthz`, `GET /v1/session`, `POST /v1/auth/sign-in`
-   (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, and `POST /v1/telemetry`.
+   (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, `GET /v1/attestation`
+   ([what's running](privacy-keys-and-sessions.md#moving-to-confidential-computing)) and `POST /v1/telemetry`.
 4. Auth middleware looks the session up in Postgres by the hash of the cookie. No session, or an ended one:
    `401 unauthenticated`, and the app returns to the welcome screen. Otherwise it opens the account's keys
    for this request (`openOwner`) and adds `ownerId` to the log context.
@@ -84,6 +85,7 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | --- | --- |
 | Session | 14 days idle, 30 days absolute; several per account; kept in Postgres, so they survive restarts |
 | Sign-in | 30 attempts a minute per client address, demo and Google together (browser reports: 60 a minute) |
+| Attestation | 30 requests a minute per client address |
 | Google sign-in attempt | 10 minutes from leaving for Google to coming back |
 | Audio piece | At most 2 MiB (a larger `content-length` is refused before the body is read); WebM, MP4 or Ogg audio; 5-second timeslices |
 | Transcript clip | 16 kHz mono 16-bit WAV, at most 30 seconds (960,044 bytes); 120 a minute per account |

@@ -90,7 +90,7 @@ export async function startHarness(): Promise<Harness> {
   configureLogging({ level: 'debug', destination: { write: (line: string) => { logs.push(line); if (process.env['TEST_LOGS']) process.stdout.write(line); } } });
   const google = await startFakeGoogle();
   const near = await startFakeNear();
-  const cfg = loadConfig(process.env, {
+  const cfg = await loadConfig(process.env, {
     DATABASE_URL: url, OBJECTS_BUCKET: 'alcove-test', WEB_ORIGIN: ORIGIN, API_URL: 'http://127.0.0.1',
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
     NEAR_AI_BASE_URL: near.baseUrl, NEAR_AI_API_KEY: near.apiKey,

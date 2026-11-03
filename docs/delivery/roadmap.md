@@ -22,6 +22,9 @@
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
   deletion with object GC, session sweeping, origin and content-type checks, rate limits.
 - Structured logging, an error hierarchy and request IDs from the browser to the server log.
+- Ready for confidential compute: nothing third-party loads in the browser, logs are scrubbed so they can
+  leave a VM, and with `TEE=dstack` the API takes its keys from dstack's key service and attests to its
+  build with a nonce ([Privacy › Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)).
 - CI with merge-blocking checks; deploy pipeline and GCP bootstrap, first deployed on 3 November 2026
   ([deployment plan](../superpowers/plans/2026-11-03-alcove-deployment.md)); release acceptance is still open.
 
@@ -34,7 +37,7 @@
 | 3 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
 | 4 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
 | 5 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
-| 6 | Confidential compute with attestation, `KMASTER` released only to the attested VM, and a pinned client | [Production requirements](../engineering/privacy-keys-and-sessions.md#production-requirements) |
+| 6 | Deploy the API to a dstack VM on Phala Cloud, bind TLS to the attestation, check it in the client, and pin the client | [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 | 7 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |

@@ -15,6 +15,7 @@ import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableErr
 import { addLogContext, log, withLogContext } from './log';
 import * as google from './google';
 import { inference } from './inference';
+import { attest } from './tee';
 import { openOwner } from './owners';
 import { ABSOLUTE_MS, cookieName, findSession } from './sessions';
 import * as account from './modules/account';
@@ -74,6 +75,7 @@ export function createApp(d: Deps) {
   const ATTEMPT = secure ? '__Host-alcove_google' : 'alcove_google';
   const backToWelcome = (reason: google.Refusal) => `${d.cfg.WEB_ORIGIN}/welcome?signin=${reason}`;
   const telemetryLimiter = rateLimit(60, 60_000);
+  const attestLimiter = rateLimit(30, 60_000);
   /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
   const speechLimiter = rateLimit(120, 60_000);
   const askLimiter = rateLimit(20, 60_000);
@@ -138,7 +140,15 @@ export function createApp(d: Deps) {
   // Cloud Run's front end keeps /healthz for itself, so /health answers the same.
   app.on('GET', ['/health', '/healthz'], async (c) => {
     await exec(d.pool, 'SELECT 1');
-    return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing' });
+    return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing', tee: d.cfg.TEE, commit: d.cfg.ALCOVE_COMMIT });
+  });
+
+  /* What's running, for anyone to check before trusting it: outside a TEE it says so; inside, a fresh TDX quote binds the caller's nonce to this build. */
+  app.get('/v1/attestation', async (c) => {
+    attestLimiter(clientAddress(c), 'attestation');
+    const nonce = c.req.query('nonce') ?? '';
+    if (!/^[0-9a-f]{64}$/.test(nonce)) throw new ValidationError('Ask with a nonce: 32 random bytes, as lowercase hex.');
+    return c.json(await attest(d.cfg, nonce));
   });
 
   /* ---------- public: the session and signing in ---------- */

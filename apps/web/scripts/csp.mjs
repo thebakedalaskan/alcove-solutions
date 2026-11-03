@@ -1,9 +1,9 @@
 // node apps/web/scripts/csp.mjs <dist/client> <api origin>
-// Adds the web app's Content-Security-Policy to dist/client/_headers. Nothing third-party at all: the
-// app's own origin, plus the API's for requests, audio and photos; inline scripts only by the hash of
-// exactly what this build produced, so no other inline script can run.
+// Adds the web app's Content-Security-Policy to the /* rule of dist/client/_headers. Nothing
+// third-party at all: the app's own origin, plus the API's for requests, audio and photos; inline
+// scripts only by the hash of exactly what this build produced, so no other inline script can run.
 import { createHash } from 'node:crypto';
-import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const [, , dir, api] = process.argv;
@@ -29,5 +29,13 @@ const csp = [
   "form-action 'self'",
   "frame-ancestors 'none'"
 ].join('; ');
-appendFileSync(join(dir, '_headers'), `  Content-Security-Policy: ${csp}\n`);
+const file = join(dir, '_headers');
+const lines = readFileSync(file, 'utf8').split('\n');
+const rule = lines.indexOf('/*');
+if (rule < 0) throw new Error('_headers has no /* rule to add the policy to');
+const line = `  Content-Security-Policy: ${csp}`;
+// Cloudflare Pages ignores a _headers line longer than 2,000 characters, which would drop the policy.
+if (line.length > 2000) throw new Error(`The policy line is ${line.length} characters; Cloudflare Pages takes at most 2,000.`);
+lines.splice(rule + 1, 0, line);
+writeFileSync(file, lines.join('\n'));
 process.stdout.write(`Content-Security-Policy written with ${hashes.size} inline script hashes\n`);

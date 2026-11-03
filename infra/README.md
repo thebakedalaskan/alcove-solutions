@@ -155,7 +155,7 @@ runtime account access; it does not create credential versions or the OAuth appl
 add versions from private environment variables are printed by bootstrap.
 
 Set repository variable `GOOGLE_AUTH_ENABLED=true` only after both latest versions are enabled. This
-binds both values into the API service and migration job on the next deployment. New installations
+binds both values into the API service on the next deployment (the migration job gets only the database URL). New installations
 default to `false` or an unset variable, omit both bindings and require no placeholder values; the
 Google button then explains that sign-in isn't set up. Sign-in with Google is implemented (OpenID
 Connect with PKCE, `/v1/auth/google` and `/v1/auth/google/callback`) and asks for `openid email
@@ -186,8 +186,9 @@ available for setup and recovery. Production deployments run serially.
 
 Each deployment:
 
-1. Builds the API container and pushes its commit-SHA tag to Artifact Registry.
-2. Runs `alcove-migrate` once and waits for success before changing the API.
+1. Builds the API container, recording its commit in `ALCOVE_COMMIT`, and pushes its commit-SHA tag to
+   Artifact Registry.
+2. Runs `alcove-migrate` once, with only `DATABASE_URL`, and waits for success before changing the API.
 3. Deploys `alcove-api`: gen2, port 8080, one CPU, 512 MiB, 300-second request timeout, min/max one
    instance, session affinity, and CPU between requests for key expiry and object cleanup.
 4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
@@ -220,6 +221,8 @@ CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
 ```
 
 Cloud Run is not a confidential VM: until the API runs in an attested VM that alone can read
-`KMASTER`, whoever operates the service could open accounts. Sessions live in Postgres, so restarts
+`KMASTER`, whoever operates the service could open accounts. The API is ready to move to one
+(`TEE=dstack`); the steps are in
+[Privacy › Moving to confidential computing](../docs/engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing). Sessions live in Postgres, so restarts
 sign nobody out. Outstanding confidential-compute, multi-party media and inference work is tracked in
 [deployment and acceptance](../docs/engineering/deployment-and-acceptance.md).
