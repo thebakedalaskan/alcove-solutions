@@ -12,7 +12,7 @@ import { loadConfig } from './config';
 import { cookieName } from './sessions';
 import { startFakeDstack } from './testing/fake-dstack';
 import { PNG, type GoogleUser, type Spoil } from './testing/fake-google';
-import { speechWav } from './testing/fake-near';
+import { speechWav, startFakeNear, type Tamper } from './testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
 let h: Harness;
@@ -624,6 +624,18 @@ describe('live transcript and written notes', () => {
     }]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
+    // Each model was verified first: the speech went sealed to Whisper's attested key, the transcript
+    // end-to-end encrypted to the notes model's, whose signature on its reply came back with the notes.
+    const measured = h.near.composes();
+    const checked = { verifiedAt: expect.any(String), tdx: { status: 'UpToDate', quote: expect.stringMatching(/^[0-9a-f]{64}$/) }, gpu: { count: 8, arch: 'HOPPER' }, gateway: { status: 'UpToDate', compose: measured.gateway } };
+    expect(note.inference).toEqual([
+      { model: 'openai/whisper-large-v3', task: 'transcript', encryption: 'ohttp', reply: 'sealed', key: h.near.keys().transcript, compose: measured.transcript, ...checked },
+      {
+        model: 'z-ai/glm-5.3-flash', task: 'notes', encryption: 'e2ee', reply: 'signed', key: h.near.keys().notes, compose: measured.notes, ...checked,
+        receipt: { completionId: expect.any(String), signedText: expect.stringMatching(/^z-ai\/glm-5\.3-flash:[0-9a-f]{64}:[0-9a-f]{64}$/), signature: expect.stringMatching(/^[0-9a-f]{128}$/) }
+      }
+    ]);
+    expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
     // The notes model was sent the transcript with names, not anyone's address.
     const prompt = h.near.prompts.at(-1) ?? '';
     expect(prompt).toContain(`[00:06] ${org.session.user.name}: Kofi will send the new screens by Wednesday.`);
@@ -795,6 +807,113 @@ describe('live transcript and written notes', () => {
     expect(note).toMatchObject({ status: 'ready', summary: '', decisions: [], actions: [], chapters: [] });
     expect(note.transcript?.map((l) => l.text)).toEqual(['Nobody will read this summary.']);
     expect((await api.credits.balance()).balance).toBe(before);
+  });
+});
+
+describe('verified private inference', () => {
+  /** A NEAR AI of its own and an API server that uses it, so nothing has been verified there yet. */
+  async function ownNear() {
+    const near = await startFakeNear();
+    const server = await h.secondServer(near.settings);
+    const api = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+    const { session } = await api.auth.signIn('sso', { email: unique() });
+    return { near, api, session, deps: { ...h.deps, cfg: { ...h.deps.cfg, ...near.settings } }, close: async () => { await server.close(); await near.close(); } };
+  }
+  const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+  const said = (e: unknown) => (e instanceof AlcoveApiError ? e.message : 'not-an-api-error');
+  const job = async (ownerId: string) => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [ownerId])).rows[0];
+
+  it('checks NEAR AI’s evidence before sending anything, and sends nothing to a model whose evidence doesn’t check out', async () => {
+    const own = await ownNear();
+    try {
+      const rec = await own.api.recordings.start('Checked first');
+      // Each way the evidence can be wrong is refused, logged with its code, and the clip never leaves.
+      const refused: Record<string, unknown> = {};
+      for (const how of ['expired', 'quote', 'nonce', 'key', 'compose', 'rtmr3', 'ohttp-key', 'gpu'] satisfies Tamper[]) {
+        own.near.tamper(how);
+        const from = h.logs.length;
+        const e = await rec.transcribe(speech(`CANARY-UNVERIFIED ${how}: the merger closes on Friday.`, 0, 0)).catch((x: unknown) => x);
+        expect([code(e), said(e)]).toEqual(['unavailable', 'We couldn’t verify NEAR AI’s private model, so nothing was sent. Try again in a moment.']);
+        const line = logsSince(from).find((l) => l.msg === 'model evidence refused');
+        expect(line).toMatchObject({ model: 'openai/whisper-large-v3', task: 'transcript', ms: expect.any(Number) });
+        refused[how] = line?.['code'];
+      }
+      expect(refused).toEqual({ expired: 'expired', quote: 'tdx-quote', nonce: 'nonce', key: 'signing-key', compose: 'compose', rtmr3: 'rtmr3', 'ohttp-key': 'ohttp-key', gpu: 'gpu' });
+      // NEAR AI got nothing with content: only requests for its evidence, and NVIDIA only the GPU evidence.
+      expect(own.near.calls).toEqual([]);
+      expect(own.near.received.every((r) => r.path === '/nvidia/v3/attest/gpu')).toBe(true);
+      for (const enc of ['CANARY-UNVERIFIED', 'merger closes'].flatMap((c) => [c, Buffer.from(c).toString('hex')])) expect(Buffer.concat(own.near.received.map((r) => r.body)).includes(Buffer.from(enc))).toBe(false);
+
+      // Once it checks out, the same clip goes, sealed to the model's key.
+      own.near.tamper(null);
+      await rec.transcribe(speech('Now it checks out.', 0, 0));
+      expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Now it checks out.']);
+      expect(own.near.calls.map((c) => [c.path, c.encryption])).toEqual([['/v1/audio/transcriptions', 'ohttp']]);
+
+      // The notes model's evidence doesn't check out: the transcript isn't sent, and the job tries again later.
+      own.near.tamper('key');
+      const from = h.logs.length;
+      const { pendingNoteId } = await rec.stop();
+      await until(async () => (await job(own.session.ownerId))?.state === 'queued', 'the first attempt to be refused');
+      expect(await job(own.session.ownerId)).toEqual({ state: 'queued', attempt: 1 });
+      expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions')).toEqual([]);
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', task: 'notes', code: 'signing-key' });
+      own.near.tamper(null);
+      const { maintain } = await import('./maintenance');
+      await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [own.session.ownerId]);
+      await maintain(own.deps);
+      const note = await own.api.notes.get(pendingNoteId);
+      expect(note.summary).toBe('Heard 1 lines. It ended on: Now it checks out.');
+      expect(note.inference.map((x) => [x.task, x.key, x.encryption, x.reply])).toEqual([['transcript', own.near.keys().transcript, 'ohttp', 'sealed'], ['notes', own.near.keys().notes, 'e2ee', 'signed']]);
+
+      // A reply whose signature isn't the model's over exactly what was sent and received isn't used.
+      own.near.tamper('reply-signature');
+      const before = h.logs.length;
+      expect(code(await asked(own.api, pendingNoteId, 'Does it check out?').catch((e: unknown) => e))).toBe('unavailable');
+      expect(logsSince(before).find((l) => l.msg === 'reply refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', code: 'reply-signature' });
+      own.near.tamper(null);
+      expect(own.near.calls.every((c) => c.encryption !== 'none')).toBe(true);
+    } finally {
+      await own.close();
+    }
+  });
+
+  it('verifies again when a model’s key changes, and when its verification runs out', async () => {
+    const own = await ownNear();
+    try {
+      const rec = await own.api.recordings.start('Keys change');
+      await rec.transcribe(speech('Before the key changed.', 0, 0));
+      const first = own.near.keys();
+      // NEAR AI stops taking the old key: Alcove verifies the new one and sends the clip again, to it.
+      own.near.rotate('transcript');
+      let from = h.logs.length;
+      await rec.transcribe(speech('After the key changed.', 0, 4000));
+      expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Before the key changed.', 'After the key changed.']);
+      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'openai/whisper-large-v3', changed: true });
+      const { pendingNoteId } = await rec.stop();
+      await written(own.api, pendingNoteId);
+      // The note keeps both verifications its lines went to, then the notes model's.
+      expect((await own.api.notes.get(pendingNoteId)).inference.map((x) => [x.task, x.key])).toEqual([['transcript', first.transcript], ['transcript', own.near.keys().transcript], ['notes', first.notes]]);
+
+      own.near.rotate('notes');
+      from = h.logs.length;
+      expect((await asked(own.api, pendingNoteId, 'What changed?'))[0]).toEqual({ type: 'text', text: 'From the call: Before the key changed.' });
+      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'z-ai/glm-5.3-flash', changed: true });
+
+      // A verification holds only while NVIDIA's verdict does. After it, the next question checks again, and is refused if it doesn't check out.
+      own.near.verdictLifetime(2);
+      own.near.rotate('notes');
+      await asked(own.api, pendingNoteId, 'What changed?');
+      const sent = own.near.calls.length;
+      await new Promise((r) => setTimeout(r, 2100));
+      own.near.tamper('quote');
+      from = h.logs.length;
+      expect(code(await asked(own.api, pendingNoteId, 'What changed?').catch((e: unknown) => e))).toBe('unavailable');
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', code: 'tdx-quote' });
+      expect(own.near.calls).toHaveLength(sent);
+    } finally {
+      await own.close();
+    }
   });
 });
 
@@ -1012,6 +1131,13 @@ describe('privacy at rest', () => {
       const bytes = Buffer.from(await h.objects.get(obj.id));
       for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
     }
+
+    // And NEAR AI: the clips, transcripts, titles, names and questions it was sent crossed the wire sealed
+    // to the verified models, never readable, though the models themselves read them (the fake's prompts).
+    expect(h.near.prompts.some((p) => p.includes('CANARY-SPEECH'))).toBe(true);
+    const wire = Buffer.concat(h.near.received.map((r) => r.body));
+    for (const canary of [...canaries, 'What closes on Friday']) for (const enc of encodings(canary)) expect(wire.includes(Buffer.from(enc)), `${canary} as ${enc} on the wire to NEAR AI`).toBe(false);
+    expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
 
     // And the logs, which ran at debug level for this whole flow: no content, no emails, no session cookies.
     expect(secrets.length).toBeGreaterThanOrEqual(1);

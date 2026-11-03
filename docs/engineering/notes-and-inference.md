@@ -10,14 +10,105 @@ recorder show a live transcript. When the recording stops, the transcript moves 
 worker inside the API process has the notes model write the summary, decisions, follow-ups, chapters and
 suggested questions. Anyone who has the note can then ask questions about the call.
 
-`apps/api/src/inference.ts` is the only module that uses `NEAR_AI_API_KEY` or talks to NEAR AI. Without a
-key the server still records: the transcribe endpoints answer `503 unavailable`, recordings are kept and
-play back, notes stay `pending` ("Waiting for the notes service to be connected"), and `/health` reports
-`inference: missing`. Once a key is configured, maintenance picks up the waiting jobs; a note recorded
-without a key has no transcript, so it is finished without notes.
+`apps/api/src/inference.ts` is the only module that uses `NEAR_AI_API_KEY` or sends NEAR AI anything with
+content. Without a key the server still records: the transcribe endpoints answer `503 unavailable`,
+recordings are kept and play back, notes stay `pending` ("Waiting for the notes service to be connected"),
+and `/health` reports `inference: missing`. Once a key is configured, maintenance picks up the waiting jobs;
+a note recorded without a key has no transcript, so it is finished without notes.
 
-Requests go over TLS to NEAR AI Cloud's private inference with a bearer key. Alcove doesn't use NEAR AI's
-end-to-end encrypted request mode or check its attestation yet ([What's left](#whats-left)).
+Nothing with content goes to NEAR AI until its hardware evidence for the model checks out, and then only
+encrypted so that the model's confidential VM alone can read it: speech by Oblivious HTTP sealed to the
+speech model's attested key, transcripts and questions end-to-end encrypted to the notes model's
+([Verified private inference](#verified-private-inference)). There is no plaintext way, and no setting
+that turns either off.
+
+## Verified private inference
+
+`apps/api/src/evidence.ts` checks NEAR AI's evidence, `apps/api/src/inference.ts` encrypts to the keys it
+vouches for, and `apps/api/src/ohttp.ts` is the Oblivious HTTP sender.
+
+| Request | Model | How it travels | Only readable by | How the reply is checked |
+| --- | --- | --- | --- | --- |
+| Transcribe a clip | `openai/whisper-large-v3` | Oblivious HTTP (RFC 9458): a Binary HTTP request (RFC 9292) sealed with HPKE (RFC 9180; X25519, HKDF-SHA256, AES-128-GCM) to the model's own attested OHTTP key, posted to `NEAR_AI_STT_URL` + `/ohttp`, the model's endpoint. The API key is inside the seal too | The Whisper VM holding that key | Sealed under the same exchange, so only whoever opened the request could have written it |
+| Write notes, answer a question, catch up | `z-ai/glm-5.3-flash` | NEAR AI's end-to-end encrypted chat (E2EE v2) through its gateway: each message's content encrypted to the model's attested Ed25519 key (as X25519, HKDF-SHA256 with info `ed25519_encryption`, XChaCha20-Poly1305; hex of key, nonce and ciphertext), with `X-Signing-Algo: ed25519`, `X-Client-Pub-Key`, `X-Model-Pub-Key`, `X-Encryption-Version: 2`, `x-no-aliasing: true` and `X-Encrypt-All-Fields: true` | The GLM VM holding that key. The gateway sees the model, the parameters and the sizes, not the content | Encrypted to a key made for that request and wiped after it. Then signed: NEAR AI's `provider_tee` signature for the completion (`GET /signature/:id`) must be by the attested key, over `model:SHA-256(the exact request):SHA-256(the exact reply)`, or the reply isn't used |
+
+### What is checked
+
+Before a model's first request, and whenever its verification has run out, Alcove asks the gateway for
+`GET /attestation/report?model=<model>&provider=near&signing_algo=ed25519&include_tls_fingerprint=false&nonce=<32 random bytes, hex>`
+with `x-no-aliasing: true`, and checks the gateway's report and every model report it returns:
+
+1. **The Intel TDX quote**, with [dcap-qvl](https://github.com/Phala-Network/dcap-qvl) (`@phala/dcap-qvl`
+   0.7.0): its signature chain (quote, QE report, PCK certificate, Intel's PCK CA) to `INTEL_ROOT_CA`, Intel's
+   collateral from `INTEL_PCS_URL` (TCB info, QE identity, PCK revocation list, each signed under the same
+   root, and the root's own revocation list from its distribution point), nothing revoked or past its
+   update date, a TCB status of `UpToDate` or `SWHardeningNeeded`, and debug off.
+2. **Its report data**: the reported signing key, then our nonce. The echoed `request_nonce` must be our
+   nonce, and the gateway's echoed `report_data` the quote's.
+3. **The measurements NEAR AI documents**: the event log replays to the quote's RTMR3, and MRCONFIGID is `01`,
+   then SHA-256 of the report's `app_compose`, then zeros, as is the `compose-hash` event.
+4. **A model's GPUs**: its `nvidia_payload` carries our nonce; NVIDIA's Remote Attestation Service
+   (`NVIDIA_NRAS_URL`) checks it, and its verdict is a JWT signed ES384 by a key from NRAS's published keys
+   whose certificate chain ends at `NVIDIA_ROOT_CA`, from NRAS, not expired, for our nonce, with one result
+   per GPU and `x-nvidia-overall-att-result: true`.
+5. **For speech, the model's OHTTP key**: `ohttp_attestation` is an Ed25519 signature by the attested key
+   over the exact key configuration, which must offer X25519 with HKDF-SHA256 and AES-128-GCM.
+6. The report is for the model asked for, and its public key is its signing address.
+
+Every model report is checked and only those that pass may be used. If none passes, or the gateway's
+doesn't, nothing is sent: the request answers `503 unavailable`, "We couldn’t verify NEAR AI’s private
+model, so nothing was sent. Try again in a moment." ("couldn’t check" when NEAR AI, Intel or NVIDIA can't
+be reached), a notes job tries again later, and the refusal is logged with its code: `expired`,
+`tdx-quote`, `tcb-status`, `debug`, `nonce`, `signing-key`, `rtmr3`, `compose`, `gpu`, `ohttp-key`,
+`model-mismatch`, `no-model-evidence`, `malformed`, or `report-unavailable`, `collateral-unavailable` and
+`gpu-unavailable` when a service couldn't be reached. A reply whose signature doesn't check out is refused
+the same way (`reply-signature`), as is one that won't decrypt (`reply-encryption`, `reply-sealed`).
+
+The measurements are checked for consistency, not against a list of approved builds, and image digests
+aren't checked for provenance ([What's left](#whats-left)).
+
+### How long a verification holds
+
+- A verification is used for ten minutes at most, or until NVIDIA's verdict expires (it gives an hour), then
+  the next request verifies again. Intel's collateral is kept up to 30 minutes, or until Intel says it's due.
+- Requests that arrive while a model is being verified wait for that one verification.
+- **When the key changes.** NEAR AI answers chat encrypted to a key it no longer holds with `421` (which Node's
+  fetch reports as a dropped connection), and the model's endpoint refuses a sealed request it can't open
+  (`400`). Either way Alcove drops the verification, verifies again, and sends the request once more if the
+  key changed; if it didn't, the request fails.
+- Verifications live in the API process's memory. Nothing about them is stored except what a note keeps.
+
+### What a note keeps
+
+Each transcript clip's sealed row keeps the evidence of the verification it went to. When the recording
+stops, the distinct verifications (by model, key, measured configuration and TCB status, the first time each
+was used) move into the note's sealed manifest as `inference`; the notes model's is added, with its signed
+receipt, when the notes are written. `GET /v1/notes/:id` returns them as `Note.inference`
+(`InferenceEvidence` in `packages/api`): the model, the task, when it was verified, how requests and replies
+were protected, the model's key, Intel's TCB status and the quote's SHA-256, the GPUs NVIDIA confirmed, the
+SHA-256 of the measured app compose, the gateway's TCB status and compose hash, and for the notes the
+receipt (completion ID, signed text, signature). None of it is secret.
+
+The note page says "Written by a verified private model" ("Transcribed by…" when the notes couldn't be
+written) under the title. It opens what was checked, model by model, and links to NEAR AI's
+[Verification Center](https://cloud.near.ai/verify) for each model, with the notes reply's receipt in the
+URL fragment, which the browser doesn't send; the link carries no referrer. The call screen shows none of it.
+
+### Services verification depends on
+
+- **Intel's Provisioning Certification Service**: `api.trustedservices.intel.com` for TCB info, QE identity
+  and the PCK revocation list, and `certificates.trustedservices.intel.com` for the root's revocation list.
+  Alcove sends it only the platform's FMSPC.
+- **NVIDIA's Remote Attestation Service**: `nras.attestation.nvidia.com`, sent each model's GPU evidence
+  (certificates and measurements, no content).
+- **The speech model's own endpoint**, `whisper-large-v3.completions.near.ai`, which NEAR AI calls an
+  experimental "direct completions" endpoint. NEAR AI's gateway takes OHTTP too, but opens it itself and
+  would read the audio; for speech, the model's endpoint is the only place NEAR AI opens a request inside
+  the model's own VM.
+
+Measured against NEAR AI Cloud in November 2026: verifying a model the first time takes about 1.5 s (the
+report about 0.4 s, Intel's collateral, NRAS about 0.2 s, and the quote checks), later ones about 0.4 s; a
+5-second clip through OHTTP about 0.4 to 0.6 s; a reply signature about 40 ms.
 
 ## Note states
 
@@ -42,14 +133,15 @@ The job has its own state:
 sequenceDiagram
     participant B as Browser
     participant A as API
-    participant N as NEAR AI Cloud
+    participant N as Whisper's endpoint (NEAR AI)
     participant D as Postgres
     loop each clip of speech while notes are on (or the room is recording)
       B->>A: POST …/transcribe: WAV, segment, start, duration
       A->>D: clip tag already stored? then skip
-      A->>N: POST /audio/transcriptions (Whisper, verbose_json)
-      N-->>A: timed segments with confidence scores
-      A->>D: one sealed transcript_clips row, if a line survived the filter
+      Note over A: the speech model verified (or verify it now)
+      A->>N: POST /ohttp: /audio/transcriptions (verbose_json), sealed to Whisper's attested key
+      N-->>A: timed segments with confidence scores, sealed
+      A->>D: one sealed transcript_clips row, with the verification, if a line survived the filter
       A-->>B: call or recording state with the latest 200 lines
     end
 ```
@@ -84,8 +176,9 @@ sequenceDiagram
 6. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
    clip, to a tenth of a second.
-7. **Kept sealed.** The lines of one clip are one `transcript_clips` row, sealed under the state key
-   `transcript:<noteId>` (record kind `transcript-clip`; the header binds the owner, the note and the tag).
+7. **Kept sealed.** The lines of one clip, and the evidence of the verification they went to, are one
+   `transcript_clips` row, sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`;
+   the header binds the owner, the note and the tag).
    The insert holds a share lock on the recording row. A clip that arrives after the recording stopped is
    dropped, because its note is already finished.
 8. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
@@ -101,7 +194,8 @@ sequenceDiagram
 1. The note becomes `pending` with its duration: for a call, its length from start to leave; for a room
    recording, the seconds recorded.
 2. The transcript rows are opened, sorted by `at` and written into the note's sealed manifest (in a call
-   every line is the organizer's; in a room nobody is named). Then the `transcript_clips` rows are deleted.
+   every line is the organizer's; in a room nobody is named), with the verifications they went to as
+   `inference`. Then the `transcript_clips` rows are deleted.
 3. Everyone invited gets a `note_access` row.
 4. A `content_jobs` row is inserted for the note's new head revision: kind `notes`, state `queued`,
    attempt 0, with `{noteId, recordingId}` sealed under the state key `job:<noteId>`.
@@ -126,9 +220,9 @@ account.
 - **Writing.** A job whose account can't be opened, or whose note was deleted, is dropped. A note without
   transcript lines is finished straight away, without notes and without a charge. Otherwise `draft` in
   `apps/api/src/modules/drafting.ts` asks the notes model, and one transaction writes the note `ready`
-  with what it wrote, deletes the job and charges the account.
-- **Retries.** A failed attempt (NEAR AI unreachable, busy or refusing, or a reply that isn't the expected
-  JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds after the
+  with what it wrote and the model's verification and receipt, deletes the job and charges the account.
+- **Retries.** A failed attempt (NEAR AI unreachable, busy or refusing, evidence or a reply signature that
+  doesn't check out, or a reply that isn't the expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds after the
   second, with a timer that starts the worker again then. The third failure finishes the note `ready`
   without notes: its transcript and audio stay, and nothing is charged. A job found with all three attempts
   used (its last worker died) is finished the same way.
@@ -219,31 +313,49 @@ Replies are checked before anything is kept:
 | Setting | Default | Used for |
 | --- | --- | --- |
 | `NEAR_AI_API_KEY` | none | The bearer key. Without it nothing is sent. |
-| `NEAR_AI_BASE_URL` | `https://cloud-api.near.ai/v1` | NEAR AI Cloud's OpenAI-style API |
+| `NEAR_AI_BASE_URL` | `https://cloud-api.near.ai/v1` | NEAR AI's gateway: attestation reports, encrypted chat, reply signatures |
 | `NEAR_AI_STT_MODEL` | `openai/whisper-large-v3` | The live transcript |
+| `NEAR_AI_STT_URL` | `https://whisper-large-v3.completions.near.ai` | The speech model's own endpoint, where clips go by Oblivious HTTP |
 | `NEAR_AI_NOTES_MODEL` | `z-ai/glm-5.3-flash` | Writing notes and answering questions |
+| `INTEL_PCS_URL` | `https://api.trustedservices.intel.com` | Intel's collateral for TDX quotes |
+| `INTEL_ROOT_CA` | Intel SGX Root CA (`apps/api/src/roots.ts`) | The root TDX quotes and Intel's collateral must chain to |
+| `NVIDIA_NRAS_URL` | `https://nras.attestation.nvidia.com` | NVIDIA's verdict on a model's GPUs |
+| `NVIDIA_ROOT_CA` | NVIDIA Attestation Service CA 001 (`apps/api/src/roots.ts`) | The root NRAS's signing keys must chain to |
 
-The deploy pipeline sets the base URL and uses the default models.
+The deploy pipeline sets the base URL and uses the defaults for everything else. The two roots are
+configuration so that tests can run the same checks against their own; `roots.ts` says where each real one
+is published and its SHA-256 fingerprint.
 
 | Request | Format | Timeout |
 | --- | --- | --- |
-| Transcribe a clip | `POST /audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, `file` (`clip.wav`, `audio/wav`) | 20 s |
-| Write notes | `POST /chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}` | 90 s |
+| Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
+| Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
+| Write notes | `POST /chat/completions`, end-to-end encrypted, JSON: `model`, a system and a user message (their content encrypted), `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`; then `GET /signature/:id?model=…&signing_algo=ed25519`, asked again for up to about 5 seconds while NEAR AI records it | 90 s |
 | Answer a question | The same, with `max_tokens` 1,200 | 60 s |
 
 NEAR AI's answers map onto Alcove's errors: `400`, `413` and `422` become `400 invalid`; `401` and `403`
 become a `500` (the key was refused); being unreachable, a timeout, a reply that can't be parsed and any
-other status, such as `429` or `5xx`, become `503 unavailable`.
+other status, such as `429` or `5xx`, become `503 unavailable`, and so does evidence or a reply that doesn't
+check out (`UnverifiedError`). A refused model key is verified again first ([How long a verification
+holds](#how-long-a-verification-holds)).
 
 Measured on NEAR AI Cloud in November 2026: a 5-second clip transcribes in about 0.6 s; notes for a short
 call are written in about 4 s with thinking disabled (about 48 s with it on, which is why it's off); a
-question is answered in about 2 s. NEAR AI answers pure digital silence with `502`, which Alcove reports as
-`503 unavailable`; the browser doesn't send silence.
+question is answered in about 1.5 to 3.5 s. End-to-end encryption and Oblivious HTTP add a few
+milliseconds; the first verification of a model adds about 1.5 s to its first request. NEAR AI answers pure
+digital silence with `502`, which Alcove reports as `503 unavailable`; the browser doesn't send silence.
 
 ## What's logged
 
 `inference.ts` logs only models, byte sizes, durations, segment and line counts, statuses, timings, finish
-reasons and token counts, at debug (`clip transcribed`, `notes model answered`). Around it, IDs, attempts,
+reasons and token counts, at debug (`clip transcribed`, `notes model answered`, each with how it was
+protected). `evidence.ts` logs every verification at info, `model verified` with the model, the task, the
+code `verified`, the duration, Intel's TCB statuses and advisory IDs, the GPUs, a short hash of the key, the
+quote's SHA-256 and the compose hashes; a refusal is `model evidence refused` (error, or warn when a
+service couldn't be reached) with its code, a short reason and the duration, and each refused model report
+`model report refused` at warn. A refused reply is `reply refused` at error, with its code; a key NEAR AI no
+longer takes is `model key not accepted; verified again` at info. Evidence itself, keys and anything sent are
+never logged. Around it, IDs, attempts,
 counts and timings: `notes job queued`, `notes written` (with decision, follow-up and chapter counts),
 `question answered`, `notes job dropped`, `nothing was transcribed; note finished without notes` and
 `clip arrived after the recording stopped; dropped` at info; `notes not written yet; trying again` at
@@ -253,20 +365,45 @@ and debug log line ([Logging and errors](logging-and-errors.md)).
 
 ## Tests
 
-`apps/api/src/testing/fake-near.ts` stands in for NEAR AI over HTTP, behind a bearer key. It "hears" words
-a test writes into the WAV samples, answers a clip without them with Whisper's favourite hallucination,
-writes notes from the transcript it was sent, and can fail its next replies (down, or prose instead of
-JSON). The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a
-call and a room recording, retried and silent clips, notes off and on again, the clip format and access
-checks, a server without a key, writing and charging, asking (also by someone invited), and retries up to
-the third failure.
+`apps/api/src/testing/fake-near.ts` stands in for NEAR AI over HTTP, behind a bearer key: its gateway's
+attestation reports, end-to-end encrypted chat and reply signatures, and the speech model's endpoint with
+Oblivious HTTP. `apps/api/src/testing/fake-tee.ts` stands in for Intel's certification service and NVIDIA's
+attestation service, under test roots made at the start of the run (`apps/api/src/testing/pki.ts`), so its
+TDX quotes, collateral and GPU verdicts have the real formats and the API checks them with the code it
+checks NEAR AI's real evidence with; only `INTEL_ROOT_CA`, `NVIDIA_ROOT_CA` and the URLs differ. The fake
+"hears" words a test writes into the WAV samples, answers a clip without them with Whisper's favourite
+hallucination, writes notes from the transcript it was sent, and can fail its next replies (down, or prose
+instead of JSON). It keeps every request body as it arrived; its reports can be made to lie (a tampered
+quote, a replayed nonce, a substituted key, stale collateral, a failed GPU verdict, an unmeasured compose, an
+event log that doesn't replay, an unsigned OHTTP key, a reply signed over other bytes), and its models'
+keys can change.
+
+The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a call and
+a room recording, retried and silent clips, notes off and on again, the clip format and access checks, a
+server without a key, writing and charging, asking (also by someone invited), retries up to the third
+failure, and the evidence the note keeps. `verified private inference` covers each way the evidence can be
+wrong (nothing with content reaches NEAR AI, and the refusal is logged with its code), a refused reply
+signature, a notes job that waits for evidence that checks out, keys that change, and a verification that
+runs out. `privacy at rest` checks that no clip, transcript, title, name or question crossed the wire to
+NEAR AI readable, in any encoding.
 
 ## What's left
 
-- **Verified private inference.** Use NEAR AI's end-to-end encrypted request mode and check its
-  attestation before sending speech or transcripts, with no plaintext fallback. Until then NEAR AI's
-  service is trusted with every clip, transcript and the context listed under [Prompts](#prompts). The
-  encrypted mode is described in [Source evidence](../references/source-evidence.md).
+- **Which builds are trusted.** Evidence is checked for consistency (the quote, the key, the nonce, the
+  measured compose, the GPUs), not against a list of approved builds, and the image digests in each
+  compose aren't checked for provenance. Any deployment NEAR AI runs in a TDX VM with confidential GPUs
+  passes, which is what NEAR AI's own Verification Center accepts too. Pinning builds needs NEAR AI to
+  publish signed provenance for its images; its compose hashes changed within a day while this was built.
+- **The speech model's endpoint is experimental.** NEAR AI calls its per-model "direct completions"
+  endpoints experimental. Alcove uses Whisper's because it's the one way NEAR AI offers to open speech only
+  inside the model's VM: its gateway takes Oblivious HTTP too, but would read the audio itself. If NEAR AI
+  changes that endpoint, transcription stops (`503`) rather than falling back.
+- **What NEAR AI's operators still see.** The API key on gateway requests, the model, request parameters,
+  sizes and timing, and the client's address (Alcove's server). The models' VMs read the content, as they
+  must to transcribe and write. Instances of a model share one key, so a verified report and the instance
+  that answers can differ, as NEAR AI documents.
+- **TLS binding.** Alcove doesn't bind its TLS connection to the gateway's attestation
+  (`include_tls_fingerprint`); content is encrypted to the models' keys either way.
 - **Who said what.** Calls have one participant, so every call line is attributed to the organizer. Room
   recordings have no speaker diarization.
 - **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the

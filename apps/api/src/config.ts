@@ -1,10 +1,15 @@
+import { X509Certificate } from 'node:crypto';
 import { z } from 'zod';
+import { INTEL_SGX_ROOT_CA, NVIDIA_NRAS_ROOT_CA } from './roots';
 import { teeKeys } from './tee';
 
 /** An optional setting: unset, or set to nothing (as in .env.example), means it isn't configured. */
 const optional = z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().min(1).optional());
 
 const Key = (name: string) => z.string().regex(/^[A-Za-z0-9_-]{43}$/, `${name} must be 32 bytes, base64url`);
+/** One X.509 certificate, PEM: a root verification ends at. */
+const isCert = (pem: string) => { try { return new X509Certificate(pem).ca; } catch { return false; } };
+const RootCa = (name: string, fallback: string) => z.string().refine(isCert, `${name} must be a CA certificate, PEM`).default(fallback);
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -43,11 +48,22 @@ const EnvSchema = z.object({
   KSERVICE: Key('KSERVICE').optional(),
   /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
   NEAR_AI_API_KEY: optional,
+  /** NEAR AI's gateway: attestation reports, end-to-end encrypted chat and reply signatures. */
   NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),
   /** Speech to text for the live transcript. */
   NEAR_AI_STT_MODEL: z.string().min(1).default('openai/whisper-large-v3'),
+  /** The speech-to-text model's own endpoint: clips go to its /ohttp, sealed to the key its attestation vouches for. */
+  NEAR_AI_STT_URL: z.string().url().default('https://whisper-large-v3.completions.near.ai'),
   /** Writes the notes from a transcript and answers questions about them. */
   NEAR_AI_NOTES_MODEL: z.string().min(1).default('z-ai/glm-5.3-flash'),
+  /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
+  INTEL_PCS_URL: z.string().url().default('https://api.trustedservices.intel.com'),
+  /** The root every TDX quote and Intel collateral must chain to: Intel's SGX Root CA. Tests set their own. */
+  INTEL_ROOT_CA: RootCa('INTEL_ROOT_CA', INTEL_SGX_ROOT_CA),
+  /** NVIDIA's Remote Attestation Service, which checks a model's GPU evidence and signs its verdict. */
+  NVIDIA_NRAS_URL: z.string().url().default('https://nras.attestation.nvidia.com'),
+  /** The root NRAS's signing keys must chain to: NVIDIA Attestation Service CA 001. Tests set their own. */
+  NVIDIA_ROOT_CA: RootCa('NVIDIA_ROOT_CA', NVIDIA_NRAS_ROOT_CA),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */

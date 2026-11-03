@@ -54,7 +54,11 @@ async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefin
 async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined): Promise<void> {
   const recorded = notes ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
-    await updateNote(o, c, noteId, (m) => ({ ...m, status: 'ready', ...(notes ?? {}) }));
+    await updateNote(o, c, noteId, (m) => {
+      if (!notes) return { ...m, status: 'ready' };
+      const { evidence, ...written } = notes;
+      return { ...m, status: 'ready', ...written, inference: [...m.inference, evidence] };
+    });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (notes) {
       const minutes = Math.max(1, Math.ceil(recorded / 60));

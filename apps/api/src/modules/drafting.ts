@@ -5,16 +5,16 @@
  * inference.ts and accepts only the JSON shapes below; anything else is refused (docs:
  * notes-and-inference › Prompts).
  */
-import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type Decision, type NoteKind, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
+import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
 import { id128 } from '../crypto';
 import { UnavailableError } from '../errors';
-import { completeJson } from '../inference';
+import { complete, completeJson } from '../inference';
 import type { NoteManifest } from './notes';
 
-/** What the notes model writes into a note. */
-export interface Written { summary: string; decisions: Decision[]; actions: ActionItem[]; chapters: Chapter[]; suggestedQuestions: string[] }
+/** What the notes model writes into a note, and the verified model that wrote it. */
+export interface Written { summary: string; decisions: Decision[]; actions: ActionItem[]; chapters: Chapter[]; suggestedQuestions: string[]; evidence: InferenceEvidence }
 
 /** What the model is told about a meeting: who it's with, how long it's been, and what was said. */
 export interface Brief {
@@ -105,10 +105,11 @@ const NOBODY = new Set(['', 'unknown', 'unassigned', 'none', 'n/a', 'someone', '
 
 /** Writes a note's summary, decisions, follow-ups, chapters and questions from its transcript. */
 export async function draft(cfg: Config, b: Brief): Promise<Written> {
-  const reply = Draft.safeParse(await completeJson(cfg, [
+  const { json, evidence } = await complete(cfg, [
     { role: 'system', content: NOTES_PROMPT },
     { role: 'user', content: `${about(b)}\n\nTranscript:\n${transcriptText(b.lines)}` }
-  ], { what: 'notes', maxTokens: 2500 }));
+  ], { what: 'notes', maxTokens: 2500 });
+  const reply = Draft.safeParse(json);
   if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
   const d = reply.data;
   const everyone = [b.organizer, ...b.people];
@@ -140,7 +141,8 @@ export async function draft(cfg: Config, b: Brief): Promise<Written> {
       return { id: id128(), text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...said(a.at), done: false, changes: [] };
     }),
     chapters,
-    suggestedQuestions: d.suggestedQuestions.map((q) => clip(q.trim(), 120)).filter(Boolean).slice(0, 3)
+    suggestedQuestions: d.suggestedQuestions.map((q) => clip(q.trim(), 120)).filter(Boolean).slice(0, 3),
+    evidence
   };
 }
 

@@ -242,6 +242,40 @@ export type RecipientRole = z.infer<typeof RecipientRoleSchema>;
 export const RecipientSchema = z.object({ person: PersonSchema, role: RecipientRoleSchema });
 export type Recipient = z.infer<typeof RecipientSchema>;
 
+/**
+ * What Alcove checked about a NEAR AI model before it sent the model anything for a note: an Intel TDX
+ * confidential VM with NVIDIA GPUs in confidential-computing mode, measured as NEAR AI publishes it, holding
+ * the key everything was encrypted to. Hashes identify the evidence; nothing in it is secret.
+ */
+export const InferenceEvidenceSchema = z.object({
+  /** The model as NEAR AI names it, e.g. "z-ai/glm-5.3-flash". */
+  model: z.string(),
+  /** What it did for the note: transcribed the speech, or wrote the notes. */
+  task: z.enum(['transcript', 'notes']),
+  /** When Alcove checked the evidence, before sending anything to the key it vouches for. */
+  verifiedAt: ISODateSchema,
+  /**
+   * How requests reached the model. e2ee: NEAR AI's end-to-end encrypted chat, which its gateway passes on
+   * without being able to read. ohttp: Oblivious HTTP sealed to the model's own key, which only it can open.
+   */
+  encryption: z.enum(['e2ee', 'ohttp']),
+  /** How each reply was shown to come from the model: signed by its key, or sealed under the request's encryption. */
+  reply: z.enum(['signed', 'sealed']),
+  /** The model's attested signing key (Ed25519, hex). */
+  key: z.string(),
+  /** The model's Intel TDX quote: the TCB status Intel's collateral gives it, and the quote's SHA-256. */
+  tdx: z.object({ status: z.string(), quote: z.string() }),
+  /** The GPUs NVIDIA's attestation service confirmed are in confidential-computing mode. */
+  gpu: z.object({ count: z.number(), arch: z.string() }),
+  /** SHA-256 of the software configuration (dstack app compose) the model's quote measures. */
+  compose: z.string(),
+  /** NEAR AI's gateway, checked the same way: its TCB status and configuration hash. */
+  gateway: z.object({ status: z.string(), compose: z.string() }),
+  /** For signed replies: the model's signature over the exact request and reply, as NEAR AI's Verification Center reads it. */
+  receipt: z.object({ completionId: z.string(), signedText: z.string(), signature: z.string() }).optional()
+});
+export type InferenceEvidence = z.infer<typeof InferenceEvidenceSchema>;
+
 export const NoteSummarySchema = z.object({
   id: IDSchema, kind: NoteKindSchema, status: NoteStatusSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
   /** Everyone who has the notes, organizer first. */
@@ -264,7 +298,9 @@ export const NoteSchema = NoteSummarySchema.extend({
   transcript: z.array(TranscriptLineSchema).nullable(),
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
-  audio: z.array(AudioSegmentSchema)
+  audio: z.array(AudioSegmentSchema),
+  /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
+  inference: z.array(InferenceEvidenceSchema)
 });
 export type Note = z.infer<typeof NoteSchema>;
 

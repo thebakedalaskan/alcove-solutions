@@ -22,7 +22,7 @@ flowchart TB
         Calls[Meetings, calendar, calls and room recordings]
         Notes[Notes: live transcript, access, sharing, notes worker]
         Billing[Billing: Kservice-sealed]
-        Inference[NEAR AI adapter: speech to text, notes model]
+        Inference[NEAR AI adapter: verifies each model, then encrypts to it]
     end
     UI -->|HTTPS /v1, cookie session| Account
     Media -->|5-second audio pieces, speech clips| Calls
@@ -32,7 +32,8 @@ flowchart TB
     Notes -->|transcript rows, access rows, jobs| DB
     Calls -->|ciphertext objects| Obj[(S3-compatible store: O01)]
     Notes --> Inference
-    Inference -->|TLS, bearer key| I01[NEAR AI Cloud: I01]
+    Inference -->|speech: Oblivious HTTP; transcripts: end-to-end encrypted; to attested keys| I01[NEAR AI Cloud: I01]
+    Inference -->|TDX collateral, GPU evidence| Verifiers[Intel PCS, NVIDIA NRAS]
     Account -->|OpenID Connect| Google[Google: sign-in and Calendar]
     Calls -->|Calendar API| Google
 ```
@@ -111,4 +112,4 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | Email (SMTP) as well |
 | Object store | RustFS in Docker | Cloudflare R2 |
 | Database | Postgres 17 in Docker | Cloud SQL Postgres 17 |
-| Inference | NEAR AI Cloud over TLS with a bearer key, when `NEAR_AI_API_KEY` is set | NEAR AI's end-to-end encrypted requests, with its attestation checked |
+| Inference | NEAR AI Cloud when `NEAR_AI_API_KEY` is set: each model's attestation checked first, then speech by Oblivious HTTP and transcripts end-to-end encrypted to its attested key | The same, with the models' builds pinned to published image provenance |

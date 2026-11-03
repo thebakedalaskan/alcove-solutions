@@ -3,6 +3,7 @@ import { Button, Chip, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
+import { Provenance } from '~/features/notes/Evidence';
 import { Player, usePlayer } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { AskBar, Chapters, Decisions, DocHead, FollowUps, Recipients, Section, Transcript, TranscriptLines } from '~/features/notes/parts';
@@ -157,7 +158,7 @@ function NoteView({ note, me, onGone }: { note: Note; me: string | undefined; on
       </div>
       <div className="note" style={{ '--d': 1 }}>
         <article className="doc">
-          <DocHead title={note.title} when={noteWhen(note.startedAt, note.duration)} people={note.people}
+          <DocHead title={note.title} when={noteWhen(note.startedAt, note.duration)} people={note.people} proof={note.inference.length ? <Provenance evidence={note.inference} kind={note.kind} /> : undefined}
             chip={note.status === 'recording' ? <NotesSign className="lead-chip">Still recording</NotesSign>
               : note.status === 'pending' ? <Chip className="lead-chip"><Spinner className="size-3" />Waiting to be written</Chip>
                 : !mine && organizer ? <Chip tone="sun" className="lead-chip">{myRole === 'shared' ? 'Shared with you' : `From ${firstName(organizer.name)}’s call`}</Chip> : null} />

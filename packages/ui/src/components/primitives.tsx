@@ -87,6 +87,23 @@ export function SealedBadge({ title, detail, inline = false, className }: { titl
   );
 }
 
+/** One thing that was checked: what, what it showed, and the value it showed it with (a hash, a status), if any. */
+export interface Checked { label: ReactNode; detail?: ReactNode | undefined; value?: ReactNode | undefined; title?: string | undefined }
+/** A list of what was checked, each with a tick. For evidence and receipts: information, not something to press. */
+export function Checklist({ items, label, className }: { items: Checked[]; label?: string | undefined; className?: string | undefined }) {
+  return (
+    <ul className={cn('ac-checklist', className)} aria-label={label}>
+      {items.map((it, i) => (
+        <li key={i} title={it.title}>
+          <Icon name="check" size={15} />
+          <span><b>{it.label}</b>{it.detail && <small>{it.detail}</small>}</span>
+          {it.value !== undefined ? <code>{it.value}</code> : <span />}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** A calm sentence with a way forward. Caution for problems (there is no alarm red), info for information. */
 export function Notice({ tone = 'info', icon, children, className }: { tone?: 'info' | 'caution'; icon?: IconName | undefined; children: ReactNode; className?: string | undefined }) {
   return (

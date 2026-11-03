@@ -17,7 +17,7 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`), current revision, `deleted_at`, `version` | — |
 | `revisions` | owner, item, revision, parent revision, `created_at` | `key_envelope`, `manifest_ciphertext` |
 | `operations` | owner, operation ID, method, completion time | `request_commitment` (HMAC), `result_ciphertext` |
-| `transcript_clips` | owner, note item | `clip_tag` (keyed hash of the clip's segment and start), `clip_ciphertext` (its transcript lines) |
+| `transcript_clips` | owner, note item | `clip_tag` (keyed hash of the clip's segment and start), `clip_ciphertext` (its transcript lines and the evidence of the verified model that heard them) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version` | `state_ciphertext` (mic, camera, hand, presentation, notes state, chat, notices) |
 | `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start and end, `version` | `key_envelope` (`Krec`) |
@@ -53,9 +53,11 @@ item of a kind.
 - **Streaming** a segment reads pieces in order, checks each digest, decrypts, and streams. Only for the note's
   organizer or someone with a `note_access` row for it, with an allow-listed content type, `nosniff` and
   `no-store`.
-- **Transcript clips** are sealed under the note's transcript key, one row per clip that had speech in it. The
-  live call or recording state opens them all; stopping moves the lines into the note's manifest and deletes
-  the rows in the same transaction.
+- **Transcript clips** are sealed under the note's transcript key, one row per clip that had speech in it,
+  with the evidence of the verified model it went to. The live call or recording state opens them all;
+  stopping moves the lines, and each distinct verification, into the note's manifest and deletes the rows in
+  the same transaction. A note's manifest keeps those verifications, and the notes model's with its signed
+  receipt, as `inference` ([Notes and inference › What a note keeps](notes-and-inference.md#what-a-note-keeps)).
 - **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
 - **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never

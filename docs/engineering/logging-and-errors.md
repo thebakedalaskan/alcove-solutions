@@ -79,7 +79,9 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   `400 invalid` from its `content-length`, before the body is read.
 - NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
   `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
-  `5xx`), with the operation, status and timing as context
+  `5xx`), with the operation, status and timing as context. Evidence or a reply that doesn't check out is
+  an `UnverifiedError` (an `UnavailableError`, logged at error, or warn when a service couldn't be reached),
+  with the model, the task and the check that failed
   ([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)).
 
 ## Browser: `apps/web/src/lib/log.ts`
@@ -112,7 +114,8 @@ about what anyone said, wrote or who they are.
   state stay out too.
 - Google's tokens are never logged, nor its error descriptions: only its error code (such as
   `invalid_grant`). `inference.ts` logs only models, sizes, durations, counts, statuses, timings, finish
-  reasons and token counts.
+  reasons and token counts; `evidence.ts` only models, result codes, durations, TCB statuses, advisory IDs,
+  GPU counts and hashes of keys, quotes and configurations, never the evidence itself.
 - SQL is logged as static text; parameters never are.
 - pino redacts common secret field names (`secret`, `root`, `wrapKey`, `key`, `krec`, `cookie`,
   `authorization`, `body`, `plaintext`, ...) as a backstop; the browser logger drops key-like and

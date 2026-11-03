@@ -14,9 +14,9 @@ Start with the **[docs](docs/README.md)**.
 
 **Status:** real Google sign-in with Google Calendar (Microsoft and SSO are still demo identities, with a
 sample calendar and company directory), single-participant calls with real media, encrypted notes
-recordings, a live transcript and written notes from NEAR AI Cloud, asking about a call, sharing notes with
-everyone invited, credits charged for notes, CI and a deploy pipeline. Verified private inference,
-multi-party calls, invite emails, credit purchases and confidential compute are next; see the roadmap.
+recordings, a live transcript and written notes from NEAR AI Cloud's verified private inference, asking
+about a call, sharing notes with everyone invited, credits charged for notes, CI and a deploy pipeline.
+Multi-party calls, invite emails, credit purchases and confidential compute are next; see the roadmap.
 
 ## Running the app
 

@@ -69,6 +69,14 @@
 .ac-stage .ac-sealed.is-inline, .ac-sealed.is-inline.is-stage { color: var(--stage-ink-2); }
 .ac-stage .ac-sealed.is-inline .ac-i, .ac-sealed.is-inline.is-stage .ac-i { color: var(--gold); }
 
+/* ---- Checklist: what was checked and what it showed. Ticks are information (horizon), never an action. ---- */
+.ac-checklist { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ac-checklist li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.ac-checklist li > .ac-i { margin-top: 2px; color: var(--horizon); }
+.ac-checklist b { display: block; font: 600 13.5px/1.35 var(--font-sans); color: var(--ink); }
+.ac-checklist small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
+.ac-checklist code { padding-top: 2px; font: 500 12px/1.35 var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+
 /* ---- Avatar: the arch ---- */
 .ac-avatar { --size: 32px; position: relative; display: inline-block; flex: none; width: var(--size); height: calc(var(--size) * 1.08); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--size) * .22) calc(var(--size) * .22); overflow: hidden; vertical-align: middle; background: var(--sunk); box-shadow: 0 0 0 2px var(--ring, transparent); }
 .ac-avatar svg, .ac-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
