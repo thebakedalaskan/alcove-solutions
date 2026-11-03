@@ -16,6 +16,8 @@ const rlog = log.child({ component: 'call-room' });
 
 export interface RoomPerson {
   mic: boolean;
+  /** The microphone's track sid, for the organizer's mute. */
+  micSid: string | null;
   /** Track sids to attach, once there's media for them. */
   camSid: string | null;
   screenSid: string | null;
@@ -100,6 +102,7 @@ class LiveKitRoom implements CallRoom {
       const screen = pub(Track.Source.ScreenShare);
       out[p.identity] = {
         mic: Boolean(mic && !mic.isMuted),
+        micSid: mic?.trackSid ?? null,
         camSid: cam && !cam.isMuted && cam.track ? cam.trackSid : null,
         screenSid: screen && screen.track ? screen.trackSid : null,
         speaking: p.isSpeaking

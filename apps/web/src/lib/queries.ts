@@ -11,6 +11,7 @@ export const qk = {
   meetings: ['meetings'] as const,
   upcoming: ['meetings', 'upcoming'] as const,
   byCode: (code: string) => ['meetings', 'code', code] as const,
+  card: (code: string) => ['calls', 'card', code] as const,
   calendar: ['meetings', 'calendar'] as const,
   notes: ['notes'] as const,
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
@@ -26,6 +27,8 @@ export const q = {
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
+  /** A call link's title and organizer, for anyone (no account needed). */
+  card: (code: string) => queryOptions({ queryKey: qk.card(code), queryFn: () => api.calls.card(code), retry: false }),
   /** Someone's other calendar events; refreshed every few minutes, since they change outside Alcove. */
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),

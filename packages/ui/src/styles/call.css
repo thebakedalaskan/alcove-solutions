@@ -84,6 +84,9 @@ button.npill.off:hover { background: rgb(255 255 255 / 0.1); color: #EEEDF8; }
 .tiles.one { grid-template-columns: 1fr; }
 .tiles.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
 .tiles.grid.odd > .tile:last-child { grid-column: 1 / -1; justify-self: center; width: calc(50% - 6px); }
+.tiles.sharing { grid-template-columns: minmax(0, 1fr) clamp(160px, 18%, 260px); }
+.tiles-strip { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+.tiles-strip > .tile { flex: none; aspect-ratio: 16 / 10; }
 .tile { border-radius: 24px; min-height: 0; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05); }
 .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 0 rgb(156 145 255 / 0); transition: box-shadow 260ms ease; }
 .tile.speaking::after { box-shadow: inset 0 0 0 3px rgb(156 145 255 / 0.9); }
@@ -307,6 +310,9 @@ button.npill.off:hover { background: rgb(255 255 255 / 0.1); color: #EEEDF8; }
   .stg-top { grid-template-columns: auto 1fr auto; padding: 0 12px; }
   .cl-title .mono, .stg-right { display: none; }
   .tiles.grid { grid-template-columns: 1fr 1fr; }
+  .tiles.sharing { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .tiles-strip { flex-direction: row; overflow-x: auto; }
+  .tiles-strip > .tile { width: 132px; }
   .rb { width: 46px; height: 46px; }
   .cl-bar { gap: 6px; }
   .cl-bar .sep { display: none; }
