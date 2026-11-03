@@ -125,8 +125,7 @@ switch; environment-scoped variables are unavailable to the early job condition.
 | `OBJECTS_ENDPOINT` | account's R2 S3 endpoint |
 | `OBJECTS_BUCKET` | `alcove-objects` |
 | `WEB_ORIGIN` | `https://alcove.solutions` |
-| `API_ORIGIN` | `https://api.alcove.solutions` |
-| `RP_ID` | `alcove.solutions` |
+| `API_ORIGIN` | `https://api.alcove.solutions`; also the API's `API_URL`, from which Google's redirect URI is built |
 | `NEAR_AI_ENABLED` | `false` |
 | `GOOGLE_AUTH_ENABLED` | `false` on a new installation; `true` only after both Google credential versions exist |
 | `DEPLOY_ENABLED` | `false` during setup; `true` when ready to deploy |
@@ -155,10 +154,25 @@ add versions from private environment variables are printed by bootstrap.
 
 Set repository variable `GOOGLE_AUTH_ENABLED=true` only after both latest versions are enabled. This
 binds both values into the API service and migration job on the next deployment. New installations
-default to `false` or an unset variable, omit both bindings and require no placeholder values. The flag
-only controls credential delivery: current `main` has no Google authorization/callback routes, so
-Google sign-in, Calendar access and People access are not working application features yet. Those
-flows still need implementation and acceptance evidence.
+default to `false` or an unset variable, omit both bindings and require no placeholder values; the
+Google button then explains that sign-in isn't set up. Sign-in with Google is implemented (OpenID
+Connect with PKCE, `/v1/auth/google` and `/v1/auth/google/callback`) and asks for `openid email
+profile`. The redirect URI registered for production must be `https://api.alcove.solutions/v1/auth/google/callback`.
+
+## Schema changes
+
+Alcove's schema changes in place: `apps/api/migrations/` always describes today's database, and there are
+no data migrations. The migration job keeps a checksum of every file it applied and refuses a database
+built from a different version, so a deploy that changes the schema stops before the new API starts.
+Reset the production database first, after taking a backup:
+
+```sh
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql backups create --instance=alcove-db --description="before schema reset"
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql databases delete alcove --instance=alcove-db
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql databases create alcove --instance=alcove-db
+```
+
+Then re-run the deploy (Actions › Deploy › Run workflow); its migration job builds the new schema.
 
 ## Deployment and verification
 
@@ -186,7 +200,7 @@ See [Google's reserved-path guidance](https://docs.cloud.google.com/run/docs/kno
 The service health check does not establish that public domains work. Before recording a release as
 live, verify DNS delegation, both HTTPS certificates, API health at the custom domain, CORS for the
 apex web origin, Pages security headers and deep links, JavaScript/CSS asset responses without redirect
-loops, and a passkey/account/recording flow that
+loops, and a Google sign-in and recording flow that
 uploads, reads and physically deletes encrypted objects. Match both deployments to the intended Git
 commit. Use the existing integration suite for automated checks; no browser test suite is permitted.
 
@@ -201,7 +215,7 @@ CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions \
   logging sinks describe _Default --format='yaml(exclusions)'
 ```
 
-Cloud Run is not a confidential VM, and restarts end unlocked in-memory sessions. Scaling out requires
-a session/key design change. Passkeys are bound to `RP_ID`; keep the final domain stable. Outstanding
-confidential-compute, multi-party media and inference work is tracked in
+Cloud Run is not a confidential VM: until the API runs in an attested VM that alone can read
+`KMASTER`, whoever operates the service could open accounts. Sessions live in Postgres, so restarts
+sign nobody out. Outstanding confidential-compute, multi-party media and inference work is tracked in
 [deployment and acceptance](../docs/engineering/deployment-and-acceptance.md).
