@@ -13,6 +13,7 @@ import { log } from '../log';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
 import * as calendar from './calendar';
+import { indexCode, indexed, lookupCode } from './codes';
 import { personOf } from './portraits';
 
 const mlog = log.child({ component: 'meetings' });
@@ -53,10 +54,17 @@ async function toMeeting(o: Owner, m: Loaded<MeetingManifest>): Promise<Meeting>
   };
 }
 export const all = (o: Owner, db: Db = o.pool) => listItems(o, db, 'meeting', MeetingManifest);
+/** Meetings made before the call-code index existed get indexed the first time their organizer lists them. */
+async function indexOlder(o: Owner, ms: Loaded<MeetingManifest>[]): Promise<void> {
+  const have = await indexed(o.pool, o.ownerId);
+  for (const m of ms) if (!have.has(m.itemId)) await indexCode(o, o.pool, { ownerId: o.ownerId, meetingId: m.itemId, code: m.manifest.code });
+}
 
 export async function upcoming(o: Owner): Promise<Meeting[]> {
   const cutoff = Date.now() - 60 * 60_000;
-  const ms = (await all(o)).filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
+  const every = await all(o);
+  await indexOlder(o, every);
+  const ms = every.filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
   ms.sort((a, b) => a.manifest.startsAt.localeCompare(b.manifest.startsAt));
   return Promise.all(ms.map((m) => toMeeting(o, m)));
 }
@@ -66,8 +74,11 @@ export async function past(o: Owner): Promise<Meeting[]> {
   return Promise.all(ms.map((m) => toMeeting(o, m)));
 }
 export async function get(o: Owner, id: string): Promise<Meeting> { return toMeeting(o, await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting')); }
+/** One of your own meetings, by its code. */
 export async function findByCode(o: Owner, code: string, db: Db = o.pool): Promise<Loaded<MeetingManifest> | undefined> {
-  return (await all(o, db)).find((m) => m.manifest.code === code);
+  const link = await lookupCode(o, code, db);
+  if (!link || link.ownerId !== o.ownerId) return undefined;
+  return getItem(o, db, 'meeting', link.meetingId, MeetingManifest, 'That meeting');
 }
 export async function byCode(o: Owner, code: string): Promise<Meeting | null> {
   const m = await findByCode(o, code);
@@ -86,7 +97,7 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
     title: input.title.trim() || 'Untitled call', ...validTimes(input.startsAt, input.durationMinutes),
     guests: cleanGuests(input.guests, organizer.email), notes: input.notes, code: makeCode(), status: 'scheduled'
   };
-  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  const { itemId } = await tx(o.pool, async (c) => { const r = await createItem(o, c, 'meeting', manifest); await indexCode(o, c, { ownerId: o.ownerId, meetingId: r.itemId, code: manifest.code }); return r; });
   mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes });
   await placeOnCalendar(o, itemId, manifest);
   return get(o, itemId);
@@ -155,7 +166,7 @@ export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | un
     notes: notes ?? (await preferences(o)).notesDefault, code: makeCode(), status: 'scheduled',
     calendarEventId: eventId, ...(e.url ? { calendarUrl: e.url } : {})
   };
-  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  const { itemId } = await tx(o.pool, async (c) => { const r = await createItem(o, c, 'meeting', manifest); await indexCode(o, c, { ownerId: o.ownerId, meetingId: r.itemId, code: manifest.code }); return r; });
   await calendar.change(o, eventId, itemId, manifest, e.description);
   mlog.info('calendar event moved to Alcove', { meetingId: itemId, guests: manifest.guests.length });
   return get(o, itemId);
@@ -170,7 +181,7 @@ export async function startNow(o: Owner, input: InstantCallInput): Promise<{ cod
     title: input.title?.trim() || `${firstName(organizer.name)}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(),
     guests: cleanGuests(input.guests ?? [], organizer.email), notes, code: makeCode(), status: 'scheduled'
   };
-  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  const { itemId } = await tx(o.pool, async (c) => { const r = await createItem(o, c, 'meeting', manifest); await indexCode(o, c, { ownerId: o.ownerId, meetingId: r.itemId, code: manifest.code }); return r; });
   mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes });
   return { code: manifest.code };
 }

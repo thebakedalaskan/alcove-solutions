@@ -61,6 +61,8 @@ async function account(email = unique()) {
   const r = await b.api.auth.signIn('sso', { email });
   return { ...b, session: r.session, isNew: r.isNew };
 }
+/** The organizer leaving ends the call; anything else is a mistake in the test. */
+async function ended(call: CallSession) { const r = await call.leave(); if (!r) throw new Error('the organizer’s leave ended nothing'); return r; }
 /** Waits until optimistic call actions have been confirmed by the server. */
 async function settle(call: CallSession, pred: (s: CallState) => boolean): Promise<CallState> {
   for (let i = 0; i < 100 && !pred(call.getSnapshot()); i++) await new Promise((r) => setTimeout(r, 30));
@@ -507,13 +509,11 @@ describe('calls with notes', () => {
     expect(s.notes.recording.segment).toBe(1);
     await call.appendAudio(piece(audioBytes('segment-one'), 1, 0));
 
-    call.sendChat('CANARY-CHAT agenda link');
-    call.setSharing(true, 'Pilot timeline');
-    call.setMic(false);
-    s = await settle(call, (x) => x.chat.length === 1 && !!x.sharing && x.participants[0]?.mic === false);
+    await call.sendChat('CANARY-CHAT agenda link');
+    s = await settle(call, (x) => x.chat.length === 1);
     expect(s.chat[0]?.text).toBe('CANARY-CHAT agenda link');
 
-    const end = await call.leave();
+    const end = await ended(call);
     expect(end.pendingNoteId).toBe(s.notes.noteId);
     const noteId = end.pendingNoteId ?? '';
 
@@ -538,7 +538,7 @@ describe('calls with notes', () => {
     const { api } = await account();
     const call = await api.calls.join((await api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
     expect(call.getSnapshot().notes.status).toBe('off');
-    expect((await call.leave()).pendingNoteId).toBeNull();
+    expect((await ended(call)).pendingNoteId).toBeNull();
     expect(await api.notes.list()).toEqual([]);
   });
 
@@ -546,7 +546,11 @@ describe('calls with notes', () => {
     const a = await account();
     const b = await account();
     const { code: c } = await a.api.calls.startNow();
-    expect(code(await b.api.calls.join(c, { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
+    // Another account can only come in by the link, as a guest, once the organizer is there.
+    expect(code(await b.api.calls.join(c, { mic: true, cam: true }).catch((e: unknown) => e))).toBe('conflict');
+    const hosting = await a.api.calls.join(c, { mic: true, cam: true });
+    expect((await b.api.calls.join(c, { mic: true, cam: true })).ticket.role).toBe('guest');
+    await hosting.leave();
     expect(code(await a.api.calls.join('zzz-zzzz-zzz', { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
 
     const rec = await a.api.recordings.start('Mine');
@@ -592,7 +596,7 @@ describe('live transcript and written notes', () => {
     await call.transcribe(speech('That is everything for today.', 1, 0));
     expect(call.getSnapshot().transcript.at(-1)).toMatchObject({ at: 10, text: 'That is everything for today.' });
 
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await ended(call)).pendingNoteId ?? '';
     const steps = await written(org.api, noteId);
     expect(steps.at(-1)).toMatchObject({ ready: true, steps: expect.arrayContaining([{ label: 'Transcript of 4 lines', done: true }, { label: 'Notes written', done: true }]) });
     const note = await org.api.notes.get(noteId);
@@ -661,8 +665,9 @@ describe('live transcript and written notes', () => {
 
     // Nobody else can catch up on this call, and nothing about it keeps a receipt.
     const b = await account();
+    // Without this call's pass there's no way in.
     const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/catch-up`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-    expect(steal.status).toBe(404);
+    expect(steal.status).toBe(401);
     expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE owner_id = $1 AND (method LIKE '%catch-up%' OR method LIKE '%/ask')", [a.session.ownerId])).rows[0]?.n).toBe(0);
     await call.leave();
     expect(code(await call.catchUp().catch((e: unknown) => e))).toBe('conflict');
@@ -701,9 +706,10 @@ describe('live transcript and written notes', () => {
     const b = await account();
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
+    // The organizer's browser sends the call's pass with everything about the call; nobody else has it.
     const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string } = {}) => who.fetch(`${base}/v1${path}`, {
       method: 'POST', body: new Blob([bytes]),
-      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000' }
+      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000', ...(who === a ? { 'x-alcove-call': call.ticket.pass } : {}) }
     });
     const hello = () => speechWav('Hello there.');
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { type: 'audio/webm' })).status).toBe(400);
@@ -712,7 +718,7 @@ describe('live transcript and written notes', () => {
     const cd = hello(); new DataView(cd.buffer).setUint32(24, 44_100, true);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, cd)).status).toBe(400);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ms: '45000' })).status).toBe(400);
-    expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(404);
+    expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(401);
     const rec = await a.api.recordings.start('Mine');
     expect((await post(b, h.baseUrl, `/recordings/${rec.getSnapshot().id}/transcribe`, hello())).status).toBe(404);
     expect(code(await rec.transcribe(speech('Hello.', 1, 0)).catch((e: unknown) => e))).toBe('invalid');
@@ -787,7 +793,7 @@ describe('confirming what the notes say', () => {
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
     await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0));
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await ended(call)).pendingNoteId ?? '';
     await written(org.api, noteId);
     let note = await org.api.notes.get(noteId);
     const decision = note.decisions[0]?.id ?? '';
@@ -955,7 +961,7 @@ describe('privacy at rest', () => {
     // While the call is on, the live transcript is sealed rows too.
     const live = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
     expect(live).not.toBe('');
-    call.sendChat('CANARY-CHAT private remark');
+    await call.sendChat('CANARY-CHAT private remark');
     await settle(call, (x) => x.chat.length === 1);
     expect((await call.catchUp()).lines).toBe(1);
     await call.askSoFar('What closes on Friday?');

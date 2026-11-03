@@ -24,15 +24,11 @@ export const TeamInviteBodySchema = z.object({ emails: z.array(z.string().trim()
 export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50) });
 
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
+/** The organizer's changes to a call. Mic, camera, hand and screen live in LiveKit; chat has its own endpoint. */
 export const CallActionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('mic'), on: z.boolean() }),
-  z.object({ type: z.literal('cam'), on: z.boolean() }),
-  z.object({ type: z.literal('hand'), up: z.boolean() }),
-  z.object({ type: z.literal('sharing'), on: z.boolean(), title: z.string().max(120).optional() }),
-  z.object({ type: z.literal('chat'), text: z.string().trim().min(1).max(4000) }),
-  z.object({ type: z.literal('notes'), on: z.boolean() }),
-  z.object({ type: z.literal('dismiss'), id: z.string() })
+  z.object({ type: z.literal('notes'), on: z.boolean() })
 ]);
+export const CallChatBodySchema = z.object({ text: z.string().trim().min(1).max(2000) });
 export type CallAction = z.infer<typeof CallActionSchema>;
 
 export const RecordingActionSchema = z.discriminatedUnion('type', [

@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CallChatBodySchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -15,6 +15,7 @@ import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableErr
 import { addLogContext, log, withLogContext } from './log';
 import * as google from './google';
 import { inference } from './inference';
+import { CALL_PASS_HEADER, readPass } from './callPass';
 import { openOwner } from './owners';
 import { ABSOLUTE_MS, cookieName, findSession } from './sessions';
 import * as account from './modules/account';
@@ -28,7 +29,7 @@ import * as people from './modules/people';
 import * as recordings from './modules/recordings';
 import type { Clip } from './modules/transcripts';
 
-type Env = { Variables: { owner: Owner; requestId: string } };
+type Env = { Variables: { owner: Owner; viewer: calls.Viewer; requestId: string } };
 const rlog = log.child({ component: 'http' });
 const clog = log.child({ component: 'client', source: 'browser' });
 /** Call codes are join tokens: keep them out of logs. Every other path segment is a random ID. */
@@ -76,6 +77,8 @@ export function createApp(d: Deps) {
   /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
   const speechLimiter = rateLimit(120, 60_000);
   const askLimiter = rateLimit(20, 60_000);
+  /** Reading call cards and joining by link: public, so limited per client address. */
+  const callLimiter = rateLimit(120, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -100,7 +103,7 @@ export function createApp(d: Deps) {
   const body = async <S extends z.ZodType>(c: Context, schema: S): Promise<z.infer<S>> => schema.parse(await c.req.json().catch(() => { throw new ValidationError('Expected a JSON body.'); }));
 
   // Only the web app's own origin may call the API with credentials (matters when they're on different subdomains).
-  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, ...Object.values(AUDIO_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
+  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
@@ -197,6 +200,56 @@ export function createApp(d: Deps) {
     }
   });
 
+  /* ---------- group calls: by link (no account needed) and by call pass ---------- */
+  const optionalOwner = async (c: Context): Promise<Owner | undefined> => {
+    const s = await findSession(d, getCookie(c, COOKIE));
+    return s ? openOwner(d, s.ownerId, s) : undefined;
+  };
+  app.get('/v1/calls/:code/card', async (c) => { callLimiter(clientAddress(c), 'call card'); return c.json(await calls.card(d, c.req.param('code'))); });
+  app.post('/v1/calls/:code/join', async (c) => {
+    callLimiter(clientAddress(c), 'call join');
+    const b = await body(c, z.object({ mic: z.boolean(), cam: z.boolean(), name: z.string().max(200).optional() }));
+    return c.json(await calls.join(d, c.req.param('code'), { owner: await optionalOwner(c), name: b.name, mic: b.mic, cam: b.cam }));
+  });
+  /* Everything about a live call needs that call's pass; the organizer's keys are opened for the request. */
+  const viewerFor = async (c: Context<Env>, next: () => Promise<void>) => {
+    const pass = readPass(d.cfg, c.req.header(CALL_PASS_HEADER));
+    if (!pass || pass.callId !== c.req.param('id')) throw new AuthError('Join the call again to carry on.', { context: { hasPass: Boolean(pass) } });
+    // The organizer's pass counts as the organizer's only together with the organizer's own session.
+    const owner = pass.role === 'host' ? await optionalOwner(c) : undefined;
+    addLogContext({ callId: pass.callId, role: pass.role });
+    c.set('viewer', { pass, organizer: await openOwner(d, pass.ownerId, undefined), isOrganizer: pass.role === 'host' && owner?.ownerId === pass.ownerId });
+    await next();
+  };
+  app.use('/v1/live/calls/:id', viewerFor);
+  app.use('/v1/live/calls/:id/*', viewerFor);
+  const organizerOnly = (c: Context<Env>) => {
+    const v = c.get('viewer');
+    if (!v.isOrganizer) throw new ForbiddenError('Only the organizer can do that.', { context: { callId: v.pass.callId, role: v.pass.role } });
+    return v;
+  };
+  app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
+  app.post('/v1/live/calls/:id/actions', async (c) => c.json(await calls.act(organizerOnly(c), c.req.param('id'), await body(c, CallActionSchema))));
+  app.post('/v1/live/calls/:id/chat', async (c) => c.json(await calls.chat(c.get('viewer'), c.req.param('id'), (await body(c, CallChatBodySchema)).text)));
+  app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(organizerOnly(c), c.req.param('id'), await piece(c))));
+  app.post('/v1/live/calls/:id/transcribe', async (c) => {
+    const v = organizerOnly(c);
+    speechLimiter(v.organizer.ownerId, 'transcribe');
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c)));
+  });
+  /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
+  app.post('/v1/live/calls/:id/catch-up', async (c) => {
+    const v = c.get('viewer');
+    askLimiter(v.pass.identity, 'catch-up');
+    return c.json(await calls.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).minutes));
+  });
+  app.post('/v1/live/calls/:id/ask', async (c) => {
+    const v = c.get('viewer');
+    askLimiter(v.pass.identity, 'ask');
+    return c.json(await calls.askSoFar(v, c.req.param('id'), (await body(c, AskBodySchema)).question));
+  });
+  app.post('/v1/live/calls/:id/leave', async (c) => c.json(await calls.leave(organizerOnly(c), c.req.param('id'))));
+
   /* ---------- everything below needs a signed-in owner ---------- */
   app.use('/v1/*', async (c, next) => {
     const cookie = getCookie(c, COOKIE);
@@ -266,24 +319,6 @@ export function createApp(d: Deps) {
 
   /* calls */
   app.post('/v1/calls', async (c) => c.json(await meetings.startNow(c.get('owner'), await body(c, InstantCallInputSchema))));
-  app.post('/v1/calls/:code/join', async (c) => c.json(await calls.join(c.get('owner'), c.req.param('code'), await body(c, z.object({ mic: z.boolean(), cam: z.boolean() })))));
-  app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('owner'), c.req.param('id'))));
-  app.post('/v1/live/calls/:id/actions', async (c) => c.json(await calls.act(c.get('owner'), c.req.param('id'), await body(c, CallActionSchema))));
-  app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(c.get('owner'), c.req.param('id'), await piece(c))));
-  app.post('/v1/live/calls/:id/transcribe', async (c) => {
-    speechLimiter(c.get('owner').ownerId, 'transcribe');
-    return c.json(await calls.transcribe(c.get('owner'), c.req.param('id'), await clip(c)));
-  });
-  /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
-  app.post('/v1/live/calls/:id/catch-up', async (c) => {
-    askLimiter(c.get('owner').ownerId, 'catch-up');
-    return c.json(await calls.catchUp(c.get('owner'), c.req.param('id'), (await body(c, CatchUpBodySchema)).minutes));
-  });
-  app.post('/v1/live/calls/:id/ask', async (c) => {
-    askLimiter(c.get('owner').ownerId, 'ask');
-    return c.json(await calls.askSoFar(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
-  });
-  app.post('/v1/live/calls/:id/leave', async (c) => c.json(await calls.leave(c.get('owner'), c.req.param('id'))));
 
   /* room recordings */
   app.post('/v1/recordings', async (c) => c.json(await recordings.start(c.get('owner'), (await body(c, z.object({ title: z.string().max(160).optional() }))).title ?? 'Untitled recording')));

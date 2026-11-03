@@ -44,7 +44,6 @@ function InCall({ session }: { session: CallSession }) {
   const toast = useToast();
   const copy = useCopyLink();
   useRaisedToasts();
-  const me = selfIn(state);
   const on = state.notes.status === 'on';
   const [panel, setPanel] = useState<Panel | null>(() => (on && innerWidth >= 1100 ? 'notes' : null));
   const [pop, setPop] = useState<'pill' | 'leave' | 'mic' | 'cam' | null>(null);
@@ -61,7 +60,7 @@ function InCall({ session }: { session: CallSession }) {
   const unread = Math.max(0, state.chat.length - seenChat.current);
 
   /* Media comes from pre-join; it starts here if the call page was opened directly. */
-  const first = useRef({ mic: me?.mic ?? true, cam: me?.cam ?? true });
+  const first = useRef({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam });
   useEffect(() => {
     sessions.media = media;
     if (!media.getSnapshot().camera) void media.start(first.current);
@@ -95,12 +94,12 @@ function InCall({ session }: { session: CallSession }) {
     }
   }, [state.notices, session, toast]);
 
-  const setMic = (v: boolean) => { media.setMic(v); session.setMic(v); };
-  const setCam = (v: boolean) => { void media.setCam(v); session.setCam(v); };
+  // Mic, camera and screen are the browser's own; LiveKit tells everyone else (features/call/livekit.ts).
+  const setMic = (v: boolean) => { media.setMic(v); };
+  const setCam = (v: boolean) => { void media.setCam(v); };
   const share = async () => {
-    if (media.getSnapshot().screen) { media.stopScreen(); session.setSharing(false); return; }
-    const title = await media.shareScreen(() => session.setSharing(false));
-    if (title) session.setSharing(true, title);
+    if (media.getSnapshot().screen) { media.stopScreen(); return; }
+    await media.shareScreen(() => undefined);
   };
   const flip = (p: Panel) => setPanel((x) => (x === p ? null : p));
   /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
@@ -123,8 +122,8 @@ function InCall({ session }: { session: CallSession }) {
       if (k !== 'm' && k !== 'v' && k !== 'c') return;
       // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
-      if (k === 'm') { media.setMic(!s.mic); session.setMic(!s.mic); }
-      if (k === 'v') { void media.setCam(!s.cam); session.setCam(!s.cam); }
+      if (k === 'm') media.setMic(!s.mic);
+      if (k === 'v') void media.setCam(!s.cam);
       if (k === 'c') setPanel((x) => (x === 'chat' ? null : 'chat'));
     };
     addEventListener('keydown', onKey);
@@ -142,10 +141,10 @@ function InCall({ session }: { session: CallSession }) {
       media.stop();
       sessions.media = null;
       void qc.invalidateQueries();
-      if (r.pendingNoteId) await navigate({ to: '/notes/$noteId', params: { noteId: r.pendingNoteId }, replace: true });
+      if (r?.pendingNoteId) await navigate({ to: '/notes/$noteId', params: { noteId: r.pendingNoteId }, replace: true });
       else {
         await navigate({ to: '/home', replace: true });
-        toast(`Call ended after ${minutesLabel(r.duration)}. There are no notes from it.`, { icon: 'check' });
+        if (r) toast(`Call ended after ${minutesLabel(r.duration)}. There are no notes from it.`, { icon: 'check' });
       }
     } catch (e) {
       clog.error('leaving the call failed', { err: e });
@@ -287,9 +286,9 @@ function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapsho
   return (
     <div className={cn('tiles grid', (others.length + 1) % 2 === 1 && 'odd')}>
       {others.map((p) => (
-        <div key={p.id} className={cn('tile', p.hand && 'hand-up')}>
+        <div key={p.id} className="tile">
           <div className="feed-off"><Avatar person={p.person} size={96} /></div>
-          <span className="nm">{!p.mic && <Icon name="micOff" size={14} />}{p.person.name.split(' ')[0] ?? p.person.name}</span>
+          <span className="nm">{p.person.name.split(' ')[0] ?? p.person.name}</span>
         </div>
       ))}
       {self}
@@ -396,7 +395,7 @@ function PeoplePanel({ state, invited }: { state: CallState; invited: Person[] }
           <div key={p.id} className="person">
             <Avatar person={p.person} size={32} />
             <span className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{p.isOrganizer ? 'Organizer' : 'Invited'}</small></span>
-            <Icon name={p.mic ? 'mic' : 'micOff'} size={16} />
+            <span />
           </div>
         ))}
         {away.length > 0 && (

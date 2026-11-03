@@ -76,12 +76,14 @@ export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac
 export const serviceKey = (kservice: Uint8Array, purpose: 'accounting'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
 /** Seals what a browser carries between leaving to sign in with a provider and coming back. */
 export const signInAttemptKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/sign-in-attempt/v1');
+/** Signs call passes: what lets someone in a call (guests included) make that call's requests. */
+export const callPassKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/call-pass/v1');
 export const mac = (key: Uint8Array, data: Uint8Array): Uint8Array => hmac(sha256, key, data);
 /**
  * A keyed hash that lets the server find a person (by sign-in account or email) without storing
  * who they are. Emails are compared trimmed and lower-cased.
  */
-export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email', value: string): Uint8Array {
+export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email' | 'call-code', value: string): Uint8Array {
   const v = purpose === 'email' ? value.trim().toLowerCase() : value;
   return hmac(sha256, derive(live(kmaster), new Uint8Array(0), 'alcove/index/v1'), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
 }

@@ -4,10 +4,10 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CalendarSchema, CallEndResultSchema, CallStateSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
-  type AlcoveApi, type AnswerPart, type AudioPiece, type CallAction, type CallSession, type CallState, type CatchUp, type RecordingAction, type RoomRecording,
+  type AlcoveApi, type AnswerPart, type AudioPiece, type CallAction, type CallSession, type CallState, type CallTicket, type CatchUp, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type TranscriptClip
 } from '@alcove/api';
 import { z } from 'zod';
@@ -72,8 +72,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     emit('debug', 'request', { ...where, status: res.status, requestId: requestId ?? null, ms: Date.now() - t0 });
     return res;
   }
-  async function req<S extends z.ZodType>(schema: S, method: string, path: string, body?: unknown): Promise<z.infer<S>> {
-    const res = await send(method, path, body === undefined ? null : JSON.stringify(body), body === undefined ? {} : { 'content-type': 'application/json' });
+  async function req<S extends z.ZodType>(schema: S, method: string, path: string, body?: unknown, extra: Record<string, string> = {}): Promise<z.infer<S>> {
+    const res = await send(method, path, body === undefined ? null : JSON.stringify(body), { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra });
     return parse(schema, await res.json(), `response from ${method} ${path}`);
   }
   async function* ndjson<S extends z.ZodType>(schema: S, path: string): AsyncIterable<z.infer<S>> {
@@ -93,12 +93,12 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     }
   }
-  const audio = (path: string, piece: AudioPiece) => send('POST', path, piece.data, {
-    'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
+  const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
+    ...extra, 'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
   /** Speech for the live transcript: WAV bytes, placed by where the clip starts in its segment. */
-  const clip = (path: string, c: TranscriptClip) => send('POST', path, c.data, {
-    'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
+  const clip = (path: string, c: TranscriptClip, extra: Record<string, string> = {}) => send('POST', path, c.data, {
+    ...extra, 'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
   }).then((r) => r.json());
 
   return {
@@ -134,14 +134,23 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     },
     calls: {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
-      join: async (code, opts) => new HttpCall(await req(CallStateSchema, 'POST', `/calls/${encodeURIComponent(code)}/join`, opts), {
-        act: (id, a) => req(CallStateSchema, 'POST', `/live/calls/${id}/actions`, a),
-        audio: async (id, p) => parse(CallStateSchema, await audio(`/live/calls/${id}/audio`, p), 'call state'),
-        transcribe: async (id, c) => parse(CallStateSchema, await clip(`/live/calls/${id}/transcribe`, c), 'call state'),
-        catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `/live/calls/${id}/catch-up`, minutes ? { minutes } : {}),
-        askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `/live/calls/${id}/ask`, { question }),
-        leave: (id) => req(CallEndResultSchema, 'POST', `/live/calls/${id}/leave`, {})
-      })
+      card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
+      join: async (code, opts) => {
+        const joined = await req(z.object({ ticket: CallTicketSchema, state: CallStateSchema }), 'POST', `/calls/${encodeURIComponent(code)}/join`, opts);
+        // Every request about the call carries its pass; guests have no session, so this is all they have.
+        const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
+        const live = (id: string) => `/live/calls/${id}`;
+        return new HttpCall(joined.state, joined.ticket, {
+          get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
+          act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
+          chat: (id, text) => req(CallStateSchema, 'POST', `${live(id)}/chat`, { text }, p),
+          audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
+          transcribe: async (id, c) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, p), 'call state'),
+          catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
+          askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `${live(id)}/ask`, { question }, p),
+          leave: (id) => req(CallEndResultSchema, 'POST', `${live(id)}/leave`, {}, p)
+        });
+      }
     },
     recordings: {
       start: async (title) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', { title }), {
@@ -183,7 +192,9 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
 
 /* ---------- live call: server is the source of truth; the client keeps the clock ticking ---------- */
 interface CallTransport {
+  get(id: string): Promise<CallState>;
   act(id: string, a: CallAction): Promise<CallState>;
+  chat(id: string, text: string): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
   transcribe(id: string, c: TranscriptClip): Promise<CallState>;
   catchUp(id: string, minutes: number | undefined): Promise<CatchUp>;
@@ -207,31 +218,27 @@ class Live<S extends { elapsed: number }> {
 }
 
 class HttpCall extends Live<CallState> implements CallSession {
-  constructor(initial: CallState, private readonly t: CallTransport) { super(initial, (s) => s.phase === 'in-call'); }
-  private act(a: CallAction, optimistic?: (s: CallState) => CallState) {
-    if (optimistic) this.set(optimistic(this.state));
-    void this.t.act(this.state.callId, a).then((s) => this.apply(s), (e: unknown) => {
+  constructor(initial: CallState, readonly ticket: CallTicket, private readonly t: CallTransport) { super(initial, (s) => s.phase === 'in-call'); }
+  private hidden = new Set<string>();
+  /** The server's state, minus notices this screen has dismissed. */
+  private take(s: CallState) { this.apply({ ...s, notices: s.notices.filter((n) => !this.hidden.has(n.id)) }); }
+  refresh = async () => { this.take(await this.t.get(this.state.callId)); };
+  sendChat = async (text: string) => { if (text.trim()) this.take(await this.t.chat(this.state.callId, text.trim())); };
+  setNotes = (on: boolean) => {
+    void this.t.act(this.state.callId, { type: 'notes', on }).then((s) => this.take(s), (e: unknown) => {
       this.set({ ...this.state, notices: [...this.state.notices, { id: b64u(randomBytes(8)), kind: 'info', text: e instanceof Error ? e.message : 'That didn’t work.' }] });
     });
-  }
-  private me(s: CallState, patch: Partial<Pick<CallState['participants'][number], 'mic' | 'cam' | 'hand'>>): CallState {
-    return { ...s, participants: s.participants.map((p) => (p.isMe ? { ...p, ...patch } : p)) };
-  }
-  setMic = (on: boolean) => this.act({ type: 'mic', on }, (s) => this.me(s, { mic: on }));
-  setCam = (on: boolean) => this.act({ type: 'cam', on }, (s) => this.me(s, { cam: on }));
-  setHand = (up: boolean) => this.act({ type: 'hand', up }, (s) => this.me(s, { hand: up }));
-  setSharing = (on: boolean, title?: string) => this.act(title ? { type: 'sharing', on, title } : { type: 'sharing', on }, (s) => ({ ...s, sharing: on ? { title: title ?? 'Your screen' } : null }));
-  sendChat = (text: string) => { if (text.trim()) this.act({ type: 'chat', text }); };
-  setNotes = (on: boolean) => this.act({ type: 'notes', on });
-  dismissNotice = (id: string) => this.act({ type: 'dismiss', id }, (s) => ({ ...s, notices: s.notices.filter((n) => n.id !== id) }));
-  appendAudio = async (p: AudioPiece) => { this.apply(await this.t.audio(this.state.callId, p)); };
-  /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
+  };
+  dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
+  appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
+  /** Takes only the transcript from the answer, so a slow clip can't undo a newer notes change. */
   transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.callId, c); this.set({ ...this.state, transcript: s.transcript }); };
   catchUp = (minutes?: number | undefined) => this.t.catchUp(this.state.callId, minutes);
   askSoFar = (question: string) => this.t.askSoFar(this.state.callId, question);
+  /** The organizer leaving ends the call for everyone; anyone else just goes (LiveKit carries that). */
   leave = async () => {
     this.stopTicking();
-    const r = await this.t.leave(this.state.callId);
+    const r = this.ticket.role === 'host' ? await this.t.leave(this.state.callId) : null;
     this.set({ ...this.state, phase: 'ended' });
     return r;
   };

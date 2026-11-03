@@ -10,9 +10,50 @@ export interface LiveStore<S> {
   subscribe(listener: () => void): Unsubscribe;
 }
 
+/* ---------- group calls: who's in the call comes from LiveKit; mic, camera and hand live in the browser ---------- */
+
+/** The organizer hosts. Invited people join with their accounts; anyone else with the link joins by name. */
+export const CallRoleSchema = z.enum(['host', 'invited', 'guest']);
+export type CallRole = z.infer<typeof CallRoleSchema>;
+
+/** What anyone with a call's link sees before joining. No account needed. */
+export const CallCardSchema = z.object({
+  meetingId: IDSchema,
+  title: z.string(),
+  organizerName: z.string(),
+  status: z.enum(['scheduled', 'live', 'ended']),
+  /** Everyone but the organizer waits until this is true. */
+  hostHere: z.boolean(),
+  locked: z.boolean()
+});
+export type CallCard = z.infer<typeof CallCardSchema>;
+
+/** What joining hands back: how to connect to LiveKit, and the pass for this call's requests. */
+export const CallTicketSchema = z.object({
+  callId: IDSchema,
+  serverUrl: z.string(),
+  token: z.string(),
+  roomName: z.string(),
+  /** This connection's random LiveKit identity; a new one for every join. */
+  identity: z.string(),
+  role: CallRoleSchema,
+  /** Sent as `x-alcove-call` on this call's requests. Never put it in a URL. */
+  pass: z.string()
+});
+export type CallTicket = z.infer<typeof CallTicketSchema>;
+export const CALL_PASS_HEADER = 'x-alcove-call' as const;
+
+/** Room metadata: written only by the server, so everyone in the room can trust it. */
+export const RoomMetadataSchema = z.object({ v: z.literal(1), host: z.string().nullable(), notes: z.enum(['off', 'on']), locked: z.boolean() });
+export type RoomMetadata = z.infer<typeof RoomMetadataSchema>;
+
+/** Sent by the server on CALL_TOPIC when the call changed (chat, notes, transcript, people): refetch it. */
+export const CALL_TOPIC = 'call' as const;
+export const CallNudgeSchema = z.object({ v: z.literal(1), kind: z.literal('changed') });
+
 export const CallParticipantSchema = z.object({
-  id: IDSchema, person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
-  mic: z.boolean(), cam: z.boolean(), hand: z.boolean()
+  /** LiveKit identity. */
+  id: z.string(), person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean()
 });
 export type CallParticipant = z.infer<typeof CallParticipantSchema>;
 
@@ -53,7 +94,10 @@ export const CallStateSchema = z.object({
   elapsed: z.number(),
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
-  sharing: z.object({ title: z.string() }).nullable(),
+  /** This connection's LiveKit identity. */
+  me: z.string(),
+  role: CallRoleSchema,
+  locked: z.boolean(),
   notes: z.object({
     status: CallNotesStatusSchema,
     /** True once notes have been on at any point, so the call produces a note. */
@@ -133,11 +177,12 @@ export const CatchUpSchema = z.object({
 export type CatchUp = z.infer<typeof CatchUpSchema>;
 
 export interface CallSession extends LiveStore<CallState> {
-  setMic(on: boolean): void;
-  setCam(on: boolean): void;
-  setHand(up: boolean): void;
-  setSharing(on: boolean, title?: string): void;
-  sendChat(text: string): void;
+  /** How to connect to LiveKit, and this person's pass for the call's requests. */
+  readonly ticket: CallTicket;
+  /** Fetches the call again (other people's chat, notes changes and transcript lines arrive this way). */
+  refresh(): Promise<void>;
+  /** Saved with the call; everyone in it gets it, and late joiners see it. */
+  sendChat(text: string): Promise<void>;
   /** Organizer only. Everyone in the call sees the change. */
   setNotes(on: boolean): void;
   /** Encrypts and stores one piece of the notes recording. */
@@ -148,8 +193,10 @@ export interface CallSession extends LiveStore<CallState> {
   catchUp(minutes?: number | undefined): Promise<CatchUp>;
   /** Asks about the call so far, for you alone, with the moments the answer comes from. */
   askSoFar(question: string): Promise<AnswerPart[]>;
+  /** Hides a notice on this screen only. */
   dismissNotice(id: string): void;
-  leave(): Promise<CallEndResult>;
+  /** The organizer leaving ends the call for everyone and returns how it ended; anyone else just leaves (null). */
+  leave(): Promise<CallEndResult | null>;
 }
 
 export const RoomRecordingStateSchema = z.object({
