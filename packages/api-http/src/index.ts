@@ -4,7 +4,7 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CallEndResultSchema, CallStateSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CalendarSchema, CallEndResultSchema, CallStateSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
   type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState
@@ -121,6 +121,11 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       create: (input) => req(MeetingSchema, 'POST', '/meetings', input),
       update: (id, input) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, input),
       cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); }
+    },
+    calendar: {
+      get: () => req(CalendarSchema, 'GET', '/calendar'),
+      connectUrl: () => `${base}/auth/google?consent=1`,
+      adopt: (eventId, notes) => req(MeetingSchema, 'POST', `/calendar/events/${encodeURIComponent(eventId)}/adopt`, notes ? { notes } : {})
     },
     calls: {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),

@@ -1,3 +1,4 @@
+import type { Meeting } from '@alcove/api';
 import { Outlet, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Composer } from '~/features/shell/Composer';
@@ -15,15 +16,16 @@ const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('i
 
 function Shell() {
   const [composer, setComposer] = useState(false);
+  const [editing, setEditing] = useState<Meeting | undefined>(undefined);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const open = useCallback(() => setComposer(true), []);
+  const open = useCallback((meeting?: Meeting) => { setEditing(meeting); setComposer(true); }, []);
 
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setComposer(false); void navigate({ to: '/notes', search: { find: true } }); return; }
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('[role="dialog"]')) return;
-      if (e.key === 'n') { e.preventDefault(); setComposer(true); }
+      if (e.key === 'n') { e.preventDefault(); setEditing(undefined); setComposer(true); }
     };
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
@@ -32,10 +34,10 @@ function Shell() {
   return (
     <ComposerContext.Provider value={open}>
       <div className="shell world-in">
-        <Sidebar onNew={open} />
+        <Sidebar onNew={() => open()} />
         <main className="main"><div key={path} className="main-in enter"><Outlet /></div></main>
       </div>
-      <Composer open={composer} onOpenChange={setComposer} />
+      <Composer open={composer} onOpenChange={setComposer} editing={editing} />
     </ComposerContext.Provider>
   );
 }

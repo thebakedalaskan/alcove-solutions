@@ -40,7 +40,7 @@ function Notes() {
       <>
         <div className="head" style={{ '--d': 0 }}><div><h1>Notes</h1></div></div>
         <section className="card" style={{ '--d': 1 }}>
-          <EmptyState title="No notes yet" action={<Button variant="primary" icon="plus" onClick={open}>New call</Button>}>
+          <EmptyState title="No notes yet" action={<Button variant="primary" icon="plus" onClick={() => open()}>New call</Button>}>
             Calls with notes on, and recordings in the room, land here.
           </EmptyState>
         </section>

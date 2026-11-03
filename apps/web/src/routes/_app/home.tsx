@@ -130,7 +130,7 @@ function NothingScheduled() {
   const open = useOpenComposer();
   return (
     <section className="card">
-      <EmptyState title="Nothing on your calendar" action={<Button variant="primary" icon="plus" onClick={open}>New call</Button>}>
+      <EmptyState title="Nothing on your calendar" action={<Button variant="primary" icon="plus" onClick={() => open()}>New call</Button>}>
         Start a call now, or describe one to schedule it.
       </EmptyState>
     </section>

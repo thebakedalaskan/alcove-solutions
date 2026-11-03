@@ -17,6 +17,8 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   /** Google's OpenID Connect issuer. Tests point it at a local stand-in (src/testing/fake-google.ts). */
   GOOGLE_ISSUER: z.string().url().default('https://accounts.google.com'),
+  /** Google's APIs (Calendar). Tests point it at the same local stand-in. */
+  GOOGLE_API_URL: z.string().url().default('https://www.googleapis.com'),
   /** Wraps every account's root key. Production: released only to the attested confidential VM. */
   KMASTER: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KMASTER must be 32 bytes, base64url'),
   /** Seals billing state. Separate from KMASTER: billing never needs owner keys. */

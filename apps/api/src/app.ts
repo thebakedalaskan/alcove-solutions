@@ -1,5 +1,5 @@
 import {
-  AUDIO_HEADERS, CallActionSchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MeetingInputSchema, NoteKindSchema, OPERATION_HEADER,
+  AUDIO_HEADERS, CallActionSchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER,
   PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema, SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -19,6 +19,7 @@ import { ABSOLUTE_MS, cookieName, findSession } from './sessions';
 import * as account from './modules/account';
 import * as audioMod from './modules/audio';
 import * as billing from './modules/billing';
+import * as calendar from './modules/calendar';
 import * as calls from './modules/calls';
 import * as meetings from './modules/meetings';
 import * as notes from './modules/notes';
@@ -143,7 +144,11 @@ export function createApp(d: Deps) {
     if (!allowed(c)) return c.redirect(backToWelcome('busy'), 302);
     if (!google.configured(d.cfg)) return c.redirect(backToWelcome('unavailable'), 302);
     try {
-      const { url, attempt } = await google.begin(d);
+      // ?consent=1 asks Google again, e.g. to connect the calendar of the account already signed in.
+      const consent = c.req.query('consent') === '1';
+      const s = consent ? await findSession(d, getCookie(c, COOKIE)) : undefined;
+      const hint = s ? (await account.profile(await openOwner(d, s.ownerId, s))).email : undefined;
+      const { url, attempt } = await google.begin(d, { consent, hint, ...(s ? { next: '/home' as const } : {}) });
       setCookie(c, ATTEMPT, attempt, { httpOnly: true, sameSite: 'Lax', path: '/', secure, maxAge: google.ATTEMPT_MINUTES * 60 });
       return c.redirect(url, 302);
     } catch (e) {
@@ -159,8 +164,17 @@ export function createApp(d: Deps) {
       const r = await google.finish(d, c.req.query(), attempt);
       if (!r.ok) return c.redirect(backToWelcome(r.reason), 302);
       const s = await account.signIn(d, r.identity, 'google');
+      const conn = await calendar.connect(s.owner, r.grant);
       startSession(c, s.sessionId);
-      return c.redirect(`${d.cfg.WEB_ORIGIN}${s.isNew ? '/ready' : '/home'}`, 302);
+      const next = r.next ?? (s.isNew ? '/ready' : '/home');
+      // Google sends a refresh token only the first time someone agrees. If it remembered an earlier
+      // yes, ask once more, explicitly, so the calendar keeps working after this hour.
+      if (r.grant.scopes.includes(google.CALENDAR_SCOPE) && !conn.refreshToken && !r.consented) {
+        const again = await google.begin(d, { consent: true, hint: r.identity.email, next });
+        setCookie(c, ATTEMPT, again.attempt, { httpOnly: true, sameSite: 'Lax', path: '/', secure, maxAge: google.ATTEMPT_MINUTES * 60 });
+        return c.redirect(again.url, 302);
+      }
+      return c.redirect(`${d.cfg.WEB_ORIGIN}${next}`, 302);
     } catch (e) {
       rlog.error('google sign-in failed', { err: e });
       return c.redirect(backToWelcome('failed'), 302);
@@ -225,6 +239,13 @@ export function createApp(d: Deps) {
   app.post('/v1/meetings', async (c) => c.json(await meetings.create(c.get('owner'), await body(c, MeetingInputSchema))));
   app.patch('/v1/meetings/:id', async (c) => c.json(await meetings.update(c.get('owner'), c.req.param('id'), await body(c, MeetingInputSchema.partial()))));
   app.delete('/v1/meetings/:id', async (c) => { await meetings.cancel(c.get('owner'), c.req.param('id')); return c.json({ cancelled: true }); });
+
+  /* calendar: someone's other events, and making one of them an Alcove call */
+  app.get('/v1/calendar', async (c) => c.json(await calendar.view(c.get('owner'))));
+  app.post('/v1/calendar/events/:id/adopt', async (c) => {
+    const { notes } = await body(c, z.object({ notes: NotesSettingSchema.optional() }));
+    return c.json(await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
+  });
   app.get('/v1/calls/:code/meeting', async (c) => c.json(await meetings.byCode(c.get('owner'), c.req.param('code'))));
 
   /* calls */

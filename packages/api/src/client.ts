@@ -1,7 +1,7 @@
 import type { CallSession, NoteProgress, RoomRecording } from './live';
 import type { ClientLogEntry, DemoProvider } from './wire';
 import type {
-  AnswerPart, CreditBalance, ID, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, OpenAction, PersonSuggestion,
+  AnswerPart, Calendar, CreditBalance, ID, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
   Preferences, Session, SignInResult, Team
 } from './types';
 
@@ -41,10 +41,20 @@ export interface AlcoveApi {
     past(): Promise<Meeting[]>;
     get(id: ID): Promise<Meeting>;
     byCode(code: string): Promise<Meeting | null>;
-    /** Schedules a call. It goes on your calendar, and everyone invited gets an invite. */
+    /** Schedules a call. With Google Calendar connected it goes on the calendar, which sends everyone invited an invitation. */
     create(input: MeetingInput): Promise<Meeting>;
+    /** Changes a call; a connected calendar sends everyone the update. */
     update(id: ID, input: Patch<MeetingInput>): Promise<Meeting>;
+    /** Cancels a call; a connected calendar tells everyone. */
     cancel(id: ID): Promise<void>;
+  };
+  calendar: {
+    /** The coming week's other calendar events, beside Alcove's own calls. */
+    get(): Promise<Calendar>;
+    /** Where the browser goes to give Alcove access to the Google Calendar of the account it's signed in with. */
+    connectUrl(): string;
+    /** Makes one of your own calendar events an Alcove call: the event gets the Alcove link, and everyone invited is told. */
+    adopt(eventId: ID, notes?: NotesSetting | undefined): Promise<Meeting>;
   };
   calls: {
     /** Creates a call that starts now and returns its code. */

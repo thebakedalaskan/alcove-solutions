@@ -108,9 +108,41 @@ export const MeetingSchema = z.object({
   /** Present once the call has happened with notes on. */
   noteId: IDSchema.optional(),
   /** Seconds the call actually lasted, once ended. */
-  duration: z.number().optional()
+  duration: z.number().optional(),
+  /** The call in the organizer's Google Calendar, which sends its invitations. */
+  calendarUrl: z.string().url().optional()
 });
 export type Meeting = z.infer<typeof MeetingSchema>;
+
+/* ---------- calendar ---------- */
+
+/** One of someone's other calendar events (not an Alcove call), shown beside Alcove's own. */
+export const CalendarEventSchema = z.object({
+  /** The provider's event ID. */
+  id: IDSchema,
+  title: z.string(),
+  startsAt: ISODateSchema,
+  endsAt: ISODateSchema,
+  organizer: PersonSchema,
+  isOrganizer: z.boolean(),
+  /** Everyone else invited. */
+  guests: z.array(PersonSchema),
+  /** The event's own video link and what it is ("Google Meet", "Zoom", ...), when it has one. */
+  join: z.object({ url: z.string().url(), label: z.string() }).optional(),
+  /** The event in the calendar it came from. */
+  calendarUrl: z.string().url()
+});
+export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
+
+export const CalendarSchema = z.object({
+  /** google: connected. sample: a demo account's sample day. none: nothing connected. */
+  source: z.enum(['google', 'sample', 'none']),
+  /** Signed in with Google without giving calendar access; the app can ask for it. */
+  needsAccess: z.boolean(),
+  /** The coming week's other events, soonest first. */
+  events: z.array(CalendarEventSchema)
+});
+export type Calendar = z.infer<typeof CalendarSchema>;
 
 export const MeetingInputSchema = z.object({
   title: z.string(),

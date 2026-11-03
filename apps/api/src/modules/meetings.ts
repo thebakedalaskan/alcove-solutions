@@ -1,8 +1,9 @@
 /*
  * Meetings: scheduled calls, and calls that start now. The organizer invites people by email and
- * decides when scheduling whether the call has notes; everyone invited gets them.
+ * decides when scheduling whether the call has notes; everyone invited gets them. With Google
+ * Calendar connected, a scheduled call is also a calendar event, which sends the invitations.
  */
-import { MeetingStatusSchema, NotesSettingSchema, firstName, type InstantCallInput, type Meeting, type MeetingInput, type Patch } from '@alcove/api';
+import { MeetingStatusSchema, NotesSettingSchema, firstName, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { random } from '../crypto';
@@ -11,6 +12,7 @@ import { ConflictError, ValidationError } from '../errors';
 import { log } from '../log';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
+import * as calendar from './calendar';
 import { personOf } from './portraits';
 
 const mlog = log.child({ component: 'meetings' });
@@ -20,7 +22,9 @@ export const MeetingManifest = z.object({
   /** Email addresses of everyone invited besides the organizer. */
   guests: z.array(z.string()),
   notes: NotesSettingSchema, code: z.string(), status: MeetingStatusSchema,
-  duration: z.number().optional(), noteId: z.string().optional()
+  duration: z.number().optional(), noteId: z.string().optional(),
+  /** The Google Calendar event that carries this call, and its link. */
+  calendarEventId: z.string().optional(), calendarUrl: z.string().optional()
 });
 export type MeetingManifest = z.infer<typeof MeetingManifest>;
 
@@ -42,10 +46,10 @@ function cleanGuests(emails: string[], organizerEmail: string): string[] {
 }
 
 async function toMeeting(o: Owner, m: Loaded<MeetingManifest>): Promise<Meeting> {
-  const { guests, duration, noteId, ...rest } = m.manifest;
+  const { guests, duration, noteId, calendarEventId: _event, calendarUrl, ...rest } = m.manifest;
   return {
     id: m.itemId, ...rest, organizer: await me(o), isOrganizer: true, guests: guests.map((e) => personOf(e)),
-    ...(duration !== undefined ? { duration } : {}), ...(noteId !== undefined ? { noteId } : {})
+    ...(duration !== undefined ? { duration } : {}), ...(noteId !== undefined ? { noteId } : {}), ...(calendarUrl ? { calendarUrl } : {})
   };
 }
 export const all = (o: Owner, db: Db = o.pool) => listItems(o, db, 'meeting', MeetingManifest);
@@ -84,7 +88,18 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
   };
   const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
   mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes });
+  await placeOnCalendar(o, itemId, manifest);
   return get(o, itemId);
+}
+
+/** The calendar is a courtesy: if Google is down the call still exists, without a calendar link. */
+async function placeOnCalendar(o: Owner, id: string, manifest: MeetingManifest): Promise<void> {
+  try {
+    const placed = await calendar.place(o, id, manifest);
+    if (placed) await tx(o.pool, (c) => updateManifest(o, c, id, (m) => ({ ...m, calendarEventId: placed.eventId, ...(placed.url ? { calendarUrl: placed.url } : {}) })));
+  } catch (e) {
+    mlog.warn('call not placed on calendar', { meetingId: id, err: e });
+  }
 }
 
 /** Read-modify-write of one meeting's manifest under a row lock. */
@@ -97,25 +112,53 @@ export async function updateManifest(o: Owner, db: Db, id: string, fn: (m: Meeti
 }
 export async function update(o: Owner, id: string, patch: Patch<MeetingInput>): Promise<Meeting> {
   const organizer = await me(o);
-  await tx(o.pool, (c) => updateManifest(o, c, id, (m) => {
+  const next = await tx(o.pool, (c) => updateManifest(o, c, id, (m) => {
+    if (m.status !== 'scheduled') throw new ConflictError('Only a call that hasn’t started can be changed.', { context: { meetingId: id, status: m.status } });
     const minutes = patch.durationMinutes ?? Math.round((new Date(m.endsAt).getTime() - new Date(m.startsAt).getTime()) / 60_000);
     const times = patch.startsAt !== undefined || patch.durationMinutes !== undefined ? validTimes(patch.startsAt ?? m.startsAt, minutes) : {};
     return { ...m, ...times, title: patch.title?.trim() || m.title, notes: patch.notes ?? m.notes, guests: patch.guests ? cleanGuests(patch.guests, organizer.email) : m.guests };
   }));
   mlog.info('meeting updated', { meetingId: id, fields: Object.keys(patch).length });
+  if (next.calendarEventId) {
+    try { await calendar.change(o, next.calendarEventId, id, next); } catch (e) { mlog.warn('calendar event not updated', { meetingId: id, err: e }); }
+  } else await placeOnCalendar(o, id, next);
   return get(o, id);
 }
 
-/** Cancelling deletes the meeting for good: every revision and its calls (with their chat). Notes stay. */
+/** Cancelling deletes the meeting for good: every revision and its calls (with their chat). Notes stay. A calendar event goes too, and its guests are told. */
 export async function cancel(o: Owner, id: string): Promise<void> {
-  await tx(o.pool, async (c) => {
+  const eventId = await tx(o.pool, async (c) => {
     await lockItem(o, c, id);
     const m = await getItem(o, c, 'meeting', id, MeetingManifest, 'That meeting');
     if (m.manifest.status === 'live') throw new ConflictError('That call is happening now. Leave it first.', { context: { meetingId: id } });
     await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
     await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
+    return m.manifest.calendarEventId;
   });
   mlog.info('meeting cancelled', { meetingId: id });
+  if (eventId) {
+    try { await calendar.withdraw(o, eventId, id); } catch (e) { mlog.warn('calendar event not cancelled', { meetingId: id, err: e }); }
+  }
+}
+
+/**
+ * Makes one of the organizer's own calendar events an Alcove call: same title, time and guests; the
+ * event gets the Alcove link, and its guests are sent the update. Doing it twice returns the same call.
+ */
+export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | undefined): Promise<Meeting> {
+  const existing = (await all(o)).find((m) => m.manifest.calendarEventId === eventId);
+  if (existing) return toMeeting(o, existing);
+  const organizer = await me(o);
+  const e = await calendar.ownEvent(o, eventId);
+  const manifest: MeetingManifest = {
+    title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
+    notes: notes ?? (await preferences(o)).notesDefault, code: makeCode(), status: 'scheduled',
+    calendarEventId: eventId, ...(e.url ? { calendarUrl: e.url } : {})
+  };
+  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  await calendar.change(o, eventId, itemId, manifest, e.description);
+  mlog.info('calendar event moved to Alcove', { meetingId: itemId, guests: manifest.guests.length });
+  return get(o, itemId);
 }
 
 /** A call that starts now: "<first name>'s call" unless it has a title, with the default notes setting unless set. */
