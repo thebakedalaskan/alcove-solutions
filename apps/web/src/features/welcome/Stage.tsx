@@ -3,7 +3,7 @@
  * and the phrases that matter fly down into a note. After sign-in, your profile, today's calls and
  * your team arrive in turn, and your face joins the note.
  */
-import type { Meeting, Person, SignInProvider, Team } from '@alcove/api';
+import type { Person, SignInProvider, Team } from '@alcove/api';
 import { Avatar, Faces, Icon, ProviderMark, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -20,8 +20,10 @@ const START: NoteCardProgress = { decided: false, followUp: false, summary: 'non
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-/** What came with someone when they signed in. A demo account also brings its sample calendar. */
-export interface Arrival { person: Person; provider: SignInProvider; sample: boolean; today: Meeting[]; team: Team | null }
+/** Something on today's calendar: an Alcove call or a calendar event. */
+export interface Today { id: string; title: string; startsAt: string; people: Person[] }
+/** What came with someone when they signed in: their calendar (Google's, or a demo's sample day) and team. */
+export interface Arrival { person: Person; provider: SignInProvider; calendar: boolean; today: Today[]; team: Team | null }
 
 export function Stage({ step, arrival }: { step: 'welcome' | 'ready'; arrival?: Arrival | undefined }) {
   const reduce = useReducedMotion() ?? false;
@@ -67,7 +69,7 @@ export function Stage({ step, arrival }: { step: 'welcome' | 'ready'; arrival?: 
     const ro = new ResizeObserver(place);
     ro.observe(st);
     return () => ro.disconnect();
-  }, [step, arrival?.today.length, arrival?.team, arrival?.sample]);
+  }, [step, arrival?.today.length, arrival?.team, arrival?.calendar]);
 
   /* Before sign-in: the conversation plays and the note writes itself, on a loop. */
   useEffect(() => {
@@ -134,7 +136,7 @@ export function Stage({ step, arrival }: { step: 'welcome' | 'ready'; arrival?: 
 
   /* After sign-in: what came with you arrives in turn (you, the calendar and its calls, your team), then your face joins the note. */
   const today = arrival?.today.slice(0, 3) ?? [];
-  const order = arrival ? ['me', ...(arrival.sample ? ['cal', ...today.map((m) => `row:${m.id}`)] : []), ...(arrival.team ? ['team'] : [])] : [];
+  const order = arrival ? ['me', ...(arrival.calendar ? ['cal', ...today.map((m) => `row:${m.id}`)] : []), ...(arrival.team ? ['team'] : [])] : [];
   const sequence = order.join('|');
   useEffect(() => {
     if (step !== 'ready' || !sequence) return;
@@ -185,12 +187,12 @@ export function Stage({ step, arrival }: { step: 'welcome' | 'ready'; arrival?: 
             <span className="prov">{arrival.provider === 'sso' ? <Icon name="key" size={16} /> : <ProviderMark provider={arrival.provider} />}</span>
           </div>
           <div className="st-stack" ref={stack}>
-            {arrival.sample && (
+            {arrival.calendar && (
               <div className={cn('st-cal', on('cal'))} data-in="">
                 <div className="sc-h"><Icon name="cal" size={15} /><span>{today.length ? 'Today, from your calendar' : 'Your calendar'}</span></div>
                 {today.length ? today.map((m) => (
                   <div key={m.id} className={cn('sc-row', on(`row:${m.id}`))} data-in="row">
-                    <span className="tm mono">{hm(m.startsAt)}</span><b>{m.title}</b><Faces people={m.guests} size={22} max={3} />
+                    <span className="tm mono">{hm(m.startsAt)}</span><b>{m.title}</b><Faces people={m.people} size={22} max={3} />
                   </div>
                 )) : <div className="sc-row on" data-in="row"><span className="tm mono">–</span><b>Nothing else today</b><span /></div>}
               </div>

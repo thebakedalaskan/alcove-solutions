@@ -19,6 +19,8 @@ const frame = () => new Promise<void>((r) => requestAnimationFrame(() => request
 function Ready() {
   const session = useQuery(q.session()).data;
   const team = useQuery(q.team()).data ?? null;
+  const calendar = useQuery(q.calendar()).data;
+  const calendarOn = calendar?.source === 'google' && !calendar.needsAccess;
   const navigate = useNavigate();
   const reduce = useReducedMotion() ?? false;
 
@@ -57,7 +59,7 @@ function Ready() {
 
   const parts = [
     <h1 key="h" className="in-title mid">You’re in, {session ? firstName(session.user.name) : ''}.</h1>,
-    <p key="p" className="in-body">{!session?.sample ? 'Start a call or schedule one. Notes from your calls land here.' : team ? `Your calendar and your team at ${team.name} came with you.` : 'Your calendar came with you.'}</p>,
+    <p key="p" className="in-body">{team ? `Your calendar and your team at ${team.name} came with you.` : session?.sample || calendarOn ? 'Your calendar came with you.' : 'Start a call or schedule one. Notes from your calls land here.'}</p>,
     <div key="a" className="in-actions"><button type="button" className="in-cta" onClick={() => void open()}>Open Alcove <Icon name="right" size={18} /></button></div>
   ];
   return <Moment out={false} replacing={false} parts={parts} />;

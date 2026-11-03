@@ -17,12 +17,18 @@ function Intro() {
   const session = useQuery({ ...q.session(), enabled: ready }).data;
   const upcoming = useQuery({ ...q.upcoming(), enabled: ready && !!session }).data;
   const team = useQuery({ ...q.team(), enabled: ready && !!session }).data ?? null;
+  const calendar = useQuery({ ...q.calendar(), enabled: ready && !!session }).data;
   const arrival = useMemo<Arrival | undefined>(() => {
     if (!ready || !session || !upcoming) return undefined;
     const now = Date.now();
-    const today = upcoming.filter((m) => daysFromToday(new Date(m.startsAt)) === 0 && new Date(m.endsAt).getTime() > now);
-    return { person: session.user, provider: session.provider, sample: session.sample, today, team };
-  }, [ready, session, upcoming, team]);
+    const fromGoogle = calendar?.source === 'google' && !calendar.needsAccess;
+    // Today's calls and calendar events, soonest first.
+    const today = [
+      ...upcoming.map((m) => ({ id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, people: m.guests })),
+      ...(fromGoogle ? calendar.events.map((e) => ({ id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, people: e.isOrganizer ? e.guests : [e.organizer, ...e.guests] })) : [])
+    ].filter((x) => daysFromToday(new Date(x.startsAt)) === 0 && new Date(x.endsAt).getTime() > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    return { person: session.user, provider: session.provider, calendar: session.sample || fromGoogle, today, team };
+  }, [ready, session, upcoming, team, calendar]);
   return (
     <div className="in world-in">
       <section className="in-left">
