@@ -1,7 +1,7 @@
 import type { CallCard, CallSession, NoteProgress, RoomRecording } from './live';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider } from './wire';
 import type {
-  AnswerPart, Calendar, CreditBalance, ID, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
+  AnswerPart, Attestation, Calendar, CreditBalance, ID, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
   Preferences, Session, SignInResult, Team
 } from './types';
 
@@ -89,6 +89,10 @@ export interface AlcoveApi {
   };
   credits: {
     balance(): Promise<CreditBalance>;
+  };
+  trust: {
+    /** What the API is running on, attested inside a TEE, for a nonce of 32 random bytes in hex. */
+    attestation(nonce: string): Promise<Attestation>;
   };
   diagnostics: {
     /** Sends browser warnings and errors to the server log. Best effort: never throws, never reports itself. */

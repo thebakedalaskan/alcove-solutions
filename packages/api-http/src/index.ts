@@ -4,7 +4,7 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
   type AlcoveApi, type AnswerPart, type AudioPiece, type CallAction, type CallSession, type CallState, type CallTicket, type CatchUp, type RecordingAction, type RoomRecording,
@@ -178,6 +178,9 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     },
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits')
+    },
+    trust: {
+      attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)
     },
     diagnostics: {
       // Straight to fetch, not through send(): a failed report must not produce another report.

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './zod';
 import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema, type AnswerPart } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */

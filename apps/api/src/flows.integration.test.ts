@@ -4,12 +4,14 @@
  * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
  */
 import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
-import type { ClientEvent } from '@alcove/api-http';
+import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { loadConfig } from './config';
 import { cookieName } from './sessions';
-import type { GoogleUser, Spoil } from './testing/fake-google';
+import { startFakeDstack } from './testing/fake-dstack';
+import { PNG, type GoogleUser, type Spoil } from './testing/fake-google';
 import { speechWav } from './testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
@@ -233,6 +235,20 @@ describe('signing in', () => {
 });
 
 describe('signing in with Google', () => {
+
+  it('shows guests in a call no profile photos, since photos only load signed in', async () => {
+    const b = h.browser();
+    const n = Date.now().toString(36);
+    const ana: GoogleUser = { sub: `photo-host-${n}`, email: `ana.${n}@example.com`, name: 'Ana Ortiz', picture: `${h.google.issuer}/photo/ana-${n}` };
+    expect(landed(await viaGoogle(b, ana))).toBe('/ready');
+    const host = await b.api.calls.join((await b.api.calls.startNow({})).code, { mic: true, cam: false });
+    await host.sendChat('Hello');
+    expect(host.getSnapshot().chat[0]?.from.photoUrl?.startsWith(`${h.baseUrl}/v1/photos/`)).toBe(true);
+    const guest = await h.browser().api.calls.join(host.getSnapshot().code, { mic: true, cam: false, name: 'Sam' });
+    expect(guest.getSnapshot().chat[0]?.from).toMatchObject({ name: 'Ana Ortiz' });
+    expect(guest.getSnapshot().chat[0]?.from.photoUrl).toBeUndefined();
+    await host.leave();
+  });
   it('goes to Google and back, believes only what Google signed, and keeps one account per Google account', async () => {
     // Off to Google with a fresh state, nonce and PKCE challenge, asking for identity and calendar events.
     const b = h.browser();
@@ -248,7 +264,7 @@ describe('signing in with Google', () => {
     expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
 
     // Someone invites Ben to a call with notes before he has ever used Alcove.
-    const ben: GoogleUser = { sub: '104412233445566778899', email: 'Ben.Kay@Example.com', name: 'Ben Kay', picture: 'https://lh3.googleusercontent.com/a/ben-1' };
+    const ben: GoogleUser = { sub: '104412233445566778899', email: 'Ben.Kay@Example.com', name: 'Ben Kay', picture: `${h.google.issuer}/photo/ben-1` };
     const host = await account();
     const call = await host.api.calls.join((await host.api.calls.startNow({ notes: 'on', guests: ['ben.kay@example.com'] })).code, { mic: true, cam: false });
     await call.appendAudio(piece(audioBytes('for-ben'), 0, 0));
@@ -258,7 +274,19 @@ describe('signing in with Google', () => {
     // His first sign-in creates his account from what Google verified, and lands on the welcome step.
     expect(landed(await viaGoogle(b, ben))).toBe('/ready');
     const s = await b.api.auth.getSession();
-    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com', photoUrl: 'https://lh3.googleusercontent.com/a/ben-1' } });
+    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com' } });
+    // The photo comes from Alcove, not from Google: an opaque URL on the API that only works signed in.
+    const photo = s?.user.photoUrl ?? '';
+    expect(photo.startsWith(`${h.baseUrl}/v1/photos/`)).toBe(true);
+    expect(photo).not.toContain('ben-1');
+    const fetchesBefore = h.google.photoFetches();
+    const got = await b.fetch(photo);
+    expect([got.status, got.headers.get('content-type')]).toEqual([200, 'image/png']);
+    expect(Buffer.from(await got.arrayBuffer()).equals(PNG)).toBe(true);
+    await b.fetch(photo); // served from memory the second time
+    expect(h.google.photoFetches() - fetchesBefore).toBe(1);
+    expect((await h.browser().fetch(photo)).status).toBe(401);
+    expect((await b.fetch(`${photo.slice(0, -4)}AAAA`)).status).toBe(404);
     // A real account starts with no sample calls and no sample directory: its calendar is Google's.
     expect(await b.api.meetings.upcoming()).toEqual([]);
     expect(await b.api.people.team()).toBeNull();
@@ -267,8 +295,11 @@ describe('signing in with Google', () => {
 
     // Again, in another browser: the same account, straight to Home, with the photo Google has now.
     const later = h.browser();
-    expect(landed(await viaGoogle(later, { ...ben, picture: 'https://lh3.googleusercontent.com/a/ben-2' }))).toBe('/home');
-    expect(await later.api.auth.getSession()).toMatchObject({ ownerId: s?.ownerId, user: { photoUrl: 'https://lh3.googleusercontent.com/a/ben-2' } });
+    expect(landed(await viaGoogle(later, { ...ben, picture: `${h.google.issuer}/photo/ben-2` }))).toBe('/home');
+    const again = await later.api.auth.getSession();
+    expect(again?.ownerId).toBe(s?.ownerId);
+    // A new photo at Google is a new URL here too, and still never Google's own.
+    expect([again?.user.photoUrl === photo, again?.user.photoUrl?.startsWith(`${h.baseUrl}/v1/photos/`)]).toEqual([false, true]);
   });
 
   it('turns away a cancelled, stale, forged or replayed sign-in, and signs nobody in', async () => {
@@ -1008,6 +1039,9 @@ describe('privacy at rest', () => {
     expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
     for (const secret of secrets) expect(logText.includes(secret), 'a session cookie in logs').toBe(false);
+    // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
+    expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
+    expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);
     // Google refresh tokens are sealed in the vault and never logged.
     expect(h.google.refreshTokens().length).toBeGreaterThanOrEqual(1);
     for (const t of h.google.refreshTokens()) {
@@ -1015,6 +1049,43 @@ describe('privacy at rest', () => {
       expect(logText.includes(t), 'a refresh token in logs').toBe(false);
     }
     expect(logText).not.toContain(m.code);
+  });
+});
+
+describe('confidential computing', () => {
+  it('says plainly when it isn’t running in a TEE, and which build it is', async () => {
+    const nonce = randomBytes(32).toString('hex');
+    expect(await h.browser().api.trust.attestation(nonce)).toEqual({ tee: 'none', nonce, build: { commit: 'dev' } });
+    expect((await h.browser().fetch(`${h.baseUrl}/v1/attestation?nonce=not-hex`)).status).toBe(400);
+    expect(await (await fetch(`${h.baseUrl}/health`)).json()).toMatchObject({ ok: true, tee: 'none', commit: 'dev' });
+  });
+
+  it('inside a TEE takes its keys only from the TEE, and attests to its build with the verifier’s nonce', async () => {
+    const tee = await startFakeDstack();
+    try {
+      // Whoever can set the environment would hold keys put there, so inside a TEE they're refused.
+      await expect(loadConfig({ ...process.env, TEE: 'dstack', DSTACK_SOCKET: tee.socket })).rejects.toThrow(/key service/);
+      const withoutKeys = Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'KMASTER' && k !== 'KSERVICE'));
+      const cfg = await loadConfig({ ...withoutKeys, TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
+      expect([cfg.KMASTER, cfg.KSERVICE]).toEqual([tee.key('alcove/kmaster/v1'), tee.key('alcove/kservice/v1')]);
+      await expect(loadConfig({ ...withoutKeys, TEE: 'none' })).rejects.toThrow(/required outside a TEE/);
+
+      const server = await h.secondServer({ TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
+      try {
+        const nonce = randomBytes(32).toString('hex');
+        const a = await createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) }).trust.attestation(nonce);
+        if (a.tee !== 'dstack') throw new Error('expected a TEE attestation');
+        const expected = createHash('sha512').update(`alcove-attestation/v1\n${nonce}\nabc1234`).digest('hex');
+        expect(a).toMatchObject({ nonce, build: { commit: 'abc1234' }, reportData: expected, appId: tee.appId, instanceId: 'fake-instance', composeHash: 'ab'.repeat(32) });
+        // The quote vouches for exactly that: this nonce and this build.
+        expect(a.quote.endsWith(expected)).toBe(true);
+        expect(JSON.parse(a.eventLog)).toEqual([expect.objectContaining({ imr: 3, event: 'compose-hash' })]);
+      } finally {
+        await server.close();
+      }
+    } finally {
+      await tee.close();
+    }
   });
 });
 

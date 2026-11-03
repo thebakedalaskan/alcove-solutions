@@ -2,6 +2,13 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: no-referrer
-  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()
+  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=(), browsing-topics=()
   Cross-Origin-Opener-Policy: same-origin
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+/assets/*
+  ! Cache-Control
+
+/people/*
+  ! Cache-Control

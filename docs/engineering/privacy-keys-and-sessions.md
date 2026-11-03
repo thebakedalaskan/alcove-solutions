@@ -223,6 +223,35 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   codes or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
   sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
 
+## What leaves the browser
+
+Only requests to Alcove itself: the web app's own origin and the API, with one exception: calls. Nothing
+third-party loads.
+
+- **Calls** connect to LiveKit (LiveKit Cloud in production) for their audio, video and screens. LiveKit
+  sees each person's address, when they're in which room, their name as shown in the call, and the media
+  itself: calls aren't end-to-end encrypted yet ([Calls and recordings › Next](calls-and-recordings.md#next-end-to-end-encrypted-calls)).
+
+- **Fonts** (Gabarito, Onest, Geist Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
+  font service, so no page load tells anyone else who's visiting.
+- **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),
+  where the token is the provider URL sealed under a key derived from `KMASTER`. It's stable, so the
+  browser caches it, and only this server can read it. The API fetches the image from an allowed host
+  (`PHOTO_HOSTS`), keeps it in memory for an hour and serves it only to signed-in browsers. Google sees
+  the API fetch a photo, not who looked at whom. Guests in a call aren't signed in, so they're shown
+  everyone without photos.
+- **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
+  photos), and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
+  writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
+  runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
+- **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages inserts its
+  own Web Analytics beacon into pages when that's on for the project. Every page is served with
+  `Cache-Control: no-transform` (`apps/web/public/_headers`), which tells Cloudflare's edge not to rewrite
+  it, and the CSP blocks the beacon from loading if it's inserted anyway. Keep Web Analytics switched off
+  for the project in Cloudflare (Workers & Pages › alcove-web › Metrics).
+- **Diagnostics** go to Alcove's own API only (`POST /v1/telemetry`): warnings and errors with codes,
+  request IDs, statuses and timings, scrubbed like every other log line ([Logging](logging-and-errors.md)).
+
 ## What is still visible
 
 | Where | Visible |
@@ -233,8 +262,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
 | NEAR AI Cloud | Every transcript clip (the audio) and what was said in it. For notes and questions: the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Sent over TLS with a bearer key; Alcove doesn't yet use NEAR AI's end-to-end encrypted mode or check its attestation. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
+| Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | Every call's audio, video, shared screens and data messages; each person's name as shown in the call; room names and identities (random); join and leave times |
-| The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. |
+| The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion
 
@@ -253,19 +283,84 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
   `object_gc`, and removes objects older than 24 hours that no recording piece references.
 
+## Moving to confidential computing
+
+On Cloud Run, `KMASTER` and `KSERVICE` come from Secret Manager, so whoever operates the service, Google
+Cloud included, could open any account. The API is built to move into a confidential VM (Intel TDX under
+Phala's [dstack](https://github.com/Dstack-TEE/dstack)) without changing anything it stores. Postgres and
+the object store stay outside: they hold only sealed records, opaque IDs and timing
+([What is still visible](#what-is-still-visible)). The keys, and every plaintext, would exist only in the VM,
+except calls' media: browsers send it to LiveKit, outside the VM, until calls are end-to-end encrypted.
+
+What's in the code (`apps/api/src/tee.ts`, `apps/api/src/config.ts`):
+
+- **Keys from the TEE.** With `TEE=dstack`, both keys come from dstack's key service through the guest
+  agent's Unix socket (`DSTACK_SOCKET`, by default `/var/run/dstack.sock`; never a network address, so
+  they can't come from outside the VM): `GetKey` for the paths
+  `alcove/kmaster/v1` and `alcove/kservice/v1`. The key service derives them from the app's identity and
+  gives them only to a VM whose measured OS and compose the app's key policy allows, so they never exist
+  in an environment variable, a secret manager or the deploy pipeline. The API refuses to start inside a
+  TEE with keys in its environment, because whoever set them would hold them too. `TEE=none`, the
+  default, takes both from the environment, as today.
+- **Attestation.** `GET /v1/attestation?nonce=<64 hex characters>` says what's running, to anyone, without
+  signing in (30 requests a minute per address). Outside a TEE it says so: `{ tee: 'none', nonce, build }`.
+  Inside one it returns a fresh TDX quote whose report data is
+  `SHA-512("alcove-attestation/v1\n" + nonce + "\n" + commit)`, the event log for replaying the VM's
+  runtime measurements, and the dstack app ID, instance ID, compose hash and OS image hash. The nonce
+  stops a recorded quote being replayed; the commit stops one build's quote vouching for another.
+- **A build that names its commit.** The deploy builds the image with `ALCOVE_COMMIT`, which `/health` and
+  the attestation report. Base images are pinned by digest and the install is frozen, so a commit always
+  builds from the same inputs, and the image a VM runs traces back to one commit.
+- **Keyless migrations.** The migration job gets only `DATABASE_URL` (`migrate-cli.ts` reads nothing else):
+  migrations shape tables and never open records, so nothing outside the API needs the keys.
+- **Logs that can leave.** Log lines carry IDs, codes, states, counts and timings, never content, and a
+  scrubber removes addresses and credentials from every string ([Logging](logging-and-errors.md)), so the
+  log stream can go from the VM to a collector.
+
+How a client checks the server (the app doesn't do this yet):
+
+1. Make 32 random bytes and ask for `/v1/attestation?nonce=<hex>`.
+2. Verify the quote: its signature chain to Intel, its TCB status (for example with `dcap-qvl`), and that
+   its report data is `SHA-512("alcove-attestation/v1\n" + nonce + "\n" + commit)`.
+3. Replay the event log: it must reproduce the quote's RTMR3, and its `compose-hash` event must match the
+   compose hash returned, which is the published compose hashed as dstack does it (`getComposeHash` in
+   `@phala/dstack-sdk`). That compose must run the image built from `commit`, named by digest.
+4. Only then send anything, to the code at that commit.
+
+Moving, in order:
+
+1. **A dstack compose for the API**: the image by digest, `TEE=dstack`, the guest agent's socket mounted,
+   and the other secrets (`DATABASE_URL`, the object store's credentials, `NEAR_AI_API_KEY`, the Google
+   client, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`) as dstack's encrypted environment variables, which only the VM can decrypt, with `allowed_envs`
+   naming exactly those. Encrypted variables aren't measured, so `TEE`, `DSTACK_SOCKET` and
+   `ALCOVE_COMMIT` must come only from the measured compose and image, never from `allowed_envs`. Keep the
+   VM's logs private (`public_logs: false`) and forward the JSON log stream to the collector.
+2. **Deploy to Phala Cloud** with a key policy that allows only reviewed compose hashes. Each release then
+   changes the allowed hash explicitly, where anyone can see it.
+3. **Reset storage.** Keys from the TEE differ from today's, so nothing sealed under the old `KMASTER`
+   opens: reset the database and object store, and delete `alcove-kmaster` and `alcove-kservice` from
+   Secret Manager.
+4. **Bind the connection.** Terminate TLS inside the VM (dstack's gateway passing TLS through, with a key
+   from `GetTlsKey`) and add the certificate's hash to the report data. Until then an attestation shows
+   what runs, not that your connection reaches it.
+5. **Check it in the client** before signing in or sending audio, and pin the client itself (published build
+   hashes, or a signed shell or extension), because the web app's code comes from a server.
+6. **Private inference**: NEAR AI only through its end-to-end encrypted mode, after checking its
+   attestation ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
+
 ## Divergences from the original spec, and decisions
 
 | Original spec | Now | Decision |
 | --- | --- | --- |
 | A native Ed25519 owner key on one desktop proves who the owner is | Sign-in with Google (OpenID Connect); Microsoft and SSO are demo stand-ins; a random `ownerId` | Spec updated (this page). Real Microsoft and SSO sign-in are required before production. |
 | `Kowner` kept natively, never stored server-side | Made by the server, stored wrapped under `KMASTER`, opened for each request | Accepted only with `KMASTER` released solely to the attested VM |
-| Attestation + HPKE channel with sequenced frames | Plain REST over TLS with a cookie session | **Required before production** |
+| Attestation + HPKE channel with sequenced frames | Plain REST over TLS with a cookie session. Inside a TEE, `/v1/attestation` returns a TDX quote binding a nonce and the build; nothing binds it to the connection yet, and the app doesn't check it | **Required before production** ([steps](#moving-to-confidential-computing)) |
 | Strict JSON (reject duplicate keys and unknown fields), U64 decimal strings | zod parsing (drops unknown fields), JS numbers for credits | To do |
 | Service-side wrap of `Krec` with 24-hour / 7-day disposal | Any work, including someone else's read and the notes worker, opens the owner's keys through `KMASTER`; no separate wrap or disposal window | Accepted with `KMASTER` custody |
 | Protected inference: end-to-end encrypted requests to `I01`, with its attestation checked | Speech and transcripts go to NEAR AI Cloud over TLS with a bearer key; no request encryption or attestation check | **Required before production** |
 | Encrypted manifest binding all chunks; rollback detection | Not implemented: a database writer could roll a head back or drop trailing pieces | To do (version-bound associated data and an encrypted piece list) |
 | Billing keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do before payments |
-| Provider secrets never in environment variables | `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables | Accepted locally. In production `KMASTER` comes only from the attested VM's key release. |
+| Provider secrets never in environment variables | Outside a TEE, `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables (Secret Manager on Cloud Run). With `TEE=dstack` both keys come only from the TEE's key service and are refused from the environment | Accepted locally. In production `KMASTER` comes only from the attested VM's key release, and provider secrets are dstack encrypted environment variables. |
 
 ## Production requirements
 
@@ -273,7 +368,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
    `KMASTER` only to that VM after attestation (a key-release policy bound to the measured image), so no
    operator, host or deploy pipeline can read it. The client verifies attestation before sending anything,
    over an HPKE-style channel bound to it. Because a web app's code comes from the server, also pin the
-   client: a signed native shell or extension, or published build hashes with a strict CSP.
+   client: a signed native shell or extension, or published build hashes with a strict CSP. The API side
+   is ready ([Moving to confidential computing](#moving-to-confidential-computing)): keys from dstack's key
+   service, attestation with a nonce, a build that names its commit. Left: deploying it, binding TLS to
+   the quote, and checking it in the client.
 2. **Real sign-in for every provider.** Google is done. Microsoft OAuth and OIDC SSO must return a verified
    subject and email, and `demo.ts` must go, because access to notes follows the email.
 3. **Verified private inference.** Send speech and transcripts to NEAR AI only through its end-to-end

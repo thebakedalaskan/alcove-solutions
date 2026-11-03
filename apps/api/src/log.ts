@@ -5,8 +5,11 @@
  * - Format: JSON lines in production (LOG_FORMAT=json), readable lines in development (pretty).
  * - Context: request ID, method, route and owner are attached automatically from AsyncLocalStorage;
  *   `log.child({...})` binds more. Errors go in `err` and are serialized with their cause chain.
- * - Privacy: never pass content (titles, names, chat, audio, notes, request bodies). Known secret
- *   field names are redacted as a backstop.
+ * - Privacy: never pass content (titles, names, chat, audio, notes, request bodies). Logs are built
+ *   to leave the confidential VM, so they hold only IDs, codes, states, counts, sizes and timings.
+ *   Two backstops catch mistakes: known secret field names are redacted, and every string (messages,
+ *   fields, errors and their causes) is scrubbed of email addresses, bearer credentials and signed
+ *   tokens. Postgres errors keep their codes but never echo row values.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import pino, { type DestinationStream, type Logger as Pino } from 'pino';
@@ -29,6 +32,26 @@ const REDACT = ['secret', 'root', 'wrapKey', 'key', 'krec', 'password', 'cookie'
 
 export interface LogOptions { level?: Level | 'silent'; format?: 'json' | 'pretty'; destination?: DestinationStream; service?: string }
 
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const CREDENTIAL = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+const SIGNED_TOKEN = /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g;
+/** What a string may not carry into a log line, wherever it came from. */
+export const scrubText = (s: string): string => s.replace(EMAIL, '[email]').replace(CREDENTIAL, '$1 [redacted]').replace(SIGNED_TOKEN, '[token]');
+function scrubValue(v: unknown, depth: number): unknown {
+  if (typeof v === 'string') return scrubText(v);
+  // pino calls this before its own serializers, so errors (and their causes) are serialized here first.
+  if (v instanceof Error) return scrubValue({ ...pino.stdSerializers.errWithCause(v) }, depth + 1);
+  if (v === null || typeof v !== 'object' || depth > 8) return v;
+  if (Array.isArray(v)) return v.map((x) => scrubValue(x, depth + 1));
+  return scrubObject(Object.fromEntries(Object.entries(v)), depth + 1);
+}
+/** Postgres explains a failed check with the row it refused ("Failing row contains (…)"): keep the code, not the row. */
+function scrubObject(o: Record<string, unknown>, depth = 0): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) out[k] = k === 'detail' && typeof v === 'string' && /^Failing row contains|^Key \(/.test(v) ? '[row hidden]' : scrubValue(v, depth);
+  return out;
+}
+
 function build(o: LogOptions): Pino {
   const options = {
     level: o.level ?? 'info',
@@ -36,8 +59,10 @@ function build(o: LogOptions): Pino {
     timestamp: pino.stdTimeFunctions.isoTime,
     messageKey: 'msg',
     errorKey: 'err',
-    serializers: { err: pino.stdSerializers.errWithCause },
+    // Errors are serialized (with their cause chain) by the scrubber below, so pino's own `err` serializer steps aside.
+    serializers: { err: (v: unknown) => v },
     redact: { paths: REDACT, censor: '[redacted]' },
+    formatters: { log: (o: Record<string, unknown>) => scrubObject(o) },
     mixin: () => ({ ...store.getStore() })
   };
   if (o.destination) return pino(options, o.destination);
@@ -68,7 +93,7 @@ export class Logger {
       if (ms > slowMs) this.warn(`${msg} (slow)`, { ...ctx, ms }); else if (this.isDebug()) this.debug(msg, { ...ctx, ms });
     }
   }
-  private emit(level: Level, msg: string, ctx: LogContext) { state.root[level]({ ...this.bound, ...ctx }, msg); }
+  private emit(level: Level, msg: string, ctx: LogContext) { state.root[level]({ ...this.bound, ...ctx }, scrubText(msg)); }
 }
 
 export const log = new Logger();

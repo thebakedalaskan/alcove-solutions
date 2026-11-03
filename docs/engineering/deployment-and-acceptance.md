@@ -15,7 +15,7 @@ requires its own verification.
 | API | `tsx watch` on `:8787`, proxied at `/api` | Cloud Run `alcove-api`, project `alcove-solutions`, `us-central1`, native mapping for `api.alcove.solutions` |
 | Database | Postgres 17 in Docker | Cloud SQL `alcove-db`, Postgres 17 Enterprise; SSL, 03:00 UTC daily backup window, seven retained backups, PITR |
 | Objects | RustFS in Docker | Private Cloudflare R2 `alcove-objects`, accessed through the API |
-| Secrets | `.env`, gitignored | GCP Secret Manager: database, `KMASTER`, `KSERVICE` and storage credentials; optional inference and Google credentials. The privacy promise needs `KMASTER` released only to an attested confidential VM, which Cloud Run is not |
+| Secrets | `.env`, gitignored | GCP Secret Manager: database, `KMASTER`, `KSERVICE` and storage credentials; optional inference and Google credentials. The privacy promise needs `KMASTER` released only to an attested confidential VM, which Cloud Run is not; the API is ready to move to one ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)) |
 | DNS | Localhost | GoDaddy registrar; Cloudflare nameservers `johnny.ns.cloudflare.com` and `maleah.ns.cloudflare.com` |
 
 Run locally with `pnpm install && pnpm dev`. The [runbook](../../infra/README.md) contains bootstrap,
@@ -39,11 +39,13 @@ Application Load Balancer for production custom domains. See
    Automatic deploys accept only successful CI runs from pushes to this repository's `main` and check
    that the selected commit still matches `main` before proceeding. Manual dispatch is restricted to
    `main`. Runs are serialized.
-4. **API release.** Build and push the commit-SHA image; execute the migration job and wait; deploy
-   Cloud Run; check `/health` through its service URL. The migration job refuses a database built
+4. **API release.** Build and push the commit-SHA image, which records its commit (`ALCOVE_COMMIT`, reported
+   by `/health` and `/v1/attestation`); execute the migration job, which gets only `DATABASE_URL`, and wait;
+   deploy Cloud Run; check `/health` through its service URL. The migration job refuses a database built
    from a different version of the schema (it changes in place): reset that database first. Checking `run.app` first avoids making the initial
    deployment depend on an API domain mapping that needs the service to exist.
-5. **Web release.** Build against `https://api.alcove.solutions`, add that origin to the CSP and
+5. **Web release.** Build against `https://api.alcove.solutions`, write the CSP for that origin with
+   `apps/web/scripts/csp.mjs` (inline scripts by hash, nothing third-party) and
    publish the static SPA to Pages production branch `main` with pinned `pnpm dlx wrangler@4.157.0`.
    Credentials are scoped to the publishing step's environment; the verified SHA supplies commit
    attribution. Publishing does not add a workspace dependency.
@@ -73,7 +75,7 @@ doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
 Google provider credentials have a separate deployment switch. `GOOGLE_AUTH_ENABLED=true` binds
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from `alcove-google-client-id` and
-`alcove-google-client-secret` into both the API service and migration job. Bootstrap creates these
+`alcove-google-client-secret` into the API service (the migration job needs only the database). Bootstrap creates these
 secret resources and grants runtime access; credential versions are populated separately. New
 installations leave the flag false or unset and need no Google secret values; the Google button then
 explains that sign-in isn't set up. The API also needs `API_URL`, its public base URL, from which the
@@ -110,11 +112,11 @@ live transcript and written notes.
 | Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
 | Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
-| Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit | Verify for each public release; assets must not redirect to the SPA shell |
+| Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
 | End-to-end encrypted inference requests and attestation checks | **Not implemented** (TLS to NEAR AI Cloud with a bearer key) |
 | Multi-party end-to-end encrypted calls | **Not implemented** |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
-| Attested confidential compute, with `KMASTER` released only to it | **Required before real users**; Cloud Run is not a TEE. See [Privacy › Production requirements](privacy-keys-and-sessions.md#production-requirements) |
+| Attested confidential compute, with `KMASTER` released only to it | **Required before real users**; Cloud Run is not a TEE. Inside dstack: keys from its key service and refused from the environment, and `/v1/attestation` binding a nonce and the build, in API integration tests against a local dstack stand-in. See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 
 The Google provider is the external Testing app `Alcove` with its test users and the web client
 `AlcoveWeb`, whose redirect URIs are `$API_URL/v1/auth/google/callback` locally and in production.

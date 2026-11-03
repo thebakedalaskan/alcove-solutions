@@ -16,6 +16,7 @@ import { addLogContext, log, withLogContext } from './log';
 import * as google from './google';
 import { inference } from './inference';
 import { CALL_PASS_HEADER, readPass } from './callPass';
+import { attest } from './tee';
 import { openOwner } from './owners';
 import { ABSOLUTE_MS, cookieName, findSession } from './sessions';
 import * as account from './modules/account';
@@ -26,6 +27,7 @@ import * as calls from './modules/calls';
 import * as meetings from './modules/meetings';
 import * as notes from './modules/notes';
 import * as people from './modules/people';
+import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
 import type { Clip } from './modules/transcripts';
 
@@ -74,6 +76,7 @@ export function createApp(d: Deps) {
   const ATTEMPT = secure ? '__Host-alcove_google' : 'alcove_google';
   const backToWelcome = (reason: google.Refusal) => `${d.cfg.WEB_ORIGIN}/welcome?signin=${reason}`;
   const telemetryLimiter = rateLimit(60, 60_000);
+  const attestLimiter = rateLimit(30, 60_000);
   /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
   const speechLimiter = rateLimit(120, 60_000);
   const askLimiter = rateLimit(20, 60_000);
@@ -140,7 +143,15 @@ export function createApp(d: Deps) {
   // Cloud Run's front end keeps /healthz for itself, so /health answers the same.
   app.on('GET', ['/health', '/healthz'], async (c) => {
     await exec(d.pool, 'SELECT 1');
-    return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing', livekit: (await d.livekit.reachable()) ? 'reachable' : 'unreachable' });
+    return c.json({ ok: true, inference: inference(d.cfg).configured ? 'configured' : 'missing', livekit: (await d.livekit.reachable()) ? 'reachable' : 'unreachable', tee: d.cfg.TEE, commit: d.cfg.ALCOVE_COMMIT });
+  });
+
+  /* What's running, for anyone to check before trusting it: outside a TEE it says so; inside, a fresh TDX quote binds the caller's nonce to this build. */
+  app.get('/v1/attestation', async (c) => {
+    attestLimiter(clientAddress(c), 'attestation');
+    const nonce = c.req.query('nonce') ?? '';
+    if (!/^[0-9a-f]{64}$/.test(nonce)) throw new ValidationError('Ask with a nonce: 32 random bytes, as lowercase hex.');
+    return c.json(await attest(d.cfg, nonce));
   });
 
   /* ---------- public: the session and signing in ---------- */
@@ -300,6 +311,12 @@ export function createApp(d: Deps) {
     await account.signOut(c.get('owner'));
     deleteCookie(c, COOKIE, { path: '/', secure });
     return c.json({ signedOut: true });
+  });
+
+  /* Sign-in photos, fetched by Alcove so a browser never asks the provider for anyone's face. */
+  app.get('/v1/photos/:token', async (c) => {
+    const p = await photos.photo(d, c.req.param('token'));
+    return new Response(p.bytes.slice(), { headers: { 'content-type': p.type, 'cache-control': 'private, max-age=86400, immutable', 'x-content-type-options': 'nosniff' } });
   });
 
   /* account */

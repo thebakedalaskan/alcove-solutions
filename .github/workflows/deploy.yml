@@ -81,18 +81,16 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
       - run: gcloud --project="$GCP_PROJECT_ID" auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
       - name: Build and push the image
-        run: docker build -f apps/api/Dockerfile -t "$IMAGE" . && docker push "$IMAGE"
+        run: docker build -f apps/api/Dockerfile --build-arg ALCOVE_COMMIT="${{ needs.prepare.outputs.sha }}" -t "$IMAGE" . && docker push "$IMAGE"
       - name: Run database migrations
+        # Migrations only shape tables: the job gets the database and nothing else, no keys or provider secrets.
         run: |
-          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest,LIVEKIT_API_KEY=alcove-livekit-api-key:latest,LIVEKIT_API_SECRET=alcove-livekit-api-secret:latest'
-          if [ "$GOOGLE_AUTH_ENABLED" = true ]; then
-            SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_CLIENT_ID=alcove-google-client-id:latest,GOOGLE_CLIENT_SECRET=alcove-google-client-secret:latest"
-          fi
+          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest'
           gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-migrate --image "$IMAGE" --region "$GCP_REGION" \
             --command node --args dist/migrate-cli.js \
             --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
             --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
-            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-env-vars "LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
           gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
       - name: Deploy the API
@@ -135,12 +133,7 @@ jobs:
       - name: Content security policy for this API origin
         env:
           LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
-        run: |
-          host="${LIVEKIT_URL#*://}"; host="${host%%/*}"
-          livekit="wss://$host https://$host"
-          case "$host" in *.livekit.cloud) livekit="$livekit wss://*.livekit.cloud https://*.livekit.cloud" ;; esac
-          printf "  Content-Security-Policy: default-src 'self'; connect-src 'self' %s %s; media-src 'self' blob: %s; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'\n" \
-            "${{ vars.API_ORIGIN }}" "$livekit" "${{ vars.API_ORIGIN }}" >> apps/web/dist/client/_headers
+        run: node apps/web/scripts/csp.mjs apps/web/dist/client "${{ vars.API_ORIGIN }}" "$LIVEKIT_URL"
       - name: Publish to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

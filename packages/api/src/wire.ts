@@ -2,7 +2,7 @@
  * HTTP wire shapes shared by @alcove/api-http and the server. These are transport details, not
  * domain types: the app never sees them.
  */
-import { z } from 'zod';
+import { z } from './zod';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
  * Vandelay, and single sign-on is whoever's work email is typed. Google is real: the browser goes

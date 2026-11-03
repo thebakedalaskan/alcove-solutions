@@ -13,9 +13,9 @@ const slog = log.child({ component: 'server' });
 process.on('unhandledRejection', (e) => slog.error('unhandled promise rejection', { err: e }));
 process.on('uncaughtException', (e) => { slog.error('uncaught exception, exiting', { err: e }); flushLogs(); process.exit(1); });
 
-const cfg = loadConfig();
+const cfg = await loadConfig();
 configureLogging({ level: cfg.LOG_LEVEL, format: cfg.LOG_FORMAT });
-slog.info('starting', { node: process.version, logLevel: cfg.LOG_LEVEL, webOrigin: cfg.WEB_ORIGIN });
+slog.info('starting', { node: process.version, logLevel: cfg.LOG_LEVEL, webOrigin: cfg.WEB_ORIGIN, tee: cfg.TEE, commit: cfg.ALCOVE_COMMIT });
 
 const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);

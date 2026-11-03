@@ -76,6 +76,26 @@ export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac
 export const serviceKey = (kservice: Uint8Array, purpose: 'accounting'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
 /** Seals what a browser carries between leaving to sign in with a provider and coming back. */
 export const signInAttemptKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/sign-in-attempt/v1');
+/** Names a provider's photo by an opaque token, so browsers fetch it from Alcove and never from the provider. */
+export const photoTokenKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/photo-token/v1');
+
+/**
+ * Sealed and stable: the same plaintext always gives the same token (the nonce is a keyed hash of
+ * it), so a browser can cache what the token names. It reveals only whether two tokens are equal.
+ */
+export function sealStable(key: Uint8Array, label: string, plaintext: Uint8Array): string {
+  const nonce = hmac(sha256, live(key), plaintext).slice(0, 24);
+  return b64u(concat(nonce, xchacha20poly1305(key, nonce, utf8(label)).encrypt(plaintext)));
+}
+export function openStable(key: Uint8Array, label: string, token: string): Uint8Array {
+  const all = unb64u(token);
+  if (all.length < 24 + 16) throw new IntegrityError('That token is malformed.', { context: { label } });
+  try {
+    return xchacha20poly1305(live(key), all.slice(0, 24), utf8(label)).decrypt(all.slice(24));
+  } catch (err) {
+    throw new IntegrityError('That token wasn’t made here.', { cause: err, context: { label } });
+  }
+}
 /** Signs call passes: what lets someone in a call (guests included) make that call's requests. */
 export const callPassKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/call-pass/v1');
 export const mac = (key: Uint8Array, data: Uint8Array): Uint8Array => hmac(sha256, key, data);
