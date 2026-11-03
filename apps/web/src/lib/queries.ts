@@ -1,6 +1,7 @@
 /* Query keys and fetchers. Screens read data through these, never through `api` directly. */
 import type { MeetingInput, MeetingNotesSetting, NoteKind, Patch, Preferences } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { api } from './api';
 
 export const qk = {
@@ -69,6 +70,20 @@ export function useActionDone() {
 export function usePreferences() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p), onSuccess: (d) => qc.setQueryData(qk.prefs, d) });
+}
+/** Ends the session on the server, then leaves for the welcome screen. */
+export function useLock() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  return useMutation({
+    mutationFn: () => api.auth.lock(),
+    onSuccess: async () => {
+      // Leave the app first, so mounted screens don't refetch into a locked session.
+      qc.setQueryData(qk.session, null);
+      await navigate({ to: '/welcome' });
+      qc.clear();
+    }
+  });
 }
 /** After sign-in, sign-out or a scenario switch everything cached is stale. */
 export function useResetCache() {

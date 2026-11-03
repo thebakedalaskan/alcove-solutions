@@ -54,3 +54,5 @@ Rename, pause, resume, **Stop and save** (into a private note) or **Discard** (d
 ## 8. Account
 
 Change your name, set notes defaults, add a passkey on another device, see credits, or **Lock Alcove**.
+Clicking your name at the bottom of the sidebar opens a menu with **Log out**, which does the same
+as Lock Alcove. **Edit profile** is shown there but not available yet.
