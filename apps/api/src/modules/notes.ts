@@ -4,15 +4,17 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
-  type AnswerPart, type Note, type NoteKind, type NoteProgress, type NoteSummary, type OpenAction, type Recipient
+  ActionItemSchema, ChapterSchema, DecisionSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  type ActionItem, type ActionPatch, type AnswerPart, type Change, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
+  type NoteSummary, type OpenAction, type Recipient
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { blindIndex, id128, sealJson, stateKey, toJson } from '../crypto';
 import { exec, maybeOne, rows, tx, type Db } from '../db';
-import { ConflictError, NotFoundError, ValidationError, notFound } from '../errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import { inference } from '../inference';
+import { nameFrom } from '../identity';
 import { log } from '../log';
 import { masterKey, openOwner } from '../owners';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
@@ -32,7 +34,7 @@ export const NoteManifest = z.object({
   invited: z.array(z.string()),
   /** Email addresses the notes were shared with afterwards. */
   shared: z.array(z.string()),
-  summary: z.string(), decisions: z.array(z.string()), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
+  summary: z.string(), decisions: z.array(DecisionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string())
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
@@ -52,11 +54,12 @@ export async function createNoteWithRecording(o: Owner, db: Db, make: (recording
   await saveRevision(o, db, itemId, revisionId, make(recordingId));
   return { noteId: itemId, recordingId };
 }
+/** Changes a note in a new revision. Handing back the same manifest changes nothing and writes nothing. */
 export async function updateNote(o: Owner, db: Db, noteId: string, fn: (n: NoteManifest) => NoteManifest): Promise<NoteManifest> {
   await lockItem(o, db, noteId);
   const cur = await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes');
   const next = fn(cur.manifest);
-  await saveRevision(o, db, noteId, cur.revisionId, next);
+  if (next !== cur.manifest) await saveRevision(o, db, noteId, cur.revisionId, next);
   return next;
 }
 
@@ -199,13 +202,93 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
 export async function openActions(o: Owner): Promise<OpenAction[]> {
   return (await listItems(o, o.pool, 'note', NoteManifest)).flatMap((n) => n.manifest.actions.filter((a) => !a.done).map((a) => ({ ...a, noteId: n.itemId, noteTitle: n.manifest.title })));
 }
-/** Ticks a follow-up. Everyone with the note sees the same list. */
-export async function setActionDone(o: Owner, noteId: string, actionId: string, done: boolean): Promise<void> {
-  const { owner } = await locate(o, noteId);
+/* ---------- confirming what the notes say ---------- */
+
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** A note that's written, located for someone who has it, and who they are for its history. */
+async function writtenNote(o: Owner, noteId: string) {
+  const l = await locate(o, noteId);
+  if (l.note.manifest.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, status: l.note.manifest.status } });
+  const p = await profile(o);
+  const by: Change['by'] = { name: p.name, email: p.email };
+  return { ...l, by, at: new Date().toISOString() };
+}
+
+/**
+ * Confirms a decision, says it wasn't decided, puts it back to proposed, or rewords it. Anyone who
+ * has the notes can, and everyone sees who did.
+ */
+export async function updateDecision(o: Owner, noteId: string, decisionId: string, patch: DecisionPatch): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  let made: Change['what'][] = [];
   await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
-    if (!n.actions.some((a) => a.id === actionId)) throw new NotFoundError('That follow-up doesn’t exist.', { context: { noteId, actionId } });
-    return { ...n, actions: n.actions.map((a) => (a.id === actionId ? { ...a, done } : a)) };
+    const d = n.decisions.find((x) => x.id === decisionId);
+    if (!d) throw new NotFoundError('That decision doesn’t exist.', { context: { noteId, decisionId } });
+    const changes = [...d.changes];
+    let next: Decision = d;
+    if (patch.text !== undefined && patch.text !== d.text) { changes.push({ by, at, what: 'reworded', before: d.text, after: patch.text }); next = { ...next, text: patch.text }; }
+    if (patch.state !== undefined && patch.state !== d.state) {
+      changes.push({ by, at, what: patch.state === 'confirmed' ? 'confirmed' : patch.state === 'rejected' ? 'rejected' : 'reopened' });
+      next = { ...next, state: patch.state };
+    }
+    made = changes.slice(d.changes.length).map((x) => x.what);
+    return made.length ? { ...n, decisions: n.decisions.map((x) => (x.id === decisionId ? { ...next, changes } : x)) } : n;
   }));
+  nlog.info('decision changed', { noteId, decisionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/**
+ * Changes a follow-up. Anyone who has the notes can give it to someone who has them too, reword it,
+ * date it or tick it. Only the person it's for can take it on: the notes only ever suggest.
+ */
+export async function updateAction(o: Owner, noteId: string, actionId: string, patch: ActionPatch): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  const organizer = await me(owner);
+  let made: Change['what'][] = [];
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    const a = n.actions.find((x) => x.id === actionId);
+    if (!a) throw new NotFoundError('That follow-up doesn’t exist.', { context: { noteId, actionId } });
+    const changes = [...a.changes];
+    let next: ActionItem = a;
+    if (patch.text !== undefined && patch.text !== a.text) { changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text }); next = { ...next, text: patch.text }; }
+    if (patch.owner === null && next.owner) {
+      changes.push({ by, at, what: 'reassigned', before: next.owner.name });
+      const { owner: _gone, ...rest } = next;
+      void _gone;
+      next = { ...rest, takenOn: false };
+    } else if (typeof patch.owner === 'string' && !(next.owner?.person && same(next.owner.person.email, patch.owner))) {
+      const email = patch.owner;
+      // Follow-ups go to people who have the notes, so whoever it's for can see it.
+      if (![organizer.email, ...n.invited, ...n.shared].some((e) => same(e, email))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context: { noteId, actionId } });
+      const person = same(email, organizer.email) ? organizer : personOf(email);
+      // Someone Alcove knows only by their address goes by the name in it: "kofi@…" is Kofi.
+      const name = person.name === person.email ? nameFrom(person.email) : person.name;
+      // Giving it to yourself is taking it on; anyone else has to say yes themselves.
+      const self = same(email, by.email);
+      changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: name });
+      next = { ...next, owner: { name, person }, takenOn: self };
+    }
+    if (patch.takeOn) {
+      if (!next.owner?.person || !same(next.owner.person.email, by.email)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context: { noteId, actionId } });
+      if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
+    }
+    if (patch.due !== undefined) {
+      const due = patch.due || undefined;
+      if (due !== next.due) {
+        changes.push({ by, at, what: 'due', ...(next.due ? { before: next.due } : {}), ...(due ? { after: due } : {}) });
+        const { due: _old, ...rest } = next;
+        void _old;
+        next = due ? { ...rest, due } : rest;
+      }
+    }
+    if (patch.done !== undefined && patch.done !== next.done) { changes.push({ by, at, what: patch.done ? 'done' : 'undone' }); next = { ...next, done: patch.done }; }
+    made = changes.slice(a.changes.length).map((x) => x.what);
+    return made.length ? { ...n, actions: n.actions.map((x) => (x.id === actionId ? { ...next, changes } : x)) } : n;
+  }));
+  nlog.info('follow-up changed', { noteId, actionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

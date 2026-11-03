@@ -599,8 +599,12 @@ describe('live transcript and written notes', () => {
     expect(note.status).toBe('ready');
     expect(note.transcript?.map((l) => l.text)).toEqual(['We agreed to move the launch to the 18th.', 'Kofi will send the new screens by Wednesday.', 'Priya checks the numbers.', 'That is everything for today.']);
     expect(note.summary).toBe('Heard 4 lines. It ended on: That is everything for today.');
-    expect(note.decisions).toEqual(['We agreed to move the launch to the 18th.']);
-    expect(note.actions).toEqual([{ id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) }, due: 'Wednesday', done: false }]);
+    // What the notes heard is proposed, and follow-ups only suggest who: nobody is committed by the notes.
+    expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', changes: [] }]);
+    expect(note.actions).toEqual([{
+      id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) },
+      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: []
+    }]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
     // The notes model was sent the transcript with names, not anyone's address.
@@ -687,9 +691,9 @@ describe('live transcript and written notes', () => {
     expect((await rec.stop()).pendingNoteId).toBe(pendingNoteId); // stopping twice finishes it once
     await written(api, pendingNoteId);
     const note = await api.notes.get(pendingNoteId);
-    expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: ['We decided to keep the darker header.'] });
+    expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: [{ text: 'We decided to keep the darker header.', at: 4, state: 'proposed' }] });
     expect(note.transcript?.map((l) => [l.at, l.text, l.speaker])).toEqual([[0, 'Sam will tidy the spacing by Friday.', undefined], [4, 'We decided to keep the darker header.', undefined]]);
-    expect(note.actions).toEqual([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, due: 'Friday', done: false }]);
+    expect(note.actions).toEqual([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
   it('takes speech only as 16 kHz mono WAV, only while recording, and only into your own calls', async () => {
@@ -757,7 +761,7 @@ describe('live transcript and written notes', () => {
     expect(await job()).toEqual({ state: 'queued', attempt: 1 });
     for await (const p of api.notes.progress(pendingNoteId)) { expect(p.steps.at(-1)).toEqual({ label: 'The notes service is busy. Trying again shortly', done: false }); break; }
     await retryNow();
-    expect((await api.notes.get(pendingNoteId)).decisions).toEqual(['We agreed to ship on Monday.']);
+    expect((await api.notes.get(pendingNoteId)).decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
 
     // Down for good: after three attempts the note is finished without a summary, keeps its transcript, and costs nothing.
     const before = (await api.credits.balance()).balance;
@@ -774,6 +778,69 @@ describe('live transcript and written notes', () => {
     expect(note).toMatchObject({ status: 'ready', summary: '', decisions: [], actions: [], chapters: [] });
     expect(note.transcript?.map((l) => l.text)).toEqual(['Nobody will read this summary.']);
     expect((await api.credits.balance()).balance).toBe(before);
+  });
+});
+
+describe('confirming what the notes say', () => {
+  it('lets people confirm decisions and take on follow-ups, and remembers who did what', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
+    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0));
+    const noteId = (await call.leave()).pendingNoteId ?? '';
+    await written(org.api, noteId);
+    let note = await org.api.notes.get(noteId);
+    const decision = note.decisions[0]?.id ?? '';
+    const action = note.actions[0]?.id ?? '';
+    const guest = await account(guestEmail);
+    const who = (n: { changes: { by: { email: string }; what: string; before?: string | undefined }[] }) => n.changes.map((c) => [c.by.email, c.what, c.before ?? null]);
+
+    // Anyone with the notes confirms a decision, rewords it, says it wasn't decided after all, or reopens it.
+    note = await guest.api.notes.updateDecision(noteId, decision, { state: 'confirmed' });
+    expect(note.decisions[0]?.state).toBe('confirmed');
+    note = await org.api.notes.updateDecision(noteId, decision, { text: 'The launch moves to the 18th.' });
+    note = await org.api.notes.updateDecision(noteId, decision, { state: 'rejected' });
+    note = await guest.api.notes.updateDecision(noteId, decision, { state: 'proposed' });
+    expect(note.decisions[0]).toMatchObject({ text: 'The launch moves to the 18th.', state: 'proposed' });
+    expect(who(note.decisions[0] ?? { changes: [] })).toEqual([
+      [guestEmail, 'confirmed', null], [org.session.user.email, 'reworded', 'We agreed to move the launch to the 18th.'],
+      [org.session.user.email, 'rejected', null], [guestEmail, 'reopened', null]
+    ]);
+    // Asking for what's already so changes nothing.
+    expect(who((await guest.api.notes.updateDecision(noteId, decision, { state: 'proposed' })).decisions[0] ?? { changes: [] })).toHaveLength(4);
+
+    // The notes only suggest who does what: only that person can take it on.
+    expect(code(await org.api.notes.updateAction(noteId, action, { takeOn: true }).catch((e: unknown) => e))).toBe('forbidden');
+    note = await guest.api.notes.updateAction(noteId, action, { takeOn: true });
+    expect(note.actions[0]).toMatchObject({ takenOn: true, owner: { person: { email: guestEmail } } });
+    // Taking it over yourself is taking it on; it can only go to someone who has the notes.
+    note = await org.api.notes.updateAction(noteId, action, { owner: org.session.user.email, due: 'Friday' });
+    expect(note.actions[0]).toMatchObject({ takenOn: true, owner: { person: { email: org.session.user.email } }, due: 'Friday' });
+    expect(code(await org.api.notes.updateAction(noteId, action, { owner: unique('outsider') }).catch((e: unknown) => e))).toBe('invalid');
+    // Given to someone else, it waits for them to say yes.
+    note = await org.api.notes.updateAction(noteId, action, { owner: guestEmail });
+    expect(note.actions[0]).toMatchObject({ takenOn: false, owner: { person: { email: guestEmail } } });
+    expect(code(await org.api.notes.updateAction(noteId, action, { takeOn: true }).catch((e: unknown) => e))).toBe('forbidden');
+    note = await org.api.notes.updateAction(noteId, action, { owner: org.session.user.email, text: 'Send the final screens', done: true });
+    note = await guest.api.notes.updateAction(noteId, action, { owner: null, due: null });
+    expect(note.actions[0]).toMatchObject({ text: 'Send the final screens', takenOn: false, done: true });
+    expect(note.actions[0]?.owner).toBeUndefined();
+    expect(note.actions[0]?.due).toBeUndefined();
+    expect(who(note.actions[0] ?? { changes: [] })).toEqual([
+      [guestEmail, 'took-on', null], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'due', 'Wednesday'],
+      [org.session.user.email, 'reassigned', org.session.user.name],
+      [org.session.user.email, 'reworded', 'Send the new screens by Wednesday'], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'done', null],
+      [guestEmail, 'reassigned', org.session.user.name], [guestEmail, 'due', 'Friday']
+    ]);
+
+    // Nobody without the notes can touch them, nothing that isn't there can be changed, and a note being written waits.
+    const stranger = await account();
+    expect(code(await stranger.api.notes.updateDecision(noteId, decision, { state: 'confirmed' }).catch((e: unknown) => e))).toBe('not-found');
+    expect(code(await stranger.api.notes.updateAction(noteId, action, { done: false }).catch((e: unknown) => e))).toBe('not-found');
+    expect(code(await org.api.notes.updateAction(noteId, 'AAAAAAAAAAAAAAAAAAAAAA', { done: true }).catch((e: unknown) => e))).toBe('not-found');
+    const rec = await org.api.recordings.start('Still going');
+    expect(code(await org.api.notes.updateDecision(rec.getSnapshot().noteId, decision, { state: 'confirmed' }).catch((e: unknown) => e))).toBe('conflict');
+    await rec.discard();
   });
 });
 

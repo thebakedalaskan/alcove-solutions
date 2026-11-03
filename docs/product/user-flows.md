@@ -107,6 +107,11 @@ panels for notes, chat (**C**) and people, and **End**.
   notes from someone else it's **Remove from your notes**: everyone else keeps them.
 - A written note shows the summary, decisions, follow-ups, chapters and transcript, and takes questions
   about the call: a suggested question or your own. Answers cite the moments in the recording they come from.
+- What the notes heard is a proposal until people say so. Each decision shows **Proposed by the notes** until
+  someone who has the notes taps **Confirm** (or **It wasn’t decided**); it says who did, and can be reworded,
+  undone or reopened. A follow-up shows who the notes suggest, dashed, until that person taps **Take it on**.
+  Its menu gives it to anyone who has the notes (giving it to yourself takes it on), sets a due date, rewords
+  it, and lists every change: who did what, and when.
 
 ## 8. Record in the room
 

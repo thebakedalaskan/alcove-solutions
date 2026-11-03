@@ -55,6 +55,24 @@ export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
 export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
+/** A change to a decision: confirm it, say it wasn't decided, put it back to proposed, or reword it. */
+export const DecisionPatchSchema = z.object({
+  state: z.enum(['proposed', 'confirmed', 'rejected']).optional(),
+  text: z.string().trim().min(1).max(300).optional()
+}).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
+export type DecisionPatch = z.infer<typeof DecisionPatchSchema>;
+
+/** A change to a follow-up. Only its owner can take it on; anyone who has the notes can do the rest. */
+export const ActionPatchSchema = z.object({
+  done: z.boolean().optional(),
+  takeOn: z.literal(true).optional(),
+  /** Give it to someone who has the notes, by email address, or to nobody. */
+  owner: z.string().trim().toLowerCase().max(254).nullable().optional(),
+  due: z.string().trim().max(40).nullable().optional(),
+  text: z.string().trim().min(1).max(300).optional()
+}).refine((p) => Object.values(p).some((v) => v !== undefined), 'Nothing to change.');
+export type ActionPatch = z.infer<typeof ActionPatchSchema>;
+
 /** Catching up during a call: how far back to read, or the whole call. */
 export const CatchUpBodySchema = z.object({ minutes: z.number().int().min(1).max(600).optional() });
 
