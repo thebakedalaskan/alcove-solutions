@@ -4,13 +4,9 @@ The target is `https://alcove.solutions`, with API `https://api.alcove.solutions
 registrar; Cloudflare provides DNS and Pages. GCP project `alcove-solutions` in `us-central1` holds
 Cloud Run, Cloud SQL, Artifact Registry and Secret Manager.
 
-**Setup status, November 3, 2026:** GCP backing resources and GitHub repository variables are configured.
-Pages project `alcove-web` exists at `alcove-web-bt8.pages.dev`. The GoDaddy nameserver change has been
-submitted; delegation and public HTTPS still need verification. The first deployment completed
-migrations and API startup but stopped at its health check before publishing the web app. The probe
-now uses `/health`; the site is not yet verified live.
-Google Calendar and People APIs and the testing OAuth application/client have been configured
-separately; application sign-in and integration routes remain unimplemented.
+Pages project `alcove-web` uses the assigned hostname `alcove-web-bt8.pages.dev`. Accept a public
+release only after verifying the deployed API and web commits, public HTTPS and the acceptance
+journeys below. A healthy API service URL alone does not establish that the public domains work.
 
 ```text
 GoDaddy registrar → Cloudflare DNS
@@ -75,8 +71,15 @@ maleah.ns.cloudflare.com
 The change was submitted at GoDaddy. Confirm Cloudflare reports the zone active and public resolvers
 return both nameservers before treating delegation as complete. Preserve existing mail and verification
 records. Add `alcove.solutions` as a custom domain of Pages project `alcove-web`; use its actual assigned
-hostname, `alcove-web-bt8.pages.dev`, wherever setup requests the project hostname. An optional
-`www.alcove.solutions` hostname should redirect to the apex.
+hostname, `alcove-web-bt8.pages.dev`, wherever setup requests the project hostname. Configure
+`www.alcove.solutions` to redirect to the apex using a Cloudflare zone Single Redirect, preserving the
+path and query string.
+
+The web build uses TanStack's `spa.prerender.outputPath: '/index'` to emit
+`apps/web/dist/client/index.html`. Pages serves this root shell for client routes that do not match
+static assets, while serving JavaScript, CSS and other real assets directly. Keep the build free of a
+top-level `404.html` and catch-all `_redirects` rules so Pages' native SPA fallback applies. See
+[Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
 The API uses a **native Cloud Run domain mapping**, created after the first API deployment:
 
@@ -173,14 +176,17 @@ Each deployment:
 4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
    before custom-domain provisioning.
 5. Builds the web app against `API_ORIGIN`, adds that origin to the CSP, and publishes
-   `apps/web/dist/client` to Pages production branch `main`.
+   `apps/web/dist/client` to Pages production branch `main` using `pnpm dlx wrangler@4.157.0`.
+   The publisher receives its token/account/project through step-scoped environment variables and
+   attributes the deployment to the verified Git commit without changing workspace dependencies.
 
 Cloud Run reserves some URL paths ending in `z`, so the public health probe uses `/health`.
 See [Google's reserved-path guidance](https://docs.cloud.google.com/run/docs/known-issues#reserved-url-paths).
 
 The service health check does not establish that public domains work. Before recording a release as
 live, verify DNS delegation, both HTTPS certificates, API health at the custom domain, CORS for the
-apex web origin, Pages security headers and deep links, and a passkey/account/recording flow that
+apex web origin, Pages security headers and deep links, JavaScript/CSS asset responses without redirect
+loops, and a passkey/account/recording flow that
 uploads, reads and physically deletes encrypted objects. Match both deployments to the intended Git
 commit. Use the existing integration suite for automated checks; no browser test suite is permitted.
 

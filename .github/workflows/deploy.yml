@@ -135,8 +135,13 @@ jobs:
         run: |
           printf "  Content-Security-Policy: default-src 'self'; connect-src 'self' %s; media-src 'self' blob: %s; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'\n" \
             "${{ vars.API_ORIGIN }}" "${{ vars.API_ORIGIN }}" >> apps/web/dist/client/_headers
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/web/dist/client --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main
+      - name: Publish to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          pnpm dlx wrangler@4.157.0 pages deploy apps/web/dist/client \
+            --project-name "$CLOUDFLARE_PAGES_PROJECT" --branch main --commit-hash "$DEPLOY_SHA"
