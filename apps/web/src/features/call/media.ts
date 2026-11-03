@@ -151,7 +151,20 @@ export class NotesRecorder {
     this.segment = segment;
     mlog.info('notes recorder started', { mimeType, segment });
   }
-  pause() { if (this.rec?.state === 'recording') { this.rec.requestData(); this.rec.pause(); } }
+  /** Pauses, and resolves once everything recorded so far is uploaded: the server refuses audio once paused. */
+  async pause(): Promise<void> {
+    const rec = this.rec;
+    if (rec?.state === 'recording') {
+      // The last piece (from requestData) is handed over before the pause event; never wait on a broken recorder.
+      await new Promise<void>((resolve) => {
+        rec.addEventListener('pause', () => resolve(), { once: true });
+        setTimeout(resolve, 2000);
+        rec.requestData();
+        rec.pause();
+      });
+    }
+    await this.queue;
+  }
   stop() { void this.finish(); }
   /** Stops and waits until every recorded piece has been uploaded. */
   async flush(): Promise<void> { await this.finish(); await this.queue; }

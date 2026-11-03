@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** An optional setting: unset, or set to nothing (as in .env.example), means it isn't configured. */
+const optional = z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().min(1).optional());
+
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   OBJECTS_ENDPOINT: z.string().url(),
@@ -13,8 +16,8 @@ const EnvSchema = z.object({
   /** The API as browsers reach it, e.g. https://api.alcove.solutions, or http://localhost:3000/api behind the dev proxy. Google returns here. */
   API_URL: z.string().url(),
   /** Sign-in with Google. Without both, the Google button explains that it isn't set up here. */
-  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
-  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_CLIENT_ID: optional,
+  GOOGLE_CLIENT_SECRET: optional,
   /** Google's OpenID Connect issuer. Tests point it at a local stand-in (src/testing/fake-google.ts). */
   GOOGLE_ISSUER: z.string().url().default('https://accounts.google.com'),
   /** Google's APIs (Calendar). Tests point it at the same local stand-in. */
@@ -23,8 +26,13 @@ const EnvSchema = z.object({
   KMASTER: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KMASTER must be 32 bytes, base64url'),
   /** Seals billing state. Separate from KMASTER: billing never needs owner keys. */
   KSERVICE: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KSERVICE must be 32 bytes, base64url'),
-  NEAR_AI_API_KEY: z.string().optional(),
+  /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
+  NEAR_AI_API_KEY: optional,
   NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),
+  /** Speech to text for the live transcript. */
+  NEAR_AI_STT_MODEL: z.string().min(1).default('openai/whisper-large-v3'),
+  /** Writes the notes from a transcript and answers questions about them. */
+  NEAR_AI_NOTES_MODEL: z.string().min(1).default('z-ai/glm-5.3-flash'),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */

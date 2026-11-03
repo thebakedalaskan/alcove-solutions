@@ -31,7 +31,8 @@ Application Load Balancer for production custom domains. See
    - **Typecheck:** every package with strict compiler flags.
    - **Build:** web, API bundle and API container.
    - **Integration tests:** the real API against Postgres and an S3-compatible store, signing in the way
-     the web app does, with a local OpenID provider standing in for Google.
+     the web app does, with local stand-ins for Google (an OpenID provider and the Calendar API) and for
+     NEAR AI Cloud.
 2. **Merge gate.** Import `.github/rulesets/main.json` to require pull requests and all four checks
    on an up-to-date branch. The checked-in ruleset is a configuration artifact; verify its live status.
 3. **Deploy** (`.github/workflows/deploy.yml`) requires repository variable `DEPLOY_ENABLED=true`.
@@ -59,9 +60,16 @@ Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` 
 `production` environment. Automatic deployment requires no environment reviewer gate.
 
 Cloud Run uses one instance, session affinity, gen2, one CPU, 512 MiB, port 8080 and a 300-second timeout.
-CPU remains allocated between requests for maintenance: sweeping ended sessions and physical-deletion
-cleanup. Sessions live in Postgres, so a restart signs nobody out. `NEAR_AI_ENABLED=false` omits the unused inference-key
-binding; no fake key is needed.
+CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
+cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
+signs nobody out, and notes jobs left behind by a restart are picked up by the next maintenance run.
+
+NEAR AI has its own deployment switch. `NEAR_AI_ENABLED=true` binds `NEAR_AI_API_KEY` from
+`alcove-near-ai-api-key` into the API service (the migration job doesn't need it); the service is deployed
+with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models
+([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)). With the flag false
+or unset there is no binding and no placeholder secret version is needed: the API keeps recordings but
+doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
 Google provider credentials have a separate deployment switch. `GOOGLE_AUTH_ENABLED=true` binds
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from `alcove-google-client-id` and
@@ -82,7 +90,8 @@ These journeys describe existing coverage and release checks still required. Pas
 tests does not establish that production DNS, credentials, storage or the real Google round trip work. Accept a
 release only after the intended API image and Pages deployment match the commit, both public hostnames
 have valid HTTPS, web deep links/security headers work, and an account/recording flow proves private
-object upload, playback and physical deletion in the deployed environment.
+object upload, playback and physical deletion in the deployed environment, and, with NEAR AI enabled, a
+live transcript and written notes.
 
 | Journey | Existing coverage or remaining requirement |
 | --- | --- |
@@ -93,20 +102,23 @@ object upload, playback and physical deletion in the deployed environment.
 | A call without notes leaves no note | API integration tests |
 | Notes go to everyone invited when the call ends; anyone with them shares them on; removing versus deleting | API integration tests |
 | Room recording: rename, pause refuses audio, stop, discard | API integration tests |
-| Cross-owner isolation (calls, notes, audio, recordings) and origin checks | API integration tests |
-| At-rest leakage: canaries absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
+| Live transcript and written notes: clips transcribed while notes are on, retried clips kept once, silence dropped, notes written and charged when the recording stops, retries up to the third failure, asking | API integration tests against a local NEAR AI stand-in; verify against NEAR AI Cloud with `NEAR_AI_ENABLED=true` on each release |
+| Cross-owner isolation (calls, notes, audio, transcripts, recordings, asking) and origin checks | API integration tests |
+| At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
 | Deletion removes rows, receipts and objects; maintenance removes ended sessions and orphaned objects | API integration tests |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
+| Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit | Verify for each public release; assets must not redirect to the SPA shell |
-| Transcription and note writing | **Not implemented** (NEAR AI configured, not called) |
+| End-to-end encrypted inference requests and attestation checks | **Not implemented** (TLS to NEAR AI Cloud with a bearer key) |
 | Multi-party end-to-end encrypted calls | **Not implemented** |
-| Invitation emails | **Not implemented** |
+| Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
 | Attested confidential compute, with `KMASTER` released only to it | **Required before real users**; Cloud Run is not a TEE. See [Privacy › Production requirements](privacy-keys-and-sessions.md#production-requirements) |
 
 The Google provider is the external Testing app `Alcove` with its test users and the web client
 `AlcoveWeb`, whose redirect URIs are `$API_URL/v1/auth/google/callback` locally and in production.
-Sign-in asks for `openid email profile` only. Keep credential values and test-user addresses out of
-documentation. Automated tests must remain API integration tests; the repository forbids a browser
-test suite.
+Sign-in asks for `openid email profile` and the Calendar events scope
+(`https://www.googleapis.com/auth/calendar.events`), with offline access for a refresh token. Keep
+credential values and test-user addresses out of documentation. Automated tests must remain API
+integration tests; the repository forbids a browser test suite.

@@ -2,23 +2,28 @@
 
 [Docs home](../README.md) · [System architecture](system-architecture.md) · [Data and storage](data-and-storage.md) · [Deployment and acceptance](deployment-and-acceptance.md)
 
-**Goal.** Readable content (names, emails, titles, guests, chat, audio, notes) exists only in the browsers
-of the people it belongs to and inside the API process while it works on it. The database, object store,
-logs and network edge see ciphertext, opaque IDs, keyed hashes, sizes and timing.
+**Goal.** Readable content (names, emails, titles, guests, chat, audio, transcripts, notes) exists only in
+the browsers of the people it belongs to and inside the API process while it works on it. The database,
+object store, logs and network edge see ciphertext, opaque IDs, keyed hashes, sizes and timing. Two outside
+services are handed content on purpose: NEAR AI Cloud transcribes speech and writes notes, and Google
+Calendar carries the calls an organizer schedules ([What is still visible](#what-is-still-visible)).
 
 **Trust model.** The API process is the trusted plaintext endpoint (`C01`). It holds the master key
 `KMASTER`, which opens every account's root key, so it can open any account at any time without that person
-being present. That is how invited people read an organizer's notes, and how background work will run. It
-also means that whoever runs the process, or can read `KMASTER`, can read everything. "Alcove can't read
-your notes" holds only when `KMASTER` is released to nothing but an attested confidential VM running the
-expected server image. That is a production requirement, not the current state: locally `KMASTER` is a value
+being present. That is how invited people read an organizer's notes, and how the notes worker writes notes
+after a call. It also means that whoever runs the process, or can read `KMASTER`, can read everything.
+"Alcove can't read your notes" holds only when `KMASTER` is released to nothing but an attested
+confidential VM running the expected server image, and when inference is verified as private too. That is a production requirement, not the current state: locally `KMASTER` is a value
 in `.env` read by an ordinary Node process ([Production requirements](#production-requirements)). Inside the
 process, modules are not a security boundary: any code can reach `cfg.KMASTER`.
 
-**Sign-in is a stand-in.** Until Google, Microsoft and OIDC single sign-on are connected,
-`apps/api/src/demo.ts` decides who someone is: Google and Microsoft always sign in Art Vandelay, and SSO
-signs in whoever's work email is typed. Nothing is verified, so anyone can sign in as any address and read
-whatever that account can, including notes shared with it. Don't use a build with demo sign-in for real data.
+**Sign-in is real only for Google.** Google sign-in is OpenID Connect with checked ID tokens and verified
+emails ([Accounts and sign-in](#accounts-and-sign-in)). Microsoft and single sign-on are still stand-ins in
+`apps/api/src/demo.ts`: Microsoft always signs in Art Vandelay, and SSO signs in whoever's work email is
+typed. Nothing checks those addresses, so SSO accepts only addresses no real person can have: domains
+reserved for examples (`example.com`, `.net` and `.org`, and anything under `.example`, `.test`,
+`.invalid` or `.localhost`) and the demo company's `vandelay.industries`. Any other address is refused, so
+nobody can sign in as someone who uses Alcove with Google and read the notes given to them.
 
 ## Key inventory
 
@@ -26,18 +31,19 @@ whatever that account can, including notes shared with it. Don't use a build wit
 | --- | --- | --- |
 | `KMASTER` | 32 random bytes, base64url (43 characters), from the environment | `.env` locally; in production, released only to the attested confidential VM. Wraps every root key and keys the blind indexes. |
 | `ownerId` | 32 random bytes, base64url (43 characters), made when the account is created | Clear, as the account's opaque ID |
-| `Kowner` (account root) | 32 random bytes, made when the account is created | Only wrapped: `owners.root_envelope`, a key envelope (scope `owner-root`) under `HKDF(KMASTER, salt=ownerId, "alcove/owner-root/v1")`. Opened for each request, never cached. |
+| `Kowner` (account root) | 32 random bytes, made when the account is created | Only wrapped: `owners.root_envelope`, a key envelope (scope `owner-root`) under `HKDF(KMASTER, salt=ownerId, "alcove/owner-root/v1")`. Opened for each request or notes job, never cached. |
 | Root check | `HMAC(HKDF(Kowner, salt=ownerId, "alcove/root-check/v1"), ownerId)` | `owners.root_check`; proves an opened root is this account's, so a wrong key never opens an empty vault |
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>` |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state) and `job:<noteId>` (notes jobs) | Derived per request |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
+| Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
 
 All derivations are HKDF-SHA-256 with 32-byte outputs. `salt=ownerId` means the ID's 32 decoded bytes; the
-index and billing keys use an empty salt.
+index, sign-in attempt and billing keys use an empty salt.
 
 ## Records and envelopes
 
@@ -50,9 +56,11 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `manifest` | `Krecord` | item, revision |
 | `audio` | `Krec` | recording, segment, seq, object |
 | `call-state` | state key `call:<id>` | call |
+| `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
 | `job` | state key `job:<noteId>` | note |
 | `operation-result` | operation-result key | operation |
 | `billing` | billing key | owner |
+| `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
 
 - **Key envelope:** `{v, ownerId, scopeId, keyVersion, nonce, ciphertext}` with the header as associated data.
   Scopes are `owner-root`, `revision:<id>` and `recording:<id>`. An envelope cannot be moved between owners
@@ -73,7 +81,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 
 | Purpose | Value | Stored in | Used for |
 | --- | --- | --- | --- |
-| `subject` | The sign-in provider's account ID | `identities.subject_index` (primary key) | Finding the account at sign-in |
+| `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
 | `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team directory); who else may read a note |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
@@ -81,20 +89,35 @@ The hash is deterministic, so equal values show the same person across rows and 
 
 ## Accounts and sign-in
 
-1. **Sign in.** `POST /v1/auth/sign-in` with `{provider, email?}`, where `provider` is `google`, `microsoft`
-   or `sso`; at most 30 attempts a minute per client address. Today `demo.ts` turns the request into an
-   identity (subject, email, name, photo URL). Real OAuth and OIDC will supply a verified one.
-2. **The first sign-in with a subject creates the account**, in one transaction serialised on the subject
+1. **Sign in with Google** (`apps/api/src/google.ts`). `GET /v1/auth/google` redirects to Google's
+   authorization endpoint, found by OpenID discovery, with a fresh `state`, `nonce` and PKCE verifier (an
+   S256 challenge), the scopes `openid email profile https://www.googleapis.com/auth/calendar.events`,
+   `access_type=offline`, `include_granted_scopes=true` and `prompt=select_account`. Google sends the browser
+   back to `GET /v1/auth/google/callback` (`$API_URL/v1/auth/google/callback`). The server deletes the
+   attempt cookie, checks that the attempt is under 10 minutes old and that `state` matches, swaps the code
+   for tokens with the verifier and the client secret, and verifies the ID token with `jose`: RS256 against
+   Google's published keys, the issuer, the audience (the client ID) and the expiry, with 60 seconds'
+   tolerance. Then it checks the nonce and accepts only `email_verified: true`, because notes are shared by
+   email. The identity is `google:<sub>`, the lower-cased email, and Google's name and photo URL. A refusal
+   sends the browser to `/welcome?signin=<reason>` (`cancelled`, `expired`, `unverified`, `unavailable`,
+   `busy` or `failed`) and signs nobody in. Someone can untick the calendar on Google's consent screen and
+   still sign in.
+2. **Demo sign-in.** `POST /v1/auth/sign-in` with `{provider, email?}`, where `provider` is `microsoft` or
+   `sso`; `demo.ts` turns the request into an identity (Art Vandelay, or `demo:sso:<email>` with a name
+   made from the address), marked as a demo (`sample`). Both ways in share one limit: 30 attempts a minute
+   per client address.
+3. **The first sign-in with a subject creates the account**, in one transaction serialised on the subject
    index: the `owners` row with a fresh `ownerId`, `Kowner`, root envelope and root check; the `identities`
    row; the sealed profile (name, email, photo URL, notes default `on`); and the billing account with 10,000
-   welcome credits. Later sign-ins with the same subject open the same account. After every sign-in a session
-   opens and, when nothing is upcoming, the demo calendar is placed: five sealed meetings, the first about 12
-   minutes later.
-3. **Every request opens the account's keys** (`openOwner` in `apps/api/src/owners.ts`): it reads
+   welcome credits. Later sign-ins with the same subject open the same account and bring the profile's name,
+   email and photo, and the identity's email index, up to date with the provider. After every sign-in a
+   session opens; for a demo identity with nothing upcoming, the sample calendar is placed too: five sealed
+   meetings, the first about 12 minutes later. A new account lands on `/ready`, anyone else on `/home`.
+4. **Every request opens the account's keys** (`openOwner` in `apps/api/src/owners.ts`): it reads
    `root_envelope` and `root_check`, unwraps `Kowner` under `KMASTER`, checks the root check (`IntegrityError`
    on a mismatch) and derives `Kwrap`. The request works on its own copies (`Owner.root`, `Owner.wrapKey`).
-   Nothing is cached between requests. Reading someone else's note opens their account the same way, after
-   the access check.
+   No key is cached between requests. Reading someone else's note opens their account the same way, after
+   the access check, and so does the notes worker for each job.
 
 ## Sessions
 
@@ -112,6 +135,38 @@ The hash is deterministic, so equal values show the same person across rows and 
   cleared), and the app goes back to the welcome screen.
 - **Never logged.** Session IDs are bearer secrets; logs identify a session by its `ownerId`.
 
+## Google sign-in and calendar access
+
+- **The attempt cookie.** `__Host-alcove_google` when `WEB_ORIGIN` is HTTPS (`alcove_google` otherwise):
+  HttpOnly, `SameSite=Lax` (Google's redirect back is a cross-site navigation), path `/`, `Secure` over
+  HTTPS, max-age 10 minutes. It holds the `state`, `nonce`, PKCE verifier, expiry, whether this pass asked
+  for consent, and where to land, sealed as a `sign-in-attempt` record, so the browser can neither read nor
+  change it. The callback deletes it whatever the outcome.
+- **The refresh token.** Every Google sign-in saves what Google granted as the account's `connection` item, a
+  sealed manifest like any other: the scopes, when, and the refresh token. A new refresh token replaces the
+  old one; without one, the old one stays. Google sends a refresh token only the first time someone agrees,
+  so when the calendar is granted but no refresh token has ever arrived, the callback signs the person in
+  and sends them back to Google once more with `prompt=consent` to get one. The Connect button
+  (`GET /v1/auth/google?consent=1`) asks again for the account already signed in.
+- **Access tokens** live only in the API process's memory, per account, until a minute before they expire,
+  and are renewed from the refresh token. A Calendar call that gets `401` drops the cached token and tries
+  once more. When Google answers a renewal with `invalid_grant` (access withdrawn at Google), the refresh
+  token and the calendar scope are removed from the connection, and the app offers to connect again.
+- **What goes to Google.** Scheduling, changing or cancelling a call while the calendar is connected
+  creates, updates or deletes an event on the organizer's primary Google Calendar with `sendUpdates=all`,
+  so Google emails everyone invited. The event carries the call's title, time and guests, the join link, a
+  line saying whether notes are on, `guestsCanModify: false` and a private extended property
+  `alcoveMeeting` with the meeting ID. If Google fails, the call is kept without its calendar event. Calls
+  started now don't go on the calendar.
+- **What comes from Google.** `GET /v1/calendar` reads the primary calendar's events from an hour ago to a
+  week ahead (at most 100) into memory for the response, and never stores them: timed events that weren't
+  cancelled or declined, of the default type, and not Alcove's own. `POST /v1/calendar/events/:id/adopt`
+  makes one of them an Alcove call, only if the account is its organizer (`403 forbidden` otherwise): the
+  call takes the event's title, time and guests, and the event gets the Alcove link above its old
+  description, with the update sent to everyone. Adopting the same event twice returns the same call.
+- **Never logged:** ID tokens, refresh and access tokens, and Google's error descriptions. Only Google's error
+  code (such as `invalid_grant`) is.
+
 ## Who can read a note
 
 A note lives in its organizer's vault, sealed under their keys. `note_access` lists who else may read it,
@@ -125,15 +180,17 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
 - **The check.** `locate` in `apps/api/src/modules/notes.ts` looks in the caller's own vault first. Otherwise it
   needs a `note_access` row for that note and the caller's email index, taken from their profile email; only
   then does it open the organizer's keys and read the note. The note, its audio, its progress stream, its
-  follow-ups and sharing all go through this check. Anyone else gets `404 not-found`, the same answer as for a
-  note that doesn't exist.
+  follow-ups, asking about it and sharing all go through this check. Anyone else gets `404 not-found`, the
+  same answer as for a note that doesn't exist.
+- **The live transcript** is only in the organizer's own call or room recording; nobody else sees it until
+  the note is finished and given to them.
 - **Follow-ups** are one list for everyone who has the note: ticking one writes a new revision in the
   organizer's vault.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
   else's note deletes only your own `note_access` row.
 
 Access follows the email address, so it is only as strong as sign-in: whoever signs in with an address can
-read every note given to it.
+read every note given to it. That's why the demo SSO sign-in takes only example addresses (see above).
 
 ## Requests
 
@@ -145,35 +202,47 @@ read every note given to it.
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may
   hold copies of responses, so they are purged after 24 hours and whenever the owner deletes a note or cancels
-  a meeting.
-- **Rate limits.** Sign-in: 30 a minute per client address (the first `x-forwarded-for` entry). Browser
-  reports: 60 a minute. The counters live in each API process.
-- **No content in URLs.** Note search, people search and sharing send their terms in POST bodies. Logs hold
-  IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs or call codes. The
-  privacy test checks the debug-level log for canaries and session cookies
-  ([Logging and errors](logging-and-errors.md)).
+  a meeting. Note search, asking, audio pieces and transcript clips keep no receipt: searching and asking
+  only read, pieces and clips are already idempotent by their place in the recording, and their answers
+  carry the live transcript, which shouldn't be copied into receipts.
+- **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
+  `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute
+  per account, calls and room recordings together. Questions about notes: 20 a minute per account. Over a
+  limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
+  with `signin=busy` instead. The counters live in each API process.
+- **Sizes.** An audio piece over 2 MiB or a transcript clip over 30 seconds of WAV is refused from its
+  `content-length` (`400 invalid`) before the body is read.
+- **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies.
+  Logs hold IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs, call
+  codes or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
+  sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
 
 ## What is still visible
 
 | Where | Visible |
 | --- | --- |
-| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`); revision, call and recording times; per-piece duration, size and codec; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
+| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips had speech in them and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds |
-| Ciphertext lengths | Not padded, so title, guest list and transcript lengths leak approximately |
-| The API process | Everything, for every account: it holds `KMASTER` |
+| Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
+| NEAR AI Cloud | Every transcript clip (the audio) and what was said in it. For notes and questions: the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Sent over TLS with a bearer key; Alcove doesn't yet use NEAR AI's end-to-end encrypted mode or check its attestation. |
+| Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
+| The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. |
 
 ## Deletion
 
-- **Deleting your own note** removes, in one transaction: every revision, the recording and its pieces, its
-  notes job, every `note_access` row (so everyone loses it), the link from its meeting, and the owner's
-  operation receipts; stored bytes go down to match. Then the audio objects are deleted; failures are queued in
-  `object_gc` and retried.
+- **Deleting your own note** removes, in one transaction: every revision, the recording and its pieces, any
+  transcript clips still there, its notes job, every `note_access` row (so everyone loses it), the link from
+  its meeting, and the owner's operation receipts; stored bytes go down to match. Then the audio objects are
+  deleted; failures are queued in `object_gc` and retried.
 - **Removing someone else's note** deletes only your own `note_access` row. The organizer and everyone else
   keep it.
 - **Cancelling a meeting** deletes it with every revision and its calls (including chat), and the owner's
-  receipts. Its notes stay. A live call can't be cancelled.
+  receipts. With a connected calendar, its Google event is cancelled too, which tells the guests. Its notes
+  stay. A live call can't be cancelled.
 - **Discarding a room recording** deletes its note in the same way as deleting your own note.
+- **Google access** stays in the account's `connection` item until the account is deleted (not built yet).
+  Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
   `object_gc`, and removes objects older than 24 hours that no recording piece references.
 
@@ -181,14 +250,15 @@ read every note given to it.
 
 | Original spec | Now | Decision |
 | --- | --- | --- |
-| A native Ed25519 owner key on one desktop proves who the owner is | Sign-in with Google, Microsoft or OIDC SSO (demo stand-ins today); a random `ownerId` | Spec updated (this page). Real sign-in is required before production. |
+| A native Ed25519 owner key on one desktop proves who the owner is | Sign-in with Google (OpenID Connect); Microsoft and SSO are demo stand-ins; a random `ownerId` | Spec updated (this page). Real Microsoft and SSO sign-in are required before production. |
 | `Kowner` kept natively, never stored server-side | Made by the server, stored wrapped under `KMASTER`, opened for each request | Accepted only with `KMASTER` released solely to the attested VM |
 | Attestation + HPKE channel with sequenced frames | Plain REST over TLS with a cookie session | **Required before production** |
 | Strict JSON (reject duplicate keys and unknown fields), U64 decimal strings | zod parsing (drops unknown fields), JS numbers for credits | To do |
-| Service-side wrap of `Krec` with 24-hour / 7-day disposal | Any work, including someone else's read and the future notes worker, opens the owner's keys through `KMASTER`; no separate wrap or disposal window | Accepted with `KMASTER` custody |
+| Service-side wrap of `Krec` with 24-hour / 7-day disposal | Any work, including someone else's read and the notes worker, opens the owner's keys through `KMASTER`; no separate wrap or disposal window | Accepted with `KMASTER` custody |
+| Protected inference: end-to-end encrypted requests to `I01`, with its attestation checked | Speech and transcripts go to NEAR AI Cloud over TLS with a bearer key; no request encryption or attestation check | **Required before production** |
 | Encrypted manifest binding all chunks; rollback detection | Not implemented: a database writer could roll a head back or drop trailing pieces | To do (version-bound associated data and an encrypted piece list) |
 | Billing keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do before payments |
-| Provider secrets never in environment variables | `KMASTER`, `KSERVICE` and the NEAR AI key are environment variables | Accepted locally. In production `KMASTER` comes only from the attested VM's key release. |
+| Provider secrets never in environment variables | `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables | Accepted locally. In production `KMASTER` comes only from the attested VM's key release. |
 
 ## Production requirements
 
@@ -197,15 +267,17 @@ read every note given to it.
    operator, host or deploy pipeline can read it. The client verifies attestation before sending anything,
    over an HPKE-style channel bound to it. Because a web app's code comes from the server, also pin the
    client: a signed native shell or extension, or published build hashes with a strict CSP.
-2. **Real sign-in.** Google and Microsoft OAuth and OIDC SSO that return a verified subject and email,
-   replacing `demo.ts`. Access to notes follows the verified email.
-3. **End-to-end encrypted call media** once calls are multi-party, following Proton Meet's open-source model:
+2. **Real sign-in for every provider.** Google is done. Microsoft OAuth and OIDC SSO must return a verified
+   subject and email, and `demo.ts` must go, because access to notes follows the email.
+3. **Verified private inference.** Send speech and transcripts to NEAR AI only through its end-to-end
+   encrypted request mode, after checking its attestation, with no plaintext fallback.
+4. **End-to-end encrypted call media** once calls are multi-party, following Proton Meet's open-source model:
    - Client-generated group keys (MLS-style), never created by the server.
    - Per-frame encryption (SFrame / WebRTC encoded transforms) through an SFU that holds no keys.
    - Key rotation when people join or leave.
    - The notes service joins as an attested participant, only while notes are on.
-4. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
+5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
    the subjects and emails the indexes hide), `Kowner` on suspected compromise, and `Kservice`; use
    `keyVersion`.
-5. **Deletion guarantees:** account deletion (not built yet) and expiry windows across backups.
-6. **Hygiene:** strict parsing, logs without content, rate limits at the edge.
+6. **Deletion guarantees:** account deletion (not built yet) and expiry windows across backups.
+7. **Hygiene:** strict parsing, logs without content, rate limits at the edge.

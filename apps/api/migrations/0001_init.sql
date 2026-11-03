@@ -78,20 +78,34 @@ CREATE TABLE operations (
   PRIMARY KEY (owner_id, operation_id)
 );
 
--- Work for the notes service.
+-- What was said while a note is still being recorded: one sealed row per transcribed clip. A
+-- retried clip has the same keyed tag, so it is stored once. When the recording stops, the lines
+-- move into the note and these rows are deleted.
+CREATE TABLE transcript_clips (
+  owner_id alcove_owner_id NOT NULL,
+  note_item_id alcove_id128 NOT NULL,
+  clip_tag bytea NOT NULL,
+  clip_ciphertext bytea NOT NULL,
+  PRIMARY KEY (owner_id, note_item_id, clip_tag),
+  FOREIGN KEY (owner_id, note_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
+);
+
+-- Notes waiting to be written from a finished recording's transcript. A worker claims a job by
+-- setting it to writing with a lease; a failed attempt goes back to queued, not to be tried again
+-- before lease_until. A job is deleted once its notes are written, or after its third attempt.
 CREATE TABLE content_jobs (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   job_id alcove_id128 NOT NULL,
   revision_id alcove_id128 NOT NULL,
-  kind text NOT NULL,
-  state text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('notes')),
+  state text NOT NULL CHECK (state IN ('queued', 'writing')),
   lease_until timestamptz,
   attempt integer NOT NULL CHECK (attempt BETWEEN 0 AND 3),
   job_ciphertext bytea NOT NULL,
   PRIMARY KEY (owner_id, job_id),
   UNIQUE (owner_id, revision_id, kind)
 );
-CREATE INDEX content_jobs_queued ON content_jobs(state, lease_until);
+CREATE INDEX content_jobs_due ON content_jobs(state, lease_until);
 
 CREATE TABLE calls (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,

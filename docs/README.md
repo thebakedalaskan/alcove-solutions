@@ -14,7 +14,8 @@ behind people's backs, and notes only the people in the call can read.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
 5. **Planning.** [Roadmap](delivery/roadmap.md) and [Decisions and provider assumptions](delivery/decisions-and-provider-assumptions.md).
 6. **Background.** [Stack and provider setup](references/stack-and-provider-setup.md) and [Source evidence](references/source-evidence.md),
-   written for the earlier desktop design; still the reference for NEAR AI, Phala and 1Click details.
+   written for the earlier desktop design; still the reference for NEAR AI's encrypted request mode, Phala and
+   1Click details. How Alcove calls NEAR AI today is in [Notes and inference](engineering/notes-and-inference.md).
 
 Design work lives in [`design/`](design/) (interactive prototypes) and [`brand/`](brand/).
 Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AGENTS.md).
@@ -24,7 +25,8 @@ Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AG
 | ID | Provider | Role | Status |
 | --- | --- | --- | --- |
 | `C01` | Confidential compute (Phala TDX or a GCP confidential VM) | Runs the API as the trusted plaintext endpoint | Required before production |
-| `I01` | NEAR AI Cloud | Transcription and note writing, end-to-end encrypted requests | Key configured, not called |
+| `I01` | NEAR AI Cloud | The live transcript (Whisper), writing notes and answering questions | Working when `NEAR_AI_API_KEY` is set; over TLS, without end-to-end encrypted requests or attestation checks yet |
+| — | Google | Sign-in (OpenID Connect) and Google Calendar | Working; Microsoft and SSO are still demo stand-ins |
 | `P01` | NEAR Intents 1Click | USDC credit purchases | Not connected |
 | `D01` | Postgres | Ciphertext rows | Working (local); Cloud SQL prepared |
 | `O01` | S3-compatible store | Ciphertext objects | Working (RustFS); R2 prepared |

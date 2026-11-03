@@ -1,8 +1,8 @@
 /* The pieces of a note page, shared by real notes and the example. */
-import { errorMessage, type ActionItem, type AnswerPart, type Chapter, type Person, type Recipient, type TranscriptLine } from '@alcove/api';
+import { errorMessage, type ActionItem, type AnswerPart, type Chapter, type Person, type Recipient, type Speaker, type TranscriptLine } from '@alcove/api';
 import { Avatar, Check, Faces, Icon, Kbd, TimeChip, Words, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { listNames, sameEmail } from '~/lib/people';
+import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { position } from '~/lib/time';
 import { PROMISE_MANY } from './NoteCard';
 import { ROLE } from './meta';
@@ -33,39 +33,48 @@ export function Decisions({ items }: { items: string[] }) {
 export function FollowUps({ actions, me, onToggle }: { actions: ActionItem[]; me: string | undefined; onToggle?: ((a: ActionItem, done: boolean) => void) | undefined }) {
   return (
     <>
-      {actions.map((a) => {
-        const owner = a.owner.person;
-        const mine = !!owner && !!me && sameEmail(owner, { email: me });
-        return (
-          <div key={a.id} className={cn('act', a.done && 'done')}>
-            <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
-            <span className="t">{a.text}</span>
-            <span className="owner"><Avatar person={owner ?? { name: a.owner.name }} size={22} />{mine ? 'You' : (a.owner.name.split(' ')[0] ?? a.owner.name)}</span>
-            <span className="due">{a.due ?? ''}</span>
-          </div>
-        );
-      })}
+      {actions.map((a) => (
+        <div key={a.id} className={cn('act', a.done && 'done')}>
+          <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
+          <span className="t">{a.text}</span>
+          {a.owner ? <span className="owner"><Avatar person={a.owner.person ?? { name: a.owner.name }} size={22} />{spokenName(a.owner, me)}</span> : <span />}
+          <span className="due">{a.due ?? ''}</span>
+        </div>
+      ))}
     </>
   );
 }
 
-export function Transcript({ lines, seconds, onSeek }: { lines: TranscriptLine[]; seconds: number; onSeek?: ((s: number) => void) | undefined }) {
+/** The transcript of a written note, folded away under its summary. */
+export function Transcript({ lines, seconds, me, onSeek }: { lines: TranscriptLine[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button type="button" className="tr-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
-      {open && (
-        <div className="mt-1">
-          {lines.map((l) => (
-            <div key={l.id} className="tr-line">
-              <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={30} />
-              <div><b>{l.speaker.name.split(' ')[0] ?? l.speaker.name}</b><p>{l.text}</p></div>
-              <TimeChip seconds={l.at} onSeek={onSeek} />
-            </div>
-          ))}
-        </div>
-      )}
+      {open && <TranscriptLines lines={lines} me={me} onSeek={onSeek} className="mt-3" />}
     </>
+  );
+}
+
+const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.email.toLowerCase() ?? `name:${s.name}`) : '');
+
+/** What was said, line by line. A speaker's lines in a row share one name; a room recording names nobody. */
+export function TranscriptLines({ lines, me, onSeek, className }: { lines: TranscriptLine[]; me: string | undefined; onSeek?: ((s: number) => void) | undefined; className?: string | undefined }) {
+  return (
+    <div className={className}>
+      {lines.map((l, i) => {
+        const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
+        if (!l.speaker) return <div key={l.id} className="tr-line plain"><p>{l.text}</p>{time}</div>;
+        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker);
+        return (
+          <div key={l.id} className={cn('tr-line', more && 'more')}>
+            {more ? <span /> : <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={30} />}
+            <div className="min-w-0">{!more && <b>{spokenName(l.speaker, me)}</b>}<p>{l.text}</p></div>
+            {time}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

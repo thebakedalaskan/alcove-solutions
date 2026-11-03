@@ -12,12 +12,13 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | Table | Clear columns | Ciphertext or keyed hash |
 | --- | --- | --- |
 | `owners` | `owner_id`, `stored_bytes`, `version`, `created_at` | `root_envelope` (`Kowner` under `KMASTER`), `root_check` (HMAC) |
-| `identities` | owner, created and last used | `subject_index` (primary key), `email_index` |
+| `identities` | owner, created and last used | `subject_index` (primary key), `email_index` (the provider's current email, updated at each sign-in) |
 | `sessions` | owner, provider (`google`, `microsoft`, `sso`), created, last seen, expiry | `session_hash` (SHA-256 of the cookie's ID) |
-| `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`), current revision, `deleted_at`, `version` | — |
+| `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`), current revision, `deleted_at`, `version` | — |
 | `revisions` | owner, item, revision, parent revision, `created_at` | `key_envelope`, `manifest_ciphertext` |
 | `operations` | owner, operation ID, method, completion time | `request_commitment` (HMAC), `result_ciphertext` |
-| `content_jobs` | owner, job, revision, kind (`notes`), state (`awaiting_inference`), lease, attempt | `job_ciphertext` |
+| `transcript_clips` | owner, note item | `clip_tag` (keyed hash of the clip's segment and start), `clip_ciphertext` (its transcript lines) |
+| `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version` | `state_ciphertext` (mic, camera, hand, presentation, notes state, chat, notices) |
 | `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start and end, `version` | `key_envelope` (`Krec`) |
 | `recording_pieces` | owner, recording, segment, seq, object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
@@ -29,16 +30,17 @@ The migration runner adds `schema_migrations`, which records each applied file b
 
 Constraints: checked domains `alcove_id128` (22 characters) and `alcove_owner_id` (43 characters), composite
 owner-scoped foreign keys, and deferred item-head and parent-revision constraints. Deleting an owner cascades to
-everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, and its
-`note_access` rows.
+everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, its
+transcript clips and its `note_access` rows.
 
 ## Manifests (encrypted)
 
 | Item kind | Manifest fields |
 | --- | --- |
-| `profile` | name, email, photo URL, preferences (`notesDefault`), colleagues invited to Alcove |
-| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions, action items, chapters, screens, transcript (or null), suggested questions |
+| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (`notesDefault`), colleagues invited to Alcove |
+| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID, and the Google Calendar event ID and link when it's on a calendar |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions, action items (text, owner when known, due date as said, done), chapters, screens, transcript (lines with time, speaker when known and text; null while recording), suggested questions |
+| `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
 (`409 conflict` if someone else saved first). Reads decrypt the head revision; listing decrypts every live
@@ -51,6 +53,13 @@ item of a kind.
 - **Streaming** a segment reads pieces in order, checks each digest, decrypts, and streams. Only for the note's
   organizer or someone with a `note_access` row for it, with an allow-listed content type, `nosniff` and
   `no-store`.
+- **Transcript clips** are sealed under the note's transcript key, one row per clip that had speech in it. The
+  live call or recording state opens them all; stopping moves the lines into the note's manifest and deletes
+  the rows in the same transaction.
+- **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
+  and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
+- **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never
+  stored. An Alcove call's event ID and link are kept in its meeting manifest.
 - **Finding people.** Sign-in looks up `identities` by subject index; people search and the team directory
   check `identities.email_index`; shared notes are found through `note_access.email_index`
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).

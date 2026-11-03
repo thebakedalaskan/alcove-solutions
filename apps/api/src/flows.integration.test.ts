@@ -3,13 +3,14 @@
  * tests only). Each test signs in through the API like the web app does. Leakage checks plant
  * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
  */
-import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AudioPiece, type CallSession, type CallState } from '@alcove/api';
+import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import type { ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { cookieName } from './sessions';
 import type { GoogleUser, Spoil } from './testing/fake-google';
+import { speechWav } from './testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
 let h: Harness;
@@ -23,6 +24,24 @@ function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, seq: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+/** A clip of speech saying `words` (sentences split by " // "); empty words are silence. */
+const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** Follows a note's progress until its notes are written (or the stream gives up). */
+async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> {
+  const steps: NoteProgress[] = [];
+  for await (const p of api.notes.progress(noteId)) steps.push(p);
+  return steps;
+}
+async function asked(api: AlcoveApi, noteId: string, question: string): Promise<AnswerPart[]> {
+  const parts: AnswerPart[] = [];
+  for await (const p of api.notes.ask(noteId, question)) parts.push(p);
+  return parts;
+}
+/** Polls until `ok` holds, for background work such as the notes worker. */
+async function until(ok: () => Promise<boolean>, what: string): Promise<void> {
+  for (let i = 0; i < 200; i++) { if (await ok()) return; await new Promise((r) => setTimeout(r, 25)); }
+  throw new Error(`Timed out waiting for ${what}`);
+}
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 /** The API's log lines, parsed. */
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
@@ -149,15 +168,21 @@ describe('signing in', () => {
     expect(seen.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
   });
 
-  it('signs in with single sign-on as whoever’s work email was typed', async () => {
-    const r = await h.browser().api.auth.signIn('sso', { email: '  Dana.Wu@Harbourline.co ' });
-    expect(r).toMatchObject({ isNew: true, session: { provider: 'sso', user: { name: 'Dana Wu', email: 'dana.wu@harbourline.co' } } });
+  it('signs in with single sign-on as whoever’s work email was typed, but never at an address someone could own', async () => {
+    const r = await h.browser().api.auth.signIn('sso', { email: '  Dana.Wu@Harbourline.example ' });
+    expect(r).toMatchObject({ isNew: true, session: { provider: 'sso', user: { name: 'Dana Wu', email: 'dana.wu@harbourline.example' } } });
     expect(r.session.user.photoUrl).toBeUndefined();
     expect(r.session.user.portrait).toBeDefined();
-    const back = await h.browser().api.auth.signIn('sso', { email: 'dana.wu@harbourline.co' });
+    const back = await h.browser().api.auth.signIn('sso', { email: 'dana.wu@harbourline.example' });
     expect([back.isNew, back.session.ownerId]).toEqual([false, r.session.ownerId]);
     expect(code(await h.browser().api.auth.signIn('sso').catch((e: unknown) => e))).toBe('invalid');
     expect(code(await h.browser().api.auth.signIn('sso', { email: 'not-an-email' }).catch((e: unknown) => e))).toBe('invalid');
+    // Nothing checks the address, so a real person's can't be claimed (and with it the notes shared with them).
+    for (const email of ['dana.wu@harbourline.co', 'someone@gmail.com', 'x@example.com.attacker.io']) {
+      expect(code(await h.browser().api.auth.signIn('sso', { email }).catch((e: unknown) => e)), email).toBe('invalid');
+    }
+    // The demo company's addresses still work, so a demo has colleagues to share with.
+    expect((await h.browser().api.auth.signIn('sso', { email: 'theo@vandelay.industries' })).session.user.email).toBe('theo@vandelay.industries');
   });
 
   it('keeps sessions across a restart and refuses a cookie after sign-out', async () => {
@@ -397,8 +422,8 @@ describe('people and team', () => {
     expect(await art.api.people.search('jamie@harbourline.co')).toEqual([expect.objectContaining({ source: 'new', onAlcove: false, person: expect.objectContaining({ email: 'jamie@harbourline.co' }) })]);
 
     // An address that belongs to an Alcove account says so.
-    await account('jordan.lee@harbourline.co');
-    expect((await art.api.people.search('jordan.lee@harbourline.co'))[0]).toMatchObject({ source: 'new', onAlcove: true });
+    await account('jordan.lee@harbourline.example');
+    expect((await art.api.people.search('jordan.lee@harbourline.example'))[0]).toMatchObject({ source: 'new', onAlcove: true });
   });
 
   it('shows the company directory and invites colleagues', async () => {
@@ -487,12 +512,11 @@ describe('calls with notes', () => {
     expect(end.pendingNoteId).toBe(s.notes.noteId);
     const noteId = end.pendingNoteId ?? '';
 
-    const steps = [];
-    for await (const p of api.notes.progress(noteId)) steps.push(p);
-    expect(steps.at(-1)?.ready).toBe(true);
+    // Nothing was said, so there's nothing to write: the note is finished with its audio and no summary.
+    expect((await written(api, noteId)).at(-1)?.ready).toBe(true);
 
     const note = await api.notes.get(noteId);
-    expect(note).toMatchObject({ kind: 'call', status: 'pending', title: `${firstName(session.user.name)}’s call` });
+    expect(note).toMatchObject({ kind: 'call', status: 'ready', title: `${firstName(session.user.name)}’s call`, summary: '', transcript: [] });
     expect(note.audio.map((a) => [a.index, a.pieces])).toEqual([[0, 2], [1, 1]]);
 
     // The decrypted segment is exactly the concatenation of what was recorded, and only for this account.
@@ -502,7 +526,7 @@ describe('calls with notes', () => {
 
     expect((await api.meetings.past())[0]).toMatchObject({ status: 'ended', noteId });
     expect((await api.notes.list()).map((n) => n.id)).toContain(noteId);
-    expect(code(await (async () => { for await (const p of api.notes.ask(noteId, 'What happened?')) void p; })().catch((e: unknown) => e))).toBe('unavailable');
+    expect(code(await asked(api, noteId, 'What happened?').catch((e: unknown) => e))).toBe('conflict');
   });
 
   it('joins a call without notes and leaves no note behind', async () => {
@@ -528,6 +552,159 @@ describe('calls with notes', () => {
     const steal = await b.fetch(`${h.baseUrl}/v1/recordings/${state.id}/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(steal.status).toBe(404);
     expect(code(await b.api.meetings.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
+  });
+});
+
+describe('live transcript and written notes', () => {
+  it('transcribes what’s said while notes are on, and writes the notes when the call ends', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] });
+    const call = await org.api.calls.join(c, { mic: true, cam: false });
+    const heardBefore = h.near.calls.filter((x) => x.path.endsWith('/audio/transcriptions')).length;
+    await call.appendAudio(piece(audioBytes('seg0-a'), 0, 0));
+    await call.appendAudio(piece(audioBytes('seg0-b'), 0, 1));
+
+    await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0));
+    expect(call.getSnapshot().transcript).toEqual([
+      { id: expect.any(String), at: 0, text: 'We agreed to move the launch to the 18th.', speaker: { name: org.session.user.name, person: expect.objectContaining({ email: org.session.user.email }) } }
+    ]);
+    await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0)); // a retry is kept once, and not transcribed again
+    await call.transcribe(speech('', 0, 4000)); // silence: what Whisper "hears" in it is dropped
+    await call.transcribe(speech('Kofi will send the new screens by Wednesday. // Priya checks the numbers.', 0, 6000));
+    expect(call.getSnapshot().transcript.map((l) => [l.at, l.text])).toEqual([
+      [0, 'We agreed to move the launch to the 18th.'], [6, 'Kofi will send the new screens by Wednesday.'], [8, 'Priya checks the numbers.']
+    ]);
+    expect(h.near.calls.filter((x) => x.path.endsWith('/audio/transcriptions')).length - heardBefore).toBe(2 + 1);
+
+    // Notes off: nothing more is transcribed. Back on, lines continue after the first segment's 10 seconds.
+    call.setNotes(false);
+    await settle(call, (x) => x.notes.status === 'off');
+    expect(code(await call.transcribe(speech('Off the record.', 0, 12_000)).catch((e: unknown) => e))).toBe('conflict');
+    call.setNotes(true);
+    await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
+    expect(code(await call.transcribe(speech('From before.', 0, 14_000)).catch((e: unknown) => e))).toBe('conflict');
+    await call.transcribe(speech('That is everything for today.', 1, 0));
+    expect(call.getSnapshot().transcript.at(-1)).toMatchObject({ at: 10, text: 'That is everything for today.' });
+
+    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const steps = await written(org.api, noteId);
+    expect(steps.at(-1)).toMatchObject({ ready: true, steps: expect.arrayContaining([{ label: 'Transcript of 4 lines', done: true }, { label: 'Notes written', done: true }]) });
+    const note = await org.api.notes.get(noteId);
+    expect(note.status).toBe('ready');
+    expect(note.transcript?.map((l) => l.text)).toEqual(['We agreed to move the launch to the 18th.', 'Kofi will send the new screens by Wednesday.', 'Priya checks the numbers.', 'That is everything for today.']);
+    expect(note.summary).toBe('Heard 4 lines. It ended on: That is everything for today.');
+    expect(note.decisions).toEqual(['We agreed to move the launch to the 18th.']);
+    expect(note.actions).toEqual([{ id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) }, due: 'Wednesday', done: false }]);
+    expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
+    expect(note.suggestedQuestions).toHaveLength(3);
+    // The notes model was sent the transcript with names, not anyone's address.
+    const prompt = h.near.prompts.at(-1) ?? '';
+    expect(prompt).toContain(`[00:06] ${org.session.user.name}: Kofi will send the new screens by Wednesday.`);
+    expect(prompt).not.toContain(guestEmail);
+    expect(prompt).not.toContain(org.session.user.email);
+
+    // The live transcript moved into the note, the job is done, and the minutes recorded (not the call's length) were charged.
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM transcript_clips WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n).toBe(0);
+    const credits = await org.api.credits.balance();
+    expect(credits.balance).toBe(credits.granted - Math.max(1, Math.ceil(note.audio.reduce((n, a) => n + a.seconds, 0) / 60)) * credits.perMinute);
+
+    // Anyone with the notes can ask about the call, and hear where the answer comes from.
+    expect(await asked(org.api, noteId, 'When is the launch now?')).toEqual([{ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' }, { type: 'cite', at: 0 }]);
+    const guest = await account(guestEmail);
+    expect((await asked(guest.api, noteId, 'Who checks the numbers?'))[0]).toEqual({ type: 'text', text: 'From the call: Priya checks the numbers.' });
+    expect(code(await asked((await account()).api, noteId, 'Anything?').catch((e: unknown) => e))).toBe('not-found');
+  });
+
+  it('transcribes a room recording without naming who spoke, and writes its notes when it stops', async () => {
+    const { api } = await account();
+    const rec = await api.recordings.start('Design crit');
+    await rec.appendAudio(piece(audioBytes('room-a'), 0, 0));
+    await rec.transcribe(speech('Sam will tidy the spacing by Friday.', 0, 0));
+    expect(rec.getSnapshot().transcript).toEqual([{ id: expect.any(String), at: 0, text: 'Sam will tidy the spacing by Friday.' }]);
+    rec.pause();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(code(await rec.transcribe(speech('While paused.', 0, 4000)).catch((e: unknown) => e))).toBe('conflict');
+    rec.resume();
+    await new Promise((r) => setTimeout(r, 150));
+    await rec.transcribe(speech('We decided to keep the darker header.', 0, 4000));
+    const { pendingNoteId } = await rec.stop();
+    expect((await rec.stop()).pendingNoteId).toBe(pendingNoteId); // stopping twice finishes it once
+    await written(api, pendingNoteId);
+    const note = await api.notes.get(pendingNoteId);
+    expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: ['We decided to keep the darker header.'] });
+    expect(note.transcript?.map((l) => [l.at, l.text, l.speaker])).toEqual([[0, 'Sam will tidy the spacing by Friday.', undefined], [4, 'We decided to keep the darker header.', undefined]]);
+    expect(note.actions).toEqual([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, due: 'Friday', done: false }]);
+  });
+
+  it('takes speech only as 16 kHz mono WAV, only while recording, and only into your own calls', async () => {
+    const a = await account();
+    const b = await account();
+    const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const id = call.getSnapshot().callId;
+    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string } = {}) => who.fetch(`${base}/v1${path}`, {
+      method: 'POST', body: new Blob([bytes]),
+      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000' }
+    });
+    const hello = () => speechWav('Hello there.');
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { type: 'audio/webm' })).status).toBe(400);
+    const stereo = hello(); new DataView(stereo.buffer).setUint16(22, 2, true);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, stereo)).status).toBe(400);
+    const cd = hello(); new DataView(cd.buffer).setUint32(24, 44_100, true);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, cd)).status).toBe(400);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ms: '45000' })).status).toBe(400);
+    expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(404);
+    const rec = await a.api.recordings.start('Mine');
+    expect((await post(b, h.baseUrl, `/recordings/${rec.getSnapshot().id}/transcribe`, hello())).status).toBe(404);
+    expect(code(await rec.transcribe(speech('Hello.', 1, 0)).catch((e: unknown) => e))).toBe('invalid');
+    await rec.discard();
+    // A server without NEAR AI keeps the recording but says the live transcript isn't available there.
+    const plain = await h.secondServer({ NEAR_AI_API_KEY: undefined });
+    try {
+      expect((await post(a, plain.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(503);
+    } finally {
+      await plain.close();
+    }
+    await call.leave();
+    expect(code(await call.transcribe(speech('Too late.', 0, 0)).catch((e: unknown) => e))).toBe('conflict');
+  });
+
+  it('tries again when the notes model fails, and keeps the transcript if it never answers', async () => {
+    const { maintain } = await import('./maintenance');
+    const { api, session } = await account();
+    const job = async () => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [session.ownerId])).rows[0];
+    const retryNow = async () => {
+      await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [session.ownerId]);
+      await maintain(h.deps);
+    };
+
+    // An answer in prose instead of notes: the next attempt writes them.
+    h.near.failNext(1, 'prose');
+    let rec = await api.recordings.start('Retry');
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
+    let { pendingNoteId } = await rec.stop();
+    await until(async () => (await job())?.state === 'queued', 'the first attempt to fail');
+    expect(await job()).toEqual({ state: 'queued', attempt: 1 });
+    for await (const p of api.notes.progress(pendingNoteId)) { expect(p.steps.at(-1)).toEqual({ label: 'The notes service is busy. Trying again shortly', done: false }); break; }
+    await retryNow();
+    expect((await api.notes.get(pendingNoteId)).decisions).toEqual(['We agreed to ship on Monday.']);
+
+    // Down for good: after three attempts the note is finished without a summary, keeps its transcript, and costs nothing.
+    const before = (await api.credits.balance()).balance;
+    h.near.failNext(3, 'down');
+    rec = await api.recordings.start('Never');
+    await rec.transcribe(speech('Nobody will read this summary.', 0, 0));
+    ({ pendingNoteId } = await rec.stop());
+    await until(async () => (await job())?.state === 'queued', 'the first attempt to fail');
+    await retryNow();
+    expect(await job()).toEqual({ state: 'queued', attempt: 2 });
+    await retryNow();
+    expect(await job()).toBeUndefined();
+    const note = await api.notes.get(pendingNoteId);
+    expect(note).toMatchObject({ status: 'ready', summary: '', decisions: [], actions: [], chapters: [] });
+    expect(note.transcript?.map((l) => l.text)).toEqual(['Nobody will read this summary.']);
+    expect((await api.credits.balance()).balance).toBe(before);
   });
 });
 
@@ -589,7 +766,8 @@ describe('room recordings', () => {
     rec.resume();
     await new Promise((r) => setTimeout(r, 150));
     const { pendingNoteId } = await rec.stop();
-    expect(await api.notes.get(pendingNoteId)).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'pending' });
+    await written(api, pendingNoteId);
+    expect(await api.notes.get(pendingNoteId)).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'ready' });
     expect((await api.notes.list({ kind: 'room' })).map((n) => n.id)).toEqual([pendingNoteId]);
 
     const throwaway = await api.recordings.start('Throwaway');
@@ -603,7 +781,7 @@ describe('room recordings', () => {
     expect(await api.notes.list()).toEqual([]);
     // Gone for good: no revisions, recording rows, jobs, receipts or objects remain for this owner.
     // The only receipt left is the delete's own ({"deleted":true}); older ones were purged with the note.
-    for (const t of ['revisions WHERE item_id = $2', 'recordings WHERE note_item_id = $2', "operations WHERE method NOT LIKE 'DELETE%'"]) {
+    for (const t of ['revisions WHERE item_id = $2', 'recordings WHERE note_item_id = $2', 'transcript_clips WHERE note_item_id = $2', 'content_jobs WHERE true', "operations WHERE method NOT LIKE 'DELETE%'"]) {
       const r = await h.pool.query(`SELECT count(*)::int AS n FROM ${t.split(' WHERE ')[0]} WHERE owner_id = $1 AND ${t.split(' WHERE ')[1]}`, t.includes('$2') ? [session.ownerId, pendingNoteId] : [session.ownerId]);
       expect(r.rows[0]?.n).toBe(0);
     }
@@ -635,13 +813,20 @@ describe('privacy at rest', () => {
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
     const call = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: true });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
+    await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0));
+    expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
+    // While the call is on, the live transcript is sealed rows too.
+    const live = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
+    expect(live).not.toBe('');
     call.sendChat('CANARY-CHAT private remark');
     await settle(call, (x) => x.chat.length === 1);
     await call.leave();
     const rec = await c.api.recordings.start('Room');
     rec.rename('CANARY-ROOM title');
+    await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
     await new Promise((r) => setTimeout(r, 150));
-    await rec.stop();
+    const { pendingNoteId: roomNote } = await rec.stop();
+    await written(c.api, roomNote);
     await c.api.notes.list({ text: 'CANARY-SEARCH words' });
     await c.api.people.search('CANARY-PEOPLE query');
     // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too.
@@ -654,12 +839,13 @@ describe('privacy at rest', () => {
       SELECT row_to_json(x)::text FROM revisions x UNION ALL SELECT row_to_json(x)::text FROM calls x UNION ALL
       SELECT row_to_json(x)::text FROM recordings x UNION ALL SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL
       SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL SELECT row_to_json(x)::text FROM content_jobs x UNION ALL
-      SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM note_access x) q`);
-    const rowsText = String(dump.rows[0]?.all ?? '');
+      SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM note_access x UNION ALL
+      SELECT row_to_json(x)::text FROM transcript_clips x) q`);
+    const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
-      'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE',
+      'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo'
     ];

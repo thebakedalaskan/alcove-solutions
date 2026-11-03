@@ -38,6 +38,8 @@
     "GOOGLE_ISSUER",
     "KSERVICE",
     "NEAR_AI_BASE_URL",
+    "NEAR_AI_STT_MODEL",
+    "NEAR_AI_NOTES_MODEL",
     "LOG_LEVEL",
     "LOG_FORMAT",
     "TEST_LOGS"

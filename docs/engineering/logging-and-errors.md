@@ -8,7 +8,9 @@ How to find out what went wrong, anywhere in Alcove, without logging anything pr
   In the browser it is `AlcoveApiError.requestId` (`errorRequestId(e)` from `@alcove/api`).
 - Search the API log for that ID. Every line written while handling the request carries it: the access
   line, the error line (class, code, status, context, stack and cause chain), each database query and
-  object-store call, and the module events (`signed in`, `call started`, `audio piece stored`, ...).
+  object-store call, and the module events (`signed in`, `call started`, `audio piece stored`,
+  `clip transcribed`, ...). The notes worker keeps going after the request that stopped the recording has
+  answered, and maintenance runs it with no request at all: find its lines by `noteId` or `jobId`.
 - Browser warnings and errors are sent to the API (`POST /v1/telemetry`) and appear in the same log
   with `source: "browser"`, including the request ID of any failed request they mention.
 
@@ -26,10 +28,10 @@ clog.warn('object delete failed; queued for retry', { objectId, err: e });
 
 | Level | Use for |
 | --- | --- |
-| `debug` | Every query and object call with timing, request starts, audio pieces, people searches |
-| `info` | Things that happened: sign-ins, accounts created, sessions opened and ended, calls started and ended, notes shared or deleted, ordinary refusals (400, 401, 404, 409) |
-| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet, retries, slow queries (>250 ms), slow object calls (>1 s) |
-| `error` | We failed: 5xx, integrity failures, lost data, maintenance failures, uncaught exceptions |
+| `debug` | Every query and object call with timing, request starts, audio pieces, transcript clips and NEAR AI replies (sizes, counts, timings), people searches |
+| `info` | Things that happened: sign-ins, accounts created, sessions opened and ended, Google connected, calls placed on or changed in a calendar, calls started and ended, notes jobs queued, notes written, questions answered, notes shared or deleted, ordinary refusals (400, 401, 404, 409) |
+| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet or busy, notes retried after a failed attempt, calendar changes that didn't reach Google (the call is kept), retries, slow queries (>250 ms), slow object calls (>1 s) |
+| `error` | We failed: 5xx, integrity failures, lost data, a Google sign-in that failed on our side, notes finished without a summary after their last attempt, maintenance failures, uncaught exceptions |
 
 - **Context.** The request middleware sets `requestId`, `method` and `path` with AsyncLocalStorage; the
   auth middleware adds `ownerId`. `withLogContext()` and `addLogContext()` do the same for background
@@ -69,6 +71,16 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   internal message.
 - Zod failures become a `ValidationError` that reports field paths and issue codes only (no values),
   logged at info.
+- Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
+  limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
+  (120 a minute, calls and room recordings together) and `ask` (20 a minute) per account. Google sign-in
+  goes back to the welcome screen with `signin=busy` instead.
+- An audio piece over 2 MiB or a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES` is refused as
+  `400 invalid` from its `content-length`, before the body is read.
+- NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
+  `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
+  `5xx`), with the operation, status and timing as context
+  ([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)).
 
 ## Browser: `apps/web/src/lib/log.ts`
 
@@ -90,16 +102,22 @@ logged at debug: being signed out is an ordinary state.
 Logs are operator-readable, so they get the same rule as database columns: nothing readable.
 
 - Log IDs, codes, states, counts, sizes, durations and flags. Never titles, names, emails, guests, chat,
-  search terms, notes, transcripts, audio, request bodies or key material.
+  search terms, questions, notes, transcripts, prompts or model replies, audio, request bodies or key
+  material.
 - Session IDs are bearer secrets and are never logged; `ownerId` identifies a session. Call codes are join
-  tokens: paths show `/v1/calls/:code`.
+  tokens: paths show `/v1/calls/:code`. Paths never include the query, so the Google callback's code and
+  state stay out too.
+- Google's tokens are never logged, nor its error descriptions: only its error code (such as
+  `invalid_grant`). `inference.ts` logs only models, sizes, durations, counts, statuses, timings, finish
+  reasons and token counts.
 - SQL is logged as static text; parameters never are.
 - pino redacts common secret field names (`secret`, `root`, `wrapKey`, `key`, `krec`, `cookie`,
   `authorization`, `body`, `plaintext`, ...) as a backstop; the browser logger drops key-like and
   content-like fields and cuts strings to 300 characters.
 - The privacy-at-rest integration test runs at debug level and checks the captured log for every
-  canary (names, emails, titles, guests, chat, audio and search terms, in several encodings), every
-  session cookie the browser received, and the call code.
+  canary (names, emails, titles, guests, chat, speech, audio and search terms, and a Google account's ID,
+  name, address and photo, in several encodings), every session and Google sign-in attempt cookie the
+  browser received, Google refresh tokens, and the call code.
 
 ## Tests
 

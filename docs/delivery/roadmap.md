@@ -10,23 +10,32 @@
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and credits display.
-- Stand-ins for Google, Microsoft and SSO sign-in, the calendar and the company directory
+- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: the coming week's
+  meetings on Home, scheduled calls on the organizer's calendar with Google's invitations, changes and
+  cancellations kept in step, and an organizer's own event made an Alcove call.
+- Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
+  the recording stops, a notes worker writes the summary, decisions, follow-ups, chapters and suggested
+  questions, retries a failed attempt twice, and charges 25 credits a minute; anyone with the note can ask
+  about the call ([Notes and inference](../engineering/notes-and-inference.md)).
+- Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
   deletion with object GC, session sweeping, origin and content-type checks, rate limits.
 - Structured logging, an error hierarchy and request IDs from the browser to the server log.
-- CI with merge-blocking checks; deploy pipeline and GCP bootstrap prepared (inactive until infrastructure exists).
+- CI with merge-blocking checks; deploy pipeline and GCP bootstrap, first deployed on 3 November 2026
+  ([deployment plan](../superpowers/plans/2026-11-03-alcove-deployment.md)); release acceptance is still open.
 
 ## Next
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 1 | Notes worker with NEAR AI: transcription, structured notes, charging | [Notes and inference](../engineering/notes-and-inference.md) |
-| 2 | Multi-party end-to-end encrypted calls with LiveKit | Proton Meet model; [Calls and recordings](../engineering/calls-and-recordings.md#next-multi-party-calls) |
-| 3 | Real sign-in: Google and Microsoft OAuth, OIDC SSO, with calendar sync and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
-| 4 | Invitation emails (SMTP) | Invited people hear about calls and notes without signing in first |
-| 5 | Production infrastructure and first deploy | [infra/README.md](../../infra/README.md); apply the ruleset |
+| 1 | Verified private inference: NEAR AI's end-to-end encrypted requests and attestation checks | [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
+| 2 | Multi-party end-to-end encrypted calls with LiveKit | Proton Meet model; transcript lines per speaker; [Calls and recordings](../engineering/calls-and-recordings.md#next-multi-party-calls) |
+| 3 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
+| 4 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
+| 5 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
 | 6 | Confidential compute with attestation, `KMASTER` released only to the attested VM, and a pinned client | [Production requirements](../engineering/privacy-keys-and-sessions.md#production-requirements) |
-| 7 | Credit purchases (1Click) and admission/settlement | [Payments and usage](../engineering/payments-and-usage.md) |
-| 8 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
-| 9 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference |
+| 7 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
+| 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
+| 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
+| 10 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference |

@@ -1,5 +1,6 @@
 import type { CallParticipant, CallSession, CallState, LiveStore, RoomRecording } from '@alcove/api';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useBlocker } from '@tanstack/react-router';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { LocalMedia } from '~/features/call/media';
 
 export function useLive<S>(store: LiveStore<S>): S {
@@ -19,6 +20,36 @@ export const sessions: { call: { code: string; session: CallSession } | null; re
   recording: null,
   media: null
 };
+
+/**
+ * Keeps someone on a live screen (a call, a room recording) until they end it. Going back, or
+ * anywhere else in the app, opens the screen's own way out instead (`onAttempt`), and closing the
+ * tab asks the browser to confirm. Coming back to a screen left half-way would start a second
+ * recorder on the same recording, so leaving is always a choice.
+ */
+export function useLeaveGuard(onAttempt: () => void) {
+  const released = useRef(false);
+  const attempt = useRef(onAttempt);
+  attempt.current = onAttempt;
+  const blocker = useBlocker({ shouldBlockFn: () => !released.current, enableBeforeUnload: () => !released.current, withResolver: true });
+  const latest = useRef(blocker);
+  latest.current = blocker;
+  useEffect(() => { if (blocker.status === 'blocked') attempt.current(); }, [blocker.status]);
+  return {
+    /** The way out was dismissed: stay, and forget where they were going. */
+    stay: () => { if (latest.current.status === 'blocked') latest.current.reset(); },
+    /** Leaving is settled (the call ended, the recording finished): navigation goes through from now on. */
+    release: () => { released.current = true; if (latest.current.status === 'blocked') latest.current.reset(); },
+    /** Leaving is settled; carry on to where they were going. False when nothing was waiting. */
+    proceed: (): boolean => {
+      released.current = true;
+      const b = latest.current;
+      if (b.status !== 'blocked') return false;
+      b.proceed();
+      return true;
+    }
+  };
+}
 
 /** The current user's own tile in a call. */
 export const selfIn = (s: CallState): CallParticipant | undefined => s.participants.find((p) => p.isMe);

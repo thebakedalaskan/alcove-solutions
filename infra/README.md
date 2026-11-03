@@ -126,14 +126,16 @@ switch; environment-scoped variables are unavailable to the early job condition.
 | `OBJECTS_BUCKET` | `alcove-objects` |
 | `WEB_ORIGIN` | `https://alcove.solutions` |
 | `API_ORIGIN` | `https://api.alcove.solutions`; also the API's `API_URL`, from which Google's redirect URI is built |
-| `NEAR_AI_ENABLED` | `false` |
+| `NEAR_AI_ENABLED` | `false` on a new installation; `true` once the inference key has a version |
 | `GOOGLE_AUTH_ENABLED` | `false` on a new installation; `true` only after both Google credential versions exist |
 | `DEPLOY_ENABLED` | `false` during setup; `true` when ready to deploy |
 
 Store `CLOUDFLARE_API_TOKEN` as a **production environment secret**, with Pages edit permission for the
 intended account. R2 credentials stay in GCP Secret Manager. `NEAR_AI_ENABLED=false` omits the inference
-key from Cloud Run, so its unused secret needs no placeholder version. Enable it only after a real key
-exists and inference is implemented.
+key from Cloud Run, so its secret needs no placeholder version; recordings are then kept but not
+transcribed, and their notes wait. Add the NEAR AI Cloud key as a version of `alcove-near-ai-api-key`
+(from a private environment variable, never a file in the repository), then set `NEAR_AI_ENABLED=true`:
+the next deployment binds it, and `/health` reports `inference: configured`.
 
 Import `.github/rulesets/main.json` through Settings › Rules › Rulesets to require a pull request and
 the four CI checks (Policy, Typecheck, Build, Integration tests) on an up-to-date branch. The file also
@@ -157,7 +159,8 @@ binds both values into the API service and migration job on the next deployment.
 default to `false` or an unset variable, omit both bindings and require no placeholder values; the
 Google button then explains that sign-in isn't set up. Sign-in with Google is implemented (OpenID
 Connect with PKCE, `/v1/auth/google` and `/v1/auth/google/callback`) and asks for `openid email
-profile`. The redirect URI registered for production must be `https://api.alcove.solutions/v1/auth/google/callback`.
+profile` and `https://www.googleapis.com/auth/calendar.events` with offline access, so Alcove can show
+someone's week and put the calls they schedule on their calendar. The redirect URI registered for production must be `https://api.alcove.solutions/v1/auth/google/callback`.
 
 ## Schema changes
 

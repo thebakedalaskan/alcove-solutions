@@ -4,21 +4,24 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema,
-  type Note, type NoteKind, type NoteProgress, type NoteSummary, type OpenAction, type Recipient
+  ActionItemSchema, ChapterSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  type AnswerPart, type Note, type NoteKind, type NoteProgress, type NoteSummary, type OpenAction, type Recipient
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { blindIndex, id128, sealJson, stateKey, toJson } from '../crypto';
 import { exec, maybeOne, rows, tx, type Db } from '../db';
-import { NotFoundError, ValidationError, notFound } from '../errors';
+import { ConflictError, NotFoundError, ValidationError, notFound } from '../errors';
+import { inference } from '../inference';
 import { log } from '../log';
 import { masterKey, openOwner } from '../owners';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile } from './account';
 import { queueDelete, recordingObjects, segments } from './audio';
+import { answer } from './drafting';
 import { MeetingManifest } from './meetings';
 import { personOf } from './portraits';
+import * as transcripts from './transcripts';
 
 const nlog = log.child({ component: 'notes' });
 
@@ -64,16 +67,26 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
   }
 }
 
-/** The recording is complete: everyone invited gets the note, and it's queued for the notes service. */
+/**
+ * The recording is complete: its live transcript moves into the note, everyone invited gets the
+ * note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
+ */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number): Promise<void> {
-  const next = await updateNote(o, db, noteId, (n) => ({ ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds) }));
+  const heard = await transcripts.lines(o, db, noteId);
+  const organizer = await me(o);
+  const next = await updateNote(o, db, noteId, (n) => ({
+    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds),
+    // Calls have one person in them today, so whoever's microphone it was spoke; a room has no one to name.
+    transcript: transcripts.spoken(heard, n.kind === 'call' ? { name: organizer.name, person: organizer } : undefined)
+  }));
+  await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');
   const head = await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes');
   const job = { noteId, recordingId: next.recordingId };
-  await exec(db, `INSERT INTO content_jobs (owner_id, job_id, revision_id, kind, state, attempt, job_ciphertext) VALUES ($1,$2,$3,'notes','awaiting_inference',0,$4)
+  await exec(db, `INSERT INTO content_jobs (owner_id, job_id, revision_id, kind, state, attempt, job_ciphertext) VALUES ($1,$2,$3,'notes','queued',0,$4)
                   ON CONFLICT (owner_id, revision_id, kind) DO NOTHING`,
     [o.ownerId, id128(), head.revisionId, sealJson(stateKey(o.root, o.ownerId, `job:${noteId}`), { v: 1, kind: 'job', ownerId: o.ownerId, noteId }, toJson(job))]);
-  nlog.info('notes job queued', { noteId, recordingId: next.recordingId, seconds: durationSeconds, invited: next.invited.length });
+  nlog.info('notes job queued', { noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, invited: next.invited.length });
 }
 
 /* ---------- finding a note: your own, or one you have access to ---------- */
@@ -146,18 +159,42 @@ export async function audioSource(o: Owner, id: string): Promise<{ owner: Owner;
   const l = await locate(o, id);
   return { owner: l.owner, recordingId: l.note.manifest.recordingId };
 }
+/** Where a note is on its way to being written, step by step; `ready` once the notes are written. */
 export async function progress(o: Owner, id: string): Promise<NoteProgress> {
-  const n = await get(o, id);
-  const pieces = n.audio.reduce((s, a) => s + a.pieces, 0);
+  const { owner, note } = await locate(o, id);
+  const m = note.manifest;
+  const stopped = m.status !== 'recording';
+  const seconds = (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
+  const lines = m.transcript?.length ?? 0;
+  const job = m.status === 'pending'
+    ? await maybeOne(owner.pool, z.object({ state: z.string(), attempt: z.number() }), `SELECT state, attempt FROM content_jobs
+        WHERE owner_id = $1 AND kind = 'notes' AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [owner.ownerId, id])
+    : undefined;
+  const writing = !inference(o.cfg).configured ? 'Waiting for the notes service to be connected'
+    : job?.state === 'writing' ? 'Writing the summary, decisions and follow-ups'
+      : job && job.attempt > 0 ? 'The notes service is busy. Trying again shortly'
+        : 'Queued for the notes service';
   return {
-    noteId: id, title: n.title, ready: n.status !== 'recording',
+    noteId: id, title: m.title, ready: m.status === 'ready',
     steps: [
-      { label: n.kind === 'room' ? 'Recording stopped' : 'Call ended', done: n.status !== 'recording' },
-      { label: pieces ? `${pieces} encrypted audio ${pieces === 1 ? 'piece' : 'pieces'} saved` : 'No audio was recorded', done: n.status !== 'recording' },
-      { label: 'Queued for the notes service', done: n.status !== 'recording' },
-      { label: n.status === 'ready' ? 'Notes written' : 'Waiting for the notes service to be connected', done: n.status === 'ready' }
+      { label: m.kind === 'room' ? 'Recording stopped' : 'Call ended', done: stopped },
+      { label: seconds ? `${minutesLabel(seconds)} of audio saved, encrypted` : 'No audio was recorded', done: stopped },
+      { label: !stopped ? 'Transcribing as it goes' : lines ? `Transcript of ${lines} ${lines === 1 ? 'line' : 'lines'}` : 'Nothing was transcribed', done: stopped },
+      { label: m.status === 'ready' ? 'Notes written' : writing, done: m.status === 'ready' }
     ]
   };
+}
+
+/** Answers a question about written notes from their transcript, for anyone who has them. */
+export async function ask(o: Owner, id: string, question: string): Promise<AnswerPart[]> {
+  const { owner, note } = await locate(o, id);
+  const m = note.manifest;
+  if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
+  if (!m.transcript?.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
+  const t0 = performance.now();
+  const parts = await answer(o.cfg, m, await me(owner), m.invited.map((e) => personOf(e)), await me(o), question);
+  nlog.info('question answered', { noteId: id, mine: owner.ownerId === o.ownerId, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
+  return parts;
 }
 export async function openActions(o: Owner): Promise<OpenAction[]> {
   return (await listItems(o, o.pool, 'note', NoteManifest)).flatMap((n) => n.manifest.actions.filter((a) => !a.done).map((a) => ({ ...a, noteId: n.itemId, noteTitle: n.manifest.title })));

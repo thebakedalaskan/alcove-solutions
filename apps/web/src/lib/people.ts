@@ -14,3 +14,6 @@ export function listNames(people: Named[]): string {
 /** Someone known only by the address typed for them. */
 export const byEmail = (email: string): Person => ({ id: email, name: email, email });
 export const sameEmail = (a: { email: string }, b: { email: string }) => a.email.toLowerCase() === b.email.toLowerCase();
+/** Someone in a transcript or a follow-up, as the reader sees them: "You", or their first name. */
+export const spokenName = (s: { name: string; person?: Named | undefined }, me: string | undefined) =>
+  (me && s.person && sameEmail(s.person, { email: me }) ? 'You' : firstName(s.name));

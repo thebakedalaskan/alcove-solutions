@@ -12,11 +12,11 @@ Start with the **[docs](docs/README.md)**.
 | [Roadmap](docs/delivery/roadmap.md) | Done and next |
 | [Deploying](infra/README.md) | GCP + Cloudflare setup, CI/CD, merge rules |
 
-**Status:** a working local stack with Google, Microsoft and SSO sign-in (a demo identity until OAuth
-is connected), a demo calendar and company directory, single-participant calls with real media,
-encrypted notes recordings, sharing notes with everyone invited, CI and a prepared deploy pipeline.
-Transcription and note writing (NEAR AI), multi-party calls, invite emails and confidential compute are
-next; see the roadmap.
+**Status:** real Google sign-in with Google Calendar (Microsoft and SSO are still demo identities, with a
+sample calendar and company directory), single-participant calls with real media, encrypted notes
+recordings, a live transcript and written notes from NEAR AI Cloud, asking about a call, sharing notes with
+everyone invited, credits charged for notes, CI and a deploy pipeline. Verified private inference,
+multi-party calls, invite emails, credit purchases and confidential compute are next; see the roadmap.
 
 ## Running the app
 
@@ -24,7 +24,7 @@ The app lives in a pnpm + Turborepo monorepo (see `AGENTS.md` for the full rules
 pnpm and Docker.
 
 ```
-cp .env.example .env   # then fill in KMASTER and KSERVICE (and NEAR_AI_API_KEY if you have one)
+cp .env.example .env   # then fill in KMASTER and KSERVICE; Google and NEAR AI are optional
 pnpm install
 pnpm dev               # Postgres + RustFS in Docker, API on :8787, web app on http://localhost:3000
 pnpm check             # test policy, strict typing, typecheck, integration tests, builds
@@ -36,7 +36,11 @@ pnpm check             # test policy, strict typing, typecheck, integration test
 - `packages/api`: the contract (zod schemas + `AlcoveApi`); `packages/api-http`: the browser client
 - `infra/` and `.github/`: deployment guide, GCP bootstrap, CI, deploy pipeline, branch ruleset
 
-Sign in with **Continue with Google** (or Microsoft) to be Art Vandelay, with a calendar and a company
-directory already filled in. **Use single sign-on** with any work email to be a second person, for
-example to see notes shared with someone. Calls need camera and microphone permission; everything
-else is in `docs/`. After a change to `apps/api/migrations/`, run `pnpm db:reset`.
+Sign in with **Continue with Microsoft** to be Art Vandelay, with a sample calendar and a company directory
+already filled in. **Use single sign-on** with an address at example.com (or vandelay.industries) to be a
+second person, for example to see notes shared with someone; nothing checks it, so real addresses are refused. Both are demo identities. **Continue with Google** signs in your own Google account
+and shows your Google Calendar; it needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from a Google web
+OAuth client with `$API_URL/v1/auth/google/callback` as a redirect URI. With `NEAR_AI_API_KEY` set, calls
+and room recordings get a live transcript and written notes; without it, recordings are kept and their
+notes wait. Calls need camera and microphone permission; everything else is in `docs/`. After a change to
+`apps/api/migrations/`, run `pnpm db:reset`.

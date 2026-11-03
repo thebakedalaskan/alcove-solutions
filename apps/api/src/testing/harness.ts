@@ -1,7 +1,7 @@
 /*
  * Boots the real API against a clean test database and bucket, with a stand-in Google to sign in
- * through, and gives tests "browsers": each with its own cookie jar, sending the web app's Origin,
- * talking through @alcove/api-http.
+ * through and a stand-in NEAR AI Cloud to transcribe and write notes, and gives tests "browsers":
+ * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
 import type { AlcoveApi } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
@@ -15,6 +15,7 @@ import { configureLogging } from '../log';
 import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
 import { startFakeGoogle, type FakeGoogle } from './fake-google';
+import { startFakeNear, type FakeNear } from './fake-near';
 
 // An HTTPS web origin, so the API applies its production cookie rules (__Host- names, Secure) over the test transport.
 export const ORIGIN = 'https://localhost:3000';
@@ -56,6 +57,8 @@ export interface Harness {
   logs: string[];
   /** The Google the API signs in with. */
   google: FakeGoogle;
+  /** The NEAR AI Cloud the API transcribes speech and writes notes with. */
+  near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined }): Browser;
   /** Another API process on the same database and bucket, as after a restart, on a second instance, or with other settings. */
@@ -86,9 +89,11 @@ export async function startHarness(): Promise<Harness> {
   const logs: string[] = [];
   configureLogging({ level: 'debug', destination: { write: (line: string) => { logs.push(line); if (process.env['TEST_LOGS']) process.stdout.write(line); } } });
   const google = await startFakeGoogle();
+  const near = await startFakeNear();
   const cfg = loadConfig(process.env, {
     DATABASE_URL: url, OBJECTS_BUCKET: 'alcove-test', WEB_ORIGIN: ORIGIN, API_URL: 'http://127.0.0.1',
-    GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret
+    GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
+    NEAR_AI_BASE_URL: near.baseUrl, NEAR_AI_API_KEY: near.apiKey
   });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -100,7 +105,7 @@ export async function startHarness(): Promise<Harness> {
   deps.cfg = { ...cfg, API_URL: baseUrl };
   google.register(`${baseUrl}/v1/auth/google/callback`);
   return {
-    baseUrl, pool, objects, deps, logs, google,
+    baseUrl, pool, objects, deps, logs, google, near,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
       return { api: createHttpApi({ baseUrl, fetch: f, ...(o.onEvent ? { onEvent: o.onEvent } : {}) }), fetch: f };
@@ -112,6 +117,7 @@ export async function startHarness(): Promise<Harness> {
     async close() {
       await stop(server);
       await google.close();
+      await near.close();
       await pool.end();
     }
   };
