@@ -15,7 +15,8 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     // SPA mode: every screen is behind sign-in and talks to the API from the browser.
-    tanstackStart({ spa: { enabled: true } }),
+    // The shell is prerendered as index.html, so Cloudflare Pages serves it for every route.
+    tanstackStart({ spa: { enabled: true, prerender: { outputPath: '/index' } } }),
     viteReact()
   ]
 });

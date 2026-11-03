@@ -58,6 +58,29 @@ async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tampe
 }
 /** Where a sign-in ended up, without the origin. */
 const landed = (u: URL) => `${u.pathname}${u.search}`;
+/** Only a cookie's attributes leave this parser, so a failing assertion can't print a session secret. */
+function cookieAttributes(header: string) {
+  const attributes = new Set(header.split(';').slice(1).map((a) => a.trim().toLowerCase()));
+  return {
+    secure: attributes.has('secure'), httpOnly: attributes.has('httponly'), sameSiteStrict: attributes.has('samesite=strict'),
+    pathRoot: attributes.has('path=/'), removed: attributes.has('max-age=0')
+  };
+}
+
+describe('public readiness', () => {
+  it('answers health checks on /health and /healthz without a session', async () => {
+    const b = h.browser();
+    expect(await b.api.auth.getSession()).toBeNull();
+    for (const path of ['/health', '/healthz']) {
+      const res = await b.fetch(`${h.baseUrl}${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('application/json');
+      expect(res.headers.get(REQUEST_ID_HEADER)).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+      expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+      expect(z.object({ ok: z.literal(true), inference: z.enum(['configured', 'missing']) }).parse(await res.json()).ok).toBe(true);
+    }
+  });
+});
 
 describe('signing in', () => {
   it('signs in with Microsoft as Art Vandelay, with his sample calendar, and keeps one account across browsers', async () => {
@@ -92,6 +115,29 @@ describe('signing in', () => {
     expect(await first.api.auth.getSession()).toBeNull();
     expect(code(await first.api.meetings.upcoming().catch((e: unknown) => e))).toBe('unauthenticated');
     expect((await second.api.auth.getSession())?.ownerId).toBe(r.session.ownerId);
+  });
+
+  it('keeps the session in a Secure, HttpOnly, SameSite=Strict host cookie, and clears it the same way', async () => {
+    const seen: ReturnType<typeof cookieAttributes>[] = [];
+    const jar = cookieFetch(ORIGIN);
+    const b = h.browser({
+      fetch: async (input, init) => {
+        const res = await jar(input, init);
+        for (const header of res.headers.getSetCookie()) if (header.startsWith(`${cookieName(true)}=`)) seen.push(cookieAttributes(header));
+        return res;
+      }
+    });
+    await b.api.auth.signIn('sso', { email: unique('cookie') });
+    expect(seen.at(-1)).toEqual({ secure: true, httpOnly: true, sameSiteStrict: true, pathRoot: true, removed: false });
+    await b.api.auth.signOut();
+    expect(seen.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
+    expect(await b.api.auth.getSession()).toBeNull();
+
+    // A session that ended on the server is cleared from the browser on its next request.
+    const { session } = await b.api.auth.signIn('sso', { email: unique('cookie') });
+    await h.pool.query('DELETE FROM sessions WHERE owner_id = $1', [session.ownerId]);
+    expect((await b.fetch(`${h.baseUrl}/v1/meetings`)).status).toBe(401);
+    expect(seen.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
   });
 
   it('signs in with single sign-on as whoever’s work email was typed', async () => {
