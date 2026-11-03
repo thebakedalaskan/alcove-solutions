@@ -1,15 +1,16 @@
 /**
  * End-to-end flows against the real API, Postgres and object store (see AGENTS.md: integration
- * tests only). Passkeys are real WebAuthn from a software authenticator. Leakage checks plant
- * canaries and confirm they never reach database rows or stored objects in plaintext.
+ * tests only). Each test signs in through the API like the web app does. Leakage checks plant
+ * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
  */
-import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, type AudioPiece, type CallSession, type CallState } from '@alcove/api';
+import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AudioPiece, type CallSession, type CallState } from '@alcove/api';
 import type { ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cookieFetch, softPasskeys } from './testing/soft-passkey';
-import { ORIGIN, startHarness, type Harness } from './testing/harness';
+import { cookieName } from './sessions';
+import type { GoogleUser, Spoil } from './testing/fake-google';
+import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
@@ -27,16 +28,39 @@ const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
 const logLines = () => h.logs.flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 const linesFor = (requestId: string) => logLines().filter((l) => l['requestId'] === requestId);
-const soft = (prf = true) => softPasskeys({ origin: ORIGIN, rpId: 'localhost', prf });
-async function newAccount(name = 'Maya Chen') { const c = h.client(); return { ...c, session: await c.api.auth.createAccount(name) }; }
+let seq = 0;
+/** A work email nobody has used yet in this run. */
+const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
+/** A fresh account: single sign-on signs in whoever's work email is typed. */
+async function account(email = unique()) {
+  const b = h.browser();
+  const r = await b.api.auth.signIn('sso', { email });
+  return { ...b, session: r.session, isNew: r.isNew };
+}
 /** Waits until optimistic call actions have been confirmed by the server. */
 async function settle(call: CallSession, pred: (s: CallState) => boolean): Promise<CallState> {
   for (let i = 0; i < 100 && !pred(call.getSnapshot()); i++) await new Promise((r) => setTimeout(r, 30));
   return call.getSnapshot();
 }
-/** Only attributes leave the cookie parser, so assertion failures cannot print session secrets. */
+const SessionReply = z.object({ ownerId: z.string() });
+/**
+ * Signs in with Google the way a browser does: off to Google and back, following each redirect by
+ * hand so the browser's cookies see every hop. Returns where the API finally sends the browser.
+ */
+async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser } = {}): Promise<URL> {
+  h.google.next(user, o.spoil);
+  const start = await b.fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
+  const atGoogle = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+  const back = new URL(atGoogle.headers.get('location') ?? '');
+  o.tamper?.(back);
+  const done = await (o.deliverIn ?? b).fetch(back, { redirect: 'manual' });
+  return new URL(done.headers.get('location') ?? '');
+}
+/** Where a sign-in ended up, without the origin. */
+const landed = (u: URL) => `${u.pathname}${u.search}`;
+/** Only a cookie's attributes leave this parser, so a failing assertion can't print a session secret. */
 function cookieAttributes(header: string) {
-  const attributes = new Set(header.split(';').slice(1).map((attribute) => attribute.trim().toLowerCase()));
+  const attributes = new Set(header.split(';').slice(1).map((a) => a.trim().toLowerCase()));
   return {
     secure: attributes.has('secure'), httpOnly: attributes.has('httponly'), sameSiteStrict: attributes.has('samesite=strict'),
     pathRoot: attributes.has('path=/'), removed: attributes.has('max-age=0')
@@ -44,156 +68,254 @@ function cookieAttributes(header: string) {
 }
 
 describe('public readiness', () => {
-  it('reports public readiness before unlocking an account', async () => {
-    const client = h.client();
-    expect(await client.api.auth.getSession()).toBeNull();
+  it('answers health checks on /health and /healthz without a session', async () => {
+    const b = h.browser();
+    expect(await b.api.auth.getSession()).toBeNull();
     for (const path of ['/health', '/healthz']) {
-      const response = await client.fetch(`${h.baseUrl}${path}`);
-      expect(response.status).toBe(200);
-      expect(response.headers.get('content-type')).toContain('application/json');
-      expect(response.headers.get(REQUEST_ID_HEADER)).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
-      expect(response.headers.get('access-control-allow-origin')).toBe(ORIGIN);
-      const health = z.object({ ok: z.literal(true), inference: z.enum(['configured', 'missing']) }).parse(await response.json());
-      expect(health.ok).toBe(true);
+      const res = await b.fetch(`${h.baseUrl}${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('application/json');
+      expect(res.headers.get(REQUEST_ID_HEADER)).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
+      expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+      expect(z.object({ ok: z.literal(true), inference: z.enum(['configured', 'missing']) }).parse(await res.json()).ok).toBe(true);
     }
-    expect(await client.api.auth.getSession()).toBeNull();
   });
 });
 
-describe('accounts and passkeys', () => {
-  it('locks and unlocks an account with an HTTPS host-prefixed cookie', async () => {
-    const attributes: ReturnType<typeof cookieAttributes>[] = [];
-    const browser = cookieFetch(ORIGIN);
-    const { api } = h.client(undefined, async (input, init) => {
-      const response = await browser(input, init);
-      for (const header of response.headers.getSetCookie()) {
-        if (header.startsWith('__Host-alcove_session=')) attributes.push(cookieAttributes(header));
+describe('signing in', () => {
+  it('signs in with Microsoft as Art Vandelay, with his sample calendar, and keeps one account across browsers', async () => {
+    const first = h.browser();
+    const r = await first.api.auth.signIn('microsoft');
+    expect(r.isNew).toBe(true);
+    expect(r.session).toMatchObject({ provider: 'microsoft', sample: true, user: { name: 'Art Vandelay', email: 'art@vandelay.industries', photoUrl: '/people/art-vandelay.jpg' } });
+    expect(r.session.ownerId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await first.api.auth.getSession()).toMatchObject({ ownerId: r.session.ownerId, provider: 'microsoft' });
+
+    // His calendar came with him: the next call starts in about 12 minutes and the rest of the day follows.
+    const day = await first.api.meetings.upcoming();
+    expect(day.map((m) => [m.title, m.notes])).toEqual([
+      ['Weekly with Theo', 'on'], ['Contract follow-up with Ana', 'off'], ['Lumen: pilot prep', 'on'], ['Interview: Jonas Weber', 'off'], ['Studio stand-up', 'off']
+    ]);
+    const inMinutes = (new Date(day[0]?.startsAt ?? 0).getTime() - Date.now()) / 60_000;
+    expect(inMinutes).toBeGreaterThan(10);
+    expect(inMinutes).toBeLessThanOrEqual(17);
+    expect(day[0]).toMatchObject({ isOrganizer: true, organizer: { name: 'Art Vandelay', id: r.session.ownerId }, status: 'scheduled' });
+    expect(day[2]?.guests.map((g) => g.name)).toEqual(['Priya Raman', 'Inès Moreau', 'Kofi Asante', 'Sam Ortiz']);
+    expect(await first.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, perMinute: 25 });
+
+    // Another browser is the same person: both sessions stay open, and the calendar isn't placed twice.
+    const second = h.browser();
+    const again = await second.api.auth.signIn('microsoft');
+    expect([again.isNew, again.session.ownerId]).toEqual([false, r.session.ownerId]);
+    expect(await second.api.meetings.upcoming()).toHaveLength(5);
+    expect((await first.api.auth.getSession())?.ownerId).toBe(r.session.ownerId);
+
+    // Signing out ends only that browser's session.
+    await first.api.auth.signOut();
+    expect(await first.api.auth.getSession()).toBeNull();
+    expect(code(await first.api.meetings.upcoming().catch((e: unknown) => e))).toBe('unauthenticated');
+    expect((await second.api.auth.getSession())?.ownerId).toBe(r.session.ownerId);
+  });
+
+  it('keeps the session in a Secure, HttpOnly, SameSite=Strict host cookie, and clears it the same way', async () => {
+    const seen: ReturnType<typeof cookieAttributes>[] = [];
+    const jar = cookieFetch(ORIGIN);
+    const b = h.browser({
+      fetch: async (input, init) => {
+        const res = await jar(input, init);
+        for (const header of res.headers.getSetCookie()) if (header.startsWith(`${cookieName(true)}=`)) seen.push(cookieAttributes(header));
+        return res;
       }
-      return response;
     });
-    const session = await api.auth.createAccount('HTTPS Cookie Check');
-    expect(attributes.at(-1)).toEqual({ secure: true, httpOnly: true, sameSiteStrict: true, pathRoot: true, removed: false });
-    expect((await api.auth.getSession())?.ownerId).toBe(session.ownerId);
+    await b.api.auth.signIn('sso', { email: unique('cookie') });
+    expect(seen.at(-1)).toEqual({ secure: true, httpOnly: true, sameSiteStrict: true, pathRoot: true, removed: false });
+    await b.api.auth.signOut();
+    expect(seen.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
+    expect(await b.api.auth.getSession()).toBeNull();
 
-    await api.auth.lock();
-    expect(attributes.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
-    expect(await api.auth.getSession()).toBeNull();
-    expect((await api.auth.unlock()).ownerId).toBe(session.ownerId);
-    expect(attributes.at(-1)).toEqual({ secure: true, httpOnly: true, sameSiteStrict: true, pathRoot: true, removed: false });
-    await api.auth.lock();
+    // A session that ended on the server is cleared from the browser on its next request.
+    const { session } = await b.api.auth.signIn('sso', { email: unique('cookie') });
+    await h.pool.query('DELETE FROM sessions WHERE owner_id = $1', [session.ownerId]);
+    expect((await b.fetch(`${h.baseUrl}/v1/meetings`)).status).toBe(401);
+    expect(seen.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
   });
 
-  it('clears an invalidated HTTPS cookie before unlocking the account again', async () => {
-    const { api, fetch: browser, session } = await newAccount('Invalidated HTTPS Cookie');
-    // A restart closes in-memory sessions while browsers still hold their old cookies.
-    h.deps.sessions.closeAll();
-    const response = await browser(`${h.baseUrl}/v1/passkeys`);
-    expect(response.status).toBe(423);
-    const attributes = response.headers.getSetCookie().filter((header) => header.startsWith('__Host-alcove_session=')).map(cookieAttributes);
-    expect(attributes).toMatchObject([{ secure: true, pathRoot: true, removed: true }]);
-    expect(await api.auth.getSession()).toBeNull();
-    expect((await api.auth.unlock()).ownerId).toBe(session.ownerId);
-    await api.auth.lock();
+  it('signs in with single sign-on as whoever’s work email was typed', async () => {
+    const r = await h.browser().api.auth.signIn('sso', { email: '  Dana.Wu@Harbourline.co ' });
+    expect(r).toMatchObject({ isNew: true, session: { provider: 'sso', user: { name: 'Dana Wu', email: 'dana.wu@harbourline.co' } } });
+    expect(r.session.user.photoUrl).toBeUndefined();
+    expect(r.session.user.portrait).toBeDefined();
+    const back = await h.browser().api.auth.signIn('sso', { email: 'dana.wu@harbourline.co' });
+    expect([back.isNew, back.session.ownerId]).toEqual([false, r.session.ownerId]);
+    expect(code(await h.browser().api.auth.signIn('sso').catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await h.browser().api.auth.signIn('sso', { email: 'not-an-email' }).catch((e: unknown) => e))).toBe('invalid');
   });
 
-  it('creates an account with a passkey, locks, and unlocks back into the same encrypted vault', async () => {
-    const { api, session } = await newAccount();
-    expect(session.user.name).toBe('Maya Chen');
-    expect(session.ownerId).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(session.rootSource).toBe('prf');
-    expect((await api.account.setupSteps()).map((s) => [s.id, s.done])).toEqual([['passkey', true], ['first-call', false], ['second-passkey', false]]);
-    expect(await api.credits.balance()).toEqual({ balance: 10_000, perMinute: 25 });
-    expect((await api.credits.history())[0]).toMatchObject({ label: 'Welcome credits', amount: 10_000 });
+  it('keeps sessions across a restart and refuses a cookie after sign-out', async () => {
+    const cookies: string[] = [];
+    const jar = cookieFetch(ORIGIN);
+    const tap: typeof fetch = async (input, init) => {
+      const res = await jar(input, init);
+      const m = new RegExp(`${cookieName(true)}=([^;]+)`).exec(res.headers.get('set-cookie') ?? '');
+      if (m?.[1]) cookies.push(m[1]);
+      return res;
+    };
+    const b = h.browser({ fetch: tap });
+    const { session } = await b.api.auth.signIn('sso', { email: unique('restart') });
+    // Another API process on the same database knows the session: nothing lives only in memory.
+    const second = await h.secondServer();
+    expect(SessionReply.parse(await (await tap(`${second.baseUrl}/v1/session`)).json()).ownerId).toBe(session.ownerId);
+    await second.close();
 
-    const m = await api.meetings.create({ title: 'Locked away', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'full', audience: 'everyone' });
-    await api.auth.lock();
-    expect(await api.auth.getSession()).toBeNull();
-    expect(code(await api.meetings.upcoming().catch((e: unknown) => e))).toBe('unauthenticated');
-
-    const again = await api.auth.unlock();
-    expect(again.ownerId).toBe(session.ownerId);
-    expect((await api.meetings.upcoming()).map((x) => x.id)).toContain(m.id);
-  });
-
-  it('refuses a passkey whose secret is wrong instead of opening an empty vault', async () => {
-    const { device } = await newAccount('Wrong Key');
-    const real = 'credentials' in device && Array.isArray(device.credentials) ? device.credentials : [];
-    const tampered = soft();
-    for (const c of real) tampered.credentials.push({ ...c, secret: new Uint8Array(randomBytes(32)) });
-    expect(code(await h.client(tampered).api.auth.unlock().catch((e: unknown) => e))).toBe('key-unavailable');
-  });
-
-  it('adds a second passkey only after a fresh passkey proof, and it unlocks the same account elsewhere', async () => {
-    const device = soft();
-    const first = h.client(device);
-    const session = await first.api.auth.createAccount('Two Keys');
-    // The new passkey is created on the same authenticator after it re-proves with the first one.
-    const added = await first.api.account.addPasskey();
-    expect(added.deviceName).toBe('Test laptop');
-    const newCred = device.credentials.find((c) => Buffer.from(c.id).toString('base64url') === added.id);
-    if (!newCred) throw new Error('expected the new credential');
-    const phone = soft();
-    phone.credentials.push(newCred);
-    const other = h.client(phone);
-    expect((await other.api.auth.unlock()).ownerId).toBe(session.ownerId);
-    expect((await other.api.account.passkeys()).length).toBe(2);
-    expect((await other.api.account.setupSteps()).find((s) => s.id === 'second-passkey')?.done).toBe(true);
-
-    // One current session per owner: unlocking elsewhere locked the first browser.
-    expect(code(await first.api.account.passkeys().catch((e: unknown) => e))).toBe('locked');
-
-    // Removing needs a fresh proof too, and the last passkey can never be removed.
-    const original = (await other.api.account.passkeys()).find((p) => p.id !== added.id)?.id ?? '';
-    await other.api.account.removePasskey(original);
-    expect((await other.api.account.passkeys()).map((p) => p.id)).toEqual([added.id]);
-    expect(code(await other.api.account.removePasskey(added.id).catch((e: unknown) => e))).toBe('conflict');
-  });
-
-  it('refuses to add a passkey with only a session cookie', async () => {
-    const { fetch } = await newAccount('Cookie Thief');
-    const res = await fetch(`${h.baseUrl}/v1/passkeys/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-    expect(res.status).toBe(403);
+    await b.api.auth.signOut();
+    expect(cookies[0]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const replay = await fetch(`${h.baseUrl}/v1/meetings`, { headers: { cookie: `${cookieName(true)}=${cookies[0] ?? ''}`, origin: ORIGIN } });
+    expect(replay.status).toBe(401);
   });
 
   it('refuses state changes from other origins and non-JSON bodies', async () => {
-    const { fetch } = await newAccount('Origin Check');
+    const { fetch } = await account();
     const evil = await fetch(`${h.baseUrl}/v1/calls`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://localhost:4000' }, body: '{}' });
     expect(evil.status).toBe(403);
     const plain = await fetch(`${h.baseUrl}/v1/calls`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' });
     expect(plain.status).toBe(400);
   });
 
-  it('falls back to a device-held secret when the authenticator has no PRF', async () => {
-    const c = h.client(soft(false));
-    const s = await c.api.auth.createAccount('No PRF');
-    expect(s.rootSource).toBe('device');
-    await c.api.auth.lock();
-    expect((await c.api.auth.unlock()).ownerId).toBe(s.ownerId);
+  it('keeps the notes default, and new calls start with it', async () => {
+    const { api } = await account();
+    expect(await api.account.preferences()).toEqual({ notesDefault: 'on' });
+    expect(await api.account.updatePreferences({ notesDefault: 'off' })).toEqual({ notesDefault: 'off' });
+    const call = await api.calls.join((await api.calls.startNow()).code, { mic: true, cam: false });
+    expect(call.getSnapshot().notes.status).toBe('off');
+    await call.leave();
+  });
+});
+
+describe('signing in with Google', () => {
+  it('goes to Google and back, believes only what Google signed, and keeps one account per Google account', async () => {
+    // Off to Google with a fresh state, nonce and PKCE challenge, and only the identity scopes.
+    const b = h.browser();
+    const start = await b.fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
+    expect(start.status).toBe(302);
+    const to = new URL(start.headers.get('location') ?? '');
+    expect(to.origin).toBe(h.google.issuer);
+    expect(Object.fromEntries(to.searchParams)).toMatchObject({
+      client_id: h.google.clientId, redirect_uri: `${h.baseUrl}/v1/auth/google/callback`, response_type: 'code', scope: 'openid email profile', code_challenge_method: 'S256'
+    });
+    for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+
+    // Someone invites Ben to a call with notes before he has ever used Alcove.
+    const ben: GoogleUser = { sub: '104412233445566778899', email: 'Ben.Kay@Example.com', name: 'Ben Kay', picture: 'https://lh3.googleusercontent.com/a/ben-1' };
+    const host = await account();
+    const call = await host.api.calls.join((await host.api.calls.startNow({ notes: 'on', guests: ['ben.kay@example.com'] })).code, { mic: true, cam: false });
+    await call.appendAudio(piece(audioBytes('for-ben'), 0, 0));
+    const noteId = call.getSnapshot().notes.noteId ?? '';
+    await call.leave();
+
+    // His first sign-in creates his account from what Google verified, and lands on the welcome step.
+    expect(landed(await viaGoogle(b, ben))).toBe('/ready');
+    const s = await b.api.auth.getSession();
+    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com', photoUrl: 'https://lh3.googleusercontent.com/a/ben-1' } });
+    // A real account starts empty: no sample calendar and no sample directory.
+    expect(await b.api.meetings.upcoming()).toEqual([]);
+    expect(await b.api.people.team()).toBeNull();
+    // The notes he was invited to are his, because Google verified that address.
+    expect((await b.api.notes.list()).map((n) => n.id)).toContain(noteId);
+
+    // Again, in another browser: the same account, straight to Home, with the photo Google has now.
+    const later = h.browser();
+    expect(landed(await viaGoogle(later, { ...ben, picture: 'https://lh3.googleusercontent.com/a/ben-2' }))).toBe('/home');
+    expect(await later.api.auth.getSession()).toMatchObject({ ownerId: s?.ownerId, user: { photoUrl: 'https://lh3.googleusercontent.com/a/ben-2' } });
   });
 
-  it('renames the account and keeps preferences', async () => {
-    const { api } = await newAccount('Old Name');
-    expect((await api.account.rename('New Name')).user.name).toBe('New Name');
-    expect(await api.account.updatePreferences({ notesDefault: 'always' })).toEqual({ notesDefault: 'always', keep: 'full' });
-    expect(await api.account.preferences()).toEqual({ notesDefault: 'always', keep: 'full' });
+  it('turns away a cancelled, stale, forged or replayed sign-in, and signs nobody in', async () => {
+    const who: GoogleUser = { sub: 'g-turned-away', email: 'turned.away@example.com', name: 'Turned Away' };
+    const attempt = async (o: Parameters<typeof viaGoogle>[2] = {}, user = who) => {
+      const b = h.browser();
+      const end = landed(await viaGoogle(b, user, o));
+      return [end, await (o.deliverIn ?? b).api.auth.getSession()];
+    };
+    expect(await attempt({ spoil: 'deny' })).toEqual(['/welcome?signin=cancelled', null]);
+    expect(await attempt({ tamper: (u) => u.searchParams.set('state', 'forged-state') })).toEqual(['/welcome?signin=expired', null]);
+    // A callback delivered in a browser that never started it: someone trying to sign a victim into their own account.
+    expect(await attempt({ deliverIn: h.browser() })).toEqual(['/welcome?signin=expired', null]);
+    expect(await attempt({ spoil: 'wrong-audience' })).toEqual(['/welcome?signin=failed', null]);
+    expect(await attempt({ spoil: 'wrong-nonce' })).toEqual(['/welcome?signin=failed', null]);
+    expect(await attempt({ spoil: 'expired' })).toEqual(['/welcome?signin=failed', null]);
+    // An address Google hasn't verified could receive someone else's notes, so it isn't accepted.
+    expect(await attempt({}, { ...who, emailVerified: false })).toEqual(['/welcome?signin=unverified', null]);
+
+    // A code is good once: replaying it with a fresh attempt fails at Google.
+    const b = h.browser();
+    let code = '';
+    expect(landed(await viaGoogle(b, who, { tamper: (u) => { code = u.searchParams.get('code') ?? ''; } }))).toBe('/ready');
+    const again = h.browser();
+    expect(landed(await viaGoogle(again, who, { tamper: (u) => u.searchParams.set('code', code) }))).toBe('/welcome?signin=failed');
+    expect(await again.api.auth.getSession()).toBeNull();
+
+    // The demo sign-in doesn't speak for Google.
+    const fake = await b.fetch(`${h.baseUrl}/v1/auth/sign-in`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'google' }) });
+    expect(fake.status).toBe(400);
+  });
+
+  it('says Google sign-in isn’t set up on a server without a Google client', async () => {
+    const bare = await h.secondServer({ GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined });
+    const res = await fetch(`${bare.baseUrl}/v1/auth/google`, { redirect: 'manual' });
+    expect(res.headers.get('location')).toBe(`${ORIGIN}/welcome?signin=unavailable`);
+    await bare.close();
+  });
+});
+
+describe('people and team', () => {
+  it('suggests colleagues and people from calls, and anyone typed in full', async () => {
+    const art = h.browser();
+    await art.api.auth.signIn('microsoft');
+    const everyone = await art.api.people.search('');
+    expect(everyone.map((s) => s.person.email)).toEqual(expect.arrayContaining(['theo@vandelay.industries', 'priya@lumen.health']));
+    expect(everyone.find((s) => s.person.email === 'theo@vandelay.industries')).toMatchObject({ source: 'team', onAlcove: true, person: { name: 'Theo Martin' } });
+    expect(everyone.some((s) => s.person.email === 'art@vandelay.industries')).toBe(false);
+    expect((await art.api.people.search('pri')).map((s) => s.person.name)).toEqual(['Priya Raman']);
+    expect((await art.api.people.search('INÈS')).map((s) => s.person.email)).toEqual(['ines@lumen.health']);
+    expect(await art.api.people.search('jamie@harbourline.co')).toEqual([expect.objectContaining({ source: 'new', onAlcove: false, person: expect.objectContaining({ email: 'jamie@harbourline.co' }) })]);
+
+    // An address that belongs to an Alcove account says so.
+    await account('jordan.lee@harbourline.co');
+    expect((await art.api.people.search('jordan.lee@harbourline.co'))[0]).toMatchObject({ source: 'new', onAlcove: true });
+  });
+
+  it('shows the company directory and invites colleagues', async () => {
+    const art = h.browser();
+    await art.api.auth.signIn('microsoft');
+    const team = await art.api.people.team();
+    expect(team).toMatchObject({ name: 'Vandelay Industries', domain: 'vandelay.industries' });
+    expect(team?.members.map((m) => [m.person.name, m.onAlcove, m.invited])).toEqual([['Theo Martin', true, false], ['Kofi Asante', true, false], ['Sam Ortiz', false, false], ['Lena Fischer', false, false]]);
+    const after = await art.api.people.inviteToTeam(['sam@vandelay.industries', 'lena@vandelay.industries']);
+    expect(after.members.filter((m) => m.invited).map((m) => m.person.name)).toEqual(['Sam Ortiz', 'Lena Fischer']);
+    expect(code(await art.api.people.inviteToTeam(['someone@elsewhere.example']).catch((e: unknown) => e))).toBe('invalid');
+
+    const outsider = await account();
+    expect(await outsider.api.people.team()).toBeNull();
+    expect(code(await outsider.api.people.inviteToTeam(['sam@vandelay.industries']).catch((e: unknown) => e))).toBe('invalid');
   });
 });
 
 describe('meetings', () => {
-  it('schedules, edits, changes notes and cancels a meeting', async () => {
-    const { api } = await newAccount();
+  it('schedules with people invited by email, edits, changes notes and cancels', async () => {
+    const { api, session } = await account();
     const start = new Date(Date.now() + 2 * 86_400_000).toISOString();
-    const m = await api.meetings.create({ title: 'Harbor kickoff', startsAt: start, durationMinutes: 30, guests: ['Ben@Harbor.health', 'sam@fastmail.com'], notes: 'full', audience: 'everyone' });
-    expect(m).toMatchObject({ title: 'Harbor kickoff', isHost: true, status: 'scheduled', notes: 'full' });
-    expect(m.guests.map((g) => [g.email, g.rsvp])).toEqual([['ben@harbor.health', 'pending'], ['sam@fastmail.com', 'pending']]);
+    const m = await api.meetings.create({ title: 'Harbor kickoff', startsAt: start, durationMinutes: 30, guests: ['Ben@Harbor.health', 'sam@fastmail.com', 'ben@harbor.health', session.user.email], notes: 'on' });
+    expect(m).toMatchObject({ title: 'Harbor kickoff', isOrganizer: true, status: 'scheduled', notes: 'on', organizer: { id: session.ownerId } });
+    // Lower-cased, once each, and never the organizer.
+    expect(m.guests.map((g) => g.email)).toEqual(['ben@harbor.health', 'sam@fastmail.com']);
     expect(m.code).toMatch(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
     expect((await api.meetings.byCode(m.code))?.id).toBe(m.id);
 
-    const edited = await api.meetings.update(m.id, { title: 'Harbor kickoff (moved)', durationMinutes: 45, guests: ['ben@harbor.health'] });
-    expect(edited.title).toBe('Harbor kickoff (moved)');
+    const edited = await api.meetings.update(m.id, { title: 'Harbor kickoff (moved)', durationMinutes: 45, guests: ['ben@harbor.health'], notes: 'off' });
+    expect(edited).toMatchObject({ title: 'Harbor kickoff (moved)', notes: 'off' });
     expect((new Date(edited.endsAt).getTime() - new Date(edited.startsAt).getTime()) / 60_000).toBe(45);
-    expect(edited.guests).toHaveLength(1);
-    expect((await api.meetings.setNotes(m.id, 'off')).notes).toBe('off');
+    expect(edited.guests.map((g) => g.email)).toEqual(['ben@harbor.health']);
+    expect(code(await api.meetings.update(m.id, { guests: ['not an address'] }).catch((e: unknown) => e))).toBe('invalid');
 
     await api.meetings.cancel(m.id);
     expect((await api.meetings.upcoming()).map((x) => x.id)).not.toContain(m.id);
@@ -201,8 +323,8 @@ describe('meetings', () => {
   });
 
   it('applies a retried mutation only once (operation IDs)', async () => {
-    const { fetch } = await newAccount();
-    const body = JSON.stringify({ title: 'Once', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off', audience: 'everyone' });
+    const { fetch } = await account();
+    const body = JSON.stringify({ title: 'Once', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off' });
     const send = (op: string, b = body) => fetch(`${h.baseUrl}/v1/meetings`, { method: 'POST', headers: { 'content-type': 'application/json', [OPERATION_HEADER]: op }, body: b });
     const op = Buffer.from(randomBytes(16)).toString('base64url');
     const first = await (await send(op)).json();
@@ -213,15 +335,16 @@ describe('meetings', () => {
 });
 
 describe('calls with notes', () => {
-  it('records encrypted audio across segments, ends the call and hands the recording to notes', async () => {
-    const { api, fetch: own } = await newAccount();
-    const { code: callCode } = await api.calls.createInstant();
-    const call = await api.calls.join(callCode, { mic: true, cam: true, notes: 'full', audience: 'everyone' });
+  it('records encrypted audio while notes are on, across turning them off and on, and hands the recording to notes', async () => {
+    const { api, fetch: own, session } = await account();
+    const { code: callCode } = await api.calls.startNow({ notes: 'on', guests: ['priya@lumen.health'] });
+    const call = await api.calls.join(callCode, { mic: true, cam: true });
     let s = call.getSnapshot();
-    expect(s.title).toBe('Maya’s call');
-    expect(s.notes).toMatchObject({ status: 'on', mode: 'full', everOn: true });
+    expect(s.title).toBe(`${firstName(session.user.name)}’s call`);
+    expect(s.notes).toMatchObject({ status: 'on', everOn: true });
     expect(s.notes.noteId).toBeTruthy();
-    expect(s.participants).toHaveLength(1);
+    expect(s.isOrganizer).toBe(true);
+    expect(s.participants).toEqual([expect.objectContaining({ isMe: true, isOrganizer: true })]);
 
     const seg0 = [audioBytes('CANARY-AUDIO-0'), audioBytes('CANARY-AUDIO-1')];
     await call.appendAudio(piece(seg0[0] ?? audioBytes(''), 0, 0));
@@ -229,13 +352,12 @@ describe('calls with notes', () => {
     await call.appendAudio(piece(seg0[1] ?? audioBytes(''), 0, 1)); // retry of the same piece is a no-op
     expect(call.getSnapshot().notes.recording).toEqual({ segment: 0, pieces: 2, seconds: 10 });
 
-    call.pauseNotes();
-    s = await settle(call, (x) => x.notes.status === 'paused');
-    expect(code(await call.appendAudio(piece(audioBytes('x'), 0, 2)).catch((e: unknown) => e))).toBe('conflict');
-    call.stopNotes();
+    call.setNotes(false);
     await settle(call, (x) => x.notes.status === 'off');
-    call.startNotes('notes');
+    expect(code(await call.appendAudio(piece(audioBytes('x'), 0, 2)).catch((e: unknown) => e))).toBe('conflict');
+    call.setNotes(true);
     s = await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
+    expect(s.notes.recording.segment).toBe(1);
     await call.appendAudio(piece(audioBytes('segment-one'), 1, 0));
 
     call.sendChat('CANARY-CHAT agenda link');
@@ -253,34 +375,31 @@ describe('calls with notes', () => {
     expect(steps.at(-1)?.ready).toBe(true);
 
     const note = await api.notes.get(noteId);
-    expect(note).toMatchObject({ kind: 'call', status: 'pending', keep: 'full', title: 'Maya’s call' });
+    expect(note).toMatchObject({ kind: 'call', status: 'pending', title: `${firstName(session.user.name)}’s call` });
     expect(note.audio.map((a) => [a.index, a.pieces])).toEqual([[0, 2], [1, 1]]);
 
-    // The decrypted segment is exactly the concatenation of what was recorded.
-    expect((await h.client().fetch(api.notes.audioUrl(noteId, 0))).status).toBe(401); // another browser can't read it
+    // The decrypted segment is exactly the concatenation of what was recorded, and only for this account.
+    expect((await h.browser().fetch(api.notes.audioUrl(noteId, 0))).status).toBe(401);
     const mine = await own(api.notes.audioUrl(noteId, 0));
     expect(Buffer.from(await mine.arrayBuffer()).equals(Buffer.concat(seg0))).toBe(true);
 
-    const past = await api.meetings.past();
-    expect(past[0]).toMatchObject({ status: 'ended', noteId });
-    expect((await api.account.setupSteps()).find((x) => x.id === 'first-call')?.done).toBe(true);
+    expect((await api.meetings.past())[0]).toMatchObject({ status: 'ended', noteId });
     expect((await api.notes.list()).map((n) => n.id)).toContain(noteId);
     expect(code(await (async () => { for await (const p of api.notes.ask(noteId, 'What happened?')) void p; })().catch((e: unknown) => e))).toBe('unavailable');
   });
 
-  it('joins without notes and leaves no note behind', async () => {
-    const { api } = await newAccount();
-    const { code: c } = await api.calls.createInstant();
-    const call = await api.calls.join(c, { mic: true, cam: false, notes: 'off' });
+  it('joins a call without notes and leaves no note behind', async () => {
+    const { api } = await account();
+    const call = await api.calls.join((await api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
     expect(call.getSnapshot().notes.status).toBe('off');
     expect((await call.leave()).pendingNoteId).toBeNull();
     expect(await api.notes.list()).toEqual([]);
   });
 
   it('keeps every owner’s calls, notes, audio and recordings out of reach of other accounts', async () => {
-    const a = await newAccount('A');
-    const b = await newAccount('B');
-    const { code: c } = await a.api.calls.createInstant();
+    const a = await account();
+    const b = await account();
+    const { code: c } = await a.api.calls.startNow();
     expect(code(await b.api.calls.join(c, { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await a.api.calls.join('zzz-zzzz-zzz', { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
 
@@ -295,9 +414,55 @@ describe('calls with notes', () => {
   });
 });
 
+describe('who has the notes', () => {
+  it('gives the notes to everyone invited when the call ends, and lets anyone with them share them on', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = unique('guest');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] });
+    const call = await org.api.calls.join(c, { mic: true, cam: false });
+    await call.appendAudio(piece(audioBytes('shared-audio'), 0, 0));
+    const noteId = call.getSnapshot().notes.noteId ?? '';
+    expect(code(await org.api.notes.share(noteId, [unique()]).catch((e: unknown) => e))).toBe('invalid');
+
+    // Nobody invited sees the note while the call is still on.
+    const guest = await account(guestEmail);
+    expect((await guest.api.notes.list()).map((n) => n.id)).not.toContain(noteId);
+    expect(code(await guest.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    await call.leave();
+
+    // When it ends, everyone invited has it, from the organizer, along with who else has it.
+    expect((await guest.api.notes.list()).find((n) => n.id === noteId)).toMatchObject({ from: { id: org.session.ownerId } });
+    const note = await guest.api.notes.get(noteId);
+    expect(note.recipients.map((r) => [r.person.email, r.role])).toEqual([[org.session.user.email, 'organizer'], [guestEmail, 'invited']]);
+    expect((await guest.fetch(guest.api.notes.audioUrl(noteId, 0))).status).toBe(200);
+
+    // Anyone with the notes can share them on; people who already have them aren't added twice.
+    const laterEmail = unique('later');
+    const shared = await guest.api.notes.share(noteId, [laterEmail, org.session.user.email, guestEmail]);
+    expect(shared.recipients.map((r) => r.role)).toEqual(['organizer', 'invited', 'shared']);
+    const later = await account(laterEmail);
+    expect((await later.api.notes.get(noteId)).from?.id).toBe(org.session.ownerId);
+    expect(code(await later.api.notes.share(noteId, ['not an email']).catch((e: unknown) => e))).toBe('invalid');
+
+    // Someone who was never given them can't reach them.
+    const stranger = await account();
+    expect(code(await stranger.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect((await stranger.fetch(stranger.api.notes.audioUrl(noteId, 0))).status).toBe(404);
+
+    // Removing someone else's note only takes it out of your own notes...
+    await later.api.notes.delete(noteId);
+    expect(code(await later.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect((await guest.api.notes.get(noteId)).id).toBe(noteId);
+    // ...and the organizer deleting it takes it from everyone.
+    await org.api.notes.delete(noteId);
+    expect(code(await guest.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM note_access WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
+  });
+});
+
 describe('room recordings', () => {
   it('records in the room, renames, stops into a private note, and can be discarded', async () => {
-    const { api } = await newAccount();
+    const { api, session } = await account();
     const rec = await api.recordings.start('Board prep');
     await rec.appendAudio(piece(audioBytes('room-0'), 0, 0));
     rec.rename('Board prep with Dana');
@@ -307,8 +472,7 @@ describe('room recordings', () => {
     rec.resume();
     await new Promise((r) => setTimeout(r, 150));
     const { pendingNoteId } = await rec.stop();
-    const note = await api.notes.get(pendingNoteId);
-    expect(note).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'pending', audience: 'host' });
+    expect(await api.notes.get(pendingNoteId)).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'pending' });
     expect((await api.notes.list({ kind: 'room' })).map((n) => n.id)).toEqual([pendingNoteId]);
 
     const throwaway = await api.recordings.start('Throwaway');
@@ -321,10 +485,9 @@ describe('room recordings', () => {
     await api.notes.delete(pendingNoteId);
     expect(await api.notes.list()).toEqual([]);
     // Gone for good: no revisions, recording rows, jobs, receipts or objects remain for this owner.
-    const owner = (await api.auth.getSession())?.ownerId ?? '';
     // The only receipt left is the delete's own ({"deleted":true}); older ones were purged with the note.
     for (const t of ['revisions WHERE item_id = $2', 'recordings WHERE note_item_id = $2', "operations WHERE method NOT LIKE 'DELETE%'"]) {
-      const r = await h.pool.query(`SELECT count(*)::int AS n FROM ${t.split(' WHERE ')[0]} WHERE owner_id = $1 AND ${t.split(' WHERE ')[1]}`, t.includes('$2') ? [owner, pendingNoteId] : [owner]);
+      const r = await h.pool.query(`SELECT count(*)::int AS n FROM ${t.split(' WHERE ')[0]} WHERE owner_id = $1 AND ${t.split(' WHERE ')[1]}`, t.includes('$2') ? [session.ownerId, pendingNoteId] : [session.ownerId]);
       expect(r.rows[0]?.n).toBe(0);
     }
     for (const id of objectIds) expect(await h.objects.get(id).then(() => 'exists', () => 'gone')).toBe('gone');
@@ -332,24 +495,28 @@ describe('room recordings', () => {
 });
 
 describe('privacy at rest', () => {
-  it('keeps names, titles, guests, chat, labels and audio out of rows and objects in any encoding', async () => {
-    // Watch the wire for the secrets a browser sends, so the logs can be checked for them too.
+  it('keeps names, emails, titles, guests, chat and audio out of rows, objects and logs in any encoding', async () => {
+    // Watch the wire for the session cookies a browser receives, so the logs can be checked for them too.
     const secrets: string[] = [];
-    const jar = cookieFetch(ORIGIN);
-    const tap: typeof fetch = async (input, init) => {
-      const sent = typeof init?.body === 'string' ? z.record(z.string(), z.unknown()).safeParse(JSON.parse(init.body)) : undefined;
-      if (sent?.success) for (const k of ['prf', 'deviceSecret']) { const v = sent.data[k]; if (typeof v === 'string') secrets.push(v); }
-      const res = await jar(input, init);
-      const cookie = /alcove_session=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1];
-      if (cookie) secrets.push(cookie);
-      return res;
+    /** A browser whose session and sign-in cookies are collected, to check none of them reach the logs. */
+    const tapped = () => {
+      const jar = cookieFetch(ORIGIN);
+      const tap: typeof fetch = async (input, init) => {
+        const res = await jar(input, init);
+        for (const name of [cookieName(true), '__Host-alcove_google']) {
+          const cookie = new RegExp(`${name}=([^;]+)`).exec(res.headers.get('set-cookie') ?? '')?.[1];
+          if (cookie) secrets.push(cookie);
+        }
+        return res;
+      };
+      return h.browser({ fetch: tap });
     };
-    const c = h.client(soft(), tap, 'CANARY-DEVICE laptop');
-    const { ownerId } = await c.api.auth.createAccount('CANARY-NAME Person');
-    const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'full', audience: 'everyone' });
+    const c = tapped();
+    const { session } = await c.api.auth.signIn('sso', { email: 'canary-person@canary.example' });
+    expect(session.user.name).toBe('Canary Person');
+    const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'on' });
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
-    const { code: cc } = await c.api.calls.createInstant();
-    const call = await c.api.calls.join(cc, { mic: true, cam: true, notes: 'full' });
+    const call = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: true });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     call.sendChat('CANARY-CHAT private remark');
     await settle(call, (x) => x.chat.length === 1);
@@ -359,67 +526,81 @@ describe('privacy at rest', () => {
     await new Promise((r) => setTimeout(r, 150));
     await rec.stop();
     await c.api.notes.list({ text: 'CANARY-SEARCH words' });
+    await c.api.people.search('CANARY-PEOPLE query');
+    // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too.
+    const g = tapped();
+    expect(landed(await viaGoogle(g, { sub: 'canary-google-sub-31337', email: 'canary.googler@canary.example', name: 'Canary Googler', picture: 'https://lh3.googleusercontent.com/a/canary-photo' }))).toBe('/ready');
 
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
-      SELECT row_to_json(x)::text AS t FROM owners x UNION ALL SELECT row_to_json(x)::text FROM passkeys x UNION ALL
-      SELECT row_to_json(x)::text FROM items x UNION ALL SELECT row_to_json(x)::text FROM revisions x UNION ALL
-      SELECT row_to_json(x)::text FROM calls x UNION ALL SELECT row_to_json(x)::text FROM recordings x UNION ALL
-      SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL
-      SELECT row_to_json(x)::text FROM content_jobs x UNION ALL SELECT row_to_json(x)::text FROM operations x) q`);
+      SELECT row_to_json(x)::text AS t FROM owners x UNION ALL SELECT row_to_json(x)::text FROM identities x UNION ALL
+      SELECT row_to_json(x)::text FROM sessions x UNION ALL SELECT row_to_json(x)::text FROM items x UNION ALL
+      SELECT row_to_json(x)::text FROM revisions x UNION ALL SELECT row_to_json(x)::text FROM calls x UNION ALL
+      SELECT row_to_json(x)::text FROM recordings x UNION ALL SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL
+      SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL SELECT row_to_json(x)::text FROM content_jobs x UNION ALL
+      SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM note_access x) q`);
     const rowsText = String(dump.rows[0]?.all ?? '');
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
-    const canaries = ['CANARY-NAME', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-DEVICE', 'CANARY-ROOM', 'CANARY-SEARCH', 'Welcome credits'];
-    const hexRows = Buffer.from(rowsText).toString('utf8');
-    for (const canary of canaries) for (const enc of encodings(canary)) expect(hexRows.includes(enc), `${canary} as ${enc}`).toBe(false);
+    const canaries = [
+      'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE',
+      'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
+      'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo'
+    ];
+    for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
 
     // Every object in the bucket, not only the referenced ones.
     for await (const obj of h.objects.list()) {
       const bytes = Buffer.from(await h.objects.get(obj.id));
       for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
     }
-    expect(ownerId).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
-    // And the logs, which ran at debug level for this whole flow: no content, no keys, no session cookie.
-    expect(secrets.length).toBeGreaterThanOrEqual(2);
+    // And the logs, which ran at debug level for this whole flow: no content, no emails, no session cookies.
+    expect(secrets.length).toBeGreaterThanOrEqual(1);
     const logText = h.logs.join('');
-    expect(logText).toContain(ownerId);
+    expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
-    for (const secret of secrets) expect(logText.includes(secret), 'a secret in logs').toBe(false);
+    for (const secret of secrets) expect(logText.includes(secret), 'a session cookie in logs').toBe(false);
     expect(logText).not.toContain(m.code);
   });
 });
 
 describe('maintenance', () => {
-  it('deletes unreferenced objects and closes expired sessions', async () => {
+  it('refuses to start on a database built from a different version of the schema', async () => {
+    const { migrate } = await import('./migrate');
+    expect(await migrate(h.pool)).toEqual([]);
+    const [row] = (await h.pool.query<{ name: string; checksum: string }>('SELECT name, checksum FROM schema_migrations ORDER BY name LIMIT 1')).rows;
+    if (!row) throw new Error('no migrations recorded');
+    // As if the file had been edited in place after this database was built.
+    await h.pool.query('UPDATE schema_migrations SET checksum = $2 WHERE name = $1', [row.name, 'edited-since']);
+    await expect(migrate(h.pool)).rejects.toThrow(/reset/);
+    // As if a migration had been deleted.
+    await h.pool.query('UPDATE schema_migrations SET checksum = $2 WHERE name = $1', [row.name, row.checksum]);
+    await h.pool.query("INSERT INTO schema_migrations (name, checksum) VALUES ('0099_gone.sql', 'x')");
+    await expect(migrate(h.pool)).rejects.toThrow(/reset/);
+    await h.pool.query("DELETE FROM schema_migrations WHERE name = '0099_gone.sql'");
+    expect(await migrate(h.pool)).toEqual([]);
+  });
+
+  it('removes ended sessions and unreferenced objects', async () => {
     const { maintain } = await import('./maintenance');
+    const a = await account();
+    await h.pool.query(`UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE owner_id = $1`, [a.session.ownerId]);
     await h.objects.put('orphanorphanorphan0000', new Uint8Array([1, 2, 3]));
+    // The object store's clock can run a few milliseconds ahead of ours.
+    await new Promise((r) => setTimeout(r, 1100));
     const r = await maintain(h.deps, { orphanAgeMs: 0 });
+    expect(r.sessions).toBeGreaterThanOrEqual(1);
     expect(r.orphans).toBeGreaterThanOrEqual(1);
+    expect(await a.api.auth.getSession()).toBeNull();
     expect(await h.objects.get('orphanorphanorphan0000').then(() => 'exists', () => 'gone')).toBe('gone');
   });
 });
 
-describe('home data', () => {
-  it('reports week stats and open actions from real activity', async () => {
-    const { api } = await newAccount();
-    const { code: c } = await api.calls.createInstant();
-    const call = await api.calls.join(c, { mic: true, cam: true, notes: 'full' });
-    await call.leave();
-    const week = await api.stats.week();
-    expect(week.minutesByDay).toHaveLength(7);
-    expect(week.notes).toBe(1);
-    expect(await api.notes.openActions()).toEqual([]);
-  });
-});
-
-
 describe('logging and errors', () => {
   it('ties a failed request to its log line by request ID, with the error class and context', async () => {
     const events: ClientEvent[] = [];
-    const c = h.client(soft(), undefined, undefined, (e) => events.push(e));
-    await c.api.auth.createAccount('Log Reader');
-    expect(events.find((e) => e.msg === 'passkey created')?.context).toMatchObject({ prf: true, keySource: 'prf' });
+    const c = h.browser({ onEvent: (e) => events.push(e) });
+    await c.api.auth.signIn('sso', { email: unique('logs') });
 
     const err = await c.api.meetings.get('AAAAAAAAAAAAAAAAAAAAAA').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AlcoveApiError);
@@ -436,8 +617,8 @@ describe('logging and errors', () => {
   });
 
   it('keeps a request ID the caller sends, and masks call codes in logged paths', async () => {
-    const { api, fetch } = await newAccount('Header Echo');
-    const { code: callCode } = await api.calls.createInstant();
+    const { api, fetch } = await account();
+    const { code: callCode } = await api.calls.startNow();
     const res = await fetch(`${h.baseUrl}/v1/calls/${callCode}/meeting`, { headers: { [REQUEST_ID_HEADER]: 'trace-abc-123' } });
     expect(res.headers.get(REQUEST_ID_HEADER)).toBe('trace-abc-123');
     expect(linesFor('trace-abc-123').find((l) => l.msg === 'request')).toMatchObject({ path: '/v1/calls/:code/meeting', status: 200 });
@@ -458,8 +639,8 @@ describe('logging and errors', () => {
   });
 
   it('logs unexpected server failures with their cause, and tells the client only a request ID', async () => {
-    const { api } = await newAccount('Broken Store');
-    const call = await api.calls.join((await api.calls.createInstant()).code, { mic: true, cam: false, notes: 'full' });
+    const { api } = await account();
+    const call = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const realPut = h.deps.objects.put;
     h.deps.objects.put = () => Promise.reject(new Error('disk on fire'));
     const err = await call.appendAudio(piece(audioBytes('x'), 0, 0)).catch((e: unknown) => e).finally(() => { h.deps.objects.put = realPut; });
@@ -472,7 +653,6 @@ describe('logging and errors', () => {
     expect(line).toMatchObject({ level: 50, code: 'unknown', status: 500, component: 'http' });
     // The serialized error carries the whole chain, stack included.
     expect(JSON.stringify(line?.['err'])).toContain('disk on fire');
-    expect(linesFor(err.requestId ?? '').some((l) => l.msg === 'audio piece not recorded; deleting its object' || l.msg === 'request failed')).toBe(true);
     await call.leave();
   });
 });

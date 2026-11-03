@@ -1,35 +1,65 @@
-export const hm = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-export const dayKey = (iso: string) => new Date(iso).toDateString();
-export const isToday = (iso: string) => dayKey(iso) === new Date().toDateString();
+/* Dates and times as the app shows them: 24-hour clock, day before month. */
+const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const;
+const weekday = (d: Date) => WEEKDAY[d.getDay()] ?? '';
+const month = (d: Date) => MONTH[d.getMonth()] ?? '';
+const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+/** Whole days from today to `d`: 0 today, 1 tomorrow, -1 yesterday. */
+export const daysFromToday = (d: Date, now = new Date()) => Math.round((startOfDay(d).getTime() - startOfDay(now).getTime()) / 86_400_000);
 
-export function dayLabel(iso: string): string {
-  const d = new Date(iso); const t = new Date(); t.setHours(0, 0, 0, 0);
-  const diff = Math.round((new Date(d).setHours(0, 0, 0, 0) - t.getTime()) / 86400_000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Tomorrow';
-  if (diff === -1) return 'Yesterday';
-  return d.toLocaleDateString('en-US', { weekday: diff > 0 && diff < 7 ? 'long' : 'short', month: diff > 0 && diff < 7 ? undefined : 'short', day: diff > 0 && diff < 7 ? undefined : 'numeric' });
+export const hm = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+/** "Tue 3 Nov" */
+export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} ${month(d).slice(0, 3)}`;
+/** "Tuesday, 3 November" */
+export const longDay = (d: Date) => `${weekday(d)}, ${d.getDate()} ${month(d)}`;
+/** "Today, Tue 3 Nov", "Tomorrow, Wed 4 Nov" or "Thursday, 5 Nov". */
+export function dayChoice(d: Date, now = new Date()): string {
+  const n = daysFromToday(d, now);
+  if (n === 0) return `Today, ${shortDay(d)}`;
+  if (n === 1) return `Tomorrow, ${shortDay(d)}`;
+  return `${weekday(d)}, ${d.getDate()} ${month(d).slice(0, 3)}`;
 }
-export const fullDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-export const longToday = () => new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+/** For lists of notes: "Today", "Yesterday" or "Fri 30 Oct". */
+export function noteDay(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const n = daysFromToday(d, now);
+  return n === 0 ? 'Today' : n === -1 ? 'Yesterday' : shortDay(d);
+}
+/** "Monday 2 November · 10:00 to 10:31" */
+export function noteWhen(startedAt: string, seconds: number): string {
+  const a = new Date(startedAt);
+  const b = new Date(a.getTime() + seconds * 1000);
+  return `${weekday(a)} ${a.getDate()} ${month(a)} · ${hm(a)} to ${hm(b)}`;
+}
+/** Groups for the notes list: "This week", "Last week", then month names. */
+export function noteGroup(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const n = -daysFromToday(d, now);
+  const dow = (now.getDay() + 6) % 7;
+  if (n <= dow) return 'This week';
+  if (n <= dow + 7) return 'Last week';
+  return d.getFullYear() === now.getFullYear() ? month(d) : `${month(d)} ${d.getFullYear()}`;
+}
 
-export function greeting(): string {
-  const h = new Date().getHours();
+export function greeting(now = new Date()): string {
+  const h = now.getHours();
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
-
-export function minutesBetween(a: string, b: string) { return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60_000); }
-
-export function untilLabel(iso: string): string {
-  const m = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
-  if (m <= 0) return 'now';
-  if (m < 60) return `in ${m} min`;
-  const h = Math.floor(m / 60);
-  return `in ${h}h${m % 60 ? ` ${m % 60}m` : ''}`;
+/** Minutes from now until `iso`, rounded up; negative once it has started. */
+export const minutesUntil = (iso: string, now = Date.now()) => Math.ceil((new Date(iso).getTime() - now) / 60_000);
+/** "in 12 min", "in 1 h 30 min" */
+export function untilLabel(minutes: number): string {
+  if (minutes <= 0) return 'now';
+  if (minutes < 60) return `in ${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `in ${h} h${m ? ` ${m} min` : ''}`;
 }
-
-export const hoursOfNotes = (credits: number, perMinute = 25) => {
-  const h = credits / perMinute / 60;
-  return h >= 1 ? `${h.toFixed(1).replace('.0', '')} hours` : `${Math.round(h * 60)} minutes`;
-};
-export { minutesLabel } from '@alcove/api';
+/** "6 h 40 min", "25 min" */
+export function hoursAndMinutes(minutes: number): string {
+  const m = Math.max(0, Math.floor(minutes));
+  const h = Math.floor(m / 60);
+  return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`;
+}
+/** "4:05" for positions in a recording. */
+export const position = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;

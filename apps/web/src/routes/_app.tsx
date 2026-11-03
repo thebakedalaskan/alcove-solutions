@@ -1,27 +1,41 @@
-import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
-import { motion } from 'motion/react';
-import { DialogsProvider } from '~/features/shell/dialogs';
-import { useNewCallShortcut } from '~/features/shell/NewCallMenu';
+import { Outlet, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Composer } from '~/features/shell/Composer';
+import { ComposerContext } from '~/features/shell/context';
 import { Sidebar } from '~/features/shell/Sidebar';
 import { requireAccount } from '~/lib/guards';
 
+/* Everything with the sidebar: Home, Notes, a note, Account. */
 export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context }) => requireAccount(context.queryClient),
-  component: AppShell
+  component: Shell
 });
 
-function AppShell() {
-  useNewCallShortcut();
+const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable="true"]');
+
+function Shell() {
+  const [composer, setComposer] = useState(false);
+  const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const open = useCallback(() => setComposer(true), []);
+
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setComposer(false); void navigate({ to: '/notes', search: { find: true } }); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('[role="dialog"]')) return;
+      if (e.key === 'n') { e.preventDefault(); setComposer(true); }
+    };
+    addEventListener('keydown', on);
+    return () => removeEventListener('keydown', on);
+  }, [navigate]);
+
   return (
-    <DialogsProvider>
-      <div className="grid min-h-screen grid-cols-[260px_minmax(0,1fr)] max-[900px]:grid-cols-1">
-        <Sidebar />
-        <motion.main key={path.split('/').slice(0, 2).join('/')} className="min-w-0 px-[clamp(24px,3.4vw,56px)] pb-24 pt-[30px]"
-          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 0.8, 0.24, 1] }}>
-          <div className="mx-auto max-w-[1240px]"><Outlet /></div>
-        </motion.main>
+    <ComposerContext.Provider value={open}>
+      <div className="shell world-in">
+        <Sidebar onNew={open} />
+        <main className="main"><div key={path} className="main-in enter"><Outlet /></div></main>
       </div>
-    </DialogsProvider>
+      <Composer open={composer} onOpenChange={setComposer} />
+    </ComposerContext.Provider>
   );
 }

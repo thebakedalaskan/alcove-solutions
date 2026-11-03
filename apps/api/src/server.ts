@@ -7,7 +7,6 @@ import { configureLogging, flushLogs, log } from './log';
 import { maintain } from './maintenance';
 import { migrate } from './migrate';
 import { createObjectStore } from './objects';
-import { SessionStore } from './sessions';
 
 const slog = log.child({ component: 'server' });
 process.on('unhandledRejection', (e) => slog.error('unhandled promise rejection', { err: e }));
@@ -15,13 +14,13 @@ process.on('uncaughtException', (e) => { slog.error('uncaught exception, exiting
 
 const cfg = loadConfig();
 configureLogging({ level: cfg.LOG_LEVEL, format: cfg.LOG_FORMAT });
-slog.info('starting', { node: process.version, logLevel: cfg.LOG_LEVEL, webOrigin: cfg.WEB_ORIGIN, rpId: cfg.RP_ID });
+slog.info('starting', { node: process.version, logLevel: cfg.LOG_LEVEL, webOrigin: cfg.WEB_ORIGIN });
 
 const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);
 slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
-const deps = { cfg, pool, objects, sessions: new SessionStore() };
+const deps = { cfg, pool, objects };
 const app = createApp(deps);
 
 const mlog = log.child({ component: 'maintenance' });
@@ -37,9 +36,8 @@ const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_H
 });
 
 function shutdown(signal: string) {
-  slog.info('shutting down', { signal, sessions: deps.sessions.size });
+  slog.info('shutting down', { signal });
   clearInterval(timer);
-  deps.sessions.closeAll();
   server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); });
   setTimeout(() => { slog.warn('forced exit after 10s'); flushLogs(); process.exit(1); }, 10_000).unref();
 }

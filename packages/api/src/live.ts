@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IDSchema, ISODateSchema, NotesAudienceSchema, NotesKeepSchema, PersonSchema, type NotesKeep } from './types';
+import { IDSchema, ISODateSchema, PersonSchema } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -11,7 +11,7 @@ export interface LiveStore<S> {
 }
 
 export const CallParticipantSchema = z.object({
-  id: IDSchema, person: PersonSchema, isMe: z.boolean(), isHost: z.boolean(),
+  id: IDSchema, person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
   mic: z.boolean(), cam: z.boolean(), hand: z.boolean()
 });
 export type CallParticipant = z.infer<typeof CallParticipantSchema>;
@@ -23,12 +23,12 @@ export const ChatMessageSchema = z.object({
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
-export const CallNotesStatusSchema = z.enum(['off', 'on', 'paused']);
+export const CallNotesStatusSchema = z.enum(['off', 'on']);
 export type CallNotesStatus = z.infer<typeof CallNotesStatusSchema>;
 
 export const CallNoticeSchema = z.object({
   id: IDSchema,
-  /** Plain sentence shown to everyone, e.g. "You started notes." */
+  /** Plain sentence shown to everyone, e.g. "You turned on notes." */
   text: z.string(),
   kind: z.enum(['notes', 'people', 'info'])
 });
@@ -36,7 +36,7 @@ export type CallNotice = z.infer<typeof CallNoticeSchema>;
 
 /** Encrypted audio stored so far for the call's notes. */
 export const RecordingProgressSchema = z.object({
-  /** Current segment; a new one starts each time notes start again after being stopped. */
+  /** Current segment; a new one starts each time notes are turned on again. */
   segment: z.number(),
   pieces: z.number(),
   seconds: z.number()
@@ -56,8 +56,6 @@ export const CallStateSchema = z.object({
   sharing: z.object({ title: z.string() }).nullable(),
   notes: z.object({
     status: CallNotesStatusSchema,
-    mode: NotesKeepSchema,
-    audience: NotesAudienceSchema,
     /** True once notes have been on at any point, so the call produces a note. */
     everOn: z.boolean(),
     noteId: IDSchema.nullable(),
@@ -65,7 +63,8 @@ export const CallStateSchema = z.object({
   }),
   chat: z.array(ChatMessageSchema),
   notices: z.array(CallNoticeSchema),
-  canControlNotes: z.boolean()
+  /** Only the organizer can turn notes on or off. */
+  isOrganizer: z.boolean()
 });
 export type CallState = z.infer<typeof CallStateSchema>;
 
@@ -94,10 +93,8 @@ export interface CallSession extends LiveStore<CallState> {
   setHand(up: boolean): void;
   setSharing(on: boolean, title?: string): void;
   sendChat(text: string): void;
-  startNotes(mode: NotesKeep): void;
-  pauseNotes(): void;
-  resumeNotes(): void;
-  stopNotes(): void;
+  /** Organizer only. Everyone in the call sees the change. */
+  setNotes(on: boolean): void;
   /** Encrypts and stores one piece of the notes recording. */
   appendAudio(piece: AudioPiece): Promise<void>;
   dismissNotice(id: string): void;

@@ -8,13 +8,14 @@ export default defineConfig({
   envDir: '../..',
   server: {
     port: 3000,
-    // Same origin for the app and the API, so the session cookie and passkeys just work.
+    // Same origin for the app and the API, so the session cookie just works.
     proxy: { '/api': { target: 'http://127.0.0.1:8787', rewrite: (p) => p.replace(/^\/api/, '') } }
   },
   resolve: { alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) } },
   plugins: [
     tailwindcss(),
-    // SPA mode: every screen needs the unlocked session, which only exists in the browser.
+    // SPA mode: every screen is behind sign-in and talks to the API from the browser.
+    // The shell is prerendered as index.html, so Cloudflare Pages serves it for every route.
     tanstackStart({ spa: { enabled: true, prerender: { outputPath: '/index' } } }),
     viteReact()
   ]

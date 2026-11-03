@@ -1,92 +1,98 @@
-/* Query keys and fetchers. Screens read data through these, never through `api` directly. */
-import type { MeetingInput, MeetingNotesSetting, NoteKind, Patch, Preferences } from '@alcove/api';
+/* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
+import type { DemoProvider, InstantCallInput, MeetingInput, NoteKind, Patch, Preferences } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { api } from './api';
 
 export const qk = {
   session: ['session'] as const,
   prefs: ['prefs'] as const,
-  passkeys: ['passkeys'] as const,
-  setup: ['setup'] as const,
+  team: ['team'] as const,
+  people: (query: string) => ['people', query] as const,
+  meetings: ['meetings'] as const,
   upcoming: ['meetings', 'upcoming'] as const,
-  past: ['meetings', 'past'] as const,
-  meeting: (id: string) => ['meetings', id] as const,
   byCode: (code: string) => ['meetings', 'code', code] as const,
-  notes: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
-  note: (id: string) => ['notes', id] as const,
+  notes: ['notes'] as const,
+  noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
+  note: (id: string) => ['notes', 'one', id] as const,
   openActions: ['notes', 'actions'] as const,
-  balance: ['credits', 'balance'] as const,
-  history: ['credits', 'history'] as const,
-  packs: ['credits', 'packs'] as const,
-  week: ['stats', 'week'] as const
+  balance: ['credits'] as const
 };
 
 export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
-  passkeys: () => queryOptions({ queryKey: qk.passkeys, queryFn: () => api.account.passkeys() }),
-  setup: () => queryOptions({ queryKey: qk.setup, queryFn: () => api.account.setupSteps() }),
-  upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming() }),
-  past: () => queryOptions({ queryKey: qk.past, queryFn: () => api.meetings.past() }),
-  meeting: (id: string) => queryOptions({ queryKey: qk.meeting(id), queryFn: () => api.meetings.get(id) }),
+  team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
+  people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
+  upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
-  notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.notes(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
+  notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
   openActions: () => queryOptions({ queryKey: qk.openActions, queryFn: () => api.notes.openActions() }),
-  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
-  history: () => queryOptions({ queryKey: qk.history, queryFn: () => api.credits.history() }),
-  packs: () => queryOptions({ queryKey: qk.packs, queryFn: () => api.credits.packs(), staleTime: Infinity }),
-  week: () => queryOptions({ queryKey: qk.week, queryFn: () => api.stats.week() })
+  balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() })
 };
 
-/* ---------- mutations ---------- */
+/* ---------- account ---------- */
 
-export function useSaveMeeting() {
+/** Where the browser goes to sign in with Google; it comes back to /ready, /home or /welcome?signin=… */
+export const googleSignInUrl = () => api.auth.signInUrl('google');
+
+/** Signing in or out changes whose data everything is, so the cache starts over. */
+export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, input }: { id?: string | undefined; input: MeetingInput }) => (id ? api.meetings.update(id, input) : api.meetings.create(input)),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['meetings'] }); void qc.invalidateQueries({ queryKey: qk.week }); }
+    mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
+    onSuccess: (r) => { qc.clear(); qc.setQueryData(qk.session, r.session); }
   });
 }
-export function useMeetingNotes() {
+export function useSignOut() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes: MeetingNotesSetting }) => api.meetings.setNotes(id, notes),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['meetings'] })
-  });
-}
-export function useCancelMeeting() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.meetings.cancel(id), onSuccess: () => qc.invalidateQueries({ queryKey: ['meetings'] }) });
-}
-export function useActionDone() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { noteId: string; actionId: string; done: boolean }) => api.notes.setActionDone(v.noteId, v.actionId, v.done),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notes'] })
-  });
+  return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); } });
 }
 export function usePreferences() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p), onSuccess: (d) => qc.setQueryData(qk.prefs, d) });
 }
-/** Ends the session on the server, then leaves for the welcome screen. */
-export function useLock() {
+export function useInviteTeam() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
+  return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
+}
+
+/* ---------- calls ---------- */
+
+export function useScheduleCall() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+}
+export function useCancelCall() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.meetings.cancel(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+}
+export function useStartNow() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: InstantCallInput) => api.calls.startNow(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+}
+
+/* ---------- notes ---------- */
+
+export function useActionDone() {
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.auth.lock(),
-    onSuccess: async () => {
-      // Leave the app first, so mounted screens don't refetch into a locked session.
-      qc.setQueryData(qk.session, null);
-      await navigate({ to: '/welcome' });
-      qc.clear();
-    }
+    mutationFn: (v: { noteId: string; actionId: string; done: boolean }) => api.notes.setActionDone(v.noteId, v.actionId, v.done),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notes })
   });
 }
-/** After sign-in, sign-out or a scenario switch everything cached is stale. */
-export function useResetCache() {
+export function useShareNote() {
   const qc = useQueryClient();
-  return () => qc.resetQueries();
+  return useMutation({
+    mutationFn: (v: { id: string; emails: string[] }) => api.notes.share(v.id, v.emails),
+    onSuccess: (n) => { qc.setQueryData(qk.note(n.id), n); void qc.invalidateQueries({ queryKey: ['notes', 'list'] }); }
+  });
+}
+export function useDeleteNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.notes.delete(id),
+    // The note itself stays cached until its page lets go of it, so the page can say what was deleted.
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['notes', 'list'] }); void qc.invalidateQueries({ queryKey: qk.openActions }); void qc.invalidateQueries({ queryKey: qk.meetings }); }
+  });
 }

@@ -75,8 +75,9 @@ jobs:
       OBJECTS_ACCESS_KEY: alcove
       OBJECTS_SECRET_KEY: alcove-ci-secret
       WEB_ORIGIN: http://localhost:3000
-      RP_ID: localhost
-      # A throwaway test key; production keys live in Secret Manager.
+      API_URL: http://localhost:3000/api
+      # Throwaway test keys; production keys live in Secret Manager.
+      KMASTER: ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8
       KSERVICE: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
     steps:
       - uses: actions/checkout@v4

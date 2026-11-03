@@ -1,5 +1,5 @@
 /* Small pure helpers shared by implementations and the UI. */
-export const NOTES_LABEL = { full: 'Notes + transcript', notes: 'Notes only', off: 'No notes', ask: 'Ask at start' } as const;
+export const NOTES_LABEL = { on: 'Notes on', off: 'No notes' } as const;
 
 export function clock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));

@@ -1,9 +1,11 @@
 /*
- * CS01 primitives from docs/engineering/privacy-keys-and-sessions.md:
+ * Primitives from docs/engineering/privacy-keys-and-sessions.md:
  *   H(tag, body)      = SHA256(UTF8(tag) || 0x00 || body)
- *   Kwrap             = HKDF-SHA256(Kowner, salt=decode(ownerId), info="MVP/owner-wrap/v1")
+ *   Kowner            = 32 random bytes per account, wrapped under HKDF(Kmaster, ownerId, "alcove/owner-root/v1")
+ *   Kwrap             = HKDF-SHA256(Kowner, salt=decode(ownerId), info="alcove/owner-wrap/v1")
  *   KeyEnvelope       = {v,ownerId,scopeId,keyVersion,nonce,ciphertext}, header as associated data
  *   Record            = {header,nonce,ciphertext} with XChaCha20-Poly1305 and AD = JCS(header)
+ *   Blind index       = HMAC(HKDF(Kmaster, "alcove/index/v1"), purpose || 0x00 || value): finds people without storing who they are
  */
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
@@ -12,7 +14,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes } from '@noble/hashes/utils.js';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { IntegrityError, KeyError, LockedError, ValidationError } from './errors';
+import { IntegrityError, InternalError, KeyError, ValidationError } from './errors';
 
 export const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 export const fromUtf8 = (b: Uint8Array): string => new TextDecoder('utf-8', { fatal: true }).decode(b);
@@ -42,9 +44,9 @@ export function concat(...parts: Uint8Array[]): Uint8Array {
 /** Constant-time comparison. */
 export const equalBytes = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && timingSafeEqual(a, b);
 const isZero = (k: Uint8Array): boolean => k.every((x) => x === 0);
-/** Never seal or open with a wiped key: a closed session must not silently produce public-key ciphertext. */
+/** Never seal or open with a wiped or truncated key: that would quietly produce ciphertext anyone can open. */
 function live(k: Uint8Array): Uint8Array {
-  if (k.length !== 32 || isZero(k)) throw new LockedError('Your session ended. Unlock with your passkey to continue.');
+  if (k.length !== 32 || isZero(k)) throw new InternalError('A key was used after it was wiped.', { context: { keyLength: k.length } });
   return k;
 }
 
@@ -62,17 +64,27 @@ export const toJson = (v: unknown): Json => JsonSchema.parse(JSON.parse(JSON.str
 
 /* ---------- key derivation ---------- */
 const derive = (ikm: Uint8Array, salt: Uint8Array, info: string): Uint8Array => hkdf(sha256, ikm, salt, utf8(info), 32);
-export const ownerWrapKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(root, unb64u(ownerId, 32), 'MVP/owner-wrap/v1');
-/** Key for a mutable encrypted state row (call state, passkey labels, jobs). Derived from Kowner under its own label, scoped to the row. */
-export const stateKey = (root: Uint8Array, ownerId: string, scope: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), `MVP/state/v1/${scope}`);
-export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(root, unb64u(ownerId, 32), 'MVP/operation-commit/v1');
-export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(root, unb64u(ownerId, 32), 'MVP/operation-result/v1');
-/** Proves a delegated root is the owner's without storing anything that reveals it. */
-export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac(sha256, derive(root, unb64u(ownerId, 32), 'MVP/root-check/v1'), utf8(ownerId));
-/** Wraps the owner root for one passkey, under that passkey's secret. */
-export const passkeyWrapKey = (secret: Uint8Array, credentialId: string): Uint8Array => derive(secret, utf8(credentialId), 'MVP/passkey-root/v1');
-export const serviceKey = (kservice: Uint8Array, purpose: 'accounting' | 'credentials' | 'recording-wrap'): Uint8Array => derive(kservice, new Uint8Array(0), `MVP/service/${purpose}/v1`);
+/** Wraps one account's root key. Only the server's master key (sealed in the confidential VM in production) can open it. */
+export const ownerRootWrapKey = (kmaster: Uint8Array, ownerId: string): Uint8Array => derive(live(kmaster), unb64u(ownerId, 32), 'alcove/owner-root/v1');
+export const ownerWrapKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/owner-wrap/v1');
+/** Key for a mutable encrypted state row (call state, jobs). Derived from Kowner under its own label, scoped to the row. */
+export const stateKey = (root: Uint8Array, ownerId: string, scope: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), `alcove/state/v1/${scope}`);
+export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-commit/v1');
+export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-result/v1');
+/** Proves an unwrapped root is the owner's without storing anything that reveals it. */
+export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac(sha256, derive(live(root), unb64u(ownerId, 32), 'alcove/root-check/v1'), utf8(ownerId));
+export const serviceKey = (kservice: Uint8Array, purpose: 'accounting'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
+/** Seals what a browser carries between leaving to sign in with a provider and coming back. */
+export const signInAttemptKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/sign-in-attempt/v1');
 export const mac = (key: Uint8Array, data: Uint8Array): Uint8Array => hmac(sha256, key, data);
+/**
+ * A keyed hash that lets the server find a person (by sign-in account or email) without storing
+ * who they are. Emails are compared trimmed and lower-cased.
+ */
+export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email', value: string): Uint8Array {
+  const v = purpose === 'email' ? value.trim().toLowerCase() : value;
+  return hmac(sha256, derive(live(kmaster), new Uint8Array(0), 'alcove/index/v1'), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
+}
 
 /* ---------- key envelopes ---------- */
 const EnvelopeSchema = z.object({ v: z.literal(1), ownerId: z.string(), scopeId: z.string(), keyVersion: z.literal('1'), nonce: z.string(), ciphertext: z.string() });

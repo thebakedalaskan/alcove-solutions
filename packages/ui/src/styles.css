@@ -1,117 +1,158 @@
 /*
- * Alcove design tokens. Warm paper by day, warm ink by night.
- * Raw values live in :root / .dark; @theme inline maps them to Tailwind utilities
- * (bg-canvas, text-ink-2, shadow-lift, font-display, ease-soft ...).
- * The amber lamp is the brand mark only. It never signals state.
+ * Alcove's look: an arched window at sunrise. The page is the sky (indigo and lavender warming to
+ * peach); anything you can press is the sun coming up (orange to red); covers are small sunrises.
+ * Crimson only ever means recording. Every colour, shadow, font and easing comes from here.
+ * Screens' own styles live next to this file (styles/*.css) so the app holds no raw colours.
  */
+@import "./styles/kit.css";
+@import "./styles/welcome.css";
+@import "./styles/app.css";
+@import "./styles/call.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --canvas: #F4F2EE; --card: #FFFFFF; --raised: #FAF9F7; --well: #ECE9E3;
-  --ink: #17140F; --ink-2: #5B544B; --ink-3: #6F675D;
-  --hair: #E6E1D9; --hair-2: #D6D0C6;
-  --btn: #17140F; --btn-ink: #FFFFFF;
-  --lamp: #FFA62B; --lamp-hot: #FFC766; --lamp-soft: #FFF0D6; --lamp-ink: #8A4B00;
-  --ok: #2B8657; --ok-soft: #DFF2E7; --bad: #C8452F; --bad-soft: #FBE3DD; --focus: #2F6FEB;
-  --sidebar: color-mix(in oklab, #F4F2EE 70%, #ECE9E3);
-  --feature: #17140F; --feature-line: transparent;
-  --sh-soft: 0 1px 2px rgb(23 20 15 / .06), 0 1px 1px rgb(23 20 15 / .04);
-  --sh-lift: 0 2px 4px rgb(23 20 15 / .04), 0 12px 32px -12px rgb(23 20 15 / .18);
-  --sh-float: 0 30px 80px -20px rgb(23 20 15 / .35), 0 0 0 1px rgb(23 20 15 / .04);
+  --canvas: #F2EEFA;
+  /* The page is a dawn sky: lavender up top, warming to peach where the sun comes up. */
+  --sky-bg: radial-gradient(85% 60% at 100% 106%, rgb(255 178 140 / 0.55) 0%, transparent 62%),
+    radial-gradient(70% 55% at 0% 0%, rgb(196 190 255 / 0.6) 0%, transparent 62%),
+    linear-gradient(165deg, #ECE8FF 0%, #F3EEFA 45%, #FDEEE9 100%);
+  --surface: #FFFFFF;
+  --card-bg: rgb(255 255 255 / 0.8);
+  --raised: rgb(76 56 170 / 0.04);
+  --sunk: rgb(76 56 170 / 0.07);
+  --sunk-2: rgb(76 56 170 / 0.11);
+  --sidebar: rgb(255 255 255 / 0.42);
+  --line: rgb(76 56 170 / 0.1);
+  --line-2: rgb(76 56 170 / 0.17);
+  --ink: #1A1640;
+  --ink-2: #57507A;
+  --ink-3: #8A84AA;
+  --ink-4: #B7B1CF;
+
+  /* Anything you can press is the rising sun: orange warming to red. */
+  --accent: #F26A3D;
+  --accent-grad: linear-gradient(135deg, #FF9548 0%, #F7703F 50%, #EC5141 100%);
+  --accent-grad-hover: linear-gradient(135deg, #FFA058 0%, #FA7C4C 50%, #F05E4E 100%);
+  --accent-glow: rgb(242 106 61 / 0.55);
+  --accent-ink: #C14A22;
+  --accent-soft: #FFEADF;
+  --accent-line: #FFCDB7;
+  --on-accent: #FFFFFF;
+
+  /* Recording is a true crimson with a pulsing dot, so it never reads as a button. */
+  --rec: #E33554;
+  --rec-ink: #C42443;
+  --rec-soft: #FCE4EA;
+
+  --sun: #FFB547;
+  --sun-hot: #FFD58A;
+
+  --scrim: rgb(26 20 64 / 0.34);
+  --toast-bg: #1E1A44;
+  --toast-ink: #F4F1FF;
+  --sh-1: 0 1px 2px rgb(40 28 100 / 0.06), 0 1px 1px rgb(40 28 100 / 0.04);
+  --sh-2: 0 2px 6px rgb(40 28 100 / 0.05), 0 14px 34px -16px rgb(40 28 100 / 0.26);
+  --sh-3: 0 30px 80px -24px rgb(30 20 80 / 0.42), 0 0 0 1px rgb(40 28 100 / 0.06);
+
+  /* Covers: one sunrise sky, at different moments. Same in both themes. */
+  --c-night: linear-gradient(170deg, #121130 0%, #2C2878 52%, #5847E0 100%);
+  --c-dawn: linear-gradient(170deg, #2C2878 0%, #6F5FEA 48%, #D98CB8 82%, #FFCBA6 100%);
+  --c-first: linear-gradient(170deg, #3D35A8 0%, #8F9BF3 55%, #FFD8BF 100%);
+  --c-morning: linear-gradient(170deg, #4859D6 0%, #8EA6FF 58%, #C7D6FF 100%);
+  --c-dusk: linear-gradient(170deg, #1D1A4A 0%, #6A4FC9 52%, #DD8FB5 100%);
+  --c-haze: linear-gradient(170deg, #7584E8 0%, #BDB9F6 55%, #FFD6BF 100%);
+
+  /* Washes: a pane of each cover's sky, light enough to let the page's sky through. */
+  --wash-night: linear-gradient(110deg, rgb(226 222 255 / 0.95) 0%, rgb(240 236 252 / 0.82) 48%, rgb(250 244 250 / 0.72) 100%);
+  --wash-dawn: linear-gradient(110deg, rgb(230 224 255 / 0.95) 0%, rgb(245 233 248 / 0.82) 48%, rgb(255 236 228 / 0.75) 100%);
+  --wash-first: linear-gradient(110deg, rgb(226 228 255 / 0.95) 0%, rgb(240 238 252 / 0.82) 48%, rgb(255 240 230 / 0.75) 100%);
+  --wash-morning: linear-gradient(110deg, rgb(222 232 255 / 0.95) 0%, rgb(236 240 253 / 0.82) 48%, rgb(248 245 252 / 0.72) 100%);
+  --wash-dusk: linear-gradient(110deg, rgb(233 224 255 / 0.95) 0%, rgb(246 232 246 / 0.82) 48%, rgb(253 236 242 / 0.74) 100%);
+  --wash-haze: linear-gradient(110deg, rgb(236 234 255 / 0.95) 0%, rgb(247 240 250 / 0.82) 48%, rgb(255 242 234 / 0.75) 100%);
+
+  /* The welcome stage: a pane of morning light. */
+  --stage-pane: radial-gradient(70% 52% at 50% 114%, #FFE1C8 0%, rgb(255 225 200 / 0) 70%), radial-gradient(52% 44% at 88% 74%, #FADDEA 0%, transparent 72%),
+    radial-gradient(60% 50% at 14% 18%, #DCE1FF 0%, transparent 70%), radial-gradient(50% 40% at 82% 10%, #E8E2FF 0%, transparent 70%), rgb(255 255 255 / 0.42);
+  --stage-glass: rgb(255 255 255 / 0.72);
+  --stage-glass-2: rgb(255 255 255 / 0.66);
+  --stage-ink: #15142B;
+  --stage-ink-2: rgb(21 20 43 / 0.58);
+  --bubble-ink: #15142B;
+
+  --font-display-stack: "Gabarito", "Onest", ui-sans-serif, system-ui, sans-serif;
+  --font-sans-stack: "Onest", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono-stack: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-soft-v: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-in-v: cubic-bezier(0.4, 0, 1, 1);
+  --spring: cubic-bezier(0.3, 1.3, 0.4, 1);
+  --t1: 140ms;
+  --t2: 200ms;
   color-scheme: light;
 }
 .dark {
-  --canvas: #100E0C; --card: #1A1815; --raised: #211E1A; --well: #262320;
-  --ink: #F5F1EA; --ink-2: #BEB5A9; --ink-3: #8F877C;
-  --hair: #2C2823; --hair-2: #3A352F;
-  --btn: #F5F1EA; --btn-ink: #17140F;
-  --lamp: #FFAE3D; --lamp-hot: #FFD08A; --lamp-soft: #3A2810; --lamp-ink: #FFC56E;
-  --ok: #5FCB8E; --ok-soft: #12301F; --bad: #F07A63; --bad-soft: #3A1A14; --focus: #7EA6FF;
-  --sidebar: #131110;
-  --feature: #221E19; --feature-line: #2E2924;
-  --sh-soft: 0 1px 2px rgb(0 0 0 / .4);
-  --sh-lift: 0 2px 4px rgb(0 0 0 / .3), 0 14px 34px -12px rgb(0 0 0 / .6);
-  --sh-float: 0 30px 80px -20px rgb(0 0 0 / .8), 0 0 0 1px rgb(255 255 255 / .04);
+  --canvas: #1A1640;
+  --sky-bg: radial-gradient(90% 55% at 88% 108%, rgb(255 128 82 / 0.34) 0%, transparent 62%),
+    radial-gradient(70% 50% at 8% -4%, rgb(98 80 232 / 0.42) 0%, transparent 62%),
+    linear-gradient(168deg, #14113A 0%, #1D1748 38%, #2C1B4C 72%, #45203F 100%);
+  --surface: #241F50; --card-bg: rgb(32 27 74 / 0.56); --raised: rgb(255 255 255 / 0.04);
+  --sunk: rgb(255 255 255 / 0.07); --sunk-2: rgb(255 255 255 / 0.11);
+  --sidebar: rgb(12 10 34 / 0.3); --line: rgb(255 255 255 / 0.09); --line-2: rgb(255 255 255 / 0.15);
+  --ink: #F4F1FF; --ink-2: #C7C1E8; --ink-3: #958EBF; --ink-4: #665F92;
+  --accent: #FF7A4A; --accent-ink: #FFAC86;
+  --accent-soft: rgb(255 122 74 / 0.16); --accent-line: rgb(255 122 74 / 0.34); --accent-glow: rgb(255 110 60 / 0.5);
+  --rec-soft: rgb(227 53 84 / 0.2);
+  --scrim: rgb(6 4 20 / 0.6); --toast-bg: #2A2458;
+  --sh-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --sh-2: 0 2px 6px rgb(0 0 0 / 0.25), 0 16px 36px -16px rgb(0 0 0 / 0.6);
+  --sh-3: 0 30px 80px -24px rgb(0 0 0 / 0.75), 0 0 0 1px rgb(255 255 255 / 0.07);
+  --wash-night: linear-gradient(110deg, rgb(48 40 120 / 0.85) 0%, rgb(34 28 84 / 0.7) 50%, rgb(30 24 70 / 0.55) 100%);
+  --wash-dawn: linear-gradient(110deg, rgb(56 42 128 / 0.85) 0%, rgb(52 32 88 / 0.7) 50%, rgb(74 34 70 / 0.6) 100%);
+  --wash-first: linear-gradient(110deg, rgb(44 46 128 / 0.85) 0%, rgb(38 32 90 / 0.7) 50%, rgb(70 40 66 / 0.6) 100%);
+  --wash-morning: linear-gradient(110deg, rgb(36 50 128 / 0.85) 0%, rgb(32 34 92 / 0.7) 50%, rgb(30 26 72 / 0.55) 100%);
+  --wash-dusk: linear-gradient(110deg, rgb(54 38 124 / 0.85) 0%, rgb(52 30 86 / 0.7) 50%, rgb(76 32 72 / 0.6) 100%);
+  --wash-haze: linear-gradient(110deg, rgb(50 46 126 / 0.85) 0%, rgb(44 36 90 / 0.7) 50%, rgb(70 42 66 / 0.6) 100%);
+  --stage-pane: radial-gradient(70% 52% at 50% 114%, rgb(255 170 120 / 0.2) 0%, transparent 70%), radial-gradient(52% 44% at 88% 74%, rgb(220 120 170 / 0.18) 0%, transparent 72%),
+    radial-gradient(60% 50% at 14% 18%, rgb(88 71 224 / 0.36) 0%, transparent 70%), radial-gradient(50% 40% at 82% 10%, rgb(120 100 240 / 0.22) 0%, transparent 70%), rgb(20 16 56 / 0.45);
+  --stage-glass: rgb(30 26 70 / 0.72);
+  --stage-glass-2: rgb(30 26 70 / 0.62);
+  --stage-ink: #F4F1FF;
+  --stage-ink-2: rgb(244 241 255 / 0.6);
   color-scheme: dark;
 }
 
 @theme inline {
-  --color-canvas: var(--canvas); --color-card: var(--card); --color-raised: var(--raised); --color-well: var(--well);
-  --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3);
-  --color-hair: var(--hair); --color-hair-2: var(--hair-2);
-  --color-btn: var(--btn); --color-btn-ink: var(--btn-ink);
-  --color-lamp: var(--lamp); --color-lamp-hot: var(--lamp-hot); --color-lamp-soft: var(--lamp-soft); --color-lamp-ink: var(--lamp-ink);
-  --color-ok: var(--ok); --color-ok-soft: var(--ok-soft); --color-bad: var(--bad); --color-bad-soft: var(--bad-soft);
-  --color-focus: var(--focus); --color-sidebar: var(--sidebar); --color-feature: var(--feature); --color-feature-line: var(--feature-line);
-  --shadow-soft: var(--sh-soft); --shadow-lift: var(--sh-lift); --shadow-float: var(--sh-float);
-}
-
-@theme {
-  /* The call stage is always dark, whatever the app theme. */
-  --color-stage: #0B0A09; --color-stage-2: #161411; --color-stage-3: #23201C; --color-stage-4: #2E2A25;
-  --color-stage-ink: #F2EEE7; --color-stage-mute: #A8A096; --color-stage-dim: #8F877C;
-  --color-rec: #E5484D; --color-rec-ink: #FF8A8E; --color-live: #8FD3AE;
-
-  --font-display: "Gabarito", "Onest", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Onest", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
-
-  --ease-soft: cubic-bezier(.22, .8, .24, 1);
-  --ease-swing: cubic-bezier(.55, 0, .2, 1);
-  --ease-spring: cubic-bezier(.3, 1.3, .4, 1);
-
-  --radius-4xl: 2rem;
-
-  --animate-rise: rise .6s var(--ease-soft) both;
-  --animate-pop: pop .35s var(--ease-soft) both;
-  --animate-fade: fade .3s ease both;
-  --animate-recpulse: recpulse 1.6s ease-in-out infinite;
-  --animate-float: float 6s ease-in-out infinite;
-  --animate-breathe: breathe 5.5s ease-in-out infinite;
-  --animate-glow: glowbreath 7s ease-in-out infinite;
-  --animate-spin-fast: spin .7s linear infinite;
-
-  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
-  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.97); } }
-  @keyframes fade { from { opacity: 0; } }
-  @keyframes recpulse { 50% { opacity: .35; } }
-  @keyframes float { 50% { transform: translateY(-6px); } }
-  @keyframes breathe { 50% { transform: scale(1.012) translateY(-.4%); } }
-  @keyframes glowbreath { 50% { transform: scale(1.08) translate(-10px, 8px); opacity: .8; } }
+  --color-canvas: var(--canvas); --color-surface: var(--surface); --color-raised: var(--raised); --color-sunk: var(--sunk); --color-sunk-2: var(--sunk-2);
+  --color-line: var(--line); --color-line-2: var(--line-2);
+  --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3); --color-ink-4: var(--ink-4);
+  --color-accent: var(--accent); --color-accent-ink: var(--accent-ink); --color-accent-soft: var(--accent-soft); --color-accent-line: var(--accent-line);
+  --color-rec: var(--rec); --color-rec-ink: var(--rec-ink); --color-rec-soft: var(--rec-soft); --color-sun: var(--sun);
+  --shadow-1: var(--sh-1); --shadow-2: var(--sh-2); --shadow-3: var(--sh-3);
+  --font-display: var(--font-display-stack); --font-sans: var(--font-sans-stack); --font-mono: var(--font-mono-stack);
+  --ease-soft: var(--ease-soft-v); --ease-in: var(--ease-in-v);
 }
 
 @layer base {
-  html, body { height: 100%; }
-  body { background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; transition: background-color .3s, color .3s; }
-  h1, h2, h3 { font-family: var(--font-display); font-weight: 800; letter-spacing: -.035em; line-height: 1.05; }
-  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 8px; }
-  button { cursor: pointer; }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; margin: 0; }
+  body {
+    background-color: var(--canvas); background-image: var(--sky-bg); background-attachment: fixed;
+    color: var(--ink); font: 15px/1.55 var(--font-sans-stack); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden;
+  }
+  h1, h2, h3, h4 { margin: 0; font-family: var(--font-display-stack); font-weight: 800; letter-spacing: -0.035em; line-height: 1.06; text-wrap: balance; }
+  p { margin: 0; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
   button:disabled { cursor: default; }
-  ::selection { background: var(--lamp-soft); color: var(--ink); }
+  input, textarea { font: inherit; color: inherit; }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+  ::selection { background: var(--accent-soft); color: var(--ink); }
 }
 
 @utility tabular { font-variant-numeric: tabular-nums; }
 @utility scrollbar-none { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
 
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
 }
-
-/* Keyframes used through arbitrary animate-[...] values. */
-@keyframes drift { to { transform: translate(var(--dx, 0), var(--dy, 0)) scale(1.1); } }
-@keyframes talk { 0%, 100% { transform: translateX(-50%); } 30% { transform: translateX(-50%) translateY(-.8%) rotate(-.6deg); } 65% { transform: translateX(-50%) translateY(-.3%) rotate(.5deg); } }
-@keyframes wv { 0%, 100% { height: 4px; } 50% { height: 14px; } }
-@keyframes rwv { 50% { height: 62%; } }
-@keyframes growdown { from { transform: scaleY(0); opacity: 0; } }
-@keyframes growup { from { transform: scaleY(0); } }
-@keyframes dot3 { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-3px); } }
-@keyframes ringin { from { stroke-dashoffset: var(--ring-full); } }
-@keyframes draw { from { stroke-dashoffset: 24; } }
-
-/* The mark lighting up on the welcome screen. */
-.alcove-mark-animate .mark-niche { animation: niche 1.1s var(--ease-soft) both; transform-origin: 50% 100%; transform-box: fill-box; }
-.alcove-mark-animate .mark-spill { animation: fade 1.8s var(--ease-soft) .7s both; }
-.alcove-mark-animate .mark-flame { animation: flamein 1.2s var(--ease-soft) .55s both; transform-origin: center; transform-box: fill-box; }
-@keyframes niche { from { transform: scaleY(0); opacity: 0; } }
-@keyframes flamein { 0% { opacity: 0; transform: scale(.2); } 60% { opacity: 1; transform: scale(1.12); } 100% { transform: none; } }
-@keyframes menuin { from { opacity: 0; transform: translateY(-6px) scale(.96); } }

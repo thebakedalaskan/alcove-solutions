@@ -3,68 +3,25 @@
  * domain types: the app never sees them.
  */
 import { z } from 'zod';
-
-const b64url = z.string().regex(/^[A-Za-z0-9_-]*$/);
-const transport = z.enum(['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb']);
-
-/** A WebAuthn registration result as produced by PublicKeyCredential#toJSON(). */
-export const RegistrationCredentialSchema = z.object({
-  id: b64url,
-  rawId: b64url,
-  type: z.literal('public-key'),
-  authenticatorAttachment: z.enum(['platform', 'cross-platform']).optional(),
-  response: z.object({
-    clientDataJSON: b64url,
-    attestationObject: b64url,
-    authenticatorData: b64url.optional(),
-    transports: z.array(transport).optional(),
-    publicKeyAlgorithm: z.number().optional(),
-    publicKey: b64url.optional()
-  }),
-  clientExtensionResults: z.object({})
-});
-export type RegistrationCredential = z.infer<typeof RegistrationCredentialSchema>;
-
-/** A WebAuthn assertion as produced by PublicKeyCredential#toJSON(). */
-export const AssertionCredentialSchema = z.object({
-  id: b64url,
-  rawId: b64url,
-  type: z.literal('public-key'),
-  authenticatorAttachment: z.enum(['platform', 'cross-platform']).optional(),
-  response: z.object({
-    clientDataJSON: b64url,
-    authenticatorData: b64url,
-    signature: b64url,
-    userHandle: b64url.optional()
-  }),
-  clientExtensionResults: z.object({})
-});
-export type AssertionCredential = z.infer<typeof AssertionCredentialSchema>;
-
-/** Options handed to the browser, plus the server-side challenge they belong to. */
-export const CeremonyStartSchema = z.object({ challengeId: z.string(), options: z.record(z.string(), z.unknown()) });
-export type CeremonyStart = z.infer<typeof CeremonyStartSchema>;
-
 /**
- * `secret` is 32 bytes (base64url) that only this passkey can produce: its PRF output, or a
- * device-held secret when the authenticator lacks PRF. The server uses it to wrap and unwrap the
- * owner root and never stores it.
+ * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
+ * Vandelay, and single sign-on is whoever's work email is typed. Google is real: the browser goes
+ * to `AlcoveApi.auth.signInUrl('google')` instead.
  */
-const secret = b64url.length(43);
-export const RegisterStartBodySchema = z.object({ name: z.string().trim().min(1).max(80) });
-/**
- * The client sends whatever it has: the PRF output and/or a device-held secret. The server decides
- * which one this passkey uses (recorded at registration), so a client can't switch a passkey's mode.
- */
-const secrets = { prf: secret.optional(), deviceSecret: secret.optional() };
-export const RegisterFinishBodySchema = z.object({ challengeId: z.string(), credential: RegistrationCredentialSchema, ...secrets, deviceName: z.string().max(80) });
-export const UnlockFinishBodySchema = z.object({ challengeId: z.string(), credential: AssertionCredentialSchema, ...secrets });
-export const AddPasskeyFinishBodySchema = RegisterFinishBodySchema;
-/** Proof of a fresh passkey use, required before adding or removing passkeys. */
-export const StepUpFinishBodySchema = z.object({ challengeId: z.string(), credential: AssertionCredentialSchema });
+export const DemoProviderSchema = z.enum(['microsoft', 'sso']);
+export type DemoProvider = z.infer<typeof DemoProviderSchema>;
 
-/** Fixed PRF input. Every Alcove passkey evaluates PRF over this salt. */
-export const PRF_SALT_LABEL = 'MVP/passkey-prf/v1';
+export const SignInBodySchema = z.object({
+  provider: DemoProviderSchema,
+  /** The work email typed for single sign-on. */
+  email: z.string().trim().max(254).optional()
+});
+export type SignInBody = z.infer<typeof SignInBodySchema>;
+
+/** Search terms travel in a POST body so they never appear in URLs or access logs. */
+export const PeopleSearchBodySchema = z.object({ query: z.string().max(200) });
+export const TeamInviteBodySchema = z.object({ emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50) });
+export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50) });
 
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 export const CallActionSchema = z.discriminatedUnion('type', [
@@ -73,10 +30,7 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hand'), up: z.boolean() }),
   z.object({ type: z.literal('sharing'), on: z.boolean(), title: z.string().max(120).optional() }),
   z.object({ type: z.literal('chat'), text: z.string().trim().min(1).max(4000) }),
-  z.object({ type: z.literal('notes-start'), mode: z.enum(['full', 'notes']) }),
-  z.object({ type: z.literal('notes-pause') }),
-  z.object({ type: z.literal('notes-resume') }),
-  z.object({ type: z.literal('notes-stop') }),
+  z.object({ type: z.literal('notes'), on: z.boolean() }),
   z.object({ type: z.literal('dismiss'), id: z.string() })
 ]);
 export type CallAction = z.infer<typeof CallActionSchema>;

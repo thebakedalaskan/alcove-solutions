@@ -118,38 +118,50 @@ export const PIECE_MS = 5000;
 /**
  * Records the microphone in 5-second pieces and uploads them in order. Each piece is retried a few
  * times; the server treats a repeated (segment, seq) as a no-op, so retries never duplicate audio.
+ * The server refuses audio once notes are off, so stopping waits for the last piece before anyone
+ * switches notes off.
  */
 export class NotesRecorder {
   private rec: MediaRecorder | null = null;
-  private seq = 0;
   private segment = -1;
-  private last = 0;
   private queue: Promise<void> = Promise.resolve();
   constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void) {}
 
   get running() { return this.rec?.state === 'recording'; }
   /** Starts (or continues) recording into `segment`. */
   start(track: MediaStreamTrack, segment: number) {
-    if (this.rec && this.segment === segment) { if (this.rec.state === 'paused') { this.rec.resume(); this.last = performance.now(); } return; }
+    if (this.rec && this.segment === segment) { if (this.rec.state === 'paused') this.rec.resume(); return; }
     this.stop();
     const mimeType = recordingMime();
-    this.rec = new MediaRecorder(new MediaStream([track]), { mimeType, audioBitsPerSecond: 32_000 });
-    this.segment = segment; this.seq = 0; this.last = performance.now();
-    this.rec.addEventListener('dataavailable', (e) => {
+    const rec = new MediaRecorder(new MediaStream([track]), { mimeType, audioBitsPerSecond: 32_000 });
+    // Each recorder numbers its own pieces, so a late last piece keeps the segment it was recorded in.
+    let seq = 0;
+    let last = performance.now();
+    rec.addEventListener('dataavailable', (e) => {
       if (!e.data.size) return;
       const now = performance.now();
-      const p: AudioPiece = { data: e.data, segment: this.segment, seq: this.seq++, durationMs: Math.max(0, now - this.last), mimeType };
-      this.last = now;
+      const p: AudioPiece = { data: e.data, segment, seq: seq++, durationMs: Math.max(0, now - last), mimeType };
+      last = now;
       this.queue = this.queue.then(() => this.send(p));
     });
-    this.rec.addEventListener('error', (e) => mlog.error('notes recorder failed', { err: e.error }));
-    this.rec.start(PIECE_MS);
-    mlog.info('notes recorder started', { mimeType, segment: this.segment });
+    rec.addEventListener('resume', () => { last = performance.now(); });
+    rec.addEventListener('error', (e) => mlog.error('notes recorder failed', { err: e.error }));
+    rec.start(PIECE_MS);
+    this.rec = rec;
+    this.segment = segment;
+    mlog.info('notes recorder started', { mimeType, segment });
   }
   pause() { if (this.rec?.state === 'recording') { this.rec.requestData(); this.rec.pause(); } }
-  stop() { if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); this.rec = null; }
-  /** Waits until every recorded piece has been uploaded. */
-  async flush(): Promise<void> { this.stop(); await new Promise((r) => setTimeout(r, 50)); await this.queue; }
+  stop() { void this.finish(); }
+  /** Stops and waits until every recorded piece has been uploaded. */
+  async flush(): Promise<void> { await this.finish(); await this.queue; }
+  /** Resolves once the recorder has handed over its last piece. */
+  private finish(): Promise<void> {
+    const rec = this.rec;
+    this.rec = null;
+    if (!rec || rec.state === 'inactive') return Promise.resolve();
+    return new Promise((resolve) => { rec.addEventListener('stop', () => resolve(), { once: true }); rec.stop(); });
+  }
   private async send(p: AudioPiece) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try { await this.upload(p); mlog.debug('audio piece uploaded', { segment: p.segment, seq: p.seq, bytes: p.data.size, attempt }); return; } catch (e) {

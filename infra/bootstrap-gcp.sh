@@ -108,23 +108,27 @@ fi
 unset DB_PASSWORD DB_URL NORMALIZED_DB_URL ALCOVE_DB_PASSWORD
 
 echo "› Secrets (values you add once)"
-for s in alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
+for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
   ensure_secret "$s"
 done
-KSERVICE_VERSION="$(latest_secret_version alcove-kservice)"
-if [[ -z "$KSERVICE_VERSION" ]]; then
-  openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' | gcp secrets versions add alcove-kservice --data-file=-
-elif [[ "$(gcp secrets versions describe "$KSERVICE_VERSION" --secret=alcove-kservice --format='value(state)')" != ENABLED ]]; then
-  echo 'The latest service-key version is not enabled. Restore that version explicitly; no service key was changed.' >&2
-  exit 1
-fi
+# The two server keys are generated here once and never rotated by this script: KMASTER wraps every
+# account's root key, KSERVICE seals billing state. Losing KMASTER makes every account unreadable.
+for key in alcove-kmaster alcove-kservice; do
+  KEY_VERSION="$(latest_secret_version "$key")"
+  if [[ -z "$KEY_VERSION" ]]; then
+    openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' | gcp secrets versions add "$key" --data-file=-
+  elif [[ "$(gcp secrets versions describe "$KEY_VERSION" --secret="$key" --format='value(state)')" != ENABLED ]]; then
+    echo "The latest $key version is not enabled. Restore that version explicitly; no key was changed." >&2
+    exit 1
+  fi
+done
 
 echo "› Service accounts"
 gcp iam service-accounts describe "alcove-api@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-api --display-name "Alcove API runtime"
 gcp iam service-accounts describe "alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-deploy --display-name "Alcove GitHub deploys"
 RUNTIME="alcove-api@$PROJECT_ID.iam.gserviceaccount.com"; DEPLOY="alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME" --role roles/cloudsql.client --condition None >/dev/null
-for s in alcove-database-url alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
+for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
   gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
 done
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.admin --condition None >/dev/null

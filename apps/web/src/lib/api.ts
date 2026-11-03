@@ -6,18 +6,9 @@ import type { AlcoveApi } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { installGlobalLogging, log, setLogReporter } from './log';
 
-function deviceName(): string {
-  if (typeof navigator === 'undefined') return 'This device';
-  const ua = navigator.userAgent;
-  const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
-  const os = /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Linux/.test(ua) ? 'Linux' : 'device';
-  return `${browser} on ${os}`;
-}
-
 const apiLog = log.child({ component: 'api' });
 export const api: AlcoveApi = createHttpApi({
   baseUrl: import.meta.env.VITE_ALCOVE_API_URL ?? '/api',
-  deviceName,
   onEvent: (e) => apiLog.at(e.level, e.msg, e.context)
 });
 setLogReporter((entries) => api.diagnostics.report(entries));

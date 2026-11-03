@@ -1,22 +1,25 @@
-import {
-  MeetingNotesSettingSchema, MeetingStatusSchema, NotesAudienceSchema, RsvpSchema, firstName,
-  type CallLink, type Meeting, type MeetingInput, type MeetingNotesSetting, type Patch
-} from '@alcove/api';
+/*
+ * Meetings: scheduled calls, and calls that start now. The organizer invites people by email and
+ * decides when scheduling whether the call has notes; everyone invited gets them.
+ */
+import { MeetingStatusSchema, NotesSettingSchema, firstName, type InstantCallInput, type Meeting, type MeetingInput, type Patch } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
-import { b64u, random } from '../crypto';
+import { random } from '../crypto';
 import { exec, tx, type Db } from '../db';
-import { ConflictError, ValidationError, notFound } from '../errors';
+import { ConflictError, ValidationError } from '../errors';
+import { log } from '../log';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
-import { log } from '../log';
+import { personOf } from './portraits';
 
 const mlog = log.child({ component: 'meetings' });
 
 export const MeetingManifest = z.object({
   title: z.string(), startsAt: z.string(), endsAt: z.string(),
-  guests: z.array(z.object({ email: z.string(), rsvp: RsvpSchema })),
-  notes: MeetingNotesSettingSchema, audience: NotesAudienceSchema, code: z.string(), status: MeetingStatusSchema,
+  /** Email addresses of everyone invited besides the organizer. */
+  guests: z.array(z.string()),
+  notes: NotesSettingSchema, code: z.string(), status: MeetingStatusSchema,
   duration: z.number().optional(), noteId: z.string().optional()
 });
 export type MeetingManifest = z.infer<typeof MeetingManifest>;
@@ -28,19 +31,28 @@ function makeCode(): string {
   return `${ch(0)}${ch(1)}${ch(2)}-${ch(3)}${ch(4)}${ch(5)}${ch(6)}-${ch(7)}${ch(8)}${ch(9)}`;
 }
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Lower-cased, unique, without the organizer, and every one a real address. */
+function cleanGuests(emails: string[], organizerEmail: string): string[] {
+  const out = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))].filter((e) => e !== organizerEmail.toLowerCase());
+  const bad = out.filter((e) => !EMAIL.test(e));
+  if (bad.length) throw new ValidationError('Invite people by their full email address.', { context: { invalid: bad.length } });
+  if (out.length > 100) throw new ValidationError('A call can have at most 100 people invited.', { context: { guests: out.length } });
+  return out;
+}
+
 async function toMeeting(o: Owner, m: Loaded<MeetingManifest>): Promise<Meeting> {
-  const host = await me(o);
   const { guests, duration, noteId, ...rest } = m.manifest;
   return {
-    id: m.itemId, ...rest, host, isHost: true, guests: guests.map((g) => ({ email: g.email, rsvp: g.rsvp })),
+    id: m.itemId, ...rest, organizer: await me(o), isOrganizer: true, guests: guests.map((e) => personOf(e)),
     ...(duration !== undefined ? { duration } : {}), ...(noteId !== undefined ? { noteId } : {})
   };
 }
-const all = (o: Owner, db: Db = o.pool) => listItems(o, db, 'meeting', MeetingManifest);
+export const all = (o: Owner, db: Db = o.pool) => listItems(o, db, 'meeting', MeetingManifest);
 
 export async function upcoming(o: Owner): Promise<Meeting[]> {
   const cutoff = Date.now() - 60 * 60_000;
-  const ms = (await all(o)).filter((m) => (m.manifest.status === 'scheduled' || m.manifest.status === 'live') && new Date(m.manifest.endsAt).getTime() > cutoff);
+  const ms = (await all(o)).filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
   ms.sort((a, b) => a.manifest.startsAt.localeCompare(b.manifest.startsAt));
   return Promise.all(ms.map((m) => toMeeting(o, m)));
 }
@@ -51,7 +63,7 @@ export async function past(o: Owner): Promise<Meeting[]> {
 }
 export async function get(o: Owner, id: string): Promise<Meeting> { return toMeeting(o, await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting')); }
 export async function findByCode(o: Owner, code: string, db: Db = o.pool): Promise<Loaded<MeetingManifest> | undefined> {
-  return (await all(o, db)).find((m) => m.manifest.code === code && m.manifest.status !== 'cancelled');
+  return (await all(o, db)).find((m) => m.manifest.code === code);
 }
 export async function byCode(o: Owner, code: string): Promise<Meeting | null> {
   const m = await findByCode(o, code);
@@ -63,11 +75,12 @@ function validTimes(startsAt: string, minutes: number) {
   if (Number.isNaN(start.getTime()) || minutes < 5 || minutes > 600) throw new ValidationError('Pick a valid start time and length.', { context: { validStart: !Number.isNaN(start.getTime()), minutes } });
   return { startsAt: start.toISOString(), endsAt: new Date(start.getTime() + minutes * 60_000).toISOString() };
 }
+
 export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
+  const organizer = await me(o);
   const manifest: MeetingManifest = {
     title: input.title.trim() || 'Untitled call', ...validTimes(input.startsAt, input.durationMinutes),
-    guests: [...new Set(input.guests.map((g) => g.trim().toLowerCase()).filter(Boolean))].map((email) => ({ email, rsvp: 'pending' as const })),
-    notes: input.notes, audience: input.audience, code: makeCode(), status: 'scheduled'
+    guests: cleanGuests(input.guests, organizer.email), notes: input.notes, code: makeCode(), status: 'scheduled'
   };
   const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
   mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes });
@@ -83,15 +96,16 @@ export async function updateManifest(o: Owner, db: Db, id: string, fn: (m: Meeti
   return next;
 }
 export async function update(o: Owner, id: string, patch: Patch<MeetingInput>): Promise<Meeting> {
+  const organizer = await me(o);
   await tx(o.pool, (c) => updateManifest(o, c, id, (m) => {
     const minutes = patch.durationMinutes ?? Math.round((new Date(m.endsAt).getTime() - new Date(m.startsAt).getTime()) / 60_000);
     const times = patch.startsAt !== undefined || patch.durationMinutes !== undefined ? validTimes(patch.startsAt ?? m.startsAt, minutes) : {};
-    const guests = patch.guests ? patch.guests.map((e) => e.trim().toLowerCase()).filter(Boolean).map((email) => m.guests.find((g) => g.email === email) ?? { email, rsvp: 'pending' as const }) : m.guests;
-    return { ...m, ...times, guests, title: patch.title?.trim() || m.title, notes: patch.notes ?? m.notes, audience: patch.audience ?? m.audience };
+    return { ...m, ...times, title: patch.title?.trim() || m.title, notes: patch.notes ?? m.notes, guests: patch.guests ? cleanGuests(patch.guests, organizer.email) : m.guests };
   }));
+  mlog.info('meeting updated', { meetingId: id, fields: Object.keys(patch).length });
   return get(o, id);
 }
-export async function setNotes(o: Owner, id: string, notes: MeetingNotesSetting): Promise<Meeting> { return update(o, id, { notes }); }
+
 /** Cancelling deletes the meeting for good: every revision and its calls (with their chat). Notes stay. */
 export async function cancel(o: Owner, id: string): Promise<void> {
   await tx(o.pool, async (c) => {
@@ -104,23 +118,16 @@ export async function cancel(o: Owner, id: string): Promise<void> {
   mlog.info('meeting cancelled', { meetingId: id });
 }
 
-/** A call that starts now: used by "Start a call now" and "Get a link to share". */
-export async function startNow(o: Owner, notes?: MeetingNotesSetting): Promise<{ code: string }> {
-  const prefs = await preferences(o);
-  const name = firstName((await me(o)).name);
+/** A call that starts now: "<first name>'s call" unless it has a title, with the default notes setting unless set. */
+export async function startNow(o: Owner, input: InstantCallInput): Promise<{ code: string }> {
+  const organizer = await me(o);
+  const notes = input.notes ?? (await preferences(o)).notesDefault;
   const start = new Date();
   const manifest: MeetingManifest = {
-    title: `${name}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(), guests: [],
-    notes: notes ?? (prefs.notesDefault === 'always' ? prefs.keep : prefs.notesDefault === 'never' ? 'off' : 'ask'),
-    audience: 'everyone', code: makeCode(), status: 'scheduled'
+    title: input.title?.trim() || `${firstName(organizer.name)}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(),
+    guests: cleanGuests(input.guests ?? [], organizer.email), notes, code: makeCode(), status: 'scheduled'
   };
   const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
-  mlog.info('instant call created', { meetingId: itemId, notes: manifest.notes });
+  mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes });
   return { code: manifest.code };
 }
-export async function createLink(o: Owner, notes: MeetingNotesSetting): Promise<CallLink> {
-  const { code } = await startNow(o, notes);
-  // The fragment will carry the call's end-to-end key once other people can join; browsers never send it to the server.
-  return { code, url: `${o.cfg.WEB_ORIGIN}/join/${code}#k=${b64u(random(16))}`, notes };
-}
-export { notFound };

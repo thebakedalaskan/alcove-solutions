@@ -14,7 +14,7 @@ export type Level = 'debug' | 'info' | 'warn' | 'error';
 type Primitive = string | number | boolean | null;
 export type LogContext = Record<string, unknown>;
 const RANK: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
-const SECRET = /^(secret|deviceSecret|key|root|token|cookie|password|credential|transcript|chat|title|text|body|name|email|guests)$/i;
+const SECRET = /^(secret|key|root|token|cookie|password|credential|transcript|chat|title|text|body|name|email|guests)$/i;
 
 const storedLevel = (): Level | undefined => {
   try {
