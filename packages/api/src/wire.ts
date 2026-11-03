@@ -42,11 +42,19 @@ export const RecordingActionSchema = z.discriminatedUnion('type', [
 ]);
 export type RecordingAction = z.infer<typeof RecordingActionSchema>;
 
-/** Audio pieces travel as raw bytes with their position in these headers. */
-export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', duration: 'x-alcove-duration-ms' } as const;
+/**
+ * Audio pieces and transcript clips travel as raw bytes with their position in these headers: a
+ * piece by its sequence number, a clip by where it starts in its segment.
+ */
+export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms' } as const;
 /** Mutations carry an operation ID so a retried request never applies twice (docs: Network and API contract). */
 export const OPERATION_HEADER = 'x-alcove-operation';
 export const MAX_AUDIO_PIECE_BYTES = 2 * 1024 * 1024;
+/** A transcript clip: at most 30 seconds of 16 kHz mono 16-bit WAV. */
+export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
+export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
+/** Asking about a call: the question travels in the body. */
+export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
 
 /* ---------- logging ---------- */
 /** Every response carries this header; error bodies repeat it as `requestId`. Quote it when reporting a problem. */

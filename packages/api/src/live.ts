@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IDSchema, ISODateSchema, PersonSchema } from './types';
+import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -62,6 +62,8 @@ export const CallStateSchema = z.object({
     recording: RecordingProgressSchema
   }),
   chat: z.array(ChatMessageSchema),
+  /** What's been said while notes were on, transcribed as the call goes: the latest lines, oldest first. */
+  transcript: z.array(TranscriptLineSchema),
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off. */
   isOrganizer: z.boolean()
@@ -75,6 +77,19 @@ export const CallEndResultSchema = z.object({
   duration: z.number()
 });
 export type CallEndResult = z.infer<typeof CallEndResultSchema>;
+
+/**
+ * A few seconds of speech to transcribe while notes are on: 16 kHz mono 16-bit WAV, which the
+ * notes service reads directly. Separate from the encrypted recording, which keeps its own format.
+ */
+export interface TranscriptClip {
+  data: Blob;
+  /** Segment the speech belongs to (see RecordingProgress.segment). */
+  segment: number;
+  /** Where the clip starts within its segment, not counting pauses. */
+  startMs: number;
+  durationMs: number;
+}
 
 /** A piece of recorded audio, as produced by MediaRecorder every few seconds. */
 export interface AudioPiece {
@@ -97,6 +112,8 @@ export interface CallSession extends LiveStore<CallState> {
   setNotes(on: boolean): void;
   /** Encrypts and stores one piece of the notes recording. */
   appendAudio(piece: AudioPiece): Promise<void>;
+  /** Transcribes a few seconds of speech into the live transcript. Only while notes are on. */
+  transcribe(clip: TranscriptClip): Promise<void>;
   dismissNotice(id: string): void;
   leave(): Promise<CallEndResult>;
 }
@@ -109,7 +126,9 @@ export const RoomRecordingStateSchema = z.object({
   /** Seconds recorded, excluding pauses. */
   elapsed: z.number(),
   status: z.enum(['recording', 'paused', 'stopped']),
-  recording: RecordingProgressSchema
+  recording: RecordingProgressSchema,
+  /** What's been said so far, transcribed as the recording goes: the latest lines, oldest first. */
+  transcript: z.array(TranscriptLineSchema)
 });
 export type RoomRecordingState = z.infer<typeof RoomRecordingStateSchema>;
 
@@ -121,6 +140,8 @@ export interface RoomRecording extends LiveStore<RoomRecordingState> {
   pause(): void;
   resume(): void;
   appendAudio(piece: AudioPiece): Promise<void>;
+  /** Transcribes a few seconds of speech into the live transcript. Only while recording. */
+  transcribe(clip: TranscriptClip): Promise<void>;
   /** Stops and hands the audio to the notes service. Resolves with the note being written. */
   stop(): Promise<RecordingStopResult>;
   discard(): Promise<void>;

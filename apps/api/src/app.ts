@@ -1,6 +1,7 @@
 import {
-  AUDIO_HEADERS, CallActionSchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER,
-  PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema, SignInBodySchema, TeamInviteBodySchema
+  AUDIO_HEADERS, AskBodySchema, CallActionSchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
+  SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -25,6 +26,7 @@ import * as meetings from './modules/meetings';
 import * as notes from './modules/notes';
 import * as people from './modules/people';
 import * as recordings from './modules/recordings';
+import type { Clip } from './modules/transcripts';
 
 type Env = { Variables: { owner: Owner; requestId: string } };
 const rlog = log.child({ component: 'http' });
@@ -33,21 +35,29 @@ const clog = log.child({ component: 'client', source: 'browser' });
 const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code');
 const QUIET = new Set(['/health', '/healthz']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
-/** POSTs that read rather than change state, so they don't need a stored receipt. */
-const NO_RECEIPT = new Set(['/v1/notes/search']);
+/**
+ * POSTs that keep no stored receipt: searching and asking only read, and audio pieces and
+ * transcript clips are already idempotent by their place in the recording (and their answers carry
+ * the live transcript, which shouldn't be copied into receipts).
+ */
+const NO_RECEIPT = [/^\/v1\/notes\/search$/, /^\/v1\/notes\/[^/]+\/ask$/, /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/];
+const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 
-/** A small fixed-window limiter for unauthenticated requests, keyed by client address. */
+/**
+ * A small fixed-window limiter: at most `max` hits per key in each window. Unauthenticated requests
+ * are keyed by client address; the ones that cost inference by account.
+ */
 function rateLimit(max: number, windowMs: number) {
   const hits = new Map<string, { n: number; until: number }>();
-  return (c: Context, what = 'request') => {
-    const key = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'direct';
+  return (key: string, what = 'request') => {
     const now = Date.now();
     const h = hits.get(key);
     if (!h || h.until < now) { hits.set(key, { n: 1, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
     if (++h.n > max) throw new UnavailableError('Too many attempts. Wait a minute and try again.', { context: { limit: what, max, windowMs } });
   };
 }
+const clientAddress = (c: Context) => c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'direct';
 const StoredResult = z.object({ status: z.number(), body: z.string() });
 
 export function createApp(d: Deps) {
@@ -60,6 +70,9 @@ export function createApp(d: Deps) {
   const ATTEMPT = secure ? '__Host-alcove_google' : 'alcove_google';
   const backToWelcome = (reason: google.Refusal) => `${d.cfg.WEB_ORIGIN}/welcome?signin=${reason}`;
   const telemetryLimiter = rateLimit(60, 60_000);
+  /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
+  const speechLimiter = rateLimit(120, 60_000);
+  const askLimiter = rateLimit(20, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -112,7 +125,7 @@ export function createApp(d: Deps) {
 
   /* The browser's own warnings and errors, so one request ID tells the whole story. Public and rate limited. */
   app.post('/v1/telemetry', async (c) => {
-    telemetryLimiter(c, 'telemetry');
+    telemetryLimiter(clientAddress(c), 'telemetry');
     const { entries } = await body(c, ClientLogBatchSchema);
     for (const en of entries) clog.at(en.level, en.msg, { ...en.context, clientAt: en.at });
     return c.json({ received: entries.length });
@@ -130,7 +143,7 @@ export function createApp(d: Deps) {
     return c.json(s ? await account.sessionFor(await openOwner(d, s.ownerId, s)) : null);
   });
   app.post('/v1/auth/sign-in', async (c) => {
-    limiter(c, 'sign-in');
+    limiter(clientAddress(c), 'sign-in');
     const r = await account.demoSignIn(d, await body(c, SignInBodySchema));
     startSession(c, r.sessionId);
     return c.json({ session: await account.sessionFor(r.owner), isNew: r.isNew });
@@ -138,7 +151,7 @@ export function createApp(d: Deps) {
 
   /* Google: away to Google and back. Both ends are top-level navigations, so both answer with redirects. */
   const allowed = (c: Context) => {
-    try { limiter(c, 'sign-in'); return true; } catch { rlog.info('google sign-in refused', { reason: 'busy' }); return false; }
+    try { limiter(clientAddress(c), 'sign-in'); return true; } catch { rlog.info('google sign-in refused', { reason: 'busy' }); return false; }
   };
   app.get('/v1/auth/google', async (c) => {
     if (!allowed(c)) return c.redirect(backToWelcome('busy'), 302);
@@ -197,7 +210,7 @@ export function createApp(d: Deps) {
   /* Mutations are idempotent by operation ID (docs: Network and API contract). */
   app.use('/v1/*', async (c, next) => {
     const opId = c.req.header(OPERATION_HEADER);
-    if (!opId || !MUTATING.has(c.req.method) || NO_RECEIPT.has(c.req.path)) return next();
+    if (!opId || !MUTATING.has(c.req.method) || !keepsReceipt(c.req.path)) return next();
     if (!/^[A-Za-z0-9_-]{22}$/.test(opId)) throw new ValidationError('Malformed operation ID.');
     const o = c.get('owner');
     const reqBytes = new Uint8Array(await c.req.raw.clone().arrayBuffer());
@@ -254,12 +267,20 @@ export function createApp(d: Deps) {
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('owner'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/actions', async (c) => c.json(await calls.act(c.get('owner'), c.req.param('id'), await body(c, CallActionSchema))));
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(c.get('owner'), c.req.param('id'), await piece(c))));
+  app.post('/v1/live/calls/:id/transcribe', async (c) => {
+    speechLimiter(c.get('owner').ownerId, 'transcribe');
+    return c.json(await calls.transcribe(c.get('owner'), c.req.param('id'), await clip(c)));
+  });
   app.post('/v1/live/calls/:id/leave', async (c) => c.json(await calls.leave(c.get('owner'), c.req.param('id'))));
 
   /* room recordings */
   app.post('/v1/recordings', async (c) => c.json(await recordings.start(c.get('owner'), (await body(c, z.object({ title: z.string().max(160).optional() }))).title ?? 'Untitled recording')));
   app.post('/v1/recordings/:id/actions', async (c) => c.json(await recordings.act(c.get('owner'), c.req.param('id'), await body(c, RecordingActionSchema))));
   app.post('/v1/recordings/:id/audio', async (c) => c.json(await recordings.audio(c.get('owner'), c.req.param('id'), await piece(c))));
+  app.post('/v1/recordings/:id/transcribe', async (c) => {
+    speechLimiter(c.get('owner').ownerId, 'transcribe');
+    return c.json(await recordings.transcribe(c.get('owner'), c.req.param('id'), await clip(c)));
+  });
   app.post('/v1/recordings/:id/stop', async (c) => c.json(await recordings.stop(c.get('owner'), c.req.param('id'))));
   app.delete('/v1/recordings/:id', async (c) => { await recordings.discard(c.get('owner'), c.req.param('id')); return c.json({ discarded: true }); });
 
@@ -300,7 +321,10 @@ export function createApp(d: Deps) {
     await notes.setActionDone(c.get('owner'), c.req.param('id'), c.req.param('actionId'), (await body(c, z.object({ done: z.boolean() }))).done);
     return c.json({ ok: true });
   });
-  app.post('/v1/notes/:id/ask', () => { throw new UnavailableError('Asking about notes needs the notes service, which isn’t connected yet.'); });
+  app.post('/v1/notes/:id/ask', async (c) => {
+    askLimiter(c.get('owner').ownerId, 'ask');
+    return c.json(await notes.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
+  });
   app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), (await body(c, ShareBodySchema)).emails)));
   app.delete('/v1/notes/:id', async (c) => { await notes.remove(c.get('owner'), c.req.param('id')); return c.json({ deleted: true }); });
 
@@ -315,7 +339,30 @@ async function piece(c: Context): Promise<audioMod.Piece> {
   const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
   const mimeType = c.req.header('content-type') ?? '';
   if (!/^audio\/(webm|mp4|ogg)/.test(mimeType)) throw new ValidationError('Audio must be WebM, MP4 or Ogg.');
+  if (Number(c.req.header('content-length') ?? 0) > MAX_AUDIO_PIECE_BYTES) throw new ValidationError('That piece of audio is empty or too large.');
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_AUDIO_PIECE_BYTES) throw new ValidationError('That piece of audio is empty or too large.');
   return { segment: num(AUDIO_HEADERS.segment), seq: num(AUDIO_HEADERS.seq), durationMs: num(AUDIO_HEADERS.duration), mimeType, bytes };
+}
+
+/** True for the WAV the live transcript takes: uncompressed 16-bit PCM, one channel, 16 kHz. */
+function isSpeechWav(b: Uint8Array): boolean {
+  if (b.length < 44) return false;
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const tag = (at: number) => String.fromCharCode(b[at] ?? 0, b[at + 1] ?? 0, b[at + 2] ?? 0, b[at + 3] ?? 0);
+  return tag(0) === 'RIFF' && tag(8) === 'WAVE' && tag(12) === 'fmt ' && v.getUint16(20, true) === 1 && v.getUint16(22, true) === 1 && v.getUint32(24, true) === 16_000 && v.getUint16(34, true) === 16;
+}
+
+/** Reads a transcript clip: 16 kHz mono WAV, and where it starts in its segment. */
+async function clip(c: Context): Promise<Clip> {
+  const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
+  if (!/^audio\/(?:wav|x-wav|wave)\b/.test((c.req.header('content-type') ?? '').toLowerCase())) throw new ValidationError('Speech for the transcript must be WAV audio.');
+  const declared = Number(c.req.header('content-length') ?? 0);
+  if (declared > MAX_TRANSCRIPT_CLIP_BYTES) throw new ValidationError('That clip of speech is too long.', { context: { bytes: declared } });
+  const wav = new Uint8Array(await c.req.arrayBuffer());
+  if (wav.length <= 44 || wav.length > MAX_TRANSCRIPT_CLIP_BYTES) throw new ValidationError('That clip of speech is empty or too long.', { context: { bytes: wav.length } });
+  if (!isSpeechWav(wav)) throw new ValidationError('Speech for the transcript must be 16 kHz mono 16-bit WAV.', { context: { bytes: wav.length } });
+  const durationMs = num(AUDIO_HEADERS.duration);
+  if (durationMs > MAX_TRANSCRIPT_CLIP_MS) throw new ValidationError('That clip of speech is too long.', { context: { durationMs } });
+  return { segment: num(AUDIO_HEADERS.segment), startMs: num(AUDIO_HEADERS.start), durationMs, wav };
 }

@@ -3,13 +3,15 @@
  *  - removes sessions that have ended;
  *  - purges operation receipts older than 24 hours (they may hold copies of responses);
  *  - retries failed object deletions;
- *  - removes objects older than 24 hours that nothing references (writes whose SQL commit failed).
+ *  - removes objects older than 24 hours that nothing references (writes whose SQL commit failed);
+ *  - writes notes still waiting (after a restart, or once a retry is due).
  */
 import { z } from 'zod';
 import type { Deps } from './context';
 import { exec, rows } from './db';
 import { errorMessage } from '@alcove/api';
 import { log } from './log';
+import { work } from './modules/writer';
 import { sweepSessions } from './sessions';
 
 const mlog = log.child({ component: 'maintenance' });
@@ -42,5 +44,6 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
       await d.objects.delete(obj.id).then(() => { orphans++; }, (e: unknown) => mlog.warn('orphan delete failed', { objectId: obj.id, err: e }));
     }
   }
-  return { sessions, receipts, retried, orphans };
+  const notes = await work(d);
+  return { sessions, receipts, retried, orphans, notes };
 }

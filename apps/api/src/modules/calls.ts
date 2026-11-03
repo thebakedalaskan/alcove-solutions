@@ -10,6 +10,8 @@ import { MeetingManifest, findByCode, updateManifest } from './meetings';
 import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording } from './notes';
+import * as transcripts from './transcripts';
+import * as writer from './writer';
 import { log } from '../log';
 
 const clog = log.child({ component: 'calls' });
@@ -41,6 +43,7 @@ async function view(o: Owner, db: Db, callId: string): Promise<CallState> {
   const meeting = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const person = await me(o);
   const end = row.ended_at ?? new Date();
+  const heard = s.notes.noteId && row.state === 'live' ? (await transcripts.lines(o, db, s.notes.noteId)).slice(-transcripts.LIVE_LINES) : [];
   return {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' : 'ended',
@@ -48,6 +51,7 @@ async function view(o: Owner, db: Db, callId: string): Promise<CallState> {
     sharing: s.sharing,
     notes: { status: s.notes.status, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
     chat: s.chat.map((m) => ({ id: m.id, from: person, isMe: true, text: m.text, at: m.at })),
+    transcript: transcripts.spoken(heard, { name: person.name, person }),
     notices: s.notices, isOrganizer: true
   };
 }
@@ -125,8 +129,19 @@ export async function audio(o: Owner, callId: string, piece: Piece): Promise<Cal
   return view(o, o.pool, callId);
 }
 
+/** Transcribes a few seconds of speech into the call's live transcript, while notes are on. */
+export async function transcribe(o: Owner, callId: string, clip: transcripts.Clip): Promise<CallState> {
+  const { row, state } = await load(o, o.pool, callId);
+  const ctx = { callId, segment: clip.segment, startMs: clip.startMs, notes: state.notes.status, currentSegment: state.notes.segment };
+  if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+  if (state.notes.status !== 'on' || !state.notes.recordingId || !state.notes.noteId) throw new ConflictError('Notes aren’t on right now.', { context: ctx });
+  if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
+  await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip);
+  return view(o, o.pool, callId);
+}
+
 export async function leave(o: Owner, callId: string): Promise<CallEndResult> {
-  return tx(o.pool, async (c) => {
+  const end = await tx(o.pool, async (c) => {
     const { row, state: s } = await load(o, c, callId, true);
     const duration = Math.max(1, Math.round((Date.now() - row.started_at.getTime()) / 1000));
     if (row.state === 'live') {
@@ -138,5 +153,7 @@ export async function leave(o: Owner, callId: string): Promise<CallEndResult> {
     clog.info(row.state === 'live' ? 'call ended' : 'left an ended call', { callId, meetingId: row.meeting_item_id, duration, noteId: s.notes.noteId });
     return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
   });
+  if (end.pendingNoteId) writer.kick(o, o.ownerId);
+  return end;
 }
 export const state = (o: Owner, callId: string) => view(o, o.pool, callId);

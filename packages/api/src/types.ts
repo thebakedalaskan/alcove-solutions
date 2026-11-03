@@ -169,9 +169,10 @@ export type Speaker = z.infer<typeof SpeakerSchema>;
 
 export const TranscriptLineSchema = z.object({
   id: IDSchema,
-  /** Seconds from the start of the recording. */
+  /** Seconds into the recording, counting every segment before this one (as the player does). */
   at: z.number(),
-  speaker: SpeakerSchema,
+  /** Who spoke. Absent when nobody can tell, as in a room recording. */
+  speaker: SpeakerSchema.optional(),
   text: z.string()
 });
 export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
@@ -179,7 +180,14 @@ export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
 export const ScreenCaptureSchema = z.object({ at: z.number(), by: z.string(), title: z.string(), text: z.string() });
 export type ScreenCapture = z.infer<typeof ScreenCaptureSchema>;
 
-export const ActionItemSchema = z.object({ id: IDSchema, text: z.string(), owner: SpeakerSchema, due: z.string().optional(), done: z.boolean() });
+export const ActionItemSchema = z.object({
+  id: IDSchema, text: z.string(),
+  /** Who said they'd do it. Absent when the call didn't say. */
+  owner: SpeakerSchema.optional(),
+  /** When it's due, as said in the call ("Wed", "end of March"). */
+  due: z.string().optional(),
+  done: z.boolean()
+});
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
 export const ChapterSchema = z.object({ at: z.number(), title: z.string(), summary: z.string() });
@@ -220,7 +228,7 @@ export const NoteSchema = NoteSummarySchema.extend({
   actions: z.array(ActionItemSchema),
   chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema),
-  /** Null until the notes are written. */
+  /** What was said while notes were on. Null while the recording is still going. */
   transcript: z.array(TranscriptLineSchema).nullable(),
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */

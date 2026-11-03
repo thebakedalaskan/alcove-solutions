@@ -7,7 +7,8 @@ import {
   AlcoveApiError, AnswerPartSchema, AUDIO_HEADERS, CalendarSchema, CallEndResultSchema, CallStateSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
-  type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState
+  type AlcoveApi, type AudioPiece, type CallAction, type CallSession, type CallState, type RecordingAction, type RoomRecording, type RoomRecordingState,
+  type TranscriptClip
 } from '@alcove/api';
 import { z } from 'zod';
 
@@ -95,6 +96,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   const audio = (path: string, piece: AudioPiece) => send('POST', path, piece.data, {
     'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
+  /** Speech for the live transcript: WAV bytes, placed by where the clip starts in its segment. */
+  const clip = (path: string, c: TranscriptClip) => send('POST', path, c.data, {
+    'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
+  }).then((r) => r.json());
 
   return {
     auth: {
@@ -132,6 +137,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       join: async (code, opts) => new HttpCall(await req(CallStateSchema, 'POST', `/calls/${encodeURIComponent(code)}/join`, opts), {
         act: (id, a) => req(CallStateSchema, 'POST', `/live/calls/${id}/actions`, a),
         audio: async (id, p) => parse(CallStateSchema, await audio(`/live/calls/${id}/audio`, p), 'call state'),
+        transcribe: async (id, c) => parse(CallStateSchema, await clip(`/live/calls/${id}/transcribe`, c), 'call state'),
         leave: (id) => req(CallEndResultSchema, 'POST', `/live/calls/${id}/leave`, {})
       })
     },
@@ -139,6 +145,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       start: async (title) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', { title }), {
         act: (id, a) => req(RoomRecordingStateSchema, 'POST', `/recordings/${id}/actions`, a),
         audio: async (id, p) => parse(RoomRecordingStateSchema, await audio(`/recordings/${id}/audio`, p), 'recording state'),
+        transcribe: async (id, c) => parse(RoomRecordingStateSchema, await clip(`/recordings/${id}/transcribe`, c), 'recording state'),
         stop: (id) => req(RecordingStopResultSchema, 'POST', `/recordings/${id}/stop`, {}),
         discard: async (id) => { await req(z.unknown(), 'DELETE', `/recordings/${id}`); }
       })
@@ -175,6 +182,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
 interface CallTransport {
   act(id: string, a: CallAction): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
+  transcribe(id: string, c: TranscriptClip): Promise<CallState>;
   leave(id: string): Promise<z.infer<typeof CallEndResultSchema>>;
 }
 class Live<S extends { elapsed: number }> {
@@ -212,6 +220,8 @@ class HttpCall extends Live<CallState> implements CallSession {
   setNotes = (on: boolean) => this.act({ type: 'notes', on });
   dismissNotice = (id: string) => this.act({ type: 'dismiss', id }, (s) => ({ ...s, notices: s.notices.filter((n) => n.id !== id) }));
   appendAudio = async (p: AudioPiece) => { this.apply(await this.t.audio(this.state.callId, p)); };
+  /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
+  transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.callId, c); this.set({ ...this.state, transcript: s.transcript }); };
   leave = async () => {
     this.stopTicking();
     const r = await this.t.leave(this.state.callId);
@@ -223,6 +233,7 @@ class HttpCall extends Live<CallState> implements CallSession {
 interface RecordingTransport {
   act(id: string, a: RecordingAction): Promise<RoomRecordingState>;
   audio(id: string, p: AudioPiece): Promise<RoomRecordingState>;
+  transcribe(id: string, c: TranscriptClip): Promise<RoomRecordingState>;
   stop(id: string): Promise<z.infer<typeof RecordingStopResultSchema>>;
   discard(id: string): Promise<void>;
 }
@@ -236,6 +247,7 @@ class HttpRecording extends Live<RoomRecordingState> implements RoomRecording {
   pause = () => this.act({ type: 'pause' }, (s) => ({ ...s, status: 'paused' }));
   resume = () => this.act({ type: 'resume' }, (s) => ({ ...s, status: 'recording' }));
   appendAudio = async (p: AudioPiece) => { const s = await this.t.audio(this.state.id, p); this.set({ ...this.state, recording: s.recording }); };
+  transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.id, c); this.set({ ...this.state, transcript: s.transcript }); };
   stop = async () => { this.stopTicking(); this.set({ ...this.state, status: 'stopped' }); return this.t.stop(this.state.id); };
   discard = async () => { this.stopTicking(); this.set({ ...this.state, status: 'stopped' }); await this.t.discard(this.state.id); };
 }

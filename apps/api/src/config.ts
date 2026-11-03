@@ -23,8 +23,13 @@ const EnvSchema = z.object({
   KMASTER: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KMASTER must be 32 bytes, base64url'),
   /** Seals billing state. Separate from KMASTER: billing never needs owner keys. */
   KSERVICE: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'KSERVICE must be 32 bytes, base64url'),
-  NEAR_AI_API_KEY: z.string().optional(),
+  /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
+  NEAR_AI_API_KEY: z.string().min(1).optional(),
   NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),
+  /** Speech to text for the live transcript. */
+  NEAR_AI_STT_MODEL: z.string().min(1).default('openai/whisper-large-v3'),
+  /** Writes the notes from a transcript and answers questions about them. */
+  NEAR_AI_NOTES_MODEL: z.string().min(1).default('z-ai/glm-5.3-flash'),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */

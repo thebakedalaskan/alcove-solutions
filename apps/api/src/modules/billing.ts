@@ -23,6 +23,14 @@ async function read(d: Deps, ownerId: string) {
   if (!r) throw new NotFoundError('No billing account.');
   return openJson(key(d), header(ownerId), r.state_ciphertext, State);
 }
+/** Takes credits for written notes, in the caller's transaction, with the account row locked. */
+export async function charge(d: Deps, db: Db, ownerId: string, c: { amount: number; label: string }): Promise<void> {
+  const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+  if (!r) throw new NotFoundError('No billing account.', { context: { ownerId } });
+  const s = openJson(key(d), header(ownerId), r.state_ciphertext, State);
+  const next = { balance: s.balance - c.amount, history: [...s.history, { id: id128(), at: new Date().toISOString(), label: c.label, amount: -c.amount }] };
+  await exec(db, 'UPDATE billing_accounts SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealJson(key(d), header(ownerId), toJson(next))]);
+}
 export async function balance(d: Deps, ownerId: string): Promise<CreditBalance> {
   const s = await read(d, ownerId);
   return { balance: s.balance, granted: s.history.reduce((sum, e) => sum + Math.max(0, e.amount), 0), perMinute: PER_MINUTE };
