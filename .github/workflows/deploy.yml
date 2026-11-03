@@ -15,56 +15,106 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # Workload Identity Federation: no long-lived GCP keys in GitHub.
 
 jobs:
+  prepare:
+    name: Verify deployment commit
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.commit.outputs.current }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Skip commits superseded on main
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          CURRENT_SHA="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPOSITORY/git/ref/heads/main" | jq -er '.object.sha')"
+          printf 'sha=%s\n' "$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+          if [ "$DEPLOY_SHA" = "$CURRENT_SHA" ]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+            echo 'This commit has been superseded on main; its deployment is skipped.'
+          fi
+
   api:
     name: API → Cloud Run
-    if: vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    needs: prepare
+    if: needs.prepare.outputs.current == 'true'
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no long-lived GCP keys in GitHub.
     env:
-      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/alcove/api:${{ github.event.workflow_run.head_sha || github.sha }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/alcove/api:${{ needs.prepare.outputs.sha }}
+      RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+      CLOUDSQL_INSTANCE: ${{ vars.GCP_CLOUDSQL_INSTANCE }}
+      OBJECTS_ENDPOINT: ${{ vars.OBJECTS_ENDPOINT }}
+      OBJECTS_BUCKET: ${{ vars.OBJECTS_BUCKET }}
+      WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
+      RP_ID: ${{ vars.RP_ID }}
+      NEAR_AI_ENABLED: ${{ vars.NEAR_AI_ENABLED }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.event.workflow_run.head_sha || github.sha }}' }
+        with: { ref: '${{ needs.prepare.outputs.sha }}', persist-credentials: false }
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v2
-      - run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+      - run: gcloud --project="$GCP_PROJECT_ID" auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
       - name: Build and push the image
         run: docker build -f apps/api/Dockerfile -t "$IMAGE" . && docker push "$IMAGE"
       - name: Run database migrations
         run: |
-          gcloud run jobs deploy alcove-migrate --image "$IMAGE" --region ${{ vars.GCP_REGION }} \
+          gcloud --project="$GCP_PROJECT_ID" run jobs deploy alcove-migrate --image "$IMAGE" --region "$GCP_REGION" \
             --command node --args dist/migrate-cli.js \
-            --service-account ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }} \
-            --set-cloudsql-instances ${{ vars.GCP_CLOUDSQL_INSTANCE }} \
-            --set-secrets DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest \
-            --set-env-vars OBJECTS_ENDPOINT=${{ vars.OBJECTS_ENDPOINT }},OBJECTS_BUCKET=${{ vars.OBJECTS_BUCKET }},WEB_ORIGIN=${{ vars.WEB_ORIGIN }},RP_ID=${{ vars.RP_ID }},LOG_FORMAT=json,LOG_LEVEL=info \
-            --set-secrets OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest
-          gcloud run jobs execute alcove-migrate --region ${{ vars.GCP_REGION }} --wait
+            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
+            --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
+            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,RP_ID=$RP_ID,LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-secrets DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest --quiet
+          gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
       - name: Deploy the API
         run: |
-          gcloud run deploy alcove-api --image "$IMAGE" --region ${{ vars.GCP_REGION }} \
-            --service-account ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }} \
-            --set-cloudsql-instances ${{ vars.GCP_CLOUDSQL_INSTANCE }} \
-            --allow-unauthenticated --min-instances 1 --max-instances 1 --session-affinity \
-            --set-env-vars OBJECTS_ENDPOINT=${{ vars.OBJECTS_ENDPOINT }},OBJECTS_BUCKET=${{ vars.OBJECTS_BUCKET }},WEB_ORIGIN=${{ vars.WEB_ORIGIN }},RP_ID=${{ vars.RP_ID }},NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,LOG_FORMAT=json,LOG_LEVEL=info \
-            --set-secrets DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest
+          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest'
+          if [ "$NEAR_AI_ENABLED" = true ]; then
+            SECRET_BINDINGS="$SECRET_BINDINGS,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest"
+          fi
+          gcloud --project="$GCP_PROJECT_ID" run deploy alcove-api --image "$IMAGE" --region "$GCP_REGION" \
+            --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
+            --allow-unauthenticated --min 1 --max 1 --session-affinity \
+            --execution-environment gen2 --port 8080 --timeout 300s --cpu 1 --memory 512Mi --no-cpu-throttling \
+            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,RP_ID=$RP_ID,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-secrets "$SECRET_BINDINGS" --quiet
       - name: Health check
-        run: curl -fsS "${{ vars.API_ORIGIN }}/healthz"
+        run: |
+          SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"
+          test -n "$SERVICE_URL"
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 30 "$SERVICE_URL/healthz"
 
   web:
     name: Web → Cloudflare Pages
-    needs: api
+    needs: [prepare, api]
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ github.event.workflow_run.head_sha || github.sha }}' }
+        with: { ref: '${{ needs.prepare.outputs.sha }}', persist-credentials: false }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
@@ -80,5 +130,5 @@ jobs:
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy apps/web/dist/client --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main
