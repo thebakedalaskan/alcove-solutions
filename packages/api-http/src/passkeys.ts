@@ -13,6 +13,9 @@ export interface PasskeyDevice {
 export interface SecretStore {
   get(credentialId: string): Uint8Array | null;
   put(credentialId: string, secret: Uint8Array): void;
+  /** Alcove passkeys created in this browser, so unlock offers only those (not other apps' passkeys). */
+  known(): string[];
+  remember(credentialId: string): void;
 }
 
 export const b64u = (b: Uint8Array): string => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -82,8 +85,14 @@ const isRequest = (o: Record<string, unknown>): o is Record<string, unknown> & P
 /** Device secrets in localStorage, for passkeys whose authenticator has no PRF. */
 export function localSecrets(): SecretStore {
   const k = (id: string) => `alcove-device-secret:${id}`;
+  const KNOWN = 'alcove-passkeys';
+  const known = (): string[] => {
+    try { const v: unknown = JSON.parse(localStorage.getItem(KNOWN) ?? '[]'); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []; } catch { return []; }
+  };
   return {
     get(id) { try { const v = localStorage.getItem(k(id)); return v ? unb64u(v) : null; } catch { return null; } },
-    put(id, s) { try { localStorage.setItem(k(id), b64u(s)); } catch { /* storage unavailable */ } }
+    put(id, s) { try { localStorage.setItem(k(id), b64u(s)); } catch { /* storage unavailable */ } },
+    known,
+    remember(id) { try { const ids = known(); if (!ids.includes(id)) localStorage.setItem(KNOWN, JSON.stringify([...ids, id])); } catch { /* storage unavailable */ } }
   };
 }

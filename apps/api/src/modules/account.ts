@@ -48,7 +48,7 @@ export const ownerOf = (d: Deps, s: Owner['session']): Owner => ({ ...d, session
 /** Picks the secret this passkey was registered with. The client can't change a passkey's mode. */
 function secretFor(usesPrf: boolean, body: { prf?: string | undefined; deviceSecret?: string | undefined }): Uint8Array {
   const s = usesPrf ? body.prf : body.deviceSecret;
-  if (!s) throw new ApiError('key-unavailable', usesPrf ? 'This passkey didn’t return its key. Use a browser that supports passkey PRF.' : 'This passkey’s key is kept on the device where it was created. Unlock there, or use another passkey.');
+  if (!s) throw new ApiError('key-unavailable', usesPrf ? 'This browser didn’t return your passkey’s key (PRF). Unlock in Chrome, Edge or Safari with the same passkey provider you used to create it.' : 'This passkey keeps its key in the browser where it was created. Unlock there, or use another passkey.');
   return unb64u(s, 32);
 }
 function newSecret(body: { prf?: string | undefined; deviceSecret?: string | undefined }): { secret: Uint8Array; usesPrf: boolean } {
@@ -114,7 +114,7 @@ const PasskeyRow = z.object({ credential_id: z.string(), owner_id: z.string(), p
 /** Verifies an assertion against a stored passkey and advances its counter. */
 async function verifyAssertion(d: Deps, credential: z.infer<typeof UnlockFinishBodySchema>['credential'], expectedChallenge: string) {
   const pk = await maybeOne(d.pool, PasskeyRow, 'SELECT credential_id, owner_id, public_key, counter, transports, root_envelope, uses_prf FROM passkeys WHERE credential_id = $1', [credential.id]);
-  if (!pk) throw new ApiError('unauthenticated', 'That passkey isn’t registered with Alcove on this server.');
+  if (!pk) throw new ApiError('unauthenticated', 'That passkey doesn’t belong to an Alcove account on this server. It may be for another app, or for an account that no longer exists here. Create a new account instead.');
   const v = await verifyAuthenticationResponse({
     response: assertionJSON(credential), expectedChallenge, expectedOrigin: d.cfg.WEB_ORIGIN, expectedRPID: d.cfg.RP_ID,
     credential: { id: pk.credential_id, publicKey: pk.public_key, counter: pk.counter, transports: asTransports(pk.transports) }, requireUserVerification: true

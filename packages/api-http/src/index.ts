@@ -76,13 +76,15 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
 
-  /** Every secret this browser has for a passkey. The server decides which one the passkey uses. */
+  /**
+   * Every secret this browser has for a passkey, possibly none. The server decides which one the
+   * passkey uses, and it is the one that can say why an unlock failed (unknown passkey, missing key).
+   */
   function secretsFor(credentialId: string, prf: Uint8Array | null): { prf?: string; deviceSecret?: string } {
     const device = secrets.get(credentialId);
     const out: { prf?: string; deviceSecret?: string } = {};
     if (prf && prf.length >= 32) out.prf = b64u(prf.slice(0, 32));
     if (device) out.deviceSecret = b64u(device);
-    if (!out.prf && !out.deviceSecret) throw new AlcoveApiError('key-unavailable', 'This passkey can’t unlock Alcove on this device. Use the device you created it on, or a passkey provider that supports PRF.');
     return out;
   }
   async function register(startPath: string, startBody: unknown) {
@@ -93,6 +95,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     // Some authenticators enable PRF at creation but only evaluate it on use: ask once more.
     if (!prf && made.prfEnabled) prf = (await passkeys.get({ challenge: b64u(randomBytes(32)), userVerification: 'required' }, salt, [made.credential.id])).prf;
     if (!prf) secrets.put(made.credential.id, randomBytes(32));
+    secrets.remember(made.credential.id);
     return { start, made, ...secretsFor(made.credential.id, prf) };
   }
   /** Fresh proof with an existing passkey, required before adding or removing passkeys. */
@@ -111,7 +114,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       },
       unlock: async () => {
         const start = await req(CeremonyStartSchema, 'POST', '/auth/unlock/start', {});
-        const used = await passkeys.get(start.options, await prfSalt());
+        // Offer only Alcove passkeys made in this browser when we know them; otherwise any (e.g. a synced passkey).
+        const known = secrets.known();
+        const used = await passkeys.get(start.options, await prfSalt(), known.length ? known : undefined);
+        secrets.remember(used.credential.id);
         return req(SessionSchema, 'POST', '/auth/unlock/finish', { challengeId: start.challengeId, credential: used.credential, ...secretsFor(used.credential.id, used.prf) });
       },
       lock: async () => { await req(z.unknown(), 'POST', '/session/lock', {}); }

@@ -1,4 +1,4 @@
-import { errorMessage } from '@alcove/api';
+import { errorCode, errorMessage } from '@alcove/api';
 import { Button, Icon, Mark, Spinner, useToast } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
@@ -22,6 +22,8 @@ function Welcome() {
   const [mode, setMode] = useState<'create' | 'unlock'>(ended ? 'unlock' : 'create');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Shown under the unlock button when the passkey isn't an account here, with a way forward. */
+  const [unknownPasskey, setUnknownPasskey] = useState<string | null>(null);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -33,7 +35,11 @@ function Welcome() {
       qc.clear();
       qc.setQueryData(qk.session, s);
       await navigate({ to: '/home' });
-    } catch (e) { toast(errorMessage(e), 'x'); setBusy(false); }
+    } catch (e) {
+      setBusy(false);
+      if (errorCode(e) === 'unauthenticated' && mode === 'unlock') { setUnknownPasskey(errorMessage(e)); return; }
+      toast(errorMessage(e), 'x');
+    }
   };
 
   return (
@@ -63,7 +69,13 @@ function Welcome() {
                 <Button size="lg" variant="light" block disabled={busy} className="h-[54px]" onClick={() => void run(() => api.auth.unlock())}>
                   {busy ? <><Spinner /> Waiting for your passkey…</> : <><Icon name="fingerprint" /> Unlock with your passkey</>}
                 </Button>
-                <button type="button" onClick={() => setMode('create')} className="mt-1 text-[13.5px] text-[#8F877C] transition-colors hover:text-[#F5F1EA]">New here? Create an account</button>
+                {unknownPasskey && (
+                  <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-1 flex flex-col gap-2.5 rounded-[14px] bg-white/[.06] p-4 text-left text-[13.5px] text-[#BEB5A9] shadow-[inset_0_0_0_1px_rgba(255,255,255,.1)]">
+                    <span>{unknownPasskey}</span>
+                    <Button size="sm" variant="light" className="self-start" onClick={() => { setUnknownPasskey(null); setMode('create'); }}>Create an account</Button>
+                  </motion.div>
+                )}
+                <button type="button" onClick={() => { setUnknownPasskey(null); setMode('create'); }} className="mt-1 text-[13.5px] text-[#8F877C] transition-colors hover:text-[#F5F1EA]">New here? Create an account</button>
               </motion.div>
             )}
           </AnimatePresence>

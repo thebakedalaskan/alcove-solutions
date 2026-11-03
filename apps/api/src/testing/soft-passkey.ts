@@ -71,7 +71,8 @@ export function softPasskeys(o: { origin: string; rpId: string; prf?: boolean })
 
 export function memorySecrets(): SecretStore {
   const m = new Map<string, Uint8Array>();
-  return { get: (id) => m.get(id) ?? null, put: (id, s) => { m.set(id, s); } };
+  const ids: string[] = [];
+  return { get: (id) => m.get(id) ?? null, put: (id, s) => { m.set(id, s); }, known: () => [...ids], remember: (id) => { if (!ids.includes(id)) ids.push(id); } };
 }
 
 /** fetch with a one-cookie jar and the app's Origin, like a browser tab on the Alcove site. */
