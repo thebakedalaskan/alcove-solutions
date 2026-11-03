@@ -67,6 +67,7 @@ jobs:
       OBJECTS_BUCKET: ${{ vars.OBJECTS_BUCKET }}
       WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
       API_ORIGIN: ${{ vars.API_ORIGIN }}
+      LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
       NEAR_AI_ENABLED: ${{ vars.NEAR_AI_ENABLED }}
       GOOGLE_AUTH_ENABLED: ${{ vars.GOOGLE_AUTH_ENABLED }}
     steps:
@@ -83,7 +84,7 @@ jobs:
         run: docker build -f apps/api/Dockerfile -t "$IMAGE" . && docker push "$IMAGE"
       - name: Run database migrations
         run: |
-          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest'
+          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest,LIVEKIT_API_KEY=alcove-livekit-api-key:latest,LIVEKIT_API_SECRET=alcove-livekit-api-secret:latest'
           if [ "$GOOGLE_AUTH_ENABLED" = true ]; then
             SECRET_BINDINGS="$SECRET_BINDINGS,GOOGLE_CLIENT_ID=alcove-google-client-id:latest,GOOGLE_CLIENT_SECRET=alcove-google-client-secret:latest"
           fi
@@ -91,12 +92,12 @@ jobs:
             --command node --args dist/migrate-cli.js \
             --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
             --tasks 1 --parallelism 1 --max-retries 0 --task-timeout 300s --cpu 1 --memory 512Mi \
-            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
           gcloud --project="$GCP_PROJECT_ID" run jobs execute alcove-migrate --region "$GCP_REGION" --wait --quiet
       - name: Deploy the API
         run: |
-          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest'
+          SECRET_BINDINGS='DATABASE_URL=alcove-database-url:latest,KMASTER=alcove-kmaster:latest,KSERVICE=alcove-kservice:latest,OBJECTS_ACCESS_KEY=alcove-objects-access-key:latest,OBJECTS_SECRET_KEY=alcove-objects-secret-key:latest,LIVEKIT_API_KEY=alcove-livekit-api-key:latest,LIVEKIT_API_SECRET=alcove-livekit-api-secret:latest'
           if [ "$NEAR_AI_ENABLED" = true ]; then
             SECRET_BINDINGS="$SECRET_BINDINGS,NEAR_AI_API_KEY=alcove-near-ai-api-key:latest"
           fi
@@ -107,13 +108,13 @@ jobs:
             --service-account "$RUNTIME_SERVICE_ACCOUNT" --set-cloudsql-instances "$CLOUDSQL_INSTANCE" \
             --allow-unauthenticated --min 1 --max 1 --session-affinity \
             --execution-environment gen2 --port 8080 --timeout 300s --cpu 1 --memory 512Mi --no-cpu-throttling \
-            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,LOG_FORMAT=json,LOG_LEVEL=info" \
+            --set-env-vars "OBJECTS_ENDPOINT=$OBJECTS_ENDPOINT,OBJECTS_BUCKET=$OBJECTS_BUCKET,WEB_ORIGIN=$WEB_ORIGIN,API_URL=$API_ORIGIN,LIVEKIT_URL=$LIVEKIT_URL,NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1,LOG_FORMAT=json,LOG_LEVEL=info" \
             --set-secrets "$SECRET_BINDINGS" --quiet
-      - name: Health check
+      - name: Health check (API, database and LiveKit)
         run: |
           SERVICE_URL="$(gcloud --project="$GCP_PROJECT_ID" run services describe alcove-api --region "$GCP_REGION" --format='value(status.url)')"
           test -n "$SERVICE_URL"
-          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 30 "$SERVICE_URL/health"
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 --max-time 30 "$SERVICE_URL/health" | tee /dev/stderr | grep -q '"livekit":"reachable"'
 
   web:
     name: Web → Cloudflare Pages
@@ -131,10 +132,15 @@ jobs:
         env:
           VITE_ALCOVE_API_URL: ${{ vars.API_ORIGIN }}
         run: pnpm --filter @alcove/web build
-      - name: Content security policy for this API origin
+      - name: Content security policy for this API origin and LiveKit
+        env:
+          LIVEKIT_URL: ${{ vars.LIVEKIT_URL }}
         run: |
-          printf "  Content-Security-Policy: default-src 'self'; connect-src 'self' %s; media-src 'self' blob: %s; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'\n" \
-            "${{ vars.API_ORIGIN }}" "${{ vars.API_ORIGIN }}" >> apps/web/dist/client/_headers
+          host="${LIVEKIT_URL#*://}"; host="${host%%/*}"
+          livekit="wss://$host https://$host"
+          case "$host" in *.livekit.cloud) livekit="$livekit wss://*.livekit.cloud https://*.livekit.cloud" ;; esac
+          printf "  Content-Security-Policy: default-src 'self'; connect-src 'self' %s %s; media-src 'self' blob: %s; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'\n" \
+            "${{ vars.API_ORIGIN }}" "$livekit" "${{ vars.API_ORIGIN }}" >> apps/web/dist/client/_headers
       - name: Publish to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

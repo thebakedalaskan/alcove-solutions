@@ -83,6 +83,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose â
 | --- | --- | --- | --- |
 | `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
 | `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team directory); who else may read a note |
+| `call-code` | The call's code from its link | `call_codes.code_hash` | Finding a call for anyone with the link, guests included |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
 [What is still visible](#what-is-still-visible)), and anyone holding `KMASTER` can test a guessed address.
@@ -232,6 +233,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
 | NEAR AI Cloud | Every transcript clip (the audio) and what was said in it. For notes and questions: the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Sent over TLS with a bearer key; Alcove doesn't yet use NEAR AI's end-to-end encrypted mode or check its attestation. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
+| LiveKit (Cloud in production) | Every call's audio, video, shared screens and data messages; each person's name as shown in the call; room names and identities (random); join and leave times |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. |
 
 ## Deletion

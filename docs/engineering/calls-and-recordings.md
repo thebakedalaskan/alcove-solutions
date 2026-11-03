@@ -17,7 +17,9 @@ sequenceDiagram
     B->>A: POST /v1/calls (start now) or schedule a meeting
     B->>B: Pre-join: getUserMedia, mic and camera
     B->>A: POST /v1/calls/:code/join {mic, cam}
-    A->>D: calls row (state ciphertext); meeting revision → live
+    A->>D: calls row (state ciphertext, room name); meeting revision → live
+    A-->>B: ticket: LiveKit URL and 120-second token, call pass
+    B->>B: joins the LiveKit room; publishes mic, camera, screen
     opt the meeting has notes on
       A->>D: note item (status recording) + recording with wrapped Krec
     end
@@ -54,7 +56,39 @@ sequenceDiagram
   segment. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
 - **Leaving.** The browser stops the recorder, sends the last audio and speech, then calls `leave`. The
   server finishes the note in the same transaction that ends the call, then starts the notes worker.
-- **Chat and presentation state** are stored in the call's encrypted state; chat is not added to notes.
+- **Chat** is stored in the call's encrypted state through the API (`actions`, `{type: "chat"}`), so it
+  survives reloads and late joiners see it; it is not added to notes. LiveKit only carries a nudge
+  (topic `call`, `{v:1, kind:"changed"}`) that tells everyone in the room to fetch the call again.
+
+## Group calls
+
+Media goes through LiveKit (an SFU: a local server in Docker for development, LiveKit Cloud in
+production). The call itself stays in the API: who's in it, notes, the transcript and chat.
+
+- **Joining.** `GET /v1/calls/:code/card` (no account needed) gives the title, organizer's name, whether
+  the organizer is there and whether the call is locked. `POST /v1/calls/:code/join` takes `{mic, cam}`
+  and, without an account, a `name` (1–60 characters). It returns a ticket: the LiveKit URL, a token for
+  that one room (120 seconds, no admin rights) and a **call pass**.
+- **Who joins.** The organizer by their account; it starts the call and makes the room
+  (`r_<random>`; LiveKit never creates rooms itself). Anyone invited, signed in with an invited address,
+  and **guests** with only a name. Guests and invited people wait until the organizer is there
+  (`409 conflict`), and can't join a locked call (`403 forbidden`). There's no participant limit.
+- **The call pass** is an HMAC (a key derived from `KMASTER`) over the call, the organizer, the person's
+  LiveKit identity, role and name, valid for 12 hours. It goes in the `x-alcove-call` header on every
+  `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
+  from `KMASTER`, per request.
+- **What each role can do.** Everyone: read the call, chat, catch up and ask. Only the organizer (pass
+  role `host` and their own session): notes on/off, audio and speech uploads, mute someone's microphone,
+  remove someone, lock the call, and leave (which ends it). Notes come from the organizer's microphone
+  only; link guests get no notes, invited people get them as before.
+- **Ending.** The organizer leaving ends the call for everyone: the normal ending above, then a nudge, then
+  the room is deleted (everyone else is disconnected with "room deleted"). The organizer reloading
+  doesn't end it: `POST /hooks/livekit` (signed by LiveKit with the API key) records when the organizer's
+  connection left, and the call ends only if they're gone for more than 25 seconds. A finished room ends
+  its call too, and upkeep ends calls whose room is gone.
+- **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
+  room: it publishes `LocalMedia`'s tracks as they are, plays everyone else's audio on the chosen speaker,
+  and refetches the call on nudges, arrivals and departures. One screen is shared at a time.
 
 ## Room recordings
 
@@ -89,9 +123,10 @@ AudioWorklet (`apps/web/public/pcm-capture.js`) mixes the microphone to mono, fi
 16 kHz, and the samples are cut into WAV clips at pauses. Clips without a voice in them aren't sent. It
 never touches the encrypted recording.
 
-## Next: multi-party calls
+## Next: end-to-end encrypted calls
 
-Multi-party media must be end-to-end encrypted, following Proton Meet's open-source model: media passes an
+Today LiveKit (and so LiveKit Cloud) can see and hear calls: their audio, video and screens, and who is
+in them. Multi-party media must be end-to-end encrypted, following Proton Meet's open-source model: media passes an
 SFU that never holds keys; senders encrypt frames with per-call keys (WebRTC encoded transforms / SFrame);
 the call key travels in the link fragment (`#k=…`, never sent to servers) or via the participants' keys.
 The notes service then joins as an attested participant that receives the call key only while notes are

@@ -30,7 +30,7 @@
 | # | Work | Notes |
 | --- | --- | --- |
 | 1 | Verified private inference: NEAR AI's end-to-end encrypted requests and attestation checks | [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 2 | Multi-party end-to-end encrypted calls with LiveKit | Proton Meet model; transcript lines per speaker; [Calls and recordings](../engineering/calls-and-recordings.md#next-multi-party-calls) |
+| 2 | End-to-end encryption for group calls (LiveKit carries them unencrypted today) | Proton Meet model; transcript lines per speaker; [Calls and recordings](../engineering/calls-and-recordings.md#next-end-to-end-encrypted-calls) |
 | 3 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
 | 4 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
 | 5 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |

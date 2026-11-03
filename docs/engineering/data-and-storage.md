@@ -19,7 +19,8 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | `operations` | owner, operation ID, method, completion time | `request_commitment` (HMAC), `result_ciphertext` |
 | `transcript_clips` | owner, note item | `clip_tag` (keyed hash of the clip's segment and start), `clip_ciphertext` (its transcript lines) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
-| `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version` | `state_ciphertext` (mic, camera, hand, presentation, notes state, chat, notices) |
+| `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version`, LiveKit room name (random), organizer's LiveKit identity (random), when the organizer's connection left, locked | `state_ciphertext` (notes state, chat, who joined, notices) |
+| `call_codes` | owner, meeting item | `code_hash` (keyed hash of the call code, so anyone with the link finds the call) |
 | `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start and end, `version` | `key_envelope` (`Krec`) |
 | `recording_pieces` | owner, recording, segment, seq, object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
