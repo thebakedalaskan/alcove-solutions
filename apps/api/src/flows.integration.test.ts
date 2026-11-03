@@ -34,6 +34,14 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
   for (let i = 0; i < 100 && !pred(call.getSnapshot()); i++) await new Promise((r) => setTimeout(r, 30));
   return call.getSnapshot();
 }
+/** Only attributes leave the cookie parser, so assertion failures cannot print session secrets. */
+function cookieAttributes(header: string) {
+  const attributes = new Set(header.split(';').slice(1).map((attribute) => attribute.trim().toLowerCase()));
+  return {
+    secure: attributes.has('secure'), httpOnly: attributes.has('httponly'), sameSiteStrict: attributes.has('samesite=strict'),
+    pathRoot: attributes.has('path=/'), removed: attributes.has('max-age=0')
+  };
+}
 
 describe('public readiness', () => {
   it('reports public readiness before unlocking an account', async () => {
@@ -53,6 +61,41 @@ describe('public readiness', () => {
 });
 
 describe('accounts and passkeys', () => {
+  it('locks and unlocks an account with an HTTPS host-prefixed cookie', async () => {
+    const attributes: ReturnType<typeof cookieAttributes>[] = [];
+    const browser = cookieFetch(ORIGIN);
+    const { api } = h.client(undefined, async (input, init) => {
+      const response = await browser(input, init);
+      for (const header of response.headers.getSetCookie()) {
+        if (header.startsWith('__Host-alcove_session=')) attributes.push(cookieAttributes(header));
+      }
+      return response;
+    });
+    const session = await api.auth.createAccount('HTTPS Cookie Check');
+    expect(attributes.at(-1)).toEqual({ secure: true, httpOnly: true, sameSiteStrict: true, pathRoot: true, removed: false });
+    expect((await api.auth.getSession())?.ownerId).toBe(session.ownerId);
+
+    await api.auth.lock();
+    expect(attributes.at(-1)).toMatchObject({ secure: true, pathRoot: true, removed: true });
+    expect(await api.auth.getSession()).toBeNull();
+    expect((await api.auth.unlock()).ownerId).toBe(session.ownerId);
+    expect(attributes.at(-1)).toEqual({ secure: true, httpOnly: true, sameSiteStrict: true, pathRoot: true, removed: false });
+    await api.auth.lock();
+  });
+
+  it('clears an invalidated HTTPS cookie before unlocking the account again', async () => {
+    const { api, fetch: browser, session } = await newAccount('Invalidated HTTPS Cookie');
+    // A restart closes in-memory sessions while browsers still hold their old cookies.
+    h.deps.sessions.closeAll();
+    const response = await browser(`${h.baseUrl}/v1/passkeys`);
+    expect(response.status).toBe(423);
+    const attributes = response.headers.getSetCookie().filter((header) => header.startsWith('__Host-alcove_session=')).map(cookieAttributes);
+    expect(attributes).toMatchObject([{ secure: true, pathRoot: true, removed: true }]);
+    expect(await api.auth.getSession()).toBeNull();
+    expect((await api.auth.unlock()).ownerId).toBe(session.ownerId);
+    await api.auth.lock();
+  });
+
   it('creates an account with a passkey, locks, and unlocks back into the same encrypted vault', async () => {
     const { api, session } = await newAccount();
     expect(session.user.name).toBe('Maya Chen');

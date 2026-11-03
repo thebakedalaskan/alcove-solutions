@@ -144,7 +144,7 @@ export function createApp(d: Deps) {
     const cookie = getCookie(c, COOKIE);
     const s = d.sessions.touch(cookie);
     if (!s) {
-      if (cookie) deleteCookie(c, COOKIE, { path: '/' });
+      if (cookie) deleteCookie(c, COOKIE, { path: '/', secure });
       throw cookie ? new LockedError('Your session ended. Unlock with your passkey to continue.') : new AuthError('Unlock Alcove with your passkey first.');
     }
     c.set('owner', account.ownerOf(d, s));
@@ -178,7 +178,7 @@ export function createApp(d: Deps) {
 
   app.post('/v1/session/lock', (c) => {
     d.sessions.close(c.get('owner').session.id);
-    deleteCookie(c, COOKIE, { path: '/' });
+    deleteCookie(c, COOKIE, { path: '/', secure });
     return c.json({ locked: true });
   });
 
