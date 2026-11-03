@@ -245,6 +245,8 @@ export async function remove(o: Owner, id: string): Promise<void> {
   }
   const recordingId = l.note.manifest.recordingId;
   const objects = await tx(o.pool, async (c) => {
+    // The note's row first, as the notes worker takes it: deleting while its notes are being written waits instead of deadlocking.
+    await lockItem(o, c, id);
     const objs = await recordingObjects(o, c, recordingId);
     await exec(c, `DELETE FROM content_jobs WHERE owner_id = $1 AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [o.ownerId, id]);
     for (const m of (await listItems(o, c, 'meeting', MeetingManifest)).filter((x) => x.manifest.noteId === id)) {
