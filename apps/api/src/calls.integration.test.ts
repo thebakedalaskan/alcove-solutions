@@ -87,6 +87,44 @@ describe('chat', () => {
   });
 });
 
+/** Whether `identity`'s published tracks are muted, as `viewer` sees them. */
+const mutedAt = (viewer: TestParticipant, identity: string) => [...(viewer.room.remoteParticipants.get(identity)?.trackPublications.values() ?? [])].map((t) => t.muted);
+
+describe('host controls', () => {
+  it('lets the organizer mute, remove and lock, and nobody else', async () => {
+    const org = await account();
+    const invitedEmail = unique('invited');
+    const { code: c } = await org.api.calls.startNow({ guests: [invitedEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const guestBrowserApi = guestBrowser();
+    const guest = await guestBrowserApi.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    const guestRoom = await joinRoom(guest);
+    const sid = await guestRoom.publishTone();
+    await hostRoom.waitFor(() => mutedAt(hostRoom, guest.ticket.identity).length === 1, 'the guest’s track');
+
+    await host.mute(guest.ticket.identity, sid);
+    await hostRoom.waitFor(() => mutedAt(hostRoom, guest.ticket.identity)[0] === true, 'the guest muted');
+
+    await host.lock(true);
+    const invited = await account(invitedEmail);
+    const refused = await invited.api.calls.join(c, { mic: true, cam: false }).catch((e: unknown) => e);
+    expect([code(refused), message(refused)]).toEqual(['forbidden', 'The host has locked this call.']);
+    expect(code(await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' }).catch((e: unknown) => e))).toBe('forbidden');
+    expect((await guestBrowser().calls.card(c)).locked).toBe(true);
+
+    for (const attempt of [() => guest.lock(false), () => guest.mute(host.ticket.identity, 'TR_x'), () => guest.remove(host.ticket.identity)]) {
+      expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
+    }
+
+    await host.remove(guest.ticket.identity);
+    expect(await guestRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
+    await host.lock(false);
+    expect((await guestBrowserApi.calls.join(c, { mic: true, cam: false, name: 'Sam' })).ticket.role).toBe('guest');
+    await host.leave();
+  });
+});
+
 describe('joining by link', () => {
   it('refuses everyone but the organizer until the organizer has joined', async () => {
     const org = await account();

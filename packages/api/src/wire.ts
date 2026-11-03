@@ -27,7 +27,11 @@ export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLo
 /** Changes to a call: chat from anyone in it, notes from the organizer. Mic, camera, hand and screen live in LiveKit. */
 export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('chat'), text: z.string().trim().min(1).max(4000) }),
-  z.object({ type: z.literal('notes'), on: z.boolean() })
+  z.object({ type: z.literal('notes'), on: z.boolean() }),
+  /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */
+  z.object({ type: z.literal('mute'), identity: z.string().min(1).max(64), trackSid: z.string().min(1).max(64) }),
+  z.object({ type: z.literal('remove'), identity: z.string().min(1).max(64) }),
+  z.object({ type: z.literal('lock'), on: z.boolean() })
 ]);
 export type CallAction = z.infer<typeof CallActionSchema>;
 

@@ -216,14 +216,27 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 export async function act(v: Viewer, callId: string, a: CallAction): Promise<CallState> {
   const o = v.organizer;
+  if (a.type === 'mute' || a.type === 'remove') {
+    // Carried out by LiveKit; nothing about the call changes here.
+    const { row } = await load(o, o.pool, callId);
+    if (row.state !== 'live' || !row.room_name) throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
+    if (a.type === 'mute') await o.livekit.muteTrack(row.room_name, a.identity, a.trackSid);
+    else await o.livekit.removeParticipant(row.room_name, a.identity);
+    clog.info('host control', { callId, action: a.type, target: a.identity });
+    return view(v, o.pool, callId);
+  }
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
     const at = Math.round((Date.now() - row.started_at.getTime()) / 1000);
     let s = state;
     // Chat from anyone in the call, saved with it under the organizer's keys.
+    let locked = row.locked;
     if (a.type === 'chat') s = { ...s, chat: [...s.chat, { id: id128(), text: a.text, at, from: v.pass.identity }] };
-    else if (a.on !== (s.notes.status === 'on')) {
+    else if (a.type === 'lock') {
+      locked = a.on;
+      await exec(c, 'UPDATE calls SET locked = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, locked]);
+    } else if (a.on !== (s.notes.status === 'on')) {
       if (a.on) {
         const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
         s = notice(await startNotes(o, c, s, meeting, at), 'The organizer turned on notes. Everyone here can see that.');
@@ -233,7 +246,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       }
     }
     await save(o, c, callId, s);
-    if (a.type === 'notes' && row.room_name) await o.livekit.setMetadata(row.room_name, roomMetadata(row, s)).catch((e: unknown) => clog.warn('room metadata not updated', { callId, err: e }));
+    if (a.type !== 'chat' && row.room_name) await o.livekit.setMetadata(row.room_name, roomMetadata({ ...row, locked }, s)).catch((e: unknown) => clog.warn('room metadata not updated', { callId, err: e }));
     // Action type and resulting states only; chat text stays sealed.
     clog.at(a.type === 'chat' ? 'debug' : 'info', 'call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment });
     return row.room_name;

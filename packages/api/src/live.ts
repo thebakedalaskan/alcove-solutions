@@ -193,6 +193,13 @@ export interface CallSession extends LiveStore<CallState> {
   catchUp(minutes?: number | undefined): Promise<CatchUp>;
   /** Asks about the call so far, for you alone, with the moments the answer comes from. */
   askSoFar(question: string): Promise<AnswerPart[]>;
+  /* The organizer's host controls (refused for anyone else). */
+  /** Mutes one of someone's tracks; they unmute themselves. */
+  mute(identity: string, trackSid: string): Promise<void>;
+  /** Disconnects someone. They can come back with the link unless the call is locked. */
+  remove(identity: string): Promise<void>;
+  /** While locked, nobody new can join except the organizer. */
+  lock(on: boolean): Promise<void>;
   /** Hides a notice on this screen only. */
   dismissNotice(id: string): void;
   /** The organizer leaving ends the call for everyone and returns how it ended; anyone else just leaves (null). */

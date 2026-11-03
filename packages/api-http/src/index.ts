@@ -228,6 +228,9 @@ class HttpCall extends Live<CallState> implements CallSession {
   }
   sendChat = async (text: string) => { if (text.trim()) this.take(await this.t.act(this.state.callId, { type: 'chat', text })); };
   setNotes = (on: boolean) => this.act({ type: 'notes', on });
+  mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
+  remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); };
+  lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
   appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
   /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
