@@ -1,5 +1,5 @@
 import {
-  AUDIO_HEADERS, AskBodySchema, CallActionSchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -40,7 +40,10 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * transcript clips are already idempotent by their place in the recording (and their answers carry
  * the live transcript, which shouldn't be copied into receipts).
  */
-const NO_RECEIPT = [/^\/v1\/notes\/search$/, /^\/v1\/notes\/[^/]+\/ask$/, /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/];
+const NO_RECEIPT = [
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask)$/,
+  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/
+];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 
@@ -270,6 +273,15 @@ export function createApp(d: Deps) {
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
     speechLimiter(c.get('owner').ownerId, 'transcribe');
     return c.json(await calls.transcribe(c.get('owner'), c.req.param('id'), await clip(c)));
+  });
+  /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
+  app.post('/v1/live/calls/:id/catch-up', async (c) => {
+    askLimiter(c.get('owner').ownerId, 'catch-up');
+    return c.json(await calls.catchUp(c.get('owner'), c.req.param('id'), (await body(c, CatchUpBodySchema)).minutes));
+  });
+  app.post('/v1/live/calls/:id/ask', async (c) => {
+    askLimiter(c.get('owner').ownerId, 'ask');
+    return c.json(await calls.askSoFar(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
   });
   app.post('/v1/live/calls/:id/leave', async (c) => c.json(await calls.leave(c.get('owner'), c.req.param('id'))));
 

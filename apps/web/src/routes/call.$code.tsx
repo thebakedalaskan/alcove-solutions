@@ -3,6 +3,7 @@ import { Avatar, Faces, Icon, Popover, cn, useRaisedToasts, useToast, type IconN
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
+import { CatchUpView } from '~/features/call/CatchUp';
 import { CallLines } from '~/features/call/LiveLines';
 import { useCopyLink } from '~/features/call/links';
 import { Video, useLevels } from '~/features/call/Video';
@@ -169,7 +170,7 @@ function InCall({ session }: { session: CallSession }) {
           </div>
           {panel && (
             <aside className="cl-panel" aria-label={panel === 'notes' ? 'Notes' : panel === 'chat' ? 'Chat' : 'People'}>
-              {panel === 'notes' && <NotesPanel state={state} media={media} live={m.mic} uploadError={uploadError} heardProblem={heardProblem} onTurnOn={() => void switchNotes(true)} />}
+              {panel === 'notes' && <NotesPanel session={session} state={state} media={media} live={m.mic} uploadError={uploadError} heardProblem={heardProblem} onTurnOn={() => void switchNotes(true)} />}
               {panel === 'chat' && <ChatPanel state={state} onSend={(t) => session.sendChat(t)} />}
               {panel === 'people' && <PeoplePanel state={state} invited={invited} />}
             </aside>
@@ -289,13 +290,25 @@ function Tiles({ state, media, onCopy }: { state: CallState; media: MediaSnapsho
 
 const wave = (l: number, i: number) => Math.max(8, Math.min(100, 10 + l * 90 * (0.55 + Math.abs(Math.sin(i * 1.7 + Date.now() / 260)) * 0.6)));
 
-/* While notes are on: what's being said, a few seconds behind. The notes themselves are written after the call. */
-function NotesPanel({ state, media, live, uploadError, heardProblem, onTurnOn }: {
-  state: CallState; media: LocalMedia; live: boolean; uploadError: string | null; heardProblem: string | null; onTurnOn: () => void;
+/*
+ * While notes are on: what's being said, a few seconds behind. The notes themselves are written
+ * after the call. Catching up reads the transcript so far, for you alone.
+ */
+function NotesPanel({ session, state, media, live, uploadError, heardProblem, onTurnOn }: {
+  session: CallSession; state: CallState; media: LocalMedia; live: boolean; uploadError: string | null; heardProblem: string | null; onTurnOn: () => void;
 }) {
   const on = state.notes.status === 'on';
   const lines = state.transcript;
-  const bars = useLevels(media, 28, on && live && !lines.length, wave);
+  const [catching, setCatching] = useState(false);
+  const bars = useLevels(media, 28, on && live && !lines.length && !catching, wave);
+  if (catching) {
+    return (
+      <>
+        <div className="cp-head"><b>Catch up</b>{on ? <span className="live"><i />Recording</span> : <span className="cnt">Notes off</span>}</div>
+        <CatchUpView session={session} elapsed={state.elapsed} onBack={() => setCatching(false)} />
+      </>
+    );
+  }
   if (!on) {
     return (
       <>
@@ -305,13 +318,20 @@ function NotesPanel({ state, media, live, uploadError, heardProblem, onTurnOn }:
           <b>{state.notes.everOn ? 'Notes are off' : 'No notes for this call'}</b>
           <p>{state.isOrganizer ? 'Turn them on and everyone here sees it. Everyone invited gets them afterwards.' : 'Only the organizer can turn them on.'}</p>
           {state.isOrganizer && <button type="button" className="btn c-ok" onClick={onTurnOn}>Turn on notes</button>}
+          {state.notes.everOn && lines.length > 0 && <button type="button" className="cp-catch" onClick={() => setCatching(true)}><Icon name="ask" size={14} />Catch up on what was said</button>}
         </div>
       </>
     );
   }
   return (
     <>
-      <div className="cp-head"><b>Notes</b><span className="live"><i />Recording</span></div>
+      <div className="cp-head">
+        <b>Notes</b>
+        <span className="cp-head-r">
+          {lines.length > 0 && <button type="button" className="cp-catch" onClick={() => setCatching(true)}><Icon name="ask" size={14} />Catch up</button>}
+          <span className="live"><i />Recording</span>
+        </span>
+      </div>
       <div className="cp-kept"><b>{clock(state.notes.recording.seconds)}</b><span>kept, encrypted</span></div>
       {lines.length ? <CallLines lines={lines} me={selfIn(state)?.person.email} /> : (
         <div className="cp-listen">

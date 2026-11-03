@@ -129,6 +129,38 @@ button.npill.off:hover { background: rgb(255 255 255 / 0.1); color: #EEEDF8; }
 .person > .i { color: rgb(236 235 248 / 0.45); }
 .person.away { opacity: 0.62; }
 
+/* Catching up during a call: read from the transcript so far, for the person asking alone. */
+.cp-head-r { display: inline-flex; align-items: center; gap: 12px; }
+.cp-catch { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px 0 9px; border-radius: 999px; background: rgb(255 255 255 / 0.08); color: rgb(236 235 248 / 0.88); font: 650 12.5px/1 var(--font-sans-stack); transition: background-color var(--t1), color var(--t1); }
+.cp-catch:hover { background: rgb(255 255 255 / 0.14); color: #fff; }
+.cp-off .cp-catch { margin-top: 6px; }
+.cu { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cu-top { display: grid; gap: 10px; padding: 0 20px 12px; border-bottom: 1px solid rgb(255 255 255 / 0.06); }
+.cu-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 26px; font: 600 12.5px/1 var(--font-sans-stack); color: rgb(236 235 248 / 0.62); transition: color var(--t1); }
+.cu-back:hover { color: #EEEDF8; }
+.cu-ranges { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: rgb(255 255 255 / 0.05); }
+.cu-range { flex: 1; height: 30px; border-radius: 9px; font: 600 12.5px/1 var(--font-sans-stack); color: rgb(236 235 248 / 0.6); transition: background-color var(--t1), color var(--t1); }
+.cu-range:hover { color: #EEEDF8; }
+.cu-range.on { background: rgb(255 255 255 / 0.12); color: #EEEDF8; }
+.cu-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px 18px; display: grid; align-content: start; gap: 16px; }
+.cu-wait { display: grid; justify-items: center; gap: 12px; padding: 36px 0; font-size: 13.5px; color: rgb(236 235 248 / 0.6); text-align: center; }
+.cu-sum { font-size: 14.5px; line-height: 1.55; color: rgb(236 235 248 / 0.94); text-wrap: pretty; animation: rise 320ms var(--ease-soft-v) both; }
+.cu-sec { animation: rise 360ms var(--ease-soft-v) both; }
+.cu-sec h4 { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; font: 650 11.5px/1 var(--font-sans-stack); letter-spacing: 0.04em; text-transform: uppercase; color: rgb(236 235 248 / 0.5); }
+.cu-sec h4 span { font-family: var(--font-mono-stack); color: rgb(236 235 248 / 0.34); }
+.cu-sec ul { display: grid; gap: 8px; }
+.cu-sec li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; font-size: 13.5px; line-height: 1.5; color: rgb(236 235 248 / 0.9); }
+.cu-none { padding: 20px 0 4px; text-align: center; font-size: 13.5px; color: rgb(236 235 248 / 0.6); }
+.cu-meta { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid rgb(255 255 255 / 0.06); }
+.cu-meta p { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; line-height: 1.45; color: rgb(236 235 248 / 0.5); }
+.cu-meta p .i, .cu-fail .i { flex: none; margin-top: 2px; }
+.cu-fail { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; color: #FFB3B5; text-align: left; }
+.cu-retry { height: 32px; padding: 0 14px; border-radius: 999px; background: rgb(255 255 255 / 0.08); font: 600 12.5px/1 var(--font-sans-stack); color: #EEEDF8; }
+.cu-answer { display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: rgb(255 255 255 / 0.05); animation: rise 320ms var(--ease-soft-v) both; }
+.cu-answer .q { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: rgb(236 235 248 / 0.6); }
+.cu-answer p { font-size: 14px; line-height: 1.55; color: rgb(236 235 248 / 0.94); }
+.cu-cites { display: flex; flex-wrap: wrap; gap: 6px; }
+
 /* The live notes: what's been said, a few seconds behind, newest at the bottom. */
 .cp-kept { display: flex; align-items: baseline; gap: 8px; margin: -2px 20px 0; padding-bottom: 12px; border-bottom: 1px solid rgb(255 255 255 / 0.06); font-size: 12.5px; color: rgb(236 235 248 / 0.5); }
 .cp-kept b { font: 600 13px/1 var(--font-mono-stack); color: rgb(236 235 248 / 0.88); }

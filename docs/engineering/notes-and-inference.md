@@ -158,9 +158,25 @@ the note ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can
 account. The answer is one `text` part followed by up to four `cite` parts: seconds into the recording the
 app can play from. Questions and answers are not stored, keep no operation receipt, and cost no credits.
 
+## Catching up during a call
+
+While a call is on, the notes panel's **Catch up** reads the live transcript for the person asking alone
+(`apps/api/src/modules/calls.ts`):
+
+- `POST /v1/live/calls/:id/catch-up` with `{minutes?}` (1 to 600; none means the whole call) reads the lines
+  from `through − minutes` onwards, where `through` is the newest line, and returns a `CatchUp`: a short
+  `summary`, what was `decided`, what was `proposed` and not agreed, what's still `open`, and what's `next`,
+  each item with the second it was said. It also says what it read (`from`, `through`, `lines`), when it was
+  put together (`asOf`, seconds since the call started) and the `gaps`: the stretches of the call with notes
+  off, kept as on/off times in the sealed call state, since nothing said then can be in it.
+- `POST /v1/live/calls/:id/ask` with `{question}` answers from the transcript so far, with cited moments.
+- Both need a live call that has had notes on (`409 conflict` otherwise) and share the 20-a-minute limit
+  with asking about notes. Nothing is stored and neither keeps an operation receipt: an answer goes only to
+  the person who asked. The app offers the last 5 minutes, the last 15 or the whole call, and **Back to live**.
+
 ## Prompts
 
-Both prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short:
+The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short:
 
 - **What the model is told.** The meeting's title; whether it was a video call or an in-person meeting
   recorded on one device; the organizer's name; the invited people by name, or by the part of their
@@ -174,8 +190,13 @@ Both prompts are in `apps/api/src/modules/drafting.ts`; read them there. In shor
   never inventing names, numbers, dates or decisions.
 - **Answering.** The summary, the asker's name and the question are added. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
-  such as an email), "I" and "me" meaning the asker, saying plainly when the transcript doesn't cover it,
-  and up to four seconds the answer comes from.
+  such as an email), "I" and "me" meaning the asker, answering from what's been said so far when the call is
+  still going on, saying plainly when the transcript doesn't cover it, and up to four seconds the answer
+  comes from.
+- **Catching up.** The transcript so far, told the meeting is still going on. One JSON object: a one- or
+  two-sentence `summary` and four lists, `decided`, `proposed` (never counted as decided), `open` questions
+  and `next` steps, each item a short sentence with the second it was said. At most 8 items a list; times
+  must fall within the recording.
 
 Replies are checked before anything is kept:
 

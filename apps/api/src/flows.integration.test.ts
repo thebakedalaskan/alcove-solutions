@@ -617,6 +617,54 @@ describe('live transcript and written notes', () => {
     expect(code(await asked((await account()).api, noteId, 'Anything?').catch((e: unknown) => e))).toBe('not-found');
   });
 
+  it('catches someone up during a call, for them alone, from what was said while notes were on', async () => {
+    const a = await account();
+    const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const id = call.getSnapshot().callId;
+    await call.appendAudio(piece(audioBytes('catch-a'), 0, 0));
+    await call.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0));
+    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000));
+    const c = await call.catchUp();
+    expect(c).toMatchObject({
+      summary: 'Catching up on 4 lines.',
+      decided: [{ text: 'We agreed to move the launch to the 18th.', at: 6 }], proposed: [{ text: 'We should move the launch.', at: 0 }],
+      open: [{ text: 'Can we afford the delay?', at: 2 }], next: [{ text: 'Kofi will send the screens by Wednesday.', at: 8 }],
+      from: 0, through: 8, lines: 4, gaps: []
+    });
+    expect(c.asOf).toBeGreaterThanOrEqual(0);
+
+    // Only the last minute: what was said before it isn't read.
+    await call.transcribe(speech('Two minutes later we will look at pricing.', 0, 120_000));
+    expect(await call.catchUp(1)).toMatchObject({ from: 60, through: 120, lines: 1, next: [{ text: 'Two minutes later we will look at pricing.', at: 120 }] });
+
+    // Asking about the call so far answers with the moment it comes from.
+    expect(await call.askSoFar('Who sends the screens?')).toEqual([{ type: 'text', text: 'From the call: Kofi will send the screens by Wednesday.' }, { type: 'cite', at: 8 }]);
+
+    // While notes were off nothing was heard, and a catch-up says so.
+    call.setNotes(false);
+    await settle(call, (x) => x.notes.status === 'off');
+    await new Promise((r) => setTimeout(r, 1100));
+    call.setNotes(true);
+    await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
+    const gaps = (await call.catchUp()).gaps;
+    expect(gaps).toHaveLength(1);
+    expect((gaps[0]?.to ?? 0) - (gaps[0]?.from ?? 0)).toBeGreaterThanOrEqual(1);
+
+    // Nobody else can catch up on this call, and nothing about it keeps a receipt.
+    const b = await account();
+    const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/catch-up`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    expect(steal.status).toBe(404);
+    expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE owner_id = $1 AND (method LIKE '%catch-up%' OR method LIKE '%/ask')", [a.session.ownerId])).rows[0]?.n).toBe(0);
+    await call.leave();
+    expect(code(await call.catchUp().catch((e: unknown) => e))).toBe('conflict');
+
+    // A call that never had notes on has nothing to catch up on.
+    const quiet = await a.api.calls.join((await a.api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
+    expect(code(await quiet.catchUp().catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await quiet.askSoFar('Anything?').catch((e: unknown) => e))).toBe('conflict');
+    await quiet.leave();
+  });
+
   it('transcribes a room recording without naming who spoke, and writes its notes when it stops', async () => {
     const { api } = await account();
     const rec = await api.recordings.start('Design crit');
@@ -820,6 +868,8 @@ describe('privacy at rest', () => {
     expect(live).not.toBe('');
     call.sendChat('CANARY-CHAT private remark');
     await settle(call, (x) => x.chat.length === 1);
+    expect((await call.catchUp()).lines).toBe(1);
+    await call.askSoFar('What closes on Friday?');
     await call.leave();
     const rec = await c.api.recordings.start('Room');
     rec.rename('CANARY-ROOM title');

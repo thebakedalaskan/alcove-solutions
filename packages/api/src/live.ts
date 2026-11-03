@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema } from './types';
+import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema, type AnswerPart } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -102,6 +102,36 @@ export interface AudioPiece {
   mimeType: string;
 }
 
+/** One thing a catch-up points out, and when it was said (seconds into the recording, as transcript lines count). */
+export const CatchUpItemSchema = z.object({ text: z.string(), at: z.number().optional() });
+export type CatchUpItem = z.infer<typeof CatchUpItemSchema>;
+
+/**
+ * What's happened in a call so far, from its live transcript, for the person who asked: nobody else
+ * sees it, and it isn't kept. Only what was said while notes were on can be in it.
+ */
+export const CatchUpSchema = z.object({
+  /** A sentence or two on where the conversation is; empty when nothing was said in the stretch. */
+  summary: z.string(),
+  /** Agreed or settled. */
+  decided: z.array(CatchUpItemSchema),
+  /** Suggested, and not agreed yet. */
+  proposed: z.array(CatchUpItemSchema),
+  /** Asked, and not answered yet. */
+  open: z.array(CatchUpItemSchema),
+  /** What someone said they, or someone else, would do. */
+  next: z.array(CatchUpItemSchema),
+  /** The stretch it read, in seconds into the recording. */
+  from: z.number(), through: z.number(),
+  /** How many lines of transcript that was. */
+  lines: z.number(),
+  /** When notes were off, as seconds since the call started: nothing said then is in here. */
+  gaps: z.array(z.object({ from: z.number(), to: z.number() })),
+  /** When it was put together, as seconds since the call started. */
+  asOf: z.number()
+});
+export type CatchUp = z.infer<typeof CatchUpSchema>;
+
 export interface CallSession extends LiveStore<CallState> {
   setMic(on: boolean): void;
   setCam(on: boolean): void;
@@ -114,6 +144,10 @@ export interface CallSession extends LiveStore<CallState> {
   appendAudio(piece: AudioPiece): Promise<void>;
   /** Transcribes a few seconds of speech into the live transcript. Only while notes are on. */
   transcribe(clip: TranscriptClip): Promise<void>;
+  /** What's happened so far, for you alone: the last `minutes`, or the whole call. */
+  catchUp(minutes?: number | undefined): Promise<CatchUp>;
+  /** Asks about the call so far, for you alone, with the moments the answer comes from. */
+  askSoFar(question: string): Promise<AnswerPart[]>;
   dismissNotice(id: string): void;
   leave(): Promise<CallEndResult>;
 }

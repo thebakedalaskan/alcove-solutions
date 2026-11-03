@@ -18,7 +18,7 @@ import { getItem } from '../vault';
 import { me } from './account';
 import { segments } from './audio';
 import * as billing from './billing';
-import { draft, type Written } from './drafting';
+import { briefOf, draft, type Written } from './drafting';
 import { NoteManifest, updateNote } from './notes';
 import { personOf } from './portraits';
 
@@ -91,7 +91,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     try {
       const t0 = performance.now();
       const organizer = await me(o);
-      const notes = await draft(o.cfg, note.manifest, organizer, note.manifest.invited.map((e) => personOf(e)));
+      const notes = await draft(o.cfg, briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))));
       await settle(o, job.job_id, noteId, recordingId, notes);
       wlog.info('notes written', { ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, ms: Math.round(performance.now() - t0) });
     } catch (e) {

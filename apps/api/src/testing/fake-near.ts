@@ -111,7 +111,16 @@ export async function startFakeNear(): Promise<FakeNear> {
         }
         const heard = heardIn(user);
         let reply: unknown;
-        if (system.startsWith('You write the notes')) {
+        const item = (h: Heard) => ({ text: h.text, at: h.at });
+        if (system.startsWith('You help someone catch up')) {
+          reply = {
+            summary: `Catching up on ${heard.length} lines.`,
+            decided: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(item),
+            proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(item),
+            open: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
+            next: heard.filter((h) => /\bwill\b/i.test(h.text)).map(item)
+          };
+        } else if (system.startsWith('You write the notes')) {
           reply = {
             summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
             decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map((h) => h.text),
