@@ -57,7 +57,7 @@ const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
 /** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
 const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (mode === 'on' || mode === 'paused' ? mode : undefined);
 /** Before the room has connected: nobody's media yet. */
-const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, present: [], hostMuted: 0, audioBlocked: false, screenFailed: null };
+const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
 const NO_ROOM: CallRoom = {
   getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, startAudio: async () => undefined,
   muteShare: () => undefined, send: () => undefined, receive: () => () => undefined, leave: async () => undefined
@@ -412,7 +412,10 @@ function InCall({ session }: { session: CallSession }) {
     const gone = roomView.connection === 'ended' && (roomView.endReason === 'removed' || (!hosting && roomView.endReason === 'ended-by-host'));
     if (!gone && !outOfGroup) return;
     over.current = true;
-    recorder.current?.stop();
+    // The call went on without this tab (for the organizer, on their other tab or device, which records from now): what
+    // the recorder and the voices hadn't sent is dropped rather than sent where it's refused.
+    if (recorder.current?.running) clog.info('notes recording stopped here: the call went on elsewhere');
+    recorder.current?.discard();
     ears.current?.stop();
     session.close();
     void room.leave();

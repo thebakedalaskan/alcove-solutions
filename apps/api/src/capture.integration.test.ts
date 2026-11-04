@@ -250,11 +250,12 @@ describe('what a call captures', () => {
     await host.setUnavailable(['recording']);
     await host.resume();
     expect(host.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'on' }, transcript: { mode: 'on' } });
-    // So does the organizer joining again from another device: the new browser says for itself, and the old one can't.
+    // So does the organizer joining again from another device: the new browser says for itself, and the old one can't
+    // (the call went on without it: 409, so it stops quietly).
     await host.setUnavailable(['recording', 'transcript']);
     const host2 = await (await account(orgEmail)).api.calls.join(c, { mic: true, cam: false });
     expect(host2.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'on' }, transcript: { mode: 'on' } });
-    expect(code(await host.setUnavailable(['recording']).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await host.setUnavailable(['recording']).catch((e: unknown) => e))).toBe('conflict');
     await host2.leave();
   });
 
@@ -416,7 +417,7 @@ describe('what a call captures', () => {
     const card = await anyone.calls.card(c);
     expect(card.capture).toEqual({
       mode: 'paused', recording: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, transcript: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } },
-      ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null, room: null
+      ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null, room: null, away: false
     });
     // Someone asking to join sees the same, and nobody in the call or anything said in it.
     const waiting = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });
