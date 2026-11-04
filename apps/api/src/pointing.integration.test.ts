@@ -80,6 +80,20 @@ const marksAt = (p: TestParticipant, by: CallSession) => Promise.all(p.received(
   const m = ShareMarkMessageSchema.safeParse(raw);
   return { from: d.from, message: m.success ? m.data : null };
 }));
+/** Sealed data opened by someone's session, as from `sender`, and parsed: the message, or null when it doesn't open. */
+async function opened(by: CallSession, sender: CallSession, s: Uint8Array): Promise<ShareMarkMessage | null> {
+  const plain = await by.openData(CALL_MARKS_TOPIC, sender.ticket.identity, s);
+  if (!plain) return null;
+  const m = ShareMarkMessageSchema.safeParse(JSON.parse(new TextDecoder().decode(plain)));
+  return m.success ? m.data : null;
+}
+/** In the group of a part of the call (the main room, or a room), holding its keys and sending with the latest. */
+const inPlace = (call: CallSession, place: string) => waitFor(() => {
+  const s = call.crypto.getSnapshot();
+  const send = s.media?.send;
+  return s.status === 'in' && s.place === place && send !== undefined && send !== null && send.index === s.media?.epochs.at(-1)?.index;
+}, `${call.ticket.role} in ${place === 'main' ? 'the main room' : 'a room'}`);
+const keyOf = (call: CallSession) => JSON.stringify(Object.entries(latestKeys(call)).sort(([a], [b]) => a.localeCompare(b)).map(([id, k]) => [id, Buffer.from(k).toString('hex')]));
 /** A LiveKit join token's claims, as LiveKit reads them. */
 const ClaimsSchema = z.object({ sub: z.string(), name: z.string().optional(), metadata: z.string().optional(), video: z.record(z.string(), z.unknown()) });
 const claimsOf = (token: string) => ClaimsSchema.parse(JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')));
@@ -215,6 +229,53 @@ describe('pointing at shared screens', () => {
 
     await back.letOthersPoint(true);
     expect(othersPoint(await settle(host, (s) => othersPoint(s, back) === true), back)).toBe(true);
+
+    // The organizer's own choice holds when their page reloads, or they come back on another device, as anyone's does.
+    await host.letOthersPoint(false);
+    host.closing();
+    const again = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(again);
+    expect(again.ticket.callId).toBe(host.ticket.callId);
+    expect(othersPoint(await settle(again, (s) => s.participants.some((p) => p.id === again.ticket.identity)), again)).toBe(false);
+    expect(othersPoint(await settle(back, (s) => s.participants.some((p) => p.id === again.ticket.identity)), again)).toBe(false);
+    await again.leave();
+  });
+
+  it('opens what’s sealed only for the people in its sender’s part of the call when it was sealed', async () => {
+    const org = await account();
+    const [kofiEmail, miaEmail] = [unique('kofi'), unique('mia')];
+    const { code: c } = await org.api.calls.startNow({ guests: [kofiEmail, miaEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    const mia = await (await account(miaEmail)).api.calls.join(c, { mic: true, cam: false });
+    await Promise.all([inGroup(kofi), inGroup(mia)]);
+    await waitFor(() => keyOf(kofi) === keyOf(host) && keyOf(mia) === keyOf(host), 'everyone on the same keys');
+    // The organizer's browser sends with the new keys a moment after it made them.
+    await inPlace(host, 'main');
+    const before: ShareMarkMessage = { t: 'mark', share: 'TR_sharebeforeyou', seq: 1, id: 'm_beforeyou01', kind: 'ring', points: [[0.5, 0.5]], done: true };
+    const sealedBefore = await sealed(host, before);
+    expect(await opened(kofi, host, sealedBefore)).toEqual(before);
+
+    // Someone let in afterwards can't open what was sealed before they were in: they never had those keys.
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    expect(await opened(sam, host, sealedBefore)).toBeNull();
+    // What's sealed once the organizer sends with the new keys opens for them.
+    await inPlace(host, 'main');
+    const after: ShareMarkMessage = { t: 'point', share: 'TR_sharebeforeyou', seq: 2, at: [0.25, 0.75] };
+    expect(await opened(sam, host, await sealed(host, after))).toEqual(after);
+
+    // In a breakout room, what's sealed opens for the room's people and nobody in another part of the call.
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail, miaEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    const design = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
+    await Promise.all([inPlace(kofi, design), inPlace(mia, design)]);
+    await waitFor(() => keyOf(kofi) === keyOf(mia), 'the room on one set of keys');
+    await inPlace(kofi, design);
+    const inRoom: ShareMarkMessage = { t: 'mark', share: 'TR_sharedinroom', seq: 3, id: 'm_inthisroom1', kind: 'line', points: [[0.1, 0.1], [0.4, 0.3]], done: true };
+    const sealedInRoom = await sealed(kofi, inRoom);
+    expect(await opened(mia, kofi, sealedInRoom)).toEqual(inRoom);
+    expect(await opened(sam, kofi, sealedInRoom)).toBeNull();
     await host.leave();
   });
 });

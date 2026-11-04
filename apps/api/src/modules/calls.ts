@@ -485,10 +485,13 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     const carried = kps.flatMap((r) => (r.party && waiting.has(r.party) ? [{ party: r.party, body: openMls(o, live.call_id, r) }] : []));
     const kept = new Set(carried.map((k) => k.party));
     const open = state.breakouts.open;
+    // The organizer is one person across their connections (a reload, another device), as anyone else is across a
+    // reload: what's kept by person, such as whether others may point at what they share, holds when they come back.
+    const person = state.people.find((j) => j.role === 'host')?.person ?? joined.person;
     let s: Stored = {
       ...state,
       people: [...state.people.map((j): Joined => ({ ...j, group: null, leftAt: {}, ...(j.identity === live.host_identity ? { status: 'left' as const, left: gone } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
-        { ...joined, keysFor: generation, group: MAIN_PLACE, placedSeq: live.mls_seq + carried.length }],
+        { ...joined, person, keysFor: generation, group: MAIN_PLACE, placedSeq: live.mls_seq + carried.length }],
       // Open rooms stay open, each with a new group from its first epoch.
       breakouts: { ...state.breakouts, open: open ? { ...open, rooms: open.rooms.map((r) => ({ ...r, epoch: 0 })) } : null },
       chatAt: {}
@@ -508,7 +511,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     await exec(c, 'UPDATE calls SET host_identity = $3, host_joined_at = now(), host_left_at = NULL, room_name = $4, mls_generation = $5, mls_epoch = 0, mls_seq = $6, version = version + 1 WHERE owner_id = $1 AND call_id = $2',
       [o.ownerId, live.call_id, joined.identity, roomName, generation, seq]);
     clog.info('organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(live.host_identity), segment: s.notes.segment, generation, waiting: carried.length });
-    return { callId: live.call_id, roomName, replaced: live.host_identity, row: { host_identity: joined.identity, locked: live.locked }, state: s, admit: 'auto', generation, person: joined.person };
+    return { callId: live.call_id, roomName, replaced: live.host_identity, row: { host_identity: joined.identity, locked: live.locked }, state: s, admit: 'auto', generation, person };
   });
 }
 
