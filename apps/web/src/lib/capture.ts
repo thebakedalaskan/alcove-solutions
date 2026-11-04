@@ -9,9 +9,12 @@ import { hm } from './time';
 export const captureHere = (c: CaptureState): CaptureState =>
   (c.room ? { ...c, mode: c.room.mode, recording: c.room.recording, transcript: c.room.transcript, ai: c.room.ai, screen: c.room.screen, gaps: c.room.gaps } : c);
 
-/** "Paused 10:02–10:05", "Notes off 10:10–10:12", "Paused at 10:02" for a short one, or "Paused since 10:02" while it lasts. */
+/**
+ * "Paused 10:02–10:05", "Notes off 10:10–10:12", "Organizer offline 10:20–10:21" (their browser was out of the call),
+ * "Paused at 10:02" for a short one, or "Paused since 10:02" while it lasts.
+ */
 export function gapLabel(g: CaptureGap): string {
-  const what = g.kind === 'paused' ? 'Paused' : 'Notes off';
+  const what = g.kind === 'paused' ? 'Paused' : g.kind === 'offline' ? 'Organizer offline' : 'Notes off';
   if (!g.to) return `${what} since ${hm(g.from)}`;
   const from = hm(g.from);
   const to = hm(g.to);

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as MoveRouteImport } from './routes/move'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
@@ -31,6 +32,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MoveRoute = MoveRouteImport.update({
+  id: '/move',
+  path: '/move',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReadyRoute = ReadyRouteImport.update({
@@ -96,6 +102,7 @@ const AppNotesSeriesSeriesIdRoute = AppNotesSeriesSeriesIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/move': typeof MoveRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/home': typeof AppHomeRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/move': typeof MoveRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/home': typeof AppHomeRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/move': typeof MoveRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/_app/home': typeof AppHomeRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/move'
     | '/ready'
     | '/welcome'
     | '/home'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/move'
     | '/ready'
     | '/welcome'
     | '/home'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/move'
     | '/ready'
     | '/welcome'
     | '/_app/home'
@@ -193,6 +205,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  MoveRoute: typeof MoveRoute
   ReadyRoute: typeof ReadyRoute
   WelcomeRoute: typeof WelcomeRoute
   CallCodeRoute: typeof CallCodeRoute
@@ -214,6 +227,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/move': {
+      id: '/move'
+      path: '/move'
+      fullPath: '/move'
+      preLoaderRoute: typeof MoveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ready': {
@@ -328,6 +348,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  MoveRoute: MoveRoute,
   ReadyRoute: ReadyRoute,
   WelcomeRoute: WelcomeRoute,
   CallCodeRoute: CallCodeRoute,

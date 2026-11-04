@@ -1,4 +1,5 @@
 import type { CallCard, CallSession, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
+import type { CallMoveIn } from './moves';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
@@ -16,9 +17,9 @@ export interface AlcoveApi {
     /**
      * Where the browser goes to sign in with Google. Google sends it back to the API, which opens
      * the session and returns to the app: /ready for a new account, /home otherwise, or
-     * /welcome?signin=<reason> when it didn't work.
+     * /welcome?signin=<reason> when it didn't work. `next: '/move'` comes back to a move being made instead.
      */
-    signInUrl(provider: 'google'): string;
+    signInUrl(provider: 'google', opts?: { next?: '/move' | undefined }): string;
     /** Signs in a demo identity with Microsoft or single sign-on (`email` picks who). */
     signIn(provider: DemoProvider, opts?: { email?: string | undefined }): Promise<SignInResult>;
     /** Ends this session. */
@@ -83,6 +84,14 @@ export interface AlcoveApi {
      * there, while the call is locked, and once it has ended.
      */
     join(code: string, opts: { mic: boolean; cam: boolean; name?: string | undefined; previous?: string | undefined }): Promise<CallSession>;
+    /**
+     * Opens a move link on this device, with the code from the link's fragment. The code works once: from now on
+     * this device holds the move (and the other device sees it was opened). Refused once the code has run out or
+     * been used.
+     */
+    openMove(code: string): Promise<CallMoveIn>;
+    /** Picks up a move this tab opened before it went to sign in, by the claim it kept (in this tab's sessionStorage). */
+    resumeMove(claim: string): Promise<CallMoveIn>;
   };
   recordings: {
     /**

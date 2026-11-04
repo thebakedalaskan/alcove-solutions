@@ -6,3 +6,4 @@ export * from './client';
 export * from './format';
 export * from './wire';
 export * from './marks';
+export * from './moves';

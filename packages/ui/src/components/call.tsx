@@ -2,6 +2,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
+import { Dots } from './motion';
 import { Tooltip } from './overlay';
 import { Avatar, PortraitArt, type AvatarPerson } from './people';
 
@@ -24,14 +25,17 @@ export function tileGround(person: AvatarPerson): string | undefined {
  * on their own colour, or their arch. The speaker gets the speak ring and a level meter; a muted
  * person shows the mic-off mark; a raised hand gets a gold ring.
  */
-export function CallTile({ person, name, speaking = false, muted = false, hand = false, className, children, chrome, label }: {
-  person: AvatarPerson; name: ReactNode; speaking?: boolean; muted?: boolean; hand?: boolean; className?: string | undefined; children?: ReactNode;
+export function CallTile({ person, name, speaking = false, muted = false, hand = false, connecting = false, className, children, chrome, label }: {
+  person: AvatarPerson; name: ReactNode; speaking?: boolean; muted?: boolean; hand?: boolean;
+  /** In the call, but this browser can't play their media yet (their keys are on the way): not the same as a camera that's off. */
+  connecting?: boolean | undefined;
+  className?: string | undefined; children?: ReactNode;
   /** Controls and state drawn over the tile: what's pinned or spotlighted, its options. */
   chrome?: ReactNode; label?: string | undefined;
 }) {
   const ground = children ? undefined : tileGround(person);
   return (
-    <div className={cn('ac-tile', speaking && 'is-speaking', hand && 'is-hand', className)} style={ground ? { background: ground } : undefined} aria-label={label}>
+    <div className={cn('ac-tile', speaking && 'is-speaking', hand && 'is-hand', connecting && 'is-connecting', className)} style={ground ? { background: ground } : undefined} aria-label={label}>
       {children ?? (person.portrait
         ? <svg className="ac-figure" viewBox="0 20 200 220" preserveAspectRatio="xMidYMax meet" aria-hidden="true"><PortraitArt p={person.portrait} /></svg>
         : <span className="ac-tile-face"><Avatar person={person} size={88} /></span>)}
@@ -40,7 +44,8 @@ export function CallTile({ person, name, speaking = false, muted = false, hand =
         {hand && <Icon name="hand" size={14} />}
         {name}
       </span>
-      {muted && !hand && <span className="ac-tile-mic" aria-label="Microphone off"><Icon name="micOff" size={14} /></span>}
+      {connecting ? <span className="ac-tile-wait" role="status"><Dots />Connecting</span>
+        : muted && !hand && <span className="ac-tile-mic" aria-label="Microphone off"><Icon name="micOff" size={14} /></span>}
       {hand && <span className="ac-tile-hand" aria-label="Hand raised"><Icon name="hand" size={15} /></span>}
       {chrome}
     </div>

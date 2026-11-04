@@ -760,8 +760,8 @@ describe('calls with notes', () => {
     for (const [seq, bytes] of after.entries()) await again.appendAudio(piece(bytes, s.notes.recording.segment, seq, seq * 5.004));
     expect(again.getSnapshot().notes.recording).toEqual({ segment: 1, pieces: 6, seconds: 30 });
     // The old page's recorder, had it carried on, belongs to the earlier segment, and its connection was taken
-    // over by the new one: the call takes nothing more from it.
-    expect(code(await first.appendAudio(piece(audioBytes('old-page'), 0, 3)).catch((e: unknown) => e))).toBe('forbidden');
+    // over by the new one: the call takes nothing more from it, and tells it the call went on elsewhere (409).
+    expect(code(await first.appendAudio(piece(audioBytes('old-page'), 0, 3)).catch((e: unknown) => e))).toBe('conflict');
 
     const noteId = (await again.leave())?.pendingNoteId ?? '';
     await first.leave();
@@ -2455,6 +2455,8 @@ describe('deleting an account', () => {
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
     expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
+    // She's moving that call to her phone, whose link nobody has opened yet.
+    const moving = await live.startMove({ mic: true, cam: false });
     // Notes other people gave her: Ann invited her to one call, and shared another note with her, which she shared on with Kofi.
     const invitedTo = await noteFrom(ann, [lena.email]);
     const sharedWith = await noteFrom(ann);
@@ -2464,7 +2466,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
       'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
@@ -2515,6 +2517,7 @@ describe('deleting an account', () => {
     expect(await elsewhere.api.auth.getSession()).toBeNull();
     expect(code(await elsewhere.api.meetings.upcoming().catch((e: unknown) => e))).toBe('unauthenticated');
     await live.leave().catch(() => undefined);
+    moving.close();
     // Not one row of hers is left in any table, and nothing gives her address anyone's notes. Only the object
     // the store refused waits in object_gc, by its ID, until maintenance deletes it.
     expect(await counts()).toEqual({ ...Object.fromEntries(tables.map((t) => [t, 0])), object_gc: 1 });
@@ -2755,7 +2758,15 @@ describe('privacy at rest', () => {
     const translations = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_translations x`)).rows[0]?.all ?? '');
     expect(translations).not.toBe('');
     const callRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM calls x`)).rows[0]?.all ?? '');
-    const live = `${liveClips} ${translations} ${callRows}`;
+    // Moving to another device: the code is a secret too, kept only as a hash beside the sealed move.
+    const move = await call.startMove({ mic: true, cam: true });
+    const moveCode = move.getSnapshot().code ?? '';
+    expect(moveCode).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    secrets.push(moveCode);
+    const moveRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_moves x`)).rows[0]?.all ?? '');
+    expect(moveRows).not.toBe('');
+    move.close();
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows}`;
     await call.leave();
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
@@ -2852,7 +2863,8 @@ describe('privacy at rest', () => {
     const logText = h.logs.join('');
     expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
-    for (const secret of secrets) expect(logText.includes(secret), 'a session cookie in logs').toBe(false);
+    for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
+    for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);

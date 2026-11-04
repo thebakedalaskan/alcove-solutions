@@ -30,6 +30,8 @@ import { HeldRooms } from './notes';
  * - `replaced`: their pass brought them back on another connection, so it can't again.
  * - `chatBefore`: there had been chat in their part of the call while they weren't in it, so their browser can't read all of it.
  * - `since`: when they were let in, in ms.
+ * - `earlier`: the stretches this connection was in before it was taken out while away and came back in as it is
+ *   (`mls/back`), so its time away stays time away.
  * - `left`: when this connection stopped being in the call (left, removed, or another took its place), in ms; null
  *   while it's in. With `since`, it's each person's time in the call, which catching up reads.
  */
@@ -37,7 +39,8 @@ export const Joined = z.object({
   identity: z.string(), person: z.string(), role: z.enum(['host', 'invited', 'guest']), name: z.string(), email: z.string().optional(), photoUrl: z.string().optional(),
   status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), group: z.string().nullable(), from: z.number(),
   placedAt: z.number(), placedSeq: z.number(), wasIn: z.object({ place: z.string(), since: z.number(), until: z.number() }).nullable(),
-  leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), left: z.number().nullable(), hand: z.boolean()
+  leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), left: z.number().nullable(),
+  earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]), hand: z.boolean()
 });
 export type Joined = z.infer<typeof Joined>;
 

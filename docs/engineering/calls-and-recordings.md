@@ -49,11 +49,14 @@ sequenceDiagram
   another tab: the new connection takes over from the old one): the new page's recorder never lands among
   the old one's pieces, and audio from the old page, still in the earlier segment, is refused. Each segment
   is one continuous MediaRecorder stream, so its pieces concatenate into one playable file.
-- **Ordering and retries.** The browser uploads pieces in order and tries each one up to three times.
-  Each piece says where it starts in its segment, pauses not counted (`x-alcove-at-ms`). The server treats
-  a repeated `(segment, seq)` as a no-op (a different piece sent to a place already stored is
-  `409 conflict`) and rejects audio for a paused or stopped recording, or for an earlier segment. A piece
-  whose `content-length` is over 2 MiB is refused before its body is read.
+- **Ordering and retries.** The browser uploads pieces in order. While the connection is down, or the server
+  is busy, it keeps trying each one for up to two minutes, so a short drop loses nothing; a refusal that trying
+  again won't change gives up at once (a `409` quietly), and stopping waits at most 10 seconds for the last
+  pieces. Each piece says where it starts in its segment, pauses not counted (`x-alcove-at-ms`). The server
+  treats a repeated `(segment, seq)` as a no-op (a different piece sent to a place already stored is
+  `409 conflict`) and rejects audio for a paused or stopped recording, for an earlier segment, or from one of
+  the organizer's connections that another tab or device has taken over (`409`: that tab drops what it hadn't
+  sent, as below). A piece whose `content-length` is over 2 MiB is refused before its body is read.
 - **Live transcript.** While notes are on, the organizer's browser also sends clips of speech, one stream per
   voice it hears (its own microphone and each other unmuted microphone it plays), to
   `POST /v1/live/calls/:id/transcribe` (16 kHz mono WAV, at most 30 seconds, each saying where it starts in
@@ -88,7 +91,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
   People) and lets them in or turns them away (`deny`). Someone signed in with an account the notes may go to
   asks under it, so the organizer sees their name and address; anyone else is a guest by name (the one they
   typed, or their account's). Nobody joins before the organizer is there (`409 conflict`), while the call is
-  locked (`403 forbidden`) or once it has ended (`409`, "This call has ended."); someone removed asks again. An
+  locked (`403 forbidden`; a lock keeps new people out, not someone coming back to their place) or once it has ended (`409`, "This call has ended."); someone removed asks again. An
   ask taken back stays turned away, so its identity can't ask again as someone else. Someone waiting learns only
   what the call captures, as the card does: nobody's name, no asks, and nothing that's been said. There's no
   participant limit.
@@ -124,7 +127,8 @@ The call itself stays in the API: who's let in, notes and the transcript.
   with the link, who doesn't get the notes, reads only what was said while they were in the call as well (the
   live transcript, captions, catching up, asking and moments), while the organizer and everyone on the invite
   (people signed in whom the organizer let in included) read all of it. Only the organizer (pass role `host`, their
-  own session and their current connection: joining from another device takes the powers with it): let people in
+  own session and their current connection: joining from another device takes the powers with it, and so does moving there, below; an earlier connection of
+  theirs is told `409` "You're in this call from another tab or device now"): let people in
   or turn them away, notes on/off, pause and resume, say not now to an ask for notes, say what their browser can't
   capture, audio and speech uploads, mute someone's microphone, remove someone, lock the call, turn pointing at
   shared screens off for everyone, and end it. The
@@ -146,8 +150,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
   calls whose room is gone.
 - **Who's in** comes from admission, sealed in the call's state: never from LiveKit's API on reads, so a
   call's reads cost LiveKit nothing. Each participant also has a `seat`, the same across their reconnections (a
-  reload) and, for the organizer, on any device, which viewers' own layouts key them by
-  ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device gets a new seat.
+  reload, a comeback, a move to another device) and, for the organizer, on any device, which viewers' own layouts
+  key them by ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device without
+  moving gets a new seat.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera (or a
   change of what's shared) into the same publication, plays everyone else's audio on the chosen speaker at each
@@ -251,8 +256,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   nobody is counted twice. Leaving while still asking, closing the page included, takes the request back and
   forgets it: a pass only brings back someone who was let in, so asking again means being let in again. A
   LiveKit `participant_left` webhook only takes someone out of their group after LiveKit confirms, three seconds
-  later, that they're really gone. A browser taken out of the call, or whose place another tab took, is told and
-  stops.
+  later, that they're really gone; if that browser is still there when its connection comes back, it comes back in
+  as it is, into the group of the part of the call it's in ([Reconnects](#reconnects)). A browser that's removed,
+  turned away, or whose place another tab or device took is told and stops.
 - **A new organizer connection** (a reload or another device) starts a new group generation for every part of
   the call: the old connection's keys stay with it, everyone already in rejoins their part's new group with fresh
   keys without asking, open rooms stay open (the organizer in the room it was visiting), and anyone still waiting
@@ -309,8 +315,13 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   organizer's own it still records everyone else), the transcript when the browser can't run the audio worklet
   it listens through. While notes are on, those parts are `unavailable` for everyone, and when it's both, `mode` is too
   (the sign says **Notes unavailable**, in caution). It's forgotten with every change to notes and when a new
-  organizer connection takes over, and one that arrives while notes aren't on is ignored, so the browser says
-  again and nobody is told something isn't captured when it is.
+  organizer connection takes over (joining from another device, or moving there), and one that arrives while
+  notes aren't on is ignored, so the browser says again and nobody is told something isn't captured when it is.
+  Both parts are also unavailable while the organizer's browser is out of the call (`away`: LiveKit says its
+  connection left, and neither it nor another of the organizer's connections is back yet), and the sentence
+  says so: "Art's browser isn't in the call right now, so nothing is captured until it's back". So is every open
+  breakout room's transcript (`CaptureState.room`), and a room's gaps include the part of an `offline` stretch while
+  it was open.
 - **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change nudges the room, so browsers fetch the call again.
@@ -330,10 +341,12 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   catch-up, questions and captions still read what was transcribed before. Turning notes off sends the last
   audio and speech first; if it fails, the same recorder carries on.
 - **Resume** (`{type: "resume"}`) is the organizer's choice and nothing else's: not a reconnect, not a reload,
-  not a breakout room, and not a new organizer connection, which takes over with notes still paused (or off).
+  not a breakout room, and not a new organizer connection (another device, or a move to one), which takes over
+  with notes still paused (or off).
   Resuming starts segment `n+1`, and so does turning notes on.
-- **Gaps.** Every stretch with nothing captured (notes off, from the start until they first come on, or paused)
-  is a gap: when it started and ended, and where it falls in the recording (`at`, at the end of the segment
+- **Gaps.** Every stretch with nothing captured (notes off, from the start until they first come on, paused, or
+  `offline`: notes on, but the organizer's browser out of the call until another of their connections took over
+  or the call ended, "Organizer offline 10:20–10:21") is a gap: when it started and ended, and where it falls in the recording (`at`, at the end of the segment
   before it, as transcript lines are placed). The call (`capture.gaps`), a catch-up (`CatchUp.gaps`, the ones in
   or after what it read) and the finished note (`Note.gaps`) carry them; the transcript and chapters say
   "Paused 10:02–10:05" in their place, and the notes model reads a `--` line there and is told never to guess
@@ -464,7 +477,7 @@ ever sent to the presenter's computer.
   (`CallState.pointing`; `{type: "pointing", on}`, the organizer's only, on until they turn it off, each change a
   notice for everyone) and the share's presenter lets others point at it (`CallParticipant.othersPoint`;
   `{type: "others-point", on}`, anyone in the call about their own shares, kept by person so it holds across their
-  reconnections, 20 changes a minute per person). A presenter can always point at their own share. Both live in the
+  reconnections and moves to another device, 20 changes a minute per person). A presenter can always point at their own share. Both live in the
   call's sealed state, the server checks who may change them, and every browser enforces them on what it sends and on
   what it takes: marks from someone the presenter doesn't let point never show, whatever that person's browser sends.
   Turning either off takes the pointers and marks it covers away at once, everywhere. Everyone may point by default
@@ -550,12 +563,132 @@ ever sent to the presenter's computer.
   would load the API and database with every move. Pointers glide between places (90 ms), and lines go out at most
   every 80 ms as they're drawn.
 
+## Reconnects
+
+- **A short drop.** LiveKit resumes the connection, or reconnects it under the same identity, and the top bar
+  says **Reconnecting** meanwhile, for a dropped signalling connection too (that's how most drops start; LiveKit
+  calls it `SignalReconnecting`). The call keeps up over HTTP as before. On coming back, and also as soon as it
+  first connects to the room, the browser fetches the call and its log again: a nudge sent while it was still
+  connecting reached a room it wasn't in. That was why, after the organizer reloaded, everyone's camera looked off
+  for a while: the others' fresh key packages arrived while the organizer's new page was still connecting, so it
+  waited for its next check (up to 6 seconds, longer on a slow join) before letting them into its new group. Now
+  they're in within about two seconds, and until then their tiles say **Connecting**.
+- **Taken out while away.** A connection gone for longer than LiveKit waits (about 15 seconds without an answer)
+  is taken out by LiveKit's `participant_left` webhook ([Group calls](#group-calls)), and the organizer's browser
+  takes it out of the group, so the keys move on. If that browser is still there and comes back, it comes back in
+  as it is: its log read says `admission: "out"` (it left by nobody's choice: not removed, not turned away, and its
+  place not taken by another tab or device), so it lets go of the groups it held and asks
+  `POST /v1/live/calls/:id/mls/back`. That puts it back as the same connection and person (seat, hand and all), in
+  the same part of the call, with a fresh 90 seconds to reach the room; the log then asks it for keys, as for anyone
+  on their way into a group, and the organizer's browser adds it to that part's group (a breakout room's included).
+  Its time in before the drop is kept as a stretch of its own (`earlier`), so its time away stays time away: a guest
+  reads nothing said then, and catching up "while you were away" finds it ([Notes and inference](notes-and-inference.md#catching-up-during-a-call)).
+  Until the organizer's browser has taken the old connection out of its group, `mls/back` answers `409` and the
+  browser asks again a few seconds later. Someone removed, turned away or replaced gets `admission: "denied"` and stops. Chat sent while it was out
+  stays unreadable to it, as for anyone let in later.
+- **The organizer away.** Notes are written from what the organizer's browser hears, so from LiveKit's
+  `participant_left` for the organizer's connection (it dropped, is reloading, or is moving) until it or another
+  of their connections is back, the capture state says so for everyone and on the card: recording and transcript
+  `unavailable`, `away` set, the sign **Notes unavailable** ([What's captured](#whats-captured)). The webhook
+  nudges the room both ways, so screens change at once. If the same connection comes back, its browser kept
+  recording through the drop and sends what it held ([Call lifecycle](#call-lifecycle)), so nothing is marked;
+  what others said meanwhile wasn't heard. If another connection takes over (a reload, another device, a move)
+  or the call ends first, the time from the old one leaving is an `offline` gap after the segment it was
+  recording: in the transcript, catch-up and notes, and breakout rooms are placed in the recording without it.
+  Nothing turns notes, a microphone or a camera on that was off, and a pause outlasts all of it.
+- **The organizer's old tab.** Joining from another tab or device takes over without asking the old tab, which
+  may still be recording. The server tells that connection `409` for anything only the organizer may do, audio
+  and speech included, so it stops trying at once instead of retrying a refusal; once its screen learns the call
+  went on elsewhere it drops what the recorder and voices hadn't sent (the server would refuse it) and leaves. A
+  move lets go first instead: the old device sends its last audio and speech before the new one takes over.
+- **Nobody twice.** A reload, a comeback and a move each keep one person: a new connection of someone who was in
+  takes the old one's place (left and replaced), never a second seat. While the organizer's browser takes the old
+  connection out of the group, `CallState.leaving` names it, with that person's connection now (`now`), so screens
+  show it as who it is, and not at all once they're back on another connection, rather than as "Someone". Audio
+  pieces and transcript clips are idempotent by their place (and, for clips, whose they are), so nothing sent again
+  is kept twice; a moved organizer's recording goes on in a new segment. Notices already shown aren't new to the
+  screen that showed them; a new device shows the latest once.
+
+## Moving to another device
+
+Someone in a call moves their place to another device (a laptop to a phone, say) from **More › Move to another
+device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
+
+1. **A code.** `POST /v1/live/calls/:id/moves {media}` (by the call pass) starts a move and gives a random 128-bit
+   code for the new device's link, `<web app>/move#<code>`, shown as a QR code and as the same link to copy. It
+   works for 2 minutes; while the dialog stays open a fresh one replaces it, for about 10 minutes. The code is in
+   the fragment, which browsers never send, so no server or log sees it, and the page takes it out of the address
+   bar at once. While this screen is being shared the code stays hidden, so nobody watching can use it. One move per
+   person: a new code makes the last one useless. The organizer starts one only from their current connection with
+   their own session, an invited person (someone signed in whom the organizer let in from the link included, by the
+   role the call gives them, not their pass's) only together with their account's session.
+2. **Opened.** The new device sends the code once, in a POST body (`POST /v1/moves/claim`), and gets back a claim
+   only it holds: the code works once. It learns the call's title, the organizer's name, who it'll be and whether
+   their microphone and camera are on, and nothing else. The device being left sees that it was opened.
+3. **Ready.** The new device makes its own random identity and MLS key package (`POST /v1/moves/ready`); its keys
+   never leave it. The identity must be new to the call: one the call already has (the organizer's, anyone else's,
+   or the mover's own) is refused (`409`), so a move can never name someone else's place and be handed it. The
+   organizer and invited people move only to a device signed in to the same account (the
+   organizer's own; an invited person's by the address they were let in with), checked here and again as the new
+   device comes in; the move page signs in on the spot, and Google sign-in comes back to it (`?next=/move`, with the
+   claim kept in that tab's `sessionStorage` meanwhile). A guest's move involves no account: their call pass is all
+   they have. A QR code never makes a session.
+4. **Letting go.** The device being left confirms (`POST /v1/live/calls/:id/moves/confirm`) only once it has let go:
+   the last notes audio and speech are sent, then its microphone and camera stop and it leaves the room. Signed in to
+   the same account on the new device, it lets go by itself; for a guest it asks first ("iPhone · Safari is ready to
+   take your place": **Move to iPhone** or **Not my device**). The API takes that connection out of the room too, in
+   case it didn't get there, and out of the call, so the organizer's browser moves the keys on without it. The
+   organizer's connection is counted gone from then: the call ends if their new device never arrives, as when they
+   leave.
+5. **In.** The new device comes in (`POST /v1/moves/arrive`) as the same person, with the identity and key package
+   it sent: a guest or invited person the way a reload comes back (the same person, so the same seat and breakout
+   room, name, role, raised hand and spotlight): a new connection in no group, which the organizer's browser adds to
+   the group of the part of the call they're in, a room's included, and takes the old one out of, so nobody is
+   counted twice. The organizer comes in as the organizer's new connection (a new key generation for every part of
+   the call, host powers, back in the room it was visiting, and the recording on a new segment, as when they join
+   from another device), with nothing resumed: a paused call, or a room it paused, stays paused. It brings in
+   only the identity named when the device was ready, so another connection already using it (someone who joined
+   with it in between) means `409`, never that connection's place; and only the person whose place it was, as they
+   are when it comes in, under the call's lock: someone removed (or whose place went elsewhere) since the move last
+   looked brings nobody in (`409`), and a commit adding anyone whose person was removed is refused. Asking again, after a lost answer, hands back the
+   same connection with a new pass, and only that one: the connection this move made, as the person who moved, in
+   the same role, and only once the move has happened. Its microphone and camera start in
+   the call as they were on the device left, never more, and only after that device stopped its own: there are never
+   two live microphones, and one that was off stays off. A screen being shared stops with the device that shared it.
+
+Either device can call the move off until the device being left lets go, and the other is told. Each step runs
+out: 2 minutes for an unopened code, 5 more to be ready (time to sign in), 3 to let go, 2 to come in.
+
+Requests about one move never wait on each other. Each change is made only if the move is still as that request
+read it (its sealed body unchanged), otherwise `409` and the device tries again; nothing holds a row lock while it
+reads the call or brings someone in. Only one request at a time brings the new device in (a short `arriving`
+stage, shown as `released`, that runs out after 30 seconds if that request fails on the way); others asking at the
+same moment get `409` and ask again, and find the connection made. The device being left's own changes (starting,
+letting go, calling off) never wait more than 2 seconds for a lock (then `409`). Each move is rate-limited by its
+secret's hash as well as by client address: checking on it 240 times a minute, changing it 60. A move can't
+go on once its person is removed, their place has gone elsewhere, or the call has ended, and each refusal says what
+to do next, with the request ID to quote. A browser that can't encrypt call media is told so before the code is
+used, so it still works on another device.
+
+**What a stolen code allows.** For the organizer or an invited person, nothing: the device that comes in must be
+signed in to their account. For a guest, someone who scans the code first (within its 2 minutes, before the guest's
+own device does) can't come in unless the guest's device agrees to a device it didn't expect, and the guest's own
+device is told the code was used, so they make another. A code never carries a key: the new device makes its own and
+joins the call's group like anyone let in.
+
+Moves are rows in `call_moves`, found by the SHA-256 of the move's current secret (the code, then the claim), each
+sealed under the organizer's keys as a `call-move` record bound to the call and the move: who's moving, the stage,
+whether the microphone and camera are on, and the new device's identity, key package and kind ("iPhone · Safari",
+never logged). Upkeep deletes those that ran out, and a call's go when it ends.
+
 ## Hands, spotlight, breakout rooms and captions
 
 - **Raised hands** are call state, one per person (`{type: "hand", up}`): anyone in the call raises or lowers
-  their own, everyone sees it (`CallState.participants[].hand`), and leaving lowers it.
+  their own, and everyone sees it (`CallState.participants[].hand`). It stays up across a reload, a dropped
+  connection that comes back, and a move to another device: it's the person's, not the connection's.
 - **Spotlight** (`{type: "spotlight", participantId}`) is the organizer's, and only names someone in the call;
-  it puts that tile first on everyone's stage. Opening breakout rooms ends it.
+  it puts that tile first on everyone's stage, and goes with that person to a new connection (a reload, a move).
+  Opening breakout rooms ends it.
 - **Breakout rooms** (`{type: "rooms-open", rooms: [{name, emails}], minutes}`, `rooms-message`,
   `rooms-rename`, `rooms-move`, `rooms-close`) are the organizer's. Two to eight rooms; only people invited to
   the call can be sent to one, each to one room, and moved to another or back to the main room while they're
@@ -648,7 +781,10 @@ device pickers.
   screen, who's speaking, and their tracks), each with `useLive()`, copying none of their state. Only the
   organizer also reads the meeting, to know who's invited.
 - **Who's shown.** Everyone the server says is in the call, plus anyone else in the browser's MLS group, as
-  "Someone". Mic, camera, screen and speaking come from the room; raised hands from `participants[].hand`.
+  "Someone", except a connection the server says is on its way out (`CallState.leaving`), which shows as whose it
+  is, or not at all once that person is here on another connection. Someone in the call who isn't in this
+  browser's group yet shows **Connecting** on their tile, so it never looks like their camera is off. Mic, camera,
+  screen and speaking come from the room; raised hands from `participants[].hand`.
   Other people's cameras and screens are attached with `CallRoom.attach` and aren't mirrored. The join page
   opens the call once the browser is in the group and the call names it.
 - **The room.** One connection per session, shared across remounts and left when no screen uses it. It
@@ -691,8 +827,9 @@ device pickers.
   `sessionStorage` for the tab, `alcove.callLayout.<callId>`: a reload keeps it, and leaving the call deletes it.
   It names people by their `seat` (`CallParticipant.seat`), not their participant ID: participant IDs are LiveKit
   identities, new for every connection (a reload is a new connection), while a seat is the same across someone's
-  reconnections (a reload's pass carries their random `person`; the organizer has one seat on any device; anyone
-  else joining from a second browser is a new person with a new seat). The API makes it when the call is read, a MAC
+  reconnections (a reload's pass carries their random `person`, and so does a move to another device; the organizer
+  has one seat on any device; anyone else joining from a second browser without moving is a new person with a new
+  seat). The API makes it when the call is read, a MAC
   of that `person` under a key for the call from the organizer's root, so nobody can work one out, it stores nothing
   new, and it differs in every call. Shares are named by their sharer's participant ID, since a share lives and dies
   with its connection. Neither store holds a name, an address, or anything said or shared.
@@ -836,6 +973,13 @@ device pickers.
   the organizer ended the call, and the organizer's sheet follows the notes being written. A browser that's
   removed, out of the group, or whose room ended is told, closes the session and leaves the room; one whose
   keys fell out of step, or whose connection dropped for good, is offered a reload.
+- **Reconnecting.** The top bar says **Reconnecting** while the room's connection is coming back (signalling
+  only, or everything) and while this browser is getting back into the call's group after a comeback. While the
+  organizer's browser is out of the call, the notes sign says **Notes unavailable** ([Reconnects](#reconnects)).
+- **Moving to another device.** **More › Move to another device** opens one dialog whose content changes in
+  place (`features/move/MoveSheet.tsx`): the QR code and link, then the device that opened it, then letting go.
+  Afterwards this screen says where the call went, with **Join again here** (and **Go to Home** when signed in).
+  The new device's page is `routes/move.tsx` ([Moving to another device](#moving-to-another-device)).
 
 ## Looking closer at a share
 
@@ -1092,7 +1236,8 @@ already is skipped, and stopping finishes the note once.
   through a Web Audio graph (a `MediaStreamAudioDestinationNode` behind a limiter) that mixes its voices: the
   microphone in a room recording, everyone the organizer's browser hears in a call. Switching microphones, and
   voices coming and going, carries on in the same recording instead of going silent or starting again;
-  MediaRecorder can't change its input track.
+  MediaRecorder can't change its input track. It keeps recording through a dropped connection and sends what it
+  held once it's back (above).
 
 Beside it, `SpeechClips` (`apps/web/src/features/call/speech.ts`) feeds the live transcript: an
 AudioWorklet (`apps/web/public/pcm-capture.js`) mixes the microphone to mono, filters and resamples it to

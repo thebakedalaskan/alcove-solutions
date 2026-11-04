@@ -291,6 +291,9 @@ class LiveKitRoom implements CallRoom {
         if (this.hears(from)) for (const take of takers.on) take(plain, from);
       });
     });
+    // A short drop usually starts with the signalling connection, which LiveKit tries to resume before it reconnects
+    // everything: either way the call isn't keeping up until it's back, and the screen says so.
+    r.on(RoomEvent.SignalReconnecting, () => this.set({ connection: 'reconnecting' }));
     r.on(RoomEvent.Reconnecting, () => this.set({ connection: 'reconnecting' }));
     // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia.
     r.on(RoomEvent.Reconnected, () => { this.set({ connection: 'connected' }); refetch(); this.follow(); });
@@ -319,6 +322,9 @@ class LiveKitRoom implements CallRoom {
     await this.syncing;
     this.set({ connection: 'connected' });
     rlog.info('joined the room', { role: this.session.ticket.role, others: this.room.remoteParticipants.size, keyIndex: this.keyNow?.send?.index ?? null });
+    // What the call said while this browser was still connecting (people back with fresh keys after the organizer's
+    // reload, say) went to a room it wasn't in yet, so it looks again now instead of at its next check.
+    void this.session.refresh().catch((e: unknown) => rlog.warn('call refresh failed', { err: e }));
   }
 
   /**
