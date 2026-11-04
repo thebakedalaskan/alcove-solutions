@@ -34,6 +34,10 @@
   changes on its share, sealed; the verified notes model reads each frame after the call; the note shows what
   was on screen beside the lines said then, and decisions, follow-ups and answers point at it
   ([Calls and recordings › Shared screens](../engineering/calls-and-recordings.md#shared-screens)).
+- Breakout rooms with their own end-to-end encryption: each room is its own MLS group, so its own media keys
+  and chat; moving someone between rooms moves their keys; what's said in a room shows only there (transcript,
+  captions, catching up) and is deleted when it closes; and each room has its own capture state, which the
+  organizer can pause ([Calls and recordings › End-to-end encryption](../engineering/calls-and-recordings.md#end-to-end-encryption)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
@@ -63,3 +67,4 @@
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
 | 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
+| 11 | A breakout room's own notes, for the people who were in it; each room committed by one of its own members | What's said in a room is shown live there and kept out of the call's notes today; a room's own committer builds on host hand-off (#30) |

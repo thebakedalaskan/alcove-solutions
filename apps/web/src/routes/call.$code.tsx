@@ -1,4 +1,4 @@
-import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
+import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
 import {
   Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
@@ -18,6 +18,7 @@ import { useLiveNotes } from '~/features/call/liveNotes';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
+import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, type ShareProblem } from '~/features/call/share';
 import { SharePicker } from '~/features/call/SharePicker';
@@ -114,10 +115,13 @@ function InCall({ session }: { session: CallSession }) {
   const meId = me?.id ?? self;
   const organizer = state.isOrganizer;
   // What the call captures now, the same for everyone: notes on (unavailable while the organizer's browser can't
-  // capture anything), paused by the organizer, or off. The live transcript is heard only while it says on.
+  // capture anything), paused by the organizer, or off. The recording follows it.
   const mode = state.capture.mode;
   const on = notesAreOn(mode);
-  const hearing = state.capture.transcript.mode === 'on';
+  // What's captured where you are: in a breakout room, the room's, which the organizer can pause on its own. Captions,
+  // catching up and asking follow it, and the live transcript is heard only while it says on.
+  const capHere = captureHere(state.capture);
+  const hearing = capHere.transcript.mode === 'on';
   const width = useWidth();
   const narrow = width < 760;
   const sideW = narrow ? width : width < 1100 ? 360 : 400;
@@ -220,13 +224,18 @@ function InCall({ session }: { session: CallSession }) {
   }, [organizer, on, live, segment, micTrack]);
   // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
   const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
+  // Nothing is heard while this browser is between two parts of the call: it holds neither part's keys.
+  const settledHere = crypto.status === 'in';
+  // Nobody is heard in a breakout room the organizer paused: what was held is dropped, and the segment carries on.
+  const roomHeld = state.capture.room?.mode === 'paused';
   // Everyone else is heard whether or not the organizer has a microphone of their own.
   useEffect(() => {
     const e = ears.current;
     if (!e) return;
-    if (organizer && on && live) e.follow(segment, [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))]);
+    if (organizer && on && live && !roomHeld) e.follow(segment, settledHere ? [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))] : []);
     else if (!on || !organizer) e.stop();
-  }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
+    else if (roomHeld) e.quiet();
+  }, [organizer, on, live, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
   useEffect(() => () => ears.current?.stop(), []);
   /*
    * What this browser can't capture while notes are on, which everyone is told: the recording without a microphone
@@ -241,6 +250,15 @@ function InCall({ session }: { session: CallSession }) {
     clog.info('saying what this browser can’t capture', { parts: cantKey || 'none' });
     session.setUnavailable(cant).catch((e: unknown) => clog.warn('could not say what this browser can’t capture', { err: e, parts: cantKey || 'none' }));
   }, [organizer, live, on, cantKey, toldKey, session]);
+  /*
+   * The organizer moving to another part of the call ends every clip in progress (the server places each where its
+   * speaker was when it began, so none may span two parts), and the recording that goes into the notes hears nothing
+   * while it's in a breakout room: what's said in a room stays out of the notes.
+   */
+  useEffect(() => {
+    ears.current?.mark();
+    recorder.current?.hush(crypto.place !== MAIN_PLACE);
+  }, [crypto.place]);
 
   /*
    * Your own shared screen, while screen notes are on: this browser looks at it and sends what changes to the notes
@@ -410,6 +428,9 @@ function InCall({ session }: { session: CallSession }) {
   // The room you're in (for the organizer, the one they're visiting), or -1 for the main room.
   const myRoom = open ? open.rooms.findIndex((r) => r.members.includes(meId)) : -1;
   const roomName = open && myRoom >= 0 ? open.rooms[myRoom]?.name ?? 'a room' : null;
+  /** A part of the call by its ID, as chat names it: "Design", "the main room". */
+  const placeName = (place: string) => place === MAIN_PLACE ? 'the main room'
+    : [...(open?.rooms ?? []), ...state.breakouts.held.flatMap((h) => h.rooms)].find((r) => r.id === place)?.name ?? 'a room';
   const inARoom = (id: string) => !!open && open.rooms.some((r) => r.members.includes(id));
   const mainIds = open ? state.participants.filter((p) => !inARoom(p.id)).map((p) => p.id) : [];
   const unit = open ? (myRoom >= 0 ? open.rooms[myRoom]?.members ?? [] : mainIds) : null;
@@ -428,9 +449,10 @@ function InCall({ session }: { session: CallSession }) {
   const organizerPerson = state.participants.find((p) => p.isOrganizer)?.person;
   const message = open?.message && state.elapsed - open.message.at < 10 ? open.message : null;
   const stageRooms: StageRooms | null = open && organizer ? {
-    rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null })),
+    // Each room's notes: paused while the whole call is, or while the organizer has paused that room.
+    rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off' })),
     main: mainIds, joined: myRoom >= 0 ? myRoom : null, left,
-    message: message && me ? { from: me.person, text: message.text } : null, notesOn: on
+    message: message && me ? { from: me.person, text: message.text } : null
   } : null;
   const visit = (k: number | null) => {
     const r = k === null ? null : open?.rooms[k] ?? null;
@@ -450,7 +472,7 @@ function InCall({ session }: { session: CallSession }) {
   const wasOpen = useRef(!!open);
   useEffect(() => {
     if (wasOpen.current && !open) {
-      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast('Everyone is back. The rooms go into the call’s notes.', { icon: 'notesPen' }); }
+      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast('Everyone is back in the main room, where notes are on. The notes say who was in which room, not what was said there.', { icon: 'notesPen' }); }
       else toast('Everyone is back from the rooms', { icon: 'door' });
     } else if (!wasOpen.current && open && !organizer) {
       const minutes = Math.max(1, Math.round((open.until - open.from) / 60));
@@ -458,6 +480,15 @@ function InCall({ session }: { session: CallSession }) {
     }
     wasOpen.current = !!open;
   }, [open, on, organizer, roomName, toast]);
+  /* Sent to another room (or back) while the rooms are open: you're told where you are now. Your keys move with you. */
+  const myRoomId = open && myRoom >= 0 ? open.rooms[myRoom]?.id ?? null : null;
+  const lastRoomId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const was = lastRoomId.current;
+    lastRoomId.current = open ? myRoomId : undefined;
+    if (organizer || !open || was === undefined || was === myRoomId) return;
+    toast(roomName ? `The organizer moved you to ${roomName}` : `The organizer moved you back to the main room${on ? ', where notes are on' : ''}`, { icon: 'door' });
+  }, [open, myRoomId, roomName, organizer, on, toast]);
   /* Everyone else hears when the organizer comes into their part of the call, or goes: who can hear them changes. */
   const organizerId = state.participants.find((p) => p.isOrganizer)?.id ?? null;
   const organizerRoom = open && organizerId ? open.rooms.findIndex((r) => r.members.includes(organizerId)) : null;
@@ -467,9 +498,11 @@ function InCall({ session }: { session: CallSession }) {
     lastOrganizerRoom.current = organizerRoom;
     if (organizer || was === null || organizerRoom === null || was === organizerRoom) return;
     const who = organizerPerson ? callName(organizerPerson) : 'The organizer';
-    if (organizerRoom === myRoom) toast(myRoom >= 0 ? `${who} joined your room` : `${who} is back in the main room`, { icon: 'door' });
+    // Coming into a room whose notes are on starts what's said there being transcribed: they're told so.
+    const heardHere = myRoom >= 0 && notesAreOn(capHere.mode) ? '. What’s said here is transcribed while they’re here' : '';
+    if (organizerRoom === myRoom) toast(myRoom >= 0 ? `${who} joined your room${heardHere}` : `${who} is back in the main room`, { icon: 'door' });
     else if (was === myRoom) toast(myRoom >= 0 ? `${who} left your room` : `${who} went to ${state.breakouts.open?.rooms[organizerRoom]?.name ?? 'a room'}`, { icon: 'door' });
-  }, [organizerRoom, myRoom, organizer, organizerPerson, state.breakouts.open, toast]);
+  }, [organizerRoom, myRoom, organizer, organizerPerson, state.breakouts.open, capHere.mode, toast]);
   /* The organizer hears once when a room asks for help, and can go straight there. */
   const helped = useRef(new Set<string>());
   const helpKey = open ? open.rooms.map((r, k) => `${r.id}:${helps[k] ?? ''}`).join(' ') : '';
@@ -494,6 +527,16 @@ function InCall({ session }: { session: CallSession }) {
     candidates.push({ id: email, person: p.person });
   }
   const guestsHere = others.filter((p) => !candidates.some((c) => sameEmail(c.person, p.person))).length;
+  const renameRoom = (k: number, name: string) => {
+    const r = open?.rooms[k];
+    if (r) session.renameRoom(r.id, name);
+  };
+  const moveTo = (email: string, k: number | null) => {
+    const r = k === null ? null : open?.rooms[k] ?? null;
+    session.moveToRoom(email, r ? r.id : null);
+    const who = candidates.find((c) => c.id === email.toLowerCase())?.person ?? open?.rooms.flatMap((x) => x.people).find((p) => sameEmail(p, { email }));
+    toast(`${who ? callName(who) : 'They'} ${r ? `will be in ${r.name}` : 'will be back in the main room'}. Their keys move with them.`, { icon: 'door' });
+  };
   const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number) => {
     session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids })), minutes });
     toast(`${rooms.length} rooms are open for ${minutes} min`, { icon: 'door' });
@@ -686,6 +729,18 @@ function InCall({ session }: { session: CallSession }) {
     },
     resume: () => { session.resume().catch(failed); },
     screens: (v) => { session.setScreens(v).catch(failed); },
+    // One breakout room: the voices there hold still while the pause is on its way, and what they held is dropped
+    // once the server has paused the room. The recording and the call's notes carry on.
+    room: (paused) => {
+      const id = state.capture.room?.id;
+      if (!id) return;
+      const e = ears.current;
+      if (paused) { e?.hold(); setPausing(true); }
+      session.pauseRoom(id, paused).then(() => { if (paused) e?.quiet(); }, (err: unknown) => {
+        if (paused) { clog.warn('pausing notes in the room failed; capture carries on', { err }); e?.release(); }
+        failed(err);
+      }).finally(() => { if (paused) setPausing(false); });
+    },
     ask: (up) => {
       session.requestNotes(up).then(() => toast(up ? `You asked ${organizerName(state)} for notes` : 'You took back your ask', { icon: 'hand' }), failed);
     }
@@ -738,14 +793,14 @@ function InCall({ session }: { session: CallSession }) {
     <Popover open={pop === 'cap'} onOpenChange={(o) => setPop(o ? 'cap' : null)} side="top" align="end" label="Caption language" className="ic-dmenu"
       anchor={<button type="button" className="ic-capbtn" aria-label="Choose the caption language"><Icon name="translate" size={14} />{langName(lang)}</button>}>{langMenu}</Popover>
   );
-  // Captions come back when the rooms close: what's said in one room isn't shown in another. While notes are paused
-  // or off nothing new is said in them, so the last line isn't left up as if it were live.
-  const capNode = !cc || open ? null : caption && hearing ? (
+  // Captions are the lines of the part of the call you're in: what's said in one room is never shown in another. While
+  // notes are paused or off nothing new is said in them, so the last line isn't left up as if it were live.
+  const capNode = !cc ? null : caption && hearing ? (
     <Caption who={<>{caption.line.speaker?.person && <Avatar person={caption.line.speaker.person} size={18} />}<span className="name">{caption.line.speaker ? callName(caption.line.speaker.person ?? { name: caption.line.speaker.name, email: '' }) : ''}</span>{caption.translated && lang && <span className="lang">→ {lang.toUpperCase()}</span>}{capButton}</>}
       original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
   ) : (
     <Caption who={<><Icon name="captions" size={15} /><span className="name">Captions</span>{capButton}</>}>
-      <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : on ? 'Nothing is transcribed for captions right now: the organizer’s browser can’t listen.' : mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
+      <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : notesAreOn(capHere.mode) ? 'Nothing is transcribed for captions right now: the organizer’s browser can’t listen.' : capHere.mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
     </Caption>
   );
 
@@ -848,11 +903,12 @@ function InCall({ session }: { session: CallSession }) {
     locked: state.locked,
     lock: (v) => session.lock(v)
   } : undefined;
-  const privacyLine = on
-    ? state.capture.screen.mode === 'on' ? 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says and what anyone shares on screen go to the notes, written in confidential compute.'
-      : 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says also goes to the notes, written in confidential compute.'
-    : mode === 'paused' ? 'Video, audio and chat are encrypted end to end. Notes are paused, so nothing goes to the notes.'
-      : 'Video, audio and chat are encrypted end to end between the people here.';
+  const privacyLine = [
+    open ? 'Each room has its own encryption keys, so video, audio and chat reach only the people in the same room.'
+      : on || mode === 'paused' ? 'Video, audio and chat are encrypted end to end.' : 'Video, audio and chat are encrypted end to end between the people here.',
+    on ? `While notes are on, ${state.capture.screen.mode === 'on' ? 'what everyone says and what anyone shares on screen go' : 'what everyone says also goes'} to the notes, written in confidential compute.${open ? ' What’s said or shared in a room stays out of them.' : ''}`
+      : mode === 'paused' ? 'Notes are paused, so nothing goes to the notes.' : ''
+  ].filter(Boolean).join(' ');
 
   /* ---------- the status bar ---------- */
   const spotlight = open ? null : state.spotlight;
@@ -869,14 +925,18 @@ function InCall({ session }: { session: CallSession }) {
       <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
     </div>
   );
+  /* On the way to another part of the call: nothing is heard or sent until this browser holds the new part's keys. */
+  const movingBar = crypto.status === 'moving' && (
+    <div className="ic-spill" role="status"><Dots /><span className="tx2">{roomName ? <>Moving you to <b>{roomName}</b></> : <>Moving you back to the <b>main room</b></>}</span></div>
+  );
   /* In a room (or the main room while rooms are open): where you are, how long for, and the organizer's message to every room. */
-  const roomBar = open && !organizer && (message ? (
+  const roomBar = open && !organizer && (movingBar || (message ? (
     <div className="ic-banner">{organizerPerson && <Avatar person={organizerPerson} size={24} />}<span><b>{organizerPerson ? callName(organizerPerson) : 'The organizer'}</b> to all rooms: {message.text}</span></div>
   ) : (
     <div className="ic-spill"><Icon name={left <= 30 ? 'timer' : 'door'} size={15} />
       <span className="tx2">{left <= 30 ? <>Rooms close in <b>{mmss(left)}</b>. Everyone comes back to the main room.</> : <>You’re in <b>{roomName ?? 'the main room'}</b> · everyone comes back in {mmss(left)}</>}</span>
     </div>
-  ));
+  )));
   const alone = others.length === 0 && !open && (
     <div className="ic-spill"><Icon name="link" size={15} /><span className="tx2">Nobody else is here yet</span>
       <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
@@ -889,9 +949,10 @@ function InCall({ session }: { session: CallSession }) {
   );
   const bar = open
     ? (organizer ? soundPill || null : <>{soundPill}{roomBar}{sharePill}</>)
-    : (m.screen || spotlight || alone || soundPill) ? (
+    : (m.screen || spotlight || alone || soundPill || movingBar) ? (
       <>
         {soundPill}
+        {movingBar}
         {alone}
         {sharePill}
         {spotlight && (
@@ -943,13 +1004,14 @@ function InCall({ session }: { session: CallSession }) {
                   {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
                     controls={controls} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
-                  {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0 && mode !== 'paused'} paused={mode === 'paused'} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
-                  {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} who={personOf} onSend={(t) => session.sendChat(t)} />}
+                  {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
+                  {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
+                    here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
                   {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} volumes={volumes}
                     notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
-                      people={byId} activity={activity} me={me.person} onJoin={visit} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
+                      people={byId} activity={activity} me={me.person} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
                     : <RoomsSetup people={candidates} guests={guestsHere} onOpen={openRooms} />)}
                 </SidePanel>
               </motion.aside>

@@ -1,10 +1,13 @@
 /*
  * What a call captures (docs: Calls and recordings › What's captured): how its sealed state keeps it, the one gate
  * every capturing path goes through, the stretches with nothing captured, and the capture state as each person
- * sees it. Only the organizer changes it (calls.ts): notes on and off, pause and resume, and shared screens read
- * for the notes.
+ * sees it, in the call and in each breakout room. Only the organizer changes it (calls.ts): notes on and off, pause
+ * and resume, shared screens read for the notes, and pausing one room.
  */
-import { CaptureDevicePartSchema, type AudioSegment, type CaptureActor, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart, type CaptureState, type NotesRequest } from '@alcove/api';
+import {
+  CaptureDevicePartSchema, type AudioSegment, type CaptureActor, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart, type CaptureState, type NotesRequest,
+  type RoomCapture
+} from '@alcove/api';
 import { z } from 'zod';
 import { ConflictError } from '../errors';
 
@@ -39,10 +42,18 @@ export type ScreenChange = z.infer<typeof ScreenChange>;
 /** The paths that capture something, or send what was captured to the AI. */
 export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask';
 /**
- * What the gate needs to know about a call: whether it's live, notes, the note and recording, whether shared screens
- * are read (`screens`), and for a frame, whether whoever shares it is in a breakout room (`inRoom`), which stays out.
+ * What the gate needs to know about a call, in the part of it something was captured in: whether it's live, notes, the
+ * note and recording, and whether shared screens are read (`screens`). `status` is that part's (a breakout room's is
+ * the call's, held while the organizer has paused the room), and `room` says the room's own pause is what holds it. For
+ * a frame, `inRoom` says whoever shares it was in a breakout room when it was taken, which stays out.
  */
-export interface Capturing { live: boolean; status: CaptureStatus; noteId: string | null; recordingId: string | null; screens: boolean; inRoom?: boolean | undefined }
+export interface Capturing { live: boolean; status: CaptureStatus; noteId: string | null; recordingId: string | null; screens: boolean; inRoom?: boolean | undefined; room?: boolean | undefined }
+
+/** One change to a breakout room's own capture, in seconds since the call started: the organizer pausing it, or carrying on there. */
+export const RoomPause = z.object({ at: z.number(), paused: z.boolean() });
+export type RoomPause = z.infer<typeof RoomPause>;
+/** What a breakout room captures: the call's capture, held while the organizer has paused the room. */
+export const roomStatus = (call: CaptureStatus, pauses: RoomPause[]): CaptureStatus => (call === 'on' && pauses.at(-1)?.paused === true ? 'paused' : call);
 
 /**
  * The capture gate: whether `path` may capture into this call, or send its transcript to the AI, right now. Every
@@ -55,7 +66,10 @@ export interface Capturing { live: boolean; status: CaptureStatus; noteId: strin
 export function mayCapture(call: Capturing, path: CapturePath, context: Record<string, string | number | null>): { noteId: string; recordingId: string } {
   const ctx = { ...context, path, notes: call.status, screens: call.screens ? 'on' : 'off' };
   if (!call.live) throw new ConflictError(path === 'catch-up' || path === 'ask' ? 'This call has ended. Its notes have everything.' : 'This call has ended.', { context: ctx });
-  if (call.status === 'paused') throw new ConflictError('Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.', { context: ctx });
+  if (call.status === 'paused') {
+    throw new ConflictError(call.room ? 'Notes are paused in this room. Nothing said here is transcribed or sent to the AI until the organizer resumes.'
+      : 'Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.', { context: { ...ctx, room: call.room ? 1 : 0 } });
+  }
   const captures = path === 'audio' || path === 'speech' || path === 'screen';
   if (captures && call.status !== 'on') throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (path === 'screen' && !call.screens) throw new ConflictError('Shared screens aren’t read for the notes right now.', { context: ctx });
@@ -136,7 +150,7 @@ export function stateFor(c: {
   gaps: CaptureGap[]; requests: NotesRequest[]; asked: CaptureState['asked'];
 }): CaptureState {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
-  const actor = (by: CaptureChange['by']): CaptureActor => (by === 'schedule' ? { kind: 'schedule' } : { kind: 'organizer', ...(c.organizer ? { name: c.organizer } : {}) });
+  const actor = (by: CaptureChange['by']) => actorOf(by, c.organizer);
   const changed = new Map<Part, CaptureChange>();
   let before = modes('off', false);
   let everOn = false;
@@ -155,7 +169,87 @@ export function stateFor(c: {
   return {
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
     recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
-    gaps: c.gaps, requests: c.requests, asked: c.asked
+    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null
+  };
+}
+
+/** Who made a change, as people in the call are told: the schedule, or the organizer by name (no name for people asking to join). */
+const actorOf = (by: CaptureChange['by'], organizer: string | null): CaptureActor => (by === 'schedule' ? { kind: 'schedule' } : { kind: 'organizer', ...(organizer ? { name: organizer } : {}) });
+
+/** The call's changes to what it captures and a breakout room's own pauses, in order: what a room captures follows both. */
+interface RoomStep { at: number; status: CaptureStatus | null; paused: boolean | null; by: CaptureChange['by'] }
+const roomSteps = (history: CaptureChange[], pauses: RoomPause[]): RoomStep[] =>
+  [...history.map((h): RoomStep => ({ at: h.at, status: h.status, paused: null, by: h.by })), ...pauses.map((p): RoomStep => ({ at: p.at, status: null, paused: p.paused, by: 'organizer' }))]
+    .sort((a, b) => a.at - b.at);
+
+/**
+ * The stretches since a breakout room opened (`from`) with nothing captured in it, oldest first: the call's notes off
+ * or paused, or the room paused. A room's own pause doesn't end a segment, so each is placed in the recording where
+ * the recording was when it began. `now` is the call's seconds so far; `end`, if given, closes one still going.
+ */
+function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
+  const when = (s: number) => new Date(startedAt.getTime() + s * 1000).toISOString();
+  const out: CaptureGap[] = [];
+  type Open = { kind: 'off' | 'paused'; from: number };
+  const gap = (g: Open, to: number | null): CaptureGap => ({ kind: g.kind, from: when(g.from), to: to === null ? null : when(to), at: recorded(history, g.from, Math.max(g.from, now)) });
+  // What the room captures after a step, and the stretch it leaves open: a change of kind closes one and may open another.
+  const next = (open: Open | null, call: CaptureStatus, paused: boolean, t: number): Open | null => {
+    const status = call === 'on' && paused ? 'paused' : call;
+    const kind = status === 'on' ? null : status;
+    if (open && open.kind === kind) return open;
+    if (open && t > open.from) out.push(gap(open, t));
+    return kind ? { kind, from: t } : null;
+  };
+  let call: CaptureStatus = 'off';
+  let paused = false;
+  let open: Open | null = null;
+  let started = false;
+  for (const s of roomSteps(history, pauses)) {
+    if (!started && s.at > from) { open = next(open, call, paused, from); started = true; }
+    if (s.status) call = s.status;
+    if (s.paused !== null) paused = s.paused;
+    if (started) open = next(open, call, paused, s.at);
+  }
+  if (!started) open = next(open, call, paused, from);
+  if (open && (end === undefined || end > open.from)) out.push(gap(open, end ?? null));
+  return out;
+}
+
+/**
+ * What's captured in a breakout room, for the people in it and the organizer visiting it. It's never recorded, and
+ * stays out of the notes; the transcript and the notes model follow the call's notes, held while the organizer has
+ * paused the room (and unavailable while the organizer's browser can't listen). Each part says when it last changed
+ * and who changed it, from the call's changes and the room's together.
+ */
+export function roomStateFor(c: {
+  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
+  room: { id: string; from: number; pauses: RoomPause[] }; now: number; end?: number | undefined;
+}): RoomCapture {
+  const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
+  const changed = new Map<'transcript' | 'ai', RoomStep>();
+  let call: CaptureStatus = 'off';
+  let paused = false;
+  let everOn = false;
+  let before = modes('off', false);
+  for (const s of roomSteps(c.history, c.room.pauses)) {
+    if (s.status) call = s.status;
+    if (s.status === 'on') everOn = true;
+    if (s.paused !== null) paused = s.paused;
+    const now = modes(call === 'on' && paused ? 'paused' : call, everOn);
+    for (const k of ['transcript', 'ai'] as const) if (now[k] !== before[k]) changed.set(k, s);
+    before = now;
+  }
+  const status = roomStatus(c.status, c.room.pauses);
+  const current = modes(status, everOn);
+  const deaf = status === 'on' && c.unavailable.includes('transcript');
+  const part = (k: 'transcript' | 'ai'): CapturePart => {
+    const h = changed.get(k);
+    return { mode: k === 'transcript' && deaf ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actorOf(h.by, c.organizer) : null };
+  };
+  const never: CapturePart = { mode: 'off', since: null, by: null };
+  return {
+    id: c.room.id, mode: deaf ? 'unavailable' : status, recording: never, transcript: part('transcript'), ai: part('ai'), screen: never,
+    gaps: roomGaps(c.history, c.room.pauses, c.room.from, c.startedAt, c.now, c.end)
   };
 }
 

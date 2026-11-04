@@ -12,7 +12,7 @@
  * until you choose, a second one goes big beside the first, and once you have, a new one comes in as a tile.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
-import { Avatar, Button, CallTile, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
+import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
@@ -49,16 +49,18 @@ export interface StageShare {
 }
 /** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
-/** Open rooms, as the organizer oversees them: who's in each, and who in a room raised a hand for help. */
+/**
+ * Open rooms, as the organizer oversees them: who's in each, who in a room raised a hand for help, and what its notes
+ * are doing (on, paused on its own or with the whole call, or off).
+ */
 export interface StageRooms {
-  rooms: { name: string; ids: string[]; help: string | null }[];
+  rooms: { name: string; ids: string[]; help: string | null; notes: 'on' | 'paused' | 'off' }[];
   /** Everyone in no room: the organizer while there, guests, and anyone not sent to a room. */
   main: string[];
   /** The room you're in, or null for the main room. */
   joined: number | null;
   left: number;
   message: { from: Person; text: string } | null;
-  notesOn: boolean;
 }
 
 const GLIDE = { duration: 0.5, ease: [0.45, 0, 0.2, 1] } as const;
@@ -518,7 +520,8 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
               {here && !justMe && <span className="here">· you’re here</span>}
               {room?.help && <span className="hand-chip"><Icon name="hand" size={13} />{callName(byId.get(room.help)?.person ?? { name: 'Someone', email: '' })} asked for help</span>}
               {room && <span className="ac-time">{t}</span>}
-              {room && rooms.notesOn && <NotesSign stage>Notes</NotesSign>}
+              {room?.notes === 'on' && <NotesSign stage>Notes</NotesSign>}
+              {room?.notes === 'paused' && <CaptureSign mode="paused" stage />}
             </div>
             {!u.ids.length && <p className="empty">Nobody in this room</p>}
           </motion.div>

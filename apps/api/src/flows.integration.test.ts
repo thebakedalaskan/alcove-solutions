@@ -866,14 +866,18 @@ describe('live transcript and written notes', () => {
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
     // The organizer's browser sends the call's pass with everything about the call; nobody else has it.
-    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string; speaker?: string } = {}) => who.fetch(`${base}/v1${path}`, {
+    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string; speaker?: string; ago?: string | null } = {}) => who.fetch(`${base}/v1${path}`, {
       method: 'POST', body: new Blob([bytes]),
       headers: {
         'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000',
-        ...(who === a ? { 'x-alcove-call': call.ticket.pass, 'x-alcove-speaker': o.speaker ?? call.ticket.identity } : {})
+        ...(o.ago === null ? {} : { 'x-alcove-ago-ms': o.ago ?? '4000' }), ...(who === a ? { 'x-alcove-call': call.ticket.pass, 'x-alcove-speaker': o.speaker ?? call.ticket.identity } : {})
       }
     });
     const hello = () => speechWav('Hello there.');
+    // A call's speech says when it began, so the call can place it where its speaker was then.
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ago: null })).status).toBe(400);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ago: 'soon' })).status).toBe(400);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ago: '900000' })).status).toBe(400);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { type: 'audio/webm' })).status).toBe(400);
     const stereo = hello(); new DataView(stereo.buffer).setUint16(22, 2, true);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, stereo)).status).toBe(400);

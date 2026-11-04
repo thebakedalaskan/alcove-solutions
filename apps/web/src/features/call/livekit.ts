@@ -16,13 +16,15 @@
  * Every frame is end-to-end encrypted before it leaves this browser (docs: Calls and recordings › End-to-end
  * encryption): with this browser's own media key, which comes from the call's MLS group in the CallSession and
  * changes with every join and leave. LiveKit only ever forwards ciphertext. A browser that can't encrypt frames
- * can't join, and only media that's encrypted, from someone in the call's group, is played or shown. While
- * breakout rooms are open, the call screen narrows that to the people in your own room (`playOnly`).
+ * can't join, and only media that's encrypted, from someone in the group of the part of the call this browser is in,
+ * is played or shown. Each breakout room has its own group, so its own keys: this browser holds keys for the part of
+ * the call it's in and no other, and between two parts it sends under a key nobody has. The call screen narrows what
+ * plays to the same people from the call's state as well (`playOnly`).
  *
  * Load it with `await import('~/features/call/livekit')` from the call routes only: livekit-client is large and
  * stays out of the first page load.
  */
-import { CALL_KEYRING, CALL_TOPIC, CallNudgeSchema, type CallMediaKeys, type CallSession, type LiveStore } from '@alcove/api';
+import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallMediaKeys, type CallSession, type LiveStore } from '@alcove/api';
 import {
   BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, createKeyMaterialFromBuffer, getLogger,
   isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication
@@ -81,9 +83,9 @@ export interface CallRoom extends LiveStore<RoomView> {
   /** Plays a camera or screen track in an element; returns the function that stops it. */
   attach(trackSid: string, el: HTMLMediaElement): () => void;
   /**
-   * Whose media this browser plays and shows, of the people in the call's group: while breakout rooms are open,
-   * the people in your own room, or in the main room. Null plays everyone's again. Nobody else's media is played
-   * or attached.
+   * Whose media this browser plays and shows, of the people in its part of the call's group: while breakout rooms are
+   * open, the people the call says are in your own room, or in the main room. Null plays everyone's in the group again.
+   * Nobody else's media is played or attached.
    */
   playOnly(who: ((identity: string) => boolean) | null): void;
   /**
@@ -111,13 +113,14 @@ function endReason(r: DisconnectReason | undefined): RoomView['endReason'] {
 
 const material = (key: Uint8Array) => { const copy = new Uint8Array(key.length); copy.set(key); return createKeyMaterialFromBuffer(copy.buffer); };
 /**
- * LiveKit's frame encryption with the call's MLS media keys: one per sender per epoch, kept in a ring by index.
- * Everyone else's keys for each new epoch go in as soon as there are any (each frame says which it needs);
- * this browser's own goes in last, and is what it sends with.
+ * LiveKit's frame encryption with the MLS media keys of the part of the call this browser is in: one per sender per
+ * epoch, kept in a ring by index. Everyone else's keys for each new epoch go in as soon as there are any (each frame
+ * says which it needs); this browser's own goes in last, and is what it sends with. With no key to send with (between
+ * two parts of the call), it sends under a fresh random key at an index nobody puts keys at, so nobody can decrypt it.
  */
 class CallKeys extends BaseKeyProvider {
   private installed = new WeakSet<object>();
-  private sending: CallMediaKeys['send'] | null = null;
+  private sending: CallMediaKeys['send'] | undefined = undefined;
   constructor(private readonly self: string) { super({ sharedKey: false, ratchetWindowSize: 0, failureTolerance: -1, keyringSize: CALL_KEYRING }); }
   async use(media: CallMediaKeys): Promise<void> {
     for (const epoch of media.epochs) {
@@ -127,7 +130,8 @@ class CallKeys extends BaseKeyProvider {
     }
     if (media.send !== this.sending) {
       this.sending = media.send;
-      this.onSetEncryptionKey(await material(media.send.key), this.self, media.send.index);
+      if (media.send) this.onSetEncryptionKey(await material(media.send.key), this.self, media.send.index);
+      else this.onSetEncryptionKey(await material(crypto.getRandomValues(new Uint8Array(32))), this.self, CALL_VOID_KEY_INDEX);
     }
   }
 }
@@ -193,10 +197,13 @@ class LiveKitRoom implements CallRoom {
     // Each person's volume for this listener: on the elements that play them, whenever it changes.
     this.stopVolumes = this.volumes.subscribe(() => this.applyVolumes());
     // Frames that can't be decrypted yet are expected for a moment around each key change (someone just let in
-    // can't read what was sent before they were); anything else is worth knowing about.
+    // can't read what was sent before they were), and always from someone in another part of the call: a breakout
+    // room's keys are its own. Anything else is worth knowing about.
     r.on(RoomEvent.EncryptionError, (e, who) => {
       const reason = reasonOf(e);
-      rlog.at(reason === MISSING_KEY ? 'debug' : 'warn', 'media couldn’t be decrypted', { reason, local: who === r.localParticipant });
+      const local = who === r.localParticipant;
+      const elsewhere = !local && who !== undefined && !this.session.crypto.getSnapshot().members.includes(who.identity);
+      rlog.at(reason === MISSING_KEY || elsewhere ? 'debug' : 'warn', 'media couldn’t be decrypted', { reason, local, elsewhere });
     });
     r.on(RoomEvent.ParticipantConnected, () => refetch());
     // The server nudges when someone leaves too. Waiting a moment lets a room that's closing (the call ended) close
@@ -238,12 +245,13 @@ class LiveKitRoom implements CallRoom {
     this.follow();
     await this.syncing;
     this.set({ connection: 'connected' });
-    rlog.info('joined the room', { role: this.session.ticket.role, others: this.room.remoteParticipants.size, keyIndex: this.keyNow?.send.index ?? null });
+    rlog.info('joined the room', { role: this.session.ticket.role, others: this.room.remoteParticipants.size, keyIndex: this.keyNow?.send?.index ?? null });
   }
 
   /**
-   * Puts each new media key from the call's MLS group into LiveKit's frame encryption as the group moves on, and
-   * plays whatever was held back from someone who's now in the group (and stops anyone who's no longer in it).
+   * Puts each new media key from the MLS group of this browser's part of the call into LiveKit's frame encryption as
+   * the group moves on (or this browser moves to another part), and plays whatever was held back from someone who's
+   * now in the group (and stops anyone who's no longer in it).
    */
   private async followKeys(): Promise<void> {
     const apply = async () => {
@@ -258,8 +266,8 @@ class LiveKitRoom implements CallRoom {
     this.stopKeys = this.session.crypto.subscribe(() => { void apply().catch((e: unknown) => rlog.error('could not use the call’s new media key', { err: e })); });
   }
   /**
-   * Media from someone else plays only if it's encrypted end to end, they're in the call's group (MLS says so,
-   * not the server or LiveKit), and, while breakout rooms are open, they're in your part of the call.
+   * Media from someone else plays only if it's encrypted end to end, they're in the group of this browser's part of
+   * the call (MLS says so, not the server or LiveKit), and the call says they're in your part of it too.
    */
   private allowed(pub: TrackPublication | undefined, who: Participant): boolean {
     if (who === this.room.localParticipant) return true;
@@ -319,9 +327,10 @@ class LiveKitRoom implements CallRoom {
     return out;
   }
 
+  /** Everyone in a group this browser keeps (the organizer's keeps every part of the call's): who's speaking shows for them, media only for this part's. */
   private people(): Record<string, RoomPerson> {
     const out: Record<string, RoomPerson> = {};
-    const members = this.session.crypto.getSnapshot().members;
+    const members = this.session.crypto.getSnapshot().everyone;
     const all: Participant[] = [this.room.localParticipant, ...[...this.room.remoteParticipants.values()].filter((p) => members.includes(p.identity))];
     for (const p of all) {
       const pub = (s: Track.Source) => p.getTrackPublication(s);
