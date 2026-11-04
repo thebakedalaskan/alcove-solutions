@@ -183,11 +183,14 @@ dock at the bottom.
   **Open in its own window** puts a share in a window of its own (Picture-in-Picture in Chrome, Edge and Firefox, a
   popup in Safari) to keep in view or put on another screen; its tile says **In its own window**, with **Bring it
   back**. Two shares side by side are each zoomed and frozen on their own, to compare. Only your screen changes.
-- **Pointing at a share.** On a share shown big, the pointer button (or **L**, or **Point and mark** in its **⋯**)
-  starts pointing: everyone sees your pointer there with your face and name, a click leaves a ring and a drag a line,
-  and each fades after a few seconds. A small bar says you're pointing, with **Undo** (or Backspace) for your last mark
-  and Done (or Escape). From the keyboard, the arrow keys move your pointer and Enter leaves a ring; on a phone, tap
-  and drag. Your own share shows what others point at too. Its bar has a switch for whether others can point at it
+- **Pointing at a share.** On a share shown big and live, the pointer button (or **L**, or **Point and mark** in its
+  **⋯**) starts pointing: everyone sees your pointer there with your face and name, a click leaves a ring and a drag a
+  line, and each fades after a few seconds. A small bar says you're pointing, with **Undo** (or Backspace) for your
+  last mark and **Stop pointing**, the × (or Escape). From the keyboard, the arrow keys move your pointer and Enter
+  leaves a ring; on a phone, tap and drag. Pointers and marks stay on the same spot of the picture however each person
+  has zoomed into it or moved around, and while you point the wheel, a pinch and the keys still zoom. A frozen or earlier
+  picture shows none, as they're about the live one, and freezing stops your pointing; a share in its own window shows
+  them, and you point in the call. Your own share shows what others point at too. Its bar has a switch for whether others can point at it
   (on unless you turn it off; you always can) and **Clear marks** while there are any; changing what you share clears
   them too. The organizer can turn pointing off for everyone in People. Pointers and marks go from browser to browser,
   encrypted end to end, and stay in your room; they're never recorded or read for the notes, and nobody's computer is

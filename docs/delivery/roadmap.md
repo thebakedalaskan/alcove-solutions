@@ -49,7 +49,8 @@
   recording mixes everyone the organizer's browser hears
   ([Notes and inference › Correcting the transcript](../engineering/notes-and-inference.md#correcting-the-transcript)).
 - Pointing at shared screens: a pointer with your name and marks that fade, aligned on the shared picture at any
-  size, sent from browser to browser end-to-end encrypted and kept to your part of the call; the presenter decides
+  size and however each person zooms into it, sent from browser to browser end-to-end encrypted and kept to your part
+  of the call; the presenter decides
   whether others can point, and the organizer can turn it off
   ([Calls and recordings › Pointing at shared screens](../engineering/calls-and-recordings.md#pointing-at-shared-screens)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
