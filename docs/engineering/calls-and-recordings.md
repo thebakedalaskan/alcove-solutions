@@ -54,10 +54,11 @@ sequenceDiagram
 - **Live transcript.** While notes are on, the organizer's browser also sends clips of speech, one stream per
   voice it hears (its own microphone and each other unmuted microphone it plays), to
   `POST /v1/live/calls/:id/transcribe` (16 kHz mono WAV, at most 30 seconds, each saying whose it is with
-  `x-alcove-speaker`; 40 a minute for each voice, 240 for the account). Each clip is transcribed by NEAR AI and
-  kept as sealed lines, and `CallState.transcript` carries the latest 200 the viewer may read, each under
-  whoever said it. Clips are refused while notes are off or paused, for an earlier segment, or from anyone not
-  in the call. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
+  `x-alcove-speaker` and how long before the request it began with `x-alcove-ago-ms`; 40 a minute for each
+  voice, 240 for the account). Each clip is transcribed by NEAR AI and kept as sealed lines in the part of the
+  call its speaker was in when it began, and `CallState.transcript` carries the latest 200 the viewer may read,
+  each under whoever said it. Clips are refused while notes are off or paused, for an earlier segment, from
+  anyone not in the call, or for a breakout room that has closed. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
 - **Leaving.** The browser stops the recorder, sends the last audio and speech, then calls `leave`. The
   server finishes the note in the same transaction that ends the call, then starts the notes worker.
 ## Group calls
@@ -117,8 +118,8 @@ The call itself stays in the API: who's let in, notes and the transcript.
   mute someone's microphone, remove someone, lock the call, and end it. The recording is the organizer's
   microphone; the live transcript comes from what the organizer's browser plays (see Notes below). Link guests
   get no notes; invited people, and people signed in whom the organizer let in, get them.
-- **Leaving and ending.** Anyone but the organizer leaving is taken out of the call's group, so the keys move
-  on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
+- **Leaving and ending.** Anyone but the organizer leaving is taken out of their part of the call's group, so
+  its keys move on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
   (closed, reloaded or left for another), which sends the same request as a keepalive request. A page that is
   only put in the back-forward cache sends nothing. A browser that dies without a word leaves by LiveKit's
   `participant_left` webhook. Anyone let in who isn't in the room 90 seconds later is taken out too. That covers
@@ -146,67 +147,121 @@ The call itself stays in the API: who's let in, notes and the transcript.
 
 Every browser in a call is an MLS client (RFC 9420): `packages/api-http/src/mls.ts`, on ts-mls, suite
 `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`. Its keys are made in the browser and never leave it. The
-API orders and relays MLS messages and can't read them. Each client's operations run one at a time, in
+API orders and relays MLS messages and can't read them. Each group's operations run one at a time, in
 order, and nothing a message carries can stop it: anything unreadable is skipped and the next one is read.
 
+- **One group for each part of the call.** The main room has an MLS group, and while breakout rooms are open
+  so does each room (named `alcove/call/<call>/<generation>/<main or the room's ID>`). A part's media keys and
+  chat come from its own group, so they belong to the people in that part alone. The organizer's browser
+  creates every group, so it's in all of them; everyone else is in exactly one at a time, the group of the part
+  they're in (the API adds only people who are in no group). Where someone is comes from the call's state
+  (`CallMls.place`): an invited person sent to a room is in that room, the organizer in the room it's visiting,
+  and everyone else in the main room.
 - **Members and commits.** Joining makes a fresh key package whose credential is the connection's random
-  identity. The organizer's browser creates the call's group and is its only committer: it adds people (an
-  Add commit, with a Welcome carrying the ratchet tree for each) and removes whoever left or was removed.
-  Every other browser accepts commits only from the organizer's leaf (leaf 0, which a joining browser checks
-  is this call's organizer, in this call's group). The organizer's browser adds only people the API lists as
-  pending (`CallMls.pending`: asking, or coming back after a reload), checks each key package (well formed,
-  this suite, signed by its own key, naming the identity it came with; one that isn't is turned away), adds
-  at most 50 at a time, and waits a little longer after each refused commit, so a refusal can't become a
-  loop. When nobody comes or goes it moves the keys on anyway every 10 minutes (an empty commit), so one set
-  of keys never covers a whole call.
+  identity. The organizer's browser is every group's only committer: it adds people (an Add commit, with a
+  Welcome carrying the ratchet tree for each) and removes whoever left, was removed, or was sent to another part
+  of the call. Every other browser accepts commits only from the committer's leaf (leaf 0, which a joining
+  browser checks is the connection the API names as committer, in the group it expects: this call, this
+  generation, this part). The organizer's browser adds only people the API lists as pending for that group
+  (`CallMls.groups[].pending`), checks each key package (well formed, this suite, signed by its own key, naming
+  the identity it came with; one that isn't is turned away), adds at most 50 at a time, and waits a little
+  longer after each refused commit, so a refusal can't become a loop. When nobody comes or goes it moves each
+  group's keys on anyway every 10 minutes (an empty commit), so one set of keys never covers a whole call.
+- **Who commits.** The organizer's current connection, for every group. Host hand-off (#30) changes that, and
+  these are every place that assumes it: `committerOf` (the places module), which names the committer to every
+  browser (`CallMls.committer`); the `/mls/commits` route, which takes commits only from the organizer
+  (`organizerOnly` in `app.ts`); `mlsSync`, which gives the organizer's connection the committer's view (every
+  group's commits, whom to add to each and take out of it), and `join`, which starts a new generation when the
+  organizer's connection changes (the calls module); and in the browser, `HttpCall`'s `organizer`, which opens
+  and commits for every group, and `COMMITTER_LEAF` (`mls.ts`), the one leaf whose commits a group takes.
+- **Moving between parts of the call.** Rooms opening or closing, or the organizer moving someone
+  (`rooms-move`), changes where people are. The organizer's browser commits every group's departures before any
+  additions: it takes each mover out of their old group, whose keys move on without them, then adds them to the
+  new part's group with a fresh key package (each key package joins one group at most; the API asks a browser for
+  a new one with `CallMls.keys`, and gives the organizer's browser each mover's latest one with their entry in
+  `pending`, however early it came). In between, the mover's browser sends under a random key at a ring index no
+  epoch uses (`CALL_VOID_KEY_INDEX`), so nothing it sends can be decrypted anywhere; it plays nobody (it isn't in
+  the new part's group yet, and the call no longer counts it in the old part), and its chat is off (the API relays
+  a part's chat only to the people there). It keeps the old group only to read the commit that takes it out, then
+  drops it. Until then, and for the moment the old part's members take to switch keys after that commit (about
+  2 s), its LiveKit key ring still holds keys that open the old part's frames; nothing plays them. Rooms closing
+  drop their groups: everyone in them comes back into the main room's group, on keys none of them held before.
+  The organizer moving between rooms only changes which group's keys it sends and plays with, and what it hears
+  for the transcript (each clip ends at the move).
 - **The log.** `GET /v1/live/calls/:id/mls?after=` gives each browser its part of the call's MLS log
-  (`call_mls`): the organizer's browser from the start of the generation (commits, chat, and the key packages
-  it may act on), anyone else from their welcome on (nothing before it is any use to them; `earlierChat`
-  says whether there was chat they can't read). It reads up to the call's last seq as it stood, 100 entries
-  at a time (`more` says ask again), so nothing is skipped or sent twice. The API takes exactly one commit per
-  epoch, in order (`409` for a stale one); a commit whose answer was lost is sent again as it was. Bodies are
-  sealed again under the organizer's call key, and the log is deleted when the call ends.
+  (`call_mls`, each entry but a key package tagged with its part of the call). The organizer's browser gets
+  every group's commits from the start of the generation, the key packages it may act on, and chat only from
+  the part of the call it's in, from when it got there. Anyone else gets only their own group's entries: their
+  welcome, its commits, and its chat while they're in that part (`earlierChat` says whether there was chat there
+  they can't read). It reads up to the call's last seq as it stood, 100 entries at a time (`more` says ask
+  again), so nothing is skipped or sent twice. The API takes exactly one commit per epoch for each group, in
+  order (`409` for a stale one, or for a room that has closed); a commit whose answer was lost is sent again as
+  it was. Bodies are sealed again under the organizer's call key, bound to their place in the log and their part
+  of the call. A room's entries are deleted when it closes, and the whole log when the call ends.
 - **Media.** Each sender has its own media key every epoch, `MLS-Exporter("alcove/call-media/v1",
-  identity, 32)`: a key encrypts only its sender's frames (as SFrame requires, RFC 9605 §4.4.1), and every
-  member can derive every sender's key to decrypt them. LiveKit's frame encryption uses them (AES-GCM in a
-  worker, per participant, keys derived with HKDF). A key's ring index is the epoch modulo 128, in one half
-  of LiveKit's 256-key ring per generation, so a group being left keeps its keys while people still send
-  with them. Browsers keep the last four epochs' keys to decrypt with, and switch their own send key a moment
-  after the keys move on (0.5 s after someone is only added, 2 s after someone leaves or the keys move on
-  by themselves; at most twice that in a burst), so everyone has the new keys before anyone sends with them.
-  Someone who left can't follow what comes after, and someone new can't decrypt what came before. Like
-  SFrame, this doesn't stop a member from sending media as another member (every member can derive every
-  key). A browser that can't encrypt frames can't join; there's no unencrypted fallback. Media is played or
-  shown only if LiveKit marks it encrypted and its sender is in the browser's MLS group; anything else is
-  held back.
-- **Chat** is MLS application messages, encrypted in the browser's sync loop (so nothing else touches the
-  keys meanwhile): only the people in the group when a message is sent can read it, and someone who joins
-  later sees that earlier chat exists but can't read it. The sender comes from MLS (the message's sender
-  leaf and signature), not from the text. A message that can't be sent after a few tries is taken back, and
-  the sender is told. Messages are at most 4,000 characters.
+  identity, 32)` from its group's exporter secret: a key encrypts only its sender's frames (as SFrame requires,
+  RFC 9605 §4.4.1), every member of that group can derive every sender's key to decrypt them, and nobody outside
+  the group can. LiveKit's frame encryption uses them (AES-GCM in a worker, per participant, keys derived with
+  HKDF), and a browser puts only its own part of the call's keys there. A key's ring index is the epoch modulo
+  127, in one half of LiveKit's 256-key ring per generation, so a group being left keeps its keys while people
+  still send with them; the ring's last index is the one sent under between parts. Each frame carries its key's
+  index in the clear (LiveKit's frame trailer). The parts of the call share the same indices (a browser only ever
+  holds one part's keys for any sender), so an index alone doesn't say where someone is, but whose indices change
+  together, and who sends under the last one, does (What it doesn't cover, below); a separate range for each room
+  wouldn't hide that, and would name the room outright. Browsers keep the last four
+  epochs' keys to decrypt with, and switch their own send key a moment after their group's keys move on (0.5 s
+  after someone is only added, 2 s after someone leaves or the keys move on by themselves; at most twice that in
+  a burst), so everyone has the new keys before anyone sends with them. Someone who left a group (the call, or a
+  room) can't follow what comes after, and someone new can't decrypt what came before. Like SFrame, this doesn't
+  stop a member from sending media as another member of its group (every member can derive every key). A
+  browser that can't encrypt frames can't join; there's no unencrypted fallback. Frames it can't decrypt are logged
+  at debug while they're expected (a key that hasn't arrived yet, or someone in another part of the call) and at
+  warn otherwise. Media is played or shown only if
+  LiveKit marks it encrypted, its sender is in the browser's group, and the call says they're in the same part of
+  it; anything else is held back.
+- **Chat** is MLS application messages in the group of the part of the call the sender is in, encrypted in the
+  browser's sync loop (so nothing else touches the keys meanwhile): only the people in that group when a message
+  is sent can read it, and someone who comes in later sees that earlier chat exists but can't read it. The API
+  takes chat only into the sender's own part of the call (`400` otherwise), so nobody, the organizer included,
+  posts into a room they're not in. The sender comes from MLS (the message's sender leaf and signature), not from
+  the text. A message that can't be sent after a few tries, or whose sender moved before it went out, is taken
+  back, and the sender is told. Messages are at most 4,000 characters.
 - **People, not connections.** Each browser keeps one `person` across its reconnections (its pass brings
   it back once, without asking; a second use of the same pass has to ask), so removing someone removes
-  every connection of theirs and none of their passes works again. Leaving while still asking, closing the
-  page included, takes the request back and forgets it: a pass only brings back someone who was let in, so
-  asking again means being let in again. A LiveKit `participant_left` webhook only takes someone out of the group after LiveKit
-  confirms, three seconds later, that they're really gone. A browser taken out of the group, or whose place
-  another tab took, is told and stops.
-- **A new organizer connection** (a reload or another device) starts a new group generation: the old
-  connection's keys stay with it, everyone already in rejoins the new group with fresh keys without asking,
-  and anyone still waiting keeps waiting (key packages aren't tied to a group, so theirs carry over).
-- **Who vouches for whom.** The API says who each identity is, who's invited and what their names are; it
-  can't read media or chat. It's built to run attested, but it runs on Cloud Run today, so whoever operates
-  it could run other code (privacy › Moving to confidential computing). There are no safety codes. An API
-  running other code could have the organizer's browser add someone as an invitee, but never silently: everyone in the call sees every member of the group in People
-  (as "Someone" if the API doesn't name them), and their tile if they connect.
-- **What it doesn't cover.** While notes are on, everyone's speech the organizer hears also goes to the API
-  for the transcript and notes, outside the media encryption, as the call's People panel says. That's the
-  organizer's microphone, and every other microphone the organizer's browser plays, each person's sent on its
-  own. Breakout rooms the organizer isn't in aren't heard, and what's said in a breakout room can be read only by
-  the people sent there and the organizer. LiveKit still sees addresses,
-  when calls happen, who's in which room (by random identity), track kinds and mute state, packet sizes and
-  timing, and the audio-level header, so exactly who is speaking when. Breakout rooms are kept apart by each
-  browser playing only its own room's media, not by separate keys: the whole call shares its keys.
+  every connection of theirs and none of their passes works again. A reload comes straight back into the group
+  of the part of the call it was in (a breakout room included), and the old connection is taken out of it, so
+  nobody is counted twice. Leaving while still asking, closing the page included, takes the request back and
+  forgets it: a pass only brings back someone who was let in, so asking again means being let in again. A
+  LiveKit `participant_left` webhook only takes someone out of their group after LiveKit confirms, three seconds
+  later, that they're really gone. A browser taken out of the call, or whose place another tab took, is told and
+  stops.
+- **A new organizer connection** (a reload or another device) starts a new group generation for every part of
+  the call: the old connection's keys stay with it, everyone already in rejoins their part's new group with fresh
+  keys without asking, open rooms stay open (the organizer in the room it was visiting), and anyone still waiting
+  keeps waiting (key packages aren't tied to a group, so theirs carry over).
+- **Who vouches for whom.** The API says who each identity is, who's invited, what their names are and who's in
+  which room; it can't read media or chat. It's built to run attested, but it runs on Cloud Run today, so whoever
+  operates it could run other code (privacy › Moving to confidential computing). There are no safety codes. An
+  API running other code could have the organizer's browser add someone as an invitee, or put them in a room they
+  weren't sent to, but never silently: everyone sees every member of their part of the call's group in People (as
+  "Someone" if the API doesn't name them), and their tile if they connect.
+- **What it doesn't cover.**
+  - The organizer's browser holds every room's keys, because it commits for every group, so a modified
+    organizer browser could hear and read any room. An unmodified one plays, sends and chats only in the part of
+    the call it's in, the API relays a room's chat to it only while it's there, and the room is told when it comes
+    and goes. Zoom's end-to-end encrypted breakout rooms give each room a leader of its own instead; here that
+    waits for host hand-off (#30), which lets another connection commit.
+  - Every part of the call shares one LiveKit room, so LiveKit forwards each room's encrypted frames to everyone
+    in the call: a modified browser gets frames it can't decrypt from other rooms, with their audio-level header,
+    so it can tell who is speaking when in another room, though not what they say. Each frame also carries its
+    key's ring index in the clear (LiveKit's frame trailer), so LiveKit can see whose keys change together, and so
+    who is in which part of the call, and who is between two (the reserved index).
+  - While notes are on, everyone's speech the organizer hears also goes to the API for the transcript and notes,
+    outside the media encryption, as the call's People panel says: the organizer's microphone, and every other
+    microphone the organizer's browser plays, each person's on its own. Breakout rooms the organizer isn't in aren't
+    heard, and what's said in a room stays out of the notes ([Breakout rooms](#hands-spotlight-breakout-rooms-and-captions)).
+  - LiveKit still sees addresses, when calls happen, who's in the call's room (by random identity), track kinds and
+    mute state, packet sizes and timing, and the audio-level header, so exactly who is speaking when.
 
 ## What's captured
 
@@ -263,6 +318,22 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   what was said in it. Changes are kept to a tenth of a second, so even a short pause shows. Lines stay inside
   their own segment: one placed past the end of its segment's audio (its last pieces were dropped by a pause)
   goes at the segment's end, so nothing said before a pause comes after it.
+- **In breakout rooms.** Each open room has its own capture state, for the people in it and for the organizer
+  while it's visiting (`capture.room`, beside the call's). A room is never recorded and nothing said in it goes
+  into the notes; it captures (what's said there transcribed while the organizer is in it, and read for catching
+  up, questions and captions) only while the call's notes are on and the organizer hasn't paused the room. The
+  organizer pauses the room it's in, or carries on there, from the notes sign (**Pause notes here**,
+  `{type: "rooms-pause", roomId, paused}`; pausing needs notes on). The call's notes don't change, only that room
+  is told (a notice for its people alone), and the organizer sees **Notes paused** on the room's card in Rooms.
+  The capture gate, asked for the part of the call something comes from, refuses speech placed in a paused room
+  and catching up, questions and captions asked from one ("Notes are paused in this room…"). The organizer's
+  browser stops hearing everyone there (`CallEars.quiet`: what was held is dropped, and the segment's timeline
+  carries on), and the recording, which hears silence in a room anyway, goes on in its segment. Pausing the whole
+  call pauses every room, and resuming it doesn't carry on in a room the organizer paused on its own. Each part
+  says who changed it and when, from the call's changes and the room's together, and the room's gaps are the
+  stretches since it opened with nothing captured there. Closing the rooms takes their capture with them: people
+  come back under the call's, and are told when that means notes are on (moved back, or everyone back), as they
+  are when the organizer comes into their room while its notes are on.
 - **Asking for notes.** While notes are off or paused, anyone in the call but the organizer can ask
   (`{type: "request-notes", up}`; `up: false` takes it back; 10 a minute per person). Everyone in the call sees
   open asks (`capture.requests`, by participant), like raised hands. The organizer hears about each one as a
@@ -313,8 +384,9 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
   seconds counts). A body over 1 MiB (`MAX_FRAME_BYTES`) is refused from its `content-length` before it's read;
   then the JPEG's frame header must give a size between 64 and 4096 pixels a side. 24 frames a minute per
   person (`503` past that). Then, in order: the sender must be let in (`403`); the capture gate's `screen` path
-  must allow it: the call live, notes on and not paused, screens on, and the sender not in a breakout room
-  (`409`); the frame mustn't be from before notes came on, were resumed, or screens were turned on (`409`); the
+  must allow it: the call live, notes on and not paused, screens on, and the frame taken in the main room, placed
+  where its presenter was when it was taken as speech is (`409` from a breakout room, or when that can't be told
+  any more); the frame mustn't be from before notes came on, were resumed, or screens were turned on (`409`); the
   presenter's browser mustn't have said the share ended (`403`); and LiveKit must list the share as a screen
   this person is sharing in this call's room now (`403` for someone else's share, a camera or a share that's
   over; a yes is remembered for 10 seconds, forgotten when the browser says the share ended; `503` when LiveKit
@@ -346,9 +418,12 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
 - **Read and referred to.** The notes worker has the notes model read each frame before the notes are written
   ([Notes and inference › Shared screens](notes-and-inference.md#shared-screens)), and the notes point at the
   screen, and the part of it, a decision, question, follow-up, chapter or answer was about.
-- **Breakout rooms.** What's shared in a room stays in the room: the browser doesn't look while its presenter is
-  in one, and the API refuses a frame from anyone in one (the organizer while visiting, anyone sent to one).
-  The main room's shares are read while rooms are open.
+- **Breakout rooms.** What's shared in a room stays in the room, like what's said there: the browser doesn't look
+  while its presenter is in one, and the API refuses a frame taken in one. It places each frame where its presenter
+  was when it was taken (`placeAt`, from how long ago the frame says it was taken and where each person has been):
+  the organizer while visiting a room, anyone sent to one. A frame taken in the main room just before its presenter
+  left is kept. Leaving the main room ends the presenter's shares there in the notes, by presenter rather than by
+  share, so a share is read again once they're back. The main room's shares are read while rooms are open.
 - **For catch-up.** `screens.framesOf` lists a live call's frames (ID, presenter, share, time) for a catch-up to
   point at; catch-up doesn't read screens yet ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
 
@@ -359,17 +434,32 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
 - **Spotlight** (`{type: "spotlight", participantId}`) is the organizer's, and only names someone in the call;
   it puts that tile first on everyone's stage. Opening breakout rooms ends it.
 - **Breakout rooms** (`{type: "rooms-open", rooms: [{name, emails}], minutes}`, `rooms-message`,
-  `rooms-close`) are the organizer's. Two to eight rooms; only people invited to the call can be sent to one,
-  each to one room. `CallState.breakouts.open` carries the rooms (with who of them is in the call now, by
-  participant ID), `from` and `until` (seconds since the call started) and the latest message to every room;
-  rooms whose time is up close on the next read or action, and ending the call closes them too. Closed rooms
+  `rooms-rename`, `rooms-move`, `rooms-close`) are the organizer's. Two to eight rooms; only people invited to
+  the call can be sent to one, each to one room, and moved to another or back to the main room while they're
+  open (`{type: "rooms-move", email, roomId}`, `null` for the main room). `CallState.breakouts.open` carries the
+  rooms (with who of them is in the call now, by participant ID), `from` and `until` (seconds since the call
+  started) and the latest message to every room. Each room is a part of the call with its own MLS group, so its
+  own media keys and chat, and moving someone moves their keys
+  ([End-to-end encryption](#end-to-end-encryption)). Rooms whose time is up close on the next read or action,
+  and ending the call closes them too; a room closing deletes its MLS log and what was heard in it. Closed rooms
   are kept in `breakouts.held` and, when the call ends, go into its note in recording time; once the notes are
-  written each becomes a chapter ("2 breakout rooms", who was in which room and for how long). Room names and
-  messages stay in the sealed call state. The organizer visits one room at a time (`{type: "rooms-visit", roomId}`, `null` for the
-  main room): while visiting, they're one of that room's `members`, so that room sees and hears them and the
-  main room doesn't. Each browser plays only the media of the people in its own room (or, outside the rooms,
-  of everyone in no room). Rooms are kept apart by the browsers, not by separate keys: everyone in the call
-  can derive every sender's media key, so a modified browser could play another room's media.
+  written each becomes a chapter ("2 breakout rooms", who was in which room when they closed, and for how long).
+  Room names and messages stay in the sealed call state. The organizer visits one room at a time
+  (`{type: "rooms-visit", roomId}`, `null` for the main room): while visiting, they're one of that room's
+  `members`, and their browser sends, plays and chats with that room's keys, so that room sees and hears them and
+  the main room doesn't.
+- **What's said in a room stays in it.** Every live transcript line is kept in the part of the call its speaker
+  was in when they began saying it: the organizer's browser says how long ago each clip began (`x-alcove-ago-ms`),
+  the server places it from where each person has been (`placeAt` in the places module), and the organizer's
+  browser ends the clip in progress when it moves, so no clip spans two parts. A line said while rooms are open
+  also keeps who was in its part then. One rule, `readableBy`, decides who reads a line: the call's state,
+  captions, catch-up, questions and caption translations show someone the lines said in the part of the call
+  they're in now, and of those said while rooms were open, only the ones said while they were there. A room's
+  lines (and their translations) are deleted when it closes, in the transaction that closes it; a clip or
+  translation still being made then is dropped, and speech for a room that isn't open is refused (`409`). Only
+  the main room's lines go into the note. The organizer's notes recording hears silence while it's in a room, so
+  the note's audio has none of a room's talk either. Each room has its own capture state, which the organizer can
+  pause ([What's captured](#whats-captured)).
 - **Captions in another language.** `POST /v1/live/calls/:id/translate {language, lines}` translates up to
   20 live transcript lines (by ID) for the person asking (anyone let in), through `drafting.translate`, which
   sends them to NEAR AI's notes model, checked and sealed like every request
@@ -454,9 +544,11 @@ device pickers.
   call's page), and lock the call.
 - **Each person's volume, for you.** Anyone can turn someone else up to 100% or down to muted for themselves,
   from that person's tile menu or their row in People ([Media in the browser](#media-in-the-browser)).
-- **Chat** is `crypto.chat`, decrypted in the browser; names come from the people in the call. It's off until
-  the browser holds the call's keys, takes up to 4,000 characters, says when there was earlier chat it can't
-  read, and gives back a message that couldn't be sent.
+- **Chat** is `crypto.chat`, decrypted in the browser; names come from the people in the call. Each message
+  says which part of the call it was sent in, and the view marks where the conversation moved; the box says where
+  a message goes ("Message Design") while rooms are open. It's off until the browser holds its part's keys (and
+  while it's moving), takes up to 4,000 characters, says when there was chat here it can't read, and gives back a
+  message that couldn't be sent.
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: Auto,
   Speaker or Grid; up to six pins, which share the main stage (in Grid they come first and bigger); the order you
@@ -532,9 +624,10 @@ device pickers.
 - **Shared screens in the notes.** The organizer has a **Read shared screens** switch under what's captured
   while notes are on or paused. The presenter's share bar says **Read for the notes**, and the share picker says
   it before they choose. A frame that can't reach the notes after three tries says so in the Notes panel.
-- **Captions** show the newest live transcript line, under whoever said it, translated for each viewer who
-  picks a language. They're hidden while rooms are open, and say so instead of showing an old line while notes
-  are paused or off, or while the organizer's browser can't listen.
+- **Captions** show the newest live transcript line the viewer may read (said in their part of the call while
+  they were there), under whoever said it, translated for each viewer who picks a language. They show in
+  breakout rooms too, each room its own, and say so instead of showing an old line while notes are paused or
+  off, or while the organizer's browser can't listen.
 - **Notes.** While notes are on, the recorder keeps the organizer's microphone, and the live transcript hears
   everyone the organizer's browser plays: its own microphone and each other microphone in its part of the call
   (`CallRoom.heard()`, the raw decrypted tracks of unmuted microphones, so nobody's volume on this screen changes
@@ -543,13 +636,20 @@ device pickers.
   (`x-alcove-speaker`, a participant ID the server checks is someone in the call: not still asking, not turned
   away, not from another call), and every line is said by that person. A voice no longer heard (they left,
   muted, or a room move took them out of earshot) stops being listened to at once and sends what it had heard.
-  A line keeps the breakout room its speaker was in, from where they were sent (the organizer: the room they
-  were visiting), with rooms that have run out counted as closed. Without a microphone of the organizer's own,
-  everyone else is still heard. Nothing shared, picture or sound, is recorded or transcribed (`heard()` is
-  microphones only, and the capture state's `screen` part, "Shared screens", is always off): seeing a share takes only
-  being in the call (its group, and your room while rooms are open), and what the notes capture is decided apart from
-  it. Pausing holds the recorder and every voice (`hold()`) until the server answers,
-  then drops what they held (`discard()`, `stop()`) or carries on (`release()`) ([What's captured](#whats-captured)).
+  Each clip also says how long ago it began (`x-alcove-ago-ms`), which the server turns into a moment on its own
+  clock as the request arrives (never earlier than the speaker came into the call), and keeps it in the part of the
+  call its speaker was in then, from where each person has been (the places module's `placeAt`), with rooms that
+  have run out counted as closed: a clip still on its way when someone moves stays where it was said. A clip that
+  began within the request's travel time before a move counts as said after it; the organizer moving ends every
+  clip in progress (`CallEars.mark`), so none spans two parts and such a clip holds a fraction of a second at most.
+  Nothing is heard while the organizer's browser is between two parts, or in a room it paused (`CallEars.quiet`).
+  The recorder hears silence while the organizer is in a breakout room, so the note's audio has none of a room's
+  talk. Without a microphone of the organizer's own, everyone else is still heard. Nothing shared, picture or
+  sound, is recorded or transcribed (`heard()` is microphones only, and the capture state's `screen` part, "Shared
+  screens", is always off): seeing a share takes only being in the same part of the call (its group), and what the
+  notes capture is decided apart from it. Pausing holds the recorder and every voice (`hold()`) until the server
+  answers, then drops what they held (`discard()`, `stop()`) or carries on (`release()`)
+  ([What's captured](#whats-captured)).
   The browser also says what it can't capture, whenever that changes: no microphone, a recorder that failed
   (`NotesRecorder`'s `onBroken`), or no audio worklet (`canListen()`, and `CallEars`' `onDeaf` when the worklet
   won't load).
@@ -568,12 +668,16 @@ device pickers.
 - **Before joining.** Guests and invited people see what the call captures on the join page, before they ask
   and while they wait (`CaptureSummary` in `@alcove/ui`, from the card, refreshed every few seconds).
 - **Breakout rooms.** The organizer opens rooms for the invited people in the call (by email, as the server
-  requires); guests stay in the main room. Who's in each room comes from `breakouts.open.rooms[].members`,
-  and each browser tells the room whose media to play (`CallRoom.playOnly`). The organizer sees every room:
-  who's in it, who's talking (LiveKit's speaker detection) and a raised hand as that room asking for help.
-  Everyone else sees only their own room or the main room, with the time left and the organizer's messages,
-  and is told when the organizer comes into or leaves their part of the call. Of the live transcript they read
-  the main room's lines and their own room's (catching up, questions and caption translations too).
+  requires); guests stay in the main room. Who's in each room comes from `breakouts.open.rooms[].members`, and
+  each browser tells the room whose media to play (`CallRoom.playOnly`), on top of holding only its own part's
+  keys. The organizer sees every room: who's in it, who's talking (LiveKit's speaker detection) and a raised hand
+  as that room asking for help; it renames a room in place, and moves someone from their chip to another room or
+  back to the main room; a room it paused says **Notes paused** on its card and on its box on the stage, as every
+  room does while the whole call is paused. Escape in a room's name puts the old one back. Everyone else sees only their own room or the main room, with the time left and the organizer's
+  messages, is told when the organizer comes into or leaves their part of the call or moves them, and sees "Moving
+  you to…" while their browser changes groups. In a room, the notes sign, its popover, captions, the transcript
+  and Ask show the room's capture (`captureHere` in `lib/capture.ts`): the transcript marks the room's own gaps,
+  and Ask waits while the room is paused.
 - **Leaving and ending.** Anyone but the organizer leaves (`leave()` returns null) and goes back to the call's
   page. The organizer's End ends the call for everyone: deleting the room disconnects everyone, who are told
   the organizer ended the call, and the organizer's sheet follows the notes being written. A browser that's
@@ -684,4 +788,7 @@ never touches the encrypted recording.
 
 ## Next
 
+- **A room's own notes.** What's said in a breakout room is only shown live, to the people there when it was
+  said. Notes of their own for each room, given to the people who were in it, need notes whose parts have their
+  own readers.
 - **Host hand-off** when the organizer drops (#30): another member's browser takes over committing.
