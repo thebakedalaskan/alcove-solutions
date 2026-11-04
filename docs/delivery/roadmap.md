@@ -76,6 +76,6 @@
 | 7 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
 | 8 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 9 | Speaker diarization for room recordings | Room transcripts name nobody today |
-| 10 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
+| 10 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |
 | 11 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 12 | A breakout room's own notes, for the people who were in it; each room committed by one of its own members | What's said in a room is shown live there and kept out of the call's notes today; a room's own committer builds on host hand-off (#30) |

@@ -20,7 +20,7 @@ import { inference } from '../inference';
 import { log } from '../log';
 import { openOwner } from '../owners';
 import { getItem, lockItem } from '../vault';
-import { me } from './account';
+import { me, profile } from './account';
 import { segments } from './audio';
 import * as billing from './billing';
 import { briefOf, draft, type Settled, type Written } from './drafting';
@@ -160,11 +160,13 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         wlog.info('nothing was transcribed; note finished without notes', { ...at, screens: shown.length });
         return;
       }
+      // The job's owner is the organizer of a call, or the person who recorded a room: their choices decide.
       const organizer = await me(o);
-      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown });
+      const { notesLanguage: language, summaryLength: length } = (await profile(o)).preferences;
+      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown }, { language, length });
       await settle(o, job.job_id, noteId, recordingId, { ...notes, readAt });
       wlog.info('notes written', {
-        ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
+        ...at, language, length, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length, ms: Math.round(performance.now() - t0)
       });
     } catch (e) {

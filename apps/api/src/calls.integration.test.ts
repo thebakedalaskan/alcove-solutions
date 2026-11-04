@@ -34,10 +34,14 @@ async function account(email = unique(), o: Parameters<Harness['browser']>[0] = 
 /** A browser with no account. */
 const guestBrowser = () => h.browser().api;
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
-const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
-/** A clip of speech in `language` (Whisper sure of it unless `sure` is false), said just now unless `heardAt` (by performance.now()) says when it began. */
-const speech = (words: string, segment: number, startMs: number, ms = 4000, language = 'en', sure = true, heardAt?: number): TranscriptClip =>
-  ({ data: new Blob([speechWav(words, ms, language, sure)], { type: 'audio/wav' }), segment, startMs, durationMs: ms, ...(heardAt === undefined ? {} : { heardAt }) });
+/** Five seconds of recorded audio, number `s` of its segment, starting where 5-second pieces fall. */
+const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+/**
+ * A clip of speech in `language` (Whisper sure of it unless `sure` is false), starting `atMs` milliseconds into its segment, said
+ * just now unless `heardAt` (by performance.now()) says when it began.
+ */
+const speech = (words: string, segment: number, atMs: number, ms = 4000, language = 'en', sure = true, heardAt?: number): TranscriptClip =>
+  ({ data: new Blob([speechWav(words, ms, language, sure)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms, ...(heardAt === undefined ? {} : { heardAt }) });
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
   const until = Date.now() + ms;
   while (!pred()) {

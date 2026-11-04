@@ -64,7 +64,7 @@ function decode<S extends z.ZodType>(o: Owner, r: z.infer<typeof HeadRow>, schem
 export async function listItems<S extends z.ZodType>(o: Owner, db: Db, kind: ItemKind, schema: S): Promise<Loaded<z.infer<S>>[]> {
   return (await rows(db, HeadRow, HEAD_SQL, [o.ownerId, kind])).map((r) => decode(o, r, schema));
 }
-/** One live item of a kind, decrypted, or undefined when the owner has none with that ID. */
+/** One live item of a kind, decrypted, or undefined when the owner has none with that ID (any more). */
 export async function findItem<S extends z.ZodType>(o: Owner, db: Db, kind: ItemKind, itemId: string, schema: S): Promise<Loaded<z.infer<S>> | undefined> {
   const r = await maybeOne(db, HeadRow, `${HEAD_SQL} AND i.item_id = $3`, [o.ownerId, kind, itemId]);
   return r ? decode(o, r, schema) : undefined;

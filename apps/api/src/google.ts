@@ -29,7 +29,7 @@ export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | '
 export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
 export type Finish = { ok: true; identity: Identity; grant: Grant; consented: boolean; next?: '/ready' | '/home' | undefined } | { ok: false; reason: Refusal };
 
-const Discovery = z.object({ issuer: z.string().min(1), authorization_endpoint: z.string().url(), token_endpoint: z.string().url(), jwks_uri: z.string().url() });
+const Discovery = z.object({ issuer: z.string().min(1), authorization_endpoint: z.string().url(), token_endpoint: z.string().url(), revocation_endpoint: z.string().url(), jwks_uri: z.string().url() });
 const TokenReply = z.object({
   id_token: z.string().min(1), access_token: z.string().min(1), expires_in: z.number().default(3600),
   refresh_token: z.string().min(1).optional(), scope: z.string().default('')
@@ -53,12 +53,29 @@ export const configured = (cfg: Config): cfg is Ready => !!cfg.GOOGLE_CLIENT_ID 
 /** The redirect URI registered with Google for this deployment. */
 export const redirectUri = (cfg: Config) => `${cfg.API_URL.replace(/\/$/, '')}/v1/auth/google/callback`;
 
+/** A signal that aborts after `ms`, or sooner if `signal` does: a caller's own time limit on a request to Google. */
+export const within = (ms: number, signal?: AbortSignal | undefined): AbortSignal => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
+
+/** Waits for `p`, but no longer than `signal` allows. What `p` stands for carries on for anyone else waiting on it. */
+function waitFor<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 interface Provider { endpoints: z.infer<typeof Discovery>; keys: JWTVerifyGetKey }
 const providers = new Map<string, Promise<Provider>>();
-/** Google's endpoints and signing keys, discovered once per issuer (jose refetches keys when Google rotates them). */
-function provider(issuer: string): Promise<Provider> {
+/**
+ * Google's endpoints and signing keys, discovered once per issuer (jose refetches keys when Google rotates them).
+ * A caller with a time limit of its own stops waiting when it's up, without cancelling the discovery for others.
+ */
+function provider(issuer: string, signal?: AbortSignal | undefined): Promise<Provider> {
   const known = providers.get(issuer);
-  if (known) return known;
+  if (known) return waitFor(known, signal);
   const p = (async () => {
     const res = await fetch(`${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) throw new UnavailableError('Google can’t be reached right now.', { context: { step: 'discovery', status: res.status } });
@@ -68,7 +85,7 @@ function provider(issuer: string): Promise<Provider> {
   providers.set(issuer, p);
   // A failed discovery is tried again next time instead of being remembered.
   p.catch(() => providers.delete(issuer));
-  return p;
+  return waitFor(p, signal);
 }
 
 const same = (a: string, b: string) => equalBytes(utf8(a), utf8(b));
@@ -101,16 +118,19 @@ export async function begin(d: Deps, o: { consent?: boolean; hint?: string | und
   return { url: url.toString(), attempt: b64u(sealJson(signInAttemptKey(masterKey(d)), HEADER, a)) };
 }
 
-/** A fresh access token from a stored refresh token; `revoked` when Google no longer honours it. */
-export async function refreshAccess(d: Deps, refreshToken: string): Promise<{ ok: true; accessToken: string; expiresIn: number } | { ok: false; revoked: boolean }> {
+/**
+ * A fresh access token from a stored refresh token; `revoked` when Google no longer honours it. A timeout or a
+ * network failure is thrown as fetch throws it; `signal` is the caller's own time limit, if it has one.
+ */
+export async function refreshAccess(d: Deps, refreshToken: string, signal?: AbortSignal | undefined): Promise<{ ok: true; accessToken: string; expiresIn: number } | { ok: false; revoked: boolean }> {
   const cfg = d.cfg;
   if (!configured(cfg)) return { ok: false, revoked: false };
-  const p = await provider(cfg.GOOGLE_ISSUER);
+  const p = await provider(cfg.GOOGLE_ISSUER, signal);
   const res = await fetch(p.endpoints.token_endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: cfg.GOOGLE_CLIENT_ID, client_secret: cfg.GOOGLE_CLIENT_SECRET }),
-    signal: AbortSignal.timeout(8000)
+    signal: within(8000, signal)
   });
   if (!res.ok) {
     const error = TokenError.parse(await res.json().catch(() => ({}))).error;
@@ -120,6 +140,30 @@ export async function refreshAccess(d: Deps, refreshToken: string): Promise<{ ok
   const r = RefreshReply.safeParse(await res.json().catch(() => null));
   if (!r.success) return { ok: false, revoked: false };
   return { ok: true, accessToken: r.data.access_token, expiresIn: r.data.expires_in };
+}
+
+/**
+ * Withdraws Alcove's grant at Google, so a refresh token that is no longer wanted stops working there too. Best
+ * effort: false when Google didn't confirm, with a warning that says why. `signal` is the caller's own time limit.
+ */
+export async function revokeRefresh(d: Deps, refreshToken: string, signal?: AbortSignal | undefined): Promise<boolean> {
+  const cfg = d.cfg;
+  if (!configured(cfg)) return false;
+  try {
+    const p = await provider(cfg.GOOGLE_ISSUER, signal);
+    const res = await fetch(p.endpoints.revocation_endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+      body: new URLSearchParams({ token: refreshToken }),
+      signal: within(8000, signal)
+    });
+    if (res.ok) return true;
+    glog.warn('google grant not revoked', { status: res.status, googleError: TokenError.parse(await res.json().catch(() => ({}))).error });
+  } catch (e) {
+    // Discovery or the request failed (a timeout, a network failure): the error carries neither the token nor anything of the person.
+    glog.warn('google grant not revoked', { err: e });
+  }
+  return false;
 }
 
 function openAttempt(d: Deps, cookie: string | undefined): z.infer<typeof Attempt> | null {

@@ -127,15 +127,21 @@ Read `docs/engineering/logging-and-errors.md`.
 
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
-  links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `SealedBadge`, `Notice`, `Toast`, `Avatar`
-  and `Faces` (the arch), `CallTile`, `CallDock`, `Caption`, `NotesPanel`, `TranscriptLine`, `Card`,
-  `CalendarRow`, `SidebarNav`, `ComposerLine`, `Field`, `Tabs`, `Segmented`, `TourDialog`, `Coachmark`,
+  links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge`, `Notice`, `Toast`,
+  `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
+  `Caption`, `NotesPanel`, `TranscriptLine`, `Card`, `CalendarRow`, `NoteTile`, `PersonCard`, `Timeline` with
+  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
+  `Segmented`, `SettingsCard` and `SettingRow`, `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
   `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
   values on `:root`, dark on `.dark` (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
   `bg-surface`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `shadow-sun`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
-  `packages/ui/src/styles/kit.css`; screens are styled in `styles/app.css`, `call.css` and `welcome.css`.
+  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, phone top bar and tab bar,
+  palette) in `styles/shell.css`; screens are styled in `styles/app.css`, `call.css` and `welcome.css`.
+  Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
+  can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
 - Icons come from Lucide through `Icon` in `@alcove/ui` (one stroke family, 1.8 stroke). Add a name to its map
   rather than drawing an SVG; use an icon button with a tooltip, not a text label, for tile and toolbar actions.

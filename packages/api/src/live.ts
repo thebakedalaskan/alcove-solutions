@@ -270,8 +270,8 @@ export interface TranscriptClip {
   data: Blob;
   /** Segment the speech belongs to (see RecordingProgress.segment). */
   segment: number;
-  /** Where the clip starts within its segment, not counting pauses. */
-  startMs: number;
+  /** Where the clip starts, in seconds from the start of its segment, pauses not counted. A room recording is one segment. */
+  at: number;
   durationMs: number;
   /**
    * In a call, when the speech began, by this browser's `performance.now()`. The request says how long ago that was
@@ -294,13 +294,19 @@ export interface ScreenFrame {
 export const ScreenFrameReceiptSchema = z.object({ id: IDSchema, duplicate: z.boolean() });
 export type ScreenFrameReceipt = z.infer<typeof ScreenFrameReceiptSchema>;
 
-/** A piece of recorded audio, as produced by MediaRecorder every few seconds. */
+/**
+ * A piece of recorded audio, as produced by MediaRecorder every few seconds. Sending a piece that's
+ * stored already stores nothing new. A room recording takes such a resend even once it's paused or
+ * stopped; a call refuses audio once notes are off or a later segment has begun.
+ */
 export interface AudioPiece {
   data: Blob;
   /** Segment the piece belongs to (see RecordingProgress.segment). */
   segment: number;
   /** Position within the segment, starting at 0. */
   seq: number;
+  /** Where the piece starts, in seconds from the start of its segment, pauses not counted. */
+  at: number;
   durationMs: number;
   mimeType: string;
 }
@@ -472,12 +478,28 @@ export interface CallSession extends LiveStore<CallState> {
   closing(): void;
 }
 
+/** A recording made without a connection can be uploaded until it's this many days old. */
+export const MAX_RECORDING_AGE_DAYS = 14;
+
+/**
+ * Starting a recording in the room. `startedAt` is when it really started, for one recorded without
+ * a connection and uploaded later: up to MAX_RECORDING_AGE_DAYS back, and not in the future. Starting
+ * again from the same `startedAt` carries on with that recording, as it is, so an upload that was cut
+ * off resumes instead of making a second note.
+ */
+export const RoomRecordingInputSchema = z.object({
+  title: z.string().trim().max(160).optional(),
+  startedAt: z.iso.datetime({ offset: true }).optional()
+});
+export type RoomRecordingInput = z.infer<typeof RoomRecordingInputSchema>;
+
 export const RoomRecordingStateSchema = z.object({
   id: IDSchema,
   noteId: IDSchema,
   title: z.string(),
+  /** When it started: when it was started here, or its own start for one recorded without a connection. */
   startedAt: ISODateSchema,
-  /** Seconds recorded, excluding pauses. */
+  /** Seconds of audio stored so far, excluding pauses. */
   elapsed: z.number(),
   status: z.enum(['recording', 'paused', 'stopped']),
   recording: RecordingProgressSchema,
@@ -486,6 +508,7 @@ export const RoomRecordingStateSchema = z.object({
 });
 export type RoomRecordingState = z.infer<typeof RoomRecordingStateSchema>;
 
+/** The note being written, and how long the recording is: its pieces' total, pauses not counted. */
 export const RecordingStopResultSchema = z.object({ pendingNoteId: IDSchema, duration: z.number() });
 export type RecordingStopResult = z.infer<typeof RecordingStopResultSchema>;
 

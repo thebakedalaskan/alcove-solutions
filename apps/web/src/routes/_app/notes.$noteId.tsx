@@ -1,13 +1,13 @@
 import {
-  errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person, type Question,
-  type QuestionPatch
+  NoteMomentSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
+  type Question, type QuestionPatch
 } from '@alcove/api';
 import { Button, Chip, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, Spinner, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { Provenance } from '~/features/notes/Evidence';
-import { Player, usePlayer } from '~/features/notes/Player';
+import { Player, usePlayer, type PlayerState } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
 import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
@@ -20,11 +20,15 @@ import { listNames, sameEmail } from '~/lib/people';
 import { q, qk, useCorrectLine, useDeleteNote, useRewriteNotes, useShareNote, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
 import { noteWhen } from '~/lib/time';
 
-/** `at`: a moment to open the notes at (seconds into the call), from a link in a series or an answer. */
-const atOf = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
-
 export const Route = createFileRoute('/_app/notes/$noteId')({
-  validateSearch: (s: Record<string, unknown>): { at?: number | undefined } => ({ at: atOf(s['at']) }),
+  /**
+   * `at`: a moment in the recording, in seconds, from a link in an answer or a series: the page opens the player
+   * there without playing, and the transcript at the line said then.
+   */
+  validateSearch: (s: Record<string, unknown>): { at?: number | undefined } => {
+    const at = NoteMomentSchema.safeParse(s['at']);
+    return { at: at.success ? at.data : undefined };
+  },
   loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(q.note(params.noteId))),
   errorComponent: Missing,
   component: NotePage
@@ -92,6 +96,20 @@ function useProgress(note: Note): NoteProgress | null {
   return p;
 }
 
+/**
+ * Opens the player at the moment the address asks for (`?at=`), without playing; once for each note and moment,
+ * so a refresh doesn't move it back.
+ */
+function useOpenAt(noteId: string, at: number | undefined, player: PlayerState) {
+  const done = useRef<string | null>(null);
+  const { seek, total } = player;
+  useEffect(() => {
+    if (at === undefined || total <= 0 || done.current === `${noteId}@${at}`) return;
+    done.current = `${noteId}@${at}`;
+    seek(at, false);
+  }, [at, noteId, seek, total]);
+}
+
 function asText(n: Note): string {
   const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due].filter((x): x is string => !!x).join(', ');
   // What people said wasn't decided stays out; what nobody has confirmed yet, or no longer holds, says so.
@@ -115,23 +133,15 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const correctLine = useCorrectLine();
   const rewrite = useRewriteNotes();
   const player = usePlayer(note.id, note.audio);
-  // Brought here to a moment: the audio waits there, ready to play. Once per link, so a refresh doesn't move it back.
-  const { seek: cue } = player;
-  const cued = useRef('');
-  useEffect(() => {
-    const key = `${note.id}@${at ?? ''}`;
-    if (at === undefined || !note.audio.length || cued.current === key) return;
-    cued.current = key;
-    cue(at, false);
-  }, [at, note.id, note.audio.length, cue]);
+  useOpenAt(note.id, at, player);
   const progress = useProgress(note);
   const [pop, setPop] = useState<'share' | 'more' | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [going, setGoing] = useState(false);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
-  const mine = !note.from;
-  const organizer = note.recipients.find((r) => r.role === 'organizer')?.person ?? note.from;
-  const myRole = note.recipients.find((r) => me && sameEmail(r.person, { email: me }))?.role;
+  const received = note.received;
+  const mine = !received;
+  const organizer = note.recipients.find((r) => r.role === 'organizer')?.person;
   const ready = note.status === 'ready';
   const seek = note.audio.length ? (s: number) => player.seek(s) : undefined;
   const open = note.actions.filter((a) => !a.done).length;
@@ -207,7 +217,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
             chip={note.status === 'recording' ? <NotesSign className="lead-chip">Still recording</NotesSign>
               : note.status === 'pending' ? <Chip className="lead-chip"><Spinner className="size-3" />Waiting to be written</Chip>
                 : note.writingAgain ? <Chip className="lead-chip"><Spinner className="size-3" />Being written again</Chip>
-                  : !mine && organizer ? <Chip tone="sun" className="lead-chip">{myRole === 'shared' ? 'Shared with you' : `From ${firstName(organizer.name)}’s call`}</Chip> : null} />
+                  : received ? <Chip tone="sun" className="lead-chip">{received.role === 'shared' ? 'Shared with you' : `From ${firstName(received.by.name)}’s call`}</Chip> : null} />
           {confirm && (
             <div className="confirm" role="alertdialog" aria-label={mine ? 'Delete these notes' : 'Remove these notes'}>
               <span className="ic"><Icon name="trash" size={19} /></span>

@@ -23,8 +23,8 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version`, LiveKit room name (random), organizer's LiveKit identity (random), when the organizer's connection joined and left, locked | `state_ciphertext` (what the call captures: notes off, on or paused, every change with who made it and when, what the organizer's browser says it can't capture now, and asks for notes; who joined (with the addresses of people signed in whom the notes may go to), when each connection was let in and when it left, whose hand is up, who was removed, spotlight, breakout rooms, who's in which, where each person was before their last move and when they moved, the rooms' messages, each room's MLS epoch and when the organizer paused it or carried on there, notices, each for everyone or one room), and where its MLS groups have got to (generation, the main room's epoch and the last seq in its log: counters only) |
 | `call_codes` | owner, meeting item | `code_hash` (keyed hash of the call code, so anyone with the link finds the call) |
 | `call_mls` | owner, call, `seq`, MLS group generation, kind (`keypackage`, `commit`, `welcome`, `message`), the random identity a key package came from or a welcome is for, the part of the call whose group an entry belongs to (`grp`: `main` or a breakout room's random ID; none for a key package), epoch | `body_ciphertext` (an MLS message, which the API can't read, sealed again under the call's state key, bound to its place in the log and its part of the call). A breakout room's entries are deleted when it closes; the rest when the call ends, and when a new generation starts (waiting people's key packages carry over) |
-| `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start and end, `version` | `key_envelope` (`Krec`) |
-| `recording_pieces` | owner, recording, segment, seq, object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
+| `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start (the recording's own, for one made without a connection and uploaded later) and end, `version` | `key_envelope` (`Krec`) |
+| `recording_pieces` | owner, recording, segment, seq, where the piece starts in its segment (`at_ms`), object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
@@ -35,15 +35,18 @@ The migration runner adds `schema_migrations`, which records each applied file b
 Constraints: checked domains `alcove_id128` (22 characters) and `alcove_owner_id` (43 characters), composite
 owner-scoped foreign keys, and deferred item-head and parent-revision constraints. Deleting an owner cascades to
 everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, its
-transcript clips and its `note_access` rows.
+transcript clips and its `note_access` rows. The `note_access` rows that give an account other people's notes
+belong to those notes' organizers, so deleting the account deletes them by its email index, unless another
+account still signs in with that address. `object_gc` keeps a plain owner ID with no foreign key, so a failed
+object delete is still retried after its account is gone.
 
 ## Manifests (encrypted)
 
 | Item kind | Manifest fields |
 | --- | --- |
-| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (`notesDefault`), colleagues invited to Alcove |
-| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), the Google Calendar event ID and link when it's on a calendar, the series it's in (`seriesId`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), and which guests were added by being let in from the call's link (`addedFromLink`), once any were |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written) |
+| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
+| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link and whether the event was the organizer's own before it became an Alcove call (adopted), the series it's in (`seriesId`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), and which guests were added by being let in from the call's link (`addedFromLink`), once any were |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
@@ -81,7 +84,15 @@ decision never erases what was there before.
 - **Finding people.** Sign-in looks up `identities` by subject index; people search and the team directory
   check `identities.email_index`; shared notes are found through `note_access.email_index`
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).
-- **Deleting** is physical (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)).
+- **Who has a note** is its organizer and everyone with a `note_access` row for it. The note's manifest says how
+  each of them got it (invited, or shared by whom, with which group, when), and each reader is told their own
+  way as `received`. Someone who removed the note from theirs has no row, so isn't listed; sharing with them
+  again gives it back.
+- **Deleting** is physical, whether it's a note, a meeting or a whole account: rows, receipts and objects
+  (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
+  its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
+- **Credits used this month** are summed from the sealed billing history when the balance is read
+  (`GET /v1/credits`): nothing about usage is stored in the clear ([Payments and usage](payments-and-usage.md)).
 
 ## What's kept, and for how long
 

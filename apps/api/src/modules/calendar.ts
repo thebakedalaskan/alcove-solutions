@@ -8,9 +8,9 @@
 import type { Calendar, CalendarEvent } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
-import { tx } from '../db';
+import { exec, tx } from '../db';
 import { ForbiddenError, NotFoundError, UnavailableError } from '../errors';
-import { CALENDAR_SCOPE, refreshAccess, type Grant } from '../google';
+import { CALENDAR_SCOPE, refreshAccess, revokeRefresh, within, type Grant } from '../google';
 import { log } from '../log';
 import { createItem, listItems, saveRevision } from '../vault';
 import { profile } from './account';
@@ -59,13 +59,17 @@ export async function connect(o: Owner, grant: Grant): Promise<Connection> {
 const usable = (c: Connection | undefined): c is Connection & { refreshToken: string } => !!c?.refreshToken && c.scopes.includes(CALENDAR_SCOPE);
 
 /** A valid access token, refreshing it when it's about to expire. Null when the calendar isn't connected (any more). */
-async function token(o: Owner): Promise<string | null> {
+async function token(o: Owner, signal?: AbortSignal | undefined): Promise<string | null> {
   const cached = access.get(o.ownerId);
   if (cached && cached.until > Date.now()) return cached.token;
   const conn = await connection(o);
   if (!usable(conn)) return null;
-  const r = await refreshAccess(o, conn.refreshToken);
-  if (r.ok) { remember(o.ownerId, r.accessToken, r.expiresIn); return r.accessToken; }
+  const r = await refreshAccess(o, conn.refreshToken, signal);
+  if (r.ok) {
+    // An account deleted while this refreshed must not leave a token in memory.
+    if (await exec(o.pool, 'SELECT 1 FROM owners WHERE owner_id = $1', [o.ownerId])) remember(o.ownerId, r.accessToken, r.expiresIn);
+    return r.accessToken;
+  }
   if (r.revoked) {
     // Access was withdrawn at Google: forget the token so the app asks again.
     await saveConnection(o, (cur) => ({ provider: 'google', scopes: (cur?.scopes ?? []).filter((s) => s !== CALENDAR_SCOPE), connectedAt: cur?.connectedAt ?? new Date().toISOString() }));
@@ -75,12 +79,45 @@ async function token(o: Owner): Promise<string | null> {
   throw new UnavailableError('Google Calendar can’t be reached right now.', { context: { step: 'refresh' } });
 }
 
+/** Drops the access token kept in memory for an account, when its connection or the whole account is deleted. */
+export const forgetAccess = (ownerId: string): void => { access.delete(ownerId); };
+
+/** The sealed refresh token, read before its connection goes, so Google can be told to revoke it afterwards. */
+export const grantToRevoke = async (o: Owner): Promise<string | undefined> => (await connection(o))?.refreshToken;
+
+/**
+ * Revokes a refresh token at Google, best effort: a failure is logged by the Google module and never blocks what
+ * asked for it. `signal` is the caller's own time limit, if it has one.
+ */
+export async function revokeGrant(o: Owner, refreshToken: string | undefined, signal?: AbortSignal | undefined): Promise<void> {
+  if (!refreshToken) return;
+  const revoked = await revokeRefresh(o, refreshToken, signal);
+  clog.info('google grant revoke', { ownerId: o.ownerId, revoked });
+}
+
+/**
+ * Forgets the Google connection: the sealed refresh token's item and its revisions are deleted, Google is told to
+ * revoke the token, and the access token in memory is dropped. Answers with the calendar as `view` reads it now.
+ */
+export async function disconnect(o: Owner, series: () => Promise<ReadonlyMap<string, string>>): Promise<Calendar> {
+  const refreshToken = await grantToRevoke(o);
+  forgetAccess(o.ownerId);
+  const removed = await exec(o.pool, "DELETE FROM items WHERE owner_id = $1 AND kind = 'connection'", [o.ownerId]);
+  clog.info('google disconnected', { ownerId: o.ownerId, connections: removed });
+  await revokeGrant(o, refreshToken);
+  return view(o, series);
+}
+
 /** Whether this account's calls go on a Google Calendar. */
 export const connected = async (o: Owner) => usable(await connection(o));
 
-async function api<S extends z.ZodType>(o: Owner, method: string, path: string, schema: S, o2: { query?: Record<string, string>; body?: unknown } = {}): Promise<z.infer<S>> {
+/**
+ * One Calendar API request, 8 seconds at most, and sooner if the caller's `signal` says so (the token refresh
+ * before it, too). A timeout or a network failure is thrown as fetch throws it (see `unreachable`).
+ */
+async function api<S extends z.ZodType>(o: Owner, method: string, path: string, schema: S, o2: { query?: Record<string, string>; body?: unknown; signal?: AbortSignal | undefined } = {}): Promise<z.infer<S>> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const t = await token(o);
+    const t = await token(o, o2.signal);
     if (!t) throw new UnavailableError('Google Calendar isn’t connected.', { context: { op: method } });
     const url = new URL(`${o.cfg.GOOGLE_API_URL.replace(/\/$/, '')}/calendar/v3${path}`);
     for (const [k, v] of Object.entries(o2.query ?? {})) url.searchParams.set(k, v);
@@ -88,7 +125,7 @@ async function api<S extends z.ZodType>(o: Owner, method: string, path: string, 
       method,
       headers: { authorization: `Bearer ${t}`, accept: 'application/json', ...(o2.body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(o2.body === undefined ? {} : { body: JSON.stringify(o2.body) }),
-      signal: AbortSignal.timeout(8000)
+      signal: within(8000, o2.signal)
     });
     // An access token Google has stopped honouring: drop it and try once with a fresh one.
     if (res.status === 401 && attempt === 0) { access.delete(o.ownerId); continue; }
@@ -116,7 +153,7 @@ const GoogleEvent = z.object({
   extendedProperties: z.object({ private: z.record(z.string(), z.string()).optional() }).optional()
 });
 type GoogleEvent = z.infer<typeof GoogleEvent>;
-const GoogleList = z.object({ items: z.array(GoogleEvent).default([]) });
+const GoogleList = z.object({ items: z.array(GoogleEvent).default([]), nextPageToken: z.string().optional() });
 /** The private property that marks an event as an Alcove call. */
 const MARK = 'alcoveMeeting';
 
@@ -170,7 +207,7 @@ function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>): CalendarE
 export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, string>>): Promise<Calendar> {
   if ((await profile(o)).sample) return { source: 'sample', needsAccess: false, events: [] };
   const conn = await connection(o);
-  if (!conn) return { source: 'none', needsAccess: false, events: [] };
+  if (!conn) return o.session?.provider === 'google' ? { source: 'google', needsAccess: true, events: [] } : { source: 'none', needsAccess: false, events: [] };
   if (!usable(conn)) return { source: 'google', needsAccess: true, events: [] };
   const now = Date.now();
   let list: z.infer<typeof GoogleList>;
@@ -189,6 +226,44 @@ export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, s
   return { source: 'google', needsAccess: false, events };
 }
 
+const DAY = 86_400_000;
+/**
+ * Everyone on the events around now, as lower-cased addresses: the coming 7 days first, then the past
+ * in 30-day windows (up to 90 days back), each read page by page, so the newest events come first.
+ * Stops at 90 days or 500 events, and after 4 seconds in all. Resource rooms and cancelled events are
+ * left out. Nothing when the calendar can't be read or Google is too slow.
+ */
+export async function metEmails(o: Owner): Promise<string[]> {
+  if ((await profile(o)).sample || !usable(await connection(o))) return [];
+  const now = Date.now();
+  const signal = AbortSignal.timeout(4000);
+  const windows = [[now, now + 7 * DAY], [now - 30 * DAY, now], [now - 60 * DAY, now - 30 * DAY], [now - 90 * DAY, now - 60 * DAY]] as const;
+  const out: string[] = [];
+  let read = 0;
+  try {
+    for (const [from, to] of windows) {
+      let pageToken: string | undefined;
+      do {
+        if (read >= 500) return out;
+        const list = await api(o, 'GET', '/calendars/primary/events', GoogleList, {
+          signal,
+          query: { timeMin: new Date(from).toISOString(), timeMax: new Date(to).toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250', ...(pageToken ? { pageToken } : {}) }
+        });
+        read += list.items.length;
+        for (const e of list.items) {
+          if (e.status === 'cancelled') continue;
+          for (const x of [e.organizer?.email, ...(e.attendees ?? []).filter((a) => !a.resource).map((a) => a.email)]) if (x) out.push(x.trim().toLowerCase());
+        }
+        pageToken = list.nextPageToken;
+      } while (pageToken);
+    }
+    return out;
+  } catch (e) {
+    clog.warn('calendar colleagues unavailable', { ownerId: o.ownerId, events: read, err: e });
+    return [];
+  }
+}
+
 /* ---------- Alcove's calls on the calendar ---------- */
 function eventBody(o: Owner, meetingId: string, m: MeetingManifest, before?: string | undefined) {
   const link = `${o.cfg.WEB_ORIGIN}/join/${m.code}`;
@@ -205,7 +280,7 @@ function eventBody(o: Owner, meetingId: string, m: MeetingManifest, before?: str
 
 /** Puts a newly scheduled call on the calendar, which sends everyone invited an invitation. Null without a calendar. */
 export async function place(o: Owner, meetingId: string, m: MeetingManifest): Promise<{ eventId: string; url?: string | undefined } | null> {
-  if (!(await connected(o))) return null;
+  if (!(await profile(o)).preferences.addToCalendar || !(await connected(o))) return null;
   const e = await api(o, 'POST', '/calendars/primary/events', GoogleEvent, { query: { sendUpdates: 'all' }, body: eventBody(o, meetingId, m) });
   clog.info('call placed on calendar', { ownerId: o.ownerId, meetingId, guests: m.guests.length });
   return { eventId: e.id, url: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : undefined };
@@ -213,19 +288,30 @@ export async function place(o: Owner, meetingId: string, m: MeetingManifest): Pr
 
 /** Brings the calendar event in line with the call; everyone on it gets the update. */
 export async function change(o: Owner, eventId: string, meetingId: string, m: MeetingManifest, before?: string | undefined): Promise<void> {
+  if (!(await connected(o))) return;
   await api(o, 'PATCH', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent, { query: { sendUpdates: 'all' }, body: eventBody(o, meetingId, m, before) });
   clog.info('calendar event updated', { ownerId: o.ownerId, meetingId, guests: m.guests.length });
 }
 
-/** Cancels the calendar event; everyone on it is told. An event already gone is fine. */
-export async function withdraw(o: Owner, eventId: string, meetingId: string): Promise<void> {
+/**
+ * Cancels the calendar event; everyone on it is told. Says what happened: `cancelled` now, `gone` already (which
+ * is fine), or `not-connected`, when there's no calendar to send it to. `signal` is the caller's own time limit.
+ */
+export async function withdraw(o: Owner, eventId: string, meetingId: string, signal?: AbortSignal | undefined): Promise<'cancelled' | 'gone' | 'not-connected'> {
+  if (!(await connected(o))) return 'not-connected';
   try {
-    await api(o, 'DELETE', `/calendars/primary/events/${encodeURIComponent(eventId)}`, z.unknown(), { query: { sendUpdates: 'all' } });
+    await api(o, 'DELETE', `/calendars/primary/events/${encodeURIComponent(eventId)}`, z.unknown(), { query: { sendUpdates: 'all' }, signal });
   } catch (e) {
     if (!(e instanceof NotFoundError)) throw e;
+    clog.info('calendar event already gone', { ownerId: o.ownerId, meetingId });
+    return 'gone';
   }
   clog.info('calendar event cancelled', { ownerId: o.ownerId, meetingId });
+  return 'cancelled';
 }
+
+/** Google didn't answer in time, or couldn't be reached at all (fetch fails with a TypeError): the next request would fare no better. */
+export const unreachable = (e: unknown): boolean => e instanceof TypeError || (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError'));
 
 /** One of the account's own events, to make it an Alcove call: the organizer's only, and not one already. */
 export async function ownEvent(o: Owner, eventId: string): Promise<{

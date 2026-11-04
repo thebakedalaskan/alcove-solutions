@@ -37,8 +37,17 @@ export async function lockOwner(o: Owner, db: Db): Promise<void> {
 const KeyRow = z.object({ root_envelope: bytea, root_check: bytea });
 /** Opens an account's keys for one request (or one piece of background work). */
 export async function openOwner(d: Deps, ownerId: string, session: Session | undefined, db: Db = d.pool): Promise<Owner> {
+  const o = await findOwner(d, ownerId, session, db);
+  if (!o) throw new AuthError('That account no longer exists. Sign in again.', { context: { ownerId } });
+  return o;
+}
+/**
+ * Opens an account's keys, or nothing once the account has been deleted. For reaching someone else's
+ * vault, where their account being gone isn't the caller's sign-in ending.
+ */
+export async function findOwner(d: Deps, ownerId: string, session: Session | undefined, db: Db = d.pool): Promise<Owner | undefined> {
   const r = await maybeOne(db, KeyRow, 'SELECT root_envelope, root_check FROM owners WHERE owner_id = $1', [ownerId]);
-  if (!r) throw new AuthError('That account no longer exists. Sign in again.', { context: { ownerId } });
+  if (!r) return undefined;
   const root = openKey(ownerRootWrapKey(masterKey(d), ownerId), ownerId, ROOT_SCOPE, r.root_envelope);
   if (!equalBytes(r.root_check, rootCheck(root, ownerId))) {
     root.fill(0);

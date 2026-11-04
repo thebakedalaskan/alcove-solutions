@@ -46,5 +46,5 @@ export async function* askExample(question: string): AsyncIterable<AnswerPart> {
   const hit = ANSWERS.find(([re]) => re.test(question));
   const cites = hit ? hit[2] : [0];
   yield { type: 'text', text: hit ? hit[1] : 'From the call: sign-ups are back up since Tuesday’s fix.' };
-  for (const at of cites) yield { type: 'cite', at };
+  for (const at of cites) yield { type: 'cite', noteId: 'example', at };
 }

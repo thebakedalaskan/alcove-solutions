@@ -7,7 +7,7 @@ import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type Al
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config';
 import { cookieName } from './sessions';
 import { startFakeDstack } from './testing/fake-dstack';
@@ -26,9 +26,10 @@ function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
   out.set(src);
   return out;
 }
-const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, seq: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
-/** A clip of speech saying `words` (sentences split by " // ") in `language`; empty words are silence. */
-const speech = (words: string, segment: number, startMs: number, ms = 4000, language = 'en'): TranscriptClip => ({ data: new Blob([speechWav(words, ms, language)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** Five seconds of recorded audio, number `seq` of its segment, starting `at` seconds into it (by default where 5-second pieces fall). */
+const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, seq: number, at = seq * 5): AudioPiece => ({ data: new Blob([bytes]), segment, seq, at, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+/** A clip of speech saying `words` (sentences split by " // ") in `language`, starting `at` seconds into its segment; empty words are silence. */
+const speech = (words: string, segment: number, at: number, ms = 4000, language = 'en'): TranscriptClip => ({ data: new Blob([speechWav(words, ms, language)], { type: 'audio/wav' }), segment, at, durationMs: ms });
 /** Follows a note's progress until its notes are written (or the stream gives up). */
 async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> {
   const steps: NoteProgress[] = [];
@@ -38,6 +39,12 @@ async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> 
 async function asked(api: AlcoveApi, noteId: string, question: string): Promise<AnswerPart[]> {
   const parts: AnswerPart[] = [];
   for await (const p of api.notes.ask(noteId, question)) parts.push(p);
+  return parts;
+}
+/** Asks across every note this browser's account has. */
+async function askedAll(api: AlcoveApi, question: string): Promise<AnswerPart[]> {
+  const parts: AnswerPart[] = [];
+  for await (const p of api.notes.askAll(question)) parts.push(p);
   return parts;
 }
 /** Pauses or resumes a room recording and waits for the server to have done it (the app shows it at once). */
@@ -72,6 +79,7 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
   for (let i = 0; i < 100 && !pred(call.getSnapshot()); i++) { await call.refresh(); await new Promise((r) => setTimeout(r, 30)); }
   return call.getSnapshot();
 }
+const SpotlightReply = z.object({ spotlight: z.string().nullable() });
 const SessionReply = z.object({ ownerId: z.string() });
 /**
  * Signs in with Google the way a browser does: off to Google and back, following each redirect by
@@ -140,7 +148,7 @@ describe('signing in', () => {
     expect(inMinutes).toBeLessThanOrEqual(17);
     expect(day[0]).toMatchObject({ isOrganizer: true, organizer: { name: 'Art Vandelay', id: r.session.ownerId }, status: 'scheduled' });
     expect(day[2]?.guests.map((g) => g.name)).toEqual(['Priya Raman', 'Inès Moreau', 'Kofi Asante', 'Sam Ortiz']);
-    expect(await first.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, perMinute: 25 });
+    expect(await first.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
 
     // Another browser is the same person: both sessions stay open, and the calendar isn't placed twice.
     const second = h.browser();
@@ -226,10 +234,32 @@ describe('signing in', () => {
     expect(plain.status).toBe(400);
   });
 
+  it('preferences start with defaults and keep every field', async () => {
+    const { api, fetch } = await account();
+    const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
+    const defaults = {
+      notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
+      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false },
+      pinned: [], groups: []
+    };
+    expect(await api.account.preferences()).toEqual(defaults);
+    const patched = await api.account.updatePreferences({
+      summaryLength: 'detailed',
+      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false }
+    });
+    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
+    expect(await api.account.preferences()).toEqual(patched);
+    const grouped = await api.account.updatePreferences({ groups: [{ id: 'g1', name: 'Design', emails: ['sam@example.com'] }] });
+    expect(grouped.groups).toHaveLength(1);
+    expect(await patchRaw({ notesLanguage: 'xx' })).toBe(400);
+    expect(await patchRaw({ pinned: ['a', 'a'] })).toBe(400);
+    expect(await api.account.preferences()).toEqual(grouped);
+  });
+
   it('keeps the notes default, and new calls start with it', async () => {
     const { api } = await account();
-    expect(await api.account.preferences()).toEqual({ notesDefault: 'on' });
-    expect(await api.account.updatePreferences({ notesDefault: 'off' })).toEqual({ notesDefault: 'off' });
+    expect((await api.account.preferences()).notesDefault).toBe('on');
+    expect((await api.account.updatePreferences({ notesDefault: 'off' })).notesDefault).toBe('off');
     const call = await api.calls.join((await api.calls.startNow()).code, { mic: true, cam: false });
     expect(call.getSnapshot().capture.mode).toBe('off');
     await call.leave();
@@ -293,7 +323,7 @@ describe('signing in with Google', () => {
     expect((await b.fetch(`${photo.slice(0, -4)}AAAA`)).status).toBe(404);
     // A real account starts with no sample calls and no sample directory: its calendar is Google's.
     expect(await b.api.meetings.upcoming()).toEqual([]);
-    expect(await b.api.people.team()).toBeNull();
+    expect(await b.api.people.team()).toEqual({ name: 'Example', domain: 'example.com', members: [] });
     // The notes he was invited to are his, because Google verified that address.
     expect((await b.api.notes.list()).map((n) => n.id)).toContain(noteId);
 
@@ -421,6 +451,64 @@ describe('Google Calendar', () => {
     expect(code(await b.api.calendar.adopt('theirs').catch((e: unknown) => e))).toBe('forbidden');
   });
 
+  it('with addToCalendar off, scheduled calls stay off Google Calendar', async () => {
+    const fay = person('fay');
+    const b = h.browser();
+    await viaGoogle(b, fay);
+    await b.api.account.updatePreferences({ addToCalendar: false });
+    const before = h.google.calls.filter((c) => c.method !== 'GET').length;
+    const m = await b.api.meetings.create({ title: 'Just us', startsAt: at(1, 9), durationMinutes: 30, guests: ['kim@example.com'], notes: 'on' });
+    expect(m.calendarUrl).toBeUndefined();
+    await b.api.meetings.update(m.id, { title: 'Just us, moved', startsAt: at(1, 10) });
+    await b.api.meetings.cancel(m.id);
+    expect(h.google.calendar(fay.sub)).toEqual([]);
+    expect(h.google.calls.filter((c) => c.method !== 'GET')).toHaveLength(before);
+    // The calendar stays connected, for reading.
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+
+    // Turning it back on puts new calls on the calendar again.
+    await b.api.account.updatePreferences({ addToCalendar: true });
+    expect((await b.api.meetings.create({ title: 'On the calendar', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' })).calendarUrl).toMatch(/^https:/);
+    expect(h.google.calendar(fay.sub)).toHaveLength(1);
+  });
+
+  it('disconnecting forgets the calendar', async () => {
+    const gus = person('gus');
+    const tokensBefore = h.google.refreshTokens();
+    const b = h.browser();
+    await viaGoogle(b, gus);
+    const ownerId = (await b.api.auth.getSession())?.ownerId;
+    const kept = await b.api.meetings.create({ title: 'Already on it', startsAt: at(1, 9), durationMinutes: 30, guests: [], notes: 'off' });
+    const token = h.google.refreshTokens().filter((t) => !tokensBefore.includes(t));
+    expect(token).toHaveLength(1);
+    const connections = async () => (await h.pool.query("SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND kind = 'connection'", [ownerId])).rows[0]?.n;
+    expect(await connections()).toBe(1);
+
+    expect(h.google.revocations()).not.toContain(token[0]);
+    expect(await b.api.calendar.disconnect()).toEqual({ source: 'google', needsAccess: true, events: [] });
+    // Alcove's grant is revoked at Google, with the token that was stored.
+    expect(h.google.revocations()).toEqual(expect.arrayContaining(token));
+    expect(token.filter((t) => h.google.honours(t))).toEqual([]);
+    // Physically gone: no row, no revision, nothing flagged.
+    expect(await connections()).toBe(0);
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND deleted_at IS NOT NULL', [ownerId])).rows[0]?.n).toBe(0);
+    expect(await b.api.calendar.get()).toEqual({ source: 'google', needsAccess: true, events: [] });
+
+    // Scheduling, changing and cancelling no longer touch Google.
+    const calls = h.google.calls.length;
+    const m = await b.api.meetings.create({ title: 'Local now', startsAt: at(1, 11), durationMinutes: 30, guests: [], notes: 'off' });
+    expect(m.calendarUrl).toBeUndefined();
+    await b.api.meetings.update(kept.id, { title: 'Renamed' });
+    await b.api.meetings.cancel(kept.id);
+    expect(h.google.calls).toHaveLength(calls);
+
+    // Disconnecting again is fine, and the person can connect again.
+    expect((await b.api.calendar.disconnect()).needsAccess).toBe(true);
+    expect(landed(await viaGoogle(b, gus, { consent: true }))).toBe('/home');
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+    expect(await connections()).toBe(1);
+  });
+
   it('keeps working after the access token expires, asks again when Google forgot, and says when access is gone', async () => {
     // Google remembered an earlier yes and sends no refresh token: Alcove asks once more, then lands where it was going.
     const dee = person('dee');
@@ -488,11 +576,85 @@ describe('people and team', () => {
     expect(team?.members.map((m) => [m.person.name, m.onAlcove, m.invited])).toEqual([['Theo Martin', true, false], ['Kofi Asante', true, false], ['Sam Ortiz', false, false], ['Lena Fischer', false, false]]);
     const after = await art.api.people.inviteToTeam(['sam@vandelay.industries', 'lena@vandelay.industries']);
     expect(after.members.filter((m) => m.invited).map((m) => m.person.name)).toEqual(['Sam Ortiz', 'Lena Fischer']);
+    expect((await art.api.people.inviteToTeam([' SAM@Vandelay.Industries '])).members.find((m) => m.person.email === 'sam@vandelay.industries')?.invited).toBe(true);
     expect(code(await art.api.people.inviteToTeam(['someone@elsewhere.example']).catch((e: unknown) => e))).toBe('invalid');
 
     const outsider = await account();
-    expect(await outsider.api.people.team()).toBeNull();
+    expect(await outsider.api.people.team()).toMatchObject({ domain: 'tests.example', members: [] });
     expect(code(await outsider.api.people.inviteToTeam(['sam@vandelay.industries']).catch((e: unknown) => e))).toBe('invalid');
+  });
+
+  it('reads a busy calendar newest first, so the recent colleagues are on the team', async () => {
+    const me: GoogleUser = { sub: `g-team-busy-${seq++}`, email: `busy.${seq}@acme.example`, name: 'Busy Acme' };
+    const day = 86_400_000;
+    const busy = (id: string, at: number, who: string) => ({ id, summary: id, start: { dateTime: new Date(at).toISOString() }, end: { dateTime: new Date(at + 1_800_000).toISOString() }, attendees: [{ email: me.email, self: true }, { email: who }] });
+    const events = Array.from({ length: 300 }, (_, i) => busy(`old-${i}`, Date.now() - 20 * day + i * 60_000, 'filler@acme.example'));
+    h.google.calendar(me.sub).push(...events, busy('yesterday', Date.now() - day, 'late@acme.example'), busy('tomorrow', Date.now() + day, 'newest@acme.example'));
+    const b = h.browser();
+    await viaGoogle(b, me);
+    expect((await b.api.people.team())?.members.map((m) => m.person.email).sort()).toEqual(['filler@acme.example', 'late@acme.example', 'newest@acme.example']);
+  });
+
+  it('gives the directory people titles', async () => {
+    const art = h.browser();
+    await art.api.auth.signIn('microsoft');
+    const team = await art.api.people.team();
+    expect(team?.members.every((m) => (m.title ?? '').length > 0)).toBe(true);
+    expect(team?.members[0]).toMatchObject({ person: { name: 'Theo Martin' }, title: 'Engineering' });
+  });
+
+  it('makes a work account\'s team of the colleagues it has met, and personal addresses have none', async () => {
+    const ann = { sub: `g-team-ann-${seq++}`, email: 'ann@acme.example', name: 'Ann Acme' };
+    const me: GoogleUser = { sub: `g-team-me-${seq++}`, email: `me.${seq}@acme.example`, name: 'Me Acme' };
+    const soon = new Date(Date.now() + 86_400_000).toISOString();
+    const earlier = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+    const later = new Date(Date.now() + 86_400_000 + 1_800_000).toISOString();
+    h.google.calendar(me.sub).push(
+      { id: 'past-sync', summary: 'Sync', start: { dateTime: earlier(10) }, end: { dateTime: earlier(10) }, organizer: { email: 'Cara@Acme.example' }, attendees: [{ email: me.email, self: true }, { email: 'cara@acme.example' }, { email: 'dan@other.example' }] },
+      { id: 'soon', summary: 'Plan', start: { dateTime: soon }, end: { dateTime: later }, organizer: { email: me.email, self: true }, attendees: [{ email: me.email, self: true }, { email: 'ANN@acme.example' }, { email: 'room@acme.example', resource: true }] }
+    );
+    const b = h.browser();
+    await viaGoogle(b, me);
+    await b.api.meetings.create({ title: 'Call', startsAt: soon, durationMinutes: 30, guests: ['bob@other.example', 'eve@acme.example', me.email], notes: 'off' });
+    const team = await b.api.people.team();
+    expect(team).toMatchObject({ name: 'Acme', domain: 'acme.example' });
+    expect(team?.members.map((m) => [m.person.email, m.onAlcove, m.invited]).sort()).toEqual([
+      ['ann@acme.example', false, false], ['cara@acme.example', false, false], ['eve@acme.example', false, false]
+    ]);
+
+    // Once Ann signs in, she is on Alcove; inviting marks the invite, and only people on the team can be invited.
+    await viaGoogle(h.browser(), ann);
+    const after = await b.api.people.team();
+    expect(after?.members.find((m) => m.person.email === 'ann@acme.example')).toMatchObject({ onAlcove: true, invited: false });
+    const invited = await b.api.people.inviteToTeam(['cara@acme.example']);
+    expect(invited.members.filter((m) => m.invited).map((m) => m.person.email)).toEqual(['cara@acme.example']);
+    expect(code(await b.api.people.inviteToTeam(['bob@other.example']).catch((e: unknown) => e))).toBe('invalid');
+
+    // Someone at a personal address has no team, and nobody else's colleagues leak across accounts.
+    const gmail = h.browser();
+    await viaGoogle(gmail, { sub: `g-team-gmail-${seq++}`, email: `someone.${seq}@gmail.com`, name: 'Some One' });
+    await gmail.api.meetings.create({ title: 'Friends', startsAt: soon, durationMinutes: 30, guests: ['pal@gmail.com'], notes: 'off' });
+    expect(await gmail.api.people.team()).toBeNull();
+    expect(code(await gmail.api.people.inviteToTeam(['pal@gmail.com']).catch((e: unknown) => e))).toBe('invalid');
+    const other = await account(`other.${seq++}@acme.example`);
+    expect((await other.api.people.team())?.members).toEqual([]);
+  });
+
+  it('when the calendar can’t be read, makes the team of the people on Alcove calls, and logs why', async () => {
+    const me: GoogleUser = { sub: `g-team-down-${seq++}`, email: `down.${seq}@acme.example`, name: 'Down Acme' };
+    const day = 86_400_000;
+    h.google.calendar(me.sub).push({ id: 'met', summary: 'Sync', start: { dateTime: new Date(Date.now() - day).toISOString() }, end: { dateTime: new Date(Date.now() - day + 1_800_000).toISOString() }, attendees: [{ email: me.email, self: true }, { email: 'cal@acme.example' }] });
+    const b = h.browser();
+    await viaGoogle(b, me);
+    const ownerId = (await b.api.auth.getSession())?.ownerId;
+    await b.api.meetings.create({ title: 'Call', startsAt: new Date(Date.now() + day).toISOString(), durationMinutes: 30, guests: ['eve@acme.example'], notes: 'off' });
+    expect((await b.api.people.team())?.members.map((m) => m.person.email).sort()).toEqual(['cal@acme.example', 'eve@acme.example']);
+
+    // Access withdrawn at Google: the calendar can't be read, so the team is who was on Alcove calls, and the
+    // warning says what went wrong.
+    h.google.revoke(me.sub);
+    expect((await b.api.people.team())?.members.map((m) => m.person.email)).toEqual(['eve@acme.example']);
+    expect(logLines().find((l) => l.msg === 'calendar colleagues unavailable' && l['ownerId'] === ownerId)).toMatchObject({ level: 40, events: 0, err: { type: 'UnavailableError', message: 'Google Calendar isn’t connected.' } });
   });
 });
 
@@ -583,6 +745,33 @@ describe('calls with notes', () => {
     expect(code(await asked(api, noteId, 'What happened?').catch((e: unknown) => e))).toBe('conflict');
   });
 
+  it('joining the call again while notes are on records into a new segment, so the new recorder loses nothing', async () => {
+    const { api, fetch: own } = await account();
+    const { code: callCode } = await api.calls.startNow({ notes: 'on' });
+    const first = await api.calls.join(callCode, { mic: true, cam: false });
+    const before = [audioBytes('before-0'), audioBytes('before-1'), audioBytes('before-2')];
+    for (const [seq, bytes] of before.entries()) await first.appendAudio(piece(bytes, 0, seq));
+    // The page reloads and joins the same call again. Its new recorder counts from 0, by its own clock (a
+    // few milliseconds off the old one's), in the segment the call is on now.
+    const again = await api.calls.join(callCode, { mic: true, cam: false });
+    const s = again.getSnapshot();
+    expect(s).toMatchObject({ callId: first.getSnapshot().callId, capture: { mode: 'on' }, notes: { recording: { pieces: 3, seconds: 15 } } });
+    const after = [audioBytes('after-0'), audioBytes('after-1'), audioBytes('after-2')];
+    for (const [seq, bytes] of after.entries()) await again.appendAudio(piece(bytes, s.notes.recording.segment, seq, seq * 5.004));
+    expect(again.getSnapshot().notes.recording).toEqual({ segment: 1, pieces: 6, seconds: 30 });
+    // The old page's recorder, had it carried on, belongs to the earlier segment, and its connection was taken
+    // over by the new one: the call takes nothing more from it.
+    expect(code(await first.appendAudio(piece(audioBytes('old-page'), 0, 3)).catch((e: unknown) => e))).toBe('forbidden');
+
+    const noteId = (await again.leave())?.pendingNoteId ?? '';
+    await first.leave();
+    await written(api, noteId);
+    expect((await api.notes.get(noteId)).audio.map((a) => [a.index, a.pieces, a.seconds])).toEqual([[0, 3, 15], [1, 3, 15]]);
+    const audio = async (segment: number) => Buffer.from(await (await own(api.notes.audioUrl(noteId, segment))).arrayBuffer());
+    expect((await audio(0)).equals(Buffer.concat(before))).toBe(true);
+    expect((await audio(1)).equals(Buffer.concat(after))).toBe(true);
+  });
+
   it('joins a call without notes and leaves no note behind', async () => {
     const { api } = await account();
     const call = await api.calls.join((await api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
@@ -602,9 +791,17 @@ describe('calls with notes', () => {
     await hosting.leave();
     expect(code(await a.api.calls.join('zzz-zzzz-zzz', { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
 
-    const rec = await a.api.recordings.start('Mine');
+    const rec = await a.api.recordings.start({ title: 'Mine' });
     const state = rec.getSnapshot();
     await rec.appendAudio(piece(audioBytes('private'), 0, 0));
+    // Sending that same piece to someone else's recording finds nothing, though it's stored there. Nor
+    // does a different one: no conflict gives away that anything is stored at that place.
+    const resend = (atMs: string) => b.fetch(`${h.baseUrl}/v1/recordings/${state.id}/audio`, {
+      method: 'POST', body: new Blob([audioBytes('private')]),
+      headers: { 'content-type': 'audio/webm', 'x-alcove-segment': '0', 'x-alcove-seq': '0', 'x-alcove-at-ms': atMs, 'x-alcove-duration-ms': '5000' }
+    });
+    expect((await resend('0')).status).toBe(404);
+    expect((await resend('7')).status).toBe(404);
     expect(code(await b.api.notes.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
     expect((await b.fetch(a.api.notes.audioUrl(state.noteId, 0))).status).toBe(404);
     const steal = await b.fetch(`${h.baseUrl}/v1/recordings/${state.id}/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
@@ -628,8 +825,8 @@ describe('live transcript and written notes', () => {
       { id: expect.any(String), at: 0, text: 'We agreed to move the launch to the 18th.', speaker: { name: org.session.user.name, person: expect.objectContaining({ email: org.session.user.email }) } }
     ]);
     await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0), call.ticket.identity); // a retry is kept once, and not transcribed again
-    await call.transcribe(speech('', 0, 4000), call.ticket.identity); // silence: what Whisper "hears" in it is dropped
-    await call.transcribe(speech('Kofi will send the new screens by Wednesday. // Priya checks the numbers.', 0, 6000), call.ticket.identity);
+    await call.transcribe(speech('', 0, 4), call.ticket.identity); // silence: what Whisper "hears" in it is dropped
+    await call.transcribe(speech('Kofi will send the new screens by Wednesday. // Priya checks the numbers.', 0, 6), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => [l.at, l.text])).toEqual([
       [0, 'We agreed to move the launch to the 18th.'], [6, 'Kofi will send the new screens by Wednesday.'], [8, 'Priya checks the numbers.']
     ]);
@@ -638,10 +835,10 @@ describe('live transcript and written notes', () => {
     // Notes off: nothing more is transcribed. Back on, lines continue after the first segment's 10 seconds.
     call.setNotes(false);
     await settle(call, (x) => x.capture.mode === 'off');
-    expect(code(await call.transcribe(speech('Off the record.', 0, 12_000), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await call.transcribe(speech('Off the record.', 0, 12), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     call.setNotes(true);
     await settle(call, (x) => x.capture.mode === 'on' && x.notes.recording.segment === 1);
-    expect(code(await call.transcribe(speech('From before.', 0, 14_000), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await call.transcribe(speech('From before.', 0, 14), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     await call.transcribe(speech('That is everything for today.', 1, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.at(-1)).toMatchObject({ at: 10, text: 'That is everything for today.' });
 
@@ -682,7 +879,7 @@ describe('live transcript and written notes', () => {
     expect(credits.balance).toBe(credits.granted - Math.max(1, Math.ceil(note.audio.reduce((n, a) => n + a.seconds, 0) / 60)) * credits.perMinute);
 
     // Anyone with the notes can ask about the call, and hear where the answer comes from.
-    expect(await asked(org.api, noteId, 'When is the launch now?')).toEqual([{ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' }, { type: 'cite', at: 0 }]);
+    expect(await asked(org.api, noteId, 'When is the launch now?')).toEqual([{ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' }, { type: 'cite', noteId, at: 0 }]);
     const guest = await account(guestEmail);
     expect((await asked(guest.api, noteId, 'Who checks the numbers?'))[0]).toEqual({ type: 'text', text: 'From the call: Priya checks the numbers.' });
     expect(code(await asked((await account()).api, noteId, 'Anything?').catch((e: unknown) => e))).toBe('not-found');
@@ -700,7 +897,7 @@ describe('live transcript and written notes', () => {
       'Kofi will send the new screens by Wednesday.', 'Priya checks the numbers before the board meeting.', 'The pricing page still needs a review.',
       'Support tickets went down by a third.', 'We agreed to keep the free tier.', 'Siobhan owns the migration plan now.'
     ];
-    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4000), call.ticket.identity);
+    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
     // Until three clips agree on a language, Whisper picks it for each, from the sound alone.
     const unsure = { language: null, prompt: null };
     expect(sent().slice(0, 3)).toEqual([unsure, unsure, unsure]);
@@ -716,29 +913,29 @@ describe('live transcript and written notes', () => {
     expect(sent()).toHaveLength(9);
 
     // After six in the call's language, a clip too short to tell keeps it; the next long enough goes without it, and Whisper picks again.
-    await call.transcribe(speech('Sounds good to me, thanks.', 0, 36_000, 3000), call.ticket.identity);
+    await call.transcribe(speech('Sounds good to me, thanks.', 0, 36, 3000), call.ticket.identity);
     expect(sent()[9]?.language).toBe('en');
-    await call.transcribe(speech('Wir verschieben den Start auf Donnerstag.', 0, 40_000, 4000, 'de'), call.ticket.identity);
+    await call.transcribe(speech('Wir verschieben den Start auf Donnerstag.', 0, 40, 4000, 'de'), call.ticket.identity);
     expect(sent()[10]).toEqual(unsure);
     // Someone spoke another language: neither the language nor a prompt is sent until that clip is no longer among the newest.
-    await call.transcribe(speech('Then we can tell the sales team on Friday.', 0, 44_000), call.ticket.identity);
+    await call.transcribe(speech('Then we can tell the sales team on Friday.', 0, 44), call.ticket.identity);
     expect(sent()[11]).toEqual(unsure);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual([...said, 'Sounds good to me, thanks.', 'Wir verschieben den Start auf Donnerstag.', 'Then we can tell the sales team on Friday.']);
     await ended(call);
 
     // Each note has its own: another account's room recording starts from nothing, with its own people and words.
     const other = await account(unique('other'));
-    const rec = await other.api.recordings.start('Design crit');
+    const rec = await other.api.recordings.start({ title: 'Design crit' });
     const room = ['Sam will tidy the spacing by Friday.', 'The header stays dark for now.', 'Jo checks the icons on Monday.', 'Can we ship it on Friday?'];
-    for (const [i, words] of room.entries()) await rec.transcribe(speech(words, 0, i * 4000));
+    for (const [i, words] of room.entries()) await rec.transcribe(speech(words, 0, i * 4));
     expect(h.near.transcriptions.at(-1)).toEqual({ language: 'en', prompt: `${other.session.user.name}. ${room.slice(0, 3).join(' ')}` });
     // A short reply that says back what was just said is kept: people agree to things that way.
-    await rec.transcribe(speech('Ship it on Friday.', 0, 16_000));
+    await rec.transcribe(speech('Ship it on Friday.', 0, 16));
     expect(h.near.transcriptions.at(-1)?.prompt?.endsWith('Can we ship it on Friday?')).toBe(true);
     // What Whisper says back from its prompt instead of what it heard is dropped, and so is a sentence it says twice over.
-    await rec.transcribe(speech('The header stays dark for now. Jo checks the icons on Monday.', 0, 20_000));
-    await rec.transcribe(speech('We should test it on phones. // We should test it on phones.', 0, 24_000));
-    await rec.transcribe(speech('Okay, that works. Can you share the link? Okay, that works. Can you share the link?', 0, 28_000));
+    await rec.transcribe(speech('The header stays dark for now. Jo checks the icons on Monday.', 0, 20));
+    await rec.transcribe(speech('We should test it on phones. // We should test it on phones.', 0, 24));
+    await rec.transcribe(speech('Okay, that works. Can you share the link? Okay, that works. Can you share the link?', 0, 28));
     expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual([...room, 'Ship it on Friday.', 'We should test it on phones.', 'Okay, that works. Can you share the link?']);
     await rec.discard();
     // What a clip was sent with is sealed with it, and only whether a language was sent or found, and the prompt's size, are logged.
@@ -746,7 +943,7 @@ describe('live transcript and written notes', () => {
   });
 
   it('drops the subtitle credits and closing lines Whisper invents in quiet, in its languages, and keeps sentences about the same things', async () => {
-    const rec = await (await account(unique('captions'))).api.recordings.start('Captions review');
+    const rec = await (await account(unique('captions'))).api.recordings.start({ title: 'Captions review' });
     const invented = [
       ["Sous-titrage ST' 501", 'fr'], ['Untertitel im Auftrag des ZDF, 2017', 'de'], ['Субтитры сделал DimaTorzok', 'ru'], ['字幕by索兰娅', 'zh'],
       ['자막 제공 및 광고를 포함하고 있습니다', 'ko'], ['Danke.', 'de'], ['Merci beaucoup.', 'fr'], ['감사합니다.', 'ko']
@@ -755,7 +952,7 @@ describe('live transcript and written notes', () => {
       ['Les sous-titres en direct marchent bien maintenant.', 'fr'], ['Die Untertitel der Präsentation fehlen noch.', 'de'], ['Нам нужно добавить субтитры к видео.', 'ru'],
       ['我们需要给视频加字幕。', 'zh'], ['자막이 안 나와요.', 'ko'], ['Captions by default are off for guests.', 'en'], ['Danke, das hilft uns sehr.', 'de']
     ] as const;
-    for (const [i, [words, language]] of [...invented, ...real].entries()) await rec.transcribe(speech(words, 0, i * 4000, 4000, language));
+    for (const [i, [words, language]] of [...invented, ...real].entries()) await rec.transcribe(speech(words, 0, i * 4, 4000, language));
     expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(real.map(([words]) => words));
     await rec.discard();
   });
@@ -795,7 +992,7 @@ describe('live transcript and written notes', () => {
     const heardAt = (s: number) => performance.now() - (Date.now() - (Date.parse(call.getSnapshot().startedAt) + s * 1000));
     await call.transcribe({ ...speech('We should move the launch. // Can we afford the delay?', 0, 0), heardAt: heardAt(0) }, call.ticket.identity);
     await new Promise((r) => setTimeout(r, 6200));
-    await call.transcribe({ ...speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000), heardAt: heardAt(6) }, call.ticket.identity);
+    await call.transcribe({ ...speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6), heardAt: heardAt(6) }, call.ticket.identity);
     const line = (text: string) => call.getSnapshot().transcript.find((l) => l.text === text)?.id ?? `missing: ${text}`;
     const moment = (text: string, said: number) => [{ kind: 'transcript', lineId: line(text), said: expect.closeTo(said, 0) }];
     const sent = h.near.calls.length;
@@ -857,16 +1054,16 @@ describe('live transcript and written notes', () => {
   it('transcribes a room recording without naming who spoke, and writes its notes when it stops', async () => {
     const b = await account();
     const { api } = b;
-    const rec = await api.recordings.start('Design crit');
+    const rec = await api.recordings.start({ title: 'Design crit' });
     await rec.appendAudio(piece(audioBytes('room-a'), 0, 0));
     await rec.transcribe(speech('Sam will tidy the spacing by Friday.', 0, 0));
     expect(rec.getSnapshot().transcript).toEqual([{ id: expect.any(String), at: 0, text: 'Sam will tidy the spacing by Friday.' }]);
     rec.pause();
     await settled(b, rec.getSnapshot().id, 'pause');
-    expect(code(await rec.transcribe(speech('While paused.', 0, 4000)).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await rec.transcribe(speech('While paused.', 0, 4)).catch((e: unknown) => e))).toBe('conflict');
     rec.resume();
     await settled(b, rec.getSnapshot().id, 'resume');
-    await rec.transcribe(speech('We decided to keep the darker header.', 0, 4000));
+    await rec.transcribe(speech('We decided to keep the darker header.', 0, 4));
     const { pendingNoteId } = await rec.stop();
     expect((await rec.stop()).pendingNoteId).toBe(pendingNoteId); // stopping twice finishes it once
     await written(api, pendingNoteId);
@@ -874,6 +1071,49 @@ describe('live transcript and written notes', () => {
     expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: [{ text: 'We decided to keep the darker header.', at: 4, state: 'proposed' }] });
     expect(note.transcript?.map((l) => [l.at, l.text, l.speaker])).toEqual([[0, 'Sam will tidy the spacing by Friday.', undefined], [4, 'We decided to keep the darker header.', undefined]]);
     expect(note.actions).toEqual([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
+  });
+
+  it('notes are written in the chosen language and length', async () => {
+    const wrote = async (b: Awaited<ReturnType<typeof account>>, how: 'call' | 'room') => {
+      const before = h.near.instructions.length;
+      if (how === 'room') {
+        const rec = await b.api.recordings.start({ title: 'Language check' });
+        await rec.appendAudio(piece(audioBytes('lang-room'), 0, 0));
+        await rec.transcribe(speech('Sam will tidy the spacing by Friday.', 0, 0));
+        await written(b.api, (await rec.stop()).pendingNoteId);
+      } else {
+        const call = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+        await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0), call.ticket.identity);
+        await written(b.api, (await call.leave())?.pendingNoteId ?? '');
+      }
+      return h.near.instructions.slice(before).filter((x) => x.startsWith('You write the notes'));
+    };
+    const standard = await account();
+    expect(await wrote(standard, 'call')).toEqual([expect.stringContaining('Write in the language the call was held in.')]);
+    expect((await wrote(standard, 'call'))[0]).toContain('summary: two or three plain sentences');
+
+    const chosen = await account();
+    await chosen.api.account.updatePreferences({ notesLanguage: 'es', summaryLength: 'detailed' });
+    const [call] = await wrote(chosen, 'call');
+    expect(call).toContain('Write in Spanish.');
+    expect(call).toContain('summary: a short paragraph for each topic');
+    expect(call).not.toContain('two or three plain sentences');
+    // A room recording follows the person who recorded it.
+    const [room] = await wrote(chosen, 'room');
+    expect(room).toContain('Write in Spanish.');
+    expect(room).toContain('a short paragraph for each topic');
+    // Decisions, follow-ups and chapters are written the same way either way.
+    expect(call).toContain('decisions: what the people agreed');
+    // Someone else's choice doesn't reach a call they only joined: the organizer's decides.
+    const guest = await account();
+    await guest.api.account.updatePreferences({ notesLanguage: 'fr' });
+    const shared = await chosen.api.calls.join((await chosen.api.calls.startNow({ notes: 'on', guests: [guest.session.user.email] })).code, { mic: true, cam: false });
+    const before = h.near.instructions.length;
+    await shared.transcribe(speech('We agreed to ship.', 0, 0), shared.ticket.identity);
+    await written(chosen.api, (await shared.leave())?.pendingNoteId ?? '');
+    const sent = h.near.instructions.slice(before).filter((x) => x.startsWith('You write the notes'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('Write in Spanish.');
   });
 
   it('takes speech only as 16 kHz mono WAV, only while recording, and only into your own calls', async () => {
@@ -885,7 +1125,7 @@ describe('live transcript and written notes', () => {
     const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string; speaker?: string; ago?: string | null } = {}) => who.fetch(`${base}/v1${path}`, {
       method: 'POST', body: new Blob([bytes]),
       headers: {
-        'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000',
+        'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-at-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000',
         ...(o.ago === null ? {} : { 'x-alcove-ago-ms': o.ago ?? '4000' }), ...(who === a ? { 'x-alcove-call': call.ticket.pass, 'x-alcove-speaker': o.speaker ?? call.ticket.identity } : {})
       }
     });
@@ -903,7 +1143,7 @@ describe('live transcript and written notes', () => {
     // A call's speech says whose it is.
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { speaker: '' })).status).toBe(400);
     expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(401);
-    const rec = await a.api.recordings.start('Mine');
+    const rec = await a.api.recordings.start({ title: 'Mine' });
     expect((await post(b, h.baseUrl, `/recordings/${rec.getSnapshot().id}/transcribe`, hello())).status).toBe(404);
     expect(code(await rec.transcribe(speech('Hello.', 1, 0)).catch((e: unknown) => e))).toBe('invalid');
     await rec.discard();
@@ -921,7 +1161,7 @@ describe('live transcript and written notes', () => {
   it('deletes a note while its notes are still being written', async () => {
     const { api, session } = await account();
     h.near.slowNext(800);
-    const rec = await api.recordings.start('Gone quickly');
+    const rec = await api.recordings.start({ title: 'Gone quickly' });
     await rec.transcribe(speech('We agreed to delete this right away.', 0, 0));
     const { pendingNoteId } = await rec.stop();
     await until(async () => (await h.pool.query("SELECT 1 FROM content_jobs WHERE owner_id = $1 AND state = 'writing'", [session.ownerId])).rowCount === 1, 'the notes to start being written');
@@ -944,7 +1184,7 @@ describe('live transcript and written notes', () => {
 
     // An answer in prose instead of notes: the next attempt writes them.
     h.near.failNext(1, 'prose');
-    let rec = await api.recordings.start('Retry');
+    let rec = await api.recordings.start({ title: 'Retry' });
     await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
     let { pendingNoteId } = await rec.stop();
     await until(async () => { const j = await job(); return j?.state === 'queued' && j.attempt === 1; }, 'the first attempt to fail');
@@ -957,7 +1197,7 @@ describe('live transcript and written notes', () => {
     // costs nothing. (A model that doesn't answer at all makes the note wait instead: see below.)
     const before = (await api.credits.balance()).balance;
     h.near.failNext(3, 'prose');
-    rec = await api.recordings.start('Never');
+    rec = await api.recordings.start({ title: 'Never' });
     await rec.transcribe(speech('Nobody will read this summary.', 0, 0));
     ({ pendingNoteId } = await rec.stop());
     await until(async () => { const j = await job(); return j?.state === 'queued' && j.attempt === 1; }, 'the first attempt to fail');
@@ -1028,7 +1268,8 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(await act(org, id, { type: 'rooms-message', text: 'Nobody to tell' }, call.ticket.pass)).toBe(409);
 
     call.setSpotlight(call.getSnapshot().participants[0]?.id ?? null);
-    await settle(call, (x) => x.spotlight !== null);
+    // The spotlight is optimistic on the client: wait until the server holds it, so opening rooms can't overtake it.
+    await until(async () => SpotlightReply.parse(await (await org.fetch(`${h.baseUrl}/v1/live/calls/${id}`, { headers: { 'x-alcove-call': call.ticket.pass } })).json()).spotlight !== null, 'the server to confirm the spotlight');
     call.openRooms({ rooms: [{ name: 'Design', emails: [kofi.toUpperCase()] }, { name: 'Support', emails: [lena] }], minutes: 5 });
     let s = await settle(call, (x) => x.breakouts.open !== null);
     const open = s.breakouts.open;
@@ -1186,7 +1427,7 @@ describe('verified private inference', () => {
       const own = await ownNear();
       try {
         own.near.tamper(how, of);
-        const rec = await own.api.recordings.start('Checked first');
+        const rec = await own.api.recordings.start({ title: 'Checked first' });
         const from = h.logs.length;
         const e = await rec.transcribe(speech(`CANARY-UNVERIFIED ${how}: the merger closes on Friday.`, 0, 0)).catch((x: unknown) => x);
         const couldntCheck = expected.endsWith('-unavailable');
@@ -1208,12 +1449,12 @@ describe('verified private inference', () => {
   it('stands by a refusal for a while, uses a report that checks out over one that doesn’t, and sends once it checks out', async () => {
     const own = await ownNear();
     try {
-      const rec = await own.api.recordings.start('Checked first');
+      const rec = await own.api.recordings.start({ title: 'Checked first' });
       own.near.tamper('quote');
       expect(code(await rec.transcribe(speech('One.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
       // The next clip within half a minute is refused without fetching the evidence again.
       let from = h.logs.length;
-      expect(code(await rec.transcribe(speech('Two.', 0, 4000)).catch((e: unknown) => e))).toBe('unavailable');
+      expect(code(await rec.transcribe(speech('Two.', 0, 4)).catch((e: unknown) => e))).toBe('unavailable');
       expect(logsSince(from).filter((l) => l.msg === 'model evidence refused' || l.msg === 'model verified')).toEqual([]);
       await rec.discard();
       own.near.tamper(null);
@@ -1226,7 +1467,7 @@ describe('verified private inference', () => {
       // NEAR AI returns a tampered report ahead of an honest one: the tampered one is refused, the honest one used.
       other.near.tamper('extra-candidate');
       const from = h.logs.length;
-      const rec = await other.api.recordings.start('Two reports');
+      const rec = await other.api.recordings.start({ title: 'Two reports' });
       await rec.transcribe(speech('Now it checks out.', 0, 0));
       expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Now it checks out.']);
       expect(logsSince(from).find((l) => l.msg === 'model report refused')).toMatchObject({ code: 'tdx-quote', candidate: 0, candidates: 2 });
@@ -1242,7 +1483,7 @@ describe('verified private inference', () => {
   it('keeps a note waiting while the notes model doesn’t answer, without using up its attempts', async () => {
     const own = await ownNear();
     try {
-      const rec = await own.api.recordings.start('Waits for an answer');
+      const rec = await own.api.recordings.start({ title: 'Waits for an answer' });
       await rec.transcribe(speech('We agreed to wait for an answer.', 0, 0));
       // NEAR AI is busy for a while: the sealed notes request gets a 503 every time it's tried.
       own.near.failNext(4, 'down');
@@ -1269,7 +1510,7 @@ describe('verified private inference', () => {
   it('keeps a note waiting while the notes model can’t be verified, without using up its attempts', async () => {
     const own = await ownNear();
     try {
-      const rec = await own.api.recordings.start('Waits for NVIDIA');
+      const rec = await own.api.recordings.start({ title: 'Waits for NVIDIA' });
       await rec.transcribe(speech('We agreed to wait for NVIDIA.', 0, 0));
       // NVIDIA's attestation service is down: the notes model can't be verified, so the transcript isn't sent.
       own.near.tamper('nras-down');
@@ -1306,12 +1547,12 @@ describe('verified private inference', () => {
   it('refuses a reply that isn’t sealed under the request, and sends nothing more when a model won’t open its key or its new key doesn’t check out', async () => {
     const own = await ownNear();
     try {
-      const rec = await own.api.recordings.start('Sealed replies');
+      const rec = await own.api.recordings.start({ title: 'Sealed replies' });
       await rec.transcribe(speech('We agreed the replies are sealed.', 0, 0));
       // A reply someone else sealed doesn't open, and isn't used.
       own.near.tamper('reply-sealed');
       let from = h.logs.length;
-      expect(code(await rec.transcribe(speech('Not this one.', 0, 4000)).catch((e: unknown) => e))).toBe('unavailable');
+      expect(code(await rec.transcribe(speech('Not this one.', 0, 4)).catch((e: unknown) => e))).toBe('unavailable');
       expect(logsSince(from).find((l) => l.msg === 'reply refused')).toMatchObject({ what: 'transcribe', code: 'reply-sealed' });
       const { pendingNoteId } = await rec.stop();
       // For the notes, that's a failed attempt like any other: content went out, sealed, and the reply was bad.
@@ -1353,16 +1594,16 @@ describe('verified private inference', () => {
   it('verifies again when a model’s key changes, and when its verification runs out, and the note keeps every verification', async () => {
     const own = await ownNear();
     try {
-      const rec = await own.api.recordings.start('Keys change');
+      const rec = await own.api.recordings.start({ title: 'Keys change' });
       await rec.transcribe(speech('Before the key changed.', 0, 0));
       const first = own.near.keys();
       // The model stops taking the old key: Alcove verifies the new one and sends the clip again, to it.
       own.near.rotate('transcript');
       let from = h.logs.length;
-      await rec.transcribe(speech('', 0, 4000)); // silence: nothing is kept, but it went to the new key
+      await rec.transcribe(speech('', 0, 4)); // silence: nothing is kept, but it went to the new key
       expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'openai/whisper-large-v3', changed: true });
       const second = own.near.keys();
-      await rec.transcribe(speech('After the key changed.', 0, 6000));
+      await rec.transcribe(speech('After the key changed.', 0, 6));
       expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Before the key changed.', 'After the key changed.']);
       const { pendingNoteId } = await rec.stop();
       await written(own.api, pendingNoteId);
@@ -1448,9 +1689,319 @@ describe('confirming what the notes say', () => {
     expect(code(await stranger.api.notes.updateDecision(noteId, decision, { state: 'confirmed' }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await stranger.api.notes.updateAction(noteId, action, { done: false }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await org.api.notes.updateAction(noteId, 'AAAAAAAAAAAAAAAAAAAAAA', { done: true }).catch((e: unknown) => e))).toBe('not-found');
-    const rec = await org.api.recordings.start('Still going');
+    const rec = await org.api.recordings.start({ title: 'Still going' });
     expect(code(await org.api.notes.updateDecision(rec.getSnapshot().noteId, decision, { state: 'confirmed' }).catch((e: unknown) => e))).toBe('conflict');
     await rec.discard();
+  });
+});
+
+describe('the inbox', () => {
+  /** A written note whose one decision and one follow-up (for the guest, Kofi) are still the notes' suggestions. */
+  async function suggested(org: Awaited<ReturnType<typeof account>>, guestEmail: string, said: string) {
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
+    await call.transcribe(speech(said, 0, 0), call.ticket.identity);
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    return { noteId, decision: note.decisions[0]?.id ?? '', action: note.actions[0]?.id ?? '' };
+  }
+
+  it('the inbox gathers your follow-ups and unconfirmed decisions from every note you have', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
+    const first = await suggested(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
+    const second = await suggested(org, guestEmail, 'We agreed to keep the beta small. // Kofi will write the invite by Friday.');
+    const guest = await account(guestEmail);
+
+    // The follow-up is Kofi's: it's in his inbox, not yet taken on, and not in the organizer's.
+    const mine = await guest.api.notes.inbox();
+    expect(mine.followUps.map((a) => a.noteId)).toEqual([second.noteId, first.noteId]);
+    expect(mine.followUps[0]).toMatchObject({ takenOn: false, noteId: second.noteId, noteTitle: expect.any(String), noteStartedAt: expect.any(String), owner: { person: { email: guestEmail } } });
+    expect((await org.api.notes.inbox()).followUps).toEqual([]);
+    // A proposed decision waits for both, newest note first.
+    for (const reader of [org, guest]) {
+      const inbox = await reader.api.notes.inbox();
+      expect(inbox.decisions.map((d) => [d.noteId, d.state])).toEqual([[second.noteId, 'proposed'], [first.noteId, 'proposed']]);
+      expect(inbox.decisions[0]).toMatchObject({ noteTitle: expect.any(String), noteStartedAt: expect.any(String), id: second.decision });
+    }
+
+    // Confirming it removes it for both; a follow-up that is done leaves.
+    await guest.api.notes.updateDecision(second.noteId, second.decision, { state: 'confirmed' });
+    for (const reader of [org, guest]) expect((await reader.api.notes.inbox()).decisions.map((d) => d.noteId)).toEqual([first.noteId]);
+    await guest.api.notes.updateAction(second.noteId, second.action, { done: true });
+    expect((await guest.api.notes.inbox()).followUps.map((a) => a.noteId)).toEqual([first.noteId]);
+
+    // A note you removed, or never had, isn't in your inbox; a stranger's inbox is empty.
+    await guest.api.notes.updateDecision(first.noteId, first.decision, { state: 'confirmed' });
+    await guest.api.notes.delete(first.noteId);
+    expect(await guest.api.notes.inbox()).toEqual({ followUps: [], decisions: [] });
+    expect(await (await account()).api.notes.inbox()).toEqual({ followUps: [], decisions: [] });
+  });
+
+  it('a follow-up can’t be given to someone who removed the note', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
+    const { noteId, action } = await suggested(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
+    const guest = await account(guestEmail);
+    await org.api.notes.updateAction(noteId, action, { owner: null });
+    expect((await org.api.notes.updateAction(noteId, action, { owner: guestEmail })).actions[0]).toMatchObject({ owner: { person: { email: guestEmail } } });
+    await org.api.notes.updateAction(noteId, action, { owner: null });
+
+    await guest.api.notes.delete(noteId);
+    expect(code(await org.api.notes.updateAction(noteId, action, { owner: guestEmail }).catch((e: unknown) => e))).toBe('invalid');
+    // Given the note again, they can have it.
+    await org.api.notes.share(noteId, { emails: [guestEmail] });
+    expect((await org.api.notes.updateAction(noteId, action, { owner: guestEmail })).actions[0]).toMatchObject({ owner: { person: { email: guestEmail } } });
+  });
+});
+
+describe('asking your notes', () => {
+  const NOTHING = 'You don’t have any notes to answer from yet.';
+  const WRITING = 'Your notes aren’t written yet. Ask again once they’re ready.';
+  /** A room recording called `title` in which `said` was heard (sentences split by " // ", two seconds apart), once its notes are written. */
+  async function recorded(api: AlcoveApi, title: string, said: string): Promise<string> {
+    const rec = await api.recordings.start({ title });
+    await rec.transcribe(speech(said, 0, 0));
+    const { pendingNoteId } = await rec.stop();
+    await written(api, pendingNoteId);
+    return pendingNoteId;
+  }
+  const cited = (parts: AnswerPart[]) => parts.flatMap((p) => (p.type === 'cite' ? [p.noteId] : []));
+  /** What a request to NEAR AI was, leaving out its size: where it went, for which model, and how it was sealed. */
+  const route = (calls: typeof h.near.calls) => calls.map((c) => [c.path, c.model, c.encryption, c.key]);
+
+  it('asking your notes answers from the notes you have and cites them', async () => {
+    const me = await account(unique('asker'));
+    const org = await account(unique('organizer'));
+    // One note of your own, and one from a call you were invited to.
+    const planning = await recorded(me.api, 'Launch planning', 'The budget stays as it is. // We agreed to move the launch to the 18th.');
+    const call = await org.api.calls.join((await org.api.calls.startNow({ title: 'Launch party', notes: 'on', guests: [me.session.user.email] })).code, { mic: true, cam: false });
+    await call.transcribe(speech('The launch party is at the studio on the 19th.', 0, 0), call.ticket.identity);
+    const party = (await call.leave())?.pendingNoteId ?? '';
+    await written(org.api, party);
+
+    const sent = h.near.calls.length;
+    const parts = await askedAll(me.api, 'When is the launch?');
+    // The answer comes from both notes, newest first, and cites only them: the note the model made up is dropped.
+    expect(parts).toEqual([
+      { type: 'text', text: 'From your notes: The launch party is at the studio on the 19th. We agreed to move the launch to the 18th.' },
+      { type: 'cite', noteId: party, at: 0 },
+      { type: 'cite', noteId: planning, at: 2 }
+    ]);
+    // It went once, to the notes model, sealed to the key its verified evidence vouches for, at its own endpoint...
+    const across = h.near.calls.slice(sent);
+    expect(across).toEqual([{ path: '/v1/chat/completions', model: 'z-ai/glm-5.3-flash', bytes: expect.any(Number), encryption: 'ohttp', key: h.near.keys().notes }]);
+    const prompt = h.near.prompts.at(-1) ?? '';
+    // ...the way asking about one note goes.
+    expect((await asked(me.api, planning, 'When is the launch?'))[0]).toEqual({ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' });
+    expect(route(h.near.calls.slice(sent + 1))).toEqual(route(across));
+
+    // The model read both notes, numbered newest first, and the question: names, never anyone's address.
+    expect(prompt).toContain('[Note 1]\nMeeting: Launch party');
+    expect(prompt).toContain('[Note 2]\nMeeting: Launch planning');
+    expect(prompt).toContain(`[00:00] ${org.session.user.name}: The launch party is at the studio on the 19th.`);
+    expect(prompt).toContain('[00:02] We agreed to move the launch to the 18th.');
+    expect(prompt).toMatch(/\nQuestion: When is the launch\?$/);
+    for (const email of [me.session.user.email, org.session.user.email]) expect(prompt).not.toContain(email);
+    expect(Buffer.concat(h.near.received.map((r) => r.body)).includes(Buffer.from('When is the launch'))).toBe(false);
+    // Nothing keeps the answer: no receipt, and the log has counts only.
+    expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE owner_id = $1 AND method LIKE '%/ask'", [me.session.ownerId])).rows[0]?.n).toBe(0);
+    expect(logLines().filter((l) => l.msg === 'question answered across notes').at(-1)).toMatchObject({ notes: 2, ready: 2, sent: 2, cites: 2, ms: expect.any(Number) });
+
+    // A question is 1 to 500 characters.
+    expect(code(await askedAll(me.api, '   ').catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await askedAll(me.api, 'x'.repeat(501)).catch((e: unknown) => e))).toBe('invalid');
+  });
+
+  it('asking with no ready notes says so without a model call', async () => {
+    const b = await account(unique('newcomer'));
+    /** Asks, and checks that NEAR AI was sent nothing while it answered: no request to a model, and no request at all. */
+    const quietly = async (question: string) => {
+      const before = { calls: h.near.calls.length, received: h.near.received.length };
+      const parts = await askedAll(b.api, question);
+      expect({ calls: h.near.calls.length, received: h.near.received.length }).toEqual(before);
+      return parts;
+    };
+    expect(await quietly('What did we decide?')).toEqual([{ type: 'text', text: NOTHING }]);
+
+    // A written note in which nothing was said, and notes not written yet: a room recording still going...
+    const silent = await b.api.recordings.start({ title: 'Nothing said' });
+    await written(b.api, (await silent.stop()).pendingNoteId);
+    const going = await b.api.recordings.start({ title: 'Still going' });
+    // ...one with speech, so with transcript lines, whose notes the notes model wrote unusably the first time, so
+    // they wait to be tried again (20 seconds later)...
+    const job = async () => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [b.session.ownerId])).rows[0];
+    const held = await b.api.recordings.start({ title: 'Being written' });
+    await held.transcribe(speech('We decided to hold the launch until the audit is done.', 0, 0));
+    h.near.failNext(1, 'prose');
+    const beingWritten = (await held.stop()).pendingNoteId;
+    await until(async () => { const j = await job(); return j?.state === 'queued' && j.attempt === 1; }, 'the first attempt to fail');
+    expect(await b.api.notes.get(beingWritten)).toMatchObject({ status: 'pending', transcript: [{ text: 'We decided to hold the launch until the audit is done.' }] });
+    // ...and one stopped on a server without the notes service, which waits (stopped last, so no worker of this account takes it).
+    const plain = await h.secondServer({ NEAR_AI_API_KEY: undefined });
+    let waiting = '';
+    try {
+      const there = createHttpApi({ baseUrl: plain.baseUrl, fetch: b.fetch });
+      waiting = (await (await there.recordings.start({ title: 'Waiting for the notes service' })).stop()).pendingNoteId;
+    } finally {
+      await plain.close();
+    }
+    expect((await b.api.notes.list()).map((n) => n.status).sort()).toEqual(['pending', 'pending', 'ready', 'recording']);
+    expect(await quietly('What did we decide?')).toEqual([{ type: 'text', text: WRITING }]);
+    expect(logLines().filter((l) => l.msg === 'asked across notes with nothing to answer from').at(-1)).toMatchObject({ notes: 4, writing: true });
+
+    // Once another note is written, the answer comes from it alone: neither the note still being written nor the
+    // one with nothing in it is in what the model reads.
+    await going.discard();
+    await b.api.notes.delete(waiting);
+    const launch = await recorded(b.api, 'Launch review', 'We decided the launch moves to the 18th.');
+    const sent = h.near.calls.length;
+    expect(await askedAll(b.api, 'What did we decide?')).toEqual([{ type: 'text', text: 'From your notes: We decided the launch moves to the 18th.' }, { type: 'cite', noteId: launch, at: 0 }]);
+    expect(h.near.calls).toHaveLength(sent + 1);
+    const prompt = h.near.prompts.at(-1) ?? '';
+    expect(prompt.match(/^\[Note \d+\]$/gm)).toHaveLength(1);
+    for (const left of ['Being written', 'hold the launch', 'Nothing said']) expect(prompt).not.toContain(left);
+    expect((await b.api.notes.get(beingWritten)).status).toBe('pending');
+
+    // With nothing on its way any more, the note with nothing in it still leaves nothing to answer from.
+    await b.api.notes.delete(beingWritten);
+    await b.api.notes.delete(launch);
+    expect(await quietly('What did we decide?')).toEqual([{ type: 'text', text: NOTHING }]);
+  });
+
+  it('sends no answer across notes when a note it read was deleted or removed while it was being written', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = unique('guest');
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
+    await call.transcribe(speech('We agreed to sell the old van. // The buyer pays on Monday.', 0, 0), call.ticket.identity);
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const guest = await account(guestEmail);
+    // The guest removes the notes from theirs while the answer, which quotes them, is being written: it isn't sent.
+    const sent = h.near.prompts.length;
+    h.near.slowNext(1500);
+    const answer = askedAll(guest.api, 'When does the buyer pay?').catch((e: unknown) => e);
+    await until(async () => h.near.prompts.length > sent, 'the question to reach the notes model');
+    await guest.api.notes.delete(noteId);
+    const refused = await answer;
+    expect(refused instanceof AlcoveApiError ? [refused.code, refused.message] : refused).toEqual(['conflict', 'Notes it read were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.']);
+    // Asked again, there's nothing left to answer from; the organizer's own answer still comes.
+    expect(await askedAll(guest.api, 'When does the buyer pay?')).toEqual([{ type: 'text', text: 'You don’t have any notes to answer from yet.' }]);
+    expect((await askedAll(org.api, 'When does the buyer pay?'))[0]).toEqual({ type: 'text', text: 'From your notes: The buyer pays on Monday.' });
+    expect(h.logs.join('')).not.toContain('buyer pays');
+  });
+
+  it('a stranger’s question never cites another account’s notes', async () => {
+    const owner = await account(unique('owner'));
+    const stranger = await account(unique('stranger'));
+    const theirs = await recorded(owner.api, 'Merger timeline', 'The merger closes on Friday.');
+    // A stranger with no notes of their own gets nothing of the owner's, and nothing is sent.
+    const sent = h.near.calls.length;
+    expect(await askedAll(stranger.api, 'When does the merger close?')).toEqual([{ type: 'text', text: NOTHING }]);
+    expect(h.near.calls).toHaveLength(sent);
+
+    // With a note of their own, the model reads only theirs, and the answer cites only theirs.
+    const own = await recorded(stranger.api, 'Merger party', 'The merger party is on Saturday.');
+    expect(await askedAll(stranger.api, 'When does the merger close?')).toEqual([
+      { type: 'text', text: 'From your notes: The merger party is on Saturday.' }, { type: 'cite', noteId: own, at: 0 }
+    ]);
+    let prompt = h.near.prompts.at(-1) ?? '';
+    expect(prompt).toContain('Merger party');
+    expect(prompt).not.toContain('Merger timeline');
+    expect(prompt).not.toContain('closes on Friday');
+
+    // Shared with them, the owner's note is one of theirs too; removed from their notes, it isn't any more.
+    await owner.api.notes.share(theirs, { emails: [stranger.session.user.email] });
+    expect(cited(await askedAll(stranger.api, 'When does the merger close?'))).toEqual([own, theirs]);
+    await stranger.api.notes.delete(theirs);
+    expect(cited(await askedAll(stranger.api, 'When does the merger close?'))).toEqual([own]);
+    prompt = h.near.prompts.at(-1) ?? '';
+    expect(prompt).not.toContain('closes on Friday');
+  });
+
+  it('asks the 12 notes that share the most with the question, and as much of a long transcript as fits, nearest what matched', async () => {
+    const b = await account(unique('busy'));
+    // A long recording: 400 lines of about 400 characters, one of them about pricing, in the middle.
+    const said = (i: number) => (i === 200 ? 'Pricing for schools is half the usual price.' : i === 399 ? 'That was all.' : `Line ${i} goes over the plans for the office move in some detail ${'and then some more detail '.repeat(13).trim()}`);
+    const long = Array.from({ length: 400 }, (_, i) => said(i));
+    const ids = [await recorded(b.api, 'Office move', long.join(' // '))];
+    // Eleven short ones about pricing, and the newest, which isn't.
+    ids.push(...await Promise.all(Array.from({ length: 11 }, (_, i) => recorded(b.api, `Pricing review ${i + 1}`, `We looked at pricing again, round ${i + 1}.`))));
+    await recorded(b.api, 'Friday drinks', 'The weather looks good for the terrace.');
+
+    const parts = await askedAll(b.api, 'What did we say about pricing?');
+    const prompt = h.near.prompts.at(-1) ?? '';
+    // Twelve notes went: the ones about pricing. The newest note, which isn't, stayed out.
+    expect(prompt.match(/^\[Note \d+\]$/gm)).toHaveLength(12);
+    expect(prompt).not.toContain('Friday drinks');
+    for (let i = 1; i <= 11; i++) expect(prompt).toContain(`We looked at pricing again, round ${i}.`);
+    // The long transcript was cut to the lines nearest the one about pricing, within what asking about one note may send.
+    expect(prompt).toContain(said(200));
+    for (const i of [150, 199, 201, 250]) expect(prompt).toContain(said(i));
+    for (const i of [0, 1, 397, 398]) expect(prompt).not.toContain(said(i));
+    // Nor a short line far from it that would still have fitted (the last one, which the summary quotes).
+    expect(prompt).not.toContain(`[13:18] ${said(399)}`);
+    expect(prompt).toContain('[…]');
+    expect(prompt.length).toBeGreaterThan(100_000);
+    expect(prompt.length).toBeLessThanOrEqual(121_000);
+    // At most six cites, all of notes it was given.
+    expect(cited(parts)).toHaveLength(6);
+    expect(cited(parts).every((id) => ids.includes(id))).toBe(true);
+  });
+});
+
+/** Records a call with notes on and leaves it, so the note exists for the organizer and each guest. */
+async function noteFrom(org: Awaited<ReturnType<typeof account>>, guests: string[] = []): Promise<string> {
+  const { code: c } = await org.api.calls.startNow({ notes: 'on', guests });
+  const call = await org.api.calls.join(c, { mic: true, cam: false });
+  const noteId = call.getSnapshot().notes.noteId ?? '';
+  await call.leave();
+  return noteId;
+}
+
+describe('pinned notes', () => {
+  it('pins keep their order and refuse notes you don’t have', async () => {
+    const me = await account(unique('pinner'));
+    const a = await noteFrom(me);
+    const b = await noteFrom(me);
+    expect((await me.api.account.updatePreferences({ pinned: [b, a] })).pinned).toEqual([b, a]);
+    expect((await me.api.account.preferences()).pinned).toEqual([b, a]);
+
+    const other = await account(unique('other'));
+    const theirs = await noteFrom(other);
+    expect(code(await me.api.account.updatePreferences({ pinned: [b, theirs] }).catch((e: unknown) => e))).toBe('not-found');
+    expect(code(await me.api.account.updatePreferences({ pinned: ['nope'] }).catch((e: unknown) => e))).toBe('not-found');
+    expect((await me.api.account.preferences()).pinned).toEqual([b, a]);
+
+    // A ninth pin is refused, as is anything that isn't a list of eight or fewer.
+    const nine = Array.from({ length: 9 }, (_, i) => `n${i}`);
+    expect(code(await me.api.account.updatePreferences({ pinned: nine }).catch((e: unknown) => e))).toBe('invalid');
+    expect((await me.api.account.updatePreferences({ pinned: [] })).pinned).toEqual([]);
+  });
+
+  it('deleting or removing a note unpins it', async () => {
+    const org = await account(unique('organizer'));
+    const keeper = await account(unique('keeper'));
+    const leaver = await account(unique('leaver'));
+    const own = await noteFrom(org);
+    const shared = await noteFrom(org, [keeper.session.user.email, leaver.session.user.email]);
+
+    // Owner deletes their own pinned note: gone from their pins.
+    await org.api.account.updatePreferences({ pinned: [shared, own] });
+    await org.api.notes.delete(own);
+    expect((await org.api.account.preferences()).pinned).toEqual([shared]);
+
+    // A recipient who removes a shared note from their notes no longer has it pinned.
+    await leaver.api.account.updatePreferences({ pinned: [shared] });
+    await leaver.api.notes.delete(shared);
+    expect((await leaver.api.account.preferences()).pinned).toEqual([]);
+
+    // A recipient who pinned a shared note stops seeing it once the owner deletes it.
+    await keeper.api.account.updatePreferences({ pinned: [shared] });
+    expect((await keeper.api.account.preferences()).pinned).toEqual([shared]);
+    await org.api.notes.delete(shared);
+    expect((await org.api.account.preferences()).pinned).toEqual([]);
+    expect((await keeper.api.account.preferences()).pinned).toEqual([]);
   });
 });
 
@@ -1462,7 +2013,7 @@ describe('who has the notes', () => {
     const call = await org.api.calls.join(c, { mic: true, cam: false });
     await call.appendAudio(piece(audioBytes('shared-audio'), 0, 0));
     const noteId = call.getSnapshot().notes.noteId ?? '';
-    expect(code(await org.api.notes.share(noteId, [unique()]).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await org.api.notes.share(noteId, { emails: [unique()] }).catch((e: unknown) => e))).toBe('invalid');
 
     // Nobody invited sees the note while the call is still on.
     const guest = await account(guestEmail);
@@ -1471,18 +2022,18 @@ describe('who has the notes', () => {
     await call.leave();
 
     // When it ends, everyone invited has it, from the organizer, along with who else has it.
-    expect((await guest.api.notes.list()).find((n) => n.id === noteId)).toMatchObject({ from: { id: org.session.ownerId } });
+    expect((await guest.api.notes.list()).find((n) => n.id === noteId)).toMatchObject({ received: { role: 'invited', by: { id: org.session.ownerId } } });
     const note = await guest.api.notes.get(noteId);
     expect(note.recipients.map((r) => [r.person.email, r.role])).toEqual([[org.session.user.email, 'organizer'], [guestEmail, 'invited']]);
     expect((await guest.fetch(guest.api.notes.audioUrl(noteId, 0))).status).toBe(200);
 
     // Anyone with the notes can share them on; people who already have them aren't added twice.
     const laterEmail = unique('later');
-    const shared = await guest.api.notes.share(noteId, [laterEmail, org.session.user.email, guestEmail]);
+    const shared = await guest.api.notes.share(noteId, { emails: [laterEmail, org.session.user.email, guestEmail] });
     expect(shared.recipients.map((r) => r.role)).toEqual(['organizer', 'invited', 'shared']);
     const later = await account(laterEmail);
-    expect((await later.api.notes.get(noteId)).from?.id).toBe(org.session.ownerId);
-    expect(code(await later.api.notes.share(noteId, ['not an email']).catch((e: unknown) => e))).toBe('invalid');
+    expect((await later.api.notes.get(noteId)).received).toMatchObject({ role: 'shared', by: { id: guest.session.ownerId, email: guestEmail } });
+    expect(code(await later.api.notes.share(noteId, { emails: ['not an email'] }).catch((e: unknown) => e))).toBe('invalid');
 
     // Someone who was never given them can't reach them.
     const stranger = await account();
@@ -1497,6 +2048,111 @@ describe('who has the notes', () => {
     await org.api.notes.delete(noteId);
     expect(code(await guest.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
     expect((await h.pool.query('SELECT count(*)::int AS n FROM note_access WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
+  });
+
+  it('a note shared with a group says who shared it and with which group', async () => {
+    const org = await account(unique('organizer'));
+    const member = await account(unique('member'));
+    // The client expands the group: its addresses, one of them not on Alcove yet, and its name.
+    const notYet = unique('not-yet');
+    const noteId = await noteFrom(org);
+    const shared = await org.api.notes.share(noteId, { emails: [member.session.user.email, notYet], group: 'Product' });
+
+    // Whoever it reached sees who shared it, with which group, and when.
+    const got = (await member.api.notes.list()).find((n) => n.id === noteId)?.received;
+    expect(got).toMatchObject({ role: 'shared', by: org.session.user, group: 'Product' });
+    expect(Math.abs(Date.parse(got?.at ?? '') - Date.now())).toBeLessThan(60_000);
+    expect((await member.api.notes.get(noteId)).received).toEqual(got);
+    // The note lists each of them with who shared it, the group and when; the organizer's own came from nobody.
+    for (const email of [member.session.user.email, notYet]) {
+      expect(shared.recipients.find((r) => r.person.email === email)).toMatchObject({ role: 'shared', by: { id: org.session.ownerId }, group: 'Product', at: got?.at });
+    }
+    expect((await org.api.notes.list()).find((n) => n.id === noteId)?.received).toBeUndefined();
+    expect((await org.api.notes.get(noteId)).received).toBeUndefined();
+
+    // Shared on by someone else, without a group: they're who it came from.
+    const next = await account(unique('next'));
+    await member.api.notes.share(noteId, { emails: [next.session.user.email] });
+    const onward = (await next.api.notes.get(noteId)).received;
+    expect(onward).toMatchObject({ role: 'shared', by: { id: member.session.ownerId, name: member.session.user.name, email: member.session.user.email } });
+    expect(onward?.group).toBeUndefined();
+    const entry = (await org.api.notes.get(noteId)).recipients.find((r) => r.person.email === next.session.user.email);
+    expect(entry).toMatchObject({ role: 'shared', by: { id: member.session.ownerId } });
+    expect(entry?.group).toBeUndefined();
+  });
+
+  it('invited people see the organizer as who it came from', async () => {
+    const org = await account(unique('organizer'));
+    const guest = await account(unique('guest'));
+    const before = Date.now();
+    const noteId = await noteFrom(org, [guest.session.user.email]);
+
+    const got = (await guest.api.notes.list()).find((n) => n.id === noteId)?.received;
+    expect(got).toMatchObject({ role: 'invited', by: org.session.user });
+    expect(got?.group).toBeUndefined();
+    // When they got it: when the call ended.
+    expect(Date.parse(got?.at ?? '')).toBeGreaterThanOrEqual(before - 1000);
+    expect(Date.parse(got?.at ?? '')).toBeLessThanOrEqual(Date.now());
+    expect((await guest.api.notes.get(noteId)).received).toEqual(got);
+    // On the note, people invited carry when they got it, and nothing about sharing.
+    const invited = (await org.api.notes.get(noteId)).recipients.find((r) => r.person.email === guest.session.user.email);
+    expect(invited).toMatchObject({ role: 'invited', at: got?.at });
+    expect(invited?.by).toBeUndefined();
+    expect(invited?.group).toBeUndefined();
+  });
+
+  it('someone who removed the notes isn’t listed as having them, and sharing with their group gives them back', async () => {
+    const org = await account(unique('organizer'));
+    const guest = await account(unique('guest'));
+    const member = await account(unique('member'));
+    const keeper = await account(unique('keeper'));
+    const noteId = await noteFrom(org, [guest.session.user.email]);
+    await org.api.notes.share(noteId, { emails: [member.session.user.email, keeper.session.user.email], group: 'Product' });
+    const kept = (await keeper.api.notes.get(noteId)).received;
+    const holders = async () => (await org.api.notes.get(noteId)).recipients.map((r) => [r.person.email, r.role, r.group]);
+    expect(await holders()).toEqual([
+      [org.session.user.email, 'organizer', undefined], [guest.session.user.email, 'invited', undefined],
+      [member.session.user.email, 'shared', 'Product'], [keeper.session.user.email, 'shared', 'Product']
+    ]);
+
+    // Removing them from your notes takes you off the list everyone else sees, invited or shared.
+    await guest.api.notes.delete(noteId);
+    await member.api.notes.delete(noteId);
+    expect(await holders()).toEqual([[org.session.user.email, 'organizer', undefined], [keeper.session.user.email, 'shared', 'Product']]);
+    expect((await org.api.notes.list()).find((n) => n.id === noteId)?.people.map((p) => p.email)).toEqual([org.session.user.email, keeper.session.user.email]);
+    expect((await keeper.api.notes.get(noteId)).people.map((p) => p.email)).toEqual([org.session.user.email, keeper.session.user.email]);
+
+    // Sharing with a group they're in gives the notes back to them, shared this time; whoever still has them is skipped.
+    const again = await org.api.notes.share(noteId, { emails: [guest.session.user.email, member.session.user.email, keeper.session.user.email], group: 'Launch' });
+    expect(again.recipients.map((r) => [r.person.email, r.role, r.group])).toEqual([
+      [org.session.user.email, 'organizer', undefined], [keeper.session.user.email, 'shared', 'Product'],
+      [guest.session.user.email, 'shared', 'Launch'], [member.session.user.email, 'shared', 'Launch']
+    ]);
+    expect((await guest.api.notes.get(noteId)).received).toMatchObject({ role: 'shared', by: { id: org.session.ownerId }, group: 'Launch' });
+    expect((await member.api.notes.list()).find((n) => n.id === noteId)?.received).toMatchObject({ role: 'shared', group: 'Launch' });
+    expect((await keeper.api.notes.get(noteId)).received).toEqual(kept);
+  });
+
+  it('refuses a group of 51 addresses, a group name over 40 characters, and notes you don’t have', async () => {
+    const org = await account(unique('organizer'));
+    const noteId = await noteFrom(org);
+    const crowd = Array.from({ length: 51 }, () => unique('crowd'));
+    expect(code(await org.api.notes.share(noteId, { emails: crowd, group: 'Everyone' }).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await org.api.notes.share(noteId, { emails: [unique()], group: 'x'.repeat(41) }).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await org.api.notes.share(noteId, { emails: [unique()], group: '   ' }).catch((e: unknown) => e))).toBe('invalid');
+    expect((await org.api.notes.get(noteId)).recipients).toHaveLength(1);
+    // Fifty people and a 40-character name are fine.
+    const fifty = await org.api.notes.share(noteId, { emails: crowd.slice(0, 50), group: 'g'.repeat(40) });
+    expect(fifty.recipients).toHaveLength(51);
+    expect(new Set(fifty.recipients.slice(1).map((r) => r.group))).toEqual(new Set(['g'.repeat(40)]));
+
+    // Another account's note, or none at all: not found, and nobody gets anything.
+    const stranger = await account(unique('stranger'));
+    const target = unique('target');
+    expect(code(await stranger.api.notes.share(noteId, { emails: [target], group: 'Product' }).catch((e: unknown) => e))).toBe('not-found');
+    expect(code(await stranger.api.notes.share('AAAAAAAAAAAAAAAAAAAAAA', { emails: [target], group: 'Product' }).catch((e: unknown) => e))).toBe('not-found');
+    expect((await org.api.notes.get(noteId)).recipients.map((r) => r.person.email)).not.toContain(target);
+    expect((await (await account(target)).api.notes.list()).map((n) => n.id)).not.toContain(noteId);
   });
 
   it('keeps no receipt of a note for anyone, so a note deleted since can’t come back through a retried request', async () => {
@@ -1545,7 +2201,7 @@ describe('room recordings', () => {
   it('records in the room, renames, stops into a private note, and can be discarded', async () => {
     const b = await account();
     const { api, session } = b;
-    const rec = await api.recordings.start('Board prep');
+    const rec = await api.recordings.start({ title: 'Board prep' });
     await rec.appendAudio(piece(audioBytes('room-0'), 0, 0));
     rec.rename('Board prep with Dana');
     rec.pause();
@@ -1558,7 +2214,7 @@ describe('room recordings', () => {
     expect(await api.notes.get(pendingNoteId)).toMatchObject({ kind: 'room', title: 'Board prep with Dana', status: 'ready' });
     expect((await api.notes.list({ kind: 'room' })).map((n) => n.id)).toEqual([pendingNoteId]);
 
-    const throwaway = await api.recordings.start('Throwaway');
+    const throwaway = await api.recordings.start({ title: 'Throwaway' });
     await throwaway.appendAudio(piece(audioBytes('gone'), 0, 0));
     await throwaway.discard();
     expect((await api.notes.list()).map((n) => n.title)).toEqual(['Board prep with Dana']);
@@ -1575,10 +2231,454 @@ describe('room recordings', () => {
     }
     for (const id of objectIds) expect(await h.objects.get(id).then(() => 'exists', () => 'gone')).toBe('gone');
   });
+
+  it('a recording made offline uploads later with its own times', async () => {
+    const { api } = await account();
+    // Recorded two hours ago without a connection, and uploaded now: every piece and clip says where it was.
+    const startedAt = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const rec = await api.recordings.start({ title: 'Site visit', startedAt });
+    expect(rec.getSnapshot()).toMatchObject({ title: 'Site visit', startedAt, status: 'recording' });
+    for (const at of [0, 5, 10]) await rec.appendAudio(piece(audioBytes(`site-${at}`), 0, at / 5, at));
+    await rec.transcribe(speech('We agreed to fix the gate first.', 0, 1));
+    await rec.transcribe(speech('Ana will order the hinges by Monday.', 0, 7));
+    expect(rec.getSnapshot().transcript.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to fix the gate first.'], [7, 'Ana will order the hinges by Monday.']]);
+    // It lasted as long as its audio, not the two hours since it started.
+    const { pendingNoteId, duration } = await rec.stop();
+    expect(duration).toBe(15);
+    await written(api, pendingNoteId);
+    const note = await api.notes.get(pendingNoteId);
+    expect(note).toMatchObject({ kind: 'room', title: 'Site visit', status: 'ready', startedAt, duration: 15 });
+    expect(note.audio).toEqual([{ index: 0, pieces: 3, seconds: 15, mimeType: 'audio/webm;codecs=opus' }]);
+    expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to fix the gate first.'], [7, 'Ana will order the hinges by Monday.']]);
+    expect(note.decisions.map((d) => [d.at, d.text])).toEqual([[1, 'We agreed to fix the gate first.']]);
+    // Among the notes, it sits at the time it was recorded.
+    expect((await api.notes.list({ kind: 'room' })).map((n) => [n.id, n.startedAt])).toEqual([[pendingNoteId, startedAt]]);
+  });
+
+  it('the same piece twice is stored once, when an interrupted upload starts again', async () => {
+    const { api, fetch: own, session } = await account();
+    const transcribed = () => h.near.calls.filter((x) => x.path.endsWith('/audio/transcriptions')).length;
+    const heardBefore = transcribed();
+    const startedAt = new Date(Date.now() - 20 * 60_000).toISOString();
+    const takes = [audioBytes('take-0'), audioBytes('take-1'), audioBytes('take-2')];
+    const first = await api.recordings.start({ title: 'Workshop', startedAt });
+    await first.appendAudio(piece(takes[0] ?? audioBytes(''), 0, 0));
+    await first.appendAudio(piece(takes[1] ?? audioBytes(''), 0, 1));
+    await first.transcribe(speech('We agreed to start with the roof.', 0, 1));
+    // The tab closed mid-upload. Opened again, it starts from the same moment and sends everything again.
+    const again = await api.recordings.start({ title: 'Workshop', startedAt });
+    expect(again.getSnapshot()).toMatchObject({ id: first.getSnapshot().id, noteId: first.getSnapshot().noteId, recording: { pieces: 2, seconds: 10 } });
+    for (const [seq, bytes] of takes.entries()) await again.appendAudio(piece(bytes, 0, seq));
+    await again.appendAudio(piece(takes[2] ?? audioBytes(''), 0, 2)); // and a retry of the last one
+    await again.transcribe(speech('We agreed to start with the roof.', 0, 1));
+    await again.transcribe(speech('Ben brings the ladder.', 0, 9));
+    // A different piece can't take the place of one already stored: one that starts elsewhere, or lasts longer or shorter.
+    expect(code(await again.appendAudio(piece(audioBytes('not-take-1'), 0, 1, 6)).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await again.appendAudio({ ...piece(audioBytes('not-take-2'), 0, 2), durationMs: 4000 }).catch((e: unknown) => e))).toBe('conflict');
+    const { pendingNoteId, duration } = await again.stop();
+    expect(duration).toBe(15);
+    expect((await first.stop()).pendingNoteId).toBe(pendingNoteId);
+    // Once it has stopped, sending a stored piece again still changes nothing, and a new one is refused.
+    await again.appendAudio(piece(takes[0] ?? audioBytes(''), 0, 0));
+    expect(code(await again.appendAudio(piece(audioBytes('after-stop'), 0, 3)).catch((e: unknown) => e))).toBe('conflict');
+    await written(api, pendingNoteId);
+
+    // One note, with each piece once and in order, and each clip transcribed once.
+    expect((await api.notes.list({ kind: 'room' })).map((n) => n.id)).toEqual([pendingNoteId]);
+    const note = await api.notes.get(pendingNoteId);
+    expect(note.audio).toEqual([expect.objectContaining({ index: 0, pieces: 3, seconds: 15 })]);
+    expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to start with the roof.'], [9, 'Ben brings the ladder.']]);
+    expect(transcribed() - heardBefore).toBe(2);
+    const audio = Buffer.from(await (await own(api.notes.audioUrl(pendingNoteId, 0))).arrayBuffer());
+    expect(audio.equals(Buffer.concat(takes))).toBe(true);
+    // The account's stored bytes count each piece once, the resends after stopping included.
+    const kept = (await h.pool.query<{ pieces: number; bytes: string; stored: string }>(
+      'SELECT count(*)::int AS pieces, sum(cipher_bytes)::text AS bytes, (SELECT stored_bytes::text FROM owners WHERE owner_id = $1) AS stored FROM recording_pieces WHERE owner_id = $1', [session.ownerId])).rows[0];
+    expect(kept?.pieces).toBe(3);
+    expect(kept?.stored).toBe(kept?.bytes);
+  });
+
+  it('starting from the same moment twice at once makes one recording, and only in your own account', async () => {
+    const a = await account();
+    const b = await account();
+    const startedAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const [x, y] = await Promise.all([a.api.recordings.start({ startedAt }), a.api.recordings.start({ startedAt })]);
+    expect(y.getSnapshot().id).toBe(x.getSnapshot().id);
+    expect((await a.api.notes.list()).map((n) => n.id)).toEqual([x.getSnapshot().noteId]);
+    // Someone else's recording from the same moment is theirs, and neither can reach the other's.
+    const theirs = await b.api.recordings.start({ startedAt });
+    expect(theirs.getSnapshot().id).not.toBe(x.getSnapshot().id);
+    expect(code(await b.api.notes.get(x.getSnapshot().noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect((await b.api.notes.list()).map((n) => n.id)).toEqual([theirs.getSnapshot().noteId]);
+    const [p, q] = await Promise.all([x.stop(), y.stop()]);
+    expect(q.pendingNoteId).toBe(p.pendingNoteId);
+    await theirs.discard();
+  });
+
+  it('a call’s recording from the same moment isn’t carried on as a room recording', async () => {
+    const { api, session } = await account();
+    const call = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const callNote = call.getSnapshot().notes.noteId ?? '';
+    const found = (await h.pool.query<{ recording_id: string; started_at: Date }>('SELECT recording_id, started_at FROM recordings WHERE owner_id = $1 AND note_item_id = $2', [session.ownerId, callNote])).rows[0];
+    expect(found?.recording_id).toBeTruthy();
+    const rec = await api.recordings.start({ title: 'Same moment', startedAt: found?.started_at.toISOString() ?? '' });
+    expect(rec.getSnapshot()).toMatchObject({ title: 'Same moment', status: 'recording', startedAt: found?.started_at.toISOString() });
+    expect(rec.getSnapshot().id).not.toBe(found?.recording_id);
+    expect(rec.getSnapshot().noteId).not.toBe(callNote);
+    await rec.discard();
+    await call.leave();
+  });
+
+  it('a start 15 days ago, or in the future, is refused as invalid', async () => {
+    const b = await account();
+    const DAY = 86_400_000;
+    const from = (ms: number) => new Date(Date.now() + ms).toISOString();
+    for (const startedAt of [from(-15 * DAY), from(10 * 60_000), from(3_600_000), 'yesterday']) {
+      expect(code(await b.api.recordings.start({ startedAt }).catch((e: unknown) => e))).toBe('invalid');
+    }
+    expect(await b.api.notes.list()).toEqual([]);
+    // Up to 14 days back is fine, and so is a device clock running a minute ahead of the server's.
+    for (const startedAt of [from(-13 * DAY), from(60_000)]) await (await b.api.recordings.start({ startedAt })).discard();
+    // An upload already under way can still finish once the recording is older than 14 days.
+    const old = from(-13 * DAY);
+    const rec = await b.api.recordings.start({ startedAt: old });
+    const older = new Date(Date.parse(old) - 2 * DAY).toISOString();
+    await h.pool.query('UPDATE recordings SET started_at = $3 WHERE owner_id = $1 AND recording_id = $2', [b.session.ownerId, rec.getSnapshot().id, older]);
+    expect((await b.api.recordings.start({ startedAt: older })).getSnapshot().id).toBe(rec.getSnapshot().id);
+    await rec.discard();
+    expect(await b.api.notes.list()).toEqual([]);
+  });
+});
+
+describe('credits', () => {
+  it('the balance says how much was used this month', async () => {
+    const { api, session } = await account();
+    expect(await api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+
+    // Notes written now are charged now: 25 credits a minute recorded, rounded up.
+    const rec = await api.recordings.start({ title: 'Usage' });
+    await rec.appendAudio(piece(audioBytes('usage'), 0, 0));
+    await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
+    await written(api, (await rec.stop()).pendingNoteId);
+    expect(await api.credits.balance()).toEqual({ balance: 9_975, granted: 10_000, usedThisMonth: 25, perMinute: 25 });
+
+    // The month starts at 00:00 UTC on the 1st. A charge made the moment before counts against the balance
+    // but not against this month; one made at that moment counts against both. The history is sealed under
+    // the service key, so these are charged the way the notes worker charges, with the clock set to then.
+    const { charge } = await import('./modules/billing');
+    const now = new Date();
+    const month = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    try {
+      vi.useFakeTimers({ toFake: ['Date'], now: month - 1 });
+      await charge(h.deps, h.pool, session.ownerId, { amount: 100, label: 'Notes, 4 min' });
+      vi.setSystemTime(month);
+      await charge(h.deps, h.pool, session.ownerId, { amount: 50, label: 'Notes, 2 min' });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await api.credits.balance()).toEqual({ balance: 9_825, granted: 10_000, usedThisMonth: 75, perMinute: 25 });
+  });
+});
+
+describe('deleting an account', () => {
+  it('deleting an account removes everything it owns', async () => {
+    const { maintain } = await import('./maintenance');
+    // Lena signs in with Google in two browsers: her account keeps a Google connection (the calendar's tokens) and two sessions.
+    const lena: GoogleUser = { sub: `g-leaving-${seq++}`, email: unique('lena'), name: 'Lena Leaving' };
+    const tokensBefore = h.google.refreshTokens();
+    const b = h.browser();
+    await viaGoogle(b, lena);
+    const elsewhere = h.browser();
+    await viaGoogle(elsewhere, lena);
+    const lenaToken = h.google.refreshTokens().filter((t) => !tokensBefore.includes(t));
+    expect(lenaToken).toHaveLength(1);
+    const ownerId = (await b.api.auth.getSession())?.ownerId ?? '';
+    const guest = await account(unique('guest'));
+    const ann = await account(unique('ann'));
+    const kofi = await account(unique('kofi'));
+
+    // What she organized: a call's notes and audio, which went to her guest, who pinned them; a call she
+    // scheduled, on her calendar; her own pins and a group.
+    const ended = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [guest.session.user.email] })).code, { mic: true, cam: false });
+    await ended.appendAudio(piece(audioBytes('leaving-call'), 0, 0));
+    const callNote = (await ended.leave())?.pendingNoteId ?? '';
+    await written(b.api, callNote);
+    await guest.api.account.updatePreferences({ pinned: [callNote] });
+    await b.api.meetings.create({ title: 'Next week', startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), durationMinutes: 30, guests: [guest.session.user.email], notes: 'on' });
+    await b.api.account.updatePreferences({ pinned: [callNote], groups: [{ id: 'crew', name: 'Crew', emails: [guest.session.user.email] }] });
+    // A room recording whose notes are queued to be tried again...
+    const rec = await b.api.recordings.start({ title: 'Waiting' });
+    await rec.appendAudio(piece(audioBytes('leaving-room'), 0, 0));
+    await rec.transcribe(speech('We agreed to leave on Friday.', 0, 0));
+    h.near.failNext(1, 'prose');
+    await rec.stop();
+    await until(async () => (await h.pool.query("SELECT 1 FROM content_jobs WHERE owner_id = $1 AND state = 'queued' AND attempt = 1", [ownerId])).rowCount === 1, 'the first attempt to fail');
+    // ...and a call still going, with notes on: its audio, the live transcript and a caption in German.
+    const live = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));
+    await live.transcribe(speech('We are still talking.', 0, 0), live.ticket.identity);
+    expect(await live.translate(live.getSnapshot().transcript.map((l) => l.id), 'de')).toHaveLength(1);
+    // A chat line in it goes into the call's end-to-end encrypted log, and its LiveKit room is open.
+    await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
+    await live.sendChat('Still here.');
+    expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
+    // Notes other people gave her: Ann invited her to one call, and shared another note with her, which she shared on with Kofi.
+    const invitedTo = await noteFrom(ann, [lena.email]);
+    const sharedWith = await noteFrom(ann);
+    await ann.api.notes.share(sharedWith, { emails: [lena.email] });
+    await b.api.notes.share(sharedWith, { emails: [kofi.session.user.email] });
+
+    // Every table that keeps an account's rows has some of hers.
+    const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
+    expect(tables).toEqual([
+      'billing_accounts', 'call_codes', 'call_mls', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
+      'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
+    ]);
+    const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
+    const before = await counts();
+    // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
+    for (const t of tables) if (t !== 'object_gc' && t !== 'screen_frames') expect(before[t], t).toBeGreaterThan(0);
+    expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
+    const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
+    if (!identity) throw new Error('Lena has no sign-in identity');
+    const givenToHer = async () => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM note_access WHERE email_index = $1', [identity.email_index])).rows[0]?.n;
+    expect(await givenToHer()).toBe(2);
+    const objects = (await h.pool.query<{ object_id: string }>('SELECT object_id FROM recording_pieces WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id);
+    expect(objects).toHaveLength(3);
+
+    // Her call next week is on her Google calendar, and she has never asked Google to revoke anything.
+    expect(h.google.calendar(lena.sub).map((e) => e.summary)).toEqual(['Next week']);
+    expect(h.google.revocations()).not.toContain(lenaToken[0]);
+    const googleCalls = h.google.calls.length;
+
+    // She deletes her account, just as the object store refuses to delete one of her objects. Her audio is
+    // deleted before Google is asked to revoke her grant, so a slow Google never holds it up.
+    const realDelete = h.deps.objects.delete;
+    let refused = '';
+    const afterRevoke: string[] = [];
+    h.deps.objects.delete = async (id) => {
+      if (h.google.revocations().some((t) => lenaToken.includes(t))) afterRevoke.push(id);
+      if (refused) return realDelete(id);
+      refused = id;
+      throw new Error('the store is busy');
+    };
+    try {
+      await b.api.account.delete();
+    } finally {
+      h.deps.objects.delete = realDelete;
+    }
+    expect(afterRevoke).toEqual([]);
+
+    // Her call next week was cancelled on Google (its guests are told), and Alcove's grant was revoked there.
+    expect(h.google.calendar(lena.sub)).toEqual([]);
+    expect(h.google.calls.slice(googleCalls).filter((c) => c.method === 'DELETE')).toEqual([{ method: 'DELETE', path: expect.stringContaining('/events/'), sendUpdates: 'all' }]);
+    expect(h.google.revocations()).toEqual(expect.arrayContaining(lenaToken));
+    expect(lenaToken.filter((t) => h.google.honours(t))).toEqual([]);
+    expect(logLines().find((l) => l.msg === 'account deleted' && l['ownerId'] === ownerId)).toMatchObject({ calendarCancelled: 1, calendarKept: 0, calendarNotCancelled: 0, objects: 3 });
+
+    // She's signed out in every browser, and her call is gone with her: its LiveKit room is closed, which takes everyone out.
+    expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(0);
+    expect(await b.api.auth.getSession()).toBeNull();
+    expect(await elsewhere.api.auth.getSession()).toBeNull();
+    expect(code(await elsewhere.api.meetings.upcoming().catch((e: unknown) => e))).toBe('unauthenticated');
+    await live.leave().catch(() => undefined);
+    // Not one row of hers is left in any table, and nothing gives her address anyone's notes. Only the object
+    // the store refused waits in object_gc, by its ID, until maintenance deletes it.
+    expect(await counts()).toEqual({ ...Object.fromEntries(tables.map((t) => [t, 0])), object_gc: 1 });
+    expect(await givenToHer()).toBe(0);
+    const stored = (id: string) => h.objects.get(id).then(() => true, () => false);
+    expect(await Promise.all(objects.map(stored))).toEqual(objects.map((id) => id === refused));
+    await maintain(h.deps);
+    expect(await stored(refused)).toBe(false);
+    expect((await counts())['object_gc']).toBe(0);
+
+    // The notes she organized are gone for everyone she gave them to, and off their pins.
+    expect(code(await guest.api.notes.get(callNote).catch((e: unknown) => e))).toBe('not-found');
+    expect((await guest.api.notes.list()).map((n) => n.id)).not.toContain(callNote);
+    expect((await guest.api.account.preferences()).pinned).toEqual([]);
+    // Ann's notes are still Ann's, without her on them. Kofi keeps the one she shared with him, which still says
+    // she did: that's sealed in Ann's note, and deleting an account writes into nobody else's vault.
+    expect((await ann.api.notes.get(invitedTo)).recipients.map((r) => r.person.email)).toEqual([ann.session.user.email]);
+    expect((await ann.api.notes.get(sharedWith)).recipients.map((r) => [r.person.email, r.role])).toEqual([[ann.session.user.email, 'organizer'], [kofi.session.user.email, 'shared']]);
+    expect((await kofi.api.notes.get(sharedWith)).received).toMatchObject({ role: 'shared', by: { name: 'Lena Leaving' } });
+
+    // Signing in again with the same Google account starts a new, empty account with the welcome credits.
+    const fresh = h.browser();
+    expect(landed(await viaGoogle(fresh, lena))).toBe('/ready');
+    expect((await fresh.api.auth.getSession())?.ownerId).not.toBe(ownerId);
+    expect(await fresh.api.credits.balance()).toEqual({ balance: 10_000, granted: 10_000, usedThisMonth: 0, perMinute: 25 });
+    expect(await fresh.api.notes.list()).toEqual([]);
+    expect(await fresh.api.meetings.upcoming()).toEqual([]);
+    expect(await fresh.api.account.preferences()).toMatchObject({ pinned: [], groups: [] });
+  });
+
+  it('another account at the same address keeps the notes given to that address', async () => {
+    // One address, two accounts: single sign-on and Google. Notes go to the address, so both have them.
+    const email = unique('twice');
+    const sso = await account(email);
+    const google = h.browser();
+    await viaGoogle(google, { sub: `g-twice-${seq++}`, email, name: 'Twice Signed' });
+    const ann = await account(unique('ann'));
+    const noteId = await noteFrom(ann);
+    await ann.api.notes.share(noteId, { emails: [email] });
+    for (const b of [sso, google]) expect((await b.api.notes.list()).map((n) => n.id)).toContain(noteId);
+
+    // Deleting one of them doesn't take the notes from the other, which still signs in with that address.
+    await sso.api.account.delete();
+    expect((await google.api.notes.get(noteId)).id).toBe(noteId);
+    expect((await ann.api.notes.get(noteId)).recipients.map((r) => r.person.email)).toEqual([ann.session.user.email, email]);
+  });
+
+  const leaver = (n: string): GoogleUser => ({ sub: `g-leaving-${n}-${seq++}`, email: unique(n), name: `${n} Leaving` });
+  /** Signs someone in with Google, with the refresh token Google issued them. */
+  async function withGoogle(who: GoogleUser) {
+    const before = h.google.refreshTokens();
+    const b = h.browser();
+    await viaGoogle(b, who);
+    const [token = ''] = h.google.refreshTokens().filter((t) => !before.includes(t));
+    return { ...b, ownerId: (await b.api.auth.getSession())?.ownerId ?? '', token };
+  }
+  const days = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
+  /** The API's log lines for one account, oldest first. */
+  const loggedFor = (ownerId: string) => logLines().filter((l) => l['ownerId'] === ownerId);
+  const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+  /** The tables that still have rows of this account (none, once it's deleted). */
+  async function leftOf(ownerId: string): Promise<string[]> {
+    const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id'")).rows.map((r) => r.table_name);
+    const n = async (t: string) => (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? 0;
+    return (await Promise.all(tables.map(async (t) => ((await n(t)) ? [t] : [])))).flat();
+  }
+
+  it('when Google fails, deletes the account all the same, and logs why without saying who', async () => {
+    const who = leaver('mo');
+    const mo = await withGoogle(who);
+    for (const n of [1, 2]) await mo.api.meetings.create({ title: `Planning ${n}`, startsAt: days(n), durationMinutes: 30, guests: ['ola@guests.example'], notes: 'off' });
+    expect(h.google.calendar(who.sub)).toHaveLength(2);
+
+    // Mo withdraws Alcove's access at Google, and then deletes the account.
+    h.google.revoke(who.sub);
+    await mo.api.account.delete();
+
+    // Everything is deleted all the same.
+    expect(await mo.api.auth.getSession()).toBeNull();
+    expect(await leftOf(mo.ownerId)).toEqual([]);
+    // Google refused, so both calls are still on its calendar. The warning says so, and why (not "unknown"),
+    // with no token and nobody's address.
+    expect(h.google.calendar(who.sub)).toHaveLength(2);
+    const lines = loggedFor(mo.ownerId);
+    expect(lines.find((l) => l.msg === 'calendar events not cancelled')).toMatchObject({ level: 40, cancelled: 0, notCancelled: 2, err: { type: 'UnavailableError', code: 'unavailable', message: 'Google Calendar isn’t connected.' } });
+    expect(lines.find((l) => l.msg === 'google grant not revoked')).toMatchObject({ level: 40, status: 400, googleError: 'invalid_token' });
+    expect(lines.find((l) => l.msg === 'account deleted')).toMatchObject({ calendarCancelled: 0, calendarNotCancelled: 2 });
+    expect(JSON.stringify(lines)).not.toContain(mo.token);
+    expect(JSON.stringify(lines).match(EMAIL) ?? []).toEqual([]);
+  });
+
+  it('cancels every call still on, begun or not, and leaves an event moved from the calendar as it was', async () => {
+    const who = leaver('cleo');
+    const minutes = (n: number) => new Date(Date.now() + n * 60_000).toISOString();
+    // Her own event, made in Google Calendar, which she moved to Alcove.
+    h.google.calendar(who.sub).push({
+      id: 'her-own', summary: 'Board prep', description: 'Agenda: the budget.', start: { dateTime: minutes(120) }, end: { dateTime: minutes(150) },
+      organizer: { email: who.email, self: true }, attendees: [{ email: who.email, self: true }, { email: 'board@guests.example' }]
+    });
+    const cleo = await withGoogle(who);
+    const moved = await cleo.api.calendar.adopt('her-own', 'off');
+    // A call whose time has come but hasn't started, and one she started early.
+    await cleo.api.meetings.create({ title: 'Ten minutes in', startsAt: minutes(-10), durationMinutes: 30, guests: ['ann@guests.example'], notes: 'off' });
+    const early = await cleo.api.meetings.create({ title: 'Tomorrow, begun now', startsAt: days(1), durationMinutes: 30, guests: ['ben@guests.example'], notes: 'off' });
+    const live = await cleo.api.calls.join(early.code, { mic: true, cam: false });
+    expect((await cleo.api.meetings.upcoming()).map((m) => m.status).sort()).toEqual(['live', 'scheduled', 'scheduled']);
+    const own = structuredClone(h.google.calendar(who.sub).find((e) => e.id === 'her-own'));
+    expect(own?.location).toBe(`${ORIGIN}/join/${moved.code}`);
+    const before = h.google.calls.length;
+
+    await cleo.api.account.delete();
+    await live.leave().catch(() => undefined);
+
+    // Both calls are cancelled on Google, which tells their guests.
+    expect(h.google.calls.slice(before).filter((c) => c.method === 'DELETE').map((c) => c.sendUpdates)).toEqual(['all', 'all']);
+    // Her own event stays on her calendar as it was, Alcove link and all, though the link leads nowhere now.
+    expect(h.google.calendar(who.sub)).toEqual([own]);
+    expect(loggedFor(cleo.ownerId).find((l) => l.msg === 'account deleted')).toMatchObject({ calendarCancelled: 2, calendarKept: 1, calendarNotCancelled: 0 });
+    expect(await (await withGoogle(who)).api.meetings.byCode(moved.code)).toBeNull();
+  });
+
+  it('when Google stops answering, waits seconds, not minutes, and deletes the account', async () => {
+    const who = leaver('dan');
+    const dan = await withGoogle(who);
+    for (const n of [1, 2]) await dan.api.meetings.create({ title: `Review ${n}`, startsAt: days(n), durationMinutes: 30, guests: ['pia@guests.example'], notes: 'off' });
+    const before = h.google.calls.length;
+
+    h.google.unresponsive(true);
+    const t0 = performance.now();
+    try {
+      await dan.api.account.delete();
+    } finally {
+      h.google.unresponsive(false);
+    }
+
+    // Cancelling stopped at the first call Google didn't answer, and the revoke had a few seconds of its own:
+    // about 11 seconds in all. Then everything was gone.
+    expect(performance.now() - t0).toBeLessThan(14_000);
+    expect(h.google.calls.slice(before).map((c) => c.method)).toEqual(['DELETE']);
+    expect(h.google.calendar(who.sub)).toHaveLength(2);
+    expect(h.google.revocations()).toContain(dan.token);
+    expect(await leftOf(dan.ownerId)).toEqual([]);
+    const lines = loggedFor(dan.ownerId);
+    expect(lines.find((l) => l.msg === 'calendar events not cancelled')).toMatchObject({ level: 40, cancelled: 0, notCancelled: 2, err: { name: 'TimeoutError' } });
+    expect(lines.find((l) => l.msg === 'google grant not revoked')).toMatchObject({ level: 40, err: { name: 'TimeoutError' } });
+    expect(JSON.stringify(lines).match(EMAIL) ?? []).toEqual([]);
+  });
+
+  it('a deletion that loses the race to another finds nothing left to delete', async () => {
+    const racer = await account(unique('racer'));
+    const ownerId = racer.session.ownerId;
+    const hold = await h.pool.connect();
+    const gate = await h.pool.connect();
+    const pidOf = async (c: typeof hold) => (await c.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]?.pid ?? 0;
+    /** Whether some other backend waits for a lock this one holds or has asked for first. */
+    const blocks = async (pid: number) => ((await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))', [pid])).rows[0]?.n ?? 0) > 0;
+    const outcome = (p: Promise<void>) => p.then(() => 'deleted', (e: unknown) => code(e));
+    try {
+      // The first deletion is held just before it commits, on the account's billing row, which goes with the account.
+      await hold.query('BEGIN');
+      await hold.query('SELECT 1 FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+      const first = outcome(racer.api.account.delete());
+      await until(async () => blocks(await pidOf(hold)), 'the first deletion to wait');
+      // The second arrives signed in, as the account is still there, and reaches the account's profile only once
+      // the first has committed: a lock on the items table, asked for behind the first deletion, holds it back.
+      await gate.query('BEGIN');
+      const gatePid = await pidOf(gate);
+      const gated = gate.query('LOCK TABLE items IN ACCESS EXCLUSIVE MODE');
+      await until(async () => (await h.pool.query('SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = $2', [gatePid, 'Lock'])).rowCount === 1, 'the gate to wait');
+      const second = outcome(racer.api.account.delete());
+      await until(() => blocks(gatePid), 'the second deletion to wait at the gate');
+      await hold.query('COMMIT');
+      await gated;
+      await gate.query('COMMIT');
+      expect([await first, await second]).toEqual(['deleted', 'deleted']);
+    } finally {
+      for (const c of [hold, gate]) { await c.query('ROLLBACK').catch(() => undefined); c.release(); }
+    }
+    expect(loggedFor(ownerId).filter((l) => l.msg === 'account already deleted')).toHaveLength(1);
+  });
+});
+
+describe('the shared demo account', () => {
+  it('can’t be deleted', async () => {
+    const demo = h.browser();
+    await demo.api.auth.signIn('microsoft');
+    const refused = await demo.api.account.delete().catch((e: unknown) => e);
+    expect(code(refused)).toBe('forbidden');
+    expect(refused).toMatchObject({ message: 'This is the shared demo account, so it can’t be deleted.' });
+    // Still signed in, with its sample calendar.
+    expect((await demo.api.auth.getSession())?.sample).toBe(true);
+    expect((await demo.api.meetings.upcoming()).length).toBeGreaterThan(0);
+  });
 });
 
 describe('privacy at rest', () => {
-  it('keeps names, emails, titles, guests, chat and audio out of rows, objects and logs in any encoding', async () => {
+  it('keeps names, emails, titles, guests, chat, groups and audio out of rows, objects and logs in any encoding', async () => {
     // Watch the wire for the session cookies a browser receives, so the logs can be checked for them too.
     const secrets: string[] = [];
     /** A browser whose session and sign-in cookies are collected, to check none of them reach the logs. */
@@ -1624,17 +2724,31 @@ describe('privacy at rest', () => {
     const callRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM calls x`)).rows[0]?.all ?? '');
     const live = `${liveClips} ${translations} ${callRows}`;
     await call.leave();
-    const rec = await c.api.recordings.start('Room');
+    const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
     await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
     await new Promise((r) => setTimeout(r, 150));
     const { pendingNoteId: roomNote } = await rec.stop();
     await written(c.api, roomNote);
+    // A question across every note: it goes sealed to the notes model and is kept nowhere.
+    expect((await askedAll(c.api, 'CANARY-ASKED across notes: what was said in the room?'))[0]?.type).toBe('text');
+    // A group: its name and members stay sealed in the profile; sharing with it carries the name, sealed in the note.
+    const members = ['canary-member-one@example.com', 'canary-member-two@example.com'];
+    await c.api.account.updatePreferences({ groups: [{ id: 'launch-crew', name: 'CANARY-GROUP-launch crew', emails: members }] });
+    await c.api.notes.share(roomNote, { emails: members, group: 'CANARY-GROUP-launch crew' });
+    const member = tapped();
+    await member.api.auth.signIn('sso', { email: 'canary-member-one@example.com' });
+    expect((await member.api.notes.list()).find((n) => n.id === roomNote)?.received).toMatchObject({ role: 'shared', group: 'CANARY-GROUP-launch crew' });
     await c.api.notes.list({ text: 'CANARY-SEARCH words' });
     await c.api.people.search('CANARY-PEOPLE query');
-    // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too.
+    // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too,
+    // and so does the call they put on their Google Calendar.
     const g = tapped();
+    const issuedBefore = h.google.refreshTokens();
     expect(landed(await viaGoogle(g, { sub: 'canary-google-sub-31337', email: 'canary.googler@canary.example', name: 'Canary Googler', picture: 'https://lh3.googleusercontent.com/a/canary-photo' }))).toBe('/ready');
+    const googlerToken = h.google.refreshTokens().filter((t) => !issuedBefore.includes(t));
+    expect(googlerToken).toHaveLength(1);
+    expect((await g.api.meetings.create({ title: 'CANARY-GCAL planning', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-gcal-guest@canary.example'], notes: 'off' })).calendarUrl).toMatch(/^https:/);
     // A series: a question its call left open, the next call in it, and a question asked across it. A
     // recurring Google event's ID, which names its series, stays sealed and out of logged paths.
     const sync = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
@@ -1670,9 +2784,9 @@ describe('privacy at rest', () => {
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
-      'CANARY-BREAKOUT', 'CANARY-BROADCAST',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
-      'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo',
+      'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
@@ -1682,6 +2796,16 @@ describe('privacy at rest', () => {
       const bytes = Buffer.from(await h.objects.get(obj.id));
       for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
     }
+
+    // Deleting an account logs IDs and counts, like everything else: nothing of who it was. It happens after
+    // the scans of rows and objects above, so the deleted accounts' rows were part of them. Deleting the
+    // Googler's cancels the call Alcove put on their Google Calendar, leaves their own events there (the one
+    // they moved to Alcove too), and has Google revoke their refresh token; the log check below covers that
+    // token too.
+    await member.api.account.delete();
+    await g.api.account.delete();
+    expect(h.google.calendar('canary-google-sub-31337').map((e) => e.id)).toEqual(['canary-recurring-id_1', 'canary-theirs-event', 'canary-allday-event']);
+    expect(googlerToken.filter((t) => h.google.honours(t))).toEqual([]);
 
     // And NEAR AI: the clips, transcripts, titles, names and questions it was sent crossed the wire sealed
     // to the verified models, never readable, though the models themselves read them (the fake's prompts).
@@ -1699,8 +2823,8 @@ describe('privacy at rest', () => {
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);
-    // Google refresh tokens are sealed in the vault and never logged.
-    expect(h.google.refreshTokens().length).toBeGreaterThanOrEqual(1);
+    // Google refresh tokens are sealed in the vault and never logged: every one Google issued, revoked ones too.
+    expect(h.google.refreshTokens()).toEqual(expect.arrayContaining(googlerToken));
     for (const t of h.google.refreshTokens()) {
       for (const enc of encodings(t)) expect(rowsText.includes(enc), 'a refresh token in rows').toBe(false);
       expect(logText.includes(t), 'a refresh token in logs').toBe(false);

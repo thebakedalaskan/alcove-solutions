@@ -1,25 +1,27 @@
 /*
  * Notes. A note lives in its organizer's vault. Everyone invited to its call gets it when the call
- * ends, and anyone who has it can share it on; who else may read it is kept in note_access as keyed
- * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
+ * ends, and anyone who has it can share it on, by address or with one of their groups; the note
+ * keeps, sealed, who shared it with whom, the group's name and when. Who else may read it is kept in
+ * note_access as keyed email hashes. Someone else's note is opened with its organizer's keys, and
+ * only after that check.
  */
 import {
   ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenMomentSchema, TranscriptLineSchema, minutesLabel,
-  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type LinePatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type Person, type Question, type QuestionPatch, type Recipient, type ScreenMoment, type Speaker, type TranscriptLine
+  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Inbox, type LinePatch, type Note, type NoteKind, type NoteProgress,
+  type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
-import { blindIndex, id128, sealJson, stateKey, toJson } from '../crypto';
-import { exec, maybeOne, rows, tx, type Db } from '../db';
+import { b64u, blindIndex, id128, sealJson, stateKey, toJson } from '../crypto';
+import { bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import { inference } from '../inference';
 import { log } from '../log';
-import { masterKey, openOwner } from '../owners';
+import { findOwner, masterKey } from '../owners';
 import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
-import { me, profile } from './account';
-import { queueDelete, recordingObjects, segments } from './audio';
-import { answer, briefOf } from './drafting';
+import { me, profile, unpin } from './account';
+import { noteObjects, queueDelete, segments } from './audio';
+import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
 import { MeetingManifest } from './meetings';
 import { nameOf, personOf } from './portraits';
 import * as screens from './screens';
@@ -44,13 +46,25 @@ export function roomChapters(held: HeldRooms[]): Chapter[] {
   });
 }
 
+/** Who shared a note on: their account, and their name and address as they were when they shared it. */
+const Sharer = z.object({ id: z.string(), name: z.string(), email: z.string() });
+type Sharer = z.infer<typeof Sharer>;
+/**
+ * Someone a note was shared with after the call: their address, who shared it, the name of the
+ * sharer's group it went to (nothing else about the group leaves the sharer's profile), and when.
+ */
+const SharedWith = z.object({ email: z.string(), by: Sharer, group: z.string().optional(), at: z.string() });
+type SharedWith = z.infer<typeof SharedWith>;
+
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
   meetingId: z.string().optional(), recordingId: z.string(), status: NoteStatusSchema,
   /** Email addresses of everyone invited to the call, who get the notes when it ends. */
   invited: z.array(z.string()),
-  /** Email addresses the notes were shared with afterwards. */
-  shared: z.array(z.string()),
+  /** When the call ended or the recording stopped, which is when everyone invited got the notes. */
+  endedAt: z.string().optional(),
+  /** Everyone the notes were shared with afterwards, in the order they got them. */
+  shared: z.array(SharedWith),
   summary: z.string(), decisions: z.array(DecisionSchema), questions: z.array(QuestionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
   /** The stretches of the call nothing was captured in (notes off or paused), where they fall in the recording. */
   gaps: z.array(CaptureGapSchema),
@@ -65,9 +79,10 @@ export const NoteManifest = z.object({
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 
-export function blankNote(o: { kind: NoteKind; title: string; recordingId: string; invited: string[]; meetingId?: string | undefined }): NoteManifest {
+/** A note about to be recorded, starting when its recording does. */
+export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined }): NoteManifest {
   return {
-    kind: o.kind, title: o.title, startedAt: new Date().toISOString(), duration: 0, recordingId: o.recordingId,
+    kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, suggestedQuestions: [], writtenAt: null, breakouts: [], inference: []
   };
@@ -90,6 +105,7 @@ export async function updateNote(o: Owner, db: Db, noteId: string, fn: (n: NoteM
 }
 
 const emailIndex = (o: Owner, email: string) => blindIndex(masterKey(o), 'email', email);
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: 'invited' | 'shared'): Promise<void> {
   for (const e of emails) {
     await exec(db, 'INSERT INTO note_access (owner_id, note_item_id, email_index, role) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [o.ownerId, noteId, emailIndex(o, e), role]);
@@ -109,7 +125,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   const heard = transcripts.placed(await transcripts.lines(o, db, noteId, (l) => l.room === undefined), await segments(o, recordingId));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
-    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
+    ...n, status: 'pending', endedAt: new Date().toISOString(), duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
     // In a call, each line keeps whoever said it; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf),
     inference: heardBy
@@ -131,28 +147,44 @@ async function queueNotes(o: Owner, db: Db, noteId: string, recordingId: string)
 
 /* ---------- finding a note: your own, or one you have access to ---------- */
 
-/** A note, the vault it lives in, and whether that vault is yours. */
-export interface Located { owner: Owner; note: Loaded<NoteManifest>; mine: boolean }
+/** A note and the vault it lives in: your own, or someone else's that you have under your address `as`. */
+export type Located =
+  | { owner: Owner; note: Loaded<NoteManifest>; mine: true }
+  | { owner: Owner; note: Loaded<NoteManifest>; mine: false; as: string };
 const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
 
-async function myIndex(o: Owner): Promise<Uint8Array> { return emailIndex(o, (await profile(o)).email); }
+/** The IDs of every note this person has, their own and ones shared with them, without opening any vault. */
+export async function heldNoteIds(o: Owner): Promise<Set<string>> {
+  const Id = z.object({ id: z.string() });
+  const own = await rows(o.pool, Id, `SELECT item_id AS id FROM items WHERE owner_id = $1 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId]);
+  const shared = await rows(o.pool, Id, 'SELECT note_item_id AS id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [emailIndex(o, await myEmail(o)), o.ownerId]);
+  return new Set([...own, ...shared].map((r) => r.id));
+}
+
+/** The address someone has other people's notes under: their profile's, which follows their sign-in. */
+export const myEmail = async (o: Owner): Promise<string> => (await profile(o)).email;
 
 /**
- * Every note someone else gave you, by invitation or by sharing it with you: each found by your
- * email's index right now. Each organizer's keys are opened once, however many of their notes you have.
+ * Every note someone else gave you, by invitation or by sharing it with you: each found by the index of
+ * your address `as` right now. Each organizer's keys are opened once, however many of their notes you have.
  */
-export async function sharedWithMe(o: Owner): Promise<Located[]> {
-  const access = await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [await myIndex(o), o.ownerId]);
-  const owners = new Map<string, Owner>();
+export async function sharedWithMe(o: Owner, as: string): Promise<Located[]> {
+  const access = await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [emailIndex(o, as), o.ownerId]);
+  const owners = new Map<string, Owner | undefined>();
   const out: Located[] = [];
   for (const a of access) {
-    const owner = owners.get(a.owner_id) ?? await openOwner(o, a.owner_id, undefined);
+    const owner = owners.has(a.owner_id) ? owners.get(a.owner_id) : await findOwner(o, a.owner_id, undefined);
     owners.set(a.owner_id, owner);
-    // Deleted since its access row was read: it's gone, not an error.
-    const note = await findItem(owner, owner.pool, 'note', a.note_item_id, NoteManifest);
-    if (note) out.push({ owner, note, mine: false });
+    // Deleted since its row was read, on its own or with its organizer's account: nobody has it any more.
+    const note = owner && await findItem(owner, owner.pool, 'note', a.note_item_id, NoteManifest);
+    if (owner && note) out.push({ owner, note, mine: false, as });
   }
   return out;
+}
+/** Every note this person has: their own, and other people's they have under their address `as`. */
+async function everyNote(o: Owner, as: string): Promise<Located[]> {
+  const own = (await listItems(o, o.pool, 'note', NoteManifest)).map((note): Located => ({ owner: o, note, mine: true }));
+  return [...own, ...await sharedWithMe(o, as)];
 }
 
 /**
@@ -171,43 +203,78 @@ export async function goneSince(o: Owner, found: Located[]): Promise<number> {
     ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM note_access a
         JOIN unnest($2::text[], $3::text[]) AS t(owner_id, note_item_id) ON a.owner_id = t.owner_id AND a.note_item_id = t.note_item_id
         JOIN items i ON i.owner_id = a.owner_id AND i.item_id = a.note_item_id AND i.deleted_at IS NULL
-        WHERE a.email_index = $1`, [await myIndex(o), theirs.map((l) => l.owner.ownerId), theirs.map((l) => l.note.itemId)]))?.n ?? 0
+        WHERE a.email_index = $1`, [emailIndex(o, await myEmail(o)), theirs.map((l) => l.owner.ownerId), theirs.map((l) => l.note.itemId)]))?.n ?? 0
     : 0;
   return found.length - ownLeft - givenLeft;
 }
 async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const own = await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId, id]);
   if (own) return { owner: o, note: await getItem(o, db, 'note', id, NoteManifest, 'Those notes'), mine: true };
-  const a = await maybeOne(db, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE note_item_id = $1 AND email_index = $2', [id, await myIndex(o)]);
-  if (!a) throw notFound('Those notes', { noteId: id });
-  const owner = await openOwner(o, a.owner_id, undefined, db);
-  return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false };
+  const as = await myEmail(o);
+  const a = await maybeOne(db, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE note_item_id = $1 AND email_index = $2', [id, emailIndex(o, as)]);
+  // No access, or access whose organizer deleted their account since it was read: not found, either way.
+  const owner = a && await findOwner(o, a.owner_id, undefined, db);
+  if (!owner) throw notFound('Those notes', { noteId: id });
+  return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, as };
 }
 
-async function recipients(owner: Owner, m: NoteManifest): Promise<Recipient[]> {
+const Holder = z.object({ email_index: bytea });
+/** Everyone who has the organizer's note now, besides the organizer, by the keyed hash of their address. */
+async function holders(owner: Owner, db: Db, noteId: string): Promise<Set<string>> {
+  const found = await rows(db, Holder, 'SELECT email_index FROM note_access WHERE owner_id = $1 AND note_item_id = $2', [owner.ownerId, noteId]);
+  return new Set(found.map((r) => b64u(r.email_index)));
+}
+
+/** Who shared a note on, as everyone sees them: the organizer as they are now, anyone else as they were when they shared it. */
+const sharerOf = (s: Sharer, organizer: Person): Person => (s.id === organizer.id ? organizer : { ...personOf(s.email, s.name), id: s.id });
+
+/**
+ * Everyone who has a note, organizer first; then the people invited to its call (all of them while
+ * it records, since they get it when it ends); then the people it was shared with, in the order they
+ * got it, each with who shared it, the group's name and when. Whoever has since removed it from
+ * their notes no longer has it, so isn't listed.
+ */
+async function recipients(l: Located, organizer: Person): Promise<Recipient[]> {
+  const m = l.note.manifest;
+  const holding = await holders(l.owner, l.owner.pool, l.note.itemId);
+  const holds = (email: string) => holding.has(b64u(emailIndex(l.owner, email)));
+  // Someone invited who removed the notes and was given them again has them as shared now.
+  const sharedTo = new Set(m.shared.map((s) => s.email));
   return [
-    { person: await me(owner), role: 'organizer' },
-    ...m.invited.map((e): Recipient => ({ person: personOf(e), role: 'invited' })),
-    ...m.shared.map((e): Recipient => ({ person: personOf(e), role: 'shared' }))
+    { person: organizer, role: 'organizer' },
+    ...m.invited.filter((e) => !sharedTo.has(e) && (m.status === 'recording' || holds(e)))
+      .map((e): Recipient => ({ person: personOf(e), role: 'invited', ...(m.endedAt ? { at: m.endedAt } : {}) })),
+    ...m.shared.filter((s) => holds(s.email))
+      .map((s): Recipient => ({ person: personOf(s.email), role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), at: s.at }))
   ];
 }
 
-async function summary(l: Located): Promise<NoteSummary> {
+/** How someone came to have a note that isn't theirs, from the address they have it under. */
+export function receivedBy(m: NoteManifest, as: string, organizer: Person): Received {
+  const s = m.shared.find((x) => same(x.email, as));
+  if (s) return { role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), at: s.at };
+  // Everyone else who has it was invited to the call, and got it when the call ended.
+  return { role: 'invited', by: organizer, at: m.endedAt ?? m.startedAt };
+}
+
+function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary {
   const m = l.note.manifest;
-  const organizer = await me(l.owner);
   return {
     id: l.note.itemId, kind: m.kind, status: m.status, title: m.title, startedAt: m.startedAt, duration: m.duration,
-    people: (await recipients(l.owner, m)).map((r) => r.person),
+    people: who.map((r) => r.person),
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: m.actions.filter((a) => !a.done).length, totalActions: m.actions.length,
-    ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { from: organizer })
+    ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) })
   };
+}
+async function summary(l: Located): Promise<NoteSummary> {
+  const organizer = await me(l.owner);
+  return summaryOf(l, organizer, await recipients(l, organizer));
 }
 
 export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]> {
   const text = q.text?.trim().toLowerCase();
-  const own: Located[] = (await listItems(o, o.pool, 'note', NoteManifest)).map((note) => ({ owner: o, note, mine: true }));
-  const all = [...own, ...await sharedWithMe(o)]
+  const all = (await everyNote(o, await myEmail(o)))
     .filter((l) => {
       const m = l.note.manifest;
       return (!q.kind || m.kind === q.kind) && (!text || `${m.title} ${m.summary} ${(m.transcript ?? []).map((t) => t.text).join(' ')}`.toLowerCase().includes(text));
@@ -223,9 +290,11 @@ export async function seriesOf(l: Located): Promise<string | undefined> {
 export async function get(o: Owner, id: string): Promise<Note> {
   const l = await locate(o, id);
   const m = l.note.manifest;
+  const organizer = await me(l.owner);
+  const who = await recipients(l, organizer);
   const seriesId = await seriesOf(l);
   return {
-    ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
+    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: m.transcript, writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
@@ -283,7 +352,7 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
   if (!m.transcript?.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
   const t0 = performance.now();
-  const parts = await answer(o.cfg, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
+  const parts = await answer(o.cfg, id, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
   const ms = Math.round(performance.now() - t0);
   if (await goneSince(o, [l])) {
     throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
@@ -291,12 +360,63 @@ export async function ask(o: Owner, id: string, question: string): Promise<Answe
   nlog.info('question answered', { noteId: id, mine: l.mine, cites: parts.length - 1, ms });
   return parts;
 }
-export async function openActions(o: Owner): Promise<OpenAction[]> {
-  return (await listItems(o, o.pool, 'note', NoteManifest)).flatMap((n) => n.manifest.actions.filter((a) => !a.done).map((a) => ({ ...a, noteId: n.itemId, noteTitle: n.manifest.title })));
-}
-/* ---------- confirming what the notes say ---------- */
 
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const NOTHING_TO_ASK = 'You don’t have any notes to answer from yet.';
+const NOT_WRITTEN = 'Your notes aren’t written yet. Ask again once they’re ready.';
+/**
+ * Answers a question from every note this person has, their own and ones shared with them: the ones
+ * written with a transcript (modules/drafting.ts chooses which go). Without any, it says so, and
+ * nothing goes to the notes model. The answer goes only if they still have every note it read once
+ * it's written: it may quote any of them.
+ */
+export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> {
+  const all = await everyNote(o, await myEmail(o));
+  const ready = all.filter((l) => l.note.manifest.status === 'ready' && (l.note.manifest.transcript?.length ?? 0) > 0);
+  if (!ready.length) {
+    const writing = all.some((l) => l.note.manifest.status !== 'ready');
+    nlog.info('asked across notes with nothing to answer from', { notes: all.length, writing });
+    return [{ type: 'text', text: writing ? NOT_WRITTEN : NOTHING_TO_ASK }];
+  }
+  // Each vault's owner organized all of their notes here, so each is read once.
+  const people = new Map<string, Promise<Person>>();
+  const person = (owner: Owner): Promise<Person> => {
+    const p = people.get(owner.ownerId) ?? me(owner);
+    people.set(owner.ownerId, p);
+    return p;
+  };
+  const notes = await Promise.all(ready.map(async ({ owner, note }): Promise<NoteBrief> => {
+    const m = note.manifest;
+    return { id: note.itemId, startedAt: m.startedAt, decisions: m.decisions, actions: m.actions, brief: briefOf(m, await person(owner), m.invited.map((e) => personOf(e))) };
+  }));
+  const t0 = performance.now();
+  const { parts, sent, lines } = await answerFromNotes(o.cfg, notes, await person(o), question);
+  const ms = Math.round(performance.now() - t0);
+  // Writing it can take up to a minute. A note deleted or taken away meanwhile must not show through the answer.
+  if (await goneSince(o, ready.filter((l) => sent.includes(l.note.itemId)))) {
+    throw new ConflictError('Notes it read were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.', { context: { notes: sent.length, ms } });
+  }
+  nlog.info('question answered across notes', { notes: all.length, ready: ready.length, sent: sent.length, lines, cites: parts.length - 1, ms });
+  return parts;
+}
+/**
+ * What waits on this person across every note they have, their own and ones shared with them, newest
+ * note first: follow-ups that are theirs and not done, and decisions in written notes nobody has
+ * confirmed or rejected. Notes they removed aren't theirs any more, so nothing from them is listed.
+ */
+export async function inbox(o: Owner): Promise<Inbox> {
+  const email = await myEmail(o);
+  const all = await everyNote(o, email);
+  all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
+  const from = (l: Located) => ({ noteId: l.note.itemId, noteTitle: l.note.manifest.title, noteStartedAt: l.note.manifest.startedAt });
+  return {
+    followUps: all.flatMap((l) => l.note.manifest.actions
+      .filter((a) => !a.done && a.owner?.person && same(a.owner.person.email, email)).map((a): OpenAction => ({ ...a, ...from(l) }))),
+    decisions: all.filter((l) => l.note.manifest.status === 'ready')
+      .flatMap((l) => l.note.manifest.decisions.filter((d) => d.state === 'proposed').map((d): PendingDecision => ({ ...d, ...from(l) })))
+  };
+}
+
+/* ---------- confirming what the notes say ---------- */
 
 /** A note that's written, located for someone who has it, and who they are for its history. */
 async function writtenNote(o: Owner, noteId: string) {
@@ -359,45 +479,50 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
   const { owner, by, at } = await writtenNote(o, noteId);
   const organizer = await me(owner);
   let made: Change['what'][] = [];
-  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
-    const a = n.actions.find((x) => x.id === actionId);
-    if (!a) throw new NotFoundError('That follow-up doesn’t exist.', { context: { noteId, actionId } });
-    const changes = [...a.changes];
-    let next: ActionItem = a;
-    if (patch.text !== undefined && patch.text !== a.text) { changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text }); next = { ...next, text: patch.text }; }
-    if (patch.owner === null && next.owner) {
-      changes.push({ by, at, what: 'reassigned', before: next.owner.name });
-      const { owner: _gone, ...rest } = next;
-      void _gone;
-      next = { ...rest, takenOn: false };
-    } else if (typeof patch.owner === 'string' && !(next.owner?.person && same(next.owner.person.email, patch.owner))) {
-      const email = patch.owner;
-      // Follow-ups go to people who have the notes, so whoever it's for can see it.
-      if (![organizer.email, ...n.invited, ...n.shared].some((e) => same(e, email))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context: { noteId, actionId } });
-      const person = same(email, organizer.email) ? organizer : personOf(email);
-      const name = nameOf(person);
-      // Giving it to yourself is taking it on; anyone else has to say yes themselves.
-      const self = same(email, by.email);
-      changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: name });
-      next = { ...next, owner: { name, person }, takenOn: self };
-    }
-    if (patch.takeOn) {
-      if (!next.owner?.person || !same(next.owner.person.email, by.email)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context: { noteId, actionId } });
-      if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
-    }
-    if (patch.due !== undefined) {
-      const due = patch.due || undefined;
-      if (due !== next.due) {
-        changes.push({ by, at, what: 'due', ...(next.due ? { before: next.due } : {}), ...(due ? { after: due } : {}) });
-        const { due: _old, ...rest } = next;
-        void _old;
-        next = due ? { ...rest, due } : rest;
+  await tx(owner.pool, async (c) => {
+    // Who has the notes, read under the note's lock as the change is made: someone who removed them isn't given a follow-up.
+    await lockItem(owner, c, noteId);
+    const holding = await holders(owner, c, noteId);
+    await updateNote(owner, c, noteId, (n) => {
+      const a = n.actions.find((x) => x.id === actionId);
+      if (!a) throw new NotFoundError('That follow-up doesn’t exist.', { context: { noteId, actionId } });
+      const changes = [...a.changes];
+      let next: ActionItem = a;
+      if (patch.text !== undefined && patch.text !== a.text) { changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text }); next = { ...next, text: patch.text }; }
+      if (patch.owner === null && next.owner) {
+        changes.push({ by, at, what: 'reassigned', before: next.owner.name });
+        const { owner: _gone, ...rest } = next;
+        void _gone;
+        next = { ...rest, takenOn: false };
+      } else if (typeof patch.owner === 'string' && !(next.owner?.person && same(next.owner.person.email, patch.owner))) {
+        const email = patch.owner;
+        // Follow-ups go to people who have the notes now, so whoever it's for can see it.
+        if (!same(email, organizer.email) && !holding.has(b64u(emailIndex(owner, email)))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context: { noteId, actionId } });
+        const person = same(email, organizer.email) ? organizer : personOf(email);
+        const name = nameOf(person);
+        // Giving it to yourself is taking it on; anyone else has to say yes themselves.
+        const self = same(email, by.email);
+        changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: name });
+        next = { ...next, owner: { name, person }, takenOn: self };
       }
-    }
-    if (patch.done !== undefined && patch.done !== next.done) { changes.push({ by, at, what: patch.done ? 'done' : 'undone' }); next = { ...next, done: patch.done }; }
-    made = changes.slice(a.changes.length).map((x) => x.what);
-    return made.length ? { ...n, actions: n.actions.map((x) => (x.id === actionId ? { ...next, changes } : x)) } : n;
-  }));
+      if (patch.takeOn) {
+        if (!next.owner?.person || !same(next.owner.person.email, by.email)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context: { noteId, actionId } });
+        if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
+      }
+      if (patch.due !== undefined) {
+        const due = patch.due || undefined;
+        if (due !== next.due) {
+          changes.push({ by, at, what: 'due', ...(next.due ? { before: next.due } : {}), ...(due ? { after: due } : {}) });
+          const { due: _old, ...rest } = next;
+          void _old;
+          next = due ? { ...rest, due } : rest;
+        }
+      }
+      if (patch.done !== undefined && patch.done !== next.done) { changes.push({ by, at, what: patch.done ? 'done' : 'undone' }); next = { ...next, done: patch.done }; }
+      made = changes.slice(a.changes.length).map((x) => x.what);
+      return made.length ? { ...n, actions: n.actions.map((x) => (x.id === actionId ? { ...next, changes } : x)) } : n;
+    });
+  });
   nlog.info('follow-up changed', { noteId, actionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
   return get(o, noteId);
 }
@@ -514,58 +639,76 @@ export async function rewrite(o: Owner, noteId: string): Promise<Note> {
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-/** Shares the notes with more people. Anyone who has the notes can share them on. */
-export async function share(o: Owner, id: string, emails: string[]): Promise<Note> {
+/**
+ * Shares the notes with more people: by address, or with one of the sharer's groups (its addresses,
+ * and its name for everyone it reaches to see). Anyone who has the notes can share them on. People
+ * who have them already are skipped; someone who removed them gets them again.
+ */
+export async function share(o: Owner, id: string, to: { emails: string[]; group?: string | undefined }): Promise<Note> {
   const { owner, note } = await locate(o, id);
   if (note.manifest.status === 'recording') throw new ValidationError('These notes can be shared once the call ends.', { context: { noteId: id } });
-  const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()))];
+  const wanted = [...new Set(to.emails.map((e) => e.trim().toLowerCase()))];
   if (!wanted.length || wanted.some((e) => !EMAIL.test(e))) throw new ValidationError('Share by full email address.', { context: { noteId: id, emails: wanted.length } });
-  const organizer = (await profile(owner)).email;
+  const sharer = await profile(o);
+  const by: Sharer = { id: o.ownerId, name: sharer.name, email: sharer.email };
+  const organizer = owner.ownerId === o.ownerId ? sharer.email : (await profile(owner)).email;
+  const at = new Date().toISOString();
   const added = await tx(owner.pool, async (c) => {
-    let fresh: string[] = [];
-    await updateNote(owner, c, id, (n) => {
-      const has = new Set([organizer, ...n.invited, ...n.shared]);
-      fresh = wanted.filter((e) => !has.has(e));
-      return { ...n, shared: [...n.shared, ...fresh] };
-    });
-    await grant(owner, c, id, fresh, 'shared');
-    return fresh.length;
+    // Who has the notes, read under the note's lock: two shares at once can't both add someone.
+    await lockItem(owner, c, id);
+    const holding = await holders(owner, c, id);
+    const fresh = new Set(wanted.filter((e) => !same(e, organizer) && !holding.has(b64u(emailIndex(owner, e)))));
+    if (!fresh.size) return 0;
+    const given = [...fresh].map((email): SharedWith => ({ email, by, ...(to.group ? { group: to.group } : {}), at }));
+    // Someone given the notes again, after removing them, is listed once: as they have them now.
+    await updateNote(owner, c, id, (n) => ({ ...n, shared: [...n.shared.filter((s) => !fresh.has(s.email)), ...given] }));
+    await grant(owner, c, id, [...fresh], 'shared');
+    return fresh.size;
   });
-  nlog.info('notes shared', { noteId: id, added, byOrganizer: owner.ownerId === o.ownerId });
+  nlog.info('notes shared', { noteId: id, asked: wanted.length, added, toGroup: to.group !== undefined, byOrganizer: owner.ownerId === o.ownerId });
   return get(o, id);
 }
 
 /**
- * Deletes your own note for good: every revision, its recording and pieces, its shared-screen frames,
- * its jobs, everyone's access, the link from its meeting, and this owner's operation receipts (which
- * may hold copies of responses). Objects are deleted after the commit; failures are retried by
- * maintenance. Someone else's note is only removed from your notes.
+ * Deletes your own note for everyone (deleteOwnNote), its audio and shared-screen objects after the
+ * commit, and your pin to it. Someone else's note is only removed from your notes.
  */
 export async function remove(o: Owner, id: string): Promise<void> {
   const l = await locate(o, id);
   if (!l.mine) {
-    await exec(o.pool, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, await myIndex(o)]);
+    await exec(o.pool, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, emailIndex(o, l.as)]);
+    await unpin(o, id);
     nlog.info('shared note removed from my notes', { noteId: id });
     return;
   }
-  const recordingId = l.note.manifest.recordingId;
-  const objects = await tx(o.pool, async (c) => {
-    // The note's row first, as the notes worker takes it: deleting while its notes are being written waits instead of deadlocking.
-    await lockItem(o, c, id);
-    const audio = await recordingObjects(o, c, recordingId);
-    const frames = await screens.frameObjects(o, c, id);
-    const objs = { ids: [...audio.ids, ...frames.ids], bytes: audio.bytes + frames.bytes };
-    await exec(c, `DELETE FROM content_jobs WHERE owner_id = $1 AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [o.ownerId, id]);
-    for (const m of (await listItems(o, c, 'meeting', MeetingManifest)).filter((x) => x.manifest.noteId === id)) {
-      const { noteId: _drop, ...rest } = m.manifest;
-      void _drop;
-      await saveRevision(o, c, m.itemId, m.revisionId, rest);
-    }
-    await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
-    if (objs.bytes) await exec(c, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, objs.bytes]);
-    await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
-    return { ids: objs.ids, frames: frames.ids.length };
-  });
-  await queueDelete(o, objects.ids);
-  nlog.info('note deleted', { noteId: id, recordingId, objects: objects.ids.length, frames: objects.frames });
+  const { ids, frames } = await tx(o.pool, (c) => deleteOwnNote(o, c, id));
+  await queueDelete(o, ids);
+  await unpin(o, id);
+  nlog.info('note deleted', { noteId: id, recordingId: l.note.manifest.recordingId, objects: ids.length, frames });
+}
+
+/**
+ * Deletes one of this owner's notes for good, in the caller's transaction: every revision, its
+ * recording and pieces, its shared-screen frames, its jobs, everyone's access, the link from its
+ * meeting, and this owner's operation receipts (which may hold copies of responses); stored bytes go
+ * down to match. Returns the audio and frame objects, for the caller to delete once the transaction
+ * commits (failures are retried by maintenance), and how many of them were frames. Deleting a whole
+ * account deletes each of its notes this way.
+ */
+export async function deleteOwnNote(o: Owner, db: Db, id: string): Promise<{ ids: string[]; frames: number }> {
+  // The note's row first, as the notes worker takes it: deleting while its notes are being written waits instead of deadlocking.
+  await lockItem(o, db, id);
+  const audio = await noteObjects(o, db, id);
+  const shown = await screens.frameObjects(o, db, id);
+  const bytes = audio.bytes + shown.bytes;
+  await exec(db, `DELETE FROM content_jobs WHERE owner_id = $1 AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [o.ownerId, id]);
+  for (const m of (await listItems(o, db, 'meeting', MeetingManifest)).filter((x) => x.manifest.noteId === id)) {
+    const { noteId: _drop, ...rest } = m.manifest;
+    void _drop;
+    await saveRevision(o, db, m.itemId, m.revisionId, rest);
+  }
+  await exec(db, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
+  if (bytes) await exec(db, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, bytes]);
+  await exec(db, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
+  return { ids: [...audio.ids, ...shown.ids], frames: shown.ids.length };
 }

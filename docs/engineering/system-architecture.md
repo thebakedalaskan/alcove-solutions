@@ -43,7 +43,7 @@ flowchart TB
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/web` | The app: welcome and sign-in, a new account's creation screen and the tour of Home (`src/features/onboarding`; whether the tour was seen is kept in this browser per account, `alcove.tour.<ownerId>`, parsed with `HomeTourSchema`), Home (Alcove's calls beside Google Calendar events), the new-call and change-call composer, pre-join, the full-screen call with its live transcript (your view of it is kept in this browser: preferences per account, `alcove.callView.<ownerId>` with `CallViewPrefsSchema`, and the arrangement of the call you're in per tab until you leave, `alcove.callLayout.<callId>` with `CallLayoutSchema`), notes, the room recorder, account. Talks only to `@alcove/api` through `src/lib/api.ts`. |
+| `apps/web` | The app: welcome and sign-in, a new account's creation screen and the tour of Home (`src/features/onboarding`; whether the tour was seen is kept in this browser per account, `alcove.tour.<ownerId>`, parsed with `HomeTourSchema`); the frame around its pages (`src/features/shell`: the side panel, the palette that finds notes and asks them, the menu under your name, and on phones a top bar and a tab bar); Home (Alcove's calls beside Google Calendar events), the new-call and change-call composer, pre-join, the full-screen call with its live transcript (your view of it is kept in this browser: preferences per account, `alcove.callView.<ownerId>` with `CallViewPrefsSchema`, and the arrangement of the call you're in per tab until you leave, `alcove.callLayout.<callId>` with `CallLayoutSchema`), notes, the room recorder, account. Talks only to `@alcove/api` through `src/lib/api.ts`. |
 | `apps/api` | The API (`@alcove/server`): Hono on Node, raw SQL via `pg` with zod-parsed rows, crypto via `@noble/ciphers` and `@noble/hashes`, objects via the S3 client, Google ID tokens via `jose`, logs via pino. |
 | `packages/api` | The contract: domain types as zod schemas, the `AlcoveApi` interface, live-session interfaces, wire shapes. |
 | `packages/api-http` | The browser client: REST, NDJSON streams, raw audio and speech uploads, live call and recording sessions. |
@@ -96,7 +96,7 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | Audio piece | At most 2 MiB (a larger `content-length` is refused before the body is read); WebM, MP4 or Ogg audio; 5-second timeslices |
 | Transcript clip | 16 kHz mono 16-bit WAV, at most 30 seconds (960,044 bytes); 240 a minute per account, 40 for each voice in a call |
 | Live transcript | The latest 200 lines in a call's or room recording's state |
-| Asking | Questions of 1 to 500 characters; 20 a minute per account |
+| Asking | Questions of 1 to 500 characters; 20 a minute per account, about one note or across notes. Across notes, at most 12 notes and 120,000 characters of them are sent, and an answer cites at most six places |
 | Notes job | Three attempts, a 180-second lease, retries 20 and 90 seconds after a failure; at most 120,000 characters of transcript sent |
 | Calendar | Events from an hour ago to a week ahead, at most 100 |
 | Meeting | 5 to 600 minutes, at most 100 people invited; a call started now is set to an hour |

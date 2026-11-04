@@ -22,6 +22,8 @@ const ART: Identity = {
   photoUrl: '/people/art-vandelay.jpg',
   sample: true
 };
+/** Whether this is the one shared demo account (Art Vandelay), which everyone who tries the demo signs in to. */
+export const isSharedDemo = (p: { sample: boolean; email: string }): boolean => p.sample && p.email.toLowerCase() === ART.email;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** Domains that can't belong to anyone (RFC 2606 and RFC 6761), and the demo company's. */
 const DEMO_DOMAIN = /(?:^|\.)(?:example|test|invalid|localhost)$|(?:^|\.)example\.(?:com|net|org)$|^vandelay\.industries$/;
@@ -41,7 +43,7 @@ export const COMPANY = { name: 'Vandelay Industries', domain: 'vandelay.industri
 /** The company directory a work account at Vandelay Industries can see. */
 export const inCompany = (email: string) => email.endsWith(`@${COMPANY.domain}`);
 
-export interface Contact { name: string; email: string; onAlcove: boolean; portrait: PortraitStyle }
+export interface Contact { name: string; title?: string; email: string; onAlcove: boolean; portrait: PortraitStyle }
 
 const ROOM = {
   warm: ['#EADFF0', '#CDBEDD', '#FFF1DE'], peri: ['#D4DBF3', '#AEB8DF', '#E8ECFB'], rose: ['#F0D5E1', '#D6AEC3', '#F8EEF3'], dusk: ['#CEC6EA', '#A79BD2', '#F5EEFB'],
@@ -50,10 +52,10 @@ const ROOM = {
 
 /** Colleagues, as a company directory would list them. Theo and Kofi already use Alcove. */
 export const TEAM: readonly Contact[] = [
-  { name: 'Theo Martin', email: 'theo@vandelay.industries', onAlcove: true, portrait: { skin: '#E8C2A0', hair: '#5B3B25', style: 'short', shirt: '#2E3A8C', bg: '#D5DEFF', beard: true, room: [...ROOM.peri] } },
-  { name: 'Kofi Asante', email: 'kofi@vandelay.industries', onAlcove: true, portrait: { skin: '#7B4F35', hair: '#141010', style: 'buzz', shirt: '#3D35A8', bg: '#FFE1C4', glasses: true, room: [...ROOM.dusk] } },
-  { name: 'Sam Ortiz', email: 'sam@vandelay.industries', onAlcove: false, portrait: { skin: '#DDB08B', hair: '#2B2019', style: 'wavy', shirt: '#C2577A', bg: '#FCDCD5', room: [...ROOM.peach] } },
-  { name: 'Lena Fischer', email: 'lena@vandelay.industries', onAlcove: false, portrait: { skin: '#F0CDB0', hair: '#9A5A2E', style: 'bob', shirt: '#4A5A9C', bg: '#DCE3FB', room: [...ROOM.peri] } }
+  { name: 'Theo Martin', title: 'Engineering', email: 'theo@vandelay.industries', onAlcove: true, portrait: { skin: '#E8C2A0', hair: '#5B3B25', style: 'short', shirt: '#2E3A8C', bg: '#D5DEFF', beard: true, room: [...ROOM.peri] } },
+  { name: 'Kofi Asante', title: 'Design lead', email: 'kofi@vandelay.industries', onAlcove: true, portrait: { skin: '#7B4F35', hair: '#141010', style: 'buzz', shirt: '#3D35A8', bg: '#FFE1C4', glasses: true, room: [...ROOM.dusk] } },
+  { name: 'Sam Ortiz', title: 'Product design', email: 'sam@vandelay.industries', onAlcove: false, portrait: { skin: '#DDB08B', hair: '#2B2019', style: 'wavy', shirt: '#C2577A', bg: '#FCDCD5', room: [...ROOM.peach] } },
+  { name: 'Lena Fischer', title: 'Research', email: 'lena@vandelay.industries', onAlcove: false, portrait: { skin: '#F0CDB0', hair: '#9A5A2E', style: 'bob', shirt: '#4A5A9C', bg: '#DCE3FB', room: [...ROOM.peri] } }
 ];
 
 /** People outside the company Art has had calls with, as his calendar would show them. */

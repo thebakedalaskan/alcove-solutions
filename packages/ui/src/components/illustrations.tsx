@@ -1,11 +1,14 @@
 /* Illustrations, drawn from the tokens. */
 import { useId } from 'react';
 
-/** The empty arch with the sun low behind the horizon: for lists with nothing in them yet. */
-export function EmptyArch({ width = 66 }: { width?: number }) {
+/**
+ * The empty arch with the sun low behind the horizon: for lists with nothing in them yet. `size` is its
+ * width in px (66 in an EmptyState); the height follows.
+ */
+export function EmptyArch({ size = 66 }: { size?: number | undefined }) {
   const id = useId().replace(/:/g, '');
   return (
-    <svg className="ac-arch-art" width={width} height={(width * 74) / 66} viewBox="0 0 66 74" aria-hidden="true">
+    <svg className="ac-arch-art" width={size} height={(size * 74) / 66} viewBox="0 0 66 74" aria-hidden="true">
       <defs><clipPath id={`${id}ea`}><path d="M7 70V32a26 26 0 0 1 52 0v38z" /></clipPath></defs>
       <path className="well" d="M7 70V32a26 26 0 0 1 52 0v38z" />
       <g clipPath={`url(#${id}ea)`}><circle className="sun" cx="33" cy="56" r="11" /><rect className="land" x="0" y="56" width="66" height="20" /></g>

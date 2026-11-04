@@ -90,6 +90,16 @@ export function Avatar({ person, size = 32, className, style }: { person: Avatar
   );
 }
 
+/**
+ * An empty arch where a person will be: a dashed outline the size and shape of an Avatar of the same
+ * `size`, for the people who aren't here yet beside the ones who are. It shows the first letter of
+ * `initial` (a name or an address), or "+n" for `more` people. Decoration: the words next to it say who.
+ */
+export function GhostArch({ size = 44, initial, more, className }: { size?: number | undefined; initial?: string | undefined; more?: number | undefined; className?: string | undefined }) {
+  const text = more !== undefined ? `+${more}` : initial?.trim().charAt(0).toUpperCase();
+  return <span aria-hidden="true" className={cn('ac-ghost', more !== undefined && 'is-more', className)} style={{ '--size': `${size}px` }}>{text}</span>;
+}
+
 /** Overlapping arches, each 6px over the last, with "+n" when there are more than `max`. */
 export function Faces({ people, size = 28, max = 4, className }: { people: AvatarPerson[]; size?: number; max?: number; className?: string }) {
   const shown = people.slice(0, max);

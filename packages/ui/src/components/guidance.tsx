@@ -33,7 +33,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const lerp = (a: number, b: number, p: number) => a + (b - a) * p;
 const EDGE = 16;
 const GAP = 58;
-/** Below this width the card is a sheet along the bottom. */
+/** Below this width the card is a sheet along the bottom (above what it's about, when that's along the bottom too). */
 const SHEET = 640;
 
 /** Whether something stays put when the page scrolls (a sticky sidebar, a fixed bar). */
@@ -121,7 +121,7 @@ const onButton = (t: EventTarget | null) => t instanceof Element && !!t.closest(
  * The tour: one card, one idea per slide, that travels to the real thing it's about. The page dims
  * around a cut-out of the target, a ring marks it and an arrow runs from the card to it. The card
  * picks a side it fits on and follows the target when the window changes; below 640px it's a sheet
- * along the bottom. Arrow keys and Enter move through it, Escape closes it, and focus stays in the
+ * along the bottom, or just above the target when that's down there too (a tab bar), so it stays in sight. Arrow keys and Enter move through it, Escape closes it, and focus stays in the
  * card. Skippable on every slide. `onClose(true)` when the last slide's button was pressed.
  */
 export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: (finished: boolean) => void }) {
@@ -185,8 +185,12 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
       }
     }
     const t = spotFor(el, dy);
+    // A target along the bottom (a tab bar) would be under the sheet: the sheet stands above it, pointing down.
+    const lifted = sheet && t.y + t.h > vh - ch;
+    root.current?.classList.toggle('is-lifted', lifted);
     let p: Placement;
-    if (sheet) p = { side: 'sheet', x: 0, y: vh - ch };
+    if (lifted) p = { side: 'above', x: 0, y: Math.max(EDGE, t.y - ch - GAP) };
+    else if (sheet) p = { side: 'sheet', x: 0, y: vh - ch };
     else {
       p = place(t, cw, ch, s.prefer);
       if (!fixed && p.side !== 'right' && p.side !== 'left' && (p.y < EDGE || p.y + ch > vh - EDGE)) p.y = clamp(p.y, EDGE, vh - ch - EDGE);

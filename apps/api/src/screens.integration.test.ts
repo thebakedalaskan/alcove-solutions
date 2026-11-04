@@ -78,9 +78,10 @@ const audio = (segment: number, s: number): AudioPiece => {
   const src = Buffer.concat([Buffer.from('audio'), randomBytes(1024)]);
   const bytes = new Uint8Array(new ArrayBuffer(src.length));
   bytes.set(src);
-  return { data: new Blob([bytes]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
+  return { data: new Blob([bytes]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
 };
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** A clip of speech, starting `atMs` milliseconds into its segment. */
+const speech = (words: string, segment: number, atMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms });
 let salt = 0;
 /** A frame of a share showing `shown` (nothing legible without it), taken now unless said otherwise. Each is a different image. */
 const frameOf = (share: string, shown: ScreenShown | null, o: { takenAt?: number; jpeg?: Uint8Array<ArrayBuffer> } = {}): ScreenFrame =>
@@ -465,7 +466,7 @@ describe('shared screens in the notes', () => {
     // Answers say which screen they come from.
     const parts: unknown[] = [];
     for await (const p of org.api.notes.ask(noteId, 'What did the chart show?')) parts.push(p);
-    expect(parts).toEqual([{ type: 'text', text: 'From the call: We agreed this chart is right about the W3 dip.' }, { type: 'cite', at: l1 }, { type: 'screen', id: a.id, at: a.at }]);
+    expect(parts).toEqual([{ type: 'text', text: 'From the call: We agreed this chart is right about the W3 dip.' }, { type: 'cite', noteId, at: l1 }, { type: 'screen', id: a.id, at: a.at }]);
 
     // The image is the frame Priya's browser sent, for anyone who has the notes, and nobody else.
     const image = await org.fetch(org.api.notes.screenUrl(noteId, a.id));
@@ -512,6 +513,33 @@ describe('shared screens in the notes', () => {
     // Stored bytes go down by the audio and the frames, together.
     expect(await stored()).toBe(before - audioBytes - kept.reduce((n, f) => n + Number(f.cipher_bytes), 0));
     expect((await org.fetch(org.api.notes.screenUrl(noteId, ids[0] ?? ''))).status).toBe(404);
+  });
+
+  it('deletes every frame of an account’s calls when the account is deleted, written up or still going, and closes the room of the one going', async () => {
+    const org = await account(unique('organizer'));
+    // A call whose notes are written, with what was on its shared screen...
+    const ended = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const endedShare = await screenOf(await joinRoom(ended));
+    await ended.appendAudio(audio(0, 0));
+    await ended.setScreens(true);
+    await ended.shareFrame(frameOf(endedShare, CHART));
+    await ended.transcribe(speech('We agreed this chart is right.', 0, 1000), ended.ticket.identity);
+    await written(org.api, (await ended.leave())?.pendingNoteId ?? '');
+    // ...and a call still going, with a frame of its own, in its LiveKit room.
+    const live = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const liveShare = await screenOf(await joinRoom(live));
+    await live.setScreens(true);
+    await live.shareFrame(frameOf(liveShare, CODE));
+    const kept = await frames(org.session.ownerId);
+    expect(kept).toHaveLength(2);
+    expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
+
+    await org.api.account.delete();
+    // Not a row of a frame is left, nor an image, and the call that was going is over: its room is closed, which takes everyone out.
+    expect(await frames(org.session.ownerId)).toEqual([]);
+    for (const f of kept) expect(await h.objects.get(f.object_id).then(() => 'kept', () => 'gone')).toBe('gone');
+    expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(0);
+    expect(h.logs.some((l) => l.includes('"msg":"account deleted"') && l.includes(org.session.ownerId) && l.includes('"frames":2') && l.includes('"rooms":1'))).toBe(true);
   });
 
   it('keeps frames, and what was read on them, sealed: nothing readable in rows, objects, logs or on the wire', async () => {

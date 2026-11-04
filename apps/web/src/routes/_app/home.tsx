@@ -1,5 +1,5 @@
 import { errorMessage, firstName, type CalendarEvent, type Meeting, type NoteSummary, type OpenAction, type Team } from '@alcove/api';
-import { ArchThumb, Button, CalendarRow, Card, Check, EmptyState, Faces, Icon, IconButton, Kbd, SealedBadge, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
+import { ArchThumb, Button, CalendarRow, Card, Check, EmptyState, Faces, Icon, IconButton, SealedBadge, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -14,7 +14,7 @@ import { calendarConnectUrl, q, useAdoptEvent, useInviteTeam, useUpdateAction } 
 import { daysFromToday, greeting, hm, longDay, minutesUntil, noteDay, shortDay, untilLabel } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/home')({
-  loader: ({ context: { queryClient: qc } }) => Promise.all([qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.notes()), qc.ensureQueryData(q.openActions()), qc.ensureQueryData(q.team())]),
+  loader: ({ context: { queryClient: qc } }) => Promise.all([qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.notes()), qc.ensureQueryData(q.inbox()), qc.ensureQueryData(q.team())]),
   component: Home
 });
 
@@ -30,7 +30,7 @@ function Home() {
   const upcoming = useQuery(q.upcoming()).data ?? [];
   const calendar = useQuery(q.calendar()).data;
   const notes = useQuery(q.notes()).data ?? [];
-  const actions = useQuery(q.openActions()).data ?? [];
+  const actions = useQuery(q.inbox()).data?.followUps ?? [];
   const team = useQuery(q.team()).data ?? null;
   const navigate = useNavigate();
   const now = useNow();
@@ -65,7 +65,6 @@ function Home() {
         <div><div className="date ac-eyebrow">{longDay(new Date(now))}</div><h1>{firstDay ? 'Welcome' : greeting(new Date(now))}, {first}</h1></div>
         <div className="head-end">
           <Compute />
-          {!firstDay && <button type="button" className="search-btn" onClick={() => void navigate({ to: '/notes', search: { find: true } })}><Icon name="search" size={16} />Search notes<Kbd>⌘K</Kbd></button>}
         </div>
       </div>
       <div className="home" style={{ '--d': 1 }}>

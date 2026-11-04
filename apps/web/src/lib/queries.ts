@@ -17,7 +17,7 @@ export const qk = {
   notes: ['notes'] as const,
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
-  openActions: ['notes', 'actions'] as const,
+  inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
@@ -35,6 +35,11 @@ async function checkTrust(): Promise<Trust> {
   const want = await crypto.subtle.digest('SHA-512', new TextEncoder().encode(`alcove-attestation/v1\n${nonce}\n${a.build.commit}`));
   const hex = Array.from(new Uint8Array(want), (b) => b.toString(16).padStart(2, '0')).join('');
   return { tee: 'dstack', bound: a.nonce === nonce && a.reportData.toLowerCase() === hex && a.quote.length > 0, at: Date.now() };
+}
+/** The check in words: verified only when the server's hardware answer is bound to this browser's request. */
+export function trustLine(t: Trust | undefined): string {
+  if (t?.tee !== 'dstack') return 'Confidential compute';
+  return t.bound ? 'Confidential compute · verified' : 'Confidential compute · not verified';
 }
 
 export const q = {
@@ -69,11 +74,11 @@ export const q = {
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
-  openActions: () => queryOptions({ queryKey: qk.openActions, queryFn: () => api.notes.openActions() }),
+  inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: () => api.notes.inbox() }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
-  /** Checked once a call opens, then every ten minutes. */
+  /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
   trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 })
 };
 
@@ -94,9 +99,39 @@ export function useSignOut() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); } });
 }
+/** Deletes the account for good. Every browser it was signed in on is signed out, this one included. */
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); } });
+}
 export function usePreferences() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p), onSuccess: (d) => qc.setQueryData(qk.prefs, d) });
+}
+/**
+ * Sets which notes are pinned, in the order they were pinned (at most MAX_PINS). The side panel shows the
+ * change at once. If the server refuses it, only the pins go back, so nothing else changed meanwhile is
+ * undone; a refusal because a note is gone also refreshes the notes. Either way the preferences are read again.
+ */
+export function usePins() {
+  const qc = useQueryClient();
+  const key = q.prefs().queryKey;
+  return useMutation({
+    mutationFn: (pinned: string[]) => api.account.updatePreferences({ pinned }),
+    onMutate: async (pinned) => {
+      await qc.cancelQueries({ queryKey: key });
+      const before = qc.getQueryData(key)?.pinned;
+      qc.setQueryData(key, (p) => p && { ...p, pinned });
+      return { before };
+    },
+    onError: (e, _pinned, ctx) => {
+      const before = ctx?.before;
+      if (before) qc.setQueryData(key, (p) => p && { ...p, pinned: before });
+      if (errorCode(e) === 'not-found') void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
+    },
+    onSuccess: (d) => qc.setQueryData(key, d),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: key }); }
+  });
 }
 export function useInviteTeam() {
   const qc = useQueryClient();
@@ -122,6 +157,11 @@ export function useAdoptEvent() {
 }
 /** Where the browser goes to give Alcove access to Google Calendar. */
 export const calendarConnectUrl = () => api.calendar.connectUrl();
+/** Forgets the Google connection; the calendar then asks for access again. */
+export function useDisconnectCalendar() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
+}
 export function useCancelCall() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.meetings.cancel(id), onSuccess: () => callsChanged(qc) });
@@ -153,7 +193,7 @@ export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; decisionId: string; patch: DecisionPatch }) => api.notes.updateDecision(v.noteId, v.decisionId, v.patch),
-    onSuccess: (n) => changed(qc, n)
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); }
   });
 }
 /** Says an open question was answered, reopens or rewords it; the answer is the note as it is now. */
@@ -169,7 +209,7 @@ export function useUpdateAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; actionId: string; patch: ActionPatch }) => api.notes.updateAction(v.noteId, v.actionId, v.patch),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.openActions }); }
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); }
   });
 }
 /** Corrects a transcript line's words or speaker, or says it's right as heard; the answer is the note as it is now. */
@@ -188,7 +228,7 @@ export function useRewriteNotes() {
 export function useShareNote() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; emails: string[] }) => api.notes.share(v.id, v.emails),
+    mutationFn: (v: { id: string; emails: string[] }) => api.notes.share(v.id, { emails: v.emails }),
     onSuccess: (n) => changed(qc, n)
   });
 }
@@ -198,7 +238,7 @@ export function useDeleteNote() {
     mutationFn: (id: string) => api.notes.delete(id),
     // The note itself stays cached until its page lets go of it, so the page can say what was deleted.
     onSuccess: () => {
-      for (const key of [['notes', 'list'], qk.openActions, qk.meetings, qk.allSeries]) void qc.invalidateQueries({ queryKey: key });
+      for (const key of [['notes', 'list'], qk.inbox, qk.meetings, qk.allSeries]) void qc.invalidateQueries({ queryKey: key });
     }
   });
 }

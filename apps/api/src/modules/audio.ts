@@ -18,11 +18,12 @@ const scope = (recordingId: string) => `recording:${recordingId}`;
 const header = (o: Owner, recordingId: string, segment: number, seq: number, objectId: string): RecordHeader =>
   ({ v: 1, kind: 'audio', ownerId: o.ownerId, recordingId, segment, seq, objectId, keyVersion: '1' });
 
-export async function createRecording(o: Owner, db: Db, noteItemId: string): Promise<string> {
+/** A new recording for a note, started at `startedAt`: now, or a room recording's own start when it's uploaded later. */
+export async function createRecording(o: Owner, db: Db, noteItemId: string, startedAt: Date): Promise<string> {
   const recordingId = id128();
   const krec = random(32);
   await exec(db, `INSERT INTO recordings (owner_id, recording_id, note_item_id, state, key_envelope, started_at, version)
-                  VALUES ($1,$2,$3,'recording',$4,now(),0)`, [o.ownerId, recordingId, noteItemId, sealKey(o.wrapKey, o.ownerId, scope(recordingId), krec)]);
+                  VALUES ($1,$2,$3,'recording',$4,$5,0)`, [o.ownerId, recordingId, noteItemId, sealKey(o.wrapKey, o.ownerId, scope(recordingId), krec), startedAt]);
   krec.fill(0);
   return recordingId;
 }
@@ -39,14 +40,35 @@ export async function krecOf(o: Owner, recordingId: string): Promise<{ krec: Uin
   return { krec: openKey(o.wrapKey, o.ownerId, scope(recordingId), r.key_envelope), state: r.state };
 }
 
-export interface Piece { segment: number; seq: number; durationMs: number; mimeType: string; bytes: Uint8Array }
+/** A piece from the browser: its place in the recording, where it starts in its segment (pauses not counted), and its bytes. */
+export interface Piece { segment: number; seq: number; atMs: number; durationMs: number; mimeType: string; bytes: Uint8Array }
 
-/** Encrypts, stores and verifies one piece. Re-sending the same slot is a no-op, so retries are safe. */
+/**
+ * Whether this piece is stored already. Its place (segment, seq) holds only the piece that starts
+ * where it does and lasts as long: a different piece sent to it is refused, never dropped as if it
+ * were stored.
+ */
+async function stored(o: Owner, recordingId: string, p: Piece): Promise<boolean> {
+  const there = await maybeOne(o.pool, z.object({ at_ms: z.number(), duration_ms: z.number() }),
+    'SELECT at_ms, duration_ms FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 AND seq = $4', [o.ownerId, recordingId, p.segment, p.seq]);
+  if (!there) return false;
+  if (there.at_ms !== p.atMs || there.duration_ms !== p.durationMs) {
+    throw conflict('A different piece of audio is already stored at that place in the recording.', {
+      recordingId, segment: p.segment, seq: p.seq, atMs: p.atMs, storedAtMs: there.at_ms, durationMs: p.durationMs, storedDurationMs: there.duration_ms
+    });
+  }
+  return true;
+}
+
+/**
+ * Encrypts, stores and verifies one piece. Sending a piece that's stored already is a no-op, even
+ * once the recording has paused or stopped, so retries and resumed uploads are safe.
+ */
 export async function appendPiece(o: Owner, recordingId: string, p: Piece): Promise<void> {
+  const where = { recordingId, segment: p.segment, seq: p.seq, atMs: p.atMs };
+  if (await stored(o, recordingId, p)) { alog.debug('audio piece already stored', where); return; }
   const { krec, state } = await krecOf(o, recordingId);
-  if (state !== 'recording') { krec.fill(0); throw conflict(state === 'paused' ? 'Recording is paused.' : 'This recording has already stopped.', { recordingId, state, segment: p.segment, seq: p.seq }); }
-  const exists = await maybeOne(o.pool, z.object({ seq: z.number() }), 'SELECT seq FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 AND seq = $4', [o.ownerId, recordingId, p.segment, p.seq]);
-  if (exists) { krec.fill(0); alog.debug('audio piece already stored', { recordingId, segment: p.segment, seq: p.seq }); return; }
+  if (state !== 'recording') { krec.fill(0); throw conflict(state === 'paused' ? 'Recording is paused.' : 'This recording has already stopped.', { ...where, state }); }
   const objectId = id128();
   const ct = sealRecord(krec, header(o, recordingId, p.segment, p.seq, objectId), p.bytes);
   krec.fill(0);
@@ -58,20 +80,22 @@ export async function appendPiece(o: Owner, recordingId: string, p: Piece): Prom
     throw new InternalError('The encrypted audio didn’t store correctly. It will be retried.', { context: { recordingId, objectId, segment: p.segment, seq: p.seq, wrote: ct.length, readBack: back.length } });
   }
   try {
-    const inserted = await exec(o.pool, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
-                                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, objectId, digest, ct.length, p.durationMs, p.mimeType]);
+    const inserted = await exec(o.pool, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, at_ms, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
+                                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, p.atMs, objectId, digest, ct.length, p.durationMs, p.mimeType]);
     if (inserted === 1) {
       await exec(o.pool, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
-      alog.debug('audio piece stored', { recordingId, segment: p.segment, seq: p.seq, bytes: ct.length, durationMs: p.durationMs });
-    } else {
-      alog.info('audio piece raced a retry; dropping the duplicate', { recordingId, segment: p.segment, seq: p.seq });
-      await queueDelete(o, [objectId]);
+      alog.debug('audio piece stored', { ...where, bytes: ct.length, durationMs: p.durationMs });
+      return;
     }
   } catch (e) {
-    alog.warn('audio piece not recorded; deleting its object', { recordingId, objectId, segment: p.segment, seq: p.seq, err: e });
+    alog.warn('audio piece not recorded; deleting its object', { ...where, objectId, err: e });
     await queueDelete(o, [objectId]);
     throw e;
   }
+  // Another request stored this place first. Ours is a copy of that piece, unless it's a different one.
+  await queueDelete(o, [objectId]);
+  if (await stored(o, recordingId, p)) alog.info('audio piece raced a retry; dropping the duplicate', where);
+  else alog.info('audio piece raced its recording being deleted; dropping it', where);
 }
 
 /** Deletes objects now; anything that fails is queued for the maintenance loop to retry. */
@@ -113,8 +137,10 @@ export async function* stream(o: Owner, recordingId: string, segment: number): A
   }
 }
 
-/** Objects and stored bytes belonging to a recording, for deletion. */
-export async function recordingObjects(o: Owner, db: Db, recordingId: string): Promise<{ ids: string[]; bytes: number }> {
-  const objs = await rows(db, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }), 'SELECT object_id, cipher_bytes FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
+/** Objects and stored bytes of a note's recording, for deleting the note. */
+export async function noteObjects(o: Owner, db: Db, noteItemId: string): Promise<{ ids: string[]; bytes: number }> {
+  const objs = await rows(db, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }),
+    `SELECT p.object_id, p.cipher_bytes FROM recording_pieces p JOIN recordings r ON r.owner_id = p.owner_id AND r.recording_id = p.recording_id
+     WHERE r.owner_id = $1 AND r.note_item_id = $2`, [o.ownerId, noteItemId]);
   return { ids: objs.map((x) => x.object_id), bytes: objs.reduce((n, x) => n + x.cipher_bytes, 0) };
 }
