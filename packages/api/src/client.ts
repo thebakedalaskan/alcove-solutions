@@ -1,6 +1,6 @@
 import type { CallCard, CallSession, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
 import type { CallMoveIn } from './moves';
-import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
+import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
   Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
@@ -109,13 +109,20 @@ export interface AlcoveApi {
     audioUrl(id: ID, segment: number): string;
     /** URL of one shared-screen frame of a note (a `ScreenMoment`'s image), for a signed-in browser that has the note. */
     screenUrl(id: ID, frameId: ID): string;
-    /** Confirms a decision, says it wasn't decided, reopens or rewords it. Anyone who has the notes can. */
+    /**
+     * Adds a decision the notes didn't hear, proposed by you, in your exact words. Anyone who has the notes can. Sending
+     * the same words again adds nothing.
+     */
+    proposeDecision(noteId: ID, proposal: DecisionProposal): Promise<Note>;
+    /** Adds a follow-up the notes didn't hear, as `proposeDecision` does. It's only a suggestion until whoever it's for takes it on. */
+    proposeAction(noteId: ID, proposal: ActionProposal): Promise<Note>;
+    /** Confirms a decision, says it wasn't decided, reopens or rewords it, as far as `grants.ts` lets you. */
     updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
-    /** Takes on (owner only), gives, rewords, dates or ticks a follow-up. */
+    /** Takes on or turns down (the person it's for), gives, rewords, dates or ticks a follow-up, as far as `grants.ts` lets you. */
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
     updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
-    /** Follow-ups for you that aren't done, and decisions nobody has confirmed, from every note you have. */
+    /** Follow-ups for you that aren't done, taken on or only suggested, and decisions nobody has confirmed, from every note you have. */
     inbox(): Promise<Inbox>;
     /**
      * Corrects a line of a written note's transcript: its words, who said it, or that it's right as heard. The

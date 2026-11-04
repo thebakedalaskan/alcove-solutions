@@ -180,13 +180,15 @@ export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().m
 const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
 
 /**
- * A change to a decision: confirm it, say it wasn't decided, put it back to proposed, reword it, or
- * say a confirmed one no longer holds (superseded).
+ * A change to a decision: confirm it, say it wasn't decided, put it back to proposed, reword it, say a confirmed one no
+ * longer holds (superseded), or (`dispute`) say it wasn't decided as someone who can't reject it, or take that back.
+ * Rewording a confirmed decision puts it back to proposed unless the same change confirms it.
  */
 export const DecisionPatchSchema = z.object({
   state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']).optional(),
-  text: oneLine(300).optional()
-}).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
+  text: oneLine(300).optional(),
+  dispute: z.boolean().optional()
+}).refine((p) => p.state !== undefined || p.text !== undefined || p.dispute !== undefined, 'Nothing to change.');
 export type DecisionPatch = z.infer<typeof DecisionPatchSchema>;
 
 /** A change to an open question: say it was answered, open it again, or reword it. */
@@ -199,16 +201,39 @@ export type QuestionPatch = z.infer<typeof QuestionPatchSchema>;
 /** Scheduling the next call in a series: when it starts (the app sends the same clock time a week on). */
 export const NextCallBodySchema = z.object({ startsAt: z.string().max(40) });
 
-/** A change to a follow-up. Only its owner can take it on; anyone who has the notes can do the rest. */
+/**
+ * A change to a follow-up. Only the person it's for can take it on (`takeOn`: "I'll do it"). The rest follows `grants.ts`:
+ * while nobody has taken it on, anyone who has the notes; after that, its owner or the organizer.
+ */
 export const ActionPatchSchema = z.object({
   done: z.boolean().optional(),
   takeOn: z.literal(true).optional(),
-  /** Give it to someone who has the notes, by email address, or to nobody. */
+  /** Give it to someone who has the notes, by email address, or to nobody: from the person it's for, that's "Not mine". */
   owner: z.string().trim().toLowerCase().max(254).nullable().optional(),
   due: z.string().trim().max(40).nullable().optional(),
   text: oneLine(300).optional()
 }).refine((p) => Object.values(p).some((v) => v !== undefined), 'Nothing to change.');
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
+
+/** The most lines someone can pick as what a decision or follow-up they propose rests on. */
+export const MAX_PROPOSAL_LINES = 3;
+/**
+ * Someone with the notes adding a decision the notes didn't hear: its exact words, the lines it rests on, and the
+ * breakout room's section it goes in (the call's, without one). It starts as proposed. This is the only way in: nothing
+ * reaches the shared notes unless someone sends it here themselves.
+ */
+export const DecisionProposalSchema = z.object({
+  text: oneLine(300),
+  lines: z.array(z.string().min(1).max(64)).max(MAX_PROPOSAL_LINES).optional(),
+  room: z.string().min(1).max(64).optional()
+});
+export type DecisionProposal = z.infer<typeof DecisionProposalSchema>;
+/** Someone with the notes adding a follow-up: who it's for (someone who has the notes, who takes it on themselves) and when it's due. */
+export const ActionProposalSchema = DecisionProposalSchema.extend({
+  owner: z.string().trim().toLowerCase().max(254).optional(),
+  due: z.string().trim().min(1).max(40).optional()
+});
+export type ActionProposal = z.infer<typeof ActionProposalSchema>;
 
 /**
  * A correction to a line of a written note's transcript: its words, who said it (someone from the call, by their
