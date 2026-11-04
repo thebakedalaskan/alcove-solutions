@@ -87,7 +87,8 @@ between 16 and 8000 units a side. A board past 5000 says so and refuses more, ra
 ## Storage, keys and access
 
 Nothing new. A board is a `documents` row, so its records, keys, compaction, versions and physical deletion are the document's
-(`document-update`, `document-snapshot`, `document-version`). Its pictures are `workspace_media`. `documentText`, `searchText`
+(`document-update`, `document-snapshot`, `document-version`). Its pictures are `workspace_media`, reached through a document: a seat on one
+board sees that board's pictures and no others. `documentText`, `searchText`
 and `documentTodos` switch on `kind`; the board case comes from `@alcove/board` (`boardText`, `boardFollowUps`).
 
 Boards need one thing from `access.ts` beyond documents: **`grantDocumentToCall(d, workspace, documentId, call, { role, place? })`**,

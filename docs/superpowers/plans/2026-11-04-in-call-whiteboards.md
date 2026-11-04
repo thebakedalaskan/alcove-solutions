@@ -104,16 +104,29 @@
 
 ### Task 6: Media (the workspace's Task B2)
 
-As `docs/superpowers/plans/2026-11-04-in-call-workspace.md` Task B2 has it: 4 MiB sealed pieces, `Range`, `nosniff`, `no-store`, its formats, 512 MiB a file. One change, proposed to the workspace session and not yet agreed: media is reached through a document, because a guest's seat covers one document and an `<img>` can't send a header. A `workspace_media_uses` table; `upload(workspaceId, documentId, file, { onProgress })`; `url(workspaceId, documentId, mediaId): Promise<string>` with a short-lived signed token; `attach(workspaceId, documentId, mediaId)` for reuse. Its C3 builds on this, so settle it before starting.
+As `docs/superpowers/plans/2026-11-04-in-call-workspace.md` Task B2 has it: 4 MiB sealed pieces, `Range`, `nosniff`, `no-store`, its formats, 512 MiB a file. One change, agreed with the workspace session: media is reached through a document, because a guest's seat covers one document and an `<img>` can't send a header.
+
+- A `workspace_media_uses (owner_id, media_id, document_id)` table.
+- `upload(workspaceId, documentId, file, { onProgress })`, needing `edit` on the document.
+- `url(workspaceId, documentId, mediaId): Promise<string>`: a same-origin URL with a signed token lasting 12 hours that says only who is asking. Every request, each `Range` included, runs `requireDocument` again, so revocation and a seat ending take effect at once and the player needs no refresh logic. The route goes in `safePath`, so the token never reaches a log.
+- `attach(workspaceId, documentId, mediaId)` for reuse: `edit` on the target, same workspace.
+- `items.duplicate` copies a document's use rows in its transaction.
+- A use row goes only when its document is deleted for good, so versions and trashed documents hold their media. Media with no uses left goes through `object_gc`.
+
+Tests: as B2 lists, plus a guest's seat on one document sees its pictures and no others, and a revoked reader's next `Range` gets `not-found`.
 
 ## Stage 3: after B1 merges
 
 ### Task 7: Boards are workspace items
 
-**Files:** create `apps/api/src/boards.integration.test.ts`; modify `apps/api/src/modules/documents.ts` (`documentText`, `searchText`, `documentTodos`), `apps/api/src/modules/workspaces.ts`, the leakage test, `packages/api-http` as needed.
+**Files:** create `apps/api/src/boards.integration.test.ts`; modify `apps/api/src/modules/workspaceDocuments.ts` (`documentText`, `searchText`, `documentTodos`), `apps/api/src/modules/workspaces.ts`, the leakage test, `packages/api-http` as needed.
 
 - [ ] Tests first, the whole of #83's Validation through the real API, with `@alcove/board` making the edits in several browsers: concurrent stickies converge; a connector stays attached through moves; undo takes back only your own; late join and reconnect get the current board; edits survive a reload and an API restart; a read-only reader's update is refused; revocation ends the stream; a trashed board stays readable and is deleted physically; a template fills once; `boardText` reaches search; the canary finds no board text in any column, object or log.
 - [ ] Implement. Run `pnpm check`.
+
+### Task 7b: The document library
+
+After A1 and the call-creation PR have both merged. `DocumentLibrary.source` becomes real, from the workspaces someone can reach (workspace `document` maps to `doc`, `board` to `board`), and the sample catalog in `apps/api/src/demo.ts` goes. Keep its two rules: `documentsFor(ids, viewer)` gives `name: null` to anyone who can't open a document, and `validDocuments` refuses IDs the organizer can't reach. The workspace's C1 builds on this.
 
 ### Task 8: A board's page
 
@@ -155,7 +168,7 @@ Journey: present. Frames as slides, the presenter view, the audience's view, Loo
 
 ### Task 16: After the call
 
-Journeys: close's last steps, notes. Boards on the note and in sub-notes with `mode="read"`; the note writer reading boards; follow-ups as `ActionItem`s with `from: 'board'`; Open the board; a board scheduled into a call through the meeting's `documents` once call creation has merged; Start a call here through its start flow; a board brought to the next call. Tests: a board opened without someone isn't in the summary; a room's board feeds only its section; a stored note still opens.
+Journeys: close's last steps, notes. Boards on the note and in sub-notes with `mode="read"`; the note writer reading boards; follow-ups as `ActionItem`s with `from: 'board'`; Open the board; a board scheduled into a call through the meeting's `documents` once call creation has merged; Start a call here through its start flow (add `documents` to `StartOptions` in `features/shell/context.ts`, to `InstantCallInputSchema` and to `startNow`, validated with `validDocuments`, after the call-creation PR merges); a board brought to the next call. Tests: a board opened without someone isn't in the summary; a room's board feeds only its section; a stored note still opens.
 
 ## Stage 6
 
