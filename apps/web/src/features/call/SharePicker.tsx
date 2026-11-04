@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { listNames } from '~/lib/people';
 import type { ShareChoice, ShareSurface } from './media';
 import { SHARE_PROBLEMS, canShareTabSound, type ShareProblem } from './share';
+import { HISTORY } from './shareLook';
 
 const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: string; body: string; go: string; audio: string | null }[] = [
   { surface: 'browser', label: 'Tab', icon: 'tab', title: 'One browser tab', body: 'Good for a page, a doc or a design. You can switch tabs while you share.', go: 'Choose a tab', audio: 'Share tab audio' },
@@ -54,6 +55,7 @@ export function SharePicker({ open, onOpenChange, sharing, others, trouble, read
             <span className="pk-ic"><Icon name={kind.icon} size={28} /></span>
             <div>
               <b>{kind.title}</b><p>{kind.body}</p><p className="sub">Your browser asks which one next, and shows what it will share.</p>
+              <p className="sub">Everyone here can zoom in and look back at its last {HISTORY.pictures} pictures, each on their own screen, until you stop.</p>
               {others.length > 0 && !sharing && <p className="sub">{listNames(others)} {others.length === 1 ? 'keeps' : 'keep'} sharing too. Everyone picks which to see big.</p>}
             </div>
           </motion.div>

@@ -80,10 +80,34 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
   );
 }
 
-/** A shared screen's menu: see it big or as a tile among the people, and mute the sound it carries, for you. */
-export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound }: {
+/** Looking closer at a share you see big: zoom, freeze and earlier pictures, each with the key that does it on the focused share. */
+export interface ShareLookMenu {
+  zoomed: boolean;
+  /** As far in as it goes. */
+  max: boolean;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  whole: () => void;
+  /** A picture is held still (frozen, or an earlier one). */
+  held: boolean;
+  canEarlier: boolean;
+  freeze: () => void;
+  live: () => void;
+  earlier: () => void;
+  /** One short line on earlier pictures: what's kept and where, or why nothing is. */
+  note: string;
+}
+/** The share in its own window: open now or not, and why it can't be where it can't. */
+export interface ShareWindowMenu { open: boolean; toggle: (() => void) | null; why: string | null }
+
+/** A shared screen's menu: see it big or as a tile, look closer, open it in its own window, and mute its sound, for you. */
+export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound, look, own }: {
   presenter: Person; label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void;
   sound: { muted: boolean; toggle: () => void } | null;
+  /** Shown big: zoom, freeze, earlier pictures. */
+  look?: ShareLookMenu | undefined;
+  /** Its own window, for someone else's share. */
+  own?: ShareWindowMenu | undefined;
 }) {
   const pick = (f: () => void) => () => { onOpenChange(false); f(); };
   return (
@@ -91,8 +115,20 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
       anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${label}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
       <div className="mh"><Avatar person={presenter} size={22} /><b>{label}</b></div>
       <p className="scope">Only your view changes</p>
-      <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={pick(onToggle)} />
+      {!own?.open && <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={pick(onToggle)} />}
+      {look && (
+        <>
+          <Item icon="zoomIn" label="Zoom in" kb="+" keys="+" disabled={look.max} onPick={pick(look.zoomIn)} />
+          {look.zoomed && <Item icon="zoomOut" label="Zoom out" kb="−" keys="-" onPick={pick(look.zoomOut)} />}
+          {look.zoomed && <Item icon="whole" label="See the whole picture" kb="0" keys="0" onPick={pick(look.whole)} />}
+          <Item icon={look.held ? 'play' : 'pause'} label={look.held ? 'Back to live' : 'Freeze the picture'} kb="F" keys="F" onPick={pick(look.held ? look.live : look.freeze)} />
+          <Item icon="stepBack" label="Earlier picture" kb="," keys="," disabled={!look.canEarlier} onPick={pick(look.earlier)} />
+        </>
+      )}
+      {own && <Item icon={own.open ? 'popIn' : 'pip'} label={own.open ? 'Bring it back here' : 'Open in its own window'} disabled={!own.toggle} onPick={pick(() => own.toggle?.())} />}
       {sound && <Item icon={sound.muted ? 'speaker' : 'speakerOff'} label={sound.muted ? 'Play its sound' : 'Mute its sound for me'} onPick={pick(sound.toggle)} />}
+      {look && <p className="hint">{look.note}</p>}
+      {own?.why && <p className="hint">{own.why}</p>}
     </Popover>
   );
 }
