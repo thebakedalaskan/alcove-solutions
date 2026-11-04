@@ -5,14 +5,15 @@
  *
  * Earlier pictures are a bounded buffer in this page's memory: at most HISTORY.pictures for each share, and
  * HISTORY.bytes, the oldest going first. Each is a moment the picture changed, taken at most once a second from the
- * video this browser already decodes to show the share, and only while you see that share big or in its own window. They're kept as
- * compressed bytes in memory, never as files or in any storage, shown only here, and never sent or logged. They exist only
- * from when this browser could decrypt the share, after you were let in and while you're in the same part of the call
- * as its sharer, so nothing predates you. They go the moment the share stops (a stop, its sharer leaving or being
- * removed, the sharer leaving the call's group), the moment your part of the call changes (breakout rooms), when you
- * show the share as a tile, and when you leave. While the organizer has paused notes nothing new is kept and what was kept
- * goes: pausing stops every kind of capture. Zoom, pan and freezing work either way, as they do where a browser can't
- * keep pictures or the device has little memory.
+ * video this browser already decodes to show the share, and only while you see that share big or in its own window.
+ * They're kept as compressed bytes in memory, never as files or in any storage, shown only here, and never sent or
+ * logged. A picture held still is at most 4K too. They exist only from when this browser could decrypt the share,
+ * after you were let in and while you're in the same part of the call as its sharer, so nothing predates you. They go
+ * the moment the share stops (a stop, its sharer leaving or being removed, the sharer leaving the call's group), the
+ * moment this browser moves to another part of the call (breakout rooms), when you show the share as a tile, and when
+ * you leave. While the organizer has paused notes nothing new is kept and what was kept goes: pausing stops every kind
+ * of capture. Zoom, pan and freezing work either way, as they do where a browser can't keep pictures or the device has
+ * little memory.
  */
 import type { LiveStore } from '@alcove/api';
 import { log } from '~/lib/log';
@@ -29,6 +30,25 @@ const MAX_SIDE = 3840;
 
 /** Why earlier pictures aren't being kept: the organizer paused notes, the device is low on memory, or this browser can't. */
 export type HistoryOff = 'paused' | 'memory' | 'unsupported';
+
+/**
+ * The keys on a share you look at closely, in one table: what `ShareLook.key` answers to, what the share's menu and
+ * bar show for each (`shown`), and what `aria-keyshortcuts` says (`LOOK_ARIA`). The arrows move around while zoomed in.
+ */
+export type LookKey = 'zoomIn' | 'zoomOut' | 'whole' | 'freeze' | 'earlier' | 'later';
+export const LOOK_KEYS: Record<LookKey, { keys: readonly string[]; shown: string; aria: string }> = {
+  zoomIn: { keys: ['+', '='], shown: '+', aria: '+' },
+  zoomOut: { keys: ['-', '_', '−'], shown: '−', aria: '-' },
+  whole: { keys: ['0'], shown: '0', aria: '0' },
+  freeze: { keys: ['f', 'F'], shown: 'F', aria: 'F' },
+  earlier: { keys: [',', '<'], shown: ',', aria: ',' },
+  later: { keys: ['.', '>'], shown: '.', aria: '.' }
+};
+const LOOK_NAMES: readonly LookKey[] = ['zoomIn', 'zoomOut', 'whole', 'freeze', 'earlier', 'later'];
+const ARROW_PAN: Record<string, [number, number]> = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+/** Every key a share you look at closely answers to, as `aria-keyshortcuts` says them. */
+export const LOOK_ARIA = [...LOOK_NAMES.map((name) => LOOK_KEYS[name].aria), ...Object.keys(ARROW_PAN)].join(' ');
+const lookKeyOf = (k: string): LookKey | null => LOOK_NAMES.find((name) => LOOK_KEYS[name].keys.includes(k)) ?? null;
 
 export interface HeldPicture {
   /** Its number, counting up for this share. */
@@ -62,8 +82,13 @@ interface Kept { n: number; at: number; w: number; h: number; bytes: ArrayBuffer
 interface Hold { n: number; seen: number; w: number; h: number; bitmap: ImageBitmap | null }
 interface Encoded { bytes: ArrayBuffer; type: string; w: number; h: number }
 
-const ARROW_PAN: Record<string, [number, number]> = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 const ready = (v: HTMLVideoElement) => v.readyState >= 2 && v.videoWidth > 0 && v.videoHeight > 0;
+/** The picture on screen now as a bitmap, at most 4K: a 6K or 8K screen held still costs no more than a 4K one. */
+function grab(v: HTMLVideoElement): Promise<ImageBitmap> {
+  const s = Math.min(1, MAX_SIDE / Math.max(v.videoWidth, v.videoHeight));
+  if (s >= 1) return createImageBitmap(v);
+  return createImageBitmap(v, { resizeWidth: Math.max(1, Math.round(v.videoWidth * s)), resizeHeight: Math.max(1, Math.round(v.videoHeight * s)), resizeQuality: 'high' });
+}
 const sameSize = (a: Size, b: Size) => a.w === b.w && a.h === b.h;
 
 /* ---------- comparing and keeping pictures ---------- */
@@ -99,10 +124,14 @@ async function encode(src: CanvasImageSource, w: number, h: number): Promise<Enc
     const ctx = c.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(src, 0, 0, cw, ch);
-    const type = encoding;
-    const blob = await new Promise<Blob | null>((done) => c.toBlob(done, type, type === 'image/webp' ? 0.82 : 0.86));
+    const write = (type: 'image/webp' | 'image/jpeg') => new Promise<Blob | null>((done) => c.toBlob(done, type, type === 'image/webp' ? 0.82 : 0.86));
+    let blob = await write(encoding);
+    // A browser that can't write WebP (Safari) hands back a PNG instead: this picture and every later one go as JPEG.
+    if (blob && encoding === 'image/webp' && blob.type !== 'image/webp') {
+      encoding = 'image/jpeg';
+      blob = await write(encoding);
+    }
     if (!blob) return null;
-    if (type === 'image/webp' && blob.type !== 'image/webp') encoding = 'image/jpeg';
     return { bytes: await blob.arrayBuffer(), type: blob.type, w: cw, h: ch };
   } finally {
     c.width = 0;
@@ -187,17 +216,19 @@ export class ShareLook implements LiveStore<ShareLookState> {
   whole() { this.setFraming(WHOLE); }
 
   /**
-   * A key pressed on the focused share: + and − zoom, 0 shows the whole picture, arrows move around while zoomed in, F
-   * freezes the picture or goes back to live, comma and full stop step through earlier pictures. True when it was one of these.
+   * A key pressed on the focused share (LOOK_KEYS): + and − zoom, 0 shows the whole picture, arrows move around while
+   * zoomed in, F freezes the picture or goes back to live, comma and full stop step through earlier pictures. True when
+   * it was one of these.
    */
   key(k: string): boolean {
-    switch (k) {
-      case '+': case '=': this.zoomStep(1); return true;
-      case '-': case '_': case '−': this.zoomStep(-1); return true;
-      case '0': this.whole(); return true;
-      case 'f': case 'F': if (this.hold) this.live(); else void this.freeze(); return true;
-      case ',': case '<': void this.earlier(); return true;
-      case '.': case '>': this.later(); return true;
+    switch (lookKeyOf(k)) {
+      case 'zoomIn': this.zoomStep(1); return true;
+      case 'zoomOut': this.zoomStep(-1); return true;
+      case 'whole': this.whole(); return true;
+      case 'freeze': if (this.hold) this.live(); else void this.freeze(); return true;
+      case 'earlier': void this.earlier(); return true;
+      case 'later': this.later(); return true;
+      case null: break;
     }
     const by = ARROW_PAN[k];
     if (!by || !isZoomed(this.framing)) return false;
@@ -232,7 +263,7 @@ export class ShareLook implements LiveStore<ShareLookState> {
     let frame: ImageBitmap | null = null;
     try {
       // One frame, compared and kept as it is.
-      frame = await createImageBitmap(v);
+      frame = await grab(v);
       const sig = await signature(frame);
       if (!sig || gen !== this.gen || this.off || this.gone) return;
       if (this.kept.length && this.sig && !differs(sig, this.sig)) { this.lastSeen = at; return; }
@@ -275,7 +306,7 @@ export class ShareLook implements LiveStore<ShareLookState> {
     const gen = this.gen;
     let bitmap: ImageBitmap;
     try {
-      bitmap = await createImageBitmap(v);
+      bitmap = await grab(v);
     } catch (e) {
       slog.warn('couldn’t hold a share’s picture still', { err: e });
       return;
@@ -393,6 +424,11 @@ export class ShareLook implements LiveStore<ShareLookState> {
 export interface ShareLooksState {
   /** The share open in its own window, and the window. */
   popped: { id: string; win: Window; kind: PopKind } | null;
+  /**
+   * The share you last brought back from its own window (Back to the call, Bring it back, or closing the window), so the
+   * stage puts focus back on its tile; `n` counts up each time.
+   */
+  back: { id: string; n: number } | null;
   /** Counts up whenever a share's look is dropped, so the stage takes the fresh one. */
   version: number;
 }
@@ -400,10 +436,10 @@ export interface ShareLooksState {
 export class ShareLooks implements LiveStore<ShareLooksState> {
   private looks = new Map<string, ShareLook>();
   private listeners = new Set<() => void>();
-  private state: ShareLooksState = { popped: null, version: 0 };
+  private state: ShareLooksState = { popped: null, back: null, version: 0 };
   private readonly device = deviceOff();
   private paused = false;
-  /** Your part of the call (breakout rooms) when last told. */
+  /** The part of the call this browser was in when last told. */
   private place: string | null = null;
   private watching: (() => void) | null = null;
 
@@ -436,13 +472,14 @@ export class ShareLooks implements LiveStore<ShareLooksState> {
   }
 
   /**
-   * Your part of the call, and whether the organizer has paused notes. A new part of the call (breakout rooms opening,
-   * closing or moving you) lets go of everything about every share; a pause drops every share's earlier pictures and
+   * The part of the call this browser is in (`CallCrypto.place`: the main room or a breakout room, each with its own
+   * keys), and whether the organizer has paused notes. Moving to another part (sent to a room, back from one, or the
+   * organizer visiting one) lets go of everything about every share; a pause drops every share's earlier pictures and
    * keeps none until notes resume.
    */
   policy(place: string, paused: boolean) {
     if (this.place !== null && place !== this.place) {
-      slog.info('your part of the call changed: what was kept of every share goes');
+      slog.info('moved to another part of the call: what was kept of every share goes');
       this.clear();
     }
     this.place = place;
@@ -484,23 +521,27 @@ export class ShareLooks implements LiveStore<ShareLooksState> {
     slog.info('a share opened in its own window', { kind });
     return 'open';
   }
-  /** Closes the share's own window: it's back on the stage. */
-  popIn() {
+  /**
+   * Closes the share's own window: it's back on the stage. `back` when you brought it back yourself, so focus returns
+   * to its tile; not when it closes because the share stopped or you moved, which shouldn't take your focus anywhere.
+   */
+  popIn(back = false) {
     const p = this.state.popped;
     if (!p) return;
     this.watching?.();
     this.watching = null;
-    this.set({ popped: null });
+    this.set({ popped: null, ...(back ? { back: { id: p.id, n: (this.state.back?.n ?? 0) + 1 } } : {}) });
     try { p.win.close(); } catch { /* already closed */ }
-    slog.info('a share’s own window closed', { kind: p.kind });
+    slog.info('a share’s own window closed', { kind: p.kind, back });
   }
-  /** Notices the window closing by itself (its close button, or the browser), and closes it with this page. */
+  /** Notices the window closing from the window (its close button, or the browser), and closes it when this page goes. */
   private follow(win: Window) {
     this.watching?.();
-    const closed = () => { if (this.state.popped?.win === win) this.popIn(); };
-    const poll = setInterval(() => { if (win.closed) closed(); }, 1000);
-    win.addEventListener('pagehide', closed);
-    addEventListener('pagehide', closed);
-    this.watching = () => { clearInterval(poll); removeEventListener('pagehide', closed); try { win.removeEventListener('pagehide', closed); } catch { /* closed */ } };
+    const shut = () => { if (this.state.popped?.win === win) this.popIn(true); };
+    const leave = () => { if (this.state.popped?.win === win) this.popIn(); };
+    const poll = setInterval(() => { if (win.closed) shut(); }, 1000);
+    win.addEventListener('pagehide', shut);
+    addEventListener('pagehide', leave);
+    this.watching = () => { clearInterval(poll); removeEventListener('pagehide', leave); try { win.removeEventListener('pagehide', shut); } catch { /* closed */ } };
   }
 }

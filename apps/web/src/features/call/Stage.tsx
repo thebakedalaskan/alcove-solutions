@@ -22,7 +22,7 @@ import { createPortal } from 'react-dom';
 import { useLive } from '~/lib/live';
 import { callName } from '~/lib/people';
 import { popKind } from './popOut';
-import { ShareLooks } from './shareLook';
+import { LOOK_ARIA, ShareLooks } from './shareLook';
 import { ShareAway, ShareMenuFor, ShareSurface, ShareWindow } from './ShareSurface';
 import { useSettledSpeakers } from './speakers';
 import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
@@ -117,7 +117,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   bar: ReactNode;
   caption: ReactNode;
   rooms: StageRooms | null;
-  /** Your part of the call (breakout rooms): when it changes, nothing kept of any share carries over. */
+  /** The part of the call this browser is in (`CallCrypto.place`: the main room or a breakout room): moving to another lets go of everything kept of every share. */
   place: string;
   /** The organizer has paused notes: no earlier pictures of shares are kept meanwhile. */
   paused: boolean;
@@ -230,6 +230,15 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
+  // A share you brought back from its own window: focus comes back to its tile, where its keys work.
+  const backN = seenLooks.back?.n ?? 0;
+  useEffect(() => {
+    const id = looks.getSnapshot().back?.id;
+    if (!backN || !id) return;
+    const k = shareKey(id);
+    setFocusKey(k);
+    els.current.get(k)?.focus({ preventScroll: true });
+  }, [backN, looks]);
   /** Someone else's share in its own window, from the click that asked: the browser opens one only from a click. */
   const toast = useToast();
   const [canPop] = useState(popKind);
@@ -403,7 +412,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         const look = big && !s.mine && !away && 'room' in s.feed ? looks.look(s.id) : null;
         const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', away ? 'in its own window, P brings it back' : big ? '' : 'a tile, P shows it big'];
         return (
-          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={look ? 'Enter P + - 0 F , .' : 'Enter P'}
+          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={look ? `Enter P ${LOOK_ARIA}` : 'Enter P'}
             aria-describedby={look ? `sv-${s.id}` : undefined}
             className={cn('ic-scr', !big && 'is-tile', away && 'is-away', fresh(s.id) && 'is-new')}
             onClick={big || away ? undefined : (e) => {
@@ -412,7 +421,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
               if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false);
             }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
-            {away ? <ShareAway onBack={() => looks.popIn()} />
+            {away ? <ShareAway onBack={() => looks.popIn(true)} />
               : look && 'room' in s.feed ? <ShareSurface look={look} feed={s.feed} where="stage" label={s.name} describe={`sv-${s.id}`} popOut={canPop ? { open: false, toggle: () => popOut(s) } : null} />
                 : <FeedVideo feed={s.feed} className="screen" />}
             <span className="ac-tile-name">
@@ -422,7 +431,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
             {!big && !away && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
             <ShareMenuFor look={look} presenter={s.presenter} label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big}
               onToggle={() => toggleShare(s.id, !!big)} sound={s.sound}
-              own={s.mine ? undefined : { open: away, toggle: away ? () => looks.popIn() : canPop ? () => popOut(s) : null, why: canPop ? null : 'Phones and tablets show shares in the call only.' }} />
+              own={s.mine ? undefined : { open: away, toggle: away ? () => looks.popIn(true) : canPop ? () => popOut(s) : null, why: canPop ? null : 'Phones and tablets show shares in the call only.' }} />
           </motion.div>
         );
       })}
@@ -512,7 +521,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         const s = ordered.find((x) => x.id === popped);
         const win = seenLooks.popped;
         return s && 'room' in s.feed ? createPortal(
-          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn()} />, win.win.document.body
+          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn(true)} />, win.win.document.body
         ) : null;
       })()}
     </div>
