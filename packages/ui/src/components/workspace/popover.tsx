@@ -5,6 +5,7 @@ import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, type AvatarPerson } from '../people';
 import { Kbd } from '../primitives';
+import { canTakeFocus, focusedNow } from './shared';
 
 /** A place on the screen, in window coordinates: where someone right-clicked. */
 export interface WsPoint { x: number; y: number }
@@ -19,11 +20,6 @@ export interface WsPop {
 }
 
 const rectOf = (at: WsPoint | (() => DOMRect)): DOMRect => typeof at === 'function' ? at() : new DOMRect(at.x, at.y, 1, 1);
-
-/** Whatever has focus now, unless that's nothing in particular. */
-export const focusedNow = (): HTMLElement | null => document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
-/** Whether something is on the page and showing, so it can take focus. */
-export const canTakeFocus = (el: HTMLElement | null | undefined): el is HTMLElement => !!el && el.isConnected && el.getClientRects().length > 0;
 
 /**
  * What every menu and sheet in the workspace sits on, against what opened it (`anchor`, which it toggles) or against a
@@ -77,6 +73,8 @@ export interface WsMenuItem {
   hint?: string | undefined;
   /** The chosen one of a list: it gets a tick. */
   ticked?: boolean | undefined;
+  /** It's only saying what's chosen, so the tick isn't in the colour of something you can press. */
+  fixed?: boolean | undefined;
   tone?: 'caution' | undefined;
   /** Highlighted by what the keyboard's doing somewhere else, such as in a field that keeps focus. */
   selected?: boolean | undefined;
@@ -89,7 +87,7 @@ export type WsMenuRow = WsMenuItem | { type: 'head'; label: ReactNode } | { type
 function Item({ row }: { row: WsMenuItem }) {
   return (
     <button type="button" role={row.ticked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={row.ticked} onClick={row.onSelect}
-      className={cn('wm-r', row.tone === 'caution' && 'is-caution', row.ticked && 'is-on', row.selected && 'is-sel', row.phoneOnly && 'is-phone')}>
+      className={cn('wm-r', row.tone === 'caution' && 'is-caution', row.ticked && !row.fixed && 'is-on', row.selected && 'is-sel', row.phoneOnly && 'is-phone')}>
       {row.person && <Avatar person={row.person} size={24} />}
       {row.icon && <Icon name={row.icon} size={16} />}
       <span className="t"><span className="l">{row.label}</span>{row.sub && <small>{row.sub}</small>}</span>
@@ -205,7 +203,7 @@ export function WsSpacePicker({ spaces, current, canChoose, organizer, heading =
 }) {
   const shown = canChoose ? spaces : spaces.filter((s) => s.id === current);
   const rows: WsMenuRow[] = [{ type: 'head', label: heading }, ...shown.map((s): WsMenuRow => ({
-    icon: canChoose ? s.icon ?? 'folders' : 'folders', label: s.name, sub: s.sub, ticked: s.id === current, onSelect: () => onPick(s.id)
+    icon: canChoose ? s.icon ?? 'folders' : 'folders', label: s.name, sub: s.sub, ticked: s.id === current, fixed: !canChoose, onSelect: () => onPick(s.id)
   }))];
   if (canChoose) rows.push({ type: 'sep' }, { icon: 'plus', label: 'New workspace', onSelect: onNew });
   else if (organizer) rows.push({ type: 'text', label: `${organizer} chooses the workspace for this call.` });

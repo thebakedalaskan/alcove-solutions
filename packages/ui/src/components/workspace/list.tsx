@@ -1,6 +1,6 @@
 /* The pane and the list of documents down its side. */
 import { AnimatePresence, motion } from 'motion/react';
-import { Children, useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactElement, type ReactNode } from 'react';
+import { Children, useLayoutEffect, useRef, type ComponentProps, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Faces, type AvatarPerson } from '../people';
@@ -93,8 +93,8 @@ export function WsSection({ label, area = 'tree', into = false }: { label: React
 }
 
 /** An action that shows when you hover a row. */
-function RowAction({ icon, label, title, ...rest }: { icon: IconName; label: string; title?: string | undefined; onClick?: (() => void) | undefined }) {
-  return <button type="button" className="wt-a" aria-label={label} title={title} {...rest}><Icon name={icon} size={15} /></button>;
+function RowAction({ icon, label, ...rest }: { icon: IconName; label: string } & ComponentProps<'button'>) {
+  return <button type="button" className="wt-a" aria-label={label} {...rest}><Icon name={icon} size={15} /></button>;
 }
 
 /** What a row is. A board slots in here when boards are built. */
@@ -198,6 +198,6 @@ export function WsDropLine({ top, left }: { top: number; left: number }) {
 }
 
 /** What's being dragged, following the pointer, tilted a degree. `x` and `y` in window coordinates. */
-export function WsDragGhost({ x, y, icon, label }: { x: number; y: number; icon: IconName; label: string }): ReactElement {
+export function WsDragGhost({ x, y, icon, label }: { x: number; y: number; icon: IconName; label: string }) {
   return <div className="ws-ghost" style={{ left: x, top: y }}><Icon name={icon} size={15} /><span>{label}</span></div>;
 }

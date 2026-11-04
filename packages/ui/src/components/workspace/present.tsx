@@ -17,9 +17,9 @@ export function WsPresentStrip(props: WsPresentMine | WsPresentTheirs) {
   return (
     <div className="wp-tag" role="status">
       {props.mine ? <>
-        <span className="ws-live" /><b>Everyone sees this</b><span>{props.name} · {props.at} of {props.total}</span>
+        <span className="ws-live" /><b>Everyone sees this</b><span className="wp-name">{props.name} · {props.at} of {props.total}</span>
       </> : <>
-        <Faces people={[props.presenter]} size={20} /><b>{props.by} is presenting</b><span>{props.name}</span>
+        <Faces people={[props.presenter]} size={20} /><b>{props.by} is presenting</b><span className="wp-name">{props.name}</span>
         <Button variant="quiet" size="xs" onClick={props.onToggle}>{props.away ? 'Back to the presentation' : 'Work on my own'}</Button>
       </>}
     </div>

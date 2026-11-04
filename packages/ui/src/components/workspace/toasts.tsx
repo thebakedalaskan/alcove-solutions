@@ -80,10 +80,8 @@ function KeyTool({ icon, size = 19, label, onClick }: { icon: IconName; size?: n
  * The bar above a phone's keyboard, for blocks, styles, @, photos and checklists. `lift` is how far the keyboard has
  * pushed it up, in px; the bar rises with it. `onDone` puts the keyboard away.
  */
-export function WsKeyboardBar({ lift = 0, onBlock, onStyle, onTag, onPhoto, onChecklist, onDone, children }: {
+export function WsKeyboardBar({ lift = 0, onBlock, onStyle, onTag, onPhoto, onChecklist, onDone }: {
   lift?: number | undefined; onBlock: () => void; onStyle: () => void; onTag: () => void; onPhoto: () => void; onChecklist: () => void; onDone: () => void;
-  /** What the tools open: a sheet of blocks, say. */
-  children?: ReactNode;
 }) {
   return (
     <div className="ws-kbar" role="toolbar" aria-label="Writing tools" style={{ '--keyboard': `${lift}px` }}>
@@ -94,7 +92,6 @@ export function WsKeyboardBar({ lift = 0, onBlock, onStyle, onTag, onPhoto, onCh
       <KeyTool icon="todo" label="Checklist" onClick={onChecklist} />
       <span className="sp" />
       <KeyTool icon="down" label="Done" onClick={onDone} />
-      {children}
     </div>
   );
 }

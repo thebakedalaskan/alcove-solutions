@@ -6,8 +6,8 @@ import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, Faces, type AvatarPerson } from '../people';
 import { Button, Kbd } from '../primitives';
-import { canTakeFocus, focusedNow, WsMenu, WsPopover, type WsMenuRow } from './popover';
-import { firstName, useMove } from './shared';
+import { WsMenu, WsPopover, type WsMenuRow } from './popover';
+import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 
 /**
  * Someone's card, from their tile, their face or their name in a line. `where` is the document they're in, in words:
@@ -58,7 +58,7 @@ function CommentField({ label, placeholder, value, onChange, onSend, autoFocus =
 export function WsCommentCompose({ quote, person, value, onChange, onSend }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void }) {
   return (
     <div className="wv-cmt">
-      <div className="q">{quote}</div>
+      <div className="q"><span className="ac-clamp-2">{quote}</span></div>
       <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} autoFocus /></div>
     </div>
   );
@@ -152,8 +152,8 @@ export function WsSwitchSheet({ name, current, cantOpen = [], onSwitch, onKeep }
       <p>Everyone sees the change. Nobody is disconnected, and nothing moves or is copied.</p>
       {cantOpen.length > 0 && <p className="warn"><Icon name="info" size={15} /><span>{who} can’t open {name}. They stay in the call and see that it’s private, not what’s in it.</span></p>}
       <div className="ac">
-        <Button variant="primary" size="sm" onClick={onSwitch}>Switch to {name}</Button>
-        <Button variant="quiet" size="sm" onClick={onKeep}>Keep {current}</Button>
+        <Button variant="primary" size="sm" onClick={onSwitch}><span className="ac-clamp-1">Switch to {name}</span></Button>
+        <Button variant="quiet" size="sm" onClick={onKeep}><span className="ac-clamp-1">Keep {current}</span></Button>
       </div>
     </div>
   );
@@ -163,7 +163,7 @@ export function WsSwitchSheet({ name, current, cantOpen = [], onSwitch, onKeep }
 export function WsPresentPreview({ name, sections, onStart }: { name: string; sections: number; onStart: () => void }) {
   return (
     <div className="wv-pres">
-      <div className="wv-pv"><b>{name}</b><span className="l a" /><span className="l b" /><span className="l c" /></div>
+      <div className="wv-pv"><b className="ac-clamp-2">{name}</b><span className="l a" /><span className="l b" /><span className="l c" /></div>
       <b className="t">Present to everyone in this call</b>
       <p>They see this document without menus or anyone’s cursor, one section at a time. Your notes stay with you, and anyone can keep working.</p>
       <Button variant="primary" size="sm" onClick={onStart}><Icon name="presentation" size={16} />Present {sections} {sections === 1 ? 'section' : 'sections'}</Button>
@@ -238,7 +238,7 @@ export function WsKnock({ person, document, onLet, onNotNow }: { person: AvatarP
           <Avatar person={person} size={34} />
           <div><b>{firstName(person)} asked to see the workspace</b><p>Share just this document, or nothing.</p></div>
           <div className="ac">
-            <Button variant="primary" size="sm" onClick={onLet}>Let {firstName(person)} read {document}</Button>
+            <Button variant="primary" size="sm" onClick={onLet}><span className="ac-clamp-1">Let {firstName(person)} read {document}</span></Button>
             <Button variant="quiet" size="sm" onClick={onNotNow}>Not now</Button>
           </div>
         </motion.div>

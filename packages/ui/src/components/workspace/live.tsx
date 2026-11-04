@@ -147,14 +147,14 @@ export function WsTranscript({ query, onQuery, lines, now, put }: { query: strin
 
 /**
  * Notes, Follow-ups and Transcript on a call with notes off: they stay in the list and say why they're empty. Only the
- * organizer can turn notes on, so everyone else can ask. `organizer` is their first name.
+ * organizer can turn notes on, so they get `onTurnOn` and everyone else `onAsk`. `organizer` is their first name.
  */
-export function WsNotesOff({ organizer, onTurnOn, onAsk }: { organizer: string; onTurnOn?: (() => void) | undefined; onAsk: () => void }) {
+export function WsNotesOff({ organizer, onTurnOn, onAsk }: { organizer: string; onTurnOn?: (() => void) | undefined; onAsk?: (() => void) | undefined }) {
   return (
     <div className="wl">
       <EmptyState className="wd-none" title="Notes are off" art={<WsArch />} action={onTurnOn
         ? <Button variant="primary" size="sm" onClick={onTurnOn}>Turn notes on</Button>
-        : <Button variant="primary" size="sm" onClick={onAsk}><Icon name="hand" size={15} />Ask {organizer} for notes</Button>}>
+        : onAsk && <Button variant="primary" size="sm" onClick={onAsk}><Icon name="hand" size={15} />Ask {organizer} for notes</Button>}>
         Nothing from this call is being written down. Your documents work as usual.
       </EmptyState>
     </div>
