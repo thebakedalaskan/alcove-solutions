@@ -1,23 +1,32 @@
 /*
- * The stage: everyone's tiles, a shared screen, the bar that says what's shared or spotlighted, and
- * the captions. Tiles sit where the layout engine (view.ts) puts them and glide there; you can drag
- * them into another order, make one bigger from its corner or its menu, and drag the line beside a
- * shared screen. All of that changes your view only. With rooms open, the organizer's stage shows every room;
- * everyone else's shows the people in their own room.
+ * The stage: everyone's tiles, what's shared, the bar that says what's shared or spotlighted, and the captions. Tiles
+ * sit where the layout engine (stageLayout.ts) puts them and glide there. Your own view (view.ts): drag tiles into
+ * another order, make one bigger from its corner, drag the line beside a shared screen, pin people, and see yourself
+ * in the grid, in a corner or not at all. Every tile can be focused, then pinned, moved and sized from the keyboard
+ * (its ⋯ menu says how). All of that changes your view only. With rooms open, the organizer's stage shows every
+ * room; everyone else's shows the people in their own room.
  */
-import type { Person } from '@alcove/api';
-import { Avatar, CallTile, Icon, NotesSign, Popover, Scope, cn } from '@alcove/ui';
+import type { Person, SelfView, StageCorner } from '@alcove/api';
+import { Avatar, Button, CallTile, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
+import { useSettledSpeakers } from './speakers';
+import { arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
+import { ShareMenu, TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
-import { fitGrid, layout, ordered, type CallView, type Rect } from './view';
+import type { CallView } from './view';
 
 export interface StageParticipant {
-  id: string; person: Person; isMe: boolean; mic: boolean; hand: boolean; speaking: boolean;
+  id: string;
+  /** The same across their reconnections: what your own layout keeps them by. */
+  seat: string;
+  person: Person; isMe: boolean; mic: boolean; hand: boolean; speaking: boolean;
   /** Their camera, when it's on and this browser plays their media. */
   video: Feed | null;
 }
+/** Something shared: whose it is (their participant ID), its feed, the line on it, and what menus call it. */
+export interface StageShare { id: string; feed: Feed; label: string; name: string }
 /** Open rooms, as the organizer oversees them: who's in each, and who in a room raised a hand for help. */
 export interface StageRooms {
   rooms: { name: string; ids: string[]; help: string | null }[];
@@ -34,6 +43,21 @@ const GLIDE = { duration: 0.5, ease: [0.45, 0, 0.2, 1] } as const;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const box = (r: Rect) => ({ left: r[0], top: r[1], width: r[2], height: r[3] });
+const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+/** Where a handle is along its space, 0 to 1. */
+const along = (hd: Handle, p: { x: number; y: number }) => (hd.along === 'x' ? (p.x - hd.area.x) / Math.max(1, hd.area.w - 12) : (p.y - hd.area.y) / Math.max(1, hd.area.h - 12));
+/** The corner a picture dropped at (x, y) goes to, or that Shift and an arrow move it to. */
+function cornerAt(x: number, y: number, w: number, h: number): StageCorner {
+  return `${y < h / 2 ? 'top' : 'bottom'}-${x < w / 2 ? 'left' : 'right'}`;
+}
+function cornerBy(c: StageCorner, key: string): StageCorner {
+  const top = c.startsWith('top');
+  const left = c.endsWith('left');
+  if (key === 'ArrowLeft') return top ? 'top-left' : 'bottom-left';
+  if (key === 'ArrowRight') return top ? 'top-right' : 'bottom-right';
+  if (key === 'ArrowUp') return left ? 'top-left' : 'top-right';
+  return left ? 'bottom-left' : 'bottom-right';
+}
 
 function useSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -50,59 +74,97 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, spotlight, view, organizer, screen, bar, caption, rooms, onSpotlight, onCustom }: {
+export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom }: {
   people: StageParticipant[];
+  /** What's shared now, oldest first. */
+  shares: StageShare[];
   spotlight: string | null;
   view: CallView;
   organizer: boolean;
-  /** The screen being shared, and whose it is ("You’re sharing a tab"). */
-  screen: { feed: Feed; label: string } | null;
   /** The status bar's pills: what you share, who is spotlighted. */
   bar: ReactNode;
   caption: ReactNode;
   rooms: StageRooms | null;
   onSpotlight: (id: string | null) => void;
+  /** Pin someone for you, or unpin them. */
+  onPin: (p: StageParticipant) => void;
+  /** See yourself somewhere else. */
+  onSelf: (where: SelfView) => void;
   /** The first time you arrange your own view. */
   onCustom: () => void;
 }) {
   const { ref, w, h } = useSize<HTMLDivElement>();
   const reduce = useReducedMotion();
   const narrow = w > 0 && w < 760;
-  const v = view.view;
-  const ids = ordered(people.map((p) => p.id), v, spotlight);
-  const speaker = people.find((p) => p.speaking && !p.isMe)?.id ?? null;
-  // Auto goes to speaker view only for someone who has been doing most of the talking, not every new voice.
-  const heard = useRef<string[]>([]);
-  if (speaker && heard.current.at(-1) !== speaker) heard.current = [...heard.current, speaker].slice(-5);
-  const counts = new Map<string, number>();
-  for (const x of heard.current) counts.set(x, (counts.get(x) ?? 0) + 1);
-  const dominant = [...counts].find(([, n]) => n >= 4)?.[0] ?? null;
-  const lead = spotlight ?? v.pinned ?? (v.mode === 'speaker' ? speaker ?? heard.current.at(-1) ?? null : dominant);
+  const { prefs, layout: lay } = view;
+  const talk = useSettledSpeakers(people);
+  const raw = arrange({ people, shares: shares.map((s) => s.id), spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay });
+  // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
+  const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
+  const orderKey = lay.order.join(' ');
+  const auto = raw.shape === 'focus' && raw.auto;
+  const rest = auto && strip.current.auto && strip.current.order === orderKey ? steady(strip.current.rest, raw.rest) : raw.rest;
+  strip.current = { order: orderKey, auto, rest };
+  const plan = { ...raw, rest, big: narrow ? new Set<string>() : raw.big };
   const top = bar ? 46 : 0;
   const bottom = caption ? (w < 700 ? 150 : 124) : 0;
-  const L = layout({ ids, big: new Set(narrow ? [] : v.big), mode: v.mode, lead, screen: !!screen, ratio: v.ratio, width: w, height: h, top, bottom });
-  const resizable = !narrow && L.shape !== 'speaker' && !rooms;
+  const L = place(plan, { width: w, height: h, top, bottom, ratio: prefs.ratio, split: lay.split });
+
+  const byId = new Map(people.map((p) => [p.id, p]));
+  const seatOf = (id: string) => byId.get(id)?.seat;
+  const seats = (ids: string[]) => ids.flatMap((id) => { const s = seatOf(id); return s ? [s] : []; });
+  const pinned = new Set(plan.leads.filter((id) => lay.pins.includes(seatOf(id) ?? '')));
+  // What a move rearranges: your pins among themselves, or everyone else in your order. A spotlight or Alcove's pick stays put.
+  const pinGroup = plan.leads.filter((id) => pinned.has(id));
+  const restGroup = plan.rest.filter((k) => !isShareKey(k));
+  const groupOf = (id: string) => (pinned.has(id) ? pinGroup : restGroup.includes(id) ? restGroup : null);
+  const resizable = !narrow && plan.shape !== 'focus' && !rooms;
+  const draggable = !narrow && plan.shape !== 'focus' && !rooms;
+  const self = plan.self ? byId.get(plan.self.id) ?? null : null;
+  const cornered = self && plan.self && !plan.self.folded ? self : null;
+  const focusables = [...plan.featured.map(shareKey), ...plan.leads, ...plan.rest, ...(cornered ? [cornered.id] : [])];
+
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
-  const press = useRef<{ id: string; x: number; y: number; dx: number; dy: number; on: boolean } | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const tabKey = focusKey && focusables.includes(focusKey) ? focusKey : focusables[0] ?? null;
+  const els = useRef(new Map<string, HTMLDivElement>());
+  const setEl = (k: string) => (el: HTMLDivElement | null) => { if (el) els.current.set(k, el); else els.current.delete(k); };
+  const press = useRef<{ id: string; x: number; y: number; dx: number; dy: number; on: boolean; corner: boolean } | null>(null);
   const grow = useRef<{ id: string; x: number; y: number; w: number; h: number; big: boolean } | null>(null);
-  const divider = useRef(false);
-  const spotlightRef = useRef(spotlight);
-  spotlightRef.current = spotlight;
-  const latest = useRef({ L, ids, v, view, onCustom, w, room: h - top - bottom, top });
-  latest.current = { L, ids, v, view, onCustom, w, room: h - top - bottom, top };
+  const handle = useRef<'divider' | 'split' | null>(null);
 
-  /* Dragging a tile, its corner, or the line beside a shared screen: pointer moves anywhere on the page. */
+  /** Puts `id` where `target` is in its group: your pins in a new order, or your order of everyone else. */
+  const reorder = (g: string[], id: string, target: string) => {
+    const next = g.filter((x) => x !== id);
+    next.splice(g.indexOf(target), 0, id);
+    if (pinned.has(id)) {
+      const shown = seats(next);
+      view.setPins([...shown, ...lay.pins.filter((s) => !shown.includes(s))]);
+    } else view.setOrder(reslot(plan.order, seats(g), seats(next)));
+    onCustom();
+  };
+  const moveBy = (id: string, d: -1 | 1) => {
+    const g = groupOf(id);
+    const target = g?.[g.indexOf(id) + d];
+    if (g && target !== undefined) reorder(g, id, target);
+  };
+  const toggleShare = (id: string, big: boolean) => { view.setShare(id, big ? 'tile' : 'big'); onCustom(); };
+  const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
+  const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
+
+  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, w, h });
+  latest.current = { L, plan, view, onCustom, reorder, groupOf, w, h };
+
+  /* Dragging a tile, its corner, a line beside a shared screen, or your own picture: the pointer moves anywhere on the page. */
   useEffect(() => {
     const local = (e: PointerEvent) => { const r = ref.current?.getBoundingClientRect(); return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) }; };
     const move = (e: PointerEvent) => {
-      const { L: lay, ids: order, v: cur, view: vw, w: width, room, top: above } = latest.current;
+      const { L: lay2, view: vw, reorder: re, groupOf: groupFor } = latest.current;
       const p = local(e);
-      if (divider.current && lay.divider) {
-        vw.setRatio(lay.divider.vertical ? (p.y - above) / Math.max(1, room - 12) : p.x / Math.max(1, width - 12));
-        return;
-      }
+      if (handle.current === 'divider' && lay2.divider) { vw.setRatio(along(lay2.divider, p)); return; }
+      if (handle.current === 'split' && lay2.split) { vw.setSplit(along(lay2.split, p)); return; }
       const g = grow.current;
       if (g) {
         const nw = Math.max(g.w * 0.5, g.w + e.clientX - g.x);
@@ -110,7 +172,7 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
         setSize({ id: g.id, w: nw, h: nh });
         const by = Math.max(nw / g.w, nh / g.h);
         const want = g.big ? by > 0.72 : by > 1.35;
-        if (want !== cur.big.includes(g.id)) vw.setBig(g.id, want);
+        if (want !== vw.layout.big.includes(g.id)) vw.setBig(g.id, want);
         return;
       }
       const d = press.current;
@@ -120,25 +182,28 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
       const x = p.x - d.dx;
       const y = p.y - d.dy;
       setDrag({ id: d.id, x, y });
-      const mine = lay.slots.get(d.id);
-      if (!mine) return;
+      if (d.corner) return;
+      const mine = lay2.slots.get(d.id);
+      const group = groupFor(d.id);
+      if (!mine || !group) return;
       const cx = x + mine[2] / 2;
       const cy = y + mine[3] / 2;
       let near: string | null = null;
       let best = Infinity;
-      for (const [id, r] of lay.slots) {
+      for (const k of group) {
+        const r = lay2.slots.get(k);
+        if (!r) continue;
         const dist = (r[0] + r[2] / 2 - cx) ** 2 + (r[1] + r[3] / 2 - cy) ** 2;
-        if (dist < best) { best = dist; near = id; }
+        if (dist < best) { best = dist; near = k; }
       }
-      const leaders = [spotlightRef.current, cur.pinned];
-      if (!near || near === d.id || leaders.includes(near) || leaders.includes(d.id)) return;
-      const next = order.filter((x2) => x2 !== d.id);
-      next.splice(order.indexOf(near), 0, d.id);
-      vw.setOrder(next.filter((x2) => !leaders.includes(x2)));
+      if (near && near !== d.id) re(group, d.id, near);
     };
-    const up = () => {
-      const moved = press.current?.on || grow.current || divider.current;
-      press.current = null; grow.current = null; divider.current = false;
+    const up = (e: PointerEvent) => {
+      const d = press.current;
+      // Your corner is a standing choice, not part of the layout Reset puts back, so moving it isn't "arranging".
+      const moved = (d?.on && !d.corner) || grow.current || handle.current;
+      if (d?.on && d.corner) { const p = local(e); latest.current.view.setCorner(cornerAt(p.x, p.y, latest.current.w, latest.current.h)); }
+      press.current = null; grow.current = null; handle.current = null;
       setDrag(null); setSize(null);
       if (moved) latest.current.onCustom();
     };
@@ -148,80 +213,143 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
     return () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); };
   }, [ref]);
 
-  const startDrag = (e: ReactPointerEvent, id: string) => {
-    if (e.button !== 0 || L.shape === 'speaker' || rooms || narrow) return;
+  const startDrag = (e: ReactPointerEvent, id: string, corner = false) => {
+    if (e.button !== 0 || rooms || (!corner && (!draggable || !groupOf(id)))) return;
     if (e.target instanceof Element && e.target.closest('button, [data-handle]')) return;
-    const r = L.slots.get(id);
+    const r = corner ? L.self : L.slots.get(id);
     const at = ref.current?.getBoundingClientRect();
     if (!r || !at) return;
     const x = e.clientX - at.left;
     const y = e.clientY - at.top;
-    press.current = { id, x, y, dx: x - r[0], dy: y - r[1], on: false };
+    press.current = { id, x, y, dx: x - r[0], dy: y - r[1], on: false, corner };
   };
-  const startGrow = (e: ReactPointerEvent, id: string) => {
-    const r = L.slots.get(id);
+  const startGrow = (e: ReactPointerEvent, p: StageParticipant) => {
+    const r = L.slots.get(p.id);
     if (!r || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    grow.current = { id, x: e.clientX, y: e.clientY, w: r[2], h: r[3], big: v.big.includes(id) };
+    grow.current = { id: p.seat, x: e.clientX, y: e.clientY, w: r[2], h: r[3], big: lay.big.includes(p.seat) };
   };
+
+  /** A focused tile's keys: Enter its menu, P pin, Shift and an arrow move it, + and − size it, arrows go to the next tile. */
+  const keysFor = (k: string) => (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+    const onTile = e.target === e.currentTarget;
+    const key = e.key;
+    const p = byId.get(k);
+    const share = isShareKey(k) ? shares.find((s) => shareKey(s.id) === k) : undefined;
+    const corner = cornered && k === cornered.id;
+    let done = true;
+    if ((key === 'Enter' || key === ' ') && onTile) setMenu(k);
+    else if (key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) setMenu(k);
+    else if ((key === 'p' || key === 'P') && !e.shiftKey) {
+      if (share) toggleShare(share.id, L.shares.has(share.id));
+      else if (p && !corner) onPin(p);
+    } else if (e.shiftKey && ARROWS.has(key)) {
+      if (corner) view.setCorner(cornerBy(prefs.corner, key));
+      else moveBy(k, key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1);
+    } else if (key === '+' || key === '=' || key === '-' || key === '_' || key === '−') {
+      const big = key === '+' || key === '=';
+      if (p && resizable && restGroup.includes(k) && lay.big.includes(p.seat) !== big) toggleBig(p);
+    } else if (ARROWS.has(key)) focusTo(focusables[Math.max(0, Math.min(focusables.length - 1, focusables.indexOf(k) + (key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1)))]);
+    else if (key === 'Home') focusTo(focusables[0]);
+    else if (key === 'End') focusTo(focusables.at(-1));
+    else done = false;
+    if (done) { e.preventDefault(); e.stopPropagation(); }
+  };
+  const tileProps = (k: string, label: string) => ({
+    ref: setEl(k), tabIndex: k === tabKey ? 0 : -1, role: 'group', 'aria-roledescription': 'tile', 'aria-label': `${label}. Enter for options`,
+    'aria-keyshortcuts': 'Enter P Shift+ArrowLeft Shift+ArrowRight', onKeyDown: keysFor(k), onFocus: (e: ReactFocusEvent) => { if (e.target === e.currentTarget) setFocusKey(k); }
+  });
 
   if (rooms) return <div ref={ref} className="ic-stage"><RoomsStage people={people} rooms={rooms} w={w} h={h} reduce={!!reduce} /></div>;
 
   const name = (p: StageParticipant) => (p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person));
+  const menuFor = (p: StageParticipant, corner: boolean): PersonMenu => {
+    const g = groupOf(p.id);
+    const at = g ? g.indexOf(p.id) : -1;
+    const spot = spotlight === p.id;
+    return {
+      pinned: corner ? undefined : { on: pinned.has(p.id), toggle: () => onPin(p) },
+      spotlight: organizer ? { on: spot, toggle: () => onSpotlight(spot ? null : p.id) } : undefined,
+      ...(g && g.length > 1 ? { earlier: at > 0 ? () => moveBy(p.id, -1) : null, later: at < g.length - 1 ? () => moveBy(p.id, 1) : null } : {}),
+      size: resizable && restGroup.includes(p.id) ? { big: lay.big.includes(p.seat), toggle: () => toggleBig(p) } : undefined,
+      self: p.isMe ? { where: prefs.self, set: onSelf } : undefined
+    };
+  };
+  const nothing = !L.slots.size && !L.shares.size;
   return (
     <div ref={ref} className="ic-stage">
       <AnimatePresence>
         {bar && <motion.div key="bar" className="ic-sbar" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={UI}>{bar}</motion.div>}
       </AnimatePresence>
-      {screen && L.screen && (
-        <motion.div className="ic-scr" initial={{ ...box(L.screen), opacity: 0 }} animate={{ ...box(L.screen), opacity: 1 }} transition={reduce || divider.current ? { duration: 0 } : GLIDE}>
-          <FeedVideo feed={screen.feed} className="screen" />
-          <span className="ac-tile-name"><Icon name="screen" size={14} />{screen.label}</span>
-        </motion.div>
-      )}
-      {L.divider && !narrow && (
-        <motion.div className={cn('ic-divider', L.divider.vertical && 'is-v')} role="separator" tabIndex={0} aria-label="Resize the shared screen. Only your view changes" data-handle
-          initial={false} animate={L.divider.vertical ? { left: L.divider.x - 28, top: L.divider.y - 12 } : { left: L.divider.x - 12, top: L.divider.y - 28 }} transition={reduce || divider.current ? { duration: 0 } : GLIDE}
-          onPointerDown={(e) => { e.preventDefault(); divider.current = true; }}
+      {shares.map((s) => {
+        const k = shareKey(s.id);
+        const big = L.shares.get(s.id);
+        const r = big ?? L.slots.get(k);
+        if (!r) return null;
+        return (
+          <motion.div key={k} {...tileProps(k, s.label)} aria-roledescription="shared screen" aria-keyshortcuts="Enter P" className={cn('ic-scr', !big && 'is-tile')}
+            initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
+            <FeedVideo feed={s.feed} className="screen" />
+            <span className="ac-tile-name"><Icon name="screen" size={14} />{s.label}</span>
+            <ShareMenu label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big} onToggle={() => toggleShare(s.id, !!big)} />
+          </motion.div>
+        );
+      })}
+      {([['divider', L.divider], ['split', L.split]] as const).map(([kind, hd]) => hd && !narrow && (
+        <motion.div key={kind} className={cn('ic-divider', hd.along === 'y' && 'is-v')} role="separator" tabIndex={0} data-handle
+          aria-orientation={hd.along === 'x' ? 'vertical' : 'horizontal'} aria-valuemin={kind === 'divider' ? 42 : 25} aria-valuemax={kind === 'divider' ? 80 : 75}
+          aria-valuenow={Math.round((kind === 'divider' ? prefs.ratio : lay.split) * 100)}
+          aria-label={kind === 'divider' ? 'Room for shared screens beside the people. Only your view changes' : 'Room for each of the two shared screens. Only your view changes'}
+          initial={false} animate={hd.along === 'y' ? { left: hd.x - 28, top: hd.y - 12 } : { left: hd.x - 12, top: hd.y - 28 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}
+          onPointerDown={(e) => { e.preventDefault(); handle.current = kind; }}
           onKeyDown={(e) => {
-            const d = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -0.03 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 0.03 : 0;
-            if (!d) return;
-            e.preventDefault(); view.setRatio(v.ratio + d); onCustom();
+            const now = kind === 'divider' ? prefs.ratio : lay.split;
+            const less = e.key === 'ArrowLeft' || e.key === 'ArrowUp';
+            const more = e.key === 'ArrowRight' || e.key === 'ArrowDown';
+            const next = less ? now - 0.03 : more ? now + 0.03 : e.key === 'Home' ? 0 : e.key === 'End' ? 1 : e.key === 'Enter' ? (kind === 'divider' ? 0.66 : 0.5) : null;
+            if (next === null) return;
+            e.preventDefault();
+            if (kind === 'divider') view.setRatio(next); else view.setSplit(next);
+            onCustom();
           }}><i /></motion.div>
-      )}
+      ))}
       {people.map((p) => {
-        const r = L.slots.get(p.id);
+        const corner = cornered?.id === p.id;
+        const r = corner ? L.self : L.slots.get(p.id);
         if (!r) return null;
         const dragging = drag?.id === p.id;
-        const sizing = size?.id === p.id;
-        const pinned = v.pinned === p.id;
+        const sizing = size?.id === p.seat;
+        const pin = pinned.has(p.id);
         const spot = spotlight === p.id;
         const at = dragging ? { left: drag.x, top: drag.y, width: r[2], height: r[3] } : sizing ? { left: r[0], top: r[1], width: size.w, height: size.h } : box(r);
+        const said = [p.isMe ? `${callName(p.person)} (you)` : callName(p.person), corner ? 'in your corner' : '', pin ? 'pinned for you' : '', spot ? 'spotlighted for everyone' : '', p.hand ? 'hand raised' : '', p.mic ? '' : 'microphone off'];
         return (
-          <motion.div key={p.id} className={cn('ic-slot', dragging && 'is-drag', sizing && 'is-sizing', resizable && 'can-drag')} onPointerDown={(e) => startDrag(e, p.id)}
-            initial={{ ...at, opacity: 0, scale: 0.97 }} animate={{ ...at, opacity: 1, scale: dragging ? 1.03 : 1 }}
+          <motion.div key={p.id} {...tileProps(p.id, said.filter(Boolean).join(', '))}
+            className={cn('ic-slot', dragging && 'is-drag', sizing && 'is-sizing', (corner || (draggable && groupOf(p.id))) && 'can-drag', corner && 'is-corner')}
+            onPointerDown={(e) => startDrag(e, p.id, corner)}
+            initial={{ ...at, opacity: 0, scale: 0.97 }} animate={{ ...at, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
             transition={reduce || dragging || sizing ? { duration: 0 } : { ...GLIDE, opacity: UI, scale: UI }}>
-            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} className={cn(p.isMe && 'is-me', pinned && 'is-pinned', spot && 'is-spot')}
+            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot')}
               chrome={(
                 <>
-                  <div className="ic-tstate">
-                    {spot && (
-                      <span className="ic-tch is-spot"><Icon name="spotlight" size={13} />Spotlight · everyone
-                        {organizer && <button type="button" className="tx" aria-label="Stop spotlight for everyone" onClick={() => onSpotlight(null)}><Icon name="x" size={12} /></button>}
-                      </span>
-                    )}
-                    {pinned && (
-                      <span className="ic-tch"><Icon name="pin" size={13} />Pinned for you
-                        <button type="button" className="tx" aria-label={`Unpin ${callName(p.person)} (Esc)`} onClick={() => view.setPinned(null)}><Icon name="x" size={12} /></button>
-                      </span>
-                    )}
-                  </div>
-                  <TileMenu p={p} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} pinned={pinned} spot={spot} organizer={organizer}
-                    big={v.big.includes(p.id)} canSize={resizable}
-                    onPin={() => view.setPinned(pinned ? null : p.id)} onSpot={() => onSpotlight(spot ? null : p.id)}
-                    onSize={() => { view.setBig(p.id, !v.big.includes(p.id)); onCustom(); }} />
-                  {resizable && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p.id)}><Icon name="resize" size={14} /></span>}
+                  {!corner && (
+                    <div className="ic-tstate">
+                      {spot && (
+                        <span className="ic-tch is-spot"><Icon name="spotlight" size={13} /><span className="tl">Spotlight · everyone</span>
+                          {organizer && <button type="button" className="tx" aria-label="Stop spotlight for everyone" onClick={() => onSpotlight(null)}><Icon name="x" size={12} /></button>}
+                        </span>
+                      )}
+                      {pin && (
+                        <span className="ic-tch"><Icon name="pin" size={13} /><span className="tl">Pinned for you</span>
+                          <button type="button" className="tx" aria-label={`Unpin ${callName(p.person)}`} onClick={() => onPin(p)}><Icon name="x" size={12} /></button>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <TileMenu who={p.person} me={p.isMe} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} organizer={organizer} menu={menuFor(p, corner)} />
+                  {resizable && restGroup.includes(p.id) && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p)}><Icon name="resize" size={14} /></span>}
                 </>
               )}>
               {p.video ? <FeedVideo feed={p.video} /> : undefined}
@@ -229,29 +357,23 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
           </motion.div>
         );
       })}
+      {self && plan.self?.folded && L.self && (
+        <Tooltip label="Show yourself. Everyone else sees you either way" side="top">
+          <motion.button key="self-chip" type="button" className="ic-selfchip" aria-label="Show yourself. Only your view changes" onClick={() => onSelf('corner')}
+            initial={{ ...box(L.self), opacity: 0 }} animate={{ ...box(L.self), opacity: 1 }} transition={reduce ? { duration: 0 } : { ...GLIDE, opacity: UI }}>
+            <Avatar person={self.person} size={22} /><span>You</span><Icon name="eye" size={15} />
+          </motion.button>
+        </Tooltip>
+      )}
+      {nothing && plan.self?.folded && (
+        <div className="ic-stage-empty dark">
+          <EmptyState title="You’re hidden from your view" action={<Button size="sm" icon="eye" onClick={() => onSelf('corner')}>Show me</Button>}>Anyone who joins sees you as usual.</EmptyState>
+        </div>
+      )}
       <AnimatePresence>
         {caption && <motion.div key="cap" className="ic-cap" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={UI}>{caption}</motion.div>}
       </AnimatePresence>
     </div>
-  );
-}
-
-/** One person's menu: what each choice changes, said on the choice. */
-function TileMenu({ p, open, onOpenChange, pinned, spot, organizer, big, canSize, onPin, onSpot, onSize }: {
-  p: StageParticipant; open: boolean; onOpenChange: (o: boolean) => void; pinned: boolean; spot: boolean; organizer: boolean; big: boolean; canSize: boolean;
-  onPin: () => void; onSpot: () => void; onSize: () => void;
-}) {
-  const first = callName(p.person);
-  const pick = (f: () => void) => () => { onOpenChange(false); f(); };
-  return (
-    <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="start" label={`Options for ${first}`} className="ic-menu"
-      anchor={<button type="button" className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${first}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
-      <div className="mh"><Avatar person={p.person} size={22} /><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b></div>
-      <button type="button" className="mi" onClick={pick(onPin)}><Icon name={pinned ? 'pinOff' : 'pin'} size={17} /><span className="t">{pinned ? 'Unpin for me' : 'Pin for me'}</span><Scope>Only you</Scope></button>
-      {organizer && <button type="button" className="mi" onClick={pick(onSpot)}><Icon name="spotlight" size={17} /><span className="t">{spot ? 'Stop spotlight' : 'Spotlight for everyone'}</span><Scope everyone>Everyone</Scope></button>}
-      {canSize && <button type="button" className="mi" onClick={pick(onSize)}><Icon name={big ? 'shrink' : 'grow'} size={17} /><span className="t">{big ? 'Make smaller' : 'Make bigger'}</span><Scope>Only you</Scope></button>}
-      <p className="hint">{organizer ? 'Only the organizer can spotlight. You’re the organizer.' : 'Only the organizer can spotlight.'}</p>
-    </Popover>
   );
 }
 

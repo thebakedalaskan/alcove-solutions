@@ -1,204 +1,144 @@
 /*
- * Your view of a call: Auto, speaker or grid, who you pinned, the order you dragged people into, who
- * you made bigger, and how wide a shared screen is. All of it changes your screen only, and it's
- * remembered in this browser for the account that set it (never sent anywhere). The layout engine
- * below turns it into rectangles on the stage.
+ * Your view of a call, which changes your screen only and is never sent anywhere.
+ *
+ * - How you like to see calls (`CallViewPrefs`: Auto, speaker or grid, how much room shared screens get, where you see
+ *   yourself) is remembered in this browser for your account, for every call.
+ * - How you arranged this call (`CallLayout`: who you pinned, the order you put people in, who you made bigger, which
+ *   shares you see big) lasts for this call only: it's kept in this tab, so a reload keeps it, and it's deleted when
+ *   you leave. It names people by their seat in the call, which is random and means nothing anywhere else.
+ *
+ * Neither holds a name or anything said or shared. The layout engine (stageLayout.ts) turns both into the stage.
  */
-import { CallViewPrefsSchema, type CallViewMode, type CallViewPrefs } from '@alcove/api';
+import { CallLayoutSchema, CallViewPrefsSchema, type CallLayout, type CallViewMode, type CallViewPrefs, type SelfView, type StageCorner } from '@alcove/api';
 import { useCallback, useState } from 'react';
 import { log } from '~/lib/log';
 
 const vlog = log.child({ component: 'call-view' });
 
-export const DEFAULT_VIEW: CallViewPrefs = { mode: 'auto', order: [], big: [], ratio: 0.66, pinned: null };
-const keyFor = (ownerId: string) => `alcove.callView.${ownerId}`;
+export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', ratio: 0.66, self: 'grid', corner: 'bottom-right' };
+export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], shares: [], split: 0.5 };
+/** Pin up to this many people. */
+export const MAX_PINS = 6;
 
-function read(ownerId: string): CallViewPrefs {
+/* Preferences by account (its opaque owner ID); a browser without an account has one set of its own. */
+const prefsKey = (account: string | null) => (account ? `alcove.callView.${account}` : 'alcove.callView');
+const layoutKey = (callId: string) => `alcove.callLayout.${callId}`;
+
+function readPrefs(account: string | null): CallViewPrefs {
   try {
-    const raw = localStorage.getItem(keyFor(ownerId));
-    if (!raw) return DEFAULT_VIEW;
+    const raw = localStorage.getItem(prefsKey(account));
+    if (!raw) return DEFAULT_PREFS;
     const r = CallViewPrefsSchema.safeParse(JSON.parse(raw));
-    return r.success ? r.data : DEFAULT_VIEW;
+    return r.success ? r.data : DEFAULT_PREFS;
   } catch {
-    return DEFAULT_VIEW;
+    return DEFAULT_PREFS;
   }
 }
-function write(ownerId: string, v: CallViewPrefs) {
-  try { localStorage.setItem(keyFor(ownerId), JSON.stringify(v)); } catch (e) { vlog.debug('view not remembered', { err: e }); }
+function readLayout(callId: string): CallLayout {
+  try {
+    const raw = sessionStorage.getItem(layoutKey(callId));
+    if (!raw) return EMPTY_LAYOUT;
+    const r = CallLayoutSchema.safeParse(JSON.parse(raw));
+    return r.success ? r.data : EMPTY_LAYOUT;
+  } catch {
+    return EMPTY_LAYOUT;
+  }
+}
+function keep(store: 'local' | 'session', key: string, value: unknown) {
+  try { (store === 'local' ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch (e) { vlog.debug('view not remembered', { store, err: e }); }
+}
+/** Leaving the call forgets how you arranged it. */
+export function forgetCallLayout(callId: string) {
+  try { sessionStorage.removeItem(layoutKey(callId)); } catch (e) { vlog.debug('call layout not forgotten', { err: e }); }
 }
 
-/** Changed from Auto, or arranged by hand: the top bar offers a way back. */
-export const isCustom = (v: CallViewPrefs) => v.mode !== 'auto' || v.order.length > 0 || v.big.length > 0 || Math.abs(v.ratio - DEFAULT_VIEW.ratio) > 0.001;
+/** You changed the layout from what Auto gives: the top bar offers a way back. Where you see yourself is a standing choice, not part of it. */
+export const isCustom = (p: CallViewPrefs, l: CallLayout) => p.mode !== 'auto' || Math.abs(p.ratio - DEFAULT_PREFS.ratio) > 0.001
+  || l.pins.length > 0 || l.order.length > 0 || l.big.length > 0 || l.shares.length > 0 || Math.abs(l.split - EMPTY_LAYOUT.split) > 0.001;
 
-export function useCallView(ownerId: string) {
-  const [view, setView] = useState<CallViewPrefs>(() => read(ownerId));
-  const update = useCallback((fn: (v: CallViewPrefs) => CallViewPrefs) => {
-    setView((v) => { const next = fn(v); write(ownerId, next); return next; });
-  }, [ownerId]);
+/** Ready-made layouts, by role rather than by person, so they fit any call. */
+export type Preset = 'equal' | 'presenter';
+export const PRESETS: { id: Preset; label: string; detail: string }[] = [
+  { id: 'equal', label: 'Everyone equal', detail: 'Grid, nobody pinned or bigger, you with everyone' },
+  { id: 'presenter', label: 'Presenter and me', detail: 'Whoever shares or talks, big; you in a corner' }
+];
+function presetOf(id: Preset, p: CallViewPrefs, l: CallLayout): { prefs: CallViewPrefs; layout: CallLayout } {
+  const cleared: CallLayout = { ...l, pins: [], big: [], shares: [], split: EMPTY_LAYOUT.split };
+  return id === 'equal'
+    ? { prefs: { ...p, mode: 'grid', self: 'grid' }, layout: cleared }
+    : { prefs: { ...p, mode: 'speaker', self: 'corner', ratio: 0.78 }, layout: cleared };
+}
+/** The preset your view is in right now, if any. */
+export function presetNow(p: CallViewPrefs, l: CallLayout): Preset | null {
+  const plain = !l.pins.length && !l.big.length && !l.shares.length;
+  if (plain && p.mode === 'grid' && p.self === 'grid') return 'equal';
+  if (plain && p.mode === 'speaker' && p.self === 'corner' && Math.abs(p.ratio - 0.78) < 0.001) return 'presenter';
+  return null;
+}
+
+/** A view to go back to: Undo after a reset or a preset. */
+export interface ViewSnapshot { prefs: CallViewPrefs; layout: CallLayout }
+
+/**
+ * Your view of the call `callId`. `account` is your account's owner ID, null without an account, or undefined while
+ * that isn't known yet (nothing is remembered until it is).
+ */
+export function useCallView(callId: string, account: string | null | undefined) {
+  const [prefs, setPrefs] = useState<CallViewPrefs>(() => (account === undefined ? DEFAULT_PREFS : readPrefs(account)));
+  const [prefsFor, setPrefsFor] = useState(account);
+  if (account !== prefsFor) { setPrefsFor(account); setPrefs(account === undefined ? DEFAULT_PREFS : readPrefs(account)); }
+  const [layout, setLayout] = useState<CallLayout>(() => readLayout(callId));
+  const [layoutFor, setLayoutFor] = useState(callId);
+  if (callId !== layoutFor) { setLayoutFor(callId); setLayout(readLayout(callId)); }
+
+  const updatePrefs = useCallback((fn: (p: CallViewPrefs) => CallViewPrefs) => {
+    setPrefs((p) => { const next = fn(p); if (account !== undefined) keep('local', prefsKey(account), next); return next; });
+  }, [account]);
+  const updateLayout = useCallback((fn: (l: CallLayout) => CallLayout) => {
+    setLayout((l) => { const next = fn(l); if (next !== l) keep('session', layoutKey(callId), next); return next; });
+  }, [callId]);
+  /** Remembers the order people first came in, by seat, so someone coming back keeps their place. */
+  const arrive = useCallback((seats: string[]) => updateLayout((l) => {
+    const fresh = seats.filter((s) => !l.arrived.includes(s));
+    return fresh.length ? { ...l, arrived: [...l.arrived, ...fresh].slice(-400) } : l;
+  }), [updateLayout]);
+  /** Shares that have stopped aren't anyone's choice any more. */
+  const dropShares = useCallback((live: string[]) => updateLayout((l) => (l.shares.every((s) => live.includes(s.id)) ? l : { ...l, shares: l.shares.filter((s) => live.includes(s.id)) })), [updateLayout]);
+
   return {
-    view,
-    setMode: (mode: CallViewMode) => update((v) => ({ ...v, mode })),
-    setPinned: (pinned: string | null) => update((v) => ({ ...v, pinned })),
-    setOrder: (order: string[]) => update((v) => ({ ...v, order })),
-    setBig: (id: string, big: boolean) => update((v) => ({ ...v, big: big ? [...new Set([...v.big, id])] : v.big.filter((x) => x !== id) })),
-    setRatio: (ratio: number) => update((v) => ({ ...v, ratio: Math.max(0.42, Math.min(0.8, ratio)) })),
-    /** Back to Auto, the call's own order and sizes. A pin stays: it's undone from the tile. */
-    reset: () => update((v) => ({ ...DEFAULT_VIEW, pinned: v.pinned }))
+    arrive, dropShares,
+    prefs, layout,
+    setMode: (mode: CallViewMode) => updatePrefs((p) => ({ ...p, mode })),
+    setRatio: (ratio: number) => updatePrefs((p) => ({ ...p, ratio: Math.max(0.42, Math.min(0.8, ratio)) })),
+    setSelf: (self: SelfView) => updatePrefs((p) => ({ ...p, self })),
+    setCorner: (corner: StageCorner) => updatePrefs((p) => ({ ...p, corner })),
+    /** Pins someone (by seat), or unpins them. False when MAX_PINS are pinned already. */
+    togglePin: (seat: string): boolean => {
+      if (!layout.pins.includes(seat) && layout.pins.length >= MAX_PINS) return false;
+      updateLayout((l) => ({ ...l, pins: l.pins.includes(seat) ? l.pins.filter((s) => s !== seat) : [...l.pins, seat] }));
+      return true;
+    },
+    setPins: (pins: string[]) => updateLayout((l) => ({ ...l, pins: pins.slice(0, MAX_PINS) })),
+    setOrder: (order: string[]) => updateLayout((l) => ({ ...l, order: order.slice(0, 200) })),
+    setBig: (seat: string, big: boolean) => updateLayout((l) => ({ ...l, big: big ? [...new Set([...l.big, seat])] : l.big.filter((s) => s !== seat) })),
+    /** How you see one share: big, as a tile, or (null) as the layout puts it. */
+    setShare: (id: string, show: 'big' | 'tile' | null) => updateLayout((l) => ({ ...l, shares: [...l.shares.filter((s) => s.id !== id), ...(show ? [{ id, show }] : [])] })),
+    setSplit: (split: number) => updateLayout((l) => ({ ...l, split: Math.max(0.25, Math.min(0.75, split)) })),
+    /** Back to Auto: nobody pinned, the call's order and sizes. Where you see yourself stays as it is. */
+    reset: (): ViewSnapshot => {
+      const was = { prefs, layout };
+      updatePrefs((p) => ({ ...p, mode: DEFAULT_PREFS.mode, ratio: DEFAULT_PREFS.ratio }));
+      updateLayout((l) => ({ ...EMPTY_LAYOUT, arrived: l.arrived }));
+      return was;
+    },
+    preset: (id: Preset): ViewSnapshot => {
+      const was = { prefs, layout };
+      const next = presetOf(id, prefs, layout);
+      updatePrefs(() => next.prefs);
+      updateLayout(() => next.layout);
+      return was;
+    },
+    restore: (v: ViewSnapshot) => { updatePrefs(() => v.prefs); updateLayout((l) => ({ ...v.layout, arrived: l.arrived })); }
   };
 }
 export type CallView = ReturnType<typeof useCallView>;
-
-/* ---------- the layout engine: where everything goes, in stage pixels ---------- */
-
-export type Rect = [x: number, y: number, w: number, h: number];
-/** What you actually see. Auto: a shared screen with people beside it; speaker when someone leads; grid otherwise. */
-export type Shape = 'grid' | 'speaker' | 'side';
-
-export interface LayoutInput {
-  /** Everyone on the stage, leaders first (spotlight, then your pin), then your order. */
-  ids: string[];
-  big: Set<string>;
-  mode: CallViewMode;
-  /** Who is on the main stage in speaker view. */
-  lead: string | null;
-  screen: boolean;
-  ratio: number;
-  width: number;
-  height: number;
-  /** Space kept at the top (the status bar) and the bottom (captions). */
-  top: number;
-  bottom: number;
-}
-export interface Layout { shape: Shape; slots: Map<string, Rect>; screen: Rect | null; divider: { x: number; y: number; vertical: boolean } | null; lead: string | null }
-
-/** The biggest tiles of `asp` that fit `n` in the box, rows centred. */
-export function fitGrid(n: number, x: number, y: number, w: number, h: number, asp: number, gap = 12): Rect[] {
-  let best: { c: number; r: number; tw: number; th: number; a: number } | null = null;
-  for (let c = 1; c <= Math.max(1, n); c++) {
-    const r = Math.ceil(n / c);
-    const cw = (w - (c - 1) * gap) / c;
-    const ch = (h - (r - 1) * gap) / r;
-    if (cw <= 0 || ch <= 0) continue;
-    const tw0 = Math.min(cw, ch * asp);
-    const th = Math.min(ch, (tw0 / asp) * 1.18);
-    const tw = Math.min(cw, tw0 * 1.06);
-    if (!best || tw * th > best.a + 1) best = { c, r, tw, th, a: tw * th };
-  }
-  if (!best) return Array.from({ length: n }, (): Rect => [x, y, Math.max(0, w), Math.max(0, h)]);
-  const b = best;
-  const out: Rect[] = [];
-  const gh = b.r * b.th + (b.r - 1) * gap;
-  const oy = y + (h - gh) / 2;
-  for (let i = 0; i < n; i++) {
-    const row = Math.floor(i / b.c);
-    const inRow = row < b.r - 1 ? b.c : n - (b.r - 1) * b.c;
-    const rw = inRow * b.tw + (inRow - 1) * gap;
-    const ox = x + (w - rw) / 2;
-    out.push([ox + (i % b.c) * (b.tw + gap), oy + row * (b.th + gap), b.tw, b.th]);
-  }
-  return out;
-}
-
-/** Like fitGrid, but some tiles take two by two cells. */
-export function packGrid(spans: number[], x: number, y: number, w: number, h: number, asp: number, gap = 12): Rect[] {
-  if (!spans.some((s) => s > 1)) return fitGrid(spans.length, x, y, w, h, asp, gap);
-  let best: { C: number; R: number; tw: number; th: number; pos: [number, number, number][]; a: number } | null = null;
-  for (let C = 1; C <= spans.length + 1; C++) {
-    const occ: boolean[][] = [];
-    const taken = (r: number, c: number) => occ[r]?.[c] === true;
-    const free = (r: number, c: number, s: number) => {
-      if (c + s > C) return false;
-      for (let i = r; i < r + s; i++) for (let j = c; j < c + s; j++) if (taken(i, j)) return false;
-      return true;
-    };
-    const pos: [number, number, number][] = [];
-    for (const s0 of spans) {
-      const s = Math.min(s0, C);
-      let r = 0;
-      let c = 0;
-      for (let found = false; !found; r++) {
-        for (c = 0; c < C; c++) if (free(r, c, s)) { found = true; break; }
-        if (found) break;
-      }
-      for (let i = r; i < r + s; i++) { const row = occ[i] ?? []; for (let j = c; j < c + s; j++) row[j] = true; occ[i] = row; }
-      pos.push([r, c, s]);
-    }
-    const R = occ.length;
-    const cw = (w - (C - 1) * gap) / C;
-    const ch = (h - (R - 1) * gap) / R;
-    if (cw <= 0 || ch <= 0) continue;
-    let tw = Math.min(cw, ch * asp);
-    const th = Math.min(ch, (tw / asp) * 1.18);
-    tw = Math.min(cw, tw * 1.06);
-    if (!best || tw * th > best.a + 1) best = { C, R, tw, th, pos, a: tw * th };
-  }
-  if (!best) return fitGrid(spans.length, x, y, w, h, asp, gap);
-  const b = best;
-  const ox = x + (w - (b.C * b.tw + (b.C - 1) * gap)) / 2;
-  const oy = y + (h - (b.R * b.th + (b.R - 1) * gap)) / 2;
-  return b.pos.map(([r, c, s]): Rect => [ox + c * (b.tw + gap), oy + r * (b.th + gap), s * b.tw + (s - 1) * gap, s * b.th + (s - 1) * gap]);
-}
-
-export function shapeOf(i: Pick<LayoutInput, 'mode' | 'screen' | 'lead'>): Shape {
-  if (i.mode === 'grid') return 'grid';
-  if (i.mode === 'speaker') return 'speaker';
-  if (i.screen) return 'side';
-  return i.lead ? 'speaker' : 'grid';
-}
-
-export function layout(i: LayoutInput): Layout {
-  const shape = i.ids.length < 2 && !i.screen ? 'grid' : shapeOf(i);
-  const slots = new Map<string, Rect>();
-  const w = Math.max(0, i.width);
-  const h = Math.max(0, i.height - i.top - i.bottom);
-  const top = i.top;
-  const portrait = w < h * 1.05;
-  const span = (id: string) => (i.big.has(id) ? 2 : 1);
-  if (shape === 'side') {
-    let screen: Rect;
-    let divider: Layout['divider'];
-    let rects: Rect[];
-    if (!portrait) {
-      const sw = Math.round((w - 12) * i.ratio);
-      screen = [0, top, sw, h];
-      divider = { x: sw + 6, y: top + h / 2, vertical: false };
-      rects = packGrid(i.ids.map(span), sw + 12, top, w - sw - 12, h, 1.2);
-    } else {
-      const sh = Math.min(Math.round((h - 12) * i.ratio), Math.round(w / 1.5));
-      screen = [0, top, w, sh];
-      divider = { x: w / 2, y: top + sh + 6, vertical: true };
-      rects = fitGrid(i.ids.length, 0, top + sh + 12, w, h - sh - 12, 1.2, 8);
-    }
-    i.ids.forEach((id, k) => { const r = rects[k]; if (r) slots.set(id, r); });
-    return { shape, slots, screen, divider, lead: null };
-  }
-  if (shape === 'speaker') {
-    const lead = i.lead && i.ids.includes(i.lead) ? i.lead : i.ids[0] ?? null;
-    const rest = i.ids.filter((x) => x !== lead);
-    const m = rest.length + (i.screen ? 1 : 0);
-    const fh = m === 0 ? 0 : portrait ? Math.max(76, Math.min(h * 0.16, 110)) : Math.max(96, Math.min(h * 0.2, 150));
-    const gq = portrait ? 8 : 12;
-    const fw = m === 0 ? 0 : Math.min(fh * 1.45, (w - (m - 1) * gq) / m);
-    const x0 = (w - (m * fw + (m - 1) * gq)) / 2;
-    const yy = top + h - fh;
-    let k = 0;
-    let screen: Rect | null = null;
-    if (i.screen) { screen = [x0, yy, fw, fh]; k = 1; }
-    if (lead) slots.set(lead, [0, top, w, m === 0 ? h : h - fh - gq]);
-    rest.forEach((id, n) => slots.set(id, [x0 + (n + k) * (fw + gq), yy, fw, fh]));
-    return { shape, slots, screen, divider: null, lead };
-  }
-  const spans = [...(i.screen ? [1] : []), ...i.ids.map((id) => (portrait ? 1 : span(id)))];
-  const rects = packGrid(spans, 0, top, w, h, portrait ? 1 : 1.45, portrait ? 8 : 12);
-  const screen = i.screen ? rects[0] ?? null : null;
-  i.ids.forEach((id, k) => { const r = rects[k + (i.screen ? 1 : 0)]; if (r) slots.set(id, r); });
-  return { shape: 'grid', slots, screen, divider: null, lead: null };
-}
-
-/** Everyone in your order: the spotlit first, then your pin, then the order you dragged, then the rest as they came. */
-export function ordered(ids: string[], v: Pick<CallViewPrefs, 'order' | 'pinned'>, spotlight: string | null): string[] {
-  const lead = [spotlight, v.pinned].filter((x, k, all): x is string => !!x && ids.includes(x) && all.indexOf(x) === k);
-  const known = v.order.filter((x) => ids.includes(x) && !lead.includes(x));
-  const rest = ids.filter((x) => !lead.includes(x) && !known.includes(x));
-  return [...lead, ...known, ...rest];
-}

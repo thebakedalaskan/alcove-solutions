@@ -1,4 +1,4 @@
-import { CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person } from '@alcove/api';
+import { CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
 import {
   Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Icon, Popover, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
@@ -18,10 +18,11 @@ import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, ty
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { SharePicker } from '~/features/call/SharePicker';
 import { CallEars } from '~/features/call/speech';
-import { Stage, type StageParticipant, type StageRooms } from '~/features/call/Stage';
+import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
-import { isCustom, useCallView } from '~/features/call/view';
+import { MAX_PINS, forgetCallLayout, isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
+import { ViewMenu } from '~/features/call/ViewMenu';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -117,8 +118,10 @@ function InCall({ session }: { session: CallSession }) {
   const [hit, setHit] = useState<{ at: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
-  // Your own view of the call, remembered for you (your arrangement, never sent anywhere).
-  const layout = useCallView(me?.person.id ?? self);
+  // Your own view of the call (never sent anywhere): how you like calls, remembered for your account, and how you
+  // arranged this one, kept in this tab until you leave it.
+  const account = useQuery(q.session());
+  const layout = useCallView(state.callId, account.data ? account.data.ownerId : account.isPending ? undefined : null);
   const devices = useDevices(m.camera);
   const speaking = useSpeaking(media, m.mic);
   const guard = useLeaveGuard(() => setLeaveOpen(true));
@@ -254,6 +257,7 @@ function InCall({ session }: { session: CallSession }) {
     void room.leave();
     guardRef.current.release();
     sessions.call = null;
+    forgetCallLayout(state.callId);
     media.stop();
     sessions.media = null;
     void qc.invalidateQueries();
@@ -262,14 +266,18 @@ function InCall({ session }: { session: CallSession }) {
         : roomView.endReason === 'removed' ? 'The organizer removed you from the call.'
           : 'You’re no longer in this call here. You can join again.', { icon: 'leave' });
     void navigate(hosting ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
-  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, media, navigate, toast, session, room, qc]);
+  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, state.callId, media, navigate, toast, session, room, qc]);
 
   /* ---------- who is on the stage: everyone in the call, with their media from the room ---------- */
   const stagePeople: StageParticipant[] = state.participants.map((p) => {
     const r = roomView.people[p.id];
     const video: Feed | null = p.isMe ? (m.cam && m.camera ? { stream: m.camera } : null) : r?.camSid ? { room, sid: r.camSid } : null;
-    return { id: p.id, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video };
+    return { id: p.id, seat: p.seat, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video };
   });
+  /* Who came in when, by seat, so someone coming back keeps their place on your stage. Only people the call names have a seat. */
+  const seatKey = told.participants.map((p) => p.seat).join(' ');
+  const arrive = layout.arrive;
+  useEffect(() => { if (seatKey) arrive(seatKey.split(' ')); }, [seatKey, arrive]);
   // Names seen in this call, so chat from someone who has left keeps theirs.
   const named = useRef(new Map<string, Person>());
   for (const p of told.participants) named.current.set(p.id, p.person);
@@ -375,15 +383,24 @@ function InCall({ session }: { session: CallSession }) {
   const guestsHere = others.filter((p) => !candidates.some((c) => sameEmail(c.person, p.person))).length;
   const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number) => {
     session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids })), minutes });
-    if (layout.view.pinned) layout.setPinned(null);
     toast(`${rooms.length} rooms are open for ${minutes} min`, { icon: 'door' });
   };
 
-  /* ---------- the screen: one at a time, yours or someone else's in your part of the call ---------- */
+  /*
+   * ---------- what's shared: yours, and anyone else's in your part of the call ----------
+   * One screen at a time for now; the stage takes a list (each viewer chooses which to see big), ready for more.
+   */
   const presenter = others.find((p) => roomView.people[p.id]?.screenSid);
-  const presenting = presenter ? roomView.people[presenter.id]?.screenSid ?? null : null;
-  const screen = m.screen ? { feed: { stream: m.screen }, label: `You’re sharing ${m.screenLabel ?? 'your screen'}` }
-    : presenter && presenting ? { feed: { room, sid: presenting }, label: `${callName(presenter.person)} is sharing` } : null;
+  const shares: StageShare[] = [
+    ...(m.screen ? [{ id: meId, feed: { stream: m.screen }, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen' }] : []),
+    ...others.flatMap((p) => {
+      const sid = roomView.people[p.id]?.screenSid;
+      return sid ? [{ id: p.id, feed: { room, sid }, label: `${callName(p.person)} is sharing`, name: `${callName(p.person)}’s screen` }] : [];
+    })
+  ];
+  const shareKey = shares.map((s) => s.id).join(' ');
+  const dropShares = layout.dropShares;
+  useEffect(() => { dropShares(shareKey ? shareKey.split(' ') : []); }, [shareKey, dropShares]);
   const otherSharer = !m.screen && presenter ? callName(presenter.person) : null;
 
   /* ---------- actions ---------- */
@@ -406,15 +423,51 @@ function InCall({ session }: { session: CallSession }) {
     session.setSpotlight(id);
     toast(id ? `${name} spotlighted for everyone` : 'Spotlight stopped for everyone', { icon: 'spotlight' });
   };
-  const setPin = (id: string | null) => {
-    const was = layout.view.pinned;
-    layout.setPinned(id);
-    const who = (x: string) => callName(byId.get(x) ?? SOMEONE);
-    if (id) toast(`${who(id)} is pinned for you. Only your view changes.`, { icon: 'pin' });
-    else if (was) toast(`${who(was)} is unpinned`, { icon: 'pinOff' });
+  /* ---------- your view: pins, where you see yourself, ready-made layouts and reset, each with a way back ---------- */
+  // Names by seat, seen in this call: so a toast can name someone you pinned after they've gone. Kept in memory only.
+  const seated = useRef(new Map<string, Person>());
+  for (const p of told.participants) seated.current.set(p.seat, p.person);
+  const seatName = (seat: string) => callName(seated.current.get(seat) ?? SOMEONE);
+  const setPin = (p: { seat: string; person: Person }) => {
+    const was = layout.layout.pins.includes(p.seat);
+    if (!layout.togglePin(p.seat)) { toast(`You can pin up to ${MAX_PINS} people. Unpin someone first.`, { icon: 'pin' }); return; }
+    toast(was ? `${callName(p.person)} is unpinned` : `${callName(p.person)} is pinned for you. Only your view changes.`, { icon: was ? 'pinOff' : 'pin' });
   };
+  const unpinAll = () => {
+    const was = layout.layout.pins;
+    const first = was[0];
+    if (first === undefined) return;
+    layout.setPins([]);
+    toast(was.length === 1 ? `${seatName(first)} is unpinned` : 'Everyone you pinned is unpinned', { icon: 'pinOff', action: { label: 'Undo', onClick: () => layout.setPins(was) } });
+  };
+  const undoable = (text: string, icon: 'reset' | 'grid' | 'presenter', was: ViewSnapshot) => toast(text, { icon, action: { label: 'Undo', onClick: () => layout.restore(was) } });
+  const setSelf = (where: SelfView) => {
+    layout.setSelf(where);
+    toast(where === 'hidden' ? 'You’re hidden from your own view. Everyone else still sees you.' : where === 'corner' ? 'You see yourself in a corner' : 'You see yourself in the grid',
+      { icon: where === 'hidden' ? 'eyeOff' : 'eye' });
+  };
+  const applyPreset = (id: Preset) => {
+    if (roomsHold()) return;
+    undoable(id === 'equal' ? 'Everyone the same size, you included' : 'Whoever presents is big, and you’re in a corner', id === 'equal' ? 'grid' : 'presenter', layout.preset(id));
+  };
+  const custom = isCustom(layout.prefs, layout.layout);
+  /** While rooms are open the organizer's stage shows every room; their own view comes back after. */
+  const roomsHold = () => { if (open && organizer) { toast('Your view comes back when the rooms close', { icon: 'door' }); return true; } return false; };
+  const resetView = () => { if (!roomsHold()) undoable('Your view is back to Auto', 'reset', layout.reset()); };
   const hinted = useRef(false);
   const onCustom = () => { if (!hinted.current) { hinted.current = true; toast('Only your view changes. Reset it from the top bar.', { icon: 'eye' }); } };
+  /* Someone you pinned leaves: their pin waits, and comes back with them. */
+  const pinsHere = useRef<{ here: string[]; away: string[] } | null>(null);
+  const pinKey = layout.layout.pins.join(' ');
+  useEffect(() => {
+    const here = new Set(seatKey.split(' '));
+    const pins = pinKey ? pinKey.split(' ') : [];
+    const was = pinsHere.current;
+    pinsHere.current = { here: pins.filter((s) => here.has(s)), away: pins.filter((s) => !here.has(s)) };
+    if (!was) return;
+    for (const s of was.here) if (pins.includes(s) && !here.has(s)) toast(`${seatName(s)} left. They’re pinned again if they come back.`, { icon: 'pin' });
+    for (const s of was.away) if (pins.includes(s) && here.has(s)) toast(`${seatName(s)} is back, pinned for you`, { icon: 'pin' });
+  }, [seatKey, pinKey, toast]);
 
   /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
   const switchNotes = async (v: boolean) => {
@@ -480,17 +533,17 @@ function InCall({ session }: { session: CallSession }) {
   );
 
   /* ---------- keys ---------- */
-  const keys = useRef({ panel, pinned: layout.view.pinned, setPin, setPanel });
-  keys.current = { panel, pinned: layout.view.pinned, setPin, setPanel };
+  const keys = useRef({ panel, pinned: layout.layout.pins.length > 0, unpinAll, setPanel });
+  keys.current = { panel, pinned: layout.layout.pins.length > 0, unpinAll, setPanel };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const s = media.getSnapshot();
       const k = e.key.toLowerCase();
       if (k === 'escape') {
-        // Popovers and sheets close themselves first; then Escape unpins, then closes the panel.
+        // Popovers and sheets close themselves first; then Escape unpins everyone you pinned (Undo puts them back), then closes the panel.
         if (document.querySelector('[data-radix-popper-content-wrapper], [role="dialog"]')) return;
-        if (keys.current.pinned) keys.current.setPin(null);
+        if (keys.current.pinned) keys.current.unpinAll();
         else if (keys.current.panel) keys.current.setPanel(null);
         return;
       }
@@ -513,6 +566,7 @@ function InCall({ session }: { session: CallSession }) {
       const r = await session.leave();
       over.current = true;
       guard.release();
+      forgetCallLayout(state.callId);
       // Ending the call deletes its room, which disconnects everyone at once; anyone else leaves the room now.
       if (!r) void room.leave();
       media.stop();
@@ -552,7 +606,7 @@ function InCall({ session }: { session: CallSession }) {
     return {
       id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false,
       detail: detail.filter(Boolean).join(' · '),
-      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.view.pinned === p.id ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : ''].filter(Boolean)
+      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.layout.pins.includes(p.seat) ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : ''].filter(Boolean)
     };
   });
   const host: HostControls | undefined = organizer ? {
@@ -622,14 +676,17 @@ function InCall({ session }: { session: CallSession }) {
   return (
     <div className="stage ac-stage">
       <div className={cn('ic-call', ended && 'is-ended')}>
-        <TopBar title={state.title} elapsed={state.elapsed} notesOn={on} mode={layout.view.mode} custom={isCustom(layout.view)} people={stagePeople.map((p) => p.person)}
+        <TopBar title={state.title} elapsed={state.elapsed} notesOn={on} custom={custom} people={stagePeople.map((p) => p.person)}
           asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting'} peopleOpen={shownPanel === 'people'}
-          onNotes={() => openPanel('notes')} onMode={(mode) => { if (open && organizer) toast('Your view comes back when the rooms close', { icon: 'door' }); else layout.setMode(mode); }}
-          onReset={() => { layout.reset(); toast('Your view is back to Auto', { icon: 'reset' }); }} onCatchUp={catchUp} onPeople={() => flip('people')} />
+          view={(
+            <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom}
+              onMode={(mode) => { if (!roomsHold()) layout.setMode(mode); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset} />
+          )}
+          onNotes={() => openPanel('notes')} onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
-            <Stage people={onStage} spotlight={spotlight} view={layout} organizer={organizer} screen={screen}
-              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onCustom={onCustom} />
+            <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
+              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} />
           </motion.div>
           <AnimatePresence>
             {shownPanel && (
