@@ -41,10 +41,12 @@ sequenceDiagram
 
 - **Who controls notes.** Notes start on when the call was scheduled with them; otherwise nothing is
   recorded until they're turned on. Only the organizer turns them on and off
-  (`POST /v1/live/calls/:id/actions` with `{type: "notes", on}`), and each change adds a notice shown in
-  the call.
-- **Segments.** Turning notes off pauses the recording. Turning them on again starts segment `n+1`. Each
-  segment is one continuous MediaRecorder stream, so its pieces concatenate into one playable file.
+  (`POST /v1/live/calls/:id/actions` with `{type: "notes", on}`) and pauses and resumes them
+  (`{type: "pause"}`, `{type: "resume"}`); anyone else can ask for them. Each change adds a notice shown in
+  the call, and everyone sees the same capture state ([What's captured](#whats-captured)).
+- **Segments.** Turning notes off, or pausing them, stops the recording. Turning them on again, or resuming,
+  starts segment `n+1`. Each segment is one continuous MediaRecorder stream, so its pieces concatenate into
+  one playable file.
 - **Ordering and retries.** The browser uploads pieces in order and tries each one up to three times.
   The server treats a repeated `(segment, seq)` as a no-op and rejects audio for a paused or stopped
   recording, or for an earlier segment. A piece whose `content-length` is over 2 MiB is refused before its
@@ -52,8 +54,8 @@ sequenceDiagram
 - **Live transcript.** While notes are on, the browser also sends clips of speech to
   `POST /v1/live/calls/:id/transcribe` (16 kHz mono WAV, at most 30 seconds, 120 a minute per account).
   Each clip is transcribed by NEAR AI and kept as sealed lines, and `CallState.transcript` carries the
-  latest 200, attributed to the organizer. Clips are refused while notes are off or for an earlier
-  segment. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
+  latest 200, attributed to the organizer. Clips are refused while notes are off or paused, or for an
+  earlier segment. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
 - **Leaving.** The browser stops the recorder, sends the last audio and speech, then calls `leave`. The
   server finishes the note in the same transaction that ends the call, then starts the notes worker.
 ## Group calls
@@ -63,7 +65,8 @@ production), end-to-end encrypted: LiveKit forwards frames it can't read ([below
 The call itself stays in the API: who's let in, notes and the transcript.
 
 - **Joining.** `GET /v1/calls/:code/card` (no account needed) gives the title, organizer's name, whether
-  the organizer is there and whether the call is locked. `POST /v1/calls/:code/join` takes `{mic, cam}`,
+  the organizer is there, whether the call is locked, whether it was scheduled with notes, and once it has
+  started what it captures (`capture`, without anyone's name). `POST /v1/calls/:code/join` takes `{mic, cam}`,
   this connection's random `identity` and MLS `keyPackage` (made in the browser), a `name` (1–60
   characters) without an account, and `previous`, this tab's last pass for the call, if it has one. It
   returns a ticket: the LiveKit URL and room, the identity, the role and a **call pass**. No LiveKit token:
@@ -74,8 +77,8 @@ The call itself stays in the API: who's let in, notes and the transcript.
   pass (a reload). **Anyone else asks to join**: the organizer sees them (`CallState.waiting`, a toast and
   People) and lets them in or turns them away (`deny`). Nobody joins before the organizer is there
   (`409 conflict`) or while the call is locked (`403 forbidden`); someone removed asks again. Someone
-  waiting learns only whether notes are on: nobody's name and nothing that's been said. There's no
-  participant limit.
+  waiting learns only what the call captures, as the card does: nobody's name, no asks, and nothing that's
+  been said. There's no participant limit.
 - **The room.** `GET /v1/live/calls/:id/room` gives a LiveKit token for that one room (120 seconds, no
   admin rights, no data messages) to people let in, and to nobody else. Tokens carry no name: LiveKit knows
   people only by random identity.
@@ -84,10 +87,11 @@ The call itself stays in the API: who's let in, notes and the transcript.
   `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
   from `KMASTER`, per request. A removed person's pass stops working, and once the call has ended only the
   organizer can read it.
-- **What each role can do.** Everyone let in: read the call, chat, catch up and ask. Only the organizer
-  (pass role `host`, their own session and their current connection: joining from another device takes the
-  powers with it): let people in or turn them away, notes on/off, audio and speech uploads, mute someone's
-  microphone, remove someone, lock the call, and end it. Notes come from the organizer's microphone only;
+- **What each role can do.** Everyone let in: read the call, chat, catch up and ask, raise a hand, and ask
+  for notes. Only the organizer (pass role `host`, their own session and their current connection: joining
+  from another device takes the powers with it): let people in or turn them away, notes on/off, pause and
+  resume, say not now to an ask for notes, audio and speech uploads, mute someone's microphone, remove
+  someone, lock the call, and end it. Notes come from the organizer's microphone only;
   link guests get no notes, invited people get them as before.
 - **Leaving and ending.** Anyone but the organizer leaving is taken out of the call's group, so the keys move
   on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
@@ -173,6 +177,56 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   timing, and the audio-level header, so exactly who is speaking when. Breakout rooms are kept apart by each
   browser playing only its own room's media, not by separate keys: the whole call shares its keys.
 
+## What's captured
+
+One capture state for the whole call (`CallState.capture`, `packages/api/src/capture.ts`), kept in the
+call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyone in it:
+
+- **Its parts.** `recording` (the call's audio, encrypted), `transcript` (what's said, turned into text by the
+  private speech model), `ai` (the private notes model reading the transcript: the notes at the end, catch-up,
+  questions and captions during the call) and `screen` (shared screens read for the notes). Each is `on`,
+  `paused` or `off`, with when it last changed (`since`) and who changed it (`by`: the call's schedule, or the
+  organizer by name). Recording, transcript and notes move together today; nothing reads shared screens yet,
+  so `screen` is always `off` until shared-screen notes arrive. `mode` says it in one word. Capture runs in
+  one place, the organizer's browser, and the server enforces it on the audio and transcribe routes. Today that
+  browser sends its own microphone only; the app already says "what everyone says", as it will be once it
+  transcribes everyone it plays ([Next](#next)), which errs on the side of telling people they're captured.
+- **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
+  and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
+  asks. Every change nudges the room, so browsers fetch the call again.
+- **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
+  capturing path goes through, `mayCapture` in `apps/api/src/modules/capture.ts`, refuses audio pieces, speech
+  clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
+  them, so nothing new is recorded, transcribed or sent to the AI. The organizer's browser stops the recorder
+  and the speech clips as it sends the pause, and drops whatever it had recorded but not yet sent rather than
+  flushing it; a `409` from a later upload is dropped too. What the server took before the pause stays:
+  a piece or clip that got through the gate before the pause was saved is kept (a clip still being
+  transcribed lands in the transcript, before the pause). Notes off is the same for audio and speech, but
+  catch-up, questions and captions still read what was transcribed before.
+- **Resume** (`{type: "resume"}`) is the organizer's choice and nothing else's: not a reconnect, not a reload,
+  not a breakout room, and not a new organizer connection, which takes over with notes still paused (or off).
+  Resuming starts segment `n+1`, and so does turning notes on.
+- **Gaps.** Every stretch with nothing captured (notes off, from the start until they first come on, or paused)
+  is a gap: when it started and ended, and where it falls in the recording (`at`, at the end of the segment
+  before it, as transcript lines are placed). The call (`capture.gaps`), a catch-up (`CatchUp.gaps`, the ones in
+  or after what it read) and the finished note (`Note.gaps`) carry them; the transcript and chapters say
+  "Paused 10:02–10:05" in their place, and the notes model reads a `--` line there and is told never to guess
+  what was said in it. Changes are kept to a tenth of a second, so even a short pause shows. Lines stay inside
+  their own segment: one placed past the end of its segment's audio (its last pieces were dropped by a pause)
+  goes at the segment's end, so nothing said before a pause comes after it.
+- **Asking for notes.** While notes are off or paused, anyone in the call but the organizer can ask
+  (`{type: "request-notes", up}`; `up: false` takes it back; 10 a minute per person). Everyone in the call sees
+  open asks (`capture.requests`, by participant), like raised hands. The organizer hears about each one as a
+  toast and sees them in People, and either turns notes on (or resumes them), which answers every open ask, or
+  says not now (`{type: "decline-notes", requestId}`). Whoever asked is told (`capture.asked`). Asks are kept in
+  the sealed call state, one per person, by the person's ID across their reconnections.
+- **What it doesn't cover.** Video and chat are never captured: they're encrypted end to end between the
+  browsers. Nothing stops someone recording their own screen or speakers. Retention has one fixed behaviour,
+  with no settings: the live transcript and caption translations last only until the call ends; the audio,
+  transcript and notes stay in the organizer's vault until someone with the right deletes the note, and
+  deleting is physical ([Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). Paused stretches capture
+  nothing, so there's nothing of them to keep.
+
 ## Hands, spotlight, breakout rooms and captions
 
 - **Raised hands** are call state, one per person (`{type: "hand", up}`): anyone in the call raises or lowers
@@ -197,8 +251,8 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   ([Verified private inference](notes-and-inference.md#verified-private-inference)). Each line and language is
   translated once and kept as a sealed `transcript_translations` row, tagged with a keyed hash of the line and
   language, until the recording stops; then they go with the live transcript. Lines that aren't in this
-  call's live transcript are left out. Like catch-up and ask, it keeps no idempotency receipt, and it has its
-  own rate limit (90 a minute per person). Captions themselves are only shown: turning them off hides the
+  call's live transcript are left out. Like catch-up and ask, it keeps no idempotency receipt, it has its
+  own rate limit (90 a minute per person), and it's refused while notes are paused. Captions themselves are only shown: turning them off hides the
   caption bar, and the call is still transcribed for notes while notes are on.
 
 
@@ -234,8 +288,20 @@ rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and
 - **Screen sharing** is one screen at a time: while someone else shares, the share button says who.
 - **Captions** show the newest live transcript line, translated for each viewer who picks a language. Only
   the organizer's microphone is transcribed, so captions are the organizer's lines. They're hidden while rooms
-  are open.
-- **Notes.** The recorder and the speech clips run from the organizer's microphone only, while notes are on.
+  are open, and say so instead of showing an old line while notes are paused or off.
+- **Notes.** The recorder and the speech clips run from the organizer's microphone only, while notes are on;
+  pausing stops both at once and drops what wasn't sent ([What's captured](#whats-captured)).
+- **What's captured.** The notes sign in the top bar is the same for everyone: **Notes on** (crimson),
+  **Notes paused**, **Notes off**, or **Notes requested** while someone has asked. It opens a popover
+  (`features/call/Capture.tsx`) with each kind of capture and its state, who changed it and when, who gets the
+  notes, and that they're written in confidential compute; with the organizer's **Pause notes**, **Resume
+  notes** and **Turn off** or **Turn on notes**, or anyone else's **Ask for notes**. The notes panel has the
+  same controls in its menu and empty states. The transcript, in the call and in the note, marks each gap.
+- **Asks for notes.** The organizer gets a toast with Turn on (or Resume), and an Asking for notes section in
+  People with Not now for each; everyone sees "Asked for notes" on the asker's row. Whoever asked hears when
+  the organizer says not now. Joining shows only the latest notice as a toast; older ones are history.
+- **Before joining.** Guests and invited people see what the call captures on the join page, before they ask
+  and while they wait (`CaptureSummary` in `@alcove/ui`, from the card, refreshed every few seconds).
 - **Breakout rooms.** The organizer opens rooms for the invited people in the call (by email, as the server
   requires); guests stay in the main room. Who's in each room comes from `breakouts.open.rooms[].members`,
   and each browser tells the room whose media to play (`CallRoom.playOnly`). The organizer sees every room:

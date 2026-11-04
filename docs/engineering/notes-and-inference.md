@@ -184,7 +184,8 @@ sequenceDiagram
    filters out everything above the speech band and resamples it to 16 kHz. The samples are cut into clips
    at natural pauses, clips with no voice in them are dropped, and the rest are sent one at a time, in
    order, with a few retries. A lost clip costs a line of transcript, never the recording. Turning notes
-   off, pausing or leaving sends the last audio and speech first.
+   off or leaving sends the last audio and speech first; pausing a call's notes drops whatever wasn't sent
+   ([Calls and recordings › What's captured](calls-and-recordings.md#whats-captured)).
 2. **The request.** `POST /v1/live/calls/:id/transcribe` or `POST /v1/recordings/:id/transcribe`. The body
    is 16 kHz mono 16-bit PCM WAV (`content-type: audio/wav`) of at most 30 seconds
    (`MAX_TRANSCRIPT_CLIP_MS`, 960,044 bytes). The headers are `x-alcove-segment` (the recording segment),
@@ -193,8 +194,8 @@ sequenceDiagram
    then the WAV header is checked (RIFF/WAVE, PCM, one channel, 16,000 Hz, 16 bits). Anything else is
    `400 invalid`. Each account may send 120 clips a minute, calls and room recordings together; past that
    the answer is `503 unavailable` ("Too many attempts").
-3. **When a clip is taken.** For a call, only while it is live, notes are on and the clip's segment is the
-   current one. For a room recording, only while it is recording (not paused), and only segment 0.
+3. **When a clip is taken.** For a call, only while it is live, notes are on (not paused) and the clip's
+   segment is the current one; the capture gate, `mayCapture` in `apps/api/src/modules/capture.ts`, decides. For a room recording, only while it is recording (not paused), and only segment 0.
    Otherwise `409 conflict` (`400 invalid` for a room segment other than 0). Only the account's own calls
    and recordings: anyone else gets `404 not-found`.
 4. **Once only.** A clip is tagged `HMAC(transcript key, "clip:<segment>:<startMs>")`. If that tag is
@@ -209,8 +210,8 @@ sequenceDiagram
 6. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
    clip, to a tenth of a second.
-7. **Kept sealed.** The lines of one clip (none, if nothing survived the filter) and the evidence of the
-   verification it was sent to are one `transcript_clips` row, sealed under the state key
+7. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), its segment and the
+   evidence of the verification it was sent to are one `transcript_clips` row, sealed under the state key
    `transcript:<noteId>` (record kind `transcript-clip`; the header binds the owner, the note and the tag).
    The insert holds a share lock on the recording row. A clip that arrives after the recording stopped is
    dropped, because its note is already finished.
@@ -226,9 +227,11 @@ sequenceDiagram
 
 1. The note becomes `pending` with its duration: for a call, its length from start to leave; for a room
    recording, the seconds recorded.
-2. The transcript rows are opened, sorted by `at` and written into the note's sealed manifest (in a call
-   every line is the organizer's; in a room nobody is named), with the verifications they went to as
-   `inference`. Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
+2. The transcript rows are opened and written into the note's sealed manifest in recording order, each line
+   kept inside its own segment (one placed past the end of its segment's audio goes at the segment's end), in
+   a call every line the organizer's, in a room nobody named, with the verifications they went to as
+   `inference`. A call's gaps go into the manifest too (`gaps`: every stretch with notes off or paused, when,
+   and where it falls in the recording). Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
    deleted. A call's breakout rooms are written into the manifest too, in recording time, until the notes
    are written.
 3. Everyone invited gets a `note_access` row.
@@ -311,11 +314,12 @@ and a summary, refreshed as new lines arrive (at most every 30 seconds, only whi
   from `through − minutes` onwards, where `through` is the newest line, and returns a `CatchUp`: a short
   `summary`, what was `decided`, what was `proposed` and not agreed, what's still `open`, and what's `next`,
   each item with the second it was said. It also says what it read (`from`, `through`, `lines`), when it was
-  put together (`asOf`, seconds since the call started) and the `gaps`: the stretches of the call with notes
-  off, kept as on/off times in the sealed call state, since nothing said then can be in it.
+  put together (`asOf`, seconds since the call started) and the `gaps`: the stretches with notes off or paused
+  in what it read or after it, kept as changes in the sealed call state, since nothing said then can be in it.
+  The notes model reads each as a `--` line in the transcript.
 - `POST /v1/live/calls/:id/ask` with `{question}` answers from the transcript so far, with cited moments.
-- Both need a live call that has had notes on (`409 conflict` otherwise) and share the 20-a-minute limit
-  with asking about notes. Nothing is stored and neither keeps an operation receipt: an answer goes only to
+- Both need a live call that has had notes on, and notes not paused (`409 conflict` otherwise), and share the
+  20-a-minute limit with asking about notes. Nothing is stored and neither keeps an operation receipt: an answer goes only to
   the person who asked. Catch up reads the last 5 minutes; the Notes view reads the whole call.
 
 ## Captions in another language
@@ -326,7 +330,7 @@ asking. Lines already translated into that language come from their sealed `tran
 the rest go to the notes model in one request, sealed to its verified key like every request, and are kept
 the same way, until the recording stops. Line IDs
 that aren't in this call's live transcript are left out. 90 requests a minute per account; nothing is
-charged, and no operation receipt is kept.
+charged, and no operation receipt is kept. Refused while notes are paused, when nothing goes to the AI.
 
 ## Series
 
@@ -404,7 +408,9 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
 - **What the model is told.** The meeting's title; whether it was a video call or an in-person meeting
   recorded on one device; the organizer's name; the invited people by name, or by the part of their
   address before the @ when Alcove has no name for them (never full addresses); the length in minutes;
-  and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room). A transcript over 120,000
+  and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room), with a line such as
+  `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured.
+  Every prompt that reads a transcript tells the model never to say or guess what happened in one. A transcript over 120,000
   characters (about 30,000 tokens) keeps its beginning and end, with a marker for the lines left out.
 - **Writing notes.** One JSON object: `summary` (two to four plain sentences, substance first),
   `decisions` (each with the second it was settled; something only suggested isn't one), `questions` (what
@@ -555,6 +561,15 @@ ends) and breakout rooms ending up in the notes' chapters. `verified private inf
 
 `privacy at rest` checks that no clip, transcript, title, name or question crossed the wire to NEAR AI
 readable, in any encoding, and that nothing went to NEAR AI's plaintext endpoints.
+
+`apps/api/src/capture.integration.test.ts` covers what a call captures: only the organizer pausing, resuming
+and turning notes on or off (everyone else refused); everyone seeing the same state with who changed it;
+asking for notes, saying yes (notes on, or resumed) and not now, taking an ask back, and an ask another call's
+organizer can't answer; audio, speech, captions, catch-up and questions refused while paused, with nothing sent
+to NEAR AI, what came before kept, and the next segment after resuming; the gaps in the call, a catch-up, the
+finished note and the transcript the notes model reads, with a line from before a pause kept before it; notes
+staying paused through breakout rooms, someone coming back and a new organizer connection; and the card and
+someone asking to join seeing the state with nobody's name, nothing said, and nothing readable in logs or rows.
 
 `apps/api/src/series.integration.test.ts` covers series: scheduling the next call (and the times it
 refuses), what carries over for the organizer and for everyone invited, staleness, decisions that no longer

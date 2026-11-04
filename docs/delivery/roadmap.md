@@ -26,6 +26,10 @@
   the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
   series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
   calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
+- What a call captures, for everyone: recording, transcript, AI notes and shared screens, each on, paused or
+  off with who changed it and when, in the call and before joining; one pause that stops every kind of capture
+  on the server; asking the organizer for notes; and the gaps marked in the transcript, catch-up and notes
+  ([Calls and recordings › What's captured](../engineering/calls-and-recordings.md#whats-captured)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
