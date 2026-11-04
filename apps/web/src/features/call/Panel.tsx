@@ -234,7 +234,7 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
             )}
             <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">{n.read.whileHere ? 'It covers more than you were here for, so it isn’t shown.' : 'Nothing to sum up yet.'}</p>}</div>
             {n.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
-            {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+            {on && (live.writing || n.read.lines > 0) && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
           </div>
         )}
         {(problems.length > 0 || live.error) && (
