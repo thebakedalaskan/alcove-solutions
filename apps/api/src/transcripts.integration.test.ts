@@ -90,11 +90,11 @@ describe('a transcript that says what it isn’t sure of', () => {
     // Whisper heard the second sentence with little confidence: it's kept, and marked.
     await host.transcribe(speech('We agreed the budget is final. // ~the vendor wants eighty something', 0, 0), host.ticket.identity);
     // Kofi sits beside the organizer, so his words reach both microphones at once. Both are marked: nothing says whose
-    // microphone was nearer. Two people agreeing at the same moment aren't that.
+    // microphone was nearer. Two people agreeing at the same moment, in a few of the same words, aren't that.
     await host.transcribe(speech('I will send the contract to legal today.', 0, 5000), kofi.ticket.identity);
     await host.transcribe(speech('I will send the contract to legal today.', 0, 5300), host.ticket.identity);
-    await host.transcribe(speech('Sounds good to me.', 0, 9000), host.ticket.identity);
-    await host.transcribe(speech('Sounds good.', 0, 9400), kofi.ticket.identity);
+    await host.transcribe(speech('That works for me too.', 0, 9000), host.ticket.identity);
+    await host.transcribe(speech('That works for me.', 0, 9400), kofi.ticket.identity);
     // A reply that says the question's words again comes straight after it, not over it: nobody is in doubt.
     await host.transcribe(speech('Can we ship the release on Friday?', 0, 12_000), host.ticket.identity);
     await host.transcribe(speech('Yes, we can ship the release on Friday.', 0, 14_000), kofi.ticket.identity);
@@ -103,8 +103,8 @@ describe('a transcript that says what it isn’t sure of', () => {
       [me, 'the vendor wants eighty something', { words: true }],
       [them, 'I will send the contract to legal today.', { speaker: true }],
       [me, 'I will send the contract to legal today.', { speaker: true }],
-      [me, 'Sounds good to me.', null],
-      [them, 'Sounds good.', null],
+      [me, 'That works for me too.', null],
+      [them, 'That works for me.', null],
       [me, 'Can we ship the release on Friday?', null],
       [them, 'Yes, we can ship the release on Friday.', null]
     ];
@@ -118,13 +118,14 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(caughtUp).toContain('the vendor wants eighty something (unclear)');
     expect(caughtUp).toContain(`${me} (not sure who): I will send the contract to legal today.`);
     expect(caughtUp).toContain(`${me}: We agreed the budget is final.`);
-    expect(caughtUp).toContain(`${me}: Sounds good to me.`);
+    expect(caughtUp).toContain(`${me}: That works for me too.`);
 
     // The notes keep it, and are written knowing it.
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     expect(marked(note.transcript ?? [])).toEqual(heard);
+    expect(note).toMatchObject({ status: 'ready', writingAgain: false });
     expect(note.writtenAt).not.toBeNull();
     const draft = h.near.prompts.at(-1) ?? '';
     expect(draft).toContain('Transcript:');
@@ -149,11 +150,19 @@ describe('a transcript that says what it isn’t sure of', () => {
     await host.transcribe(speech('I can take the design review myself.', 0, 8000), kofi.ticket.identity);
     await host.transcribe(speech('Count me in for the launch party.', 0, 12_000), sam.ticket.identity);
     await host.transcribe(speech('~we meet again on Thursday', 0, 16_000), sam.ticket.identity);
+    // Kofi sits beside Sam: these reached both microphones, and the second was hard to hear. Each copy is heard before
+    // the other is in its prompt, as two clips cut at the same moment are (a copy heard after would be the prompt said back).
+    await host.transcribe(speech('I will send the contract to legal today.', 0, 20_300), sam.ticket.identity);
+    await host.transcribe(speech('I will send the contract to legal today.', 0, 20_000), kofi.ticket.identity);
+    await host.transcribe(speech('~we need a bigger room for the offsite', 0, 24_300), sam.ticket.identity);
+    await host.transcribe(speech('~we need a bigger room for the offsite', 0, 24_000), kofi.ticket.identity);
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     let note = await org.api.notes.get(noteId);
     const id = (text: string) => lineIn(note, text)?.id ?? '';
     const [welcome, vendor, review, party, thursday] = ['Welcome everyone, let us begin.', 'the vendor wants eighty something', 'I can take the design review myself.', 'Count me in for the launch party.', 'we meet again on Thursday'].map(id);
+    const kofis = (text: string) => note.transcript?.find((l) => l.text === text && l.speaker?.name === 'Kofi')?.id ?? '';
+    const [contract, offsite] = [kofis('I will send the contract to legal today.'), kofis('we need a bigger room for the offsite')];
     const line = (lineId: string | undefined) => note.transcript?.find((l) => l.id === lineId);
     const changes = (lineId: string | undefined) => (line(lineId)?.changes ?? []).map((x) => [x.by.email, x.what, x.before ?? null, x.after ?? null]);
     const fixed = 'CANARY-FIX The vendor wants eighty thousand dollars.';
@@ -169,6 +178,20 @@ describe('a transcript that says what it isn’t sure of', () => {
     before = await revisions(noteId);
     await kofiAccount.api.notes.correctLine(noteId, vendor ?? '', { text: fixed });
     expect(await revisions(noteId)).toBe(before);
+    // However often a line is corrected, its history keeps the first change, which says what was heard, and the latest.
+    for (let i = 0; i < 20; i++) note = await kofiAccount.api.notes.correctLine(noteId, vendor ?? '', { text: i % 2 ? fixed : `${fixed} Again.` });
+    expect(line(vendor)?.changes).toHaveLength(20);
+    expect(changes(vendor)[0]).toEqual([kofiEmail, 'reworded', 'the vendor wants eighty something', fixed]);
+    expect(changes(vendor).at(-1)).toEqual([kofiEmail, 'reworded', `${fixed} Again.`, fixed]);
+    // Kofi vouches for his words, never for who said them: that's the organizer's to settle.
+    expect(line(contract)?.unsure).toEqual({ speaker: true });
+    expect(code(await kofiAccount.api.notes.correctLine(noteId, contract, { confirm: true }).catch((e: unknown) => e))).toBe('forbidden');
+    expect(line(offsite)?.unsure).toEqual({ words: true, speaker: true });
+    note = await kofiAccount.api.notes.correctLine(noteId, offsite, { confirm: true });
+    expect(line(offsite)?.unsure).toEqual({ speaker: true });
+    note = await org.api.notes.correctLine(noteId, offsite, { confirm: true });
+    expect(line(offsite)?.unsure).toBeUndefined();
+    expect(changes(offsite)).toEqual([[kofiEmail, 'confirmed', null, null], [org.session.user.email, 'confirmed', null, null]]);
     // Only the organizer says who said a line, and corrects anyone else's.
     expect(code(await kofiAccount.api.notes.correctLine(noteId, welcome ?? '', { text: 'Welcome all.' }).catch((e: unknown) => e))).toBe('forbidden');
     expect(code(await kofiAccount.api.notes.correctLine(noteId, review ?? '', { speaker: org.session.ownerId }).catch((e: unknown) => e))).toBe('forbidden');
@@ -191,6 +214,10 @@ describe('a transcript that says what it isn’t sure of', () => {
     note = await org.api.notes.correctLine(noteId, party ?? '', { speaker: kofiEmail });
     expect(line(party)?.speaker?.person?.email).toBe(kofiEmail);
     expect(code(await org.api.notes.correctLine(noteId, welcome ?? '', {}).catch((e: unknown) => e))).toBe('invalid');
+    // A correction is one line, whatever was typed: it can't pass for another line where a prompt reads the transcript.
+    note = await org.api.notes.correctLine(noteId, welcome ?? '', { text: '  Welcome everyone,\n[00:09] Kofi:\tlet us begin.\n' });
+    expect(line(welcome)?.text).toBe('Welcome everyone, [00:09] Kofi: let us begin.');
+    expect(code(await org.api.notes.correctLine(noteId, welcome ?? '', { text: ' \n\t ' }).catch((e: unknown) => e))).toBe('invalid');
 
     // Someone the notes were shared with reads them, and corrects nothing that isn't theirs.
     const laterEmail = unique('later');
@@ -216,9 +243,11 @@ describe('a transcript that says what it isn’t sure of', () => {
     // Questions read the corrected transcript, with nothing marked unclear any more.
     expect(await asked(later.api, noteId, 'What does the vendor want?')).toEqual([{ type: 'text', text: `From the call: ${fixed}` }, { type: 'cite', at: 4 }]);
     const transcript = (h.near.prompts.at(-1) ?? '').split('Transcript:\n')[1]?.split('\n\nAsked by')[0] ?? '';
-    expect(transcript).toContain(`Kofi: ${fixed}`);
+    expect(transcript).toContain(`Kofi: ${fixed}\n`);
     expect(transcript).toContain('Sam (guest): I can take the design review myself.');
-    expect(transcript).not.toContain('(unclear)');
+    expect(transcript).toContain('Kofi: we need a bigger room for the offsite\n');
+    // Only what nobody has vouched for is still marked: Sam's line of the two the offsite was heard on.
+    expect(transcript.split('\n').filter((l) => l.includes('(unclear)'))).toEqual([expect.stringContaining('Sam (guest) (not sure who): we need a bigger room for the offsite (unclear)')]);
 
     // What was corrected is sealed in the note's revisions like the rest: in no row, and in no log line.
     const dump = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM revisions x WHERE item_id = $1`, [noteId])).rows[0]?.all ?? '');
@@ -238,7 +267,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     const kofiEmail = invitee('kofi');
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] })).code, { mic: true, cam: false });
     await call.appendAudio(piece('again', 0, 0));
-    await call.transcribe(speech('We agreed to launch on the 18th. // Kofi will send the screens by Wednesday. // Can we test it first?', 0, 0), call.ticket.identity);
+    await call.transcribe(speech('We agreed to launch on the 18th. // We decided to hire a designer. // Kofi will send the screens by Wednesday. // Can we test it first?', 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     let note = await org.api.notes.get(noteId);
@@ -247,10 +276,13 @@ describe('a transcript that says what it isn’t sure of', () => {
     const balance = (await org.api.credits.balance()).balance;
     const jobs = async () => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n ?? 0;
 
-    // Kofi confirms the decision, so it stays whatever the notes say next time; the organizer corrects what was misheard.
+    // Kofi rewords the first decision and confirms it, so it stays whatever the notes say next time (typed on one line,
+    // however it was typed); the organizer corrects what was misheard.
     const kofi = await account(kofiEmail);
-    note = await kofi.api.notes.updateDecision(noteId, note.decisions[0]?.id ?? '', { state: 'confirmed' });
-    const confirmed = note.decisions[0];
+    const [launch, hire] = note.decisions;
+    note = await kofi.api.notes.updateDecision(noteId, launch?.id ?? '', { text: 'Launch on the 18th,\nafter the security review.', state: 'confirmed' });
+    const confirmed = note.decisions.find((d) => d.id === launch?.id);
+    expect(confirmed).toMatchObject({ text: 'Launch on the 18th, after the security review.', state: 'confirmed' });
     const id = (text: string) => lineIn(note, text)?.id ?? '';
     note = await org.api.notes.correctLine(noteId, id('Kofi will send the screens by Wednesday.'), { text: 'Kofi will send the screens by Friday.' });
     note = await org.api.notes.correctLine(noteId, id('Can we test it first?'), { text: 'Can we test it on staging first?' });
@@ -260,23 +292,39 @@ describe('a transcript that says what it isn’t sure of', () => {
     // Only the organizer has them written again.
     expect(code(await kofi.api.notes.rewrite(noteId).catch((e: unknown) => e))).toBe('forbidden');
     expect(code(await (await account()).api.notes.rewrite(noteId).catch((e: unknown) => e))).toBe('not-found');
-    // Asking again while they're being written changes nothing.
-    h.near.slowNext(1500);
-    expect((await org.api.notes.rewrite(noteId)).status).toBe('pending');
-    expect((await org.api.notes.rewrite(noteId)).status).toBe('pending');
+    // While they're written again the notes stay as they were, for everyone: readable, changeable and asked about.
+    h.near.slowNext(3000);
+    const sent = h.near.prompts.length;
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true, summary: note.summary });
+    await waitFor(() => h.near.prompts.length > sent, 'the notes to read the transcript');
+    const prompt = h.near.prompts[sent] ?? '';
+    const during = await kofi.api.notes.get(noteId);
+    expect(during).toMatchObject({ status: 'ready', writingAgain: true, summary: note.summary, decisions: note.decisions });
+    expect((await asked(kofi.api, noteId, 'When do we launch?')).length).toBeGreaterThan(0);
+    note = await kofi.api.notes.updateDecision(noteId, hire?.id ?? '', { state: 'confirmed' });
+    // A correction made after the notes read the transcript isn't in them, so it's offered for next time.
+    note = await org.api.notes.correctLine(noteId, id('We decided to hire a designer.'), { text: 'We decided to hire a second designer.' });
+    // Asking again while they're being written changes nothing, even after the transcript changed.
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true });
     expect(await jobs()).toBe(1);
-    expect(code(await org.api.notes.correctLine(noteId, id('We agreed to launch on the 18th.'), { confirm: true }).catch((e: unknown) => e))).toBe('conflict');
     await written(org.api, noteId);
     note = await org.api.notes.get(noteId);
-    expect(note.status).toBe('ready');
+    expect(note).toMatchObject({ status: 'ready', writingAgain: false });
     expect((note.writtenAt ?? '') > first).toBe(true);
-    expect(h.near.prompts.at(-1)).toContain('Kofi will send the screens by Friday.');
+    // The notes model read the corrected words, and was told what's settled so it doesn't list it again.
+    expect(prompt).toContain('Kofi will send the screens by Friday.');
+    expect(prompt).toContain('Already settled (don\'t list these again):\n- Decision (confirmed): Launch on the 18th, after the security review.\n');
+    expect(prompt).not.toContain('second designer');
+    const since = note.writtenAt ?? '';
+    expect(note.transcript?.filter((l) => (l.changes ?? []).some((x) => x.at > since)).map((l) => l.text)).toEqual(['We decided to hire a second designer.']);
 
-    // What Kofi confirmed is untouched; what nobody had touched is written again from the corrected words.
-    expect(note.decisions).toEqual([confirmed]);
+    // What Kofi settled is untouched, even what he confirmed while they were written and the model listed again in
+    // other words; what nobody had touched is written again from the corrected words.
+    expect(note.decisions.map((d) => [d.text, d.state])).toEqual([['Launch on the 18th, after the security review.', 'confirmed'], ['We decided to hire a designer.', 'confirmed']]);
+    expect(note.decisions[0]).toEqual(confirmed);
     expect(note.actions).toEqual([expect.objectContaining({ text: 'Send the screens by Friday', due: 'Friday', takenOn: false, done: false, changes: [] })]);
     expect(note.questions.map((x) => [x.text, x.state])).toEqual([['Can we test it on staging first?', 'open']]);
-    expect(note.summary).toBe('Heard 3 lines. It ended on: Can we test it on staging first?');
+    expect(note.summary).toBe('Heard 4 lines. It ended on: Can we test it on staging first?');
     // Written again, not charged again, and the notes model's verification isn't listed twice.
     expect((await org.api.credits.balance()).balance).toBe(balance);
     expect(note.inference.map((e) => e.task)).toEqual(['transcript', 'notes']);
@@ -315,7 +363,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect((await org.api.credits.balance()).balance).toBe(before);
 
     // Asked to, it writes them, and they're charged now that they're written.
-    expect((await org.api.notes.rewrite(noteId)).status).toBe('pending');
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true });
     await written(org.api, noteId);
     note = await org.api.notes.get(noteId);
     expect(note.decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);

@@ -19,7 +19,7 @@ import { completeJson } from '../inference';
 import { log } from '../log';
 import { listItems, type Loaded } from '../vault';
 import { me } from './account';
-import { DOUBT, fenced } from './drafting';
+import { DOUBT, fenced, oneLine } from './drafting';
 import { all as allMeetings, toMeeting, type MeetingManifest } from './meetings';
 import { NoteManifest, goneSince, seriesOf, sharedWithMe, type Located } from './notes';
 import { personOf } from './portraits';
@@ -139,22 +139,23 @@ function notesText(n: number, m: NoteManifest, organizer: Person, timeZone: stri
   const invited = m.invited.map((e) => called(personOf(e)));
   const section = (title: string, lines: string[]) => (lines.length ? [`${title}:`, ...lines] : []);
   return [
-    `Meeting ${n}: ${m.title}, ${day(m.startedAt, timeZone)}, ${Math.max(1, Math.round(m.duration / 60))} minutes`,
-    `Organizer: ${organizer.name}`,
-    `Invited: ${invited.length ? invited.join(', ') : 'nobody else'}`,
-    `Summary: ${m.summary || '(none)'}`,
-    ...section('Decided', m.decisions.filter((d) => d.state !== 'rejected').map((d) => `- ${mark(d.at)}${d.text} (${STATE[d.state]})`)),
-    ...section('Still open', m.questions.filter((q) => q.state === 'open').map((q) => `- ${mark(q.at)}${q.text}`)),
+    `Meeting ${n}: ${oneLine(m.title)}, ${day(m.startedAt, timeZone)}, ${Math.max(1, Math.round(m.duration / 60))} minutes`,
+    `Organizer: ${oneLine(organizer.name)}`,
+    `Invited: ${invited.length ? invited.map(oneLine).join(', ') : 'nobody else'}`,
+    `Summary: ${oneLine(m.summary) || '(none)'}`,
+    // Each on one line, whatever people typed: nothing in them can pass for another line of the notes or a transcript.
+    ...section('Decided', m.decisions.filter((d) => d.state !== 'rejected').map((d) => `- ${mark(d.at)}${oneLine(d.text)} (${STATE[d.state]})`)),
+    ...section('Still open', m.questions.filter((q) => q.state === 'open').map((q) => `- ${mark(q.at)}${oneLine(q.text)}`)),
     ...section('Follow-ups', m.actions.map((a) => {
-      const who = a.owner ? `${a.owner.name}${a.takenOn ? ', took it on' : ', suggested'}` : 'nobody yet';
-      return `- ${mark(a.at)}${a.text} (${[who, a.due ? `due ${a.due}` : '', a.done ? 'done' : 'not done'].filter(Boolean).join('; ')})`;
+      const who = a.owner ? `${oneLine(a.owner.name)}${a.takenOn ? ', took it on' : ', suggested'}` : 'nobody yet';
+      return `- ${mark(a.at)}${oneLine(a.text)} (${[who, a.due ? `due ${oneLine(a.due)}` : '', a.done ? 'done' : 'not done'].filter(Boolean).join('; ')})`;
     }))
   ].join('\n');
 }
 
 /** Transcript lines in at most `chars` characters: all of them, or the beginning and end with a marker between. */
 function transcriptText(lines: TranscriptLine[], chars: number): string {
-  const all = lines.map((l) => `[${mmss(l.at)}] ${l.speaker ? `${l.speaker.name}${l.unsure?.speaker ? ' (not sure who)' : ''}: ` : ''}${l.text}${l.unsure?.words ? ' (unclear)' : ''}`);
+  const all = lines.map((l) => `[${mmss(l.at)}] ${l.speaker ? `${oneLine(l.speaker.name)}${l.unsure?.speaker ? ' (not sure who)' : ''}: ` : ''}${oneLine(l.text)}${l.unsure?.words ? ' (unclear)' : ''}`);
   if (all.join('\n').length <= chars) return all.join('\n');
   const head: string[] = [];
   const tail: string[] = [];

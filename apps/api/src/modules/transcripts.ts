@@ -220,13 +220,19 @@ export function placed(ls: HeardLine[], segs: AudioSegment[], open?: number | un
  * key, its OS image, its measured configuration or the gateway's changed.
  */
 export async function heardBy(o: Owner, db: Db, noteId: string): Promise<InferenceEvidence[]> {
-  const same = (e: InferenceEvidence) => [e.model, e.key, e.os, e.compose, e.tdx.status, e.gateway.os, e.gateway.compose, e.gateway.status].join('|');
   const first = new Map<string, InferenceEvidence>();
   for (const { evidence } of (await clips(o, db, noteId)).sort((a, b) => a.evidence.verifiedAt.localeCompare(b.evidence.verifiedAt))) {
-    if (!first.has(same(evidence))) first.set(same(evidence), evidence);
+    if (!first.has(verificationKey(evidence))) first.set(verificationKey(evidence), evidence);
   }
   return [...first.values()];
 }
+
+/**
+ * What makes two verifications of a model the same one, for a note's list of them: checking the same model again is
+ * the same verification unless its key, OS image, measured configuration or TCB status, or the gateway's, changed.
+ */
+export const verificationKey = (e: InferenceEvidence): string =>
+  [e.model, e.key, e.os, e.compose, e.tdx.status, e.gateway.os, e.gateway.compose, e.gateway.status].join('|');
 
 /** Clips read back at a time while finding the latest lines. */
 const LATEST_PAGE = 200;
@@ -291,18 +297,24 @@ export function spoken(ls: readonly HeardLine[], speakerOf: (identity: string) =
  * says the question's words again comes after it, and doesn't overlap.
  */
 const OVERLAP = 0.5;
-/** The same words: at least this many in the shorter line (so two people saying "sounds good" at once don't count), and this share of them in the other. */
-const SAME_WORDS = { atLeast: 4, share: 0.6 };
+/**
+ * The same words: at least this many in the shorter line, and this share of them in the other, in the same order. One
+ * voice on two microphones comes back in the same order; two people agreeing at once ("Yes, that sounds good" and
+ * "Yeah, that sounds good") say too little, and two people saying different things share words in no order.
+ */
+const SAME_WORDS = { atLeast: 6, share: 0.8 };
 const wordsOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
-/** Whether most of the shorter line's words are in the longer one. */
+/** Whether most of the shorter line's words are in the longer one, in order (their longest common subsequence). */
 function sameWords(a: string[], b: string[]): boolean {
   const [short, long] = a.length <= b.length ? [a, b] : [b, a];
   if (short.length < SAME_WORDS.atLeast) return false;
-  const left = new Map<string, number>();
-  for (const w of long) left.set(w, (left.get(w) ?? 0) + 1);
-  let shared = 0;
-  for (const w of short) { const n = left.get(w) ?? 0; if (n) { shared++; left.set(w, n - 1); } }
-  return shared >= SAME_WORDS.share * short.length;
+  let row = new Array<number>(long.length + 1).fill(0);
+  for (const w of short) {
+    const next = new Array<number>(long.length + 1).fill(0);
+    long.forEach((v, j) => { next[j + 1] = w === v ? (row[j] ?? 0) + 1 : Math.max(row[j + 1] ?? 0, next[j] ?? 0); });
+    row = next;
+  }
+  return (row[long.length] ?? 0) >= SAME_WORDS.share * short.length;
 }
 
 /**

@@ -402,6 +402,11 @@ export const NoteSchema = NoteSummarySchema.extend({
    * after it reach the notes when the organizer has them written again (notes.rewrite).
    */
   writtenAt: ISODateSchema.nullable(),
+  /**
+   * The organizer asked for the notes to be written again and they're being written. Until then the note stays as it
+   * is, readable and changeable by everyone who has it.
+   */
+  writingAgain: z.boolean(),
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
   audio: z.array(AudioSegmentSchema),

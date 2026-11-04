@@ -64,7 +64,7 @@ export const CaptureStateSchema = z.object({
   mode: CaptureModeSchema,
   /**
    * What the organizer's browser hears, mixed into one recording: their microphone and everyone in their part of the
-   * call, encrypted and kept with the notes. Silent while the organizer visits a breakout room: room talk stays out.
+   * call, encrypted and kept with the notes. Silent while the organizer visits a breakout room.
    */
   recording: CapturePartSchema,
   /** What everyone the organizer's browser hears says, turned into text as the call goes by a private speech model. */

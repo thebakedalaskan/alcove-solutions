@@ -226,9 +226,14 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const seriesId = await seriesOf(l);
   return {
     ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: m.transcript, writtenAt: m.writtenAt, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId),
-    inference: m.inference, ...(seriesId ? { seriesId } : {})
+    gaps: m.gaps, screens: m.screens, transcript: m.transcript, writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
+    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
+}
+/** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
+async function jobOf(o: Owner, db: Db, noteId: string) {
+  return maybeOne(db, z.object({ state: z.string(), attempt: z.number() }), `SELECT state, attempt FROM content_jobs WHERE owner_id = $1 AND kind = 'notes'
+    AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2) LIMIT 1`, [o.ownerId, noteId]);
 }
 /** The vault and recording to stream a note's audio from, after the access check. */
 export async function audioSource(o: Owner, id: string): Promise<{ owner: Owner; recordingId: string }> {
@@ -248,22 +253,21 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
   const stopped = m.status !== 'recording';
   const seconds = (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
   const lines = m.transcript?.length ?? 0;
-  const job = m.status === 'pending'
-    ? await maybeOne(owner.pool, z.object({ state: z.string(), attempt: z.number() }), `SELECT state, attempt FROM content_jobs
-        WHERE owner_id = $1 AND kind = 'notes' AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [owner.ownerId, id])
-    : undefined;
+  // Notes being written again leave the note ready meanwhile: they're done when their job is.
+  const job = stopped ? await jobOf(owner, owner.pool, id) : undefined;
+  const done = m.status === 'ready' && !job;
   const writing = !inference(o.cfg).configured ? 'Waiting for the notes service to be connected'
     : job?.state === 'writing' ? 'Writing the summary, decisions and follow-ups'
       : job?.state === 'waiting' ? 'Waiting for the notes model. The notes are written as soon as it’s verified and answering'
         : job && job.attempt > 0 ? 'The notes service is busy. Trying again shortly'
           : 'Queued for the notes service';
   return {
-    noteId: id, title: m.title, ready: m.status === 'ready',
+    noteId: id, title: m.title, ready: done,
     steps: [
       { label: m.kind === 'room' ? 'Recording stopped' : 'Call ended', done: stopped },
       { label: seconds ? `${minutesLabel(seconds)} of audio saved, encrypted` : 'No audio was recorded', done: stopped },
       { label: !stopped ? 'Transcribing as it goes' : lines ? `Transcript of ${lines} ${lines === 1 ? 'line' : 'lines'}` : 'Nothing was transcribed', done: stopped },
-      { label: m.status === 'ready' ? 'Notes written' : writing, done: m.status === 'ready' }
+      { label: done ? 'Notes written' : writing, done }
     ]
   };
 }
@@ -400,8 +404,13 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
 
 /* ---------- correcting the transcript ---------- */
 
-/** The most corrections a line keeps: who changed it and when, the latest of them. */
+/** The most corrections a line keeps: who changed it and when. The first (what was heard) always stays, then the latest. */
 const LINE_HISTORY = 20;
+/** A line's corrections, kept within LINE_HISTORY: the first, which says what was heard, and the latest after it. */
+const kept = (changes: Change[]): Change[] => {
+  const [first, ...rest] = changes;
+  return first && changes.length > LINE_HISTORY ? [first, ...rest.slice(-(LINE_HISTORY - 1))] : changes;
+};
 
 /**
  * Who a line can be said by: anyone the transcript already names (guests by the name they joined with), the organizer,
@@ -425,13 +434,18 @@ function vouched(l: TranscriptLine, clear: { words?: boolean; speaker?: boolean 
 /**
  * Corrects a line of a written note's transcript, in a new revision with who did it and when: its words, who said it,
  * or that it's right as heard, which clears what the transcript wasn't sure of. The organizer can correct any line;
- * anyone else who has the notes, the words of a line said by them. Questions asked about the note read it corrected.
+ * anyone else who has the notes, the words of a line said by them (saying it was heard right vouches for its words,
+ * never for who said it). Questions asked about the note read it corrected, and so does writing the notes again.
  */
 export async function correctLine(o: Owner, noteId: string, lineId: string, patch: LinePatch): Promise<Note> {
-  const { owner, mine, by, at } = await writtenNote(o, noteId);
+  const { owner, mine, by } = await writtenNote(o, noteId);
   const organizer = await me(owner);
   let made: Change['what'][] = [];
   await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    // Checked again holding the note, and stamped holding it: notes written again read the transcript holding it too,
+    // so a correction after that is later than when they read it, and the app offers writing them again.
+    if (n.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, status: n.status } });
+    const at = new Date().toISOString();
     const line = (n.transcript ?? []).find((x) => x.id === lineId);
     if (!line) throw new NotFoundError('That line isn’t in the transcript.', { context: { noteId, lineId } });
     const theirs = !!line.speaker?.person?.email && same(line.speaker.person.email, by.email);
@@ -459,12 +473,14 @@ export async function correctLine(o: Owner, noteId: string, lineId: string, patc
       }
     }
     if (patch.confirm && next.unsure) {
+      // Someone else vouches for what they said, never for who said it: that's the organizer's to settle.
+      if (!mine && !next.unsure.words) throw new ForbiddenError('Only the organizer can say who said a line.', { context: { noteId, lineId } });
       changes.push({ by, at, what: 'confirmed' });
-      next = vouched(next, { words: true, speaker: true });
+      next = vouched(next, mine ? { words: true, speaker: true } : { words: true });
     }
     made = changes.map((x) => x.what);
     if (!changes.length) return n;
-    const corrected: TranscriptLine = { ...next, changes: [...(line.changes ?? []), ...changes].slice(-LINE_HISTORY) };
+    const corrected: TranscriptLine = { ...next, changes: kept([...(line.changes ?? []), ...changes]) };
     return { ...n, transcript: (n.transcript ?? []).map((x) => (x.id === lineId ? corrected : x)) };
   }));
   nlog.info('transcript line corrected', { noteId, lineId, changes: made.join(',') || 'none', mine });
@@ -473,8 +489,10 @@ export async function correctLine(o: Owner, noteId: string, lineId: string, patc
 
 /**
  * Has the notes written again from the transcript as it is now: after corrections, or when they couldn't be written.
- * The organizer's alone, since it's their note the notes service writes for. What people have confirmed or changed
- * stays (modules/writer.ts). Asking again while they're being written changes nothing. Call writer.kick after it.
+ * The organizer's alone, since it's their note the notes service writes for. The note stays `ready` meanwhile, readable
+ * and changeable by everyone who has it (`Note.writingAgain` says the notes are being written), and what people have
+ * confirmed or changed by the time they're written stays (modules/writer.ts). Asking again while they're queued or
+ * being written changes nothing. Call writer.kick after it.
  */
 export async function rewrite(o: Owner, noteId: string): Promise<Note> {
   const l = await locate(o, noteId);
@@ -483,11 +501,14 @@ export async function rewrite(o: Owner, noteId: string): Promise<Note> {
   if (m.status === 'recording') throw new ConflictError('The notes are written once the recording stops.', { context: { noteId } });
   if (!m.transcript?.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to write from.', { context: { noteId } });
   if (m.status === 'ready') {
-    await tx(o.pool, async (c) => {
-      const next = await updateNote(o, c, noteId, (n) => (n.status === 'ready' ? { ...n, status: 'pending' } : n));
-      await queueNotes(o, c, noteId, next.recordingId);
+    const again = await tx(o.pool, async (c) => {
+      // Holding the note while its job is looked for, so two asks at once queue one job.
+      await lockItem(o, c, noteId);
+      if (await jobOf(o, c, noteId)) return false;
+      await queueNotes(o, c, noteId, m.recordingId);
+      return true;
     });
-    nlog.info('notes job queued', { noteId, recordingId: m.recordingId, lines: m.transcript.length, again: true, corrected: m.transcript.filter((x) => x.changes?.length).length });
+    if (again) nlog.info('notes job queued', { noteId, recordingId: m.recordingId, lines: m.transcript.length, again: true, corrected: m.transcript.filter((x) => x.changes?.length).length });
   }
   return get(o, noteId);
 }

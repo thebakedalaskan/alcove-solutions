@@ -10,7 +10,7 @@
  * for each job and wiped after it. The organizer can have the notes written again from a corrected
  * transcript (notes.rewrite): the same job, which keeps what people already settled.
  */
-import type { Change, InferenceEvidence, ScreenMoment } from '@alcove/api';
+import type { Change, ScreenMoment } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { openJson, stateKey } from '../crypto';
@@ -19,14 +19,15 @@ import { NotFoundError, UnansweredError, UnverifiedError } from '../errors';
 import { inference } from '../inference';
 import { log } from '../log';
 import { openOwner } from '../owners';
-import { getItem } from '../vault';
+import { getItem, lockItem } from '../vault';
 import { me } from './account';
 import { segments } from './audio';
 import * as billing from './billing';
-import { briefOf, draft, type Written } from './drafting';
+import { briefOf, draft, type Settled, type Written } from './drafting';
 import { NoteManifest, roomChapters, updateNote } from './notes';
 import { personOf } from './portraits';
 import * as screens from './screens';
+import { verificationKey } from './transcripts';
 
 const wlog = log.child({ component: 'writer' });
 const ATTEMPTS = 3;
@@ -53,27 +54,47 @@ async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefin
     RETURNING j.owner_id, j.job_id, j.revision_id, j.job_ciphertext, j.attempt, due.attempt AS tried`, [ownerId, LEASE_SECONDS, ATTEMPTS]);
 }
 
-/** The same verification of a model: checking it again is the same one unless its key, OS image or measured configuration changed. */
-const sameCheck = (a: InferenceEvidence, b: InferenceEvidence) =>
-  [a.model, a.key, a.os, a.compose, a.tdx.status, a.gateway.os, a.gateway.compose, a.gateway.status].join('|') === [b.model, b.key, b.os, b.compose, b.tdx.status, b.gateway.os, b.gateway.compose, b.gateway.status].join('|');
-const fold = (s: string) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+type Item = { text: string; at?: number | undefined; changes: Change[] };
+/**
+ * The same item in other words: most of the shorter one's words are in the other, and they point at moments within a
+ * minute of each other (or one points at none). People reword what they confirm, and the notes model words things
+ * afresh each time.
+ */
+const ALIKE = { share: 0.6, seconds: 60 };
+const wordsOf = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
+function alike(a: Item, b: Item): boolean {
+  if (a.at !== undefined && b.at !== undefined && Math.abs(a.at - b.at) > ALIKE.seconds) return false;
+  const [x, y] = [wordsOf(a.text), wordsOf(b.text)];
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (!short.length) return false;
+  const left = new Map<string, number>();
+  for (const w of long) left.set(w, (left.get(w) ?? 0) + 1);
+  let shared = 0;
+  for (const w of short) { const n = left.get(w) ?? 0; if (n) { shared++; left.set(w, n - 1); } }
+  return shared >= ALIKE.share * short.length;
+}
 /**
  * What the notes say when they're written again: whatever someone has already confirmed, answered, taken on or changed
- * stays as it is, and the new proposals take the place of the ones nobody touched (one already kept isn't proposed twice).
+ * stays as it is, and the new items take the place of the ones nobody touched. The notes model was told what's settled
+ * (drafting.settledOf), and a new item that's still a kept one in other words is dropped; so is anything settled while
+ * the notes were being written, which the model never saw.
  */
-function keepTouched<T extends { text: string; at?: number | undefined; changes: Change[] }>(was: T[], fresh: T[]): T[] {
+function keepTouched<T extends Item>(was: T[], fresh: T[]): T[] {
   const kept = was.filter((x) => x.changes.length > 0);
-  const have = new Set(kept.map((x) => fold(x.text)));
-  return [...kept, ...fresh.filter((x) => !have.has(fold(x.text)))].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY));
+  return [...kept, ...fresh.filter((x) => !kept.some((k) => alike(k, x)))].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY));
 }
+/** A part of the notes written again: its decisions, questions and follow-ups, each list kept as people settled it. Any part that has them is merged the same way. */
+const keepSettled = (was: Settled, fresh: Settled): Settled =>
+  ({ decisions: keepTouched(was.decisions, fresh.decisions), questions: keepTouched(was.questions, fresh.questions), actions: keepTouched(was.actions, fresh.actions) });
 
 /**
  * Writes the notes into the note (or finishes it without them, with its shared screens read when they were), charges
  * for them and closes the job, together. The charge is for the minutes recorded, not the length of the call: time with
  * notes off is free. Notes written again (the organizer asked, after correcting the transcript) keep what people
  * already confirmed or changed, and aren't charged again; when they can't be written, the notes stay as they were.
+ * `writtenAt` says when the notes read the transcript, so a correction made since is offered for writing them again.
  */
-async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
+async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: (Written & { readAt: string }) | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
   const recorded = notes ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
     let first = true;
@@ -86,11 +107,11 @@ async function settle(o: Owner, jobId: string, noteId: string, recordingId: stri
         .filter((x, i, all) => all.findIndex((y) => y.at === x.at && y.title === x.title && y.summary === x.summary) === i)
         .sort((a, b) => a.at - b.at);
       if (!notes) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
-      const { evidence, ...written } = notes;
-      const again = first ? {} : { decisions: keepTouched(m.decisions, written.decisions), questions: keepTouched(m.questions, written.questions), actions: keepTouched(m.actions, written.actions) };
+      const { evidence, readAt, ...written } = notes;
+      const again = first ? {} : keepSettled(m, written);
       return {
-        ...m, status: 'ready', ...written, ...again, chapters, writtenAt: new Date().toISOString(),
-        inference: m.inference.some((e) => sameCheck(e, evidence)) ? m.inference : [...m.inference, evidence]
+        ...m, status: 'ready', ...written, ...again, chapters, writtenAt: readAt,
+        inference: m.inference.some((e) => verificationKey(e) === verificationKey(evidence)) ? m.inference : [...m.inference, evidence]
       };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
@@ -114,7 +135,12 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     if (!rev) { await drop('note deleted'); return; }
     const noteId = rev.item_id;
     const { recordingId } = openJson(stateKey(o.root, o.ownerId, `job:${noteId}`), { v: 1, kind: 'job', ownerId: o.ownerId, noteId }, job.job_ciphertext, Job);
-    const note = await getItem(o, o.pool, 'note', noteId, NoteManifest, 'Those notes');
+    // Read holding the note, with when: corrections are stamped holding it too, so one made after this is later than
+    // `readAt`, and the app offers writing the notes again with it.
+    const { note, readAt } = await tx(o.pool, async (c) => {
+      await lockItem(o, c, noteId);
+      return { note: await getItem(o, c, 'note', noteId, NoteManifest, 'Those notes'), readAt: new Date().toISOString() };
+    });
     const lines = note.manifest.transcript?.length ?? 0;
     const at = { ...ctx, noteId, recordingId, lines, seconds: note.manifest.duration };
     // Finishing without notes still keeps what was read on each shared screen so far (kept in its frame's row).
@@ -136,7 +162,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       }
       const organizer = await me(o);
       const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown });
-      await settle(o, job.job_id, noteId, recordingId, notes);
+      await settle(o, job.job_id, noteId, recordingId, { ...notes, readAt });
       wlog.info('notes written', {
         ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length, ms: Math.round(performance.now() - t0)

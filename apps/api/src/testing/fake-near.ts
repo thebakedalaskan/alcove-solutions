@@ -253,9 +253,12 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
     return { lines: lines.flatMap((l: unknown) => (typeof l === 'object' && l !== null && 'id' in l && 'text' in l ? [{ id: str(l.id), text: `[${language}] ${str(l.text)}` }] : [])) };
   }
   if (system.startsWith('You write the notes')) {
+    // Written again, told what people already settled: like a model can, it lists the decisions again anyway, in other words.
+    const again = user.includes('Already settled');
+    const decided = (h: Heard) => ({ ...item(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text });
     return {
       summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
-      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(item),
+      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided),
       questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
