@@ -8,7 +8,7 @@
  * styles/shell.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes and a note in
  * styles/library.css (`lib-`, `pv-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
  * (`rec-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`, `wd-`, `wm-`, `wv-`, `wp-`, `wh-`,
- * `wl-`); the other screens in styles/{app,call,welcome}.css.
+ * `wl-`); the board in styles/board.css; the other screens in styles/{app,call,welcome}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -26,6 +26,7 @@
 @import "./styles/onboarding.css";
 @import "./styles/settings.css";
 @import "./styles/workspace.css";
+@import "./styles/board.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
@@ -155,6 +156,57 @@
   --shadow-3: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
 
   color-scheme: dark;
+}
+
+/*
+ * The board: a dawn sheet on the night stage. Light values on :root and .light, dark on .dark, like everything above.
+ * `note-*` are the sticky colours and what's written on them. Lines and ink are `line-*`. `bf-*` are frames.
+ */
+:root, .light {
+  --bd-ground: #F6F3FB;
+  --bd-wash: linear-gradient(180deg, #F3F1FC 0%, #F7F2F9 50%, #FDEFE7 100%);
+  --bd-bar: rgb(255 255 255 / .74);
+  --bd-dot: rgb(112 96 168 / .26);
+  --bd-ring: rgb(26 22 51 / .07);
+  --bf-fill: rgb(255 255 255 / .68);
+  --bf-ring: rgb(96 80 160 / .13);
+  --bf-lift: 0 18px 34px -30px rgb(90 60 140 / .5);
+  --note-top: #FFFFFF;
+  --note-butter: #FFE0A0;
+  --note-peach: #FFCCAC;
+  --note-rose: #FCC3CF;
+  --note-lilac: #DBCBFA;
+  --note-sky: #C6D1FF;
+  --note-mist: #E7E3F0;
+  --note-ink: #1A1633;
+  --note-shadow: 0 1px 1px rgb(26 22 51 / .05), 0 8px 16px -10px rgb(26 22 51 / .3);
+  --line-ink: #7566C4;
+  --line-rose: #C2406E;
+  /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
+  --bd-rise: 560ms;
+  --bd-glide: 700ms;
+  --bd-point: 1300ms;
+}
+
+.dark {
+  --bd-ground: #14112A;
+  --bd-wash: linear-gradient(180deg, #14112E 0%, #1A1438 56%, #2A1A42 100%);
+  --bd-bar: rgb(23 20 43 / .74);
+  --bd-dot: rgb(200 190 240 / .16);
+  --bd-ring: rgb(255 255 255 / .09);
+  --bf-fill: rgb(255 255 255 / .05);
+  --bf-ring: rgb(255 255 255 / .1);
+  --bf-lift: 0 18px 34px -30px rgb(0 0 0 / .7);
+  --note-top: #1B1744;
+  --note-butter: #704A12;
+  --note-peach: #5E3524;
+  --note-rose: #5C2A3C;
+  --note-lilac: #40337A;
+  --note-sky: #2E3A78;
+  --note-mist: #2C2850;
+  --note-ink: #F4F2FB;
+  --note-shadow: 0 1px 1px rgb(0 0 0 / .3), 0 10px 18px -10px rgb(0 0 0 / .7);
+  --line-ink: #A99FFF;
 }
 
 /*
