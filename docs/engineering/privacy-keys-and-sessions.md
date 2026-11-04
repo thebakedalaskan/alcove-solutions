@@ -288,12 +288,16 @@ third-party loads.
   can't read. It sees each person's address, when they're in which room (by random identity, never a name),
   packet sizes and timing, and who has a camera or screen on ([Calls and recordings › End-to-end
   encryption](calls-and-recordings.md#end-to-end-encryption)). What people share (a screen and its sound) reaches only
-  the people in the call: nothing records or transcribes it, and the API never sees it.
+  the people in the call: nothing records or transcribes it, and the API sees only the frames a presenter's own browser
+  sends while the organizer has shared screens read for the notes ([Shared screens](calls-and-recordings.md#shared-screens)).
 
 - **Your view of a call** never leaves the browser. Layout preferences stay in `localStorage` for the account and
   the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
   random per-call seat and shares by their sharer's random connection ID: no names, addresses or call content ([Calls and recordings › The call
-  screen](calls-and-recordings.md#the-call-screen)).
+  screen](calls-and-recordings.md#the-call-screen)). How you zoom into a share, and the earlier pictures of it you can
+  step back through, live only in the page's memory: at most 30 pictures and 16 MiB a share, taken from what the
+  browser already decrypts and shows, never written to any storage, sent or logged, and gone when the share stops,
+  your part of the call changes or you leave ([Looking closer at a share](calls-and-recordings.md#looking-closer-at-a-share)).
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
 - **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),

@@ -985,7 +985,7 @@ function InCall({ session }: { session: CallSession }) {
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
             <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
-              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
+              bar={bar} caption={capNode} rooms={stageRooms} place={crypto.place} paused={mode === 'paused'} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
               onShareStarted={shareStarted} onShareStopped={shareStopped} />
           </motion.div>
           <AnimatePresence>

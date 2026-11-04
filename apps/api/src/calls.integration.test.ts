@@ -1613,4 +1613,38 @@ describe('screen sharing', () => {
     expect(shared(bo).map((t) => t.sid).sort()).toEqual([bos.screen, bos.sound].sort());
     await host.leave();
   });
+
+  it('takes a removed presenter’s share from everyone at once, gives them no way back to it, and keeps nothing anyone shared', async () => {
+    // Earlier pictures of a share live only in each viewer's browser (docs: The call screen › Looking closer at a share),
+    // and they go when the share leaves the room. This is the server's half: removal takes the share out of every room.
+    const objectIds = async () => { const ids = new Set<string>(); for await (const o of h.objects.list()) ids.add(o.id); return ids; };
+    const before = await objectIds();
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const ana = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Ana' });
+    await letIn(host, ana);
+    const bo = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Bo' });
+    await letIn(host, bo);
+    const [anaRoom, boRoom] = await Promise.all([joinRoom(ana), joinRoom(bo)]);
+    const bos = (await Promise.all([anaRoom.publishScreen(true), boRoom.publishScreen(true)]))[1];
+    /** The share (picture and sound) `who` sends, as `p` receives it. */
+    const sharedTo = (p: TestParticipant, who: CallSession) => [...(p.room.remoteParticipants.get(who.ticket.identity)?.trackPublications.values() ?? [])]
+      .filter((t) => (t.source === TrackSource.SOURCE_SCREENSHARE || t.source === TrackSource.SOURCE_SCREENSHARE_AUDIO) && t.track !== undefined).map((t) => t.sid ?? '').sort();
+    await hostRoom.waitFor(() => sharedTo(hostRoom, ana).length === 2 && sharedTo(hostRoom, bo).length === 2, 'both shares reaching the organizer');
+    await boRoom.waitFor(() => sharedTo(boRoom, ana).length === 2, 'Ana’s share reaching Bo');
+
+    // The organizer removes Ana while she shares: her share leaves every room at once, and Bo's carries on.
+    await host.remove(ana.ticket.identity);
+    expect(await anaRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
+    await hostRoom.waitFor(() => sharedTo(hostRoom, ana).length === 0, 'Ana’s share gone for the organizer');
+    await boRoom.waitFor(() => sharedTo(boRoom, ana).length === 0, 'Ana’s share gone for Bo');
+    expect(sharedTo(hostRoom, bo)).toEqual([bos.screen, bos.sound ?? ''].sort());
+    // Her pass gets her no new way into the room, so nothing anyone shares reaches her again.
+    expect(code(await ana.room().catch((e: unknown) => e))).toBe('forbidden');
+    // Without screen notes, shares go from browser to browser through LiveKit, encrypted: the API kept nothing of them.
+    expect([...await objectIds()].filter((id) => !before.has(id))).toEqual([]);
+    await host.leave();
+  });
 });
