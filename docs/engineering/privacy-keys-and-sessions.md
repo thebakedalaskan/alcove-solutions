@@ -264,6 +264,10 @@ third-party loads.
   packet sizes and timing, and who has a camera or screen on ([Calls and recordings › End-to-end
   encryption](calls-and-recordings.md#end-to-end-encryption)).
 
+- **Your view of a call** never leaves the browser. Layout preferences stay in `localStorage` for the account and
+  the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people only by their
+  random per-call seat: no names, addresses or call content ([Calls and recordings › The call
+  screen](calls-and-recordings.md#the-call-screen)).
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
 - **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),
