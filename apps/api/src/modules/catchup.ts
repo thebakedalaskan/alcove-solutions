@@ -24,6 +24,8 @@ export interface Open { from: number; to: number | null }
 export interface Connection {
   identity: string; person: string; role: 'host' | 'invited' | 'guest'; email?: string | undefined;
   status: 'waiting' | 'in' | 'left' | 'denied'; since: number; left: number | null;
+  /** Earlier stretches of a connection that came back in as it was after a drop (`mls/back`). */
+  earlier: { since: number; left: number }[];
 }
 /** A line of the live transcript with when it was said, if the call placed it. */
 export interface Placed { id: string; said?: number | undefined }
@@ -57,10 +59,11 @@ function merged(xs: Open[]): Open[] {
 export function presence(people: Connection[], me: Connection, startedAt: number): Open[] {
   const at = (ms: number) => Math.max(0, tenth((ms - startedAt) / 1000));
   return merged(people.filter(sameAs(me)).flatMap((j): Open[] => {
-    if (j.status === 'in') return [{ from: at(j.since), to: null }];
+    const before = j.earlier.map((e): Open => ({ from: at(e.since), to: Math.max(at(e.since), at(e.left)) }));
+    if (j.status === 'in') return [...before, { from: at(j.since), to: null }];
     // Only people who were let in leave: someone who only asked is forgotten, or turned away.
-    if (j.status === 'left') return [{ from: at(j.since), to: Math.max(at(j.since), at(j.left ?? j.since)) }];
-    return [];
+    if (j.status === 'left') return [...before, { from: at(j.since), to: Math.max(at(j.since), at(j.left ?? j.since)) }];
+    return before;
   }));
 }
 
