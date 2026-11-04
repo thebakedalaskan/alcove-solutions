@@ -101,16 +101,16 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
  * queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, roomOf?: ((id: string) => { id: string; name: string } | undefined) | undefined,
-  gaps: CaptureGap[] = [], shown: ScreenMoment[] = []): Promise<void> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = []): Promise<void> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
-  // Each line inside its own segment of the recording, so nothing said before a pause comes after it.
-  const heard = transcripts.placed(await transcripts.lines(o, db, noteId), await segments(o, recordingId));
+  // Only the main room's lines go into the note: what was said in a breakout room stayed in that room, and went when
+  // it closed. Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
+  const heard = transcripts.placed(await transcripts.lines(o, db, noteId, (l) => l.room === undefined), await segments(o, recordingId));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
-    // In a call, each line keeps whoever said it and the breakout room it was said in, by name; a room recording names nobody.
-    transcript: transcripts.spoken(heard, speakerOf, roomOf),
+    // In a call, each line keeps whoever said it; a room recording names nobody.
+    transcript: transcripts.spoken(heard, speakerOf),
     inference: heardBy
   }));
   await transcripts.clear(o, db, noteId);

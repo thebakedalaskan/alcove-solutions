@@ -160,10 +160,12 @@ CREATE TABLE calls (
 CREATE INDEX calls_live ON calls(owner_id) WHERE state = 'live';
 CREATE UNIQUE INDEX calls_room ON calls(room_name) WHERE room_name IS NOT NULL;
 
--- A call's MLS log: key packages from people asking to join, the organizer's commits, a welcome for whoever was
--- added, and chat. The API orders and relays these and can't read them (they're MLS messages); each body is also
--- sealed under the organizer's call key. `party` is the random identity a key package came from or a welcome is
--- for. Deleted when the call ends, and when a new generation starts (waiting people's key packages carry over).
+-- A call's MLS log: key packages from people asking to join or moving to another part of the call, the
+-- organizer's commits, a welcome for whoever was added, and chat. The API orders and relays these and can't read
+-- them (they're MLS messages); each body is also sealed under the organizer's call key. `party` is the random
+-- identity a key package came from or a welcome is for. `grp` is the part of the call whose MLS group a commit,
+-- welcome or message belongs to: 'main', or a breakout room's random ID (a key package belongs to none). Deleted
+-- when the call ends, and when a new generation starts (waiting people's key packages carry over).
 CREATE TABLE call_mls (
   owner_id alcove_owner_id NOT NULL,
   call_id alcove_id128 NOT NULL,
@@ -171,6 +173,7 @@ CREATE TABLE call_mls (
   generation integer NOT NULL CHECK (generation >= 0),
   kind text NOT NULL CHECK (kind IN ('keypackage', 'commit', 'welcome', 'message')),
   party text,
+  grp text CHECK ((kind = 'keypackage') = (grp IS NULL)),
   epoch bigint NOT NULL CHECK (epoch >= 0),
   body_ciphertext bytea NOT NULL,
   PRIMARY KEY (owner_id, call_id, seq),

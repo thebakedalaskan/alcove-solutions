@@ -331,7 +331,9 @@ export function createApp(d: Deps) {
     const speaker = speakerOf(c);
     voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
     speechLimiter(v.organizer.ownerId, 'transcribe');
-    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker));
+    // When the speech began, on this server's clock: measured as the request arrives, before its audio is read.
+    const began = Date.now() - agoOf(c);
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker, began));
   });
   /*
    * Shared screens: a frame of someone's own share, from their own browser, while screen notes are on. Anyone let in
@@ -548,12 +550,14 @@ async function frame(c: Context): Promise<calls.FrameUpload> {
   if (!share.success) throw new ValidationError('Say which shared screen the frame is from.', { context: { header: FRAME_HEADERS.share } });
   const age = z.coerce.number().int().min(0).safeParse(c.req.header(FRAME_HEADERS.age) ?? '0');
   if (!age.success) throw new ValidationError('Say how long ago the frame was taken.', { context: { header: FRAME_HEADERS.age } });
+  // When it was taken, on this server's clock: measured as the request arrives, before its image is read.
+  const takenAt = Date.now() - Math.min(age.data, MAX_FRAME_AGE_MS);
   const jpeg = new Uint8Array(await c.req.arrayBuffer());
   if (!jpeg.length || jpeg.length > MAX_FRAME_BYTES) throw new ValidationError('That frame is empty or too large.', { context: { bytes: jpeg.length } });
   const size = jpegSize(jpeg);
   if (!size) throw new ValidationError('A frame must be a JPEG image.', { context: { bytes: jpeg.length } });
   if (Math.min(size.width, size.height) < 64 || Math.max(size.width, size.height) > 4096) throw new ValidationError('That frame is too small or too large.', { context: { width: size.width, height: size.height } });
-  return { share: share.data, ageMs: Math.min(age.data, MAX_FRAME_AGE_MS), jpeg, ...size };
+  return { share: share.data, takenAt, jpeg, ...size };
 }
 
 /** True for the WAV the live transcript takes: uncompressed 16-bit PCM, one channel, 16 kHz. */
@@ -562,6 +566,16 @@ function isSpeechWav(b: Uint8Array): boolean {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   const tag = (at: number) => String.fromCharCode(b[at] ?? 0, b[at + 1] ?? 0, b[at + 2] ?? 0, b[at + 3] ?? 0);
   return tag(0) === 'RIFF' && tag(8) === 'WAVE' && tag(12) === 'fmt ' && v.getUint16(20, true) === 1 && v.getUint16(22, true) === 1 && v.getUint32(24, true) === 16_000 && v.getUint16(34, true) === 16;
+}
+
+/**
+ * How long before this request a call's clip of speech began, in ms (at most ten minutes): the call places the speech
+ * where its speaker was then.
+ */
+function agoOf(c: Context): number {
+  const ago = z.coerce.number().int().min(0).max(600_000).safeParse(c.req.header(AUDIO_HEADERS.ago));
+  if (!ago.success) throw new ValidationError('Speech for a call’s transcript must say when it began.', { context: { header: AUDIO_HEADERS.ago } });
+  return ago.data;
 }
 
 /** Whose speech a call's clip is: a participant ID, which the call checks is someone in it. */
