@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { stateOf } from '~/features/call/access';
 import { useCaptions } from '~/features/call/captions';
 import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
 import { useDevices } from '~/features/call/devices';
@@ -23,6 +24,8 @@ import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
 import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
 import { ViewMenu } from '~/features/call/ViewMenu';
+import { canSetVolume, volumesFor } from '~/features/call/volume';
+import { volumeTag } from '~/features/call/VolumeControl';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -39,8 +42,8 @@ const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
 /** Before the room has connected: nobody's media yet. */
-const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0 };
-const NO_ROOM: CallRoom = { getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, leave: async () => undefined };
+const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false };
+const NO_ROOM: CallRoom = { getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, startAudio: async () => undefined, leave: async () => undefined };
 /**
  * One room connection per call session. React may mount the screen twice (StrictMode in dev); a second
  * connection under the same identity would push the first out of the room, so remounts share this one,
@@ -125,6 +128,11 @@ function InCall({ session }: { session: CallSession }) {
   const forgetLayout = layout.forget;
   const devices = useDevices(m.camera);
   const speaking = useSpeaking(media, m.mic);
+  /* How loud each person is for you (only your playback), kept for this call in this tab. */
+  const volumes = volumesFor(session);
+  const levels = useLive(volumes);
+  const [canVolume] = useState(canSetVolume);
+  useEffect(() => { volumes.follow(told.participants); }, [volumes, told.participants]);
   const guard = useLeaveGuard(() => setLeaveOpen(true));
   const guardRef = useRef(guard);
   guardRef.current = guard;
@@ -137,7 +145,9 @@ function InCall({ session }: { session: CallSession }) {
   const first = useRef({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam });
   useEffect(() => {
     sessions.media = media;
-    if (!media.getSnapshot().camera) void media.start(first.current);
+    // In the call nothing turns the microphone or camera on by itself: only their buttons do.
+    media.setInCall(true);
+    if (!media.started) void media.start(first.current);
   }, [media]);
 
   /* The call's media goes through its LiveKit room (loaded only here); leaving the screen leaves the room. */
@@ -233,6 +243,24 @@ function InCall({ session }: { session: CallSession }) {
     hostMuted.current = roomView.hostMuted;
     toast('The organizer muted your microphone. Unmute when you’re ready.', { icon: 'micOff', ms: 5000 });
   }, [roomView.hostMuted, toast]);
+  /* A device unplugged, back, or allowed again, without anyone pressing anything: said once, as it happens. */
+  const seenChange = useRef(m.changes.at(-1)?.n ?? 0);
+  useEffect(() => {
+    for (const c of m.changes) {
+      if (c.n <= seenChange.current) continue;
+      seenChange.current = c.n;
+      toast(c.text, { icon: c.kind === 'mic' ? 'mic' : c.kind === 'cam' ? 'video' : 'speaker', ms: 6000 });
+    }
+  }, [m.changes, toast]);
+  /* The browser is holding back everyone's sound until the page is clicked (Safari with nothing captured): ask once, and take the first click or key. */
+  useEffect(() => {
+    if (!roomView.audioBlocked) return;
+    const go = () => { void room.startAudio(); };
+    addEventListener('pointerdown', go, { once: true, capture: true });
+    addEventListener('keydown', go, { once: true, capture: true });
+    toast('Your browser is holding back the call’s sound.', { icon: 'speakerOff', ms: 30_000, action: { label: 'Play sound', onClick: go } });
+    return () => { removeEventListener('pointerdown', go, { capture: true }); removeEventListener('keydown', go, { capture: true }); };
+  }, [roomView.audioBlocked, room, toast]);
 
   /*
    * The organizer ended the call, or removed you, or the call went on from another tab or device: you're told,
@@ -260,6 +288,7 @@ function InCall({ session }: { session: CallSession }) {
     sessions.call = null;
     forgetLayout();
     media.stop();
+    volumes.clear();
     sessions.media = null;
     void qc.invalidateQueries();
     toast(hosting ? 'You joined this call from another device.'
@@ -267,13 +296,13 @@ function InCall({ session }: { session: CallSession }) {
         : roomView.endReason === 'removed' ? 'The organizer removed you from the call.'
           : 'You’re no longer in this call here. You can join again.', { icon: 'leave' });
     void navigate(hosting ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
-  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, forgetLayout, media, navigate, toast, session, room, qc]);
+  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, forgetLayout, media, volumes, navigate, toast, session, room, qc]);
 
   /* ---------- who is on the stage: everyone in the call, with their media from the room ---------- */
   const stagePeople: StageParticipant[] = state.participants.map((p) => {
     const r = roomView.people[p.id];
     const video: Feed | null = p.isMe ? (m.cam && m.camera ? { stream: m.camera } : null) : r?.camSid ? { room, sid: r.camSid } : null;
-    return { id: p.id, seat: p.seat, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video };
+    return { id: p.id, seat: p.seat, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video, volume: p.isMe || !canVolume ? null : levels[p.id] ?? 1 };
   });
   /* Who came in when, by seat, so someone coming back keeps their place on your stage. Only people the call names have a seat. */
   const seatKey = told.participants.map((p) => p.seat).join(' ');
@@ -544,15 +573,18 @@ function InCall({ session }: { session: CallSession }) {
     </Caption>
   );
 
+  /* Turning on a device that isn't working opens its menu, which says what's wrong and how to fix it. */
+  const pressMic = () => { void media.setMic(!media.getSnapshot().mic).then((ok) => { if (!ok) setPop('mic'); }); };
+  const pressCam = () => { void media.setCam(!media.getSnapshot().cam).then((ok) => { if (!ok) setPop('cam'); }); };
+
   /* ---------- keys ---------- */
   // Escape unpins only when you can see a pin: someone pinned who's here.
   const pinnedHere = layout.layout.pins.some((seat) => seatKey.split(' ').includes(seat));
-  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel });
-  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel };
+  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, pressMic, pressCam });
+  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, pressMic, pressCam };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-      const s = media.getSnapshot();
       const k = e.key.toLowerCase();
       if (k === 'escape') {
         // Popovers and sheets close themselves first; then Escape unpins everyone you pinned (Undo puts them back), then closes the panel.
@@ -564,13 +596,13 @@ function InCall({ session }: { session: CallSession }) {
       if (k !== 'm' && k !== 'v' && k !== 'c') return;
       // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
-      if (k === 'm') media.setMic(!s.mic);
-      if (k === 'v') void media.setCam(!s.cam);
+      if (k === 'm') keys.current.pressMic();
+      if (k === 'v') keys.current.pressCam();
       if (k === 'c') keys.current.setPanel(keys.current.panel === 'chat' ? null : 'chat');
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [media]);
+  }, []);
 
   /* ---------- leaving: the organizer ends the call for everyone; anyone else just leaves ---------- */
   const end = async () => {
@@ -584,6 +616,7 @@ function InCall({ session }: { session: CallSession }) {
       // Ending the call deletes its room, which disconnects everyone at once; anyone else leaves the room now.
       if (!r) void room.leave();
       media.stop();
+      volumes.clear();
       sessions.media = null;
       void qc.invalidateQueries();
       if (r) setEnded({ noteId: r.pendingNoteId, duration: r.duration });
@@ -618,9 +651,9 @@ function InCall({ session }: { session: CallSession }) {
       ? [organizer ? 'Organizer' : session.ticket.role === 'invited' ? 'Invited' : 'Guest', where ? `in ${where}` : '', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : '']
       : [roleOf(p), where ? `in ${where}` : '', r?.screenSid ? 'sharing' : ''];
     return {
-      id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false,
+      id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false, volume: sp?.volume ?? null,
       detail: detail.filter(Boolean).join(' · '),
-      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.layout.pins.includes(p.seat) ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : ''].filter(Boolean)
+      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.layout.pins.includes(p.seat) ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : '', volumeTag(sp?.volume ?? 1) ?? ''].filter(Boolean)
     };
   });
   const host: HostControls | undefined = organizer ? {
@@ -705,7 +738,7 @@ function InCall({ session }: { session: CallSession }) {
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
             <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
-              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} />
+              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} onVolume={(id, v) => volumes.set(id, v)} />
           </motion.div>
           <AnimatePresence>
             {shownPanel && (
@@ -717,7 +750,7 @@ function InCall({ session }: { session: CallSession }) {
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
                   {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} who={personOf} onSend={(t) => session.sendChat(t)} />}
-                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} />}
+                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} onVolume={(id, v) => volumes.set(id, v)} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
                       people={byId} activity={activity} me={me.person} onJoin={visit} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
@@ -730,13 +763,14 @@ function InCall({ session }: { session: CallSession }) {
         <footer className="ic-dockbar">
           <CallDock>
             <DockSplit>
-              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.mic ? 'Mute' : 'Unmute'} tip={`${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} off={!m.mic} onClick={() => media.setMic(!m.mic)} />
+              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} onClick={pressMic}
+                tip={m.access.mic.problem ? `${stateOf('mic', m.access.mic.problem)}. Press to see how to fix it` : `${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} />
               <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
                 onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
             </DockSplit>
             <DockSplit>
-              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} onClick={() => void media.setCam(!m.cam)}
-                tip={`${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
+              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} onClick={pressCam}
+                tip={m.access.cam.problem ? `${stateOf('cam', m.access.cam.problem)}. Press to see how to fix it` : `${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>

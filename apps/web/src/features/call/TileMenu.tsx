@@ -5,6 +5,8 @@
 import type { Person, SelfView } from '@alcove/api';
 import { Avatar, Icon, Kbd, Popover, Scope, cn, type IconName } from '@alcove/ui';
 import type { ReactNode } from 'react';
+import { callName } from '~/lib/people';
+import { VolumeControl } from './VolumeControl';
 
 /** What a person's menu offers. A choice left out isn't offered on this tile. */
 export interface PersonMenu {
@@ -15,6 +17,8 @@ export interface PersonMenu {
   size?: { big: boolean; toggle: () => void } | undefined;
   /** Your own tile: where you see yourself. */
   self?: { where: SelfView; set: (w: SelfView) => void } | undefined;
+  /** Someone else's tile: how loud they are for you (your playback only), where the browser can set it. */
+  volume?: { level: number; set: (level: number) => void } | undefined;
 }
 
 const SELF: { where: SelfView; icon: IconName; label: string }[] = [
@@ -38,7 +42,7 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
 }) {
   const name = `${who.name}${me ? ' (you)' : ''}`;
   const pick = (f: () => void) => () => { onOpenChange(false); f(); };
-  const { pinned, spotlight, earlier, later, size, self } = menu;
+  const { pinned, spotlight, earlier, later, size, self, volume } = menu;
   const moves = earlier !== undefined || later !== undefined;
   return (
     <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu ic-tmenu"
@@ -64,6 +68,7 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
           {self.where === 'hidden' && <p className="hint">Everyone else still sees you.</p>}
         </div>
       )}
+      {volume && <><div className="ic-msep" /><VolumeControl name={callName(who)} level={volume.level} onChange={volume.set} /></>}
       {(organizer && spotlight) ? (
         <>
           <div className="ic-msep" />
