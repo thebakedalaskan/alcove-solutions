@@ -3,25 +3,27 @@ import {
   firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
   type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
+import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
-import { ariaShortcut, shortcut, withMod } from '~/lib/keys';
-import { listNames, sameEmail, spokenName } from '~/lib/people';
+import { ariaShortcut, withMod } from '~/lib/keys';
+import { sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
 import { AnswerView, useAnswer, type Cite } from './answer';
 import { LineRow, type Correcting } from './lines';
-import { PROMISE_MANY } from './NoteCard';
-import { ROLE } from './meta';
+import { peopleLine, roleLine } from './meta';
 
-/** A note's head: its state, title, when and who, the series it's in (`series`), and (`proof`) which verified models wrote it. */
-export function DocHead({ title, when, people, chip, series, proof }: { title: string; when: string; people: Person[]; chip?: ReactNode; series?: ReactNode; proof?: ReactNode }) {
+/**
+ * A note's head: chips for its state, its series and how you got it; the title; when and who, you first; and
+ * (`proof`) where it was written, with what was checked about the models that wrote it.
+ */
+export function DocHead({ title, when, people, me, chips, proof }: { title: string; when: string; people: Person[]; me: string | undefined; chips?: ReactNode; proof?: ReactNode }) {
   return (
     <>
-      {chip}
+      {chips && <div className="lead-chips">{chips}</div>}
       <h1>{title}</h1>
-      <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} />{listNames(people)}</span>{series}</div>
+      <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} /><span>{peopleLine(people, me)}</span></span></div>
       {proof && <div className="doc-proof">{proof}</div>}
     </>
   );
@@ -248,17 +250,34 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange, shown 
   );
 }
 
-/** The transcript of a written note, folded away under its summary; open at `focus` when a link brought someone to a moment in it. */
+/** Lines a written note shows before its whole transcript is opened. */
+const FIRST_LINES = 3;
+
+/**
+ * The transcript of a written note: its first lines under the summary, and all of it on request; all of it at
+ * `focus` when a link brought someone to a moment in it. Pauses and shared screens after the lines shown wait too.
+ * With `correct`, whoever may corrects lines in place (lines.tsx).
+ */
 export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct }: {
   lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
   screens?: ScreensShown | undefined; correct?: Correcting | undefined;
 }) {
   const [open, setOpen] = useState(focus !== undefined);
   useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
+  const all = open || lines.length <= FIRST_LINES;
+  const shown = all ? lines : lines.slice(0, FIRST_LINES);
+  const last = shown.at(-1)?.at ?? 0;
+  const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
   return (
     <>
-      <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
-      {open && <TranscriptLines lines={lines} gaps={gaps} me={me} onSeek={onSeek} focus={focus} screens={screens} correct={correct} className="mt-3" />}
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} />
+      {lines.length > FIRST_LINES && (
+        <div className="tr-more">
+          <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            {open ? 'Show less' : `Show all ${Math.max(1, Math.round(seconds / 60))} minutes`}<Icon name="down" size={16} />
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -322,7 +341,7 @@ export function Chapters({ chapters, gaps = [], pos, onSeek }: { chapters: Chapt
   const current = chapters.findLastIndex((c) => c.at <= pos);
   const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} className="chap-gap" />;
   return (
-    <Card title="Chapters">
+    <Card title="Chapters" aside={<span className="ac-mono">{chapters.length}</span>}>
       <div className="chaps">
         {chapters.map((c, i) => (
           <Fragment key={`${c.at}-${c.title}`}>
@@ -338,19 +357,29 @@ export function Chapters({ chapters, gaps = [], pos, onSeek }: { chapters: Chapt
   );
 }
 
-/** Who has a note, and how they got it. */
+const COUNTED = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+/** Who can open a note: "Only these five can open them. Alcove can’t." */
+const onlyThese = (n: number) => (n <= 1 ? 'Only you can open them. Alcove can’t.' : `Only these ${COUNTED[n] ?? n} can open them. Alcove can’t.`);
+/* A long list shows its first people until it's opened; the people a share just reached show in it either way. */
+const FIRST_PEOPLE = 8;
+
+/** Who has a note, and how each of them got it: organizer, invited, or shared afterwards by whom (and with which group). */
 export function Recipients({ recipients, me, fresh }: { recipients: Recipient[]; me: string | undefined; fresh?: ReadonlySet<string> | undefined }) {
+  const [all, setAll] = useState(false);
+  const long = recipients.length > FIRST_PEOPLE + 2;
+  const shown = !long || all ? recipients : recipients.filter((r, i) => i < FIRST_PEOPLE || fresh?.has(r.person.email));
   return (
     <Card title="Who has these notes" aside={<span className="ac-mono">{recipients.length}</span>}>
       <div className="rcpt">
-        {recipients.map((r) => (
+        {shown.map((r) => (
           <div key={r.person.email} className={cn('rc', fresh?.has(r.person.email) && 'fresh')}>
             <Avatar person={r.person} size={30} />
-            <span><b>{r.person.name}{me && sameEmail(r.person, { email: me }) ? <i> (you)</i> : null}</b><small>{ROLE[r.role]}</small></span>
+            <span className="min-w-0"><b>{r.person.name}{me && sameEmail(r.person, { email: me }) ? <i> (you)</i> : null}</b><small>{roleLine(r, me)}</small></span>
           </div>
         ))}
       </div>
-      <div className="seal"><SealedBadge inline title={PROMISE_MANY} /></div>
+      {long && <button type="button" className="lk quiet rcpt-more" aria-expanded={all} onClick={() => setAll((a) => !a)}>{all ? 'Show fewer' : `Show all ${recipients.length}`}</button>}
+      <div className="seal"><SealedBadge inline title={onlyThese(recipients.length)} /></div>
     </Card>
   );
 }
@@ -378,9 +407,22 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   shown?: ScreenRefShown | undefined; label?: string | undefined;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const end = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
+  const [atEnd, setAtEnd] = useState(false);
   const [text, setText] = useState('');
   const { answer, ask: start } = useAnswer(ask);
+  /*
+   * The bar stays in view while the note is read; its suggestions show at the end of the note, or while asking. The
+   * end is marked just above the bar, so the suggestions appearing (below the mark) can't push it out of view again.
+   */
+  useEffect(() => {
+    const el = end.current;
+    if (!el) return;
+    const seen = new IntersectionObserver(([e]) => setAtEnd(!!e?.isIntersecting));
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, []);
   useEffect(() => {
     const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
     addEventListener('keydown', on);
@@ -393,28 +435,30 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
     void start(question);
   };
   return (
-    <div className="ask">
-      {answer && (
-        <AnswerView answer={answer} className="ac-card">
-          {answer.cites.length > 0 && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} />
-                : c.type === 'screen' ? <Fragment key={citeKey(c)}>{shown?.({ id: c.id, sure: true, ...(c.region === undefined ? {} : { region: c.region }) })}</Fragment>
-                  : <SourceLink key={citeKey(c)} c={c} />))}
-            </div>
-          )}
-        </AnswerView>
-      )}
-      {focus && suggestions.length > 0 && (
-        <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" className={buttonClass({ size: 'sm' })} onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}</div>
-      )}
-      <div className="ask-bar">
-        <Icon name="ask" size={19} />
-        <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-          onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={label} aria-keyshortcuts={ariaShortcut('J')} />
-        <Kbd>{shortcut('J')}</Kbd>
-        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'w-11 px-0')} aria-label="Ask" onClick={() => run(text)}><Icon name="send" size={18} /></button>
+    <>
+      <div ref={end} aria-hidden="true" />
+      <div className="ask">
+        {answer && (
+          <AnswerView answer={answer} className="ac-card">
+            {answer.cites.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} />
+                  : c.type === 'screen' ? <Fragment key={citeKey(c)}>{shown?.({ id: c.id, sure: true, ...(c.region === undefined ? {} : { region: c.region }) })}</Fragment>
+                    : <SourceLink key={citeKey(c)} c={c} />))}
+              </div>
+            )}
+          </AnswerView>
+        )}
+        {(atEnd || focus) && suggestions.length > 0 && (
+          <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}</div>
+        )}
+        <div className="ask-bar">
+          <Icon name="ask" size={20} />
+          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={label} aria-keyshortcuts={ariaShortcut('J')} />
+          <Button variant="primary" size="sm" icon="send" onClick={() => run(text)}>Ask</Button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

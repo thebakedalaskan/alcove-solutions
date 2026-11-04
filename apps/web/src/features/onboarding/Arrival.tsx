@@ -46,7 +46,10 @@ function useRows(): Row[] {
   const session = useQuery(q.session()).data;
   const calendar = useQuery(q.calendar());
   const upcoming = useQuery(q.upcoming());
-  const team = useQuery(q.team()).data ?? null;
+  // The team isn't waited for (a Google work account's can take a few seconds to put together), and the rows are laid
+  // out once: it's a row only when it was here as the screen went up.
+  const teamNow = useQuery(q.team()).data ?? null;
+  const [team] = useState(teamNow);
   const trust = useQuery(q.trust()).data;
   if (!session) return [];
   const rows: Row[] = [];
@@ -55,7 +58,7 @@ function useRows(): Row[] {
     id: 'who',
     icon: session.provider === 'sso' ? <Icon name="key" size={18} /> : <ProviderMark provider={session.provider} />,
     text: <>Signed in as <b>{session.user.name}</b></>,
-    sub: session.provider === 'sso' ? `Through ${team?.name ?? domain} single sign-on` : session.user.email
+    sub: session.provider === 'sso' ? `Through ${domain} single sign-on` : session.user.email
   });
   const cal = calendar.data;
   const connected = cal ? cal.source === 'sample' || (cal.source === 'google' && !cal.needsAccess) : false;
@@ -72,7 +75,8 @@ function useRows(): Row[] {
       rows.push({ id: 'cal', icon: <Icon name="cal" size={18} />, text: <>Your calendar is <b>connected</b></>, sub: 'Its calls show up on Home' });
     }
   }
-  if (team) {
+  // Every work address has a team, even before anyone at it is known: a team is worth a row once it has people.
+  if (team && team.members.length > 0) {
     const on = team.members.filter((m) => m.onAlcove).map((m) => m.person);
     rows.push({
       id: 'team', icon: <Faces people={team.members.slice(0, 3).map((m) => m.person)} size={14} max={3} />,

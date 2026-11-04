@@ -126,11 +126,12 @@ confirmed, the SHA-256 of the measured app compose, and the gateway's TCB status
 None of it is secret. Questions, catch-ups and caption translations are verified and sealed the same way,
 but nothing of theirs stays with the note, so neither do their verifications.
 
-The note page says "Written by a verified private model" ("Transcribed by…" while the notes are being
-written, or when they couldn't be) under the title. It opens the checks that ran, model by model, and links
-to NEAR AI's [Verification Center](https://cloud.near.ai/verify) for each model, which checks fresh evidence
-for the model, not this note; the link carries nothing about the note, sends no referrer, and the page says
-NEAR AI sees the visit. The call screen shows none of it.
+Under the title the note page says "Written in confidential compute" ("Transcribed in…" while the notes are
+being written, or when they couldn't be), when the hardware was verified (the time today, else the day and
+time) and that Alcove can't read it. That opens the checks that ran, model by model, and links to NEAR AI's
+[Verification Center](https://cloud.near.ai/verify) for each model, which checks fresh evidence for the
+model, not this note; the link carries nothing about the note, sends no referrer, and the page says NEAR AI
+sees the visit. The call screen shows none of it.
 
 ### Services verification depends on
 

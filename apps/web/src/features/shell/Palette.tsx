@@ -191,7 +191,8 @@ function PinNotes({ onClose }: { onClose: () => void }) {
   const toggle = (n: NoteSummary) => {
     const on = !pinned.includes(n.id);
     if (pins.isPending || (on && full)) return;
-    pins.mutate(on ? [...pinned, n.id] : pinned.filter((id) => id !== n.id), { onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
+    // Its own promise, so the error is shown even when another save of preferences is queued behind it.
+    pins.mutateAsync(on ? [...pinned, n.id] : pinned.filter((id) => id !== n.id)).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;

@@ -7,7 +7,7 @@
  */
 import {
   ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenMomentSchema, TranscriptLineSchema, minutesLabel,
-  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Inbox, type LinePatch, type Note, type NoteKind, type NoteProgress,
+  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type GroupShare, type Inbox, type LinePatch, type Note, type NoteKind, type NoteProgress,
   type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
@@ -257,6 +257,21 @@ export function receivedBy(m: NoteManifest, as: string, organizer: Person): Rece
   return { role: 'invited', by: organizer, at: m.endedAt ?? m.startedAt };
 }
 
+/**
+ * Each time someone shared the note with one of their groups, from the people who still have it: once
+ * for each sharer and group (the latest time), newest first. Whoever has the note sees the same list.
+ */
+function groupSharesOf(who: Recipient[]): GroupShare[] {
+  const shares = new Map<string, GroupShare>();
+  for (const r of who) {
+    if (r.role !== 'shared' || !r.by || !r.group || !r.at) continue;
+    const key = `${r.by.email.toLowerCase()}\n${r.group}`;
+    const had = shares.get(key);
+    if (!had || Date.parse(r.at) > Date.parse(had.at)) shares.set(key, { by: r.by, group: r.group, at: r.at });
+  }
+  return [...shares.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}
+
 function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary {
   const m = l.note.manifest;
   return {
@@ -264,7 +279,8 @@ function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary
     people: who.map((r) => r.person),
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: m.actions.filter((a) => !a.done).length, totalActions: m.actions.length,
-    ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) })
+    ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) }),
+    groupShares: groupSharesOf(who)
   };
 }
 async function summary(l: Located): Promise<NoteSummary> {

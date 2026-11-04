@@ -12,11 +12,15 @@ import type { FileRoutesByTo } from '~/routeTree.gen';
 export type Place = { [K in keyof FileRoutesByTo]: K extends `${string}$${string}` ? never : K }[keyof FileRoutesByTo];
 
 /** What a place in the side panel can count. */
-export type Counter = 'notes';
-/** How many there are of each, once they've loaded. */
+export type Counter = 'notes' | 'team';
+/**
+ * How many there are of each, once they've loaded. The team counts the people on Alcove, you among
+ * them, once someone besides you is.
+ */
 export function useCounts(): Record<Counter, number | undefined> {
   const notes = useQuery(q.notes()).data;
-  return { notes: notes?.length };
+  const others = useQuery(q.team()).data?.members.filter((m) => m.onAlcove).length;
+  return { notes: notes?.length, team: others ? others + 1 : undefined };
 }
 
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
@@ -24,14 +28,16 @@ export interface NavPlace { to: Place; icon: IconName; label: string; count?: Co
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes' },
-  { to: '/record', icon: 'recordDot', label: 'Record', tour: 'room' }
+  { to: '/record', icon: 'recordDot', label: 'Record', tour: 'room' },
+  { to: '/team', icon: 'people', label: 'Team', count: 'team' }
 ];
 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
-/** The phone's tab bar. `raised` is Record's button, which stands up out of the bar. */
+/** The phone's tab bar, with Record in the middle. `raised` is Record's button, which stands up out of the bar. */
 export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/notes', icon: 'notes', label: 'Notes' },
   { to: '/record', icon: 'recordDot', label: 'Record', raised: true, tour: 'room' },
-  { to: '/account', icon: 'settings', label: 'Settings' }
+  { to: '/team', icon: 'people', label: 'Team' },
+  { to: '/settings', icon: 'settings', label: 'Settings' }
 ];

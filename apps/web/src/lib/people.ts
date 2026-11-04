@@ -11,6 +11,11 @@ export function listNames(people: Named[]): string {
   if (n.length <= 1) return n[0] ?? '';
   return `${n.slice(0, -1).join(', ')} and ${n.at(-1) ?? ''}`;
 }
+/** Up to `max` names, then how many more: "Priya, Inès, Kofi and 2 more". One more is named instead. */
+export function someNames(people: Named[], max = 3): string {
+  if (people.length <= max + 1) return listNames(people);
+  return `${people.slice(0, max).map(callName).join(', ')} and ${people.length - max} more`;
+}
 /** Someone known only by the address typed for them. */
 export const byEmail = (email: string): Person => ({ id: email, name: email, email });
 export const sameEmail = (a: { email: string }, b: { email: string }) => a.email.toLowerCase() === b.email.toLowerCase();

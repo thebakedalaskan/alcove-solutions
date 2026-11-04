@@ -1,0 +1,107 @@
+/*
+ * Record: the night recorder (a name, the microphone and its level, Start recording) with the recordings made
+ * before under it (or, before the first, a card for them), and how recording works beside them. Two columns when
+ * the page has the room (container queries, since the side panel can be hidden), one otherwise. The recorder is a
+ * piece of the night stage on the page, so it keeps the stage's colours in both themes, and its light is the stage
+ * recorder's own (call.css, .rm-dot). Every class here starts with rec-.
+ */
+.rec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 28px; }
+.rec-head > div { min-width: 0; }
+.rec-head h1 { font-size: 40px; line-height: 1.08; font-weight: 450; letter-spacing: -0.02em; font-variation-settings: 'opsz' 40; }
+.rec-head .lede { margin-top: 10px; max-width: 64ch; font-size: 16px; line-height: 24px; color: var(--ink-2); text-wrap: pretty; }
+
+.rec { container: rec / inline-size; }
+.rec-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+@container rec (min-width: 880px) { .rec-grid { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); } }
+.rec-main, .rec-side { display: grid; gap: 24px; align-content: start; min-width: 0; }
+.rec-main { container: rec-main / inline-size; }
+
+/* --------------------------------------------------------- the night recorder */
+.rec-card {
+  position: relative; overflow: hidden; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 34px; align-items: center;
+  padding: 36px 38px; border-radius: var(--radius-lg); color: var(--stage-ink); color-scheme: dark;
+  background: radial-gradient(60% 90% at 10% 50%, rgb(227 53 84 / 0.16), transparent 70%), radial-gradient(80% 60% at 60% 130%, rgb(255 122 69 / 0.09), transparent 62%), var(--stage-tile);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04), var(--shadow-2);
+}
+.rec-card :focus-visible { outline-color: var(--speak); }
+.rec-orb { position: relative; width: 112px; height: 112px; }
+.rec-orb i { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #FF7A8E, #E33554 60%, #B5243F); box-shadow: 0 0 60px 6px rgb(227 53 84 / 0.4); }
+.rec-body { min-width: 0; }
+.rec-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.rec-k { display: flex; align-items: center; gap: 8px; font: 500 12px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--stage-ink-2); }
+.rec-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: var(--radius-pill); background: rgb(255 255 255 / 0.08); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
+.rec-pill .ac-i { color: var(--gold); }
+.rec-name {
+  display: block; width: 100%; margin-top: 10px; padding: 0 0 8px; border: 0; border-bottom: 1.5px dashed rgb(255 255 255 / 0.18); border-radius: 0; outline: 0;
+  background: transparent; color: var(--stage-ink); font: 450 34px/1.1 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 36;
+  text-overflow: ellipsis; transition: border-color var(--duration-1);
+}
+.rec-name::placeholder { color: var(--stage-ink-2); opacity: 1; }
+.rec-name:hover { border-bottom-color: rgb(255 255 255 / 0.3); }
+.rec-name:focus { border-bottom-color: var(--speak); border-bottom-style: solid; }
+
+/* The microphone, and its level once asked for. */
+.rec-mic { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.rec-mic .ac-select { max-width: 100%; }
+.rec-level { display: inline-flex; align-items: center; gap: 10px; height: 36px; padding: 0 13px 0 12px; border-radius: 11px; background: rgb(255 255 255 / 0.07); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.rec-level:hover { background: rgb(255 255 255 / 0.12); }
+.rec-level > span[aria-hidden] { display: inline-flex; }
+.rec-level:not(.is-on) .ac-mic-level i { opacity: .55; }
+/* Checking: the live level, and Stop, which lets go of the microphone. */
+.rec-level.is-on { padding-left: 10px; }
+/* What the microphone says: a choice that didn't start, one unplugged, or a problem (in the night's caution) with Try again. */
+.rec-say p { max-width: 52ch; margin-top: 12px; font-size: 13.5px; line-height: 1.45; color: var(--stage-ink-2); text-wrap: pretty; }
+.rec-say p.is-trouble { color: #F3B85A; }
+.rec-say button { font-weight: 600; color: var(--stage-ink); text-decoration: underline; text-underline-offset: 3px; border-radius: var(--radius-xs); }
+
+.rec-acts { display: flex; align-items: center; gap: 14px 18px; flex-wrap: wrap; margin-top: 26px; }
+.rec-go {
+  display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 26px 0 22px; border-radius: var(--radius-pill);
+  background: var(--stage-ink); color: var(--stage); font: 600 16px/1 var(--font-sans); box-shadow: 0 14px 30px -14px rgb(0 0 0 / 0.7);
+  transition: background-color var(--duration-1), transform var(--duration-1);
+}
+.rec-go:hover { background: #fff; }
+.rec-go:active { transform: scale(0.98); }
+.rec-go i { width: 14px; height: 14px; border-radius: 50%; background: #E33554; }
+.rec-go .ac-kbd { margin-left: 4px; background: rgb(11 10 24 / 0.08); color: var(--stage); box-shadow: none; }
+.rec-note { max-width: 30ch; font-size: 13.5px; line-height: 1.45; color: var(--stage-ink-2); }
+@media (hover: none), (max-width: 600px) { .rec-go .ac-kbd { display: none; } }
+
+/* A narrow column (a phone, or beside a narrow window): a smaller light beside "In the room", the rest across, and Start recording across. */
+@container rec-main (max-width: 560px) {
+  .rec-card { grid-template-columns: auto minmax(0, 1fr); gap: 0 16px; padding: 24px 22px; }
+  .rec-body { display: contents; }
+  .rec-orb { width: 56px; height: 56px; }
+  .rec-orb i { box-shadow: 0 0 40px 4px rgb(227 53 84 / 0.4); }
+  .rec-body > * { grid-column: 1 / -1; }
+  .rec-body > .rec-top { grid-column: 2; }
+  .rec-name { margin-top: 20px; font-size: 28px; }
+  .rec-go { flex: 1 1 100%; justify-content: center; }
+  .rec-note { max-width: none; }
+}
+
+/* ------------------------------------------------------------- recorded before */
+/* Under the recorder, where the first-recording card stands until there is one: the newest, as tiles. */
+.rec-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 6px 4px 12px; }
+.rec-row-head h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
+.rec-row-head a { display: inline-flex; align-items: center; gap: 4px; border-radius: var(--radius-xs); font: 600 13px/1 var(--font-sans); color: var(--ink-3); transition: color var(--duration-1); }
+.rec-row-head a:hover { color: var(--sun-text); }
+.rec-tiles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@container rec-main (min-width: 520px) { .rec-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* --------------------------------------------------------------- how it works */
+.rec-facts { display: grid; gap: 18px; margin: 10px 0 0; padding: 0; list-style: none; }
+.rec-fact { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }
+.rec-fact b { display: block; font: 600 14.5px/1.3 var(--font-sans); }
+.rec-fact p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
+.rec-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--sunk); color: var(--ink-2); }
+.rec-foot { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* ------------------------------------------------------- before the first one */
+.rec-empty.ac-empty { padding: 30px 16px 26px; }
+.rec-empty .ac-empty-act { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+
+@media (max-width: 860px) {
+  .rec-head { margin-bottom: 22px; }
+  .rec-head h1 { font-size: 32px; }
+}

@@ -8,20 +8,43 @@ const OFFSET = 8;
 const EDGE = 12;
 
 /**
- * A panel anchored to what opened it. `stage` is for the always-night call stage. `takeFocus={false}` for one that
- * opens as you hover or focus its anchor: focus doesn't move into it when it opens, nor back to the anchor when it
- * closes, so Tab carries on past it and moving the mouse away doesn't open it again.
+ * A panel anchored to what opened it. `stage` is for the always-night call stage. `tip` puts a tooltip on
+ * the anchor, for an icon button that opens a menu (pass the IconButton `title={undefined}` so there's one).
+ * The tooltip shows on hover and when the anchor is reached with the keyboard, but not when focus comes back
+ * to it after the panel closes, or after something it opened, and not when a script focuses it.
+ * `takeFocus={false}` for one that opens as you hover or focus its anchor: focus doesn't move into it when it
+ * opens, nor back to the anchor when it closes, so Tab carries on past it and moving the mouse away doesn't
+ * open it again.
  */
-export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, label, className }: {
+export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, label, tip, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
-  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; label: string; className?: string;
+  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; label: string; tip?: ReactNode; className?: string;
 }) {
+  const returning = useRef(false);
+  const trigger = <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>;
   return (
     <RPopover.Root open={open} onOpenChange={onOpenChange}>
-      <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>
+      {tip === undefined ? trigger : (
+        <RTooltip.Root>
+          <RTooltip.Trigger asChild onFocus={(e) => {
+            // Only Tab from something else on the page shows it. preventDefault stops it opening on this focus; hovering still opens it.
+            const from = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+            if (returning.current || !e.currentTarget.matches(':focus-visible') || !from || from.closest('.ac-pop, [role="dialog"]')) e.preventDefault();
+            returning.current = false;
+          }}>{trigger}</RTooltip.Trigger>
+          <RTooltip.Portal><RTooltip.Content side="top" sideOffset={OFFSET} className="ac-tip">{tip}</RTooltip.Content></RTooltip.Portal>
+        </RTooltip.Root>
+      )}
       <RPopover.Portal>
         <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} aria-label={label} className={cn('ac-pop', stage && 'is-stage', className)}
-          onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()} onCloseAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}>
+          onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}
+          // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
+          // focus, or after a click elsewhere), so the mark lasts only until then.
+          onCloseAutoFocus={(e) => {
+            if (!takeFocus) { e.preventDefault(); return; }
+            returning.current = true;
+            queueMicrotask(() => { returning.current = false; });
+          }}>
           {children}
         </RPopover.Content>
       </RPopover.Portal>

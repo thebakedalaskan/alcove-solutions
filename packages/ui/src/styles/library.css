@@ -1,0 +1,355 @@
+/*
+ * Notes: the list grouped by day with its search and filters, the picked note beside it (pv-), what the list says
+ * when nothing is in it, and the page before the first notes (classes start with lib- and pv-; rows are lrow).
+ * Then a note's own page, whose frame the series page shares.
+ */
+
+/* ------------------------------------------------------------ the list */
+.lib-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.lib-search { position: relative; flex: 1 1 300px; max-width: 480px; }
+.lib-search > .ac-i { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
+.lib-search .ac-input { padding-left: 44px; }
+.lib-with .ac-faces { margin-right: 2px; }
+.lib-with > .ac-i { color: var(--ink-3); }
+/* Someone picked: a chip that says who, to change, with an × that takes them off. */
+.lib-with-on { display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; height: 36px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.lib-with-who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; height: 28px; padding: 0 8px 0 4px; border-radius: 7px; font: 600 13px/1.3 var(--font-sans); color: var(--ink); transition: background-color var(--duration-1); }
+.lib-with-who:hover { background: var(--line); }
+.lib-with-x.ac-icon-btn { width: 28px; height: 28px; border-radius: 7px; color: var(--ink-3); }
+.lib-with-x.ac-icon-btn:hover { background: var(--line); color: var(--ink); }
+
+.ac-pop.with-pop { width: min(320px, calc(100vw - 24px)); padding: 8px; }
+.with-find { display: flex; align-items: center; gap: 8px; height: 40px; margin-bottom: 6px; padding: 0 12px; border-radius: var(--radius-md); background: var(--sunk); color: var(--ink-3); transition: box-shadow var(--duration-1); }
+.with-find:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+.with-find input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 14px/1 var(--font-sans); }
+.with-find input::placeholder { color: var(--ink-3); }
+.with-list { display: grid; gap: 2px; max-height: min(360px, 50dvh); overflow-y: auto; overscroll-behavior: contain; }
+.with-row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; padding: 7px 10px; border-radius: 10px; text-align: left; transition: background-color var(--duration-1); }
+.with-row:hover, .with-row.sel { background: var(--sunk); }
+.with-row b { font: 600 14px/1.3 var(--font-sans); }
+.with-row small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+.with-any { display: grid; place-items: center; width: 26px; height: 28px; border-radius: 8px; background: var(--sunk); color: var(--ink-2); }
+.with-none { padding: 12px 10px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+
+/* The list, and the picked note beside it while there's room. */
+.notes-split { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.lib { padding: 6px 12px 12px; }
+.lib .grp { margin: 0; padding: 16px 12px 6px; }
+.lrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px; border-radius: var(--radius-md); transition: background-color var(--duration-1); }
+.lrow:hover { background: var(--sunk); }
+.lrow.on { background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.lrow:focus-visible { outline-offset: 0; border-radius: var(--radius-md); }
+.lrow .ac-arch-thumb { --w: 34px; }
+.lrow .body { display: grid; min-width: 0; }
+.lrow b { font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
+.lrow .sum { margin-top: 3px; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
+.lrow .by { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 7px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.lrow .by > .ac-i, .lrow .by > .ac-faces { flex: none; }
+.lrow .side { display: grid; justify-items: end; gap: 8px; }
+.lrow .dt { display: inline-flex; align-items: center; gap: 6px; font: 500 12.5px/1 var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+.lrow .dt .pin { color: var(--sun-text); }
+.lrow .side .ac-chip { height: 24px; font-size: 12px; }
+.lrow mark { padding: 0 2px; border-radius: 4px; background: var(--sun-soft); color: var(--sun-text); }
+
+/* ---------------------------------------------------- the picked note */
+.pv { position: sticky; top: 24px; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 26px 28px 22px; }
+.pv-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.pv-acts { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* Pinned, beside the list: the pin in sun, without the filled square the note's page gives it. */
+.pv-acts .ac-icon-btn.is-on { background: transparent; }
+.pv-acts .ac-icon-btn.is-on:hover { background: var(--sunk); }
+.pv h2 { font-size: 30px; line-height: 1.12; font-weight: 480; letter-spacing: -0.015em; font-variation-settings: 'opsz' 30; }
+.pv .doc-meta { margin-top: 12px; }
+.pv .doc-meta .who { min-width: 0; }
+.pv .doc-meta .from { display: inline-flex; align-items: center; gap: 7px; }
+.pv .doc-meta .from > .ac-i { color: var(--ink-3); }
+.pv-sec { margin-top: 24px; }
+.pv-sec > .ac-eyebrow { margin-bottom: 8px; }
+.pv .summary { font-size: 15.5px; line-height: 1.6; }
+.pv-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 0; font-size: 14.5px; line-height: 1.4; }
+.pv-row small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--ink-3); }
+.pv-row .lk { font-size: 12.5px; line-height: 1.2; }
+/* The due column has one width, so owners line up down the list. */
+.pv-act { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto 76px; gap: 12px; align-items: center; padding: 8px 0; font-size: 14.5px; line-height: 1.4; }
+.pv-act.done .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.pv-act .due-t { font: 500 12px/1.3 var(--font-mono); color: var(--ink-3); }
+.pv-more { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-3); transition: color var(--duration-1); }
+.pv-more:hover { color: var(--sun-text); }
+.pv-quiet { font-size: 14px; line-height: 1.5; color: var(--ink-3); }
+.pv-wait { display: grid; place-items: center; padding: 48px 0; color: var(--ink-3); }
+.pv-gone { display: grid; justify-items: center; gap: 8px; padding: 32px 8px 8px; text-align: center; }
+.pv-gone .ac-arch-art { width: 48px; height: 54px; }
+.pv-gone b { font: 480 20px/1.2 var(--font-display); letter-spacing: -0.015em; }
+.pv-gone p { max-width: 34ch; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
+.pv-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.pv-foot .have { font-size: 13px; color: var(--ink-3); }
+
+/* ---------------------------------------------- nothing in the list */
+.lib-none { padding: 26px 24px 30px; }
+.lib-tile { display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 16px; background: var(--sunk); color: var(--ink-2); }
+.lib-ghosts { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 4px; }
+
+/* Before the first notes: how to get them beside what they'll look like, then three facts. */
+.lib-first { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; padding: 40px 44px; }
+.lib-first .ac-empty { justify-items: start; gap: 12px; padding: 20px 8px; text-align: left; }
+.lib-first .ac-empty b { font: 450 30px/1.12 var(--font-display); letter-spacing: -0.02em; }
+.lib-first .ac-empty p { max-width: 30em; font-size: 15px; }
+.lib-first .ac-empty .ac-empty-act { justify-content: flex-start; }
+.lib-ex { display: grid; gap: 10px; min-width: 0; }
+.lib-ex-note { display: block; border-radius: var(--radius-lg); transition: transform var(--duration-2) var(--ease-out); }
+.lib-ex-note .ac-notes { transition: box-shadow var(--duration-2); }
+.lib-ex-note:hover { transform: translateY(-1px); }
+.lib-ex-note:hover .ac-notes { box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.lib-ex-note:focus-visible { border-radius: var(--radius-lg); }
+.lib-ex .cap { display: flex; align-items: center; gap: 8px; padding: 0 6px; font-size: 13px; color: var(--ink-3); }
+.lib-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 20px 32px; margin-top: 32px; padding: 0 8px; }
+.lib-fact { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }
+.lib-fact .lib-tile { width: 36px; height: 36px; border-radius: 11px; }
+.lib-fact b { display: block; font: 600 14.5px/1.3 var(--font-sans); }
+.lib-fact p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
+
+/* -------------------------------------------------------------- a note */
+/*
+ * A note's page: the breadcrumb with pin, Share and More; the note (state chips, title, when and who, where it
+ * was written, then summary, decisions, open questions, follow-ups, transcript and the ask bar) beside the rail
+ * (the recording, chapters, shared screens, who has it, its series). The series page shares the frame.
+ */
+.note-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.crumb { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; color: var(--ink-3); }
+.crumb a { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 34px; margin-left: -6px; padding: 0 10px 0 6px; border-radius: var(--radius-sm); font-weight: 600; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.crumb a:hover { background: var(--sunk); color: var(--ink); }
+.back { margin-left: -12px; }
+.note-acts { display: flex; flex: none; align-items: center; gap: 8px; }
+.note { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 52px; align-items: start; }
+.doc { min-width: 0; max-width: 760px; }
+.doc .lead-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.doc .lead-chip { margin-bottom: 16px; }
+.doc h1 { font-size: 48px; line-height: 1.04; font-weight: 420; letter-spacing: -0.022em; font-variation-settings: 'opsz' 56; overflow-wrap: anywhere; }
+.doc-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-top: 16px; color: var(--ink-2); font-size: 14px; }
+.doc-meta .who { display: inline-flex; align-items: center; gap: 9px; min-width: 0; }
+/* Where the notes were written and what was checked about the models: one click from the title. */
+.doc-proof { margin-top: 22px; }
+.ac-pop.proof-pop { width: min(408px, calc(100vw - 24px)); max-height: min(var(--radix-popover-content-available-height, 72vh), 680px); overflow-y: auto; overscroll-behavior: contain; padding: 0; }
+.proof-h { padding: 18px 20px 16px; }
+.proof-h b { display: block; font: 600 16px/1.25 var(--font-sans); letter-spacing: -0.01em; }
+.proof-h p { margin-top: 6px; font-size: 13px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
+.proof-m { display: grid; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--line); }
+.proof-mh { display: grid; gap: 4px; }
+.proof-model { font: 500 14px/1.3 var(--font-mono); overflow-wrap: anywhere; }
+.proof-when { font-size: 12.5px; color: var(--ink-3); }
+.proof-link { display: inline-flex; align-items: center; gap: 4px; justify-self: start; }
+.proof-gw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 14px 20px 12px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.proof-gw code { font: 500 12px/1.35 var(--font-mono); white-space: nowrap; }
+.proof-near { padding: 0 20px 18px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
+.sec { margin-top: 40px; }
+.sec-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.sec-h h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -0.01em; }
+.sec-h small { font-size: 13px; color: var(--ink-3); }
+.summary { font-size: 18px; line-height: 28px; color: var(--ink); text-wrap: pretty; }
+.steps { display: grid; gap: 8px; margin-top: 14px; font-size: 14px; }
+.steps li { display: flex; align-items: center; gap: 9px; color: var(--ink-3); }
+.steps li.done { color: var(--ink-2); }
+.steps li.done .ac-i { color: var(--sun-text); }
+.steps li.now { color: var(--ink); font-weight: 600; }
+.steps .ac-dots { justify-content: center; width: 15px; gap: 2px; }
+.steps .ac-dots i { width: 3.5px; height: 3.5px; }
+.note-empty { margin-top: 8px; padding: 40px 24px 44px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
+.note-empty p { max-width: 34ch; }
+.dec { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 13px 0; border-top: 1px solid var(--line); font-size: 16px; }
+.dec .n { padding-top: 5px; font: 500 13px/1 var(--font-mono); color: var(--ink-3); }
+.act { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto 36px; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); font-size: 15.5px; }
+.act.done .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.due { font: 500 12.5px/1 var(--font-mono); color: var(--ink-3); white-space: nowrap; min-width: 72px; text-align: right; }
+
+/* What the notes heard stays proposed until people say so: who confirmed a decision, who took a follow-up on. */
+.dec-b, .act-b { display: grid; gap: 5px; min-width: 0; }
+.dec .t, .act .t { text-wrap: pretty; }
+.dec.proposed .t { color: var(--ink-2); }
+.dec.rejected .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+/* A decision that no longer holds, and a question someone said was answered: kept, but quieter. */
+.dec.superseded .t, .dec.ques.answered .t { color: var(--ink-3); }
+.dec-s, .act-s { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.dec.confirmed .dec-s { color: var(--ink-2); }
+.dec-s .ac-i { margin-right: -7px; color: var(--sun-text); }
+.lk { font: 600 13px/1.45 var(--font-sans); color: var(--sun-text); border-radius: 6px; }
+.lk:hover { text-decoration: underline; text-underline-offset: 3px; }
+.lk.quiet { color: var(--ink-3); }
+.inline-edit { width: 100%; height: 36px; margin: -5px 0 -2px -11px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: var(--surface); box-shadow: inset 0 0 0 2px var(--focus); color: var(--ink); font: inherit; outline: none; }
+.act-who { display: inline-flex; align-items: center; gap: 8px; }
+.ac-owner.maybe { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--ink-3); }
+.ac-owner.maybe .ac-avatar { opacity: 0.7; }
+.act-pop { width: 320px; }
+.act-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; padding: 6px 12px 8px; }
+.act-field label { grid-column: 1 / -1; font: 500 11.5px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.act-field .ac-input { height: 36px; font-size: 14px; }
+.act-hist { display: grid; gap: 6px; padding: 4px 12px 10px; margin: 0; list-style: none; }
+.act-hist li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink-2); }
+.act-hist .ac-mono { flex: none; font-size: 11.5px; color: var(--ink-3); }
+.tr-toggle .ac-i { transition: transform var(--duration-2) var(--ease-out); }
+.tr-toggle[aria-expanded="true"] .ac-i { transform: rotate(180deg); }
+.tr { display: grid; }
+.tr-more { display: flex; justify-content: flex-start; padding-top: 12px; border-top: 1px solid var(--line); }
+.tr .ac-line { padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.tr .ac-line.more { border-top: 0; padding-top: 0; }
+/* The line a link brought someone to: marked at the edge, and lit for a moment. */
+.tr .ac-line.here { position: relative; margin-inline: -12px; padding-inline: 12px; border-radius: var(--radius-md); animation: line-here 2600ms var(--ease-out) both; }
+.tr .ac-line.here::before { content: ""; position: absolute; left: -4px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--horizon); }
+.tr .tr-key { padding-bottom: 10px; }
+/* Correcting a line: the pencil shows on hover or focus (always on touch screens), and the line becomes its own editor. */
+.ln-pen { width: 28px; height: 28px; margin: -6px 0 -8px 6px; vertical-align: -1px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
+.ln:hover .ln-pen, .ln:focus-within .ln-pen { opacity: 1; }
+@media (hover: none) { .ln-pen { opacity: 1; } }
+.ln-fixed { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; border-radius: 4px; font-size: 12px; color: var(--ink-3); vertical-align: 1px; cursor: help; }
+.ln-fixed:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ln-hist { display: grid; gap: 4px; max-width: 320px; font-weight: 500; line-height: 1.35; }
+.tr .ac-line.ln-edit { padding-bottom: 14px; }
+.ln-who { display: inline-flex; align-items: center; gap: 4px; margin: -4px 0 0 -7px; padding: 3px 7px; border-radius: var(--radius-sm); color: var(--ink); transition: background-color var(--duration-1); }
+.ln-who:hover, .ln-who[data-state="open"] { background: var(--sunk); }
+.ln-who b { margin-right: 0; }
+.ln-input { display: block; width: 100%; margin: 6px 0 10px; padding: 8px 10px; border: 0; border-radius: var(--radius-sm); background: var(--surface); box-shadow: inset 0 0 0 2px var(--focus); color: var(--ink); font: inherit; line-height: 1.5; resize: vertical; outline: none; }
+.ln-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.ln-nobody { display: grid; place-items: center; width: 26px; height: 28px; border-radius: 13px 13px 4px 4px; background: var(--sunk); color: var(--ink-3); }
+.ln-pop { width: 272px; max-height: min(420px, 70vh); overflow-y: auto; }
+/* After corrections, the organizer can have the notes written again from them. */
+.tr-again { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 14px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunk); font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.tr-again > .ac-i { color: var(--ink-3); }
+.tr-again > span { flex: 1 1 220px; }
+.ask { position: sticky; bottom: 22px; z-index: 5; margin-top: 44px; }
+.ask-bar { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 18px; border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.ask-bar > .ac-i { color: var(--sun-text); }
+.ask-bar input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; font-size: 15.5px; }
+.ask-bar input::placeholder { color: var(--ink-3); }
+.ask-bar > .ac-btn { flex: none; }
+.ask-sugg { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.ask-sugg button { height: 34px; padding: 0 12px; border-radius: var(--radius-pill); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font: 500 13px/1 var(--font-sans); transition: box-shadow var(--duration-1), color var(--duration-1); }
+.ask-sugg button:hover { box-shadow: inset 0 0 0 1px var(--line-control); color: var(--ink); }
+.answer { margin-bottom: 12px; padding: 18px 20px; animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.answer .q { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-3); font-weight: 600; margin-bottom: 8px; }
+.answer p { font-size: 15.5px; line-height: 1.6; }
+.rail { display: grid; gap: 16px; min-width: 0; }
+/* The encrypted recording: a small window of night. */
+.player { position: relative; overflow: hidden; padding: 18px 18px 16px; border-radius: var(--radius-lg); background: var(--stage-tile); color: var(--stage-ink); box-shadow: var(--shadow-2); }
+.player-top { display: flex; align-items: center; justify-content: space-between; font: 500 12.5px/1 var(--font-sans); color: var(--stage-ink-2); }
+.player-top > span { display: inline-flex; align-items: center; gap: 7px; }
+.player-top .ac-i { color: var(--gold); }
+.wave { display: flex; align-items: center; gap: 2px; height: 54px; margin: 14px 0 12px; cursor: pointer; }
+.wave i { flex: 1; min-width: 2px; border-radius: 2px; background: rgb(238 237 248 / 0.28); transition: background-color var(--duration-2); }
+.wave i.p { background: var(--stage-ink); }
+.player-bot { display: flex; align-items: center; gap: 12px; }
+.play { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--stage-ink); color: var(--stage); flex: none; transition: transform var(--duration-1) var(--ease-out); }
+.play:hover { transform: scale(1.05); }
+.player-bot .tm { font: 500 13px/1.3 var(--font-mono); }
+.player-bot .tm small { display: block; font-family: var(--font-sans); color: var(--stage-ink-2); font-size: 12.5px; }
+.chaps { display: grid; margin: 4px -12px -8px; }
+.chap { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; padding: 11px 12px; border-radius: var(--radius-md); text-align: left; width: 100%; transition: background-color var(--duration-1); }
+.chap:hover { background: var(--sunk); }
+.chap.on { background: var(--sun-soft); }
+.chap .ac-mono { font-size: 12.5px; color: var(--ink-3); padding-top: 2px; }
+.chap b { font-size: 14px; font-weight: 600; display: block; }
+.chap small { font-size: 12.5px; color: var(--ink-3); }
+
+/* Shared screens in a note: the card beside it, the moments among the transcript, "On screen" chips and the viewer. */
+.scr-list { display: grid; gap: 2px; margin: 0 -12px -8px; }
+.scr-item { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; align-items: center; width: 100%; padding: 8px 12px; border-radius: var(--radius-md); text-align: left; transition: background-color var(--duration-1); }
+.scr-item:hover { background: var(--sunk); }
+.scr-item .ac-shot { border-radius: 6px; }
+.scr-item b { display: block; overflow: hidden; font-size: 14px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.scr-item small { font-size: 12px; color: var(--ink-3); }
+.tr .ac-screen { margin: 6px 0; }
+.scr-ref { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; background: var(--horizon-soft); color: var(--horizon); font: 500 12px/1 var(--font-sans); white-space: nowrap; transition: box-shadow var(--duration-1); }
+.scr-ref:hover { box-shadow: inset 0 0 0 1px var(--horizon); }
+.scr-ref .ac-mono { font-size: 11px; opacity: 0.85; }
+.dec-s .scr-ref .ac-i { margin-right: 0; color: currentColor; }
+.ac-modal.scr-view { width: min(960px, calc(100vw - 32px)); }
+.scr-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 12px 24px; }
+.scr-h h2 { display: flex; align-items: center; gap: 8px; }
+.scr-h h2 .ac-i { flex: none; color: var(--horizon); }
+.scr-h p { margin-top: 4px; font-size: 12.5px; color: var(--ink-3); }
+.scr-nav { display: flex; flex: none; gap: 2px; }
+.scr-body { display: grid; gap: 14px; min-height: 0; padding: 0 24px 4px; overflow-y: auto; }
+.scr-body > .ac-shot { max-height: 62dvh; border-radius: var(--radius-md); }
+.scr-desc { font-size: 15px; line-height: 23px; color: var(--ink-2); text-wrap: pretty; }
+.scr-legible { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.scr-text button { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
+.scr-text button .ac-i { transition: transform var(--duration-2) var(--ease-out); }
+.scr-text button[aria-expanded="true"] .ac-i { transform: rotate(180deg); }
+.scr-text pre { margin: 10px 0 0; max-height: 220px; overflow: auto; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--sunk); font: 400 12.5px/19px var(--font-mono); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
+.scr-f { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px 20px; }
+.scr-f .ac-mono { font-size: 12px; color: var(--ink-3); }
+@media (max-width: 560px) {
+  .scr-h { padding: 16px 12px 10px 16px; }
+  .scr-body { padding: 0 16px 4px; }
+  .scr-f { padding: 12px 16px 16px; }
+}
+.rcpt { display: grid; gap: 12px; margin-top: 10px; }
+.rcpt-more { margin-top: 12px; }
+.rc { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: center; border-radius: 12px; }
+.rc b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc b i { font-style: normal; font-weight: 500; color: var(--ink-3); }
+.rc small { display: block; font-size: 12.5px; color: var(--ink-3); }
+.rc.fresh { animation: rc-in 900ms var(--ease-out) both; }
+.seal { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+/* The other calls in the note's series, newest first. */
+.ser-rows { display: grid; gap: 2px; margin: 8px -10px 0; }
+.ser-rows a { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 10px; border-radius: var(--radius-md); font-size: 14px; transition: background-color var(--duration-1); }
+.ser-rows a:hover { background: var(--sunk); }
+.ser-rows b { font-weight: 600; }
+.ser-rows small { font-size: 12.5px; color: var(--ink-3); }
+.ser-rows .ac-arch-thumb { box-shadow: none; }
+.ser-rows .ac-mono { font-size: 12px; color: var(--ink-3); }
+.ser-rows + .ser-p { margin-top: 12px; }
+.confirm { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; margin-top: 24px; padding: 18px 20px; border-radius: var(--radius-lg); background: var(--caution-soft); animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.confirm .ic { width: 40px; height: 40px; border-radius: var(--radius-md); display: grid; place-items: center; background: var(--surface); color: var(--caution); }
+.confirm b { display: block; font-size: 15px; color: var(--ink); }
+.confirm p { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+.confirm .btns { display: flex; gap: 8px; }
+.going { animation: going 520ms var(--ease-in) forwards; animation-delay: calc(var(--d, 0) * 140ms); }
+/* After deleting, or at a note that isn't there: what went, and the way back. */
+.gone { display: grid; justify-items: center; gap: 10px; max-width: 560px; margin: 24px auto 0; padding: 32px 24px 28px; text-align: center; animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.gone .ac-arch-art { width: 60px; height: 67px; }
+.gone h2 { font-size: 32px; font-variation-settings: 'opsz' 32; }
+.gone p { max-width: 42ch; font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
+.gone ul { display: grid; gap: 4px; margin: 2px 0 6px; padding: 0; list-style: none; }
+.gone li { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 14.5px; color: var(--ink-2); }
+.gone li .ac-i { color: var(--sun-text); }
+
+
+@keyframes going { 40% { opacity: 0.4; } to { opacity: 0; transform: translateY(-6px); height: 0; margin: 0; padding: 0; } }
+@keyframes line-here { 0%, 55% { background: var(--horizon-soft); } 100% { background: transparent; } }
+@keyframes rc-in { 0% { opacity: 0; transform: translateY(6px); background: var(--sun-soft); box-shadow: 0 0 0 6px var(--sun-soft); } 40% { opacity: 1; transform: none; } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
+
+/* ---------------------------------------------------------- narrower */
+@media (max-width: 1240px) {
+  .notes-split, .lib-first, .note { grid-template-columns: minmax(0, 1fr); }
+  .note { gap: 32px; }
+  .rail { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .rail .player { grid-column: 1 / -1; }
+}
+@media (max-width: 860px) {
+  .lib { padding: 4px 6px 8px; }
+  .lib .grp { padding: 14px 10px 4px; }
+  .lrow { gap: 12px; padding: 10px; }
+  .lib-first { gap: 28px; padding: 26px 22px; }
+  .lib-first .ac-empty { padding: 4px 0; }
+  .lib-first .ac-empty b { font-size: 26px; }
+  .doc h1 { font-size: 36px; }
+  .rail { grid-template-columns: minmax(0, 1fr); }
+  .act { grid-template-columns: 20px minmax(0, 1fr) 36px; row-gap: 8px; }
+  .act .act-more { grid-column: 3; grid-row: 1; }
+  .act .act-who, .act .due { grid-column: 2; justify-self: start; text-align: left; min-width: 0; }
+  .confirm { grid-template-columns: 1fr; }
+  /* Above the tab bar there's no room for an ask bar that stays: it waits at the end of the note. */
+  .ask { position: static; }
+}
+/* On a phone the time goes beside the title, and the summary and who get the row's whole width. */
+@media (max-width: 560px) {
+  .lib-search { flex-basis: 100%; max-width: none; }
+  .lrow { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "thumb title dt" "thumb sum sum" "thumb by by" "thumb chip chip"; gap: 0 12px; align-items: start; }
+  .lrow .body, .lrow .side { display: contents; }
+  .lrow > .ac-arch-thumb { grid-area: thumb; align-self: center; }
+  .lrow b { grid-area: title; }
+  .lrow .sum { grid-area: sum; }
+  .lrow .by { grid-area: by; }
+  .lrow .dt { grid-area: dt; padding-top: 3px; }
+  .lrow .side .ac-chip { grid-area: chip; justify-self: start; margin-top: 8px; }
+}

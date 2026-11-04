@@ -10,3 +10,8 @@ export const withMod = (e: KeyboardEvent): boolean => (mac ? e.metaKey && !e.ctr
 export const shortcut = (key: string): string => (mac ? `⌘${key}` : `Ctrl ${key}`);
 /** The same shortcut for `aria-keyshortcuts`: "Meta+K" or "Control+K". */
 export const ariaShortcut = (key: string): string => `${mac ? 'Meta' : 'Control'}+${key}`;
+
+/** A key pressed while typing into a field, a select or editable text: single-key shortcuts leave it alone. */
+export const typing = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
+/** A dialog, a menu or a list of choices is open: shortcuts leave the page alone, and nothing opens on top. */
+export const overlayOpen = (): boolean => !!document.querySelector('[role="dialog"], [role="listbox"], [role="menu"]');
