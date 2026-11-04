@@ -689,7 +689,10 @@ describe('breakout rooms, each with its own keys', () => {
     expect(again.transcript.map((l) => l.text)).not.toContain('CANARY-PAUSED said in Design.');
 
     // Pausing the whole call holds every room, and a room can't be paused on its own meanwhile. Resuming the call
-    // carries on in Support, but not in Design, which was paused on its own first.
+    // carries on in Support, but not in Design, which was paused on its own first. Capture times are kept in tenths of a
+    // second, and the call's changes come first among those in the same tenth: Design carrying on has to fall before
+    // this, or a fast run reads its two pauses as one.
+    await sleep(250);
     await host.pauseRoom(design, true);
     await host.pause();
     expect((await settle(lena.call, (x) => x.capture.room?.mode === 'paused')).capture.mode).toBe('paused');
