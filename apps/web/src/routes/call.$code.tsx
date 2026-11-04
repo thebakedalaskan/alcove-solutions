@@ -1,4 +1,4 @@
-import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
+import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
 import {
   Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
@@ -44,6 +44,8 @@ const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
+/** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
+const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (mode === 'on' || mode === 'paused' ? mode : undefined);
 /** Before the room has connected: nobody's media yet. */
 const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
 const NO_ROOM: CallRoom = {
@@ -835,7 +837,8 @@ function InCall({ session }: { session: CallSession }) {
     lock: (v) => session.lock(v)
   } : undefined;
   const privacyLine = on
-    ? 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says also goes to the notes, written in confidential compute.'
+    ? state.capture.screen.mode === 'on' ? 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says and what anyone shares on screen go to the notes, written in confidential compute.'
+      : 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says also goes to the notes, written in confidential compute.'
     : mode === 'paused' ? 'Video, audio and chat are encrypted end to end. Notes are paused, so nothing goes to the notes.'
       : 'Video, audio and chat are encrypted end to end between the people here.';
 
@@ -908,7 +911,7 @@ function InCall({ session }: { session: CallSession }) {
       <div className={cn('ic-call', ended && 'is-ended')}>
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
-          asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting'} peopleOpen={shownPanel === 'people'}
+          asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting'} peopleOpen={shownPanel === 'people'} screens={state.capture.screen.mode !== 'off'}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom}
               onMode={(m) => { if (!roomsHold()) layout.setMode(m); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset} />

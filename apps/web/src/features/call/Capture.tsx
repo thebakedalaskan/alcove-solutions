@@ -79,7 +79,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
           <span>{host ? 'The notes go to you and everyone invited.' : role === 'invited' ? 'The notes go to everyone invited, you included.' : 'The notes go to the people invited.'}</span>
           {host && getting.length > 0 && <Faces people={getting} size={18} max={4} />}
         </div>
-        <div><Icon name="lock" size={15} /><span>Video and chat are encrypted end to end and never captured.</span></div>
+        <div><Icon name="lock" size={15} /><span>Cameras and chat are encrypted end to end and never captured.</span></div>
       </div>
       {host && askers.length > 0 && !on && (
         <div className="cap-ask"><Faces people={askers} size={22} max={3} /><span className="t">{listNames(askers)} asked for notes.</span></div>

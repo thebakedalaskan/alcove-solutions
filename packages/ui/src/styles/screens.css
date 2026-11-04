@@ -9,6 +9,11 @@
 /* The part meant, outlined, with the rest of the frame dimmed (night in both themes, so it always darkens). */
 .ac-shot-part.is-focus { box-shadow: 0 0 0 2px var(--horizon), 0 0 0 9999px color-mix(in srgb, var(--stage) 32%, transparent); }
 .ac-shot-part .lbl { position: absolute; left: -2px; bottom: calc(100% + 6px); max-width: 220px; padding: 3px 8px; border-radius: var(--radius-xs); background: var(--horizon); color: var(--surface); font: 600 11.5px/16px var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* No room above a part near the frame's top: the label goes under it, or inside it when it fills the frame's height. */
+.ac-shot-part .lbl.is-below { bottom: auto; top: calc(100% + 6px); }
+.ac-shot-part .lbl.is-inside { bottom: auto; top: 6px; left: 6px; max-width: calc(100% - 12px); }
+.ac-shot-part .lbl.is-end { left: auto; right: -2px; }
+.ac-shot-part .lbl.is-inside.is-end { left: auto; right: 6px; }
 
 .ac-screen { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 14px; align-items: start; width: 100%; margin: 4px 0; padding: 10px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); text-align: left; transition: box-shadow var(--duration-1) var(--ease-out), background var(--duration-1) var(--ease-out); }
 .ac-screen:hover { box-shadow: inset 0 0 0 1px var(--line-control); }

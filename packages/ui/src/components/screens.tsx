@@ -10,6 +10,13 @@ import { Icon } from './icon';
 import { Chip } from './primitives';
 
 /**
+ * Where a part's label goes: above its box, or under it when the box starts near the frame's top (the frame clips
+ * what's outside it), or inside it when it runs from top to bottom; and from the box's right edge when the box sits on
+ * the frame's right, so a long label doesn't run off it.
+ */
+const labelAt = (r: ScreenRegion) => cn(r.y < 0.16 && (r.y + r.h < 0.84 ? 'is-below' : 'is-inside'), r.x > 0.5 && 'is-end');
+
+/**
  * A frame of a shared screen at its own shape. `focus` outlines one of its parts (what something points at), with its
  * label; `parts` outlines all of them, quietly.
  */
@@ -22,7 +29,7 @@ export function ScreenShot({ src, alt, width, height, regions = [], focus, parts
       {regions.map((r, i) => (parts || i === focus) && (
         <span key={`${i}-${r.label}`} aria-hidden="true" className={cn('ac-shot-part', i === focus && 'is-focus')}
           style={{ left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` }}>
-          {i === focus && <span className="lbl">{r.label}</span>}
+          {i === focus && <span className={cn('lbl', labelAt(r))}>{r.label}</span>}
         </span>
       ))}
     </span>
