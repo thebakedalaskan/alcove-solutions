@@ -222,7 +222,7 @@ a.nflag:hover { background: var(--sun-soft); color: var(--sun-text); }
 .tr .ac-line.here::before { content: ""; position: absolute; left: -4px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--horizon); }
 .tr .tr-key { padding-bottom: 10px; }
 /* Correcting a line: the pencil shows on hover or focus (always on touch screens), and the line becomes its own editor. */
-.ln-pen { width: 28px; height: 28px; margin: -6px 0 -8px 2px; vertical-align: -1px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
+.ln-pen { width: 28px; height: 28px; margin: -6px 0 -8px 6px; vertical-align: -1px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
 .ln:hover .ln-pen, .ln:focus-within .ln-pen { opacity: 1; }
 @media (hover: none) { .ln-pen { opacity: 1; } }
 .ln-fixed { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; border-radius: 4px; font-size: 12px; color: var(--ink-3); vertical-align: 1px; cursor: help; }
