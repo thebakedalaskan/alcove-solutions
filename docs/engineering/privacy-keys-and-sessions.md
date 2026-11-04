@@ -44,7 +44,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -67,6 +67,7 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `screen-frame` | `Krec` | recording, frame, object (the JPEG of a shared screen) |
 | `screen-frame-info` | state key `screen:<noteId>` | note, frame (whose share, when, its size, what was read on it) |
 | `call-state` | state key `call:<id>` | call |
+| `call-move` | state key `call-move:<id>` | call, move |
 | `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
 | `transcript-translation` | state key `transcript:<noteId>` | note, line-and-language tag |
 | `job` | state key `job:<noteId>` | note |
@@ -142,6 +143,10 @@ The hash is deterministic, so equal values show the same person across rows and 
 - **Limits.** A session ends after 14 days unused or 30 days in all. Last seen is refreshed at most once a
   minute. An ended session is deleted when its cookie is next presented, and maintenance sweeps the rest every
   5 minutes.
+- **Never from a QR code.** Moving a call to another device makes no session: the organizer and invited people
+  move only to a device already signed in to their account (signed in the usual way, there and then if need be),
+  and a guest's new device gets a call pass like any other
+  ([Calls and recordings › Moving to another device](calls-and-recordings.md#moving-to-another-device)).
 - **Several per account.** Each browser has its own session; signing out (`POST /v1/session/sign-out`)
   deletes only that one. Sessions live in Postgres, so they survive restarts and work on any API instance.
 - **Refusals.** No cookie, or an unknown or ended one: `401 unauthenticated` (a stale cookie is also
@@ -259,7 +264,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   waits); joining by link: 120. Transcript clips: 120 a minute per account, calls and room recordings together.
   Shared-screen frames: 24 a minute per person in a call, and
   30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
-  series): 20 a minute per account, together. Over a
+  series): 20 a minute per account, together. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV or a shared-screen frame over
@@ -272,6 +277,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   those paths as `/v1/calls/:code`, and Cloud Run's request logs, which keep raw URLs, are excluded from the
   project's log sink for that reason ([Deployment and acceptance](deployment-and-acceptance.md)). Call passes go
   in a header.
+  A move's code travels in a link's fragment, which browsers never send, and then in POST bodies, like the claim
+  that replaces it; only their SHA-256 is stored.
   Logs hold IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs, call
   codes, Google event IDs or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
   sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
@@ -316,7 +323,7 @@ third-party loads.
 
 | Where | Visible |
 | --- | --- |
-| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
+| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; that someone in a call is moving to another device, and when the move runs out; per-piece duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
@@ -348,6 +355,7 @@ third-party loads.
   so a deleted or removed note leaves every series at once, with nothing derived from it left behind.
 - **Google access** stays in the account's `connection` item until the account is deleted (not built yet).
   Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
+- **Moves to other devices** run out within minutes and upkeep deletes them; a call's go when it ends.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
   `object_gc`, and removes objects older than 24 hours that no recording piece or shared-screen frame
   references.

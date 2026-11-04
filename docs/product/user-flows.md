@@ -195,6 +195,16 @@ dock at the bottom.
   panel. Everyone sees who asked. The organizer gets a toast and sees the ask in People, then turns notes on (or
   resumes them) or says not now, and whoever asked is told.
 - Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
+- **Move to another device** (in **More**) shows a QR code and a link that work once, for two minutes. Scan it
+  with the phone's camera, or open the link on another computer: it shows the call, who you'll be and whether your
+  microphone and camera are on, with **Move here**. The organizer and invited people sign in there first, with the
+  same account. For a guest the laptop then asks **Move to iPhone** or **Not my device**; signed in to the same
+  account, it lets go by itself. The laptop turns off its microphone and camera and leaves, then the phone comes
+  in as you, with your place, raised hand and breakout room, and its microphone and camera as they were. The
+  laptop says where the call went, with **Join again here**. While you share your screen the code stays hidden.
+- If your connection drops, the top bar says **Reconnecting** and you're back by yourself when it returns, as the
+  same person. While the organizer's connection is gone, everyone else's notes sign says **Notes paused**, and
+  catching up says what wasn't captured.
 
 Calls are for groups: invited people join with their accounts, anyone else with the link asks and the
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
