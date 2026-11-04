@@ -484,7 +484,7 @@ third-party loads.
   media key: LiveKit sees only that someone sent data, when and how big, and the API never gets them ([Calls and
   recordings › Pointing at shared screens](calls-and-recordings.md#pointing-at-shared-screens)).
 
-- **Your view of a call** never leaves the browser. Layout preferences stay in `localStorage` for the account and
+- **Your view of a call** never leaves the browser. Layout preferences and where the panels sit stay in `localStorage` for the account and
   the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
   random per-call seat and shares by their sharer's random connection ID: no names, addresses or call content ([Calls and recordings › The call
   screen](calls-and-recordings.md#the-call-screen)). How you zoom into a share, and the earlier pictures of it you can
