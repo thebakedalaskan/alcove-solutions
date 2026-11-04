@@ -14,7 +14,7 @@ export interface Box { x: number; y: number; w: number; h: number }
  */
 export type Shape = 'grid' | 'focus' | 'side';
 
-/** At most this many shares side by side; any more are tiles among the people. */
+/** At most this many shares side by side (one on a narrow stage); any more are tiles among the people. */
 export const MAX_FEATURED = 2;
 /** A share's tile is keyed apart from people's (participant IDs), by its sharer's participant ID. */
 export const shareKey = (id: string) => `share:${id}`;
@@ -24,8 +24,12 @@ export interface StagePerson { id: string; seat: string; isMe: boolean }
 export interface ArrangeInput {
   /** Everyone on the stage, in the call's order. */
   people: StagePerson[];
-  /** What's shared now, by sharer's participant ID, oldest first. */
+  /** What's shared now, by sharer's participant ID, in the order they started. */
   shares: string[];
+  /** Your own share while you share: it starts as a tile, since you see what you share on your own screen already. */
+  own: string | null;
+  /** How many shares fit big side by side: MAX_FEATURED, or one on a narrow stage. */
+  fit: number;
   /** The organizer's spotlight, for everyone: a participant ID. */
   spotlight: string | null;
   /** Who's been talking (settled, never you), and who has done most of the talking lately. */
@@ -36,7 +40,7 @@ export interface ArrangeInput {
 }
 export interface Plan {
   shape: Shape;
-  /** Shares big on the stage, side by side, by share ID. */
+  /** Shares big on the stage, side by side in the order they started, by share ID. */
   featured: string[];
   /** People on the main stage in focus; first and bigger in grid and side. By participant ID. */
   leads: string[];
@@ -66,10 +70,14 @@ export function arrange(i: ArrangeInput): Plan {
   const idOf = (seat: string) => { const p = bySeat.get(seat); return p && here.has(p.id) ? [p.id] : []; };
   // Who leads: the organizer's spotlight, then your pins in the order you pinned them.
   let leads = [...new Set([...(i.spotlight && here.has(i.spotlight) ? [i.spotlight] : []), ...layout.pins.flatMap(idOf)])];
-  // Shares: the ones you chose to see big; otherwise every share (two side by side), except in Grid.
-  const show = new Map(layout.shares.map((s) => [s.id, s.show]));
-  const chosen = i.shares.filter((s) => show.get(s) === 'big');
-  const featured = (chosen.length ? chosen : prefs.mode === 'grid' ? [] : i.shares.filter((s) => show.get(s) !== 'tile')).slice(0, MAX_FEATURED);
+  // Shares: once you've chosen how to see any of them, the ones you last made big (as many as fit, maybe none). Until
+  // then, everyone else's, the first to start, except in Grid. A share that starts later never takes the place of what
+  // you see, and never undoes what you chose.
+  const live = new Set(i.shares);
+  const chose = layout.shares.filter((s) => live.has(s.id));
+  const pick = chose.length ? chose.filter((s) => s.show === 'big').map((s) => s.id).slice(-i.fit)
+    : prefs.mode === 'grid' ? [] : i.shares.filter((s) => s !== i.own).slice(0, i.fit);
+  const featured = i.shares.filter((s) => pick.includes(s));
   const tiles = i.shares.filter((s) => !featured.includes(s)).map(shareKey);
   // Nobody chosen and nothing shared: Speaker follows whoever talks; Auto follows someone doing most of the talking,
   // but only while you haven't arranged anything, so what you arranged stays put.
@@ -231,6 +239,10 @@ export interface Placed {
 export interface PlaceInput { width: number; height: number; top: number; bottom: number; ratio: number; split: number }
 
 const GAP = 12;
+/** Most shared screens are about this wide for their height (16:10). */
+const SHARE_ASPECT = 1.6;
+/** How much of a w × h box a shared screen's picture fills, kept whole. */
+const shown = (w: number, h: number) => (w / Math.max(1, h) > SHARE_ASPECT ? h * h * SHARE_ASPECT : (w * w) / SHARE_ASPECT);
 
 /** The plan in a box: the shapes without your corner picture. */
 function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, 'self'> {
@@ -256,12 +268,13 @@ function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, '
         set(tiles, fitGrid(tiles.length, b.x, b.y + sh + GAP, b.w, b.h - sh - GAP, 1.2, 8));
       }
     }
-    // Two shares side by side along the longer side of their space, split where you put the line.
+    // Two shares side by side, or one above the other where that shows both pictures bigger (shared screens are wide),
+    // split where you put the line. Which way depends on the space alone, so moving the line never turns them.
     let splitHandle: Handle | null = null;
     const [a, c] = plan.featured;
     if (a !== undefined && c === undefined) shares.set(a, [area.x, area.y, area.w, area.h]);
     else if (a !== undefined && c !== undefined) {
-      if (area.w >= area.h) {
+      if (shown((area.w - GAP) / 2, area.h) >= shown(area.w, (area.h - GAP) / 2)) {
         const aw = Math.round((area.w - GAP) * split);
         shares.set(a, [area.x, area.y, aw, area.h]);
         shares.set(c, [area.x + aw + GAP, area.y, area.w - aw - GAP, area.h]);

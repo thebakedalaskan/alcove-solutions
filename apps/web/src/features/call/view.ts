@@ -76,6 +76,17 @@ export function presetNow(p: CallViewPrefs, l: CallLayout): Preset | null {
 /** A view to go back to: Undo after a reset or a preset. */
 export interface ViewSnapshot { prefs: CallViewPrefs; layout: CallLayout }
 
+/** The shares big now, in the order they came to be: any the layout put there (first to start, first), then your picks. */
+function picked(l: CallLayout, big: string[]): string[] {
+  const chosen = l.shares.filter((s) => s.show === 'big' && big.includes(s.id)).map((s) => s.id);
+  return [...big.filter((s) => !chosen.includes(s)), ...chosen];
+}
+/** Your choices about shares with these big and the rest as they were: the ones you made tiles stay tiles. */
+function sharesWith(l: CallLayout, big: string[], tile: string | null): CallLayout['shares'] {
+  const tiles = l.shares.filter((s) => s.show === 'tile' && s.id !== tile && !big.includes(s.id));
+  return [...tiles, ...(tile ? [{ id: tile, show: 'tile' as const }] : []), ...big.map((id) => ({ id, show: 'big' as const }))].slice(-CALL_LAYOUT_MAX.shares);
+}
+
 /**
  * Your view of the call `callId`. `account` is your account's owner ID, null without an account, or undefined while
  * that isn't known yet (nothing is remembered until it is).
@@ -131,10 +142,14 @@ export function useCallView(callId: string, account: string | null | undefined) 
     setPins: (pins: string[]) => updateLayout((l) => ({ ...l, pins: pins.slice(0, CALL_LAYOUT_MAX.pins) })),
     setOrder: (order: string[]) => updateLayout((l) => ({ ...l, order: order.slice(0, CALL_LAYOUT_MAX.order) })),
     setBig: (seat: string, big: boolean) => updateLayout((l) => ({ ...l, big: big ? [...new Set([...l.big, seat])].slice(-CALL_LAYOUT_MAX.big) : l.big.filter((s) => s !== seat) })),
-    /** How you see one share: big, as a tile, or (null) as the layout puts it. */
-    setShare: (id: string, show: 'big' | 'tile' | null) => updateLayout((l) => ({
-      ...l, shares: [...l.shares.filter((s) => s.id !== id), ...(show ? [{ id, show }] : [])].slice(-CALL_LAYOUT_MAX.shares)
-    })),
+    /**
+     * Shows a share big, after the ones big now (`big`, which become your choice too). The stage shows the latest of them
+     * that fit: beside what's big, or in place of the one that's been big longest. Kept whole, so a stage that grows
+     * (the panel closing) shows them again.
+     */
+    showShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, [...picked(l, big).filter((s) => s !== id), id], null) })),
+    /** Shows a share as a tile: the others big now stay big, and nothing takes its place, now or when another share starts. */
+    hideShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, picked(l, big).filter((s) => s !== id), id) })),
     setSplit: (split: number) => updateLayout((l) => ({ ...l, split: clamp(split, CALL_SHARE_SPLIT) })),
     /** Back to Auto: nobody pinned, the call's order and sizes. Where you see yourself stays as it is. */
     reset: (): ViewSnapshot => {

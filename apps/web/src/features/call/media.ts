@@ -12,6 +12,7 @@
 import { errorCode, type AudioPiece } from '@alcove/api';
 import { log } from '~/lib/log';
 import { canChooseSpeaker, enumerate, permissions, plainName, readPrefs, rememberDevice, watchPermissions, type Capture, type Permission } from './devices';
+import { canShareScreen, shareProblem, type ShareProblem } from './share';
 
 const mlog = log.child({ component: 'media' });
 
@@ -56,6 +57,14 @@ export interface MediaSnapshot {
 /** What someone chooses to share. The browser's own picker then asks which one. */
 export type ShareSurface = 'browser' | 'window' | 'monitor';
 export interface ShareChoice { surface: ShareSurface; audio: boolean }
+/**
+ * How sharing went: what kind of thing is shared and whether the sound asked for came with it (`left-out`: the browser
+ * or the person in its picker left it out), or why it didn't start.
+ */
+export type ShareStart = { ok: true; surface: ShareSurface; sound: 'shared' | 'left-out' | 'not-asked' } | { ok: false; problem: ShareProblem };
+/** A share's sound, without the sound this page plays itself (everyone's voices) when it's the computer's: Chrome and Edge know it, the rest ignore it. */
+interface ShareSound extends MediaTrackConstraints { restrictOwnAudio?: boolean }
+const SHARE_SOUND: ShareSound = { restrictOwnAudio: true };
 
 const VIDEO = { width: { ideal: 1280 }, height: { ideal: 720 } } as const;
 const audioFor = (noiseSuppression: boolean): MediaTrackConstraints => ({ echoCancellation: true, noiseSuppression });
@@ -620,32 +629,43 @@ export class LocalMedia {
   }
   /**
    * Shares a tab, a window or a screen: the browser's own picker opens on that kind and asks which
-   * one. Sharing again while sharing swaps what's shared. Resolves false if the picker was cancelled.
+   * one. Sharing again while sharing swaps what's shared, and a cancelled swap keeps the share as it was.
+   * Nothing else is captured: sound only when asked for, and, where the browser knows `restrictOwnAudio`, never the
+   * call's own (everyone's voices).
    */
-  async shareScreen(choice: ShareChoice, onEnded: () => void): Promise<string | false> {
+  async shareScreen(choice: ShareChoice, onEnded: () => void): Promise<ShareStart> {
+    const sound = choice.audio && choice.surface !== 'window';
     // Hints the picker understands; the ones it doesn't are ignored, and the picker decides in the end.
     const options = {
       video: { displaySurface: choice.surface },
-      audio: choice.audio && choice.surface !== 'window',
+      audio: sound ? SHARE_SOUND : false,
       preferCurrentTab: false, selfBrowserSurface: 'exclude', surfaceSwitching: 'include',
       systemAudio: choice.audio && choice.surface === 'monitor' ? 'include' : 'exclude'
     };
+    if (!canShareScreen()) return { ok: false, problem: 'unsupported' };
+    const asked = performance.now();
     try {
       const s = await navigator.mediaDevices.getDisplayMedia(options);
       const track = s.getVideoTracks()[0];
-      if (!track) return false;
+      if (!track) { s.getTracks().forEach((t) => t.stop()); return { ok: false, problem: 'nothing' }; }
       const before = this.snap.screen;
       const surface = surfaceOf(track.getSettings().displaySurface) ?? choice.surface;
       const label = shareLabel(track, surface);
-      track.addEventListener('ended', () => { if (this.snap.screen === s) { this.set({ screen: null, screenLabel: null, screenSurface: null }); onEnded(); } });
+      // The share ends as one: when its picture stops (the browser's own Stop, or the tab or window closed), so does its sound.
+      track.addEventListener('ended', () => {
+        s.getTracks().forEach((t) => t.stop());
+        if (this.snap.screen === s) { this.set({ screen: null, screenLabel: null, screenSurface: null }); onEnded(); }
+      });
       this.set({ screen: s, screenLabel: label, screenSurface: surface });
       before?.getTracks().forEach((t) => t.stop());
-      mlog.info('screen sharing started', { surface, asked: choice.surface, audio: s.getAudioTracks().length > 0, swapped: Boolean(before) });
-      return label;
+      const withSound = s.getAudioTracks().length > 0;
+      mlog.info('screen sharing started', { surface, asked: choice.surface, audio: withSound, askedAudio: sound, swapped: Boolean(before) });
+      return { ok: true, surface, sound: !sound ? 'not-asked' : withSound ? 'shared' : 'left-out' };
     } catch (e) {
-      // Cancelling the picker is a NotAllowedError; anything else is worth knowing about.
-      mlog.at(e instanceof DOMException && e.name === 'NotAllowedError' ? 'debug' : 'warn', 'screen sharing not started', { err: e, asked: choice.surface });
-      return false;
+      const problem = shareProblem(e, performance.now() - asked);
+      // Closing the picker is nobody's problem; anything else is worth knowing about.
+      mlog.at(problem === 'cancelled' ? 'debug' : 'warn', 'screen sharing not started', { err: e, asked: choice.surface, problem });
+      return { ok: false, problem };
     }
   }
   stopScreen() { this.snap.screen?.getTracks().forEach((t) => t.stop()); this.set({ screen: null, screenLabel: null, screenSurface: null }); }
