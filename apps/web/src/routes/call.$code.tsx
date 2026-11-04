@@ -252,15 +252,19 @@ function InCall({ session }: { session: CallSession }) {
       toast(c.text, { icon: c.kind === 'mic' ? 'mic' : c.kind === 'cam' ? 'video' : 'speaker', ms: 6000 });
     }
   }, [m.changes, toast]);
-  /* The browser is holding back everyone's sound until the page is clicked (Safari with nothing captured): ask once, and take the first click or key. */
+  /*
+   * The browser is holding back everyone's sound until the page is clicked (Safari with nothing captured). The status
+   * bar says so for as long as it lasts, with Play sound, and every click, tap or key tries again (iOS doesn't count
+   * every touch), until sound plays.
+   */
+  const playSound = () => { void room.startAudio(); };
   useEffect(() => {
     if (!roomView.audioBlocked) return;
     const go = () => { void room.startAudio(); };
-    addEventListener('pointerdown', go, { once: true, capture: true });
-    addEventListener('keydown', go, { once: true, capture: true });
-    toast('Your browser is holding back the call’s sound.', { icon: 'speakerOff', ms: 30_000, action: { label: 'Play sound', onClick: go } });
-    return () => { removeEventListener('pointerdown', go, { capture: true }); removeEventListener('keydown', go, { capture: true }); };
-  }, [roomView.audioBlocked, room, toast]);
+    const kinds = ['click', 'touchend', 'keydown'] as const;
+    for (const k of kinds) addEventListener(k, go, { capture: true });
+    return () => { for (const k of kinds) removeEventListener(k, go, { capture: true }); };
+  }, [roomView.audioBlocked, room]);
 
   /*
    * The organizer ended the call, or removed you, or the call went on from another tab or device: you're told,
@@ -695,10 +699,16 @@ function InCall({ session }: { session: CallSession }) {
       <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
     </div>
   );
+  const soundPill = roomView.audioBlocked && (
+    <div className="ic-spill"><Icon name="speakerOff" size={15} /><span className="tx2">Your browser is holding back the call’s sound</span>
+      <button type="button" className="sp-btn is-strong" onClick={playSound}>Play sound</button>
+    </div>
+  );
   const bar = open
-    ? (organizer ? null : <>{roomBar}{sharePill}</>)
-    : (m.screen || spotlight || alone) ? (
+    ? (organizer ? soundPill || null : <>{soundPill}{roomBar}{sharePill}</>)
+    : (m.screen || spotlight || alone || soundPill) ? (
       <>
+        {soundPill}
         {alone}
         {sharePill}
         {spotlight && (
@@ -738,7 +748,7 @@ function InCall({ session }: { session: CallSession }) {
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
             <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
-              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} onVolume={(id, v) => volumes.set(id, v)} />
+              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes} />
           </motion.div>
           <AnimatePresence>
             {shownPanel && (
@@ -750,7 +760,7 @@ function InCall({ session }: { session: CallSession }) {
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
                   {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} who={personOf} onSend={(t) => session.sendChat(t)} />}
-                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} onVolume={(id, v) => volumes.set(id, v)} />}
+                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} volumes={volumes} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
                       people={byId} activity={activity} me={me.person} onJoin={visit} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />

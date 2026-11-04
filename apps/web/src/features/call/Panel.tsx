@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
+import type { VolumeActions } from './volume';
 import { VolumeControl } from './VolumeControl';
 
 export type PanelView = 'notes' | 'transcript' | 'ask' | 'chat' | 'people' | 'rooms';
@@ -299,7 +300,7 @@ export function ChatView({ chat, missed, ready, who, onSend }: {
  * One person's menu: how loud they are for you (your playback only), and the organizer's controls: mute (they
  * unmute themselves) and remove (they can come back unless the call is locked).
  */
-function PersonMenu({ p, host, onVolume }: { p: PanelPerson; host: HostControls | undefined; onVolume: ((level: number) => void) | undefined }) {
+function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls | undefined; volumes: VolumeActions | undefined }) {
   const [open, setOpen] = useState(false);
   const toast = useToast();
   const name = callName(p.person);
@@ -307,7 +308,7 @@ function PersonMenu({ p, host, onVolume }: { p: PanelPerson; host: HostControls 
     setOpen(false);
     f().then(() => toast(done, { icon: 'check' }), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
-  const volume = p.volume !== null && onVolume ? <VolumeControl name={name} level={p.volume} onChange={onVolume} /> : null;
+  const volume = p.volume !== null && volumes ? <VolumeControl name={name} level={p.volume} onChange={(v) => volumes.set(p.id, v)} onToggle={() => volumes.toggle(p.id)} /> : null;
   return (
     <Popover open={open} onOpenChange={setOpen} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu"
       anchor={<button type="button" className="ac-icon-btn ic-pmore" aria-label={`Options for ${name}`} title={`Options for ${name}`}><Icon name="more" size={18} /></button>}>
@@ -325,7 +326,7 @@ function PersonMenu({ p, host, onVolume }: { p: PanelPerson; host: HostControls 
   );
 }
 
-export function PeopleView({ here, invited, asking, host, foot, onVolume }: {
+export function PeopleView({ here, invited, asking, host, foot, volumes }: {
   here: PanelPerson[]; invited: Person[];
   /** People asking to join: only the organizer sees them. */
   asking: CallAsker[];
@@ -334,7 +335,7 @@ export function PeopleView({ here, invited, asking, host, foot, onVolume }: {
   /** What the footer says: how the call is kept private. */
   foot: ReactNode;
   /** How loud someone is for you: your own playback only. */
-  onVolume?: ((id: string, level: number) => void) | undefined;
+  volumes?: VolumeActions | undefined;
 }) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)));
   const toast = useToast();
@@ -371,7 +372,7 @@ export function PeopleView({ here, invited, asking, host, foot, onVolume }: {
               {p.speaking && p.mic && <span className="ac-level" aria-label="Speaking"><i /><i /><i /></span>}
               {!p.mic && <Icon name="micOff" size={16} aria-label="Microphone off" />}
               {p.volume === 0 && <Icon name="speakerOff" size={16} aria-label="Muted for you" />}
-              {!p.isMe && (host || (p.volume !== null && onVolume)) && <PersonMenu p={p} host={host} onVolume={onVolume ? (v) => onVolume(p.id, v) : undefined} />}
+              {!p.isMe && (host || (p.volume !== null && volumes)) && <PersonMenu p={p} host={host} volumes={volumes} />}
             </div>
           </div>
         ))}

@@ -16,6 +16,7 @@ import { arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Han
 import { ShareMenu, TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
+import type { VolumeActions } from './volume';
 import { volumeTag } from './VolumeControl';
 
 export interface StageParticipant {
@@ -77,7 +78,7 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, onVolume }: {
+export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes }: {
   people: StageParticipant[];
   /** What's shared now, oldest first. */
   shares: StageShare[];
@@ -96,7 +97,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   /** The first time you arrange your own view. */
   onCustom: () => void;
   /** How loud someone is for you: your own playback only. */
-  onVolume: (id: string, level: number) => void;
+  volumes: VolumeActions;
 }) {
   const { ref, w, h } = useSize<HTMLDivElement>();
   const reduce = useReducedMotion();
@@ -291,7 +292,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
       ...(g && g.length > 1 ? { earlier: at > 0 ? () => moveBy(p.id, -1) : null, later: at < g.length - 1 ? () => moveBy(p.id, 1) : null } : {}),
       size: handsOn && restGroup.includes(p.id) ? { big: lay.big.includes(p.seat), toggle: () => toggleBig(p) } : undefined,
       self: p.isMe ? { where: prefs.self, set: onSelf } : undefined,
-      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => onVolume(p.id, level) }
+      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) }
     };
   };
   const nothing = !L.slots.size && !L.shares.size;
@@ -366,7 +367,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
                       )}
                       {p.volume !== null && p.volume < 1 && (
                         <span className="ic-tch"><Icon name={p.volume === 0 ? 'speakerOff' : 'speakerLow'} size={13} /><span className="tl">{volumeTag(p.volume)}</span>
-                          <button type="button" className="tx" aria-label={`${callName(p.person)} back to full volume for you`} onClick={() => onVolume(p.id, 1)}><Icon name="x" size={12} /></button>
+                          <button type="button" className="tx" aria-label={`${callName(p.person)} back to full volume for you`} onClick={() => volumes.set(p.id, 1)}><Icon name="x" size={12} /></button>
                         </span>
                       )}
                     </div>

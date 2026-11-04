@@ -44,6 +44,8 @@ export class CallVolumes implements LiveStore<Levels> {
   private listeners = new Set<() => void>();
   /** Who each connection is, for people with an account, so a level follows them to a new connection. Memory only. */
   private people = new Map<string, string>();
+  /** Each person's level before a quick mute, so unmuting brings them back where they were. Memory only. */
+  private before = new Map<string, number>();
 
   constructor(private readonly callId: string) { this.levels = read(callId); }
 
@@ -54,11 +56,20 @@ export class CallVolumes implements LiveStore<Levels> {
   /** Sets how loud `identity` plays for you, 0 to 1, in steps of 1%. Full volume is the same as never having set it. */
   set(identity: string, level: number) {
     const v = Math.round(Math.max(0, Math.min(1, level)) * 100) / 100;
+    if (v > 0) this.before.delete(identity);
     if ((this.levels[identity] ?? 1) === v) return;
     const next: Record<string, number> = { ...this.levels };
     if (v === 1) delete next[identity];
     else next[identity] = v;
     this.update(next);
+  }
+
+  /** The quick mute: off for you, or back to the level they had before it. */
+  toggle(identity: string) {
+    const now = this.level(identity);
+    if (now === 0) { this.set(identity, this.before.get(identity) ?? 1); return; }
+    this.before.set(identity, now);
+    this.set(identity, 0);
   }
 
   /**
@@ -79,6 +90,8 @@ export class CallVolumes implements LiveStore<Levels> {
       next ??= { ...this.levels };
       next[p.id] = level;
       delete next[earlier];
+      const was = this.before.get(earlier);
+      if (was !== undefined) { this.before.set(p.id, was); this.before.delete(earlier); }
     }
     if (next) this.update(next);
   }
@@ -86,6 +99,7 @@ export class CallVolumes implements LiveStore<Levels> {
   /** Leaving the call: every level is forgotten. */
   clear() {
     this.people.clear();
+    this.before.clear();
     this.update(NONE);
     try { sessionStorage.removeItem(KEY); } catch (e) { vlog.debug('volumes not cleared', { err: e }); }
   }
@@ -101,6 +115,9 @@ export class CallVolumes implements LiveStore<Levels> {
     this.listeners.forEach((l) => l());
   }
 }
+
+/** What the call screen's controls can do to a person's level. */
+export type VolumeActions = Pick<CallVolumes, 'set' | 'toggle'>;
 
 /** One store per call session: the room plays by it, and the call screen sets it. */
 const stores = new WeakMap<CallSession, CallVolumes>();

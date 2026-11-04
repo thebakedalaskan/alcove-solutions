@@ -18,7 +18,7 @@ export interface PersonMenu {
   /** Your own tile: where you see yourself. */
   self?: { where: SelfView; set: (w: SelfView) => void } | undefined;
   /** Someone else's tile: how loud they are for you (your playback only), where the browser can set it. */
-  volume?: { level: number; set: (level: number) => void } | undefined;
+  volume?: { level: number; set: (level: number) => void; toggle: () => void } | undefined;
 }
 
 const SELF: { where: SelfView; icon: IconName; label: string }[] = [
@@ -68,7 +68,7 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
           {self.where === 'hidden' && <p className="hint">Everyone else still sees you.</p>}
         </div>
       )}
-      {volume && <><div className="ic-msep" /><VolumeControl name={callName(who)} level={volume.level} onChange={volume.set} /></>}
+      {volume && <><div className="ic-msep" /><VolumeControl name={callName(who)} level={volume.level} onChange={volume.set} onToggle={volume.toggle} /></>}
       {(organizer && spotlight) ? (
         <>
           <div className="ic-msep" />
