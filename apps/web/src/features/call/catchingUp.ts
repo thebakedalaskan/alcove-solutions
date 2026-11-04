@@ -36,7 +36,8 @@ export interface CatchingUp {
   settle(): void;
 }
 
-export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean }): CatchingUp {
+/** `room`: the breakout room you're in, if any, whose lines alone catching up reads there. */
+export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
   const toast = useToast();
   const [asks, setAsks] = useState<Asked[]>([]);
   const [range, setRange] = useState<CatchUpRange>(WHOLE_CALL);
@@ -60,7 +61,7 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
   const run = (r: CatchUpRange) => {
     const n = ++id.current;
     setRange(r);
-    setAsks((a) => [...a, { id: n, kind: 'catch-up', range: r, c: null, error: null }]);
+    setAsks((a) => [...a, { id: n, kind: 'catch-up', range: r, room: o.room, c: null, error: null }]);
     session.catchUp(r).then((c) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'catch-up' ? { ...x, c } : x))), failed('catch-up', n));
   };
   const catchUp = (r?: CatchUpRange | undefined) => {
@@ -74,7 +75,7 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
   const ask = (question: string) => {
     const n = ++id.current;
     const r = range;
-    setAsks((a) => [...a, { id: n, kind: 'question', q: question, range: r, a: null, error: null }]);
+    setAsks((a) => [...a, { id: n, kind: 'question', q: question, range: r, room: o.room, a: null, error: null }]);
     session.askSoFar(question, r).then((answer) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'question' ? { ...x, a: answer } : x))), failed('question during a call', n));
   };
   const open = (e: TranscriptMoment) => {

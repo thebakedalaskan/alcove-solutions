@@ -751,7 +751,7 @@ function InCall({ session }: { session: CallSession }) {
   const flip = (v: PanelView) => setPanel((x) => (x === v ? null : v));
 
   /* ---------- catching up and asking: for you alone, with the moments behind each answer, and a way back to live ---------- */
-  const cu = useCatchingUp(session, { panel, setPanel: (v) => { setPop(null); setPanel(v); }, narrow, everOn: state.notes.everOn });
+  const cu = useCatchingUp(session, { panel, setPanel: (v) => { setPop(null); setPanel(v); }, narrow, everOn: state.notes.everOn, room: roomName });
   const catchUp = () => { setPop(null); cu.catchUp(); };
   const liveNotes = useLiveNotes(session, state.transcript.at(-1)?.id, on && live, panel === 'notes');
 

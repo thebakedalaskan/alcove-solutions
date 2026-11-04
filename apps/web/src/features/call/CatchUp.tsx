@@ -14,10 +14,13 @@ import { hm, hms } from '~/lib/time';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-/** A question or catch-up asked in the Ask view, what it read, and its answer once it's back. */
+/**
+ * A question or catch-up asked in the Ask view, what it read, and its answer once it's back. `room`: the breakout
+ * room it was asked in, whose lines alone it reads (null in the main room).
+ */
 export type Asked =
-  | { id: number; kind: 'question'; q: string; range: CatchUpRange; a: CallAnswer | null; error: string | null }
-  | { id: number; kind: 'catch-up'; range: CatchUpRange; c: CatchUp | null; error: string | null };
+  | { id: number; kind: 'question'; q: string; range: CatchUpRange; room: string | null; a: CallAnswer | null; error: string | null }
+  | { id: number; kind: 'catch-up'; range: CatchUpRange; room: string | null; c: CatchUp | null; error: string | null };
 
 /** A transcript moment being opened from a catch-up or an answer: what was asked for, and what came back. */
 export interface Moment { evidence: TranscriptMoment; found: CallMoment | null; error: string | null }
@@ -79,15 +82,16 @@ function rangeName(r: CatchUpRange, t: CallTimes): string {
     case 'all': return 'Whole call';
   }
 }
-/** What to say when a range had nothing in it. */
-function nothingIn(r: CatchUpRange): string {
+/** What to say when a range had nothing in it, in the breakout room it was read in, if any. */
+function nothingIn(r: CatchUpRange, room: string | null): string {
+  const where = room ? ` in ${room}` : '';
   switch (r.kind) {
-    case 'recent': return `Nothing was said in the last ${r.minutes} minutes.`;
-    case 'since-joined': return 'Nothing has been said since you joined.';
-    case 'before-joined': return 'Nothing was said before you joined.';
-    case 'away': return 'Nothing was said while you were away.';
-    case 'between': return 'Nothing was said in that stretch.';
-    case 'all': return 'Nothing has been said yet.';
+    case 'recent': return `Nothing was said${where} in the last ${r.minutes} minutes.`;
+    case 'since-joined': return `Nothing has been said${where} since you joined.`;
+    case 'before-joined': return `Nothing was said${where} before you joined.`;
+    case 'away': return `Nothing was said${where} while you were away.`;
+    case 'between': return `Nothing was said${where} in that stretch.`;
+    case 'all': return `Nothing has been said${where} yet.`;
   }
 }
 
@@ -231,7 +235,7 @@ export function Moments({ evidence, times, onOpen }: { evidence: Evidence[]; tim
  * How complete and current an answer is: the stretch it read, how many lines it read, as of when, and what it can't
  * have in it, the middle of a stretch too long to read whole included.
  */
-function ReadNote({ read, times: t }: { read: CatchUpRead; times: CallTimes }) {
+function ReadNote({ read, room, times: t }: { read: CatchUpRead; room: string | null; times: CallTimes }) {
   const span = (xs: { from: number; to: number }[]) => xs.slice(0, 3).map((x) => t.stretch(x.from, x.to)).join(', ') + (xs.length > 3 ? ` and ${xs.length - 3} more` : '');
   const skipped = read.skipped;
   return (
@@ -240,12 +244,13 @@ function ReadNote({ read, times: t }: { read: CatchUpRead; times: CallTimes }) {
       {skipped && <p className="cu-note"><Icon name="more" size={13} />This stretch was too long to read whole: {skipped.lines} {skipped.lines === 1 ? 'line' : 'lines'} said {t.stretch(skipped.from, skipped.to)} were left out.</p>}
       {read.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />{read.gaps.slice(0, 3).map(gapLabel).join(' · ')}{read.gaps.length > 3 ? ` and ${read.gaps.length - 3} more` : ''}. Nothing said then is in this.</p>}
       {read.missed.length > 0 && <p className="cu-note"><Icon name="wifiOff" size={13} />Nothing was transcribed {span(read.missed)}, while the organizer’s connection was away.</p>}
+      {room && <p className="cu-note"><Icon name="door" size={13} />Only what was said in {room} while you were in it.</p>}
       {read.whileHere && <p className="cu-note"><Icon name="lock" size={13} />Only what was said while you were here.</p>}
     </div>
   );
 }
 
-function CatchUpCard({ c, range, times, onOpen }: { c: CatchUp; range: CatchUpRange; times: CallTimes; onOpen: (e: TranscriptMoment) => void }) {
+function CatchUpCard({ c, range, room, times, onOpen }: { c: CatchUp; range: CatchUpRange; room: string | null; times: CallTimes; onOpen: (e: TranscriptMoment) => void }) {
   const list = (title: string, xs: CatchUpItem[]) => xs.length > 0 && (
     <div className="cu-grp"><b>{title}</b><ul>{xs.map((x) => (
       <li key={x.text}>
@@ -254,25 +259,25 @@ function CatchUpCard({ c, range, times, onOpen }: { c: CatchUp; range: CatchUpRa
       </li>
     ))}</ul></div>
   );
-  if (!c.read.lines) return <><div className="txt">{nothingIn(range)}</div><ReadNote read={c.read} times={times} /></>;
+  if (!c.read.lines) return <><div className="txt">{nothingIn(range, room)}</div><ReadNote read={c.read} room={room} times={times} /></>;
   const none = !c.decided.length && !c.proposed.length && !c.open.length && !c.next.length;
   return (
     <>
       {c.summary && <div className="txt">{c.summary}</div>}
       {list('Decided', c.decided)}{list('Suggested, not agreed', c.proposed)}{list('Still open', c.open)}{list('Next', c.next)}
       {none && <p className="ic-quiet">Nothing decided, suggested or left open in this stretch.</p>}
-      <ReadNote read={c.read} times={times} />
+      <ReadNote read={c.read} room={room} times={times} />
     </>
   );
 }
 
-function AnswerCard({ a, range, times, onOpen }: { a: CallAnswer; range: CatchUpRange; times: CallTimes; onOpen: (e: TranscriptMoment) => void }) {
-  if (!a.read.lines) return <><div className="txt">{nothingIn(range)}</div><ReadNote read={a.read} times={times} /></>;
+function AnswerCard({ a, range, room, times, onOpen }: { a: CallAnswer; range: CatchUpRange; room: string | null; times: CallTimes; onOpen: (e: TranscriptMoment) => void }) {
+  if (!a.read.lines) return <><div className="txt">{nothingIn(range, room)}</div><ReadNote read={a.read} room={room} times={times} /></>;
   return (
     <>
       <div className="txt">{a.text}</div>
       {a.evidence.length > 0 && <div className="cites"><Moments evidence={a.evidence} times={times} onOpen={onOpen} /></div>}
-      <ReadNote read={a.read} times={times} />
+      <ReadNote read={a.read} room={room} times={times} />
     </>
   );
 }
@@ -325,8 +330,8 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
               <motion.div className={cn('a', a.kind === 'catch-up' && 'is-catch')} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={reduce ? { duration: 0 } : UI}>
                 <div className="by"><Icon name={a.kind === 'catch-up' ? 'history' : 'sealed'} size={14} />{a.kind === 'catch-up' ? 'Catch up' : 'From this call'} · {rangeName(a.range, times)} · only you</div>
                 {a.error ? <div className="txt bad">{a.error}</div>
-                  : a.kind === 'question' ? (a.a === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : <AnswerCard a={a.a} range={a.range} times={times} onOpen={onOpen} />)
-                    : a.c === null ? <div className="txt ic-writing"><Dots />Reading {rangeName(a.range, times).toLowerCase()}</div> : <CatchUpCard c={a.c} range={a.range} times={times} onOpen={onOpen} />}
+                  : a.kind === 'question' ? (a.a === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : <AnswerCard a={a.a} range={a.range} room={a.room} times={times} onOpen={onOpen} />)
+                    : a.c === null ? <div className="txt ic-writing"><Dots />Reading {rangeName(a.range, times).toLowerCase()}</div> : <CatchUpCard c={a.c} range={a.range} room={a.room} times={times} onOpen={onOpen} />}
               </motion.div>
             </div>
           ))}
