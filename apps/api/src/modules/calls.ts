@@ -64,7 +64,7 @@ const Stored = z.object({
      */
     screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(screens.ShareEnd) }),
     /** The stretches with notes on but the organizer's browser out of the call, until another of their connections took over. */
-    offline: z.array(capture.OfflineStretch)
+    offline: z.array(capture.OfflineStretch).default([])
   }),
   people: z.array(Joined),
   /** Who the organizer put on everyone's main stage, by identity. */
