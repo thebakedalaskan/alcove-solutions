@@ -9,10 +9,11 @@ export interface ToastOptions {
   action?: { label: string; onClick: () => void } | undefined;
   ms?: number | undefined;
 }
-type Push = (text: ReactNode, o?: ToastOptions) => void;
+/** Shows a toast. Returns what takes it away early, for a toast about something that can be over before it times out. */
+type Push = (text: ReactNode, o?: ToastOptions) => () => void;
 interface ToastItem { id: number; text: ReactNode; o: ToastOptions }
 
-const PushCtx = createContext<Push>(() => {});
+const PushCtx = createContext<Push>(() => () => {});
 const RaiseCtx = createContext<(raised: boolean) => void>(() => {});
 
 /** Short confirmations in past tense, bottom-centre and inverted, with an optional action such as Undo. */
@@ -25,6 +26,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const id = ++n.current;
     setItems((s) => [...s.slice(-2), { id, text, o }]);
     setTimeout(() => close(id), o.ms ?? 3600);
+    return () => close(id);
   }, [close]);
   return (
     <PushCtx.Provider value={push}>
