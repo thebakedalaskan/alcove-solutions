@@ -270,7 +270,7 @@ rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and
   is logged at debug when a key is briefly missing around a key change, and as a warning otherwise.
 - **Asking to join.** The organizer gets a toast with Let in, a count on the People button, and an Asking to
   join section in People to let people in or turn them away: someone signed in with their address and "Gets
-  the notes once let in", a guest as "Guest with the link · no notes". Their call re-reads the meeting as
+  the notes once let in", a guest as "Guest, not signed in" and "Doesn't get the notes". Their call re-reads the meeting as
   people with an account arrive, so who's invited (who gets the notes, who can go to a breakout room) includes
   whoever they let in.
 - **Host controls** are the organizer's, in People: mute someone's microphone (LiveKit mutes the track, their

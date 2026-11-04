@@ -334,6 +334,7 @@
 .ic-prow .st { display: flex; align-items: center; gap: 6px; color: var(--ink-3); }
 .ic-prow .st .ac-level i { background: var(--horizon); }
 .ic-prow.is-away { opacity: .7; }
+.ic-prow.is-asking { padding-block: 8px; }
 .ic-prow .st .ac-btn.is-sm { height: 30px; padding: 0 12px; }
 .ic-prow .ic-pmore { width: 30px; height: 30px; margin-right: -6px; }
 .ic-prow .ic-pmore[data-state="open"] { background: var(--sunk); color: var(--ink); }

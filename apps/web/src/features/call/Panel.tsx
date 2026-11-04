@@ -340,7 +340,7 @@ export function PeopleView({ here, invited, asking, host, foot }: {
               <div key={w.id} className="ic-prow is-asking">
                 <Avatar person={w.person} size={36} />
                 {/* Signed in: who it is, and that letting them in adds them to the invite. A guest is only a typed name. */}
-                <div className="min-w-0"><b>{w.person.name}</b>{w.person.email ? <><small>{w.person.email}</small><small>Gets the notes once let in</small></> : <small>Guest with the link · no notes</small>}</div>
+                <div className="min-w-0"><b>{w.person.name}</b><small>{w.person.email || 'Guest, not signed in'}</small><small>{w.person.email ? 'Gets the notes once let in' : 'Doesn’t get the notes'}</small></div>
                 <div className="st">
                   <IconButton icon="x" label={`Turn ${callName(w.person)} away`} disabled={busy === w.id} onClick={() => decide(w.id, host.deny)} />
                   <Button size="sm" variant="secondary" loading={busy === w.id} onClick={() => decide(w.id, host.admit)}>Let in</Button>
