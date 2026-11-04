@@ -1,13 +1,27 @@
 /*
  * NEAR AI Cloud (I01): speech to text for the live transcript, and the model that writes notes and
- * answers questions about them. This is the only module that holds the key or talks to the provider.
- * What passes through it is speech and what was said, so its log lines carry only models, sizes,
- * durations, counts, statuses and timings, never text.
+ * answers questions about them. This module and evidence.ts are the only code that talks to NEAR AI, and
+ * this is the only one that sends it anything with content. Nothing leaves here except sealed to a model
+ * whose evidence checked out (evidence.ts):
+ *
+ *  - every request, speech and chat alike, goes by Oblivious HTTP (ohttp.ts) to the model's own endpoint
+ *    (NEAR_AI_STT_URL, NEAR_AI_NOTES_URL), sealed to the OHTTP key the model's attested key signed. The
+ *    whole HTTP request is sealed, the API key included, so whatever relays it, NEAR AI's TLS termination
+ *    and load balancers included, sees only ciphertext;
+ *  - the reply is sealed under the same exchange, so only Alcove can open it, and only whoever opened the
+ *    request could have written it.
+ *
+ * There is no plaintext way, and no setting that turns this off. What passes through is speech and what
+ * was said, so log lines carry only models, sizes, durations, counts, statuses, codes and timings.
  */
+import type { InferenceEvidence } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from './config';
-import { InternalError, UnavailableError, ValidationError } from './errors';
+import { equalBytes, fromUtf8, utf8 } from './crypto';
+import { AppError, InternalError, UnavailableError, UnverifiedError, ValidationError } from './errors';
+import { fingerprint, forget, unhex, verified, type Task, type Verified } from './evidence';
 import { log } from './log';
+import { decodeResponse, encapsulate, encodeRequest, type KeyConfig } from './ohttp';
 
 const ilog = log.child({ component: 'inference' });
 
@@ -16,28 +30,91 @@ export const inference = (cfg: Config): Inference => ({ configured: !!cfg.NEAR_A
 
 type Ready = Config & { NEAR_AI_API_KEY: string };
 const ready = (cfg: Config): cfg is Ready => !!cfg.NEAR_AI_API_KEY;
+const notConnected = (what: string) => new UnavailableError('Alcove’s notes service isn’t connected on this server.', { context: { what } });
 
-/** Calls the provider; network failures, rate limits and its own errors become UnavailableError. */
-async function call(cfg: Config, path: string, init: { body: BodyInit; headers?: Record<string, string> }, timeoutMs: number, what: string): Promise<Response> {
-  if (!ready(cfg)) throw new UnavailableError('Alcove’s notes service isn’t connected on this server.', { context: { what } });
-  const t0 = performance.now();
-  let res: Response;
-  try {
-    res = await fetch(`${cfg.NEAR_AI_BASE_URL.replace(/\/$/, '')}${path}`, {
-      method: 'POST', headers: { authorization: `Bearer ${cfg.NEAR_AI_API_KEY}`, accept: 'application/json', ...init.headers }, body: init.body, signal: AbortSignal.timeout(timeoutMs)
-    });
-  } catch (e) {
-    const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
-    throw new UnavailableError('Alcove’s notes service can’t be reached right now.', { cause: e, context: { what, timedOut, ms: Math.round(performance.now() - t0) } });
-  }
-  const ms = Math.round(performance.now() - t0);
-  if (res.ok) return res;
-  const context = { what, status: res.status, ms };
-  await res.body?.cancel().catch(() => undefined);
-  if (res.status === 400 || res.status === 413 || res.status === 422) throw new ValidationError('The notes service couldn’t read that.', { context });
-  if (res.status === 401 || res.status === 403) throw new InternalError('The notes service turned Alcove away.', { context });
-  throw new UnavailableError('Alcove’s notes service is busy. Try again in a moment.', { context });
+/** The model didn't open a request sealed to the key it vouched for (it rotated, or another instance answered): verify again and retry once. */
+class KeyRefused extends Error {
+  constructor(readonly error: AppError) { super(error.message); }
 }
+
+/** An answer's status as Alcove's error: what was sent was unreadable, the key was refused, or the service is busy or down. */
+function statusError(status: number, context: Record<string, string | number>): AppError {
+  if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context });
+  if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context });
+  return new UnavailableError('Alcove’s notes service is busy. Try again in a moment.', { context });
+}
+
+/**
+ * Sends one request sealed to the model's verified OHTTP key, at its own endpoint, and opens the sealed
+ * reply. A request the model can't open, or a connection cut, may mean it holds another key now: KeyRefused.
+ */
+async function sealed(cfg: Ready, v: Verified, endpoint: string, o: { path: string; type: string; body: Uint8Array; timeoutMs: number; what: string }): Promise<{ status: number; body: Uint8Array }> {
+  const url = new URL(endpoint);
+  // The API key travels inside the seal: only the model's VM sees it, or anything else in the request.
+  const request = encapsulate(v.ohttp, encodeRequest({
+    method: 'POST', scheme: 'https', authority: url.host, path: o.path, body: o.body,
+    headers: [['content-type', o.type], ['accept', 'application/json'], ['authorization', `Bearer ${cfg.NEAR_AI_API_KEY}`]]
+  }));
+  const t0 = performance.now();
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`${endpoint.replace(/\/$/, '')}/ohttp`, {
+        method: 'POST', headers: { 'content-type': 'message/ohttp-req', accept: 'message/ohttp-res' }, body: new Uint8Array(request.wire), signal: AbortSignal.timeout(o.timeoutMs)
+      });
+    } catch (e) {
+      const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
+      const error = new UnavailableError('Alcove’s notes service can’t be reached right now.', { cause: e, context: { what: o.what, timedOut, ms: Math.round(performance.now() - t0) } });
+      if (timedOut) throw error;
+      throw new KeyRefused(error);
+    }
+    const context = { what: o.what, status: res.status, ms: Math.round(performance.now() - t0) };
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => undefined);
+      if (res.status === 400 || res.status === 421 || res.status === 422) throw new KeyRefused(new UnavailableError('The notes service didn’t open what was sealed to the key it vouched for.', { context }));
+      throw statusError(res.status, context);
+    }
+    try {
+      return decodeResponse(request.open(new Uint8Array(await res.arrayBuffer())));
+    } catch (e) {
+      ilog.error('reply refused', { what: o.what, model: v.model, code: 'reply-sealed' });
+      throw new UnavailableError('The notes service’s reply couldn’t be opened, so it wasn’t used.', { cause: e, context: { ...context, check: 'reply-sealed' }, level: 'error' });
+    }
+  } finally {
+    request.wipe();
+  }
+}
+
+/**
+ * Runs a request with the model's verification. If the model no longer takes its key, verifies again
+ * and, if the key changed, sends the request once more, to the new key.
+ */
+async function withVerified<T>(cfg: Ready, model: string, task: Task, run: (v: Verified) => Promise<T>): Promise<T> {
+  const v = await verified(cfg, model, task);
+  try {
+    return await run(v);
+  } catch (e) {
+    if (!(e instanceof KeyRefused)) throw e;
+    forget(cfg, v);
+    let again: Verified;
+    try {
+      again = await verified(cfg, model, task);
+    } catch (refusal) {
+      // The first request went out, sealed; it's the second that doesn't.
+      if (refusal instanceof UnverifiedError) {
+        throw new UnverifiedError('NEAR AI’s private model changed, and its new evidence didn’t check out, so the request wasn’t sent again. Try again in a moment.', { cause: refusal, context: refusal.context, level: refusal.level });
+      }
+      throw refusal;
+    }
+    const changed = again.key !== v.key || !sameKeyConfig(again.ohttp, v.ohttp);
+    ilog.info('model key not accepted; verified again', { model, task, changed, keyHash: keyHash(v), nowKeyHash: keyHash(again) });
+    if (!changed) throw e.error;
+    try { return await run(again); } catch (retry) { throw retry instanceof KeyRefused ? retry.error : retry; }
+  }
+}
+const keyHash = (v: Verified) => fingerprint(unhex(v.key) ?? new Uint8Array(0));
+const sameKeyConfig = (a: KeyConfig, b: KeyConfig) => a.keyId === b.keyId && equalBytes(a.publicKey, b.publicKey);
+const parsed = (b: Uint8Array): unknown => { try { return JSON.parse(fromUtf8(b)); } catch { return null; } };
 
 /* ---------- speech to text ---------- */
 
@@ -46,9 +123,9 @@ export interface Heard { start: number; end: number; text: string }
 
 const Segment = z.object({
   start: z.number(), end: z.number(), text: z.string(),
-  avg_logprob: z.number().optional(), compression_ratio: z.number().optional(), no_speech_prob: z.number().optional()
+  avg_logprob: z.number().nullish(), compression_ratio: z.number().nullish(), no_speech_prob: z.number().nullish()
 });
-const Transcription = z.object({ text: z.string().default(''), segments: z.array(Segment).optional() });
+const Transcription = z.object({ text: z.string().default(''), segments: z.array(Segment).nullish() });
 
 /**
  * What Whisper is known to "hear" in silence and noise: closing lines from the videos it was
@@ -70,21 +147,28 @@ function keepSpeech(segments: z.infer<typeof Segment>[]): Heard[] {
   return kept;
 }
 
-/** Transcribes one clip of 16 kHz mono WAV. */
-export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: number): Promise<Heard[]> {
+/** Transcribes one clip of 16 kHz mono WAV, sealed to the speech model's verified key, and says which verification it went to. */
+export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: number): Promise<{ heard: Heard[]; evidence: InferenceEvidence }> {
+  if (!ready(cfg)) throw notConnected('transcribe');
   const form = new FormData();
   form.set('model', cfg.NEAR_AI_STT_MODEL);
   form.set('response_format', 'verbose_json');
   form.set('temperature', '0');
   form.set('file', new Blob([wav.slice()], { type: 'audio/wav' }), 'clip.wav');
+  const multipart = new Request(new URL('/v1/audio/transcriptions', cfg.NEAR_AI_STT_URL), { method: 'POST', body: form });
+  const body = new Uint8Array(await multipart.arrayBuffer());
   const t0 = performance.now();
-  const res = await call(cfg, '/audio/transcriptions', { body: form }, 20_000, 'transcribe');
-  const r = Transcription.safeParse(await res.json().catch(() => null));
-  if (!r.success) throw new UnavailableError('The notes service sent back something unexpected.', { context: { what: 'transcribe', reply: 'unparseable' } });
-  const segments = r.data.segments ?? (r.data.text.trim() ? [{ start: 0, end: durationMs / 1000, text: r.data.text }] : []);
-  const heard = keepSpeech(segments);
-  ilog.debug('clip transcribed', { model: cfg.NEAR_AI_STT_MODEL, bytes: wav.length, durationMs, segments: segments.length, kept: heard.length, ms: Math.round(performance.now() - t0) });
-  return heard;
+  return withVerified(cfg, cfg.NEAR_AI_STT_MODEL, 'transcript', async (v) => {
+    const reply = await sealed(cfg, v, cfg.NEAR_AI_STT_URL, { path: '/v1/audio/transcriptions', type: multipart.headers.get('content-type') ?? 'multipart/form-data', body, timeoutMs: 20_000, what: 'transcribe' });
+    const ms = Math.round(performance.now() - t0);
+    if (reply.status !== 200) throw statusError(reply.status, { what: 'transcribe', ms });
+    const r = Transcription.safeParse(parsed(reply.body));
+    if (!r.success) throw new UnavailableError('The notes service sent back something unexpected.', { context: { what: 'transcribe', reply: 'unparseable' } });
+    const segments = r.data.segments ?? (r.data.text.trim() ? [{ start: 0, end: durationMs / 1000, text: r.data.text }] : []);
+    const heard = keepSpeech(segments);
+    ilog.debug('clip transcribed', { model: v.model, bytes: wav.length, requestBytes: body.length, durationMs, segments: segments.length, kept: heard.length, ms });
+    return { heard, evidence: v.evidence };
+  });
 }
 
 /* ---------- the notes model ---------- */
@@ -103,19 +187,33 @@ function jsonIn(text: string): unknown {
   try { return JSON.parse(text.slice(from, to + 1)); } catch { return null; }
 }
 
-/** Asks the notes model for one JSON object and returns it unparsed for the caller's schema. */
+/**
+ * Asks the notes model for one JSON object, sealed to its verified key at its own endpoint, and returns it
+ * unparsed for the caller's schema, with the verification it went to.
+ */
+export async function complete(cfg: Config, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number }): Promise<{ json: unknown; evidence: InferenceEvidence }> {
+  if (!ready(cfg)) throw notConnected(o.what);
+  const model = cfg.NEAR_AI_NOTES_MODEL;
+  // Thinking out loud first takes the model a minute on a long call and isn't needed for notes.
+  const body = utf8(JSON.stringify({
+    model, messages, temperature: 0.2, max_tokens: o.maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false }, stream: false
+  }));
+  return withVerified(cfg, model, 'notes', async (v) => {
+    const t0 = performance.now();
+    const reply = await sealed(cfg, v, cfg.NEAR_AI_NOTES_URL, { path: '/v1/chat/completions', type: 'application/json', body, timeoutMs: o.timeoutMs ?? 90_000, what: o.what });
+    const ms = Math.round(performance.now() - t0);
+    if (reply.status !== 200) throw statusError(reply.status, { what: o.what, ms });
+    const r = Chat.safeParse(parsed(reply.body));
+    const choice = r.success ? r.data.choices[0] : undefined;
+    const context = { what: o.what, model, ms, finish: choice?.finish_reason ?? null, promptTokens: r.success ? r.data.usage?.prompt_tokens ?? null : null, outputTokens: r.success ? r.data.usage?.completion_tokens ?? null : null };
+    const json = jsonIn(choice?.message.content ?? '');
+    if (json === null) throw new UnavailableError('The notes service sent back something unexpected.', { context: { ...context, reply: r.success ? 'no-json' : 'unparseable' } });
+    ilog.debug('notes model answered', { ...context, requestBytes: body.length });
+    return { json, evidence: v.evidence };
+  });
+}
+
+/** Asks the notes model for one JSON object, as `complete` does, for answers nothing keeps (questions, catching up). */
 export async function completeJson(cfg: Config, messages: Message[], o: { what: string; maxTokens: number; timeoutMs?: number }): Promise<unknown> {
-  const t0 = performance.now();
-  const res = await call(cfg, '/chat/completions', {
-    headers: { 'content-type': 'application/json' },
-    // Thinking out loud first takes the model a minute on a long call and isn't needed for notes.
-    body: JSON.stringify({ model: cfg.NEAR_AI_NOTES_MODEL, messages, temperature: 0.2, max_tokens: o.maxTokens, response_format: { type: 'json_object' }, chat_template_kwargs: { enable_thinking: false } })
-  }, o.timeoutMs ?? 90_000, o.what);
-  const r = Chat.safeParse(await res.json().catch(() => null));
-  const choice = r.success ? r.data.choices[0] : undefined;
-  const json = jsonIn(choice?.message.content ?? '');
-  const context = { what: o.what, model: cfg.NEAR_AI_NOTES_MODEL, ms: Math.round(performance.now() - t0), finish: choice?.finish_reason ?? null, promptTokens: r.success ? r.data.usage?.prompt_tokens ?? null : null, outputTokens: r.success ? r.data.usage?.completion_tokens ?? null : null };
-  if (json === null) throw new UnavailableError('The notes service sent back something unexpected.', { context: { ...context, reply: 'no-json' } });
-  ilog.debug('notes model answered', context);
-  return json;
+  return (await complete(cfg, messages, o)).json;
 }

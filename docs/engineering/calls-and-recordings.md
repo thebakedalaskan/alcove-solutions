@@ -29,7 +29,7 @@ sequenceDiagram
     end
     loop each clip of speech while notes are on
       B->>A: POST /v1/live/calls/:id/transcribe (16 kHz WAV, segment, start)
-      A->>N: speech to text
+      A->>N: speech to text, sealed to the verified model
       A->>D: sealed transcript_clips row
     end
     B->>A: POST /v1/live/calls/:id/leave (after sending the last audio and speech)
@@ -67,7 +67,9 @@ sequenceDiagram
   breakout rooms", who was in which room and for how long). Room names and messages stay in the sealed
   call state.
 - **Captions in another language.** `POST /v1/live/calls/:id/translate {language, lines}` translates up to
-  20 live transcript lines (by ID) for the person asking, in NEAR AI through `drafting.translate`. Each
+  20 live transcript lines (by ID) for the person asking, through `drafting.translate`, which sends them to
+  NEAR AI's notes model, checked and sealed like every request
+  ([Verified private inference](notes-and-inference.md#verified-private-inference)). Each
   line and language is translated once and kept as a sealed `transcript_translations` row, tagged with a
   keyed hash of the line and language, until the recording stops; then they go with the live transcript.
   Lines that aren't in this call's live transcript are left out. Like catch-up and ask, it keeps no
