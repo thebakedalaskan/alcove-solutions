@@ -84,7 +84,7 @@ export type CallAction = z.infer<typeof CallActionSchema>;
  * End-to-end encrypted calls (docs: Calls and recordings › End-to-end encryption). Every browser in a call is
  * an MLS client; the API only orders and relays MLS messages, which it can't read. Bodies are base64url.
  */
-const Mls = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/).max(max);
+export const Mls = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/).max(max);
 /** A connection's participant ID in a call: its random LiveKit identity. */
 export const CallIdentity = z.string().regex(/^p_[A-Za-z0-9_-]{22}$/);
 /** Joining by link: devices to start with, a name for guests, and this browser's MLS key package. */
@@ -112,6 +112,8 @@ export const CallCommitBodySchema = z.object({
 export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), group: CallPlaceSchema, epoch: z.number().int().nonnegative(), message: Mls(65_536) });
 /** A fresh key package from someone already in the call who's on their way into a group: a new generation (the organizer's connection changed), or another part of the call. */
 export const CallKeyPackageBodySchema = z.object({ generation: z.number().int().nonnegative(), keyPackage: Mls(8192) });
+/** Coming back in after being taken out while away (`mls/back`): for this generation. Keys follow, as the log asks for them. */
+export const CallBackBodySchema = z.object({ generation: z.number().int().nonnegative() });
 
 export const RecordingActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rename'), title: z.string().trim().min(1).max(160) }),

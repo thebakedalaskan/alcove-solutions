@@ -1,7 +1,7 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
-  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema
+  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -26,6 +26,7 @@ import * as billing from './modules/billing';
 import * as calendar from './modules/calendar';
 import * as calls from './modules/calls';
 import * as meetings from './modules/meetings';
+import * as moves from './modules/moves';
 import * as notes from './modules/notes';
 import * as people from './modules/people';
 import * as photos from './modules/photos';
@@ -119,6 +120,10 @@ export function createApp(d: Deps) {
   const askNotesLimiter = rateLimit(10, 60_000);
   /** Saying whether others may point at what you share, per person in a call: each change makes every browser fetch the call again. */
   const othersPointLimiter = rateLimit(20, 60_000);
+  /** Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so this only keeps it calm); and the new device checking on its move about once a second. */
+  const moveLimiter = rateLimit(12, 60_000);
+  const moveOpenLimiter = rateLimit(30, 60_000);
+  const moveCheckLimiter = rateLimit(240, 60_000);
   /** Request bodies are read whole, so each route takes no more than it needs. */
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
@@ -227,7 +232,9 @@ export function createApp(d: Deps) {
       const consent = c.req.query('consent') === '1';
       const s = consent ? await findSession(d, getCookie(c, COOKIE)) : undefined;
       const hint = s ? (await account.profile(await openOwner(d, s.ownerId, s))).email : undefined;
-      const { url, attempt } = await google.begin(d, { consent, hint, ...(s ? { next: '/home' as const } : {}) });
+      // ?next=/move comes back to a move to this device that was waiting for its owner to sign in here.
+      const next = c.req.query('next') === '/move' ? '/move' as const : s ? '/home' as const : undefined;
+      const { url, attempt } = await google.begin(d, { consent, hint, ...(next ? { next } : {}) });
       setCookie(c, ATTEMPT, attempt, { httpOnly: true, sameSite: 'Lax', path: '/', secure, maxAge: google.ATTEMPT_MINUTES * 60 });
       return c.redirect(url, 302);
     } catch (e) {
@@ -277,6 +284,20 @@ export function createApp(d: Deps) {
     const b = await body(c, CallJoinBodySchema);
     return c.json(await calls.join(d, c.req.param('code'), { owner: await optionalOwner(c), name: b.name, mic: b.mic, cam: b.cam, identity: b.identity, keyPackage: b.keyPackage, previous: b.previous }));
   });
+  /*
+   * Moving to another device, from the new device's side: no account or pass yet, only the code from its link and
+   * then its claim, both in the body (never the path or query, so never in a log). Signed-in devices send their
+   * session, which the organizer and invited people need on the device they move to.
+   */
+  app.use('/v1/moves/*', capped(32 * 1024));
+  app.post('/v1/moves/claim', async (c) => {
+    moveOpenLimiter(clientAddress(c), 'move open');
+    return c.json(await moves.claim(d, (await body(c, MoveClaimBodySchema)).code, await optionalOwner(c)));
+  });
+  app.post('/v1/moves/status', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); return c.json(await moves.status(d, (await body(c, MoveByClaimBodySchema)).claim, await optionalOwner(c))); });
+  app.post('/v1/moves/ready', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); return c.json(await moves.ready(d, await body(c, MoveReadyBodySchema), await optionalOwner(c))); });
+  app.post('/v1/moves/arrive', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); return c.json(await moves.arrive(d, (await body(c, MoveByClaimBodySchema)).claim, await optionalOwner(c))); });
+  app.post('/v1/moves/cancel', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); await moves.cancelIn(d, (await body(c, MoveByClaimBodySchema)).claim); return c.json({ cancelled: true }); });
   /* Everything about a live call needs that call's pass; the organizer's keys are opened for the request. */
   const viewerFor = async (c: Context<Env>, next: () => Promise<void>) => {
     const pass = readPass(d.cfg, c.req.header(CALL_PASS_HEADER));
@@ -332,6 +353,21 @@ export function createApp(d: Deps) {
     await calls.mlsKeyPackage(c.get('viewer'), c.req.param('id'), await body(c, CallKeyPackageBodySchema));
     return c.json({ sent: true });
   });
+  /* Back in after this connection was taken out while it was away (its connection dropped, or its tab slept). */
+  app.post('/v1/live/calls/:id/mls/back', async (c) => {
+    rejoinLimiter(c.get('viewer').pass.identity, 'rejoin');
+    await calls.mlsBack(c.get('viewer'), c.req.param('id'), await body(c, CallBackBodySchema));
+    return c.json({ sent: true });
+  });
+  /* Moving to another device, from the device being left: by its pass (and, for invited people, their session). */
+  app.post('/v1/live/calls/:id/moves', async (c) => {
+    const v = c.get('viewer');
+    moveLimiter(v.pass.identity, 'move');
+    return c.json(await moves.start(v, c.req.param('id'), (await body(c, MoveStartBodySchema)).media, v.pass.role === 'invited' ? await optionalOwner(c) : undefined));
+  });
+  app.get('/v1/live/calls/:id/moves', async (c) => c.json({ move: await moves.current(c.get('viewer'), c.req.param('id')) }));
+  app.post('/v1/live/calls/:id/moves/confirm', async (c) => { await moves.confirm(c.get('viewer'), c.req.param('id'), (await body(c, MoveConfirmBodySchema)).media); return c.json({ released: true }); });
+  app.delete('/v1/live/calls/:id/moves', async (c) => { await moves.cancelOut(c.get('viewer'), c.req.param('id')); return c.json({ cancelled: true }); });
   app.get('/v1/live/calls/:id/room', async (c) => c.json(await calls.roomToken(c.get('viewer'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(organizerOnly(c), c.req.param('id'), await piece(c))));
   app.post('/v1/live/calls/:id/transcribe', async (c) => {

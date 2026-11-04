@@ -2755,7 +2755,15 @@ describe('privacy at rest', () => {
     const translations = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_translations x`)).rows[0]?.all ?? '');
     expect(translations).not.toBe('');
     const callRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM calls x`)).rows[0]?.all ?? '');
-    const live = `${liveClips} ${translations} ${callRows}`;
+    // Moving to another device: the code is a secret too, kept only as a hash beside the sealed move.
+    const move = await call.startMove({ mic: true, cam: true });
+    const moveCode = move.getSnapshot().code ?? '';
+    expect(moveCode).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    secrets.push(moveCode);
+    const moveRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_moves x`)).rows[0]?.all ?? '');
+    expect(moveRows).not.toBe('');
+    move.close();
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows}`;
     await call.leave();
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
@@ -2852,7 +2860,8 @@ describe('privacy at rest', () => {
     const logText = h.logs.join('');
     expect(logText).toContain(session.ownerId);
     for (const canary of canaries) for (const enc of encodings(canary)) expect(logText.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
-    for (const secret of secrets) expect(logText.includes(secret), 'a session cookie in logs').toBe(false);
+    for (const secret of secrets) expect(logText.includes(secret), 'a session cookie or move code in logs').toBe(false);
+    for (const enc of encodings(moveCode)) expect(rowsText.includes(enc), 'a move code in rows').toBe(false);
     // Logs are built to leave the confidential VM: no email address of anyone, ever, and no client address.
     expect(logText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g) ?? []).toEqual([]);
     expect(logText.match(/\b10\.1\.\d{1,3}\.\d{1,3}\b/g) ?? []).toEqual([]);
