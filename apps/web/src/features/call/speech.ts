@@ -4,7 +4,8 @@
  * hands over 16 kHz mono samples. They're cut into clips at natural pauses, clips without a voice in them are
  * dropped, and the rest go to the server one at a time as WAV files to be transcribed. This runs beside
  * NotesRecorder and never touches the encrypted recording: a clip that can't be transcribed costs a line of
- * transcript, nothing more.
+ * transcript, nothing more. Each clip says when its speech began (`heardAt`), so the server can place a call's speech
+ * where its speaker was then; moving between parts of the call ends every clip in progress, so none spans two.
  */
 import { MAX_TRANSCRIPT_CLIP_MS, errorCode, errorMessage, type TranscriptClip } from '@alcove/api';
 import { log } from '~/lib/log';
@@ -95,6 +96,8 @@ export class SpeechClips {
   private lostInARow = 0;
   private restUntil = 0;
   private shown: string | null = null;
+  /** Which sample was heard when (by performance.now()), to say when each clip's speech began. Set from the first chunk after starting or resuming. */
+  private wall: { at: number; ms: number } | null = null;
 
   constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void,
     private readonly shared: Shared | null = null) {}
@@ -140,7 +143,13 @@ export class SpeechClips {
     this.paused = true;
   }
 
-  resume(): void { this.paused = false; }
+  resume(): void { this.paused = false; this.wall = null; }
+
+  /** Ends the clip in progress here (it's still sent), and carries on listening: what's said from now on is a new clip. */
+  mark(): void {
+    if (this.segment < 0) return;
+    this.cut();
+  }
 
   /** Sends what's been heard so far and waits for it to be transcribed. */
   async flush(): Promise<void> {
@@ -181,6 +190,7 @@ export class SpeechClips {
     this.voiced = 0;
     this.filled = 0;
     this.at = -1;
+    this.wall = null;
   }
 
   private hear(track: MediaStreamTrack) {
@@ -225,6 +235,7 @@ export class SpeechClips {
   private take(chunk: Float32Array) {
     if (this.paused || this.segment < 0) return;
     if (this.at < 0) this.at = Math.max(0, Math.round(((performance.now() - (this.shared?.origin ?? this.startedAt)) * RATE) / 1000) - chunk.length);
+    this.wall ??= { at: this.at + this.filled, ms: performance.now() - (chunk.length * 1000) / RATE };
     for (const v of chunk) {
       this.partial[this.filled++] = v;
       if (this.filled < FRAME) continue;
@@ -280,7 +291,8 @@ export class SpeechClips {
     if (!worthSending(sent)) { slog.debug('clip without speech skipped', { frames: sent.length }); return; }
     const pcm = new Float32Array(sent.length * FRAME);
     sent.forEach((f, i) => pcm.set(f.pcm, i * FRAME));
-    this.enqueue({ data: wav(pcm), segment: this.segment, startMs: (start * 1000) / RATE, durationMs: (pcm.length * 1000) / RATE });
+    const heardAt = this.wall ? this.wall.ms + ((start - this.wall.at) * 1000) / RATE : undefined;
+    this.enqueue({ data: wav(pcm), segment: this.segment, startMs: (start * 1000) / RATE, durationMs: (pcm.length * 1000) / RATE, ...(heardAt === undefined ? {} : { heardAt }) });
   }
 
   private enqueue(clip: TranscriptClip) {
@@ -302,7 +314,7 @@ export class SpeechClips {
         this.say(null);
         return;
       } catch (e) {
-        // Expected around changes: notes went off, the recording paused, or a new segment began.
+        // Expected around changes: notes went off, the recording paused, a new segment began, or the room it was heard in closed.
         if (errorCode(e) === 'conflict') { slog.debug('transcript clip refused: notes are off, paused or moved on', { ...where, err: e }); return; }
         if (attempt < TRIES) {
           slog.debug('transcript clip failed; trying again', { ...where, attempt, err: e });
@@ -425,6 +437,14 @@ export class CallEars {
     if (added || gone) slog.debug('voices heard for the live transcript', { voices: this.voices.size, added, gone });
   }
 
+  /**
+   * The organizer's browser moved to another part of the call: every clip in progress ends here, so what's said from
+   * now on starts a clip of its own and is placed where it was said.
+   */
+  mark(): void {
+    for (const clips of this.voices.values()) clips.mark();
+  }
+
   /** Sends what every voice has heard so far, those just gone too, and waits for it to be transcribed. */
   async flush(): Promise<void> {
     await Promise.all([...this.voices.values(), ...this.leaving].map((c) => c.flush()));
@@ -443,6 +463,16 @@ export class CallEars {
   release(): void {
     this.holding = false;
     for (const clips of [...this.voices.values(), ...this.leaving]) clips.release();
+  }
+
+  /**
+   * Stops hearing everyone for now, and drops what wasn't sent, but stays in the segment: listening again carries on
+   * its timeline, so new clips never reuse an earlier clip's place. For a breakout room the organizer paused, which
+   * doesn't end the segment.
+   */
+  quiet(): void {
+    this.holding = false;
+    this.drop();
   }
 
   /** Stops hearing everyone. What hasn't been sent is dropped: flush() first to keep it. */

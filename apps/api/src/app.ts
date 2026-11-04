@@ -321,7 +321,9 @@ export function createApp(d: Deps) {
     const speaker = speakerOf(c);
     voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
     speechLimiter(v.organizer.ownerId, 'transcribe');
-    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker));
+    // When the speech began, on this server's clock: measured as the request arrives, before its audio is read.
+    const began = Date.now() - agoOf(c);
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker, began));
   });
   /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
@@ -509,6 +511,16 @@ function isSpeechWav(b: Uint8Array): boolean {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   const tag = (at: number) => String.fromCharCode(b[at] ?? 0, b[at + 1] ?? 0, b[at + 2] ?? 0, b[at + 3] ?? 0);
   return tag(0) === 'RIFF' && tag(8) === 'WAVE' && tag(12) === 'fmt ' && v.getUint16(20, true) === 1 && v.getUint16(22, true) === 1 && v.getUint32(24, true) === 16_000 && v.getUint16(34, true) === 16;
+}
+
+/**
+ * How long before this request a call's clip of speech began, in ms (at most ten minutes): the call places the speech
+ * where its speaker was then.
+ */
+function agoOf(c: Context): number {
+  const ago = z.coerce.number().int().min(0).max(600_000).safeParse(c.req.header(AUDIO_HEADERS.ago));
+  if (!ago.success) throw new ValidationError('Speech for a call’s transcript must say when it began.', { context: { header: AUDIO_HEADERS.ago } });
+  return ago.data;
 }
 
 /** Whose speech a call's clip is: a participant ID, which the call checks is someone in it. */

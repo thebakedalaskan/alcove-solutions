@@ -2,6 +2,13 @@
 import { firstName, type CaptureGap, type CaptureState } from '@alcove/api';
 import { hm } from './time';
 
+/**
+ * What's captured where you are: the call's capture, or in a breakout room, the room's (it captures at most what the
+ * call does, and nothing while the organizer has paused it). Asks for notes stay the call's.
+ */
+export const captureHere = (c: CaptureState): CaptureState =>
+  (c.room ? { ...c, mode: c.room.mode, recording: c.room.recording, transcript: c.room.transcript, ai: c.room.ai, screen: c.room.screen, gaps: c.room.gaps } : c);
+
 /** "Paused 10:02–10:05", "Notes off 10:10–10:12", "Paused at 10:02" for a short one, or "Paused since 10:02" while it lasts. */
 export function gapLabel(g: CaptureGap): string {
   const what = g.kind === 'paused' ? 'Paused' : 'Notes off';
@@ -26,10 +33,11 @@ export const gapsAfter = <L extends { at: number }>(gaps: CaptureGap[], lines: L
 
 /**
  * Who changed what the call captures and when: "Paused by Art · 10:02", "Resumed by Art · 10:05", or "On since
- * 10:00, as scheduled". People asking to join aren't told names, so it says "the organizer".
+ * 10:00, as scheduled". People asking to join aren't told names, so it says "the organizer". In a breakout room,
+ * which is never recorded, it's the transcript that changed.
  */
 export function changedLine(c: CaptureState, organizer: string): string | null {
-  const p = c.recording;
+  const p = c.room ? c.transcript : c.recording;
   if (!p.since || !p.by) return null;
   const at = hm(p.since);
   if (p.by.kind === 'schedule') return `On since ${at}, as scheduled`;

@@ -7,8 +7,8 @@
 import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, TimeChip, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { gapLabel } from '~/lib/capture';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { captureHere, gapLabel } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { organizerBrowser, organizerName, type CaptureControls } from './Capture';
@@ -180,7 +180,7 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
                 {held.map((h) => (
                   <div key={h.from} className="ic-rgrp">
                     {h.rooms.map((r) => <div key={r.id} className="rn">{r.name}<span>{r.people.length}</span><Faces people={r.people} size={16} /></div>)}
-                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. The rooms go into the notes everyone gets.</p>
+                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. The notes say who was in which room, not what was said there.</p>
                   </div>
                 ))}
               </div>
@@ -201,19 +201,22 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
 /* ---------- transcript ---------- */
 
 export function TranscriptView({ state, me, hit }: { state: CallState; me: string | undefined; hit: { at: number } | null }) {
-  const mode = state.capture.mode;
+  // What's said where you are: in a breakout room, the room's lines, under the room's capture.
+  const c = captureHere(state.capture);
+  const mode = c.mode;
   const on = notesAreOn(mode);
+  const roomHeld = state.capture.room !== null && mode === 'paused' && state.capture.mode !== 'paused';
   return (
     <>
       <div className="ic-tr">
-        {state.capture.transcript.mode === 'unavailable' && <Notice tone="caution" icon="alert">{organizerBrowser(state)} can’t listen right now, so nothing new is transcribed.</Notice>}
-        {mode === 'paused' && <Notice icon="pause">Notes are paused. Nothing new is transcribed until they resume.</Notice>}
+        {c.transcript.mode === 'unavailable' && <Notice tone="caution" icon="alert">{organizerBrowser(state)} can’t listen right now, so nothing new is transcribed.</Notice>}
+        {mode === 'paused' && <Notice icon="pause">{roomHeld ? 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.' : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} gaps={state.capture.gaps} me={me} hit={hit} /> : on && (
-          <EmptyState title="Nothing said yet" className="ic-empty">What’s said appears here a few seconds later.</EmptyState>
+        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} hit={hit} /> : on && (
+          <EmptyState title="Nothing said yet" className="ic-empty">{state.capture.room ? 'What’s said here appears a few seconds later, while the organizer is in this room.' : 'What’s said appears here a few seconds later.'}</EmptyState>
         )}
       </div>
-      <Foot>Confidential compute · everyone invited gets it</Foot>
+      <Foot>{state.capture.room ? 'Confidential compute · for the people here, until the room closes' : 'Confidential compute · everyone invited gets it'}</Foot>
     </>
   );
 }
@@ -287,14 +290,22 @@ export function AskView({ asks, ready, paused, onAsk, onCatchUp, onSeek }: {
 
 /**
  * Chat, decrypted in this browser. Who sent each message comes from the call's encryption; their name, from
- * the people here. Chat from before you were let in can't be read here, and the view says so.
+ * the people here. Each part of the call (the main room, each breakout room) has its own chat, readable only by
+ * the people in it: the view marks where the conversation moved, and chat sent somewhere before you got there
+ * can't be read here, which the view says.
  */
-export function ChatView({ chat, missed, ready, who, onSend }: {
+export function ChatView({ chat, missed, ready, moving, here, placeName, who, onSend }: {
   chat: CallChatMessage[];
-  /** There was chat before you were let in. */
+  /** There was chat in this part of the call while you weren't in it. */
   missed: boolean;
-  /** This browser holds the call's keys, so it can send. */
+  /** This browser holds the keys of the part of the call it's in, so it can send. */
   ready: boolean;
+  /** On the way to another part of the call: chat is off until it's there. */
+  moving: boolean;
+  /** Where a message goes, while breakout rooms are open: the room's name, or "the main room". Null when rooms aren't open. */
+  here: string | null;
+  /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
+  placeName: (place: string) => string;
   who: (id: string) => Person;
   onSend: (text: string) => Promise<void>;
 }) {
@@ -307,30 +318,41 @@ export function ChatView({ chat, missed, ready, who, onSend }: {
     setText('');
     void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); setText((now) => now || t); });
   };
+  // Marks only matter once the conversation has been in more than one part of the call.
+  const marked = new Set(chat.map((c) => c.place)).size > 1;
+  const to = here ?? 'everyone';
   return (
     <>
       <div className="ic-scroll ic-pad">
-        {missed && <Notice icon="lock" className="ic-missed">Messages sent before you joined aren’t shown. Only people who were here then can read them.</Notice>}
+        {missed && <Notice icon="lock" className="ic-missed">Messages sent here before you came aren’t shown. Only people who were here then can read them.</Notice>}
         {chat.length ? (
           <div className="ic-chat">
-            {chat.map((c) => {
+            {chat.map((c, i) => {
               const from = who(c.from);
+              const moved = marked && chat[i - 1]?.place !== c.place;
               return (
-                <motion.div key={c.id} className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-                  <Avatar person={from} size={28} />
-                  <div><div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
-                </motion.div>
+                <Fragment key={c.id}>
+                  {moved && <div className="ic-chatplace"><span className="ac-eyebrow">In {placeName(c.place)}</span></div>}
+                  <motion.div className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+                    <Avatar person={from} size={28} />
+                    <div><div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
+                  </motion.div>
+                </Fragment>
               );
             })}
           </div>
-        ) : !missed && <EmptyState title="No messages yet" className="ic-empty">Messages are encrypted end to end. Only people in the call can read them.</EmptyState>}
+        ) : !missed && (
+          <EmptyState title="No messages yet" className="ic-empty">
+            {here ? `Messages are encrypted end to end. Only people in ${here} can read them.` : 'Messages are encrypted end to end. Only people in the call can read them.'}
+          </EmptyState>
+        )}
         <div ref={end} />
       </div>
       <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t && ready) send(t); }}>
         <div className="inrow">
           <input className="ac-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready} onChange={(e) => setText(e.target.value)}
-            placeholder={ready ? 'Message everyone' : 'Getting the call’s keys…'} aria-label="Message everyone" />
-          <button type="submit" className="ac-btn is-primary" aria-label="Send to everyone" disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
+            placeholder={ready ? `Message ${to}` : moving ? 'Moving to another room…' : 'Getting the call’s keys…'} aria-label={`Message ${to}`} />
+          <button type="submit" className="ac-btn is-primary" aria-label={`Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
         </div>
       </form>
     </>

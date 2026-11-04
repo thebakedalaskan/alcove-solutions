@@ -2,13 +2,15 @@
  * What the call captures, in the call (docs: Calls and recordings › What's captured). The notes sign in the top bar
  * opens what's captured: each kind of capture, who changed it and when, who gets the notes, and the organizer's
  * controls (pause and resume, notes on and off), or for anyone else a way to ask for notes. Asks reach the organizer
- * as a toast and in People; whoever asked hears the answer. The state is the server's (CallState.capture), read with
- * useLive() by the call screen and never copied here; only the organizer's own pause on its way is this screen's.
+ * as a toast and in People; whoever asked hears the answer. In a breakout room it shows the room's capture, and the
+ * organizer pauses or carries on there; asks for notes stay the call's. The state is the server's (CallState.capture),
+ * read with useLive() by the call screen and never copied here; only the organizer's own pause on its way is this
+ * screen's.
  */
 import { errorMessage, notesAreOn, type CallRole, type CallState, type NotesRequest, type Person } from '@alcove/api';
 import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
-import { changedLine } from '~/lib/capture';
+import { captureHere, changedLine } from '~/lib/capture';
 import { callName, listNames } from '~/lib/people';
 import { hm } from '~/lib/time';
 
@@ -21,6 +23,8 @@ export interface CaptureControls {
   resume: () => void;
   /** Anyone else: ask for notes, or take the ask back. */
   ask: (up: boolean) => void;
+  /** The organizer, in a breakout room: pause notes there, or carry on. The call's notes don't change. */
+  room: (paused: boolean) => void;
 }
 
 /** The notes sign in the top bar, the same for everyone; it opens what's captured. */
@@ -36,7 +40,7 @@ export function CaptureButton({ state, role, getting, controls, pausing, onOpenN
   onOpenNotes: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const c = state.capture;
+  const c = captureHere(state.capture);
   const changing = pausing && c.mode !== 'paused';
   const requested = !notesAreOn(c.mode) && c.requests.length > 0;
   const label = changing ? 'Pausing notes' : c.mode === 'on' ? 'Notes on' : c.mode === 'unavailable' ? 'Notes unavailable' : c.mode === 'paused' ? 'Notes paused' : requested ? 'Notes requested' : 'Notes off';
@@ -51,25 +55,32 @@ export function CaptureButton({ state, role, getting, controls, pausing, onOpenN
 function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
   state: CallState; role: CallRole; getting: Person[]; controls: CaptureControls; done: () => void; onOpenNotes: () => void;
 }) {
-  const c = state.capture;
+  const call = state.capture;
+  const c = captureHere(call);
   const host = state.isOrganizer;
-  const on = notesAreOn(c.mode);
+  // Asks and the organizer's notes controls follow the call's notes; in a breakout room, what's shown is the room's.
+  const on = notesAreOn(call.mode);
+  const roomName = call.room ? roomNameOf(state) : null;
+  // The room's own pause, not the call's: only the organizer carries on there, and nobody asks for it.
+  const roomHeld = call.room !== null && c.mode === 'paused' && call.mode !== 'paused';
   const name = organizerName(state);
   const when = changedLine(c, name);
-  const askers = c.requests.map((r) => askerOf(state, r));
-  const mine = !host ? c.asked : null;
+  const askers = call.requests.map((r) => askerOf(state, r));
+  const mine = !host ? call.asked : null;
   const run = (f: () => void) => () => { done(); f(); };
   return (
     <>
-      <div className="cap-h"><CaptureSign mode={c.mode} requested={!on && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
-      <p className="cap-said">{saidFor(state, name)}</p>
+      <div className="cap-h"><CaptureSign mode={c.mode} requested={!notesAreOn(c.mode) && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
+      <p className="cap-said">{saidFor(state, c, name)}</p>
       <CaptureParts capture={c} />
       <div className="cap-facts">
         <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
         <div>
           <Icon name="people" size={15} />
-          <span>{host ? 'The notes go to you and everyone invited.' : role === 'invited' ? 'The notes go to everyone invited, you included.' : 'The notes go to the people invited.'}</span>
-          {host && getting.length > 0 && <Faces people={getting} size={18} max={4} />}
+          {roomName ? <span>Nothing said in {roomName} goes into the notes.</span> : <>
+            <span>{host ? 'The notes go to you and everyone invited.' : role === 'invited' ? 'The notes go to everyone invited, you included.' : 'The notes go to the people invited.'}</span>
+            {host && getting.length > 0 && <Faces people={getting} size={18} max={4} />}
+          </>}
         </div>
         <div><Icon name="lock" size={15} /><span>Video and chat are encrypted end to end and never captured.</span></div>
       </div>
@@ -84,9 +95,11 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
       )}
       {(host || (!on && mine?.state !== 'asking')) && (
         <div className="cap-acts">
-          {host && on && <><Button size="sm" icon="pause" onClick={run(controls.pause)}>Pause notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
-          {host && c.mode === 'paused' && <><Button size="sm" variant="primary" icon="play" onClick={run(controls.resume)}>Resume notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
-          {host && c.mode === 'off' && <Button size="sm" variant="primary" onClick={run(() => controls.notes(true))}>Turn on notes</Button>}
+          {host && on && call.room && !roomHeld && <Button size="sm" icon="pause" onClick={run(() => controls.room(true))}>Pause notes here</Button>}
+          {host && roomHeld && <Button size="sm" variant="primary" icon="play" onClick={run(() => controls.room(false))}>Resume notes here</Button>}
+          {host && on && !call.room && <><Button size="sm" icon="pause" onClick={run(controls.pause)}>Pause notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
+          {host && call.mode === 'paused' && <><Button size="sm" variant="primary" icon="play" onClick={run(controls.resume)}>Resume notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
+          {host && call.mode === 'off' && <Button size="sm" variant="primary" onClick={run(() => controls.notes(true))}>Turn on notes</Button>}
           {!host && <Button size="sm" variant="primary" icon="hand" onClick={run(() => controls.ask(true))}>Ask for notes</Button>}
         </div>
       )}
@@ -98,13 +111,21 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
 /**
  * What's captured right now, in a sentence: what everyone says is transcribed (through the organizer's browser) and
  * the organizer's microphone recorded, less whatever their browser can't do now; nothing while paused; and while
- * notes are off, that what was transcribed before is still read for the notes.
+ * notes are off, that what was transcribed before is still read for the notes. In a breakout room (`c` is the
+ * room's), what's said is transcribed only while the organizer is there, never recorded, and never goes into the notes.
  */
-function saidFor(state: CallState, name: string): string {
-  const c = state.capture;
+function saidFor(state: CallState, c: CallState['capture'], name: string): string {
   const host = state.isOrganizer;
   const mic = host ? 'your microphone' : `${name}’s microphone`;
   const browser = host ? 'your browser' : `${name}’s browser`;
+  const until = host ? 'you resume' : `${name} resumes`;
+  if (c.room) {
+    const room = roomNameOf(state);
+    if (c.mode === 'paused') return state.capture.mode === 'paused' ? `Nothing is recorded, transcribed or sent to the AI until ${until}.` : `Notes are paused in ${room}. Nothing said here is transcribed or sent to the AI until ${until}.`;
+    if (c.mode === 'off') return state.notes.everOn ? `Nothing said in ${room} is transcribed now. What was transcribed here before is still read when someone here catches up.` : `Nothing said in ${room} is transcribed.`;
+    if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t listen right now, so nothing said here is transcribed.`;
+    return `What’s said here is transcribed while ${host ? 'you’re' : `${name} is`} in ${room}, for the people here, and deleted when the room closes. Nothing here is recorded or goes into the notes.`;
+  }
   if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`;
   if (c.mode === 'off') return state.notes.everOn ? 'Nothing new is recorded or transcribed. What was transcribed before is still read for the notes.' : 'Nothing from this call is recorded or written down.';
   if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t record or listen right now, so nothing is captured.`;
@@ -112,6 +133,9 @@ function saidFor(state: CallState, name: string): string {
   if (c.transcript.mode === 'on') return `What everyone says is transcribed for the notes. ${sentence(mic)} isn’t recorded: ${browser} can’t record it right now.`;
   return `${sentence(mic)} is recorded for the notes. Nothing is transcribed: ${browser} can’t listen right now.`;
 }
+
+/** The breakout room you're in, by name. */
+const roomNameOf = (state: CallState): string => state.breakouts.open?.rooms.find((r) => r.id === state.capture.room?.id)?.name ?? 'this room';
 
 /** Whoever asked, as the call shows them. */
 function askerOf(state: CallState, r: NotesRequest): Person {
