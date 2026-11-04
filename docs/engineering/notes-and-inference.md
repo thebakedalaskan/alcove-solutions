@@ -10,8 +10,12 @@ recorder show a live transcript. When the recording stops, the transcript moves 
 worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
 chapters and suggested questions. When the organizer had shared screens read, the notes model reads each frame
 a presenter's browser sent and the notes point at what was on screen ([Shared screens](#shared-screens)).
-Anyone who has the note can then ask questions about the call. Calls that follow on from each other form a
-series, and what earlier ones settled and left open carries into the next ([Series](#series)).
+Anyone who has the note can then ask questions about the call. The transcript says what it isn't sure of,
+words Whisper heard with little confidence and lines heard on two microphones at once, and once the notes are
+written the organizer, and the people who spoke their own words, can correct it; the organizer can have the
+notes written again from it ([Correcting the transcript](#correcting-the-transcript)). Calls that follow on from
+each other form a series, and what earlier ones settled and left open carries into the next ([Series](#series)).
+What's kept, and for how long, is one fixed behaviour ([What's kept, and for how long](#whats-kept-and-for-how-long)).
 
 `apps/api/src/inference.ts` and `apps/api/src/evidence.ts` are the only code that uses `NEAR_AI_API_KEY` or
 talks to NEAR AI, and `inference.ts` is the only one that sends it anything with content. Without a key the
@@ -255,11 +259,22 @@ sequenceDiagram
    compression ratio), and a clip whose whole text is a stock closing line in any of a dozen languages, such as
    "Thank you.", "Thanks for watching", "To be continued", "¡Gracias!", "Obrigado." or "Продолжение
    следует...". A reply without segments but with text becomes one line.
+
+   What's kept but heard with little confidence is marked, never dropped (`UNSURE` in `inference.ts`): a
+   segment whose average `avg_logprob` is below −0.4, whose `compression_ratio` is over 2.0, or, where it's
+   reported, whose `no_speech_prob` is over 0.5. Measured against NEAR AI's Whisper, through the same verified,
+   sealed request, on 600 clips of synthetic meeting speech (ten macOS voices, native and accented; clean, in
+   white noise at 10, 3 and −3 dB, and over another voice at 0 dB), sent with the call's language as mid-call:
+   of the lines below −0.4, 97% had a word error rate of 20% or more, against 1% of the lines that were right,
+   and they were 56% of the wrong lines; between −0.4 and −0.3 only half were wrong, and below −0.5 nearly all
+   (98%). Whisper is sure of itself over another voice (a median of −0.2 at 0 dB, where it often writes both),
+   so that's caught only when it's the same words on two microphones (step 10). On these clips the compression
+   ratio never passed 1.8, and NEAR AI never reports `no_speech_prob`.
 7. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
    clip, to a tenth of a second.
-8. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), its segment, whose
-   speech it was (in a call), the evidence of the verification it was sent to, the language Whisper
+8. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), each with when it starts
+   and ends and whether Whisper was unsure of its words, its segment, whose speech it was (in a call), the evidence of the verification it was sent to, the language Whisper
    picked for it if it was sure (`language`, a code such as `en`) and whether it asked Whisper what its
    speaker speaks (`asked`) are one `transcript_clips` row, sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`;
    the header binds the owner, the note and the tag). The insert holds a share lock on the recording row.
@@ -271,6 +286,20 @@ sequenceDiagram
    (and only those lines go into their catching up, questions and caption translations). Room lines name
    nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
    newer mic or notes change.
+10. **What it isn't sure of.** Each line says what the transcript can't vouch for (`TranscriptLine.unsure`):
+   `words`, Whisper was unsure of them (step 6); `speaker`, the same words were heard on someone else's
+   microphone at the same moment. In a call each voice is heard on its own track, so a line is said by whoever's
+   microphone it came from, but people sharing a room, or someone's speakers playing into another's microphone
+   without echo cancellation, put one person's words on two tracks. Two lines from different participant IDs,
+   in one segment and one part of the call, overlapping for at least half of the shorter one, with at least four
+   words and 60% of the shorter one's words in the other, are both marked, since nothing says whose microphone
+   was nearer. A reply that says the question's words again comes after it and doesn't overlap, and two people
+   saying "sounds good" at once say too little. It's judged when lines are read back (`crosstalk` in
+   `transcripts.ts`), by when they were heard, before lines are kept inside their segment. Overlapping speech
+   with different words isn't marked: each voice is still its own track. Several people on one device can't be
+   told apart at all (Granola, which hears "me" and "them" by channel, says the same); correcting the line is
+   the way. The app dots what's unsure (a dotted underline, never colour alone), says why on hover or focus and
+   to screen readers, and explains the dots once above the transcript, in the call and in the note.
 
 ## When the recording stops
 
@@ -281,8 +310,8 @@ sequenceDiagram
    recording, the seconds recorded.
 2. The transcript rows are opened and written into the note's sealed manifest in recording order, each line
    kept inside its own segment (one placed past the end of its segment's audio goes at the segment's end); in
-   a call each line keeps who said it and where, in a room nobody is named; with the verifications they went to
-   as `inference`. A call's gaps go into the manifest too (`gaps`: every stretch with notes off or paused, when,
+   a call each line keeps who said it and where, in a room nobody is named; each keeps what the transcript
+   couldn't vouch for; with the verifications they went to as `inference`. A call's gaps go into the manifest too (`gaps`: every stretch with notes off or paused, when,
    and where it falls in the recording). Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
    deleted. A call's breakout rooms are written into the manifest too, in recording time, until the notes
    are written.
@@ -311,9 +340,16 @@ account.
   shared-screen frames are read first ([Shared screens](#shared-screens)). A note without transcript lines is
   then finished, with its screens read but without notes and without a charge. Otherwise `draft` in
   `apps/api/src/modules/drafting.ts` asks the notes model, and one transaction writes the note `ready`
-  with what it wrote and the model's verification, deletes the job and charges the account. The call's
-  breakout rooms join the chapters in that transaction (one chapter per time rooms were open: who was in
-  which room, and for how long).
+  with what it wrote, when (`writtenAt`) and the model's verification (once: a verification already listed
+  isn't listed again), deletes the job and charges the account. The call's breakout rooms join the chapters
+  in that transaction (one chapter per time rooms were open: who was in which room, and for how long); the
+  rooms stay in the note so they do every time it's written.
+- **Writing again.** The same job, queued by the organizer ([Correcting the transcript](#correcting-the-transcript)).
+  The summary, chapters, suggested questions and what the notes say each screen shows are written afresh (frames
+  already read aren't read again); of the decisions, open questions and follow-ups, whatever someone has
+  confirmed, answered, taken on or otherwise changed stays as it is, and the new proposals take the place of the
+  ones nobody touched (one with the same words as a kept one isn't added). If they can't be written, the notes
+  stay as they were.
 - **Waiting for evidence.** When the notes model's evidence doesn't check out, or can't be checked (Intel,
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
@@ -329,7 +365,8 @@ account.
   used (its last worker died) is finished the same way.
 - **Charging.** 25 credits a minute recorded (the seconds of encrypted audio across every segment, rounded
   up to whole minutes, at least one), taken in the same transaction as the note and labelled "Notes, N min".
-  Time in a call with notes off isn't charged. Nothing checks the balance first, so a charge can take it below
+  Time in a call with notes off isn't charged. Notes are charged the first time they're written: writing them
+  again isn't, and notes that couldn't be written are charged when the organizer has them written after all. Nothing checks the balance first, so a charge can take it below
   zero ([Payments and usage](payments-and-usage.md)).
 
 ## Shared screens
@@ -394,6 +431,36 @@ app can play from. Questions and answers are not stored, keep no operation recei
 Writing an answer can take up to a minute, so once it's written the asker's access is checked again: if the
 note was deleted or removed from their notes meanwhile, the answer, which may quote it, isn't sent
 (`409 conflict`).
+
+## Correcting the transcript
+
+Once a note is written (`ready`), its lines can be corrected (`PATCH /v1/notes/:id/lines/:lineId`, `LinePatch`
+in `packages/api`, `correctLine` in `apps/api/src/modules/notes.ts`):
+
+- **What.** A line's words (`text`, 1 to 1,000 characters), who said it (`speaker`: someone from the call, by
+  `Person.id`, which is anyone the transcript names, the organizer, or anyone invited; or null for nobody can
+  tell), or that it's right as it was heard (`confirm`). Correcting the words clears the words doubt, naming the
+  speaker (the same person again, when it was in doubt) clears the speaker doubt, and confirming clears both.
+- **Who.** The organizer, any line. Anyone else who has the note, the words of a line said by them (the line's
+  speaker has their address), or confirming it; never who said a line (`403 forbidden`). Someone it was shared
+  with who didn't speak can read every line and correct none (`403`); someone without the note gets
+  `404 not-found`, as for every note; guests never have notes. A line that isn't in the note is `404`, and a
+  note still recording or being written is `409 conflict`. Refusals name nobody.
+- **Kept like every change.** Each correction is a new revision of the sealed manifest, with the line's
+  `changes`: who (name and address), when, what (`reworded`, `reassigned` with the speakers' names before and
+  after, `confirmed`), and the words before. A line keeps its latest 20. Earlier revisions stay with the note
+  until it's deleted, so a correction never erases what was heard ([What's kept](#whats-kept-and-for-how-long)).
+  Asking the same again changes nothing and writes nothing; it keeps no operation receipt, as the answer is the
+  whole note.
+- **Where it shows.** Everything that reads the transcript reads it corrected: the note, asking about it, and
+  asking across its series. The notes themselves were written from the transcript as it was: `Note.writtenAt`
+  says when, so the app tells the organizer how many lines were corrected since.
+- **Writing the notes again.** `POST /v1/notes/:id/rewrite`, the organizer's alone (`403` for anyone else who
+  has the note), for a written note with transcript lines (`409` otherwise): the note goes back to `pending`
+  and the same notes job is queued ([The notes worker](#the-notes-worker)). Asking again while it's being
+  written changes nothing. It's never automatic: other people may be confirming decisions meanwhile, and Otter,
+  Fireflies and Zoom all leave regenerating to a person. The app offers it as "Write the notes again" once lines
+  were corrected since, and as "Try writing them again" when the notes couldn't be written.
 
 ## Catching up during a call
 
@@ -502,7 +569,10 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   address before the @ when Alcove has no name for them (never full addresses); the length in minutes;
   and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room), with a line such as
   `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured.
-  Every prompt that reads a transcript tells the model never to say or guess what happened in one. A transcript over 120,000
+  Every prompt that reads a transcript tells the model never to say or guess what happened in one. A line whose
+  words Whisper was unsure of ends `(unclear)`, and a speaker in doubt reads `Name (not sure who)`, and every such
+  prompt, the series' included, tells the model never to rest a name, number or decision on an unclear line
+  alone. A corrected line has neither. A transcript over 120,000
   characters (about 30,000 tokens) keeps its beginning and end, with a marker for the lines left out.
 - **Reading a shared screen.** The frame as an image part, and one JSON object back: `title`, `text` (what can be
   read, exactly, top to bottom, at most 1,500 characters; never guessed), `legible` (`clear`, `partly`,
@@ -610,7 +680,7 @@ invented from noise from 3 of 8 sounds to none. Calls in German, French and Span
 
 ## What's logged
 
-`inference.ts` logs only models, byte sizes, durations, segment and line counts, image counts, statuses,
+`inference.ts` logs only models, byte sizes, durations, segment and line counts (and how many lines were unsure), image counts, statuses,
 timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`); for a clip
 also whether a language was sent or found and the prompt's size in bytes (`languageSent`, `languageFound`,
 `promptBytes`), never which language or what the prompt said. Shared screens log counts and sizes: `frame
@@ -627,7 +697,9 @@ warn. A reply that won't open is `reply refused` at error, with its code; a key 
 `notes waiting for the notes model to answer`, also at warn. Evidence itself, keys and anything sent are
 never logged. Around it, IDs, attempts, counts and timings: `series read` at debug; `notes job queued`,
 `notes written` (with decision, follow-up and chapter counts), `question answered`, `series question
-answered`, `question changed`, `next call in a series scheduled`, `notes job dropped`, `nothing was
+answered`, `question changed`, `transcript line corrected` (the note and line IDs, what changed, and whether by
+the organizer), `notes job queued` again with `again` and how many lines were corrected, `next call in a series
+scheduled`, `notes job dropped`, `nothing was
 transcribed; note finished without notes` and `clip arrived after the recording stopped; dropped` at info;
 `notes not written yet; trying again` at warn; a note finished without a summary after its last attempt at
 error. Speech, transcript lines, prompts, replies and questions are never logged, and neither are the
@@ -685,6 +757,18 @@ ends) and breakout rooms ending up in the notes' chapters. `verified private inf
 `privacy at rest` checks that no clip, transcript, title, name or question crossed the wire to NEAR AI
 readable, in any encoding, and that nothing went to NEAR AI's plaintext endpoints.
 
+`apps/api/src/transcripts.integration.test.ts` covers a transcript honest about what it heard: the fake NEAR
+hears a sentence written with a leading `~` with little confidence; words heard unclearly and lines heard on two
+people's microphones marked live (for the organizer and someone invited alike), in catch-up and in the notes, and
+told to the notes model; two people agreeing at once, and a reply that repeats the question, not marked;
+corrections by the organizer (words, who said it, a guest by the name they gave, nobody, it was heard right) and
+by someone invited (their own words only), each a new revision with who, what and when, the same again writing
+nothing; refusals for someone it was shared with, someone without the note, another account's note, a line that
+isn't there and a note still recording; questions answering from the corrected words; the corrected words in no
+row and no log line; writing the notes again (organizer only, once while it's being written, what someone
+confirmed kept, the rest written from the corrected words, not charged again, the verification not listed twice);
+and notes that couldn't be written, written on request and charged then.
+
 `apps/api/src/capture.integration.test.ts` covers what a call captures: only the organizer pausing, resuming
 and turning notes on or off (everyone else refused); everyone seeing the same state with who changed it;
 asking for notes, saying yes (notes on, or resumed) and not now, taking an ask back, and an ask another call's
@@ -715,6 +799,27 @@ it, room recordings, recurring Google events (also adopted all at once), a call 
 (every time counts, for everyone, and only the newest 24 are shown), dates in the asker's time zone, and
 answers dropped because a note they read went while they were written.
 
+## What's kept, and for how long
+
+One fixed behaviour, with no settings (Alcove has no retention rules to choose):
+
+| What | Kept | Then |
+| --- | --- | --- |
+| A clip of speech (WAV) | Only in the API process's memory while it's transcribed, and in NEAR AI's verified model for that request | Never stored |
+| The live transcript (`transcript_clips`) and caption translations (`transcript_translations`) | While the recording runs | Deleted in the transaction that stops it: the lines live on in the note |
+| The recording (sealed audio pieces in the object store) | With its note, for playback: the transcript and notes point at moments in it | Deleted with the note |
+| Shared-screen frames (sealed images in the object store) and what was read on them | With the note, which shows them beside the lines said then | Deleted with the note |
+| The note: transcript, notes, decisions and follow-ups with who changed them, corrections with what they were before | Until the organizer deletes it (for everyone); anyone else removing it removes only their own access | Deleted with every revision |
+| Earlier revisions of a note | With the note: a correction or a change writes a new revision, and the old ones stay, so nothing is quietly rewritten | Deleted with the note |
+| Questions, answers and catch-ups | Never stored | |
+| A call's MLS log (`call_mls`) | While the call runs | Deleted when it ends |
+
+Deleting is physical: rows, revisions, receipts and audio objects (a failed object delete is queued in
+`object_gc` and retried) ([Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A notes-only behaviour,
+dropping the audio once the notes are written (Granola keeps no audio at all), was considered and not built: the
+transcript and notes cite moments to play, and a correction is checked by listening. Teams, Otter and Fireflies
+offer retention periods as settings; Alcove has one behaviour, the same for everyone, and says it here.
+
 ## What's left
 
 - **The model code isn't pinned.** The OS is: a model's VM must have booted a published dstack image,
@@ -744,10 +849,24 @@ answers dropped because a note they read went while they were written.
   verification refuses it (`os-image`) and notes wait until its measurements are added to
   `dstack-images.ts`, computed the same way.
 - **Who said what.** A call line is said by whoever's voice it was, as the organizer's browser heard each
-  voice on its own; someone in a breakout room the organizer isn't in isn't heard. The notes recording keeps
-  the organizer's microphone only: without one, nothing is recorded, and lines in later segments are placed
-  from the start of the recording. Guests name themselves, so the notes model reads them marked as guests.
-  Room recordings have no speaker diarization.
+  voice on its own; someone in a breakout room the organizer isn't in isn't heard. The notes recording mixes
+  what the organizer's browser hears in the main room, the organizer's microphone with everyone else's, and is
+  silent while the organizer visits a breakout room ([Calls and recordings › The call
+  screen](calls-and-recordings.md#the-call-screen)). Guests name themselves, so the notes model reads them marked
+  as guests. Several people on one device are one voice. Room recordings have no speaker diarization.
+- **How sure, per line.** NEAR AI's Whisper gives confidence per segment, not per word, so a whole line is
+  marked unsure, never single words. The −0.4 line was measured on synthetic speech; real microphones may need
+  it moved.
+- **Corrections are line by line.** A line's words and speaker can be corrected, not split, merged or removed,
+  and the notes take a correction only when the organizer has them written again.
+- **An attested notes participant.** What the notes are made from leaves the call through the organizer's
+  browser: it sends what it hears to the API, everyone's speech as clips to transcribe and the recording's
+  pieces, over TLS but outside the media's end-to-end encryption. The API seals both at rest and sends speech on
+  only sealed to NEAR AI's verified Whisper, but the API itself runs on Cloud Run and isn't attested, so whoever
+  operates it could read them ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
+  What's verified today is the inference: NEAR AI's models, before anything is sent to them. An attested notes
+  participant, a member of the call's MLS group running in a TEE whose attestation the browsers check before
+  adding it, would take the media itself, so no browser sends audio to the API. Not built.
 - **Screens during the call.** Catch-up and questions during a call don't read shared screens yet: frames are
   read after the call. `screens.framesOf` lists a live call's frames for a catch-up to point at once it does.
 - **Going back to a slide** is a new frame: the browser compares with the last frame it kept, so returning to an
