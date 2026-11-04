@@ -427,7 +427,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
   notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
 - **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
-  yours for everyone, and it stays in Your notes; the organizer can **Remove** any of them.
+  yours for everyone, once you say so in the row, and it stays in Your notes; the organizer can **Remove** any of them
+  the same way.
 - A note's page starts with a way back (**Notes /** its title), the pin (**Pin these notes**, at most eight
   pinned), **Share** and **More**. Chips above the title say whether it's **Ready**, **Being written** or **Still
   recording**, the series it's in, and how you got it. Under the title: when it was and who has it, then
@@ -619,9 +620,13 @@ setting says **Saved** for a moment once it's kept, and one the server refuses g
   hardware was verified, when this browser could check it.
 
 **Delete account** opens one step in place (never a window over the page) that names what goes: the notes you
-made, with their audio, for everyone who has them; the calls you scheduled; the minutes of notes left; your groups
-and pins; your Google Calendar connection; and your sign-in on every browser. **Delete my account** then deletes the account for good:
-the notes you organized, for everyone you gave them to, with their audio; your recordings, calls and meetings; your groups and pins; your
+made, with their audio, for everyone who has them; the calls you scheduled; the minutes of notes left; your own notes on
+every call, and anything you added from them to other people's notes; your groups
+and pins; your Google Calendar connection; and your sign-in on every browser. It says what stays too: the notes other
+people gave you, which still have what you said in the call and still say where you changed or shared them.
+**Delete my account** then deletes the account for good:
+the notes you organized, for everyone you gave them to, with their audio; your recordings, calls and meetings; your own
+notes, and everything you added to anyone's shared notes, whether or not you still had the note; your groups and pins; your
 Google Calendar connection; and your sessions, so every browser is signed out. You're taken off the notes other
 people gave you; notes you shared on stay with the people you shared them with, still saying you shared them.
 Your calls on Google Calendar that haven't ended are cancelled there, begun or not, and their guests are told,

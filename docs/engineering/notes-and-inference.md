@@ -719,8 +719,10 @@ notes**.
   Without the note, nothing opens.
 - **Answers are kept only when you say so.** Asking keeps nothing, in a call or on a note, as ever. **Keep in your
   notes** under an answer keeps the question, the answer and its moments. The browser sends them, since nothing
-  stored them; the moments are checked, and any the asker may not read are dropped. It's their own record, so what it
-  claims matters only if it's shared, which needs moments behind it (below). Catch-ups aren't kept. We keep only on
+  stored them; the moments are checked, and any the asker may not read are dropped. A cite says only which second, so
+  it means the line nearest that second, within two seconds, in the call or any breakout room's section (level between
+  two, the call's); with none that close it means no line, so a second the model made up can't borrow one. It's their own
+  record, so what it claims matters only if it's shared, which needs moments behind it (below). Catch-ups aren't kept. We keep only on
   request because #78's promise was that asking keeps nothing: that stays true unless someone acts.
 - **No model reads them.** Asking about a note, across notes or across a series, writing the notes, and catching up
   never read anyone's own notes. Nor does a series carry them: only what's been added to the shared notes is part of
@@ -755,9 +757,11 @@ joins the invite), so a preview couldn't say who reads it.
   can the organizer, whose notes they are; anyone else who has the notes is `403 forbidden`. It's kept in its own table
   and not in the note's manifest because a note's revisions stay until the note is deleted: a new revision would leave
   the words in an old one. The entry stays in its author's notes, and can be added again.
-- **What stays.** An addition stays when its author removes the note or deletes their account, as a note they shared on
-  does: they chose to share it, and it's the organizer's note. It goes with the note. They can't take it back
-  after removing the note, so the app says so before they do.
+- **What stays.** An addition stays when its author removes the note, as a note they shared on does: they chose to share
+  it, and it's the organizer's note. They can't take it back after removing the note, so the app says so before they
+  do. It goes with the note, and with its author's account: deleting the account takes all of theirs out of everyone's
+  notes, found by a keyed hash of who added it, so it makes no difference if they'd removed the note or deleted the entry
+  by then. The app says what goes, and what stays, before they confirm.
 
 ### What happens to your own notes
 
@@ -767,7 +771,7 @@ joins the invite), so a preview couldn't say who reads it.
   being given the note again starts over. The app says so first. Nothing else takes a note from someone today.
 - **You're removed from a call and taken off the invite**: you never get the note, so whatever you wrote during it is
   deleted in the transaction that gives everyone else the note.
-- **You delete your account**: everything of yours goes with it.
+- **You delete your account**: everything of yours goes with it, and so does what you added to anyone's shared notes.
 - **Your sign-in's address changes**: you no longer have notes given to the old address, and your own notes on them
   wait, sealed, until you do again or the note goes.
 
@@ -1197,7 +1201,7 @@ One fixed behaviour, with no settings (Alcove has no retention rules to choose):
 | Earlier revisions of a note | With the note: a correction or a change writes a new revision, and the old ones stay, so nothing is quietly rewritten | Deleted with the note |
 | Questions, answers and catch-ups | Never stored, unless someone keeps an answer in their own notes | |
 | Someone's own notes: what they wrote, bookmarks, answers they kept | While they have the note, under their own keys, with no earlier versions | Deleted with the note, when they remove it from theirs, with their account, or at the end of the call if they were taken off the invite |
-| What someone added to the shared notes | With the note, under its organizer's keys, in its own row | Deleted when it's taken back, and with the note. It stays if its author removes the note or deletes their account |
+| What someone added to the shared notes | With the note, under its organizer's keys, in its own row | Deleted when it's taken back, with the note, and with its author's account. It stays if its author removes the note |
 | A call's MLS log (`call_mls`) | While the call runs | Deleted when it ends |
 
 Deleting is physical: rows, revisions, receipts and audio objects (a failed object delete is queued in

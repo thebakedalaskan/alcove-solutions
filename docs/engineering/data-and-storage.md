@@ -30,7 +30,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
 | `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
-| `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys. Who added it stays in the body, so a deleted account's ID isn't left in a column |
+| `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
@@ -119,8 +119,8 @@ One fixed behaviour, with no settings ([Notes and inference › What's kept, and
 - **Questions, answers and catch-ups** are never stored, unless someone keeps an answer in their own notes.
 - **Someone's own notes** (`personal_notes`) last while they have the note: they go with the note, when they remove it
   from theirs, with their account, and at the end of the call if they were taken off the invite.
-- **What's added to the shared notes** (`note_additions`) lasts until it's taken back or the note goes. It stays when
-  its author removes the note or deletes their account.
+- **What's added to the shared notes** (`note_additions`) lasts until it's taken back, the note goes or its author's
+  account is deleted. It stays when its author removes the note.
 
 ## Operations
 
