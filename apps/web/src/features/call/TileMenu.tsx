@@ -80,10 +80,15 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
   );
 }
 
-/** A shared screen's menu: see it big or as a tile among the people, and mute the sound it carries, for you. */
-export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound }: {
+/**
+ * A shared screen's menu: see it big or as a tile among the people, and mute the sound it carries, for you; and point at
+ * it, which everyone sees.
+ */
+export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound, point }: {
   presenter: Person; label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void;
   sound: { muted: boolean; toggle: () => void } | null;
+  /** Pointing at it: whether you are, whether it's big (only there can you), and what keeps you from it, if anything. */
+  point: { on: boolean; big: boolean; closed: 'call' | 'presenter' | null; toggle: () => void } | null;
 }) {
   const pick = (f: () => void) => () => { onOpenChange(false); f(); };
   return (
@@ -93,6 +98,15 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
       <p className="scope">Only your view changes</p>
       <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={pick(onToggle)} />
       {sound && <Item icon={sound.muted ? 'speaker' : 'speakerOff'} label={sound.muted ? 'Play its sound' : 'Mute its sound for me'} onPick={pick(sound.toggle)} />}
+      {point && (
+        <>
+          <div className="ic-msep" />
+          {point.closed === 'call' ? <p className="hint">The organizer turned off pointing at shared screens.</p>
+            : point.closed === 'presenter' ? <p className="hint">{callName(presenter)} isn’t letting others point at their screen.</p>
+              : point.big || point.on ? <Item icon="pointer" label={point.on ? 'Stop pointing' : 'Point and mark'} kb="L" keys="L" onPick={pick(point.toggle)} end={<Scope everyone>Everyone</Scope>} />
+                : <p className="hint">Show it big to point at it.</p>}
+        </>
+      )}
     </Popover>
   );
 }

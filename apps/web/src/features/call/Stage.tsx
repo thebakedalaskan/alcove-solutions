@@ -10,12 +10,17 @@
  * between them, and the rest wait as tiles: a click (or P) shows one big, beside what's big or, when two already are,
  * in place of the one that's been big longest. A share that starts later glows for a moment where the layout puts it:
  * until you choose, a second one goes big beside the first, and once you have, a new one comes in as a tile.
+ *
+ * Anyone the call lets point can point at a share shown big (SharePointing.tsx): their pointer, with their name, and
+ * marks that fade, which everyone sees on that share wherever it is on their stage.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
 import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
+import type { ShareMarks } from './marks';
+import { SharePointing, type PointingKeys } from './SharePointing';
 import { useSettledSpeakers } from './speakers';
 import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
 import { ShareMenu, TileMenu, type PersonMenu } from './TileMenu';
@@ -46,6 +51,12 @@ export interface StageShare {
   name: string;
   /** The sound it carries, if any: muted for you or not, and the switch. Never for your own, which doesn't play here. */
   sound: { muted: boolean; toggle: () => void } | null;
+  /**
+   * Pointing at it: its picture's track sid, which pointers and marks name it by, and what keeps you from pointing at it
+   * now, if anything (the organizer turned pointing off, or its presenter doesn't let others point). Null until the call's
+   * room has it (your own share, until it's published).
+   */
+  point: { sid: string; closed: 'call' | 'presenter' | null } | null;
 }
 /** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
@@ -98,10 +109,14 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
+export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
   people: StageParticipant[];
   /** What's shared now, in any order: the stage keeps them in the order they started. */
   shares: StageShare[];
+  /** Pointers and marks on what's shared (null before the room connects), who you are, and who anyone pointing is. */
+  marks: ShareMarks | null;
+  me: Person;
+  whoIs: (id: string) => Person;
   spotlight: string | null;
   view: CallView;
   organizer: boolean;
@@ -183,6 +198,21 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const press = useRef<{ id: string; x: number; y: number; dx: number; dy: number; on: boolean; corner: boolean } | null>(null);
   const grow = useRef<{ id: string; x: number; y: number; w: number; h: number; big: boolean } | null>(null);
   const handle = useRef<'divider' | 'split' | null>(null);
+  /*
+   * The share you're pointing at, by whoever shares it: one at a time, while it's big and open to you. Its keys come
+   * first while you do (arrows move your pointer there rather than to the next tile).
+   */
+  const [pointingAt, setPointingAt] = useState<string | null>(null);
+  const pointKeys = useRef(new Map<string, PointingKeys>());
+  const keySetters = useRef(new Map<string, (f: PointingKeys | null) => void>());
+  const keysOf = (k: string) => {
+    let set = keySetters.current.get(k);
+    if (!set) {
+      set = (f) => { if (f) pointKeys.current.set(k, f); else pointKeys.current.delete(k); };
+      keySetters.current.set(k, set);
+    }
+    return set;
+  };
 
   /** Puts `id` where `target` is in its group: your pins in a new order, or your order of everyone else. */
   const reorder = (g: string[], id: string, target: string) => {
@@ -207,6 +237,11 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
+  const pointable = (s: StageShare) => s.point !== null && s.point.closed === null && L.shares.has(s.id);
+  const pointingNow = pointingAt !== null && shares.some((s) => s.id === pointingAt && pointable(s)) ? pointingAt : null;
+  // A share that stops, goes back to a tile or closes to you (its presenter, or the organizer, said so) ends your pointing.
+  useEffect(() => { if (pointingAt !== null && pointingNow === null) setPointingAt(null); }, [pointingAt, pointingNow]);
+  const togglePointing = (id: string) => { setPointingAt((x) => (x === id ? null : id)); focusTo(shareKey(id)); };
 
   const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, w, h, live });
   latest.current = { L, plan, view, onCustom, reorder, groupOf, w, h, live };
@@ -311,6 +346,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
     const p = byId.get(k);
     const share = isShareKey(k) ? shares.find((s) => shareKey(s.id) === k) : undefined;
     const corner = cornered && k === cornered.id;
+    if (share && pointingNow === share.id && onTile && pointKeys.current.get(k)?.(e)) { e.preventDefault(); e.stopPropagation(); return; }
     let done = true;
     if ((key === 'Enter' || key === ' ') && onTile) setMenu(k);
     else if (key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) setMenu(k);
@@ -323,7 +359,8 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
     } else if (key === '+' || key === '=' || key === '-' || key === '_' || key === '−') {
       const big = key === '+' || key === '=';
       if (p && handsOn && restGroup.includes(k) && lay.big.includes(p.seat) !== big) toggleBig(p);
-    } else if (ARROWS.has(key)) focusTo(focusables[Math.max(0, Math.min(focusables.length - 1, focusables.indexOf(k) + (key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1)))]);
+    } else if ((key === 'l' || key === 'L') && !e.shiftKey && share && pointable(share)) togglePointing(share.id);
+    else if (ARROWS.has(key)) focusTo(focusables[Math.max(0, Math.min(focusables.length - 1, focusables.indexOf(k) + (key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1)))]);
     else if (key === 'Home') focusTo(focusables[0]);
     else if (key === 'End') focusTo(focusables.at(-1));
     else done = false;
@@ -361,10 +398,13 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         const big = L.shares.get(s.id);
         const r = big ?? L.slots.get(k);
         if (!r) return null;
-        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', big ? '' : 'a tile, P shows it big'];
+        const canPoint = pointable(s);
+        const here = pointingNow === s.id;
+        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', big ? '' : 'a tile, P shows it big',
+          here ? 'you’re pointing at it: arrow keys move your pointer, Enter marks, Backspace takes your last mark back, Escape stops' : canPoint ? 'L to point at it' : ''];
         return (
-          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts="Enter P"
-            className={cn('ic-scr', !big && 'is-tile', fresh(s.id) && 'is-new')}
+          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={canPoint ? 'Enter P L' : 'Enter P'}
+            className={cn('ic-scr', !big && 'is-tile', fresh(s.id) && 'is-new', here && 'is-pointing')}
             onClick={big ? undefined : (e) => {
               // Not a click in the menu it opened (React passes those up through the portal), nor on any of its buttons.
               if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
@@ -372,13 +412,18 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
             }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
             <FeedVideo feed={s.feed} className="screen" />
+            {s.point && marks && (
+              <SharePointing marks={marks} share={s.point.sid} mine={s.mine} big={!!big} can={s.point.closed === null} active={here} whoIs={whoIs} me={me} onKeys={keysOf(k)}
+                onActive={(on) => { setPointingAt(on ? s.id : null); if (on) focusTo(k); }} />
+            )}
             <span className="ac-tile-name">
               <Avatar person={s.presenter} size={18} /><span className="tl">{s.label}</span>
               {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
             </span>
             {!big && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
             <ShareMenu presenter={s.presenter} label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big}
-              onToggle={() => toggleShare(s.id, !!big)} sound={s.sound} />
+              onToggle={() => toggleShare(s.id, !!big)} sound={s.sound}
+              point={s.point ? { on: here, big: !!big, closed: s.point.closed, toggle: () => togglePointing(s.id) } : null} />
           </motion.div>
         );
       })}
