@@ -91,4 +91,3 @@
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |
 | 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 11 | A breakout room's own notes, for the people who were in it; each room committed by one of its own members | What's said in a room is shown live there and kept out of the call's notes today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |
-| 12 | Mark the moments between a host's drop and someone taking over as a gap | Nothing is captured then (about 10 s after LiveKit notices); catching up says so, the notes don't yet |

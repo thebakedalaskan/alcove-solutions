@@ -336,6 +336,7 @@ dock at the bottom.
   account, it lets go by itself. The laptop turns off its microphone and camera and leaves, then the phone comes
   in as you, with your place, raised hand and breakout room, and its microphone and camera as they were. The
   laptop says where the call went, with **Join again here**. While you share your screen the code stays hidden.
+  Whoever hosts keeps hosting on the new device, and nobody takes over while it can still arrive.
 - If your connection drops, the top bar says **Reconnecting** and you're back by yourself when it returns, as the
   same person. While the host's browser is out of the call, the notes sign says **Notes unavailable**, for
   everyone and on the join page; when another browser takes over (theirs on another device, or someone standing in),
