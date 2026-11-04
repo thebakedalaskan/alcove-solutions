@@ -40,7 +40,7 @@ export const Joined = z.object({
   status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), group: z.string().nullable(), from: z.number(),
   placedAt: z.number(), placedSeq: z.number(), wasIn: z.object({ place: z.string(), since: z.number(), until: z.number() }).nullable(),
   leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), left: z.number().nullable(),
-  earlier: z.array(z.object({ since: z.number(), left: z.number() })), hand: z.boolean()
+  earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]), hand: z.boolean()
 });
 export type Joined = z.infer<typeof Joined>;
 
