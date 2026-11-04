@@ -103,7 +103,7 @@ export function useScheduleNextCall() {
         const where = m.calendarUrl ? 'your Google Calendar' : 'your calendar';
         const n = m.guests.length;
         const who = !n ? '' : m.calendarUrl ? ` ${listNames(m.guests)} ${n > 1 ? 'get invitations' : 'gets an invitation'}.` : ` ${listNames(m.guests)} ${n > 1 ? 'are' : 'is'} invited.`;
-        toast(`On ${where} for ${shortDay(new Date(m.startsAt))}, ${hm(m.startsAt)}.${who}`, { icon: 'cal', ms: 6000, action: { label: 'Change', onClick: () => open(m) } });
+        toast(`On ${where} for ${shortDay(new Date(m.startsAt))}, ${hm(m.startsAt)}.${who}`, { icon: 'cal', ms: 6000, action: { label: 'Change', onClick: () => open({ meeting: m }) } });
       },
       onError: (e) => toast(errorMessage(e), { icon: 'x' })
     })

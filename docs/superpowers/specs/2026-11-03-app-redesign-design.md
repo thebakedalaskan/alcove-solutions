@@ -43,9 +43,11 @@ Each is its own PR, merged and deployed before the next starts.
 - **Ask your notes** answers from the notes you have and nothing else, cites the notes and moments it used, and runs
   through the same verified private inference as asking about one note. With no ready notes it says so without
   calling a model.
-- **Series.** Notes whose titles match (trimmed, case-insensitive) form a series. Home's "Last time" is the latest
-  earlier note in the series of the next call. The note page lists the series; its label is "Every <weekday>" when
-  the last three are 7 days apart, else "Earlier notes with this name".
+- **Series.** Main's series: calls that follow on from each other (the next call scheduled after one, or the
+  occurrences of a recurring Google Calendar meeting held in Alcove) share a `seriesId`; a title alone never makes
+  one. Home's "Last time" is the series' latest earlier call, with "From earlier calls" (what carries over) under
+  Up next; a series whose last three calls are 7 days apart is labelled "Every <weekday>". The note page shows
+  the series a call is in.
 - **Team.** The company directory where one exists (the demo directory today). Otherwise the people at your work
   email domain you've had calls or calendar meetings with, marked on Alcove or invited. Personal email domains have
   no team: gmail.com, googlemail.com, outlook.com, hotmail.com, live.com, icloud.com, me.com, yahoo.com, aol.com,
@@ -77,5 +79,7 @@ These are on the canvas but depend on something outside the repo. They aren't dr
 - **Outlook calendar** (and real Microsoft sign-in): a Microsoft Entra app (client ID, secret, redirect URI).
 - **Add minutes** and the **team plan with seats**: a payments provider account (1Click, per
   [payments and usage](../../engineering/payments-and-usage.md)) and pricing.
+- **Invitation emails sent by Alcove itself**: an email provider. Until then, inviting someone opens your own
+  email with the invitation.
 - **Telling voices apart** in room recordings: a diarization-capable model on NEAR AI. Room transcripts name nobody
   today, by design.

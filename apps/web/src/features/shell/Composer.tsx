@@ -2,118 +2,60 @@
  * New call: one line. Describe the call ("Design review with Priya tomorrow 3pm for 45 min") and
  * what's understood turns into chips that can each be changed. Enter starts it now, or schedules it
  * when a day or a time was typed. The same line changes a scheduled call: it keeps its time unless a
- * new one is typed.
+ * new one is typed. It can open with a sentence already typed, as Home's first-call line hands one over, or with
+ * people already invited, as the Team page's Start a call does.
  */
-import { NOTES_LABEL, errorMessage, type Meeting, type NotesSetting, type Person } from '@alcove/api';
+import { NOTES_LABEL, errorMessage, type NotesSetting, type Person } from '@alcove/api';
 import { Avatar, Button, ComposerLine, Icon, Popover, Sheet, cn, useToast } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
-import { dropFromSentence, firstOf, parseCall } from '~/lib/parse';
-import { byEmail, callName, listNames, sameEmail } from '~/lib/people';
-import { q, useCancelCall, useScheduleCall, useStartNow, useUpdateCall } from '~/lib/queries';
-import { dayChoice, hm, shortDay } from '~/lib/time';
-import { freshCalls } from './context';
+import { dropFromSentence, firstOf } from '~/lib/parse';
+import { callName, listNames, sameEmail } from '~/lib/people';
+import { useCancelCall } from '~/lib/queries';
+import { dayChoice, hm } from '~/lib/time';
+import { cancelNote, cancelledLine, useCallLine, type LineChip } from './callLine';
+import type { ComposerStart } from './context';
 
-export function Composer({ open, onOpenChange, editing }: { open: boolean; onOpenChange: (open: boolean) => void; editing?: Meeting | undefined }) {
+export function Composer({ open, onOpenChange, start }: { open: boolean; onOpenChange: (open: boolean) => void; start: ComposerStart }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange} label={editing ? 'Change call' : 'New call'}>
-      <Body key={editing?.id ?? 'new'} editing={editing} onClose={() => onOpenChange(false)} />
+    <Sheet open={open} onOpenChange={onOpenChange} label={start.meeting ? 'Change call' : 'New call'}>
+      <Body key={start.meeting?.id ?? 'new'} start={start} onClose={() => onOpenChange(false)} />
     </Sheet>
   );
 }
-const minutesOf = (m: Meeting) => Math.max(5, Math.round((new Date(m.endsAt).getTime() - new Date(m.startsAt).getTime()) / 60_000));
-const invitations = (n: number) => (n > 1 ? 'get invitations' : 'gets an invitation');
 
-type Chip =
-  | { k: 'person'; person: Person; typed: boolean }
-  | { k: 'needs'; name: string };
-
-function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | undefined }) {
+function Body({ onClose, start }: { onClose: () => void; start: ComposerStart }) {
+  const editing = start.meeting;
   const navigate = useNavigate();
   const toast = useToast();
-  const prefs = useQuery(q.prefs()).data;
-  const directory = useQuery(q.people('')).data ?? [];
-  const schedule = useScheduleCall();
-  const startNow = useStartNow();
   const cancel = useCancelCall();
-  const update = useUpdateCall();
   const input = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState(editing?.title ?? '');
-  const [extra, setExtra] = useState<Person[]>(editing?.guests ?? []);
+  const [text, setText] = useState(editing?.title ?? start.text ?? '');
+  const [extra, setExtra] = useState<Person[]>(editing?.guests ?? start.people ?? []);
   const [notes, setNotes] = useState<NotesSetting | null>(editing?.notes ?? null);
   /** Which popover is open: the invite picker, one for a name that needs an address, or the notes menu. */
   const [pop, setPop] = useState<string | null>(null);
-
-  const known = directory.map((s) => s.person);
-  const parsed = parseCall(text, new Date(), known);
-  // A call being changed keeps its time and length unless new ones are typed.
-  const p = editing ? { ...parsed, when: { start: parsed.when?.start ?? new Date(editing.startsAt), minutes: parsed.duration ?? minutesOf(editing) } } : parsed;
-  const notesOn: NotesSetting = notes ?? (p.notesOff ? 'off' : prefs?.notesDefault ?? 'on');
-  const find = (email: string) => known.find((k) => k.email === email) ?? extra.find((k) => k.email === email) ?? byEmail(email);
-  const chips: Chip[] = [];
-  for (const g of p.guests) {
-    if (g.kind === 'name') chips.push({ k: 'needs', name: g.name });
-    else if (!chips.some((c) => c.k === 'person' && c.person.email === g.email)) chips.push({ k: 'person', person: find(g.email), typed: true });
-  }
-  for (const e of extra) if (!chips.some((c) => c.k === 'person' && sameEmail(c.person, e))) chips.push({ k: 'person', person: e, typed: false });
-  const people = chips.flatMap((c) => (c.k === 'person' ? [c.person] : []));
-  const needs = chips.flatMap((c) => (c.k === 'needs' ? [c.name] : []));
-  const busy = schedule.isPending || startNow.isPending || update.isPending;
+  const { p, chips, people, needs, notesOn, busy, tries, submit: send } = useCallLine({ text, extra, notes, editing });
   const focus = () => requestAnimationFrame(() => input.current?.focus());
 
   /* Take someone off the call: out of the picker's list, or out of the sentence. */
-  const drop = (c: Chip) => {
+  const drop = (c: LineChip) => {
     if (c.k === 'person' && !c.typed) { setExtra((x) => x.filter((e) => !sameEmail(e, c.person))); return; }
     const word = c.k === 'needs' ? c.name : c.person.name !== c.person.email && text.toLowerCase().includes(firstOf(c.person.name).toLowerCase()) ? firstOf(c.person.name) : c.person.email;
     setText((t) => dropFromSentence(t, word));
   };
 
+  /* A name without an address opens its picker; otherwise the line does what it says. */
   const submit = async () => {
-    if (busy) return;
-    const first = needs[0];
-    if (first) { setPop(`needs:${first}`); return; }
-    const guests = people.map((g) => g.email);
-    try {
-      if (editing) {
-        const { start, minutes } = p.when ?? { start: new Date(editing.startsAt), minutes: minutesOf(editing) };
-        const m = await update.mutateAsync({ id: editing.id, input: { title: p.title || editing.title, startsAt: start.toISOString(), durationMinutes: minutes, guests, notes: notesOn } });
-        onClose();
-        toast(m.calendarUrl && m.guests.length ? `Saved. ${listNames(m.guests)} ${m.guests.length > 1 ? 'get' : 'gets'} the update.` : 'Saved.', { icon: 'cal' });
-        return;
-      }
-      if (!p.when) {
-        const r = await startNow.mutateAsync({ ...(p.title ? { title: p.title } : {}), guests, notes: notesOn });
-        onClose();
-        await navigate({ to: '/join/$code', params: { code: r.code } });
-        return;
-      }
-      const { start, minutes } = p.when;
-      const m = await schedule.mutateAsync({
-        title: p.title || (people.length ? `Call with ${listNames(people)}` : 'New call'),
-        startsAt: start.toISOString(), durationMinutes: minutes, guests, notes: notesOn
-      });
-      freshCalls.add(m.id);
-      onClose();
-      if (!people.length) void navigator.clipboard?.writeText(`${location.origin}/join/${m.code}`).catch(() => undefined);
-      const where = m.calendarUrl ? 'your Google Calendar' : 'your calendar';
-      const who = !people.length ? ' Link copied.' : m.calendarUrl ? ` ${listNames(people)} ${invitations(people.length)}.` : ` ${listNames(people)} ${people.length > 1 ? 'are' : 'is'} invited.`;
-      toast(`On ${where} for ${shortDay(start)}, ${hm(start)}.${who}`, { icon: 'cal', ms: 4200, action: { label: 'Undo', onClick: () => cancel.mutate(m.id) } });
-    } catch (e) {
-      toast(errorMessage(e), { icon: 'x' });
-    }
+    const stop = await send(onClose);
+    if (stop) setPop(`needs:${stop.needs}`);
   };
 
   const hint = needs[0] ? { icon: 'mail' as const, text: `Add ${needs[0]}’s email to invite them` }
     : !people.length ? { icon: 'link' as const, text: 'Only you, so far. Add people by name or email.' }
       : notesOn === 'off' ? { icon: 'mail' as const, text: `${listNames(people)} ${people.length > 1 ? 'are' : 'is'} invited` }
         : { icon: 'send' as const, text: `Notes go to you and ${listNames(people)}` };
-  const suggestion = known[0] ? firstOf(known[0].name) : null;
-  const tries = [
-    suggestion ? `Design review with ${suggestion} tomorrow 3pm for 45 min` : 'Design review tomorrow 3pm for 45 min',
-    'Intro with jamie@harbourline.co Thursday 2pm'
-  ];
   const whenHint = () => { focus(); toast('Type a day or a time, like “Thursday 2pm”.', { icon: 'cal', ms: 2600 }); };
 
   return (
@@ -153,7 +95,7 @@ function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | u
           ))}
         </Popover>
         {!editing && !text.trim() && !extra.length && (
-          <span className="try">Try {tries.map((t) => <button key={t} type="button" onClick={() => { setText(t); focus(); }}>{t.replace(/ for 45 min$/, '')}</button>)}</span>
+          <span className="try">Try {tries.map((t) => <button key={t.text} type="button" onClick={() => { setText(t.text); focus(); }}>{t.label}</button>)}</span>
         )}
       </div>
       <div className="cmp-foot">
@@ -163,11 +105,11 @@ function Body({ onClose, editing }: { onClose: () => void; editing?: Meeting | u
             <button type="button" className="ac-pop-item is-caution" onClick={() => {
               setPop(null);
               cancel.mutate(editing.id, {
-                onSuccess: () => { onClose(); toast(editing.calendarUrl && editing.guests.length ? 'Call cancelled. Everyone invited is told.' : 'Call cancelled.', { icon: 'trash' }); },
+                onSuccess: () => { onClose(); toast(cancelledLine(editing), { icon: 'trash' }); },
                 onError: (e) => toast(errorMessage(e), { icon: 'x' })
               });
             }}>
-              <Icon name="trash" size={18} /><span><b>Cancel this call</b><small>{editing.calendarUrl ? 'It comes off your calendar, and everyone invited is told.' : 'It comes off your calendar.'}</small></span>
+              <Icon name="trash" size={18} /><span><b>Cancel this call</b><small>{cancelNote(editing)}</small></span>
             </button>
           </Popover>
         ) : <Button variant="quiet" icon="room" onClick={() => { onClose(); void navigate({ to: '/record' }); }}>Record in the room</Button>}

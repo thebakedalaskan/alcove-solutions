@@ -83,11 +83,16 @@ export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
 
 const allUnique = (items: string[]): boolean => new Set(items).size === items.length;
 
+/** The longest a group's name can be, the most people in a group, and the most groups someone can have. */
+export const MAX_GROUP_NAME = 40;
+export const MAX_GROUP_PEOPLE = 50;
+export const MAX_GROUPS = 30;
+
 /** A named set of email addresses to share notes with in one step. */
 export const GroupSchema = z.object({
   id: IDSchema,
-  name: z.string().trim().min(1).max(40),
-  emails: z.array(z.string().trim().toLowerCase().email().max(254)).min(1).max(50)
+  name: z.string().trim().min(1).max(MAX_GROUP_NAME),
+  emails: z.array(z.string().trim().toLowerCase().email().max(254)).min(1).max(MAX_GROUP_PEOPLE)
     .refine(allUnique, 'Addresses must be unique')
 });
 export type Group = z.infer<typeof GroupSchema>;
@@ -109,7 +114,7 @@ export const PreferencesSchema = z.object({
   notifications: NotificationPrefsSchema,
   /** Pinned note IDs, in the order they were pinned. */
   pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
-  groups: z.array(GroupSchema).max(30).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique')
+  groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique')
 });
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
@@ -436,6 +441,10 @@ export const InferenceEvidenceSchema = z.object({
 });
 export type InferenceEvidence = z.infer<typeof InferenceEvidenceSchema>;
 
+/** Someone sharing a note with one of their groups: who, the group's name, and when. */
+export const GroupShareSchema = z.object({ by: PersonSchema, group: z.string(), at: ISODateSchema });
+export type GroupShare = z.infer<typeof GroupShareSchema>;
+
 export const NoteSummarySchema = z.object({
   id: IDSchema, kind: NoteKindSchema, status: NoteStatusSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
   /** Everyone who has the notes, organizer first. */
@@ -443,7 +452,12 @@ export const NoteSummarySchema = z.object({
   /** The start of the summary; empty until the notes are written. */
   excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
   /** How you got the note, when it's someone else's. Absent on your own. */
-  received: ReceivedSchema.optional()
+  received: ReceivedSchema.optional(),
+  /**
+   * Each time someone who has the notes shared them with one of their groups, newest first: once for each
+   * sharer and group (the latest time), and only while someone it reached still has them.
+   */
+  groupShares: z.array(GroupShareSchema)
 });
 export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
@@ -513,6 +527,17 @@ export type AnswerPart = z.infer<typeof AnswerPartSchema>;
  * the note (`/notes/<id>?at=245`). It comes from the address bar, so the app parses it with this.
  */
 export const NoteMomentSchema = z.number().min(0);
+
+/** What the Team page's `group` opens: one of your groups by its ID, or NEW_GROUP to make one. From the address bar too. */
+export const GroupParamSchema = IDSchema.min(1).max(200);
+export const NEW_GROUP = 'new';
+
+/**
+ * Someone's email address after `#with=` on the notes list (`/notes#with=priya%40lumen.health`, as the Team page
+ * links it): the list shows only the notes they have too. It's in the hash, which never leaves the browser, and it
+ * comes from the address bar, so the app parses it with this; anything else means no filter.
+ */
+export const EmailParamSchema = z.string().trim().toLowerCase().email().max(254);
 
 /* ---------- series: what carries over from one call to the next ---------- */
 

@@ -29,7 +29,11 @@ export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | '
 export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
 export type Finish = { ok: true; identity: Identity; grant: Grant; consented: boolean; next?: '/ready' | '/home' | undefined } | { ok: false; reason: Refusal };
 
-const Discovery = z.object({ issuer: z.string().min(1), authorization_endpoint: z.string().url(), token_endpoint: z.string().url(), revocation_endpoint: z.string().url(), jwks_uri: z.string().url() });
+/** Google's discovery document. Only revoking needs `revocation_endpoint`, so signing in never depends on it. */
+const Discovery = z.object({
+  issuer: z.string().min(1), authorization_endpoint: z.string().url(), token_endpoint: z.string().url(), jwks_uri: z.string().url(),
+  revocation_endpoint: z.string().url().optional().catch(undefined)
+});
 const TokenReply = z.object({
   id_token: z.string().min(1), access_token: z.string().min(1), expires_in: z.number().default(3600),
   refresh_token: z.string().min(1).optional(), scope: z.string().default('')
@@ -144,14 +148,17 @@ export async function refreshAccess(d: Deps, refreshToken: string, signal?: Abor
 
 /**
  * Withdraws Alcove's grant at Google, so a refresh token that is no longer wanted stops working there too. Best
- * effort: false when Google didn't confirm, with a warning that says why. `signal` is the caller's own time limit.
+ * effort: false when Google didn't confirm, or its discovery document names no revocation endpoint, with a warning
+ * that says why. `signal` is the caller's own time limit.
  */
 export async function revokeRefresh(d: Deps, refreshToken: string, signal?: AbortSignal | undefined): Promise<boolean> {
   const cfg = d.cfg;
   if (!configured(cfg)) return false;
   try {
     const p = await provider(cfg.GOOGLE_ISSUER, signal);
-    const res = await fetch(p.endpoints.revocation_endpoint, {
+    const at = p.endpoints.revocation_endpoint;
+    if (!at) { glog.warn('google grant not revoked', { why: 'no-revocation-endpoint' }); return false; }
+    const res = await fetch(at, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
       body: new URLSearchParams({ token: refreshToken }),

@@ -14,7 +14,7 @@ import { SHARE_PROBLEMS, canShareTabSound, type ShareProblem } from './share';
 import { HISTORY } from './shareLook';
 
 const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: string; body: string; go: string; audio: string | null }[] = [
-  { surface: 'browser', label: 'Tab', icon: 'tab', title: 'One browser tab', body: 'Good for a page, a doc or a design. You can switch tabs while you share.', go: 'Choose a tab', audio: 'Share tab audio' },
+  { surface: 'browser', label: 'Tab', icon: 'globe', title: 'One browser tab', body: 'Good for a page, a doc or a design. You can switch tabs while you share.', go: 'Choose a tab', audio: 'Share tab audio' },
   { surface: 'window', label: 'Window', icon: 'window', title: 'One app window', body: 'Only that window is shown, even when others are on top of it.', go: 'Choose a window', audio: null },
   { surface: 'monitor', label: 'Screen', icon: 'monitor', title: 'Your whole screen', body: 'Everything on that screen, notifications included.', go: 'Choose a screen', audio: 'Share computer sound, where your browser allows it' }
 ];

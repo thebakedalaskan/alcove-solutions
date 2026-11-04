@@ -1,13 +1,13 @@
 /*
  * Which verified private models transcribed a note and wrote it, and what Alcove checked about each
  * before sending it anything (docs: notes-and-inference › Verified private inference). The note keeps
- * this evidence sealed with it; the page says so at the top, with the evidence one click away. Only
- * checks that ran are listed.
+ * this evidence sealed with it; the page says where it was written, and when the hardware was checked,
+ * under the title, with the evidence one click away. Only checks that ran are listed.
  */
 import type { InferenceEvidence, NoteKind } from '@alcove/api';
-import { Button, Checklist, Icon, Popover, type Checked } from '@alcove/ui';
+import { Checklist, Icon, Popover, SealedButton, type Checked } from '@alcove/ui';
 import { useState } from 'react';
-import { hm, shortDay } from '~/lib/time';
+import { daysFromToday, hm, shortDay } from '~/lib/time';
 
 /** The start and end of a hash or key: enough to compare, the whole value on hover. */
 const short = (hex: string) => (hex.length > 12 ? `${hex.slice(0, 4)}…${hex.slice(-4)}` : hex);
@@ -28,16 +28,18 @@ function checks(e: InferenceEvidence): Checked[] {
   ];
 }
 
-/** "Written by a verified private model", and behind it what was checked about each model the note used. Nothing when no model was. */
+/** "Written in confidential compute", when the hardware was checked, and behind it what was checked about each model the note used. Nothing when no model was. */
 export function Provenance({ evidence, kind }: { evidence: InferenceEvidence[]; kind: NoteKind }) {
   const [open, setOpen] = useState(false);
   if (!evidence.length) return null;
   const ordered = [...evidence.filter((e) => e.task === 'notes'), ...evidence.filter((e) => e.task === 'transcript')];
   const wrote = ordered.some((e) => e.task === 'notes');
   const gateways = [...new Map(evidence.map((e) => [e.gateway.compose, e.gateway])).values()];
+  const checked = new Date(ordered[0]?.verifiedAt ?? '');
+  const at = daysFromToday(checked) === 0 ? hm(checked) : `${shortDay(checked)}, ${hm(checked)}`;
   return (
     <Popover open={open} onOpenChange={setOpen} align="start" label="What Alcove checked" className="proof-pop"
-      anchor={<Button variant="quiet" size="sm" icon="sealed" iconRight="down" className="proof-btn">{wrote ? 'Written by a verified private model' : 'Transcribed by a verified private model'}</Button>}>
+      anchor={<SealedButton title={wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute'} detail={`hardware verified ${at} · Alcove can’t read it`} />}>
       <div className="proof">
         <div className="proof-h">
           <b>Checked before anything was sent</b>

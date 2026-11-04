@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { weekOn } from './time';
@@ -99,38 +99,90 @@ export function useSignOut() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); } });
 }
-/** Deletes the account for good. Every browser it was signed in on is signed out, this one included. */
-export function useDeleteAccount() {
+/**
+ * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
+ * then, even if the screen that asked has gone meanwhile.
+ */
+export function useDeleteAccount(onDeleted: () => void) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); } });
+  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); } });
 }
+/*
+ * Changes to preferences show at once and reach the server one at a time, in order (two at once would refuse each
+ * other there). Each touches only the fields it changes: its answer, or a refusal putting them back, leaves alone a
+ * field a later change has set meanwhile. Once none is left on its way, the preferences are read again.
+ */
+const PREFS_WRITE = { mutationKey: ['prefs', 'write'], scope: { id: 'prefs' } };
+/** `p`, with the fields `take` names copied from `from` (where `from` has them). */
+function withFields(p: Preferences, from: Patch<Preferences>, take: (k: keyof Preferences) => boolean): Preferences {
+  const f = <K extends keyof Preferences>(k: K): Preferences[K] => (take(k) ? from[k] ?? p[k] : p[k]);
+  return {
+    notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), summaryLength: f('summaryLength'), addToCalendar: f('addToCalendar'),
+    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups')
+  };
+}
+const prefsWrite = (qc: QueryClient) => {
+  const key = q.prefs().queryKey;
+  /** The fields this change set that nothing has changed since. */
+  const untouched = (p: Preferences, patch: Patch<Preferences>) => (k: keyof Preferences) => patch[k] !== undefined && p[k] === patch[k];
+  return {
+    ...PREFS_WRITE,
+    show: async (patch: Patch<Preferences>) => {
+      await qc.cancelQueries({ queryKey: key });
+      const before = qc.getQueryData(key);
+      qc.setQueryData(key, (p) => p && withFields(p, patch, (k) => patch[k] !== undefined));
+      return { before };
+    },
+    undo: (patch: Patch<Preferences>, before: Preferences | undefined) => { if (before) qc.setQueryData(key, (p) => p && withFields(p, before, untouched(p, patch))); },
+    settle: (patch: Patch<Preferences>, d: Preferences) => qc.setQueryData(key, (p) => p && withFields(p, d, untouched(p, patch))),
+    reread: () => { if (qc.isMutating({ mutationKey: PREFS_WRITE.mutationKey }) <= 1) void qc.invalidateQueries({ queryKey: key }); }
+  };
+};
+/** Changes some preferences: see above. */
 export function usePreferences() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p), onSuccess: (d) => qc.setQueryData(qk.prefs, d) });
+  const w = prefsWrite(useQueryClient());
+  return useMutation({
+    mutationKey: w.mutationKey, scope: w.scope,
+    mutationFn: (p: Patch<Preferences>) => api.account.updatePreferences(p),
+    onMutate: w.show,
+    onError: (_e, p, ctx) => w.undo(p, ctx?.before),
+    onSuccess: (d, p) => w.settle(p, d),
+    onSettled: w.reread
+  });
 }
 /**
- * Sets which notes are pinned, in the order they were pinned (at most MAX_PINS). The side panel shows the
- * change at once. If the server refuses it, only the pins go back, so nothing else changed meanwhile is
- * undone; a refusal because a note is gone also refreshes the notes. Either way the preferences are read again.
+ * Sets which notes are pinned, in the order they were pinned (at most MAX_PINS), as a change to preferences (above).
+ * A refusal because a note is gone also refreshes the notes.
  */
 export function usePins() {
   const qc = useQueryClient();
-  const key = q.prefs().queryKey;
+  const w = prefsWrite(qc);
   return useMutation({
+    mutationKey: w.mutationKey, scope: w.scope,
     mutationFn: (pinned: string[]) => api.account.updatePreferences({ pinned }),
-    onMutate: async (pinned) => {
-      await qc.cancelQueries({ queryKey: key });
-      const before = qc.getQueryData(key)?.pinned;
-      qc.setQueryData(key, (p) => p && { ...p, pinned });
-      return { before };
-    },
-    onError: (e, _pinned, ctx) => {
-      const before = ctx?.before;
-      if (before) qc.setQueryData(key, (p) => p && { ...p, pinned: before });
+    onMutate: (pinned) => w.show({ pinned }),
+    onError: (e, pinned, ctx) => {
+      w.undo({ pinned }, ctx?.before);
       if (errorCode(e) === 'not-found') void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
     },
-    onSuccess: (d) => qc.setQueryData(key, d),
-    onSettled: () => { void qc.invalidateQueries({ queryKey: key }); }
+    onSuccess: (d, pinned) => w.settle({ pinned }, d),
+    onSettled: w.reread
+  });
+}
+/**
+ * Saves your groups, all of them in order, as a change to preferences (above): it shows at once, so a second change
+ * builds on the first, and it waits its turn behind every other change to them. If the server refuses one, only the
+ * groups go back, unless a later change has set them meanwhile.
+ */
+export function useGroups() {
+  const w = prefsWrite(useQueryClient());
+  return useMutation({
+    mutationKey: w.mutationKey, scope: w.scope,
+    mutationFn: (groups: Group[]) => api.account.updatePreferences({ groups }),
+    onMutate: (groups) => w.show({ groups }),
+    onError: (_e, groups, ctx) => w.undo({ groups }, ctx?.before),
+    onSuccess: (d, groups) => w.settle({ groups }, d),
+    onSettled: w.reread
   });
 }
 export function useInviteTeam() {
@@ -188,12 +240,19 @@ function changed(qc: QueryClient, n: { id: string }) {
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.allSeries });
 }
+/** A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. */
+const gone = (qc: QueryClient, e: unknown) => {
+  if (errorCode(e) !== 'not-found') return;
+  void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
+  void qc.invalidateQueries({ queryKey: qk.inbox });
+};
 /** Confirms, rejects, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
 export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; decisionId: string; patch: DecisionPatch }) => api.notes.updateDecision(v.noteId, v.decisionId, v.patch),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); }
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
   });
 }
 /** Says an open question was answered, reopens or rewords it; the answer is the note as it is now. */
@@ -209,7 +268,8 @@ export function useUpdateAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; actionId: string; patch: ActionPatch }) => api.notes.updateAction(v.noteId, v.actionId, v.patch),
-    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); }
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
   });
 }
 /** Corrects a transcript line's words or speaker, or says it's right as heard; the answer is the note as it is now. */
@@ -225,11 +285,20 @@ export function useRewriteNotes() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (noteId: string) => api.notes.rewrite(noteId), onSuccess: (n) => changed(qc, n) });
 }
+/**
+ * Shares a note with people, by address, and with one of your groups, under its name (everyone it reaches sees that
+ * it came to them as that group): the group first, then anyone else. The answer is the note as it is now.
+ */
 export function useShareNote() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; emails: string[] }) => api.notes.share(v.id, { emails: v.emails }),
-    onSuccess: (n) => changed(qc, n)
+    mutationFn: async (v: { id: string; emails: string[]; group?: Group | undefined }) => {
+      const viaGroup = v.group && await api.notes.share(v.id, { emails: v.group.emails, group: v.group.name });
+      return viaGroup && !v.emails.length ? viaGroup : api.notes.share(v.id, { emails: v.emails });
+    },
+    onSuccess: (n) => changed(qc, n),
+    // A group's share may have gone through before the rest failed: the note is read again either way.
+    onError: (_e, v) => { void qc.invalidateQueries({ queryKey: qk.note(v.id) }); }
   });
 }
 export function useDeleteNote() {

@@ -2,22 +2,23 @@ import {
   NoteMomentSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
   type Question, type QuestionPatch
 } from '@alcove/api';
-import { Button, Chip, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, Spinner, buttonClass, cn, useToast } from '@alcove/ui';
+import { Button, Chip, Dots, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, Spinner, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Provenance } from '~/features/notes/Evidence';
 import { Player, usePlayer, type PlayerState } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
+import { receivedLine } from '~/features/notes/meta';
 import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, ScreensCard, useScreenViewer } from '~/features/notes/screens';
-import { PeoplePicker } from '~/features/people/PeoplePicker';
-import { SeriesCard } from '~/features/series/cards';
+import { PinNote, ShareNote } from '~/features/notes/share';
+import { SeriesCard, SeriesChip } from '~/features/series/cards';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
-import { listNames, sameEmail } from '~/lib/people';
-import { q, qk, useCorrectLine, useDeleteNote, useRewriteNotes, useShareNote, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { sameEmail } from '~/lib/people';
+import { q, qk, useCorrectLine, useDeleteNote, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
 import { noteWhen } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
@@ -123,9 +124,33 @@ function asText(n: Note): string {
   ].join('\n');
 }
 
+/** Where a note's page starts: back to Notes, and the note's title (or what happened to it). */
+function Crumb({ to = 'Notes', here }: { to?: 'Notes' | 'Home' | undefined; here?: string | undefined }) {
+  return (
+    <nav className="crumb" aria-label="Breadcrumb">
+      <Link to={to === 'Home' ? '/home' : '/notes'}><Icon name="left" size={16} />{to}</Link>
+      {here && <><span aria-hidden="true">/</span><span className="ac-clamp-1" aria-current="page">{here}</span></>}
+    </nav>
+  );
+}
+
+/** A note's state, then the series it's in and how you got it, as chips above its title. */
+function Chips({ note }: { note: Note }) {
+  const received = note.received;
+  return (
+    <>
+      {note.status === 'recording' ? <NotesSign>Still recording</NotesSign>
+        : note.status === 'pending' ? <Chip><Spinner className="size-3" />Being written</Chip>
+          : note.writingAgain ? <Chip><Spinner className="size-3" />Being written again</Chip>
+            : <Chip tone="sun" icon="check">Ready</Chip>}
+      {note.seriesId && <SeriesChip seriesId={note.seriesId} />}
+      {received && <Chip icon={received.role === 'shared' ? 'share' : 'video'}>{receivedLine(received)}</Chip>}
+    </>
+  );
+}
+
 function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined; at: number | undefined; onGone: (g: GoneInfo) => void }) {
   const toast = useToast();
-  const share = useShareNote();
   const del = useDeleteNote();
   const updateAction = useUpdateAction();
   const updateDecision = useUpdateDecision();
@@ -135,7 +160,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const player = usePlayer(note.id, note.audio);
   useOpenAt(note.id, at, player);
   const progress = useProgress(note);
-  const [pop, setPop] = useState<'share' | 'more' | null>(null);
+  const [more, setMore] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [going, setGoing] = useState(false);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
@@ -187,24 +212,17 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   return (
     <>
       <div className="note-top" style={{ '--d': 0 }}>
-        <Link to="/notes" className={cn(buttonClass({ variant: 'quiet', size: 'sm' }), 'back')}><Icon name="left" size={16} />Notes</Link>
+        <Crumb here={note.title} />
         <div className="note-acts">
-          <PeoplePicker open={pop === 'share'} onOpenChange={(o) => setPop(o ? 'share' : null)} align="end"
-            anchor={<Button variant="secondary" icon="share" disabled={note.status === 'recording'} title={note.status === 'recording' ? 'You can share these once the recording stops.' : undefined}>Share</Button>}
-            title="Share these notes" cta="Share" skip={note.recipients.map((r) => r.person.email)}
-            note="They find them in Alcove when they sign in with that email."
-            after={<div className="pick-have"><span>{note.recipients.length === 1 ? 'Only you have them' : `${note.recipients.length} people have them`}</span></div>}
-            onDone={(people: Person[]) => share.mutate({ id: note.id, emails: people.map((p) => p.email) }, {
-              onSuccess: () => { setFresh(new Set(people.map((p) => p.email))); toast(`Shared with ${listNames(people)}`, { icon: 'send' }); },
-              onError: (e) => toast(errorMessage(e), { icon: 'x' })
-            })} />
-          <Popover open={pop === 'more'} onOpenChange={(o) => setPop(o ? 'more' : null)} align="end" label="More" className="w-[264px]"
+          <PinNote noteId={note.id} />
+          <ShareNote note={note} onShared={(emails) => setFresh(new Set(emails))} />
+          <Popover open={more} onOpenChange={setMore} align="end" label="More" className="w-[264px]"
             anchor={<IconButton icon="more" label="More" />}>
-            <button type="button" className="ac-pop-item" disabled={!ready} onClick={() => { setPop(null); void navigator.clipboard?.writeText(asText(note)).then(() => toast('Copied as text')); }}>
+            <button type="button" className="ac-pop-item" disabled={!ready} onClick={() => { setMore(false); void navigator.clipboard?.writeText(asText(note)).then(() => toast('Copied as text')); }}>
               <Icon name="copy" size={18} /><span><b>Copy as text</b>{!ready && <small>Once the notes are written.</small>}</span>
             </button>
             <div className="ac-pop-sep" />
-            <button type="button" className="ac-pop-item is-caution" onClick={() => { setPop(null); setConfirm(true); }}>
+            <button type="button" className="ac-pop-item is-caution" onClick={() => { setMore(false); setConfirm(true); }}>
               <Icon name="trash" size={18} /><span>{mine ? <><b>Delete notes</b><small>For everyone. Can’t be undone.</small></> : <><b>Remove from your notes</b><small>Everyone else keeps them.</small></>}</span>
             </button>
           </Popover>
@@ -212,12 +230,8 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
       </div>
       <div className="note" style={{ '--d': 1 }}>
         <article className="doc">
-          <DocHead title={note.title} when={noteWhen(note.startedAt, note.duration)} people={note.people} proof={note.inference.length ? <Provenance evidence={note.inference} kind={note.kind} /> : undefined}
-            series={note.seriesId ? <Link to="/notes/series/$seriesId" params={{ seriesId: note.seriesId }} className="ser-link"><Icon name="repeat" size={15} />In a series</Link> : undefined}
-            chip={note.status === 'recording' ? <NotesSign className="lead-chip">Still recording</NotesSign>
-              : note.status === 'pending' ? <Chip className="lead-chip"><Spinner className="size-3" />Waiting to be written</Chip>
-                : note.writingAgain ? <Chip className="lead-chip"><Spinner className="size-3" />Being written again</Chip>
-                  : received ? <Chip tone="sun" className="lead-chip">{received.role === 'shared' ? 'Shared with you' : `From ${firstName(received.by.name)}’s call`}</Chip> : null} />
+          <DocHead title={note.title} when={noteWhen(note.startedAt, note.duration)} people={note.people} me={me} chips={<Chips note={note} />}
+            proof={note.inference.length ? <Provenance evidence={note.inference} kind={note.kind} /> : undefined} />
           {confirm && (
             <div className="confirm" role="alertdialog" aria-label={mine ? 'Delete these notes' : 'Remove these notes'}>
               <span className="ic"><Icon name="trash" size={19} /></span>
@@ -254,7 +268,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                 </Section>
               )}
               {lines.length > 0 && (
-                <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}>
+                <Section title="Transcript" count={minutesLabel(note.duration)} {...part(4)}>
                   {mine && corrected > 0 && !note.writingAgain && (
                     <div className="tr-again">
                       <Icon name="pen" size={16} />
@@ -263,7 +277,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                     </div>
                   )}
                   <Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} />
-                </section>
+                </Section>
               )}
             </>
           ) : ready && lines.length ? (
@@ -284,7 +298,8 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
             </>
           ) : ready ? (
             <section className={cn('sec', going && 'going')}>
-              <EmptyState className="note-empty" title={note.kind === 'room' ? 'Nothing was said while recording.' : 'Nothing was said while notes were on.'}>
+              <EmptyState className="note-empty" title={note.kind === 'room' ? 'Nothing was said while recording' : 'Nothing was said while notes were on'}
+                action={player.total > 0 ? <Button size="sm" icon={player.playing ? 'pause' : 'play'} onClick={player.toggle}>{player.playing ? 'Pause' : `Play ${minutesLabel(player.total)}`}</Button> : undefined}>
                 {note.audio.length ? 'So there’s no summary or transcript. You can still play the audio.' : 'So there’s no summary or transcript.'}
               </EmptyState>
             </section>
@@ -292,20 +307,16 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
             <>
               <section className={cn('sec', going && 'going')}>
                 <Notice tone="info" icon="lock">
-                  <b>{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b> Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.
+                  <b>{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b> Summary, decisions and follow-ups are {note.status === 'recording' ? 'written in confidential compute once it stops' : 'being written in confidential compute'}. {note.kind === 'room' ? 'They show here when they’re ready.' : 'Everyone invited gets them when they’re ready.'}
                 </Notice>
-                {progress && (
-                  <ul className="steps">
-                    {progress.steps.map((s) => <li key={s.label} className={cn(s.done && 'done')}><Icon name={s.done ? 'check' : 'clock'} size={15} />{s.label}</li>)}
-                  </ul>
-                )}
+                {progress && <Steps steps={progress.steps} />}
               </section>
               {lines.length > 0 && <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} screens={screens} /></Section>}
             </>
           )}
           {ready && lines.length > 0 && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} />}
         </article>
-        <aside className="rail">
+        <aside className="rail" aria-label="About these notes">
           {player.total > 0 && <div className={cn(going && 'going')} style={{ '--d': 4 }}><Player noteId={note.id} player={player} chapters={note.chapters} room={note.kind === 'room'} /></div>}
           {note.chapters.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><Chapters chapters={note.chapters} gaps={note.gaps} pos={player.pos} onSeek={seek} /></div>}
           {note.screens.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><ScreensCard noteId={note.id} screens={note.screens} onOpen={viewer.show} /></div>}
@@ -318,37 +329,57 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   );
 }
 
+/** How the notes are coming along: what's done, ticked; what's happening now, with dots; what's still to come. */
+function Steps({ steps }: { steps: NoteProgress['steps'] }) {
+  const now = steps.findIndex((s) => !s.done);
+  return (
+    <ul className="steps">
+      {steps.map((s, i) => (
+        <li key={s.label} className={cn(s.done && 'done', i === now && 'now')}>
+          {s.done ? <Icon name="check" size={15} /> : i === now ? <Dots /> : <Icon name="clock" size={15} />}{s.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** What's left where a note was: what went, or why it isn't here, and the way back. */
+function GonePage({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <>
+      <div className="note-top"><Crumb /></div>
+      <section className="ac-card gone" aria-label={title}>
+        <GoneArch />
+        <h2>{title}</h2>
+        {children}
+        <Link to="/notes" className={buttonClass({ size: 'sm' })}>Back to notes</Link>
+      </section>
+    </>
+  );
+}
+
 /* Delete is physical: say exactly what went. */
 function Gone({ kind, audio, screens, organizer }: GoneInfo) {
+  if (kind === 'removed') return <GonePage title="Removed"><p>They’re out of your notes. {organizer} still has them.</p></GonePage>;
   return (
-    <div className="gone">
-      <GoneArch />
-      <h2>{kind === 'deleted' ? 'Deleted' : 'Removed'}</h2>
-      {kind === 'deleted' ? (
-        <>
-          <p className="text-ink-2">Gone from Alcove, for everyone who had them:</p>
-          <ul>
-            <li><Icon name="check" size={18} />Summary, decisions and follow-ups</li>
-            <li><Icon name="check" size={18} />The transcript</li>
-            <li><Icon name="check" size={18} />{audio} of audio</li>
-            {screens > 0 && <li><Icon name="check" size={18} />{screens} shared {screens === 1 ? 'screen' : 'screens'}, and what was read on {screens === 1 ? 'it' : 'them'}</li>}
-          </ul>
-        </>
-      ) : <p className="mb-4 text-ink-2">They’re out of your notes. {organizer} still has them.</p>}
-      <Link to="/notes" className={buttonClass({ size: 'lg' })}>Back to notes</Link>
-    </div>
+    <GonePage title="Deleted">
+      <p>Gone from Alcove, for everyone who had them:</p>
+      <ul>
+        <li><Icon name="check" size={17} />Summary, decisions and follow-ups</li>
+        <li><Icon name="check" size={17} />The transcript</li>
+        <li><Icon name="check" size={17} />{audio} of audio</li>
+        {screens > 0 && <li><Icon name="check" size={17} />{screens} shared {screens === 1 ? 'screen' : 'screens'}, and what was read on {screens === 1 ? 'it' : 'them'}</li>}
+      </ul>
+    </GonePage>
   );
 }
 
 function Missing({ error }: ErrorComponentProps) {
   const notFound = errorCode(error) === 'not-found';
   return (
-    <div className="gone">
-      <GoneArch />
-      <h2>{notFound ? 'These notes aren’t here' : 'Couldn’t open these notes'}</h2>
-      <p className="mb-4 max-w-[42ch] text-ink-2">{notFound ? 'They were deleted, or they were never shared with you.' : errorMessage(error)}</p>
-      <Link to="/notes" className={buttonClass({ size: 'lg' })}>Back to notes</Link>
-    </div>
+    <GonePage title={notFound ? 'These notes aren’t here' : 'Couldn’t open these notes'}>
+      <p>{notFound ? 'They were deleted, or they were never shared with you.' : errorMessage(error)}</p>
+    </GonePage>
   );
 }
 
@@ -358,10 +389,10 @@ function Example({ me }: { me: Person }) {
   const [actions, setActions] = useState(note.actions);
   return (
     <>
-      <div className="note-top" style={{ '--d': 0 }}><Link to="/home" className={cn(buttonClass({ variant: 'quiet', size: 'sm' }), 'back')}><Icon name="left" size={16} />Home</Link></div>
+      <div className="note-top" style={{ '--d': 0 }}><Crumb to="Home" here={note.title} /></div>
       <div className="note" style={{ '--d': 1 }}>
         <article className="doc">
-          <DocHead title={note.title} when="Example · 24 minutes" people={note.people} chip={<Chip tone="sun" className="lead-chip">Example</Chip>} />
+          <DocHead title={note.title} when="Example · 24 min" people={note.people} me={me.email} chips={<Chip tone="sun">Example</Chip>} />
           <Section title="Summary"><p className="summary">{note.summary}</p></Section>
           <Section title="Decided" count={note.decisions.length}><Decisions items={note.decisions} me={me.email} /></Section>
           <Section title="Still open" count={`${note.questions.length} open`}><Questions items={note.questions} me={me.email} /></Section>

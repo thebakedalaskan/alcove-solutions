@@ -3,7 +3,7 @@
  * player plays them one after another as a single recording. Audio is decrypted by the server for
  * a signed-in recipient only, and streamed straight into the page.
  */
-import { minutesLabel, type AudioSegment, type Chapter } from '@alcove/api';
+import type { AudioSegment, Chapter } from '@alcove/api';
 import { Icon } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
@@ -95,7 +95,7 @@ export function Player({ noteId, player, chapters, room }: { noteId: string; pla
   const chapter = chapters.findLast((c) => c.at <= pos);
   return (
     <section className="player" aria-label="Audio">
-      <div className="player-top"><span className="inline-flex items-center gap-[7px]"><Icon name="lock" size={14} />Private audio</span><span className="ac-mono">{minutesLabel(total)}</span></div>
+      <div className="player-top"><span><Icon name="lock" size={14} />Recording · encrypted</span><span className="ac-mono">{position(total)}</span></div>
       <div className="wave" role="slider" tabIndex={0} aria-label="Position" aria-valuemin={0} aria-valuemax={Math.round(total)} aria-valuenow={Math.round(pos)} aria-valuetext={position(pos)}
         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * total, playing); }}
         onKeyDown={(e) => { if (e.key === 'ArrowRight') seek(pos + 10, playing); if (e.key === 'ArrowLeft') seek(pos - 10, playing); }}>

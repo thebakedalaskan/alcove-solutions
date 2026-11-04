@@ -18,7 +18,8 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
    left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
-   team at** the company, with its size and faces, when there's a company directory. **Notes are written in
+   team at** the company, with its size and faces, when it has people in it and has arrived by then (the screen
+   doesn't wait for it). **Notes are written in
    confidential compute**, with the time the hardware was verified when this browser could check it. Then
    "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
@@ -27,10 +28,11 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    the page dimmed around the real thing the slide is about, with an arrow to it. **Schedule in one line**
    (New call), **Notes for your calls** (a call's notes setting, or the example note before there are calls),
    **Join a call** (Join on the next Alcove call, left out when there isn't one), **Record in the room**
-   (Record, in the side panel or the phone's tab bar), **Your notes stay yours** (the confidential-compute badge) and **You’re ready** (New call). The card
+   (Record, in the side panel or the phone's tab bar), **Your notes stay yours** (the confidential-compute check in
+   the side panel, or the badge at the top of Home on a phone) and **You’re ready** (New call). The card
    moves beside its target, or along the bottom on a phone; **←**/**→** and **Enter** move through it and
    **Escape** or **Skip tour** closes it. It isn't shown again on that browser for that account; **Take the
-   tour** in the menu under your name plays it again.
+   tour** in Settings (flow 11) plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
 the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. Microsoft
@@ -48,8 +50,9 @@ Beside every page:
 
 - **New call** (or **N**) opens the one line of flow 4. **Search or ask** (**⌘K** on a Mac, **Ctrl+K**
   elsewhere) opens the palette, below.
-- **Home**; **Notes**, with how many notes you have; and **Record**, which starts recording in the room
-  straight away (flow 9).
+- **Home**; **Notes**, with how many notes you have; **Record**, where recording in the room starts (flow 9);
+  and **Team** (flow 10), with how many people at your company use Alcove, you among them, once anyone besides
+  you does.
 - **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
@@ -58,19 +61,19 @@ Beside every page:
   or that you removed from your notes, isn't listed. The pin beside the heading opens the palette to pick
   notes to pin or unpin; with 8 pinned it says to unpin one first. With nothing pinned, a line says what
   pins are for.
-- **Groups**: each of your groups and how many people are in it.
+- **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
+  starts a new one there.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), the time of notes left, and you, with your company or
-  your address, which opens the menu under your name: **Account**, **Take the tour** (the tour of Home again,
-  flow 3), the light or dark theme, and **Sign out**.
+  hardware answer is bound to this browser's request), the time of notes left, which opens Settings at your
+  minutes, and you, with your company or your address and a cog, which opens Settings (flow 11).
 - Offline, a notice at the top says recording and calls need a connection, and pages update when you're back.
   Up next and the check wait until the connection returns.
 - **Hide the side panel** gives the page the room; the button left in the top-left corner brings the panel
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search, **New call** and
-you (the same menu), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised) and **Settings**. Offline,
-the same notice sits under the top bar.
+you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised, in the middle),
+**Team** and **Settings**. Offline, the same notice sits under the top bar.
 
 **The palette** is one line over the page. Before anything is typed it lists your five newest notes. Typing
 lists the notes whose titles, summaries or transcripts match, up to eight, with the match marked. **Enter**
@@ -81,36 +84,81 @@ closes the palette, and focus goes back where it was. It never opens over anothe
 
 ## 3. Home
 
-- The date, a greeting, a **Confidential compute** badge (with the time the hardware was verified when this
-  browser could check it), and **Up next**: the next Alcove call or, with Google Calendar connected, the next
-  meeting on the calendar, with a countdown and who is invited. An Alcove call shows whether it has notes,
-  **Join** (**J**), **Copy link** and, before it starts, **Change this call**. Another calendar meeting
-  shows **Join on Google Meet** (or Zoom, Teams, Webex) when it has a video link, **Use Alcove instead** when
-  you organized it, and a link to it in Google Calendar.
+Each card on Home does one thing, and each says what will appear in it before there's anything.
+
+- The date, a greeting, a line with how many calls are left today and what waits on you ("Four more calls
+  today. One decision and one follow-up are waiting for you."), and, on a phone or with the side panel hidden, a
+  **Confidential compute** badge (with the time the hardware was verified when this browser could check it).
+  Otherwise the side panel shows that check, so it's there once.
+- **Up next**: the next Alcove call (or the one going now) or, with Google Calendar connected, the next meeting on
+  the calendar, with a countdown and who is invited. An Alcove call shows whether it has notes, **Join** (**J**),
+  **Copy link** and, when you organized it and it hasn't started, **Change this call**. Another calendar meeting shows **Join on Google Meet**
+  (or Zoom, Teams, Webex) when it has a video link, **Use Alcove instead** when you organized it (the calendar
+  event gets the Alcove link, and Google tells everyone on it), and a link to it in Google Calendar.
+  When it's in a series (calls that follow on from each other, flow 8), **Last time** shows the start of the notes
+  from the series' latest earlier call and how many of their follow-ups are still open, and opens them. A call
+  outside a series has none, whatever its title.
+  With nothing ahead, the same card is the line to start a call now or describe one to schedule it (flow 4).
 - When the call that's up next is in a series, **From earlier calls** sits under it: the decisions people
   confirmed, the questions still open (marked once they've stayed open through two calls), and the
   follow-ups someone took on, with a count of the rest (not confirmed yet, not taken on yet, done since the
   last call). Each names the call it came from, which opens its notes, and the moment it was said, which
   opens them at that line. **N calls** opens the series. Before a series has notes, the card says nothing
   carries over yet.
-- Below it, the rest of today, then tomorrow and later, with Alcove calls and calendar meetings together.
-  A later call in a series has a link to what carries over into it.
-  **Use Alcove** on a meeting you organized makes it an Alcove call: the calendar event gets the Alcove
-  link, and Google tells everyone on it.
-- Signed in with Google without sharing the calendar, a card offers **Connect Google Calendar**.
-- Until there are notes, an example note shows what notes look like. After that, **Recent notes** and
-  **Your follow-ups**: the follow-ups in your notes that are for you and not done, which can be ticked
-  off. They come from the inbox (`GET /v1/notes/inbox`), which also lists the decisions in notes you have that
-  nobody has confirmed yet, newest note first. Notes someone else shared with you count; ones you removed don't.
-- A team card shows who already uses Alcove, with **Invite** for the rest. With a company directory it lists the directory (with titles). Otherwise it lists the people at your work email domain you have had Alcove calls or calendar meetings with. The calendar is read newest first (the coming week, then up to 90 days back) and given 4 seconds; if Google is slow or unavailable, the team lists Alcove calls only. Personal addresses (gmail.com, outlook.com, icloud.com and the like) have no team.
-  Inviting marks them as invited; no email is sent yet.
+- **Waiting on you**, newest first, four at a time: decisions the notes proposed in any note you have that nobody
+  has confirmed (**Confirm** or **It wasn’t decided**, each with **Undo**); follow-ups the notes suggest are yours,
+  or that someone gave you (it says who), with **Take it on**, which puts it in your follow-ups, or **Not mine**,
+  which leaves it with nobody (then **It’s mine** gives it back to you, taken on); and notes someone shared with you in
+  the last 7 days (**Read the notes**). What you answer stays where it is, saying what you did, until you leave
+  Home. Each names the note it came from, which opens at the moment it was said when the notes know it.
+- **Your follow-ups**: the ones you took on and haven't done, from every note you have, grouped Overdue, This
+  week, Later and No date. The due words count from when they were said: the last time the due date was
+  changed, or else the call. A day ("today", "EOD", "tomorrow", "Friday", "Friday next week", "Nov 5") is that
+  day, so "tomorrow" said yesterday is due today, and its chip says when ("Today", "Thu", "Fri 13 Nov"). A
+  stretch of time ("this week", "next week", "in two weeks", "end of the month", "next month", "end of March",
+  "Q1") is due when it ends, so "next week" said last Friday is this week; its chip keeps the words. Words with
+  no date ("ASAP", "later") show as they were said, under No date. Ticking one crosses it out, and ticking it
+  again puts it back.
+- **Today**, on a line: the notes from earlier today (each opens its note, and says whether it's written) and
+  the calls going now, in the order they started; now; then the calls and meetings still to come today, the next
+  one lit. Underneath, **Next 7 days** says how many calls come in the week after today and when the first is;
+  opened, it lists them by day. A call in a series that meets weekly (its last three calls a week apart) says
+  its day, "Every Tuesday", where the others say who's on them. Calls and meetings on the line and in the next
+  7 days have a menu (**⋯**, shown when you point at the row, and always on a touch screen): an Alcove call you
+  organized that hasn't started has **Change this call**, **Copy link** and **Cancel call** (it asks first); any
+  other Alcove call, such as one going now, has **Copy link**; a calendar meeting has **Open in Google Calendar**
+  (in a new tab) and, when you organized it, **Use Alcove instead**; and one in a series also has **What carries
+  over**, which opens the series. With **Show my other meetings on Home** off (Settings), only Alcove calls
+  count: in Up next, on the line, in the next 7 days and in the greeting's line.
+- **Ask your notes**: a question typed here, or a suggested one, opens the palette and asks it there, across
+  every note you have (flow 2).
+- **Recent notes**: your four newest, with **All notes**.
+- Signed in with Google without sharing the calendar, a card offers **Connect Google Calendar**; **Not now** puts
+  it away in this browser.
+
+Waiting on you and your follow-ups come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that
+aren't done (taken on, or only suggested) and the decisions in written notes that nobody has confirmed or
+rejected, newest note first. Notes someone else shared with you count; ones you removed don't.
+
+Before your first notes, Home starts you off: the line to start your first call (until one is scheduled, which
+is then Up next), the example note, marked as an example and never counted (it opens in full), an empty **Your
+follow-ups** and **Today** (which offers **Record in the room**), and your team. The team card shows who from
+your company already uses Alcove and who doesn't yet, with **Invite people**, which marks everyone not yet asked
+as invited (no email is sent yet), or **Copy invite link**, the sign-in page's address. With a company directory
+the team is the directory. Otherwise it's the people at your work email domain you have had Alcove calls or
+calendar meetings with; the calendar is read newest first (the coming week, then up to 90 days back) and given 4
+seconds, and if Google is slow or unavailable, the team comes from Alcove calls only. Personal addresses
+(gmail.com, outlook.com, icloud.com and the like) have no team: the card says it's just you, for now, with the
+invite link.
 
 ## 4. Start or schedule a call
 
 1. **New call** (or press **N**) opens one line. Describe the call, like "Design review with Priya tomorrow
    3pm for 45 min". What's understood turns into chips: the day and time, the people (colleagues and people
    from past calls by name, anyone by email address) and notes on or off (from your default, or "no notes" in
-   the sentence). A name without a known address asks for an email.
+   the sentence). A name without a known address asks for an email. The same line sits at the top of Home
+   before your first call and whenever nothing is scheduled; there, a name without an address opens New call
+   with the sentence, to add one.
 2. **Enter** starts the call now and opens pre-join, unless a day or time was typed. Then it schedules the
    call: it goes on Home and, with Google Calendar connected, on the calendar, where Google sends everyone
    invited an invitation. For a few seconds, **Undo** cancels it. If nobody was invited, the link is copied.
@@ -303,26 +351,52 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ## 8. Notes
 
-- **Notes** lists every note you have, your own and those from other people, grouped by date. Search
-  matches titles, summaries and transcripts; the filter picks calls or the room.
-- **Share** gives the notes to more people by email, once the call has ended or the room recording has
-  stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
+- **Notes** lists every note you have, your own and those from other people, newest first and grouped by day
+  (Today, Yesterday, This week, Last week, then months). Each row has the start of the summary, who has the
+  note, what's still open in it (follow-ups, decisions to confirm), the time or the day, and a pin when it's
+  pinned. Search matches titles, summaries and transcripts. **All**, **Calls**, **In the room** and **Shared
+  with you** (notes someone shared with you afterwards) narrow the list, and **With anyone** picks someone you
+  have notes with: the list shows only the notes they have too, under a chip whose × shows everyone's again.
+  That person is in the address after `#with=` (the Team page links there), which never leaves the browser.
+- On a wide screen (more than 1240px) the note picked in the list shows beside it: whether it's ready,
+  **Pin**, **Share** and **Open notes**, when it was and who has it, the summary, decisions (**Confirm** one
+  there) and follow-ups (tick one there). A click picks a note; a double click, Enter or **Open notes** opens
+  it; ↑, ↓, Home and End move through the list. Narrower, a note opens on its own page.
+- When the list has nothing to show, it says why: nothing matches the search (**Clear search**), nothing has
+  been shared with you yet, or you have no notes with that person yet (**Show notes with anyone**). Before your
+  first notes, Notes shows an example of what they'll look like, with **New call** and **Record in the room**.
+- **Share** gives the notes to more people by email, or to one of your groups (offered first, by name), once
+  the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
   when they went to one of the sharer's groups.
-- Someone else's notes say how you got them: **From Priya’s call** when you were invited, **Shared with you**
-  when someone shared them afterwards. Notes lists them as from whoever gave them to you, and **Who has these
-  notes** shows how each person got them.
+- Someone else's notes say how you got them, beside their title: **From Priya’s call** when you were invited,
+  **Shared by Theo** when someone shared them afterwards, or **Shared by Theo with Leads** when it was to one of
+  their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
+  got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
+  first eight people until **Show all** opens it.
 - **More › Delete notes** deletes your own notes for everyone, audio included, and then lists what went. For
   notes from someone else it's **Remove from your notes**: everyone else keeps them, and you're no longer
   listed as having them.
-- A written note shows the summary, decisions, open questions, follow-ups, chapters and transcript, and
-  takes questions about the call: a suggested question or your own. Answers cite the moments in the recording
-  they come from.
+- A note's page starts with a way back (**Notes /** its title), the pin (**Pin these notes**, at most eight
+  pinned), **Share** and **More**. Chips above the title say whether it's **Ready**, **Being written** or **Still
+  recording**, the series it's in, and how you got it. Under the title: when it was and who has it, then
+  **Written in confidential compute** with when the hardware was checked, which opens what was checked about
+  the models.
+- A written note shows the summary, decisions, open questions, follow-ups, the transcript (its first lines,
+  then **Show all 24 minutes**) and, beside it, the encrypted recording, chapters, shared screens and who has
+  it. It takes questions about the call: a suggested question or your own, in a bar that stays at the bottom
+  while you read (suggestions show at the end of the note). Answers cite the moments in the recording they
+  come from.
+- Until the notes are written, the page says the audio is saved and encrypted and the notes are being written
+  in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript) with the
+  one in progress marked. When nothing was said, it says so and offers **Play** for the audio. After **Delete
+  notes** it lists what went; a note that isn't there (deleted, or never shared with you) says so, with **Back
+  to notes**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
-  behind **Search or ask**, flow 2). The answer comes from those notes only, up to 12 of them that share the
-  most words with the question, and cites the notes and the moments in them it comes from. Until a note is
-  written, or when nothing was said in any, it says so instead, and nothing is sent to the notes model. An
-  answer written while a note it read was deleted or taken from you isn't shown: ask again.
+  behind **Search or ask**, flow 2, and Home's **Ask your notes**). The answer comes from those notes only, up
+  to 12 of them that share the most words with the question, and cites the notes and the moments in them it
+  comes from. Until a note is written, or when nothing was said in any, it says so instead, and nothing is sent to
+  the notes model. An answer written while a note it read was deleted or taken from you isn't shown: ask again.
 - The transcript dots what it isn't sure of (words that were hard to hear, a name heard on more than one
   microphone) and says what the dots mean above it. The organizer can correct any line in place, its words or
   who said it, or say it was heard right; anyone else who has the notes can correct the words of their own lines,
@@ -337,8 +411,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   notes suggest, dashed, until that person taps **Take it on**. Its menu gives it to anyone who has the notes
   (giving it to yourself takes it on), sets a due date, rewords it, and lists every change: who did what, and
   when.
-- A call's notes say when it's **In a series**, with how much is still open and, for the organizer, the next
-  call. When it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people
+- A call's notes say when it's in a series: **Every Tuesday** when the last three calls in it were a week apart,
+  otherwise **In a series**. Beside the note are the series' other calls (the newest three, with the start of
+  each summary), how much is still open across them and, for the organizer, the next call; **All** opens the
+  series page. When it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people
   and notes setting, at the same time of day a week on (still the same time when the clocks change in
   between), on the calendar; **Change** in the confirmation moves it or cancels it.
 - The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
@@ -352,30 +428,108 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ## 9. Record in the room
 
-**Record** in the side panel or the phone's tab bar, or **New call › Record in the room**, starts recording the microphone straight away, in 5-second encrypted pieces
-with a live waveform, and transcribes what's said as it goes, without naming who spoke. Rename by editing the
-title, pause and resume, then **Finish and write notes** (opens the note) or **Home › Discard recording**
-(nothing is kept). Room notes are yours alone until you share them.
+**Record** in the side panel or the phone's tab bar (raised, in the middle), or **New call › Record in the
+room**, opens the Record page:
+
+- **The recorder**: a name for the recording (left empty, it's "Notes from the room") and the microphone it will
+  use, from this browser's microphones (the same choice calls use). Choosing one doesn't open it. **Check the
+  level** opens the microphone and shows how loud it is, recording nothing; **Stop** lets go of it. While it's
+  open, a microphone that doesn't start, or one unplugged, is said under it, and the one still in use stays
+  shown. The page never opens the microphone by itself, and the camera plays no part.
+- **Start recording** (or **R**, or **Enter** in the name) opens the stage recorder, which starts recording the
+  microphone straight away, in 5-second encrypted pieces with a live waveform, and transcribes what's said as
+  it goes, without naming who spoke. Rename by editing the title, pause and resume, then **Finish and write
+  notes** (opens the note) or **Home › Discard recording** (nothing is kept).
+- **Recorded before**: your four newest recordings as tiles (when, how long, the start of the summary, who has
+  it, follow-ups still open), with **In Notes** for the rest. Room notes others shared with you aren't listed.
+  Before the first recording, **Your recordings** says they'll show up here with their notes.
+- **How it works** says the audio is encrypted as it's recorded and each piece uploads as it's recorded, so
+  starting needs a connection, and that room notes go to nobody unless you share them. Offline, the recorder
+  says it needs a connection to start; starting anyway ends at "Couldn't start recording".
+
+Room notes are yours alone until you share them.
 
 The note keeps the recording's own times: when it started, how long it ran with the pauses left out, and
 when each line was said. Each piece of audio and each clip of speech carries its place in the recording, so
 a piece that reaches Alcove late, or twice, still lands where it was recorded, once.
 
-## 10. Account
+## 10. Team
 
-The profile from the sign-in (name, email, photo, provider); for a Google account, Google Calendar (connected,
-or **Connect**, with **Disconnect** to forget it and withdraw Alcove's access at Google, and **Put calls I schedule on my calendar** to keep scheduled
-calls off it), and for a demo account, the sample calendar; notes for new calls (on or off); credits, shown
-as the time of notes left and the minutes of notes used this month (since 00:00 UTC on the 1st); appearance
-(system, light or dark); the team (not at a personal address), with **Invite** for each colleague; what Alcove
-knows and what it can't read; and **Sign out**.
+**Team** shows your company and who in it uses Alcove: the company directory where there is one (the demo
+directory today), otherwise the people at your work email domain you have calls or calendar meetings with. A
+personal address (gmail.com, outlook.com, icloud.com and the like) has no team.
 
-**Delete account**, after a step that names what goes, deletes the account for good: the notes you organized,
-for everyone you gave them to, with their audio; your recordings, calls and meetings; your groups and pins; your
+- **People**: a card for each person on Alcove, you first, then whoever you met most recently, with their
+  title (or address) and **Next call** at a time later today or **Last call** with the day, from your notes.
+  **Start a call** opens New call with them already in it; **Notes with** lists the notes you both have
+  (`/notes#with=<address>`: the address stays in the browser, since a fragment is never sent to the web host).
+  The cards can show the colleagues invited, or not on Alcove yet, instead. Eight show before **Show all**.
+- **Not on Alcove yet**: the rest, each with how many calls and calendar meetings you have with them this month.
+  **Invite** (or **Invite all**) opens your own email with an invitation to them (a subject and the link to
+  sign in) and marks them invited; **Remind** opens it again. **Invite people** picks from them the same way,
+  or copies the invite link, which is the address of the page to sign in. Alcove sends no email itself.
+- **Groups**: each with how many people are in it and how many of your calls had any of them. A group opens in
+  place (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least
+  one); **Add people**, from the same picker as New call; **Start a call** with all of them; **Rename**; and
+  **Delete**, which asks once and can be undone for a few seconds. **New group** names one (Enter opens the
+  picker) and fills it; a group half made waits there until you make it or discard it with ×. A name is 1 to 40
+  characters and not one of your other groups'; a group holds up to 50 people, and you can have 30 groups. Groups
+  live in your preferences: only you see them, and only a group's name leaves them, on the notes you share with
+  it. Changes to your preferences (groups, pins, settings) are saved one at a time, in order.
+- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it
+  with Leads", "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from
+  the people who still have each note). Each opens its note.
+- **Your minutes**: the time of notes left and the minutes used this month.
+
+With nobody else at your company on Alcove yet, the page asks you to bring them: you beside empty arches for the
+people you meet most, **Invite people** and **Copy invite link**, then those people, each with **Invite**. A
+personal account shows "Just you, for now", with **Invite people** (an email from your own mail app, with the
+link) and **Copy invite link**, then your groups and the notes shared with groups.
+
+## 11. Settings
+
+**Settings** opens from you at the foot of the side panel, the phone's avatar or its **Settings** tab. It says who
+you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. On a wide
+screen a nav beside the cards jumps to each part and marks the one in view. Every control saves as it changes: the
+setting says **Saved** for a moment once it's kept, and one the server refuses goes back, with a toast saying why.
+
+- **Profile**: your name, address and photo from the sign-in, with a link to change them at Google or Microsoft
+  (they update here the next time you sign in); your company, from the company directory or the people at your
+  work domain you meet (not at a personal address); and the time zone times are shown in, this computer's.
+- **Notes**: notes on or off for new calls (each call can still be set when it's scheduled), that everyone invited
+  always gets them, the language they're written in ("Same as the call", or one of twelve), and how much the
+  summary says (**Short** or **Detailed**). Language and summary apply to notes written from then on.
+- **Recording in the room**: **Record without a connection** (on by default).
+- **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
+  access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
+  instead. Then **Put calls I schedule on my calendar** and **Show my other meetings on Home** (both on by default).
+- **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
+  one doesn't open it. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the
+  browser asks first if it hasn't been allowed) and its level moves as you speak, records nothing, and closes
+  sooner when pressed again or when this part leaves the screen. **Play test sound** plays through the chosen
+  speaker; the camera is a list only, never opened here, and until the browser has allowed a camera on the join
+  screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
+- **Notifications**: before a call starts (1 min, 5 min or off), notes ready, notes shared with you, someone asking
+  for notes in a call you organize, and a follow-up due (off by default). They're saved with your preferences;
+  Alcove doesn't show browser notifications yet.
+- **Appearance**: match the system, light or dark, each shown as a small window in its own colours, kept in this
+  browser.
+- **Plan and credits**: the time of notes left, a meter, and the minutes of notes used this month (since 00:00 UTC
+  on the 1st). Calls without notes are free.
+- **Privacy**: what Alcove knows and what it can't read, and the confidential-compute check with the time the
+  hardware was verified, when this browser could check it.
+
+**Delete account** opens one step in place (never a window over the page) that names what goes: the notes you
+made, with their audio, for everyone who has them; the calls you scheduled; the minutes of notes left; your groups
+and pins; your Google Calendar connection; and your sign-in on every browser. **Delete my account** then deletes the account for good:
+the notes you organized, for everyone you gave them to, with their audio; your recordings, calls and meetings; your groups and pins; your
 Google Calendar connection; and your sessions, so every browser is signed out. You're taken off the notes other
 people gave you; notes you shared on stay with the people you shared them with, still saying you shared them.
 Your calls on Google Calendar that haven't ended are cancelled there, begun or not, and their guests are told,
 except a meeting you made an Alcove call with **Use Alcove**: it's your own event, so it stays on your calendar
 as it was, and its Alcove link stops working. Alcove's access to your Google account is revoked. If Google is
 slow or unavailable, the account is deleted all the same, and calls it couldn't cancel stay on the calendar.
-The shared demo account can't be deleted. Signing in again starts a new, empty account with 10,000 credits.
+The shared demo account can't be deleted: the step says so and offers only **Close**; any other failure is said
+there too, and **Delete my account** tries again. Once it's deleted you land on the welcome page, signed out, even
+if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
+Signing in again starts a new, empty account with 10,000 credits.
