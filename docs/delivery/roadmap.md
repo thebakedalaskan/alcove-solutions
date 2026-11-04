@@ -26,6 +26,10 @@
   the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
   series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
   calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
+- Seamless reconnects and moving a call to another device: someone whose connection dropped comes back in as the
+  same person by themselves, and **Move to another device** hands a place in a call to a phone or another computer
+  (a QR code or link, one use, two minutes), releasing the old device's microphone before the new one's starts
+  ([Calls and recordings › Moving to another device](../engineering/calls-and-recordings.md#moving-to-another-device)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
