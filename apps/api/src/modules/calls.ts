@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
 import type { Deps, Owner } from '../context';
 import type { LiveKitEvent } from '../livekit';
-import { H, b64u, id128, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
+import { b64u, id128, mac, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
@@ -225,11 +225,13 @@ function readableBy(v: Viewer, s: Stored): (l: transcripts.Line) => boolean {
 }
 
 /**
- * Someone's seat in the call, which each viewer's own layout keys them by: the same across their connections (a
- * reload's pass carries their `person`; the organizer has one seat whichever device they're on), made from the call and
- * their random `person`, so it says nothing about who they are and differs in every call. Never stored.
+ * Seats: what each viewer's own layout keys people by. Someone's seat is the same across their reconnections (a reload's
+ * pass carries their `person`; the organizer has one seat on any device), and a MAC of that random `person` under a key
+ * for this call from the organizer's root: nobody can work one out, it says nothing about who anyone is, and it differs
+ * in every call. Never stored. Anyone but the organizer joining from a second browser is a new person, with a new seat.
  */
-const seatOf = (callId: string, j: Joined) => b64u(H('alcove/call-seat/v1', utf8(`${callId}\n${j.role === 'host' ? 'organizer' : j.person}`))).slice(0, 22);
+const seatKey = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call-seat:${callId}`);
+const seatOf = (key: Uint8Array, j: Joined) => b64u(mac(key, utf8(j.role === 'host' ? 'organizer' : j.person))).slice(0, 22);
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const o = v.organizer;
@@ -248,9 +250,10 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, LIVE_TRANSCRIPT_LINES) : [];
   // Who's in: whoever the organizer's browser let into the group and hasn't left. Never asked of LiveKit, so reads cost nothing there.
   const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in') : [];
+  const seats = seatKey(o, callId);
   return {
     ...base,
-    participants: here.map((j) => ({ id: j.identity, seat: seatOf(callId, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.identity === row.host_identity, hand: j.hand })),
+    participants: here.map((j) => ({ id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.identity === row.host_identity, hand: j.hand })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],

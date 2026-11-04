@@ -96,9 +96,9 @@ export const CallParticipantSchema = z.object({
   /** LiveKit identity: new for every connection, a reload included. */
   id: z.string(),
   /**
-   * The same for every connection someone makes to this call (a reload, another device for the organizer), so each
-   * viewer's own layout keeps them where they were. Random, and different in every call: it says nothing about who
-   * they are.
+   * The same across someone's reconnections to this call (a reload; for the organizer, any device), so each viewer's
+   * own layout keeps them where they were. Anyone else joining from a second browser is a new person, with a new seat.
+   * Random, and different in every call: it says nothing about who they are.
    */
   seat: z.string(),
   person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
