@@ -110,14 +110,18 @@ The call itself stays in the API: who's let in, notes and the transcript.
   `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
   from `KMASTER`, per request. A removed person's pass stops working, and once the call has ended only the
   organizer can read it.
-- **What each role can do.** Everyone let in: read the call, chat, catch up and ask, raise a hand, ask
-  for notes, and, while screen notes are on, send frames of their own shared screen
-  ([Shared screens](#shared-screens)). Only the organizer (pass role `host`, their own session and their current connection: joining
-  from another device takes the powers with it): let people in or turn them away, notes on/off, pause and
-  resume, say not now to an ask for notes, say what their browser can't capture, audio and speech uploads,
-  mute someone's microphone, remove someone, lock the call, and end it. The recording is the organizer's
-  microphone; the live transcript comes from what the organizer's browser plays (see Notes below). Link guests
-  get no notes; invited people, and people signed in whom the organizer let in, get them.
+- **What each role can do.** Everyone let in: read the call, chat, catch up and ask, for themselves alone
+  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), raise a hand, ask for notes,
+  and, while screen notes are on, send frames of their own shared screen ([Shared screens](#shared-screens)).
+  Everyone reads the live transcript of the part of the call they're in, as said while they were there; a guest
+  with the link, who doesn't get the notes, reads only what was said while they were in the call as well (the
+  live transcript, captions, catching up, asking and moments), while the organizer and everyone on the invite
+  (people signed in whom the organizer let in included) read all of it. Only the organizer (pass role `host`, their
+  own session and their current connection: joining from another device takes the powers with it): let people in
+  or turn them away, notes on/off, pause and resume, say not now to an ask for notes, say what their browser can't
+  capture, audio and speech uploads, mute someone's microphone, remove someone, lock the call, and end it. The
+  recording is the organizer's microphone; the live transcript comes from what the organizer's browser plays (see
+  Notes below). Link guests get no notes; invited people, and people signed in whom the organizer let in, get them.
 - **Leaving and ending.** Anyone but the organizer leaving is taken out of their part of the call's group, so
   its keys move on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
   (closed, reloaded or left for another), which sends the same request as a keepalive request. A page that is
@@ -466,7 +470,7 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
   ([Verified private inference](notes-and-inference.md#verified-private-inference)). Each line and language is
   translated once and kept as a sealed `transcript_translations` row, tagged with a keyed hash of the line and
   language, until the recording stops; then they go with the live transcript. Lines that aren't in this
-  call's live transcript are left out. Like catch-up and ask, it keeps no idempotency receipt, it has its
+  call's live transcript, or that the person asking may not read, are left out. Like catch-up and ask, it keeps no idempotency receipt, it has its
   own rate limit (90 a minute per person), and it's refused while notes are paused. Captions themselves are only shown: turning them off hides the
   caption bar, and the call is still transcribed for notes while notes are on.
 
@@ -632,6 +636,18 @@ device pickers.
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
   breakout rooms too, each room its own, and say so instead of showing an old line while notes are paused or
   off, or while the organizer's browser can't listen.
+- **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up** in the top bar and
+  the More menu opens the Ask view on what they most likely missed (their recent time away, what was said before
+  they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5
+  or 15 minutes, before you joined, since you joined, while you were away, the whole call, or a stretch picked on
+  the call's timeline (two handles, by pointer or keys; notes-off stretches hatched, time away marked, and for a
+  guest what they can't read dimmed). Each answer says the stretch it read on the clock, how many lines and as of
+  when, and what can't be in it. Each point carries its moments as time chips; one opens the transcript at that
+  line, marked, with what was said around it, asked of the server again. **Back to live** returns the panel to
+  how it was before catching up (closing it on a phone), and the transcript to following along; the viewer's own
+  layout (pins, sizes, order, self-view) is never touched. Someone who comes back after time away, or joins well
+  after the start, is offered a catch-up once, as a toast; a guest isn't, since they can't read what was said then.
+  Nothing of it is kept: it goes with the page.
 - **Notes.** While notes are on, the recorder keeps the organizer's microphone, and the live transcript hears
   everyone the organizer's browser plays: its own microphone and each other microphone in its part of the call
   (`CallRoom.heard()`, the raw decrypted tracks of unmuted microphones, so nobody's volume on this screen changes

@@ -260,7 +260,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   waits); joining by link: 120. Transcript clips: 120 a minute per account, calls and room recordings together.
   Shared-screen frames: 24 a minute per person in a call, and
   30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
-  series): 20 a minute per account, together. Over a
+  series): 20 a minute per account, together (during a call, per connection to it). Opening a moment of a call's
+  live transcript from a catch-up: 60 a minute per connection to the call. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV or a shared-screen frame over

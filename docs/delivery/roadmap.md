@@ -38,6 +38,11 @@
   and chat; moving someone between rooms moves their keys; what's said in a room shows only there (transcript,
   captions, catching up) and is deleted when it closes; and each room has its own capture state, which the
   organizer can pause ([Calls and recordings › End-to-end encryption](../engineering/calls-and-recordings.md#end-to-end-encryption)).
+- Catching up during a call, for the person asking alone: what they missed while away or before they joined,
+  or any stretch of the call, sorted into decided, proposed, open and next, each point with the transcript moments
+  it came from (only real lines), saying what it couldn't have heard and as of when, with Back to live. In a
+  breakout room it reads the room's lines; guests with the link read only what was said while they were there.
+  Nothing is kept ([Notes and inference › Catching up during a call](../engineering/notes-and-inference.md#catching-up-during-a-call)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
