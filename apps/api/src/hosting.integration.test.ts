@@ -54,6 +54,13 @@ async function letIn(host: CallSession, who: CallSession) {
 const latestKeys = (call: CallSession) => call.crypto.getSnapshot().media?.epochs.at(-1)?.keys ?? {};
 const keyOf = (call: CallSession) => JSON.stringify(Object.entries(latestKeys(call)).sort(([a], [b]) => a.localeCompare(b)).map(([id, k]) => [id, Buffer.from(k).toString('hex')]));
 const members = (call: CallSession) => [...call.crypto.getSnapshot().members].sort();
+/** In the group of a part of the call (the main room, or a room), holding its keys. */
+const inPlace = (call: CallSession, place: string) => waitFor(() => {
+  const s = call.crypto.getSnapshot();
+  return s.status === 'in' && s.place === place && Boolean(s.media?.send);
+}, `${call.ticket.role} in ${place === 'main' ? 'the main room' : 'a room'}`);
+/** Who's on the meeting's invite, as its organizer reads it. */
+const invite = async (api: AlcoveApi, meetingId: string) => (await api.meetings.get(meetingId)).guests.map((g) => g.email).sort();
 const sendIndex = (call: CallSession) => call.crypto.getSnapshot().media?.send?.index;
 const onLatestKey = (call: CallSession) => waitFor(() => sendIndex(call) !== undefined && sendIndex(call) === call.crypto.getSnapshot().media?.epochs.at(-1)?.index, `${call.ticket.role} sending with its new key`);
 const notices = (call: CallSession) => call.getSnapshot().notices.map((n) => n.text);
@@ -141,7 +148,6 @@ describe('host hand-off', () => {
     const secs = () => (Date.now() - Date.parse(host.getSnapshot().startedAt)) / 1000;
     await drop(host, hostRoom);
     const droppedAt = secs();
-    await sleep(2200);
     await reconcile(h.deps, Date.now() + HANDOFF_MS / 2);
     expect((await callRow(host.ticket.callId)).host).toBe(host.ticket.identity);
     // Then Priya hosts, in a new generation her browser makes: she's the only committer, at leaf 0 of every group.
@@ -180,12 +186,6 @@ describe('host hand-off', () => {
     await priya.call.appendAudio(audio('stand-in', 1, 0));
     await priya.call.transcribe(speech('Priya carries on.', 1, 0), sam.ticket.identity);
     await priya.call.transcribe(speech('Priya carries on.', 1, 0), sam.ticket.identity);
-    // Catching up says nothing was transcribed only from the drop until Priya hosted: her browser sends what's said since.
-    const missed = (await priya.call.catchUp({ kind: 'all' })).read.missed;
-    expect(missed).toHaveLength(1);
-    expect(missed[0]?.from ?? 0).toBeGreaterThan(droppedAt - 1);
-    expect(missed[0]?.to ?? Infinity).toBeLessThan(handedAt + 1);
-    expect((missed[0]?.to ?? 0) - (missed[0]?.from ?? 0)).toBeGreaterThanOrEqual(2);
 
     // Media keeps flowing on her keys: Sam hears Priya.
     const priyaRoom = priya.room;
@@ -205,6 +205,14 @@ describe('host hand-off', () => {
     const anaCall = await ana.api.calls.join(c, { mic: true, cam: false });
     await letIn(priya.call, anaCall);
     expect((await settle(anaCall, (x) => x.participants.some((p) => p.isMe), 'Ana in')).role).toBe('guest');
+    // Catching up says nothing was transcribed only between the drop and Priya hosting, when that was long enough to
+    // say, and never in her time hosting since: her browser sends what's said.
+    const missed = (await priya.call.catchUp({ kind: 'all' })).read.missed;
+    expect(missed.length).toBeLessThanOrEqual(1);
+    for (const m of missed) {
+      expect(m.from).toBeGreaterThan(droppedAt - 1);
+      expect(m.to ?? Infinity).toBeLessThan(handedAt + 1);
+    }
 
     // Priya ends the call: the notes cover all of it, each line once, and go to everyone invited, the organizer included.
     const end = await priya.call.leave();
@@ -282,6 +290,104 @@ describe('host hand-off', () => {
     const end = await priya.call.leave();
     expect(end?.pendingNoteId).toBeTruthy();
     expect((await callRow(host.ticket.callId)).state).toBe('ended');
+  });
+
+  it('keeps the invite the organizer’s while someone stands in, and hands the call only to someone who can host', async () => {
+    const { org, host, hostRoom, code: c, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
+    if (!priya || !kofi) throw new Error('Priya and Kofi expected');
+    // Dee, signed in and not invited, asks from the link, and the organizer lets her in: that puts her on the invite.
+    const deeEmail = unique('dee');
+    const dee = await account(deeEmail);
+    const deeCall = await dee.api.calls.join(c, { mic: true, cam: false });
+    await letIn(host, deeCall);
+    const meetingId = host.getSnapshot().meetingId;
+    expect(await invite(org.api, meetingId)).toContain(deeEmail);
+    await drop(host, hostRoom, true);
+    await upkeepAfter(HANDOFF_MS);
+    await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+
+    // Ana, signed in and not invited, asks while Priya hosts: Priya lets her in, as a guest, and a guest can't host.
+    const ana = await account(unique('ana'));
+    const anaCall = await ana.api.calls.join(c, { mic: true, cam: false });
+    await letIn(priya.call, anaCall);
+    expect(code(await priya.call.handOff(anaCall.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    // Priya's pass with someone else's session hosts nothing: Kofi's account can't act as her.
+    const asKofi = await kofi.browser.fetch(`${h.baseUrl}/v1/live/calls/${priya.call.ticket.callId}/actions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': priya.call.ticket.pass }, body: JSON.stringify({ type: 'lock', on: true })
+    });
+    expect(asKofi.status).toBe(403);
+    expect(priya.call.getSnapshot().locked).toBe(false);
+
+    // Priya removes Dee: Dee is out of the call, and can't be handed it, but the invite is the organizer's, so she stays on it.
+    await priya.call.remove(deeCall.ticket.identity);
+    expect(code(await priya.call.handOff(deeCall.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    expect(await invite(org.api, meetingId)).toContain(deeEmail);
+
+    // The notes go to everyone invited, Dee included; Ana, a guest, doesn't get them.
+    await priya.call.transcribe(speech('Dee still gets these.', 1, 0), kofi.call.ticket.identity);
+    const end = await priya.call.leave();
+    const noteId = end?.pendingNoteId ?? '';
+    expect((await written(org.api, noteId)).at(-1)?.ready).toBe(true);
+    expect((await dee.api.notes.get(noteId)).id).toBe(noteId);
+    expect(code(await ana.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+  });
+
+  it('hands the call on while breakout rooms are open: the stand-in makes every room’s group, and nobody moves', async () => {
+    const { host, hostRoom, people: [priya, kofi, lena] } = await hostedCall(['Priya', 'Kofi', 'Lena']);
+    if (!priya || !kofi || !lena) throw new Error('Priya, Kofi and Lena expected');
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const [design = '', support = ''] = (await settle(host, (x) => x.breakouts.open !== null, 'rooms open')).breakouts.open?.rooms.map((r) => r.id) ?? [];
+    await inPlace(kofi.call, design);
+    await inPlace(lena.call, support);
+    await waitFor(() => members(kofi.call).includes(host.ticket.identity) && members(lena.call).includes(host.ticket.identity), 'each room’s group with the organizer');
+
+    // The organizer drops with the rooms open. Priya, in the main room, hosts: her browser makes the main room's group
+    // and each room's, each room keeps its people, and nobody's sent anywhere.
+    await drop(host, hostRoom, true);
+    await upkeepAfter(HANDOFF_MS);
+    const s = await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+    expect(s.breakouts.open?.rooms.map((r) => r.id)).toEqual([design, support]);
+    await waitFor(() => members(kofi.call).join() === [priya.call.ticket.identity, kofi.call.ticket.identity].sort().join()
+      && members(lena.call).join() === [priya.call.ticket.identity, lena.call.ticket.identity].sort().join(), 'each room’s group made by Priya');
+    await inPlace(kofi.call, design);
+    await inPlace(lena.call, support);
+    await inPlace(priya.call, 'main');
+    expect(members(priya.call)).toEqual([priya.call.ticket.identity]);
+    // No key in common between the rooms.
+    expect(keyOf(kofi.call)).not.toBe(keyOf(lena.call));
+
+    // She brings everyone back: both rooms close, and everyone is in her main room's group.
+    priya.call.closeRooms();
+    await inPlace(kofi.call, 'main');
+    await inPlace(lena.call, 'main');
+    await waitFor(() => members(priya.call).join() === [priya.call.ticket.identity, kofi.call.ticket.identity, lena.call.ticket.identity].sort().join(), 'everyone in the main room’s group');
+    expect((await settle(priya.call, (x) => x.breakouts.open === null, 'rooms closed')).breakouts.open).toBeNull();
+    await priya.call.leave();
+  });
+
+  it('counts a stand-in whose connection dropped as gone from then when the organizer comes back', async () => {
+    const { org, host, hostRoom, code: c, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
+    if (!priya || !kofi) throw new Error('Priya and Kofi expected');
+    const secs = () => (Date.now() - Date.parse(host.getSnapshot().startedAt)) / 1000;
+    await drop(host, hostRoom, true);
+    await upkeepAfter(HANDOFF_MS);
+    await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+
+    // Priya's connection drops too. Nobody hosts for a while (catching up names stretches of two seconds or more), and
+    // the organizer is back before upkeep hands the call on.
+    await drop(priya.call, priya.room, true);
+    const priyaGoneAt = secs();
+    await waitFor(() => secs() > priyaGoneAt + 2.2, 'a stretch with nobody hosting', 5_000);
+    const back = await org.api.calls.join(c, { mic: true, cam: false });
+    // Priya is gone at once, from when LiveKit said so: she isn't left in the call for upkeep to find.
+    expect(back.getSnapshot().participants.map((p) => p.id)).not.toContain(priya.call.ticket.identity);
+    await inGroup(back);
+    await waitFor(() => keyOf(kofi.call) === keyOf(back), 'Kofi in the organizer’s group');
+    expect(members(back)).toEqual([back.ticket.identity, kofi.call.ticket.identity].sort());
+    // Catching up says nothing was transcribed from her drop until the organizer was back.
+    const missed = (await back.catchUp({ kind: 'all' })).read.missed;
+    expect(missed.some((m) => m.from > priyaGoneAt - 1 && m.from < priyaGoneAt + 1 && (m.to ?? Infinity) <= secs() + 1)).toBe(true);
+    await back.leave();
   });
 
   it('ends the call as before when nobody can host: guests can’t, and nor can anyone not in the room', async () => {
