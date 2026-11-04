@@ -26,19 +26,41 @@ pnpm check          # all of the above
 
 ## No backwards compatibility, no legacy code
 
-When something changes, change it everywhere and delete what it replaced, in the same change.
+When something changes, change it everywhere and delete what it replaced, in the same change. The one
+exception is data that's already stored: it survives every deploy (next section).
 
 - **Remove, don't keep.** No compatibility shims, deprecated aliases, fallbacks for an old shape, "kept
   for now" fields, re-exports of moved code, or commented-out code. If nothing should use it any more,
   it's deleted.
 - **One shape at a time.** A contract change in `packages/api` updates the server, `@alcove/api-http`
-  and the app together. Nothing parses or accepts both the old and the new form.
+  and the app together. Nothing on the wire parses or accepts both the old and the new form.
 - **No flags that keep an old flow alive** next to its replacement.
-- **The schema changes in place.** Alcove has no production data yet: `apps/api/migrations/` describes
-  today's database. Edit it directly, write no data migrations for old formats, and reset local
-  databases (`pnpm db:reset`) when it changes.
 - **Tests follow the same rule.** Integration tests only, never unit tests (see Testing). Delete tests
   for removed behaviour instead of adapting them to keep it alive.
+
+## Stored data survives every deploy (enforced)
+
+Production holds people's accounts, meetings and notes. Nothing resets a database to make room for a
+change, in production or locally (`pnpm db:reset` is only for starting your own data over on purpose).
+
+- **Migrations only move forward.** Change the schema with a new file, `apps/api/migrations/NNNN_what_it_does.sql`,
+  numbered after the last one. A merged migration never changes and is never deleted or renamed:
+  `scripts/check-migrations.mjs` fails CI on it, and the API refuses a database whose applied files differ.
+  If main gains a migration before yours merges, renumber yours after it.
+- **The previous release keeps working.** The deploy migrates while the previous API is still serving, so a
+  migration only adds: tables, columns that are nullable or have a default, indexes. To drop, rename or
+  retype a column, stop using it in one release and remove it in a later migration. Each file runs once in
+  one transaction (so no `CREATE INDEX CONCURRENTLY`); keep it quick, since its locks hold up requests.
+- **Sealed records still open.** Records written by the previous release (manifests, call state, transcripts,
+  everything read with `openJson`, including contract schemas a record embeds) must parse with the new schema.
+  A field added to a stored schema gets `.default(...)`: older records take the default and are written in the
+  new shape the next time they're saved. Removing a field is safe, because zod ignores unknown keys (never make
+  a stored schema `.strict()`). Never rename or retype a stored field in place: add a new field with a default,
+  and if older records' values must carry over, convert them where the schema reads them (`z.preprocess`).
+  Record headers and key-derivation labels never change for data that exists.
+- **Say how it upgrades.** Tests start from an empty database, so they can't show an upgrade works. A pull
+  request that changes the schema or a stored shape names its migration and says how rows and records written
+  by the previous release read afterwards; review checks it.
 
 ## Testing (enforced)
 

@@ -187,18 +187,19 @@ someone's week and put the calls they schedule on their calendar. The redirect U
 
 ## Schema changes
 
-Alcove's schema changes in place: `apps/api/migrations/` always describes today's database, and there are
-no data migrations. The migration job keeps a checksum of every file it applied and refuses a database
-built from a different version, so a deploy that changes the schema stops before the new API starts.
-Reset the production database first, after taking a backup:
+Migrations only move forward, and nothing resets the production database
+([Changing what's stored](../docs/engineering/data-and-storage.md#changing-whats-stored)). Each schema change is a
+new file in `apps/api/migrations/`, which the migration job applies before the new API starts, while the
+previous one still serves. The job keeps a checksum of every file it applied and refuses a database whose
+applied files were since edited or removed. A deploy like that stops there, production keeps running the
+previous release, and the fix goes in the repository (restore the file, make the change in a new one).
+
+`alcove-db` keeps a backup a day for seven days, with point-in-time recovery over the same week. Before a
+migration that rewrites or removes data, take one on demand as well:
 
 ```sh
-CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql backups create --instance=alcove-db --description="before schema reset"
-CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql databases delete alcove --instance=alcove-db
-CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql databases create alcove --instance=alcove-db
+CLOUDSDK_ACTIVE_CONFIG_NAME=alcove gcloud --project=alcove-solutions sql backups create --instance=alcove-db --description="before 0002_what_it_does"
 ```
-
-Then re-run the deploy (Actions › Deploy › Run workflow); its migration job builds the new schema.
 
 ## Deployment and verification
 
