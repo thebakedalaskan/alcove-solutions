@@ -16,6 +16,7 @@ import { useLiveNotes } from '~/features/call/liveNotes';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
+import { keepSeen, seenNotices } from '~/features/call/seen';
 import { SharePicker } from '~/features/call/SharePicker';
 import { CallEars } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
@@ -23,6 +24,9 @@ import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
 import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
 import { ViewMenu } from '~/features/call/ViewMenu';
+import { Moved } from '~/features/move/Moved';
+import { MoveSheet } from '~/features/move/MoveSheet';
+import { useMoveOut } from '~/features/move/useMoveOut';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -39,7 +43,7 @@ const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
 /** Before the room has connected: nobody's media yet. */
-const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0 };
+const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, present: [], hostMuted: 0 };
 const NO_ROOM: CallRoom = { getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, leave: async () => undefined };
 /**
  * One room connection per call session. React may mount the screen twice (StrictMode in dev); a second
@@ -60,9 +64,12 @@ function Call() {
  * hear it) as "Someone". Nobody who holds the call's keys is ever left off the screen.
  */
 function asShown(state: CallState, members: string[], self: string): CallState {
-  const unknown = members.filter((id) => !state.participants.some((p) => p.id === id));
+  const here = new Set(state.participants.map((p) => p.id));
+  const leaving = new Map(state.leaving.map((l) => [l.id, l]));
+  // A connection on its way out of the group shows as whose it is, and not at all once that person is here again on another.
+  const unknown = members.filter((id) => { const l = leaving.get(id); return !here.has(id) && !(l?.now && here.has(l.now)); });
   if (!unknown.length) return state;
-  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: id, person: { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false }))] };
+  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: leaving.get(id)?.seat ?? id, person: leaving.get(id)?.person ?? { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false }))] };
 }
 
 /** Whether you're talking now, from the real microphone level. */
@@ -200,15 +207,21 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => () => ears.current?.stop(), []);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. */
-  const shown = useRef(new Set<string>());
+  const shown = useRef<Set<string> | null>(null);
   useEffect(() => {
+    // Once each, in this tab: a reload doesn't say them again.
+    shown.current ??= seenNotices(state.callId);
+    const seen = shown.current;
+    let fresh = false;
     for (const n of state.notices) {
-      if (shown.current.has(n.id)) continue;
-      shown.current.add(n.id);
+      if (seen.has(n.id)) { session.dismissNotice(n.id); continue; }
+      seen.add(n.id);
+      fresh = true;
       toast(n.text, { icon: n.kind === 'notes' ? 'notesPen' : n.kind === 'people' ? 'people' : 'screen', ms: 3200 });
       session.dismissNotice(n.id);
     }
-  }, [state.notices, session, toast]);
+    if (fresh) keepSeen(state.callId, seen);
+  }, [state.notices, state.callId, session, toast]);
 
   /* Someone asking to join: the organizer hears about it once, and lets them in from the toast or People. */
   const asked = useRef(new Set<string>());
@@ -269,11 +282,29 @@ function InCall({ session }: { session: CallSession }) {
     void navigate(hosting ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
   }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, forgetLayout, media, navigate, toast, session, room, qc]);
 
+  /*
+   * Moving to another device. Letting go here comes first: what the notes heard so far is sent, then the microphone
+   * and camera stop and this device leaves the room. Only then is the new device let in.
+   */
+  const moving = useMoveOut(session, () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam }), async () => {
+    over.current = true;
+    if (organizer) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
+    recorder.current?.stop();
+    ears.current?.stop();
+    session.close();
+    await room.leave().catch((e: unknown) => clog.debug('leaving the room to move', { err: e }));
+    media.stop();
+    sessions.media = null;
+    guardRef.current.release();
+  });
+
   /* ---------- who is on the stage: everyone in the call, with their media from the room ---------- */
   const stagePeople: StageParticipant[] = state.participants.map((p) => {
     const r = roomView.people[p.id];
     const video: Feed | null = p.isMe ? (m.cam && m.camera ? { stream: m.camera } : null) : r?.camSid ? { room, sid: r.camSid } : null;
-    return { id: p.id, seat: p.seat, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video };
+    // In the call by the server's word, but not in this browser's group yet (back with fresh keys after a reload, say).
+    const connecting = !p.isMe && crypto.status === 'in' && !crypto.members.includes(p.id);
+    return { id: p.id, seat: p.seat, person: p.person, isMe: p.isMe, hand: p.hand, mic: p.isMe ? m.mic : r?.mic ?? false, speaking: p.isMe ? speaking : r?.speaking ?? false, video, connecting };
   });
   /* Who came in when, by seat, so someone coming back keeps their place on your stage. Only people the call names have a seat. */
   const seatKey = told.participants.map((p) => p.seat).join(' ');
@@ -640,6 +671,12 @@ function InCall({ session }: { session: CallSession }) {
     ? 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says also goes to Alcove for the notes.'
     : 'Video, audio and chat are encrypted end to end between the people here.';
 
+  /*
+   * Notes are written from what the organizer's browser hears. While its connection is gone (it dropped, reloaded or is
+   * moving to another device) nothing is, so nobody else's screen says notes are running.
+   */
+  const notesPaused = !organizer && on && live && roomView.connection === 'connected' && !!organizerId && !roomView.present.includes(organizerId);
+
   /* ---------- the status bar ---------- */
   const spotlight = open ? null : state.spotlight;
   const spotName = spotlight ? (spotlight === meId ? null : callName(byId.get(spotlight) ?? SOMEONE)) : null;
@@ -692,11 +729,19 @@ function InCall({ session }: { session: CallSession }) {
   }, []);
   const stageW = shownPanel && !narrow ? Math.max(0, mainW - sideW - 16) : mainW;
 
+  if (moving.moved) {
+    const leaveFor = (to: 'join' | 'home') => {
+      sessions.call = null;
+      void navigate(to === 'home' ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
+    };
+    return <Moved to={moving.moved.to} problem={moving.moved.problem} signedIn={session.ticket.role !== 'guest'} onAgain={() => leaveFor('join')} onHome={() => leaveFor('home')} />;
+  }
+
   return (
     <div className="stage ac-stage">
       <div className={cn('ic-call', ended && 'is-ended')}>
-        <TopBar title={state.title} elapsed={state.elapsed} notesOn={on} custom={custom} people={stagePeople.map((p) => p.person)}
-          asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting'} peopleOpen={shownPanel === 'people'}
+        <TopBar title={state.title} elapsed={state.elapsed} notesOn={on} notesPaused={notesPaused} custom={custom} people={stagePeople.map((p) => p.person)}
+          asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={shownPanel === 'people'}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom}
               onMode={(mode) => { if (!roomsHold()) layout.setMode(mode); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset} />
@@ -766,6 +811,7 @@ function InCall({ session }: { session: CallSession }) {
                 <>
                   <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on the last few minutes</span></button>
                   <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
+                  <button type="button" className="mi" onClick={() => { setPop(null); moving.show(); }}><Icon name="phone" size={17} /><span className="t">Move to another device</span></button>
                   {roomsHere && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
                 </>
               )}
@@ -776,6 +822,8 @@ function InCall({ session }: { session: CallSession }) {
         </footer>
       </div>
       <SharePicker open={sharePick} onOpenChange={setSharePick} sharing={!!m.screen} onShare={share} />
+      <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={session.ticket.role !== 'guest'}
+        sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
       <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
         organizer={organizer} notes={state.notes.everOn} locked={state.locked} others={others.length}
         getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />

@@ -14,3 +14,4 @@ export * from './components/empty';
 export * from './components/call';
 export * from './components/app';
 export * from './components/guidance';
+export * from './components/qr';

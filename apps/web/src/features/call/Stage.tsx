@@ -24,6 +24,8 @@ export interface StageParticipant {
   person: Person; isMe: boolean; mic: boolean; hand: boolean; speaking: boolean;
   /** Their camera, when it's on and this browser plays their media. */
   video: Feed | null;
+  /** In the call, but not yet in this browser's encrypted group, so none of their media plays here yet. */
+  connecting: boolean;
 }
 /** Something shared: whose it is (their participant ID), its feed, the line on it, and what menus call it. */
 export interface StageShare { id: string; feed: Feed; label: string; name: string }
@@ -336,14 +338,14 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         const pin = pinned.has(p.id);
         const spot = spotlight === p.id;
         const at = dragging ? { left: drag.x, top: drag.y, width: r[2], height: r[3] } : sizing ? { left: r[0], top: r[1], width: size.w, height: size.h } : box(r);
-        const said = [p.isMe ? `${callName(p.person)} (you)` : callName(p.person), corner ? 'in your corner' : '', pin ? 'pinned for you' : '', spot ? 'spotlighted for everyone' : '', p.hand ? 'hand raised' : '', p.mic ? '' : 'microphone off'];
+        const said = [p.isMe ? `${callName(p.person)} (you)` : callName(p.person), corner ? 'in your corner' : '', pin ? 'pinned for you' : '', spot ? 'spotlighted for everyone' : '', p.hand ? 'hand raised' : '', p.connecting ? 'connecting' : p.mic ? '' : 'microphone off'];
         return (
           <motion.div key={p.id} {...tileProps(p.id, said.filter(Boolean).join(', '))}
             className={cn('ic-slot', dragging && 'is-drag', sizing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner')}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
             initial={{ ...at, opacity: 0, scale: 0.97 }} animate={{ ...at, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
             transition={reduce || dragging || sizing ? { duration: 0 } : { ...GLIDE, opacity: UI, scale: UI }}>
-            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot')}
+            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot')}
               chrome={(
                 <>
                   {!corner && (
@@ -452,7 +454,7 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
         if (!p || !r) return null;
         return (
           <motion.div key={id} className="ic-slot" initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce ? { duration: 0 } : GLIDE}>
-            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand}>
+            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting}>
               {p.video ? <FeedVideo feed={p.video} /> : undefined}
             </CallTile>
           </motion.div>

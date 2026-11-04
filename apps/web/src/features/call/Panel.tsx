@@ -192,7 +192,7 @@ function CatchCard({ c, onSeek }: { c: CatchUp; onSeek: (at: number) => void }) 
     <>
       {c.summary && <div className="txt">{c.summary}</div>}
       {list('Decided', c.decided)}{list('Suggested, not agreed', c.proposed)}{list('Still open', c.open)}{list('Next', c.next)}
-      {c.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />Notes were off for part of this, so that part isn’t here.</p>}
+      {c.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />Nothing was captured for part of this, so that part isn’t here.</p>}
     </>
   );
 }

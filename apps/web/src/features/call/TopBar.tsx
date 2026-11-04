@@ -13,8 +13,10 @@ import { hm } from '~/lib/time';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function TopBar({ title, elapsed, notesOn, view, custom, people, asking, reconnecting, peopleOpen, onNotes, onReset, onCatchUp, onPeople }: {
+export function TopBar({ title, elapsed, notesOn, notesPaused = false, view, custom, people, asking, reconnecting, peopleOpen, onNotes, onReset, onCatchUp, onPeople }: {
   title: string; elapsed: number; notesOn: boolean;
+  /** Notes are on, but the organizer's connection is gone, so nothing is being written down until it's back. */
+  notesPaused?: boolean | undefined;
   /** Your view's controls (ViewMenu). */
   view: ReactNode;
   custom: boolean; people: Person[];
@@ -33,8 +35,10 @@ export function TopBar({ title, elapsed, notesOn, view, custom, people, asking, 
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       <span className="vr v1" />
       <div className="nz">
-        <Tooltip label="Open the notes" side="bottom">
-          {notesOn
+        <Tooltip label={notesOn && notesPaused ? 'The organizer’s connection is coming back. Nothing is written down until it does.' : 'Open the notes'} side="bottom">
+          {notesOn && notesPaused
+            ? <button type="button" className="ic-sign is-off is-paused" aria-label="Notes paused while the organizer’s connection comes back. Open the notes" onClick={onNotes}><Icon name="pause" size={14} />Notes paused</button>
+            : notesOn
             ? <button type="button" className="ic-sign" aria-label="Notes on. Open the notes" onClick={onNotes}><NotesSign stage>Notes on</NotesSign></button>
             : <button type="button" className="ic-sign is-off" aria-label="Notes off. Open the notes" onClick={onNotes}><Icon name="notesPen" size={14} />Notes off</button>}
         </Tooltip>
