@@ -10,12 +10,14 @@ import { hm, position, shortDay } from '~/lib/time';
 import { PROMISE_MANY } from './NoteCard';
 import { ROLE } from './meta';
 
-export function DocHead({ title, when, people, chip }: { title: string; when: string; people: Person[]; chip?: ReactNode }) {
+/** A note's head: its state, title, when and who, and (`proof`) which verified models wrote it. */
+export function DocHead({ title, when, people, chip, proof }: { title: string; when: string; people: Person[]; chip?: ReactNode; proof?: ReactNode }) {
   return (
     <>
       {chip}
       <h1>{title}</h1>
       <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} />{listNames(people)}</span></div>
+      {proof && <div className="doc-proof">{proof}</div>}
     </>
   );
 }

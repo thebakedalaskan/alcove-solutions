@@ -17,6 +17,11 @@
   the recording stops, a notes worker writes the summary, decisions, follow-ups, chapters and suggested
   questions, retries a failed attempt twice, and charges 25 credits a minute; anyone with the note can ask
   about the call ([Notes and inference](../engineering/notes-and-inference.md)).
+- Verified private inference: before anything with content goes to NEAR AI, each model's Intel TDX quote,
+  OS image (a published dstack image, measured exactly), measurements and NVIDIA GPU verdict are checked
+  against a fresh nonce; speech and transcripts go by Oblivious HTTP sealed to the models' attested keys, at
+  their own endpoints; notes wait through a verification outage; each note shows which verified models wrote
+  it and what was checked ([Verified private inference](../engineering/notes-and-inference.md#verified-private-inference)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
@@ -32,13 +37,13 @@
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 1 | Verified private inference: NEAR AI's end-to-end encrypted requests and attestation checks | [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 2 | Multi-party end-to-end encrypted calls with LiveKit | Proton Meet model; transcript lines per speaker; [Calls and recordings](../engineering/calls-and-recordings.md#next-multi-party-calls) |
-| 3 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
-| 4 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
-| 5 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
-| 6 | Deploy the API to a dstack VM on Phala Cloud, bind TLS to the attestation, check it in the client, and pin the client | [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
-| 7 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
+| 1 | Multi-party end-to-end encrypted calls with LiveKit | Proton Meet model; transcript lines per speaker; [Calls and recordings](../engineering/calls-and-recordings.md#next-multi-party-calls) |
+| 2 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
+| 3 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
+| 4 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
+| 5 | Deploy the API to a dstack VM on Phala Cloud, bind TLS to the attestation, check it in the client, and pin the client | [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
+| 6 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
+| 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
 | 10 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference |

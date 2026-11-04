@@ -5,8 +5,8 @@
 Alcove is a private video call platform with confidential AI notes built in. Notes are a service of
 the call itself: no bot joins the meeting, nobody installs a recorder, and the notes are written inside
 confidential compute that Alcove's operators cannot read. In this build the notes are written by NEAR AI
-Cloud's private inference, which Alcove doesn't verify yet, and Alcove's own server doesn't run in
-confidential compute yet; see [Status](#status-of-this-build).
+Cloud's private inference, which Alcove verifies before sending anything, and Alcove's own server doesn't
+run in confidential compute yet; see [Status](#status-of-this-build).
 
 ## The problem
 
@@ -46,7 +46,7 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Calls with real camera, microphone, screen sharing, chat | Working, one participant (the organizer): people invited can't join yet; multi-party arrives with LiveKit |
 | Notes recording (encrypted audio pieces, playback) | Working |
 | Live transcript (NEAR AI) | Working while notes are on, in calls and room recordings. Call lines are all attributed to the organizer; room recordings don't say who spoke |
-| Written notes and questions (NEAR AI) | Working: summary, decisions, follow-ups, chapters and suggested questions, written when the recording stops; answers cite moments in the recording. If the notes service fails three times, the note keeps its transcript and audio without a summary. Requests to NEAR AI aren't end-to-end encrypted or attestation-checked yet |
+| Written notes and questions (NEAR AI) | Working: summary, decisions, follow-ups, chapters and suggested questions, written when the recording stops; answers cite moments in the recording. If the notes service fails three times, the note keeps its transcript and audio without a summary. Each model's hardware evidence is checked first and everything sent is sealed to the key it vouches for; the note says which verified models wrote it and what was checked |
 | Notes for everyone invited, sharing by email | Working |
 | Notes from shared screens | Planned (stretch goal; Scribe-style capture is a reference) |
 | Credits and payments | Notes are charged 25 credits a minute when they're written; nothing checks the balance first, and USDC top-ups aren't connected |

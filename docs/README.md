@@ -27,7 +27,7 @@ Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AG
 | ID | Provider | Role | Status |
 | --- | --- | --- | --- |
 | `C01` | Confidential compute (Phala TDX or a GCP confidential VM) | Runs the API as the trusted plaintext endpoint | Required before production. The API is ready (`TEE=dstack`: keys from dstack's key service, `/v1/attestation`); not deployed |
-| `I01` | NEAR AI Cloud | The live transcript (Whisper), writing notes and answering questions | Working when `NEAR_AI_API_KEY` is set; over TLS, without end-to-end encrypted requests or attestation checks yet |
+| `I01` | NEAR AI Cloud | The live transcript (Whisper), writing notes and answering questions | Working when `NEAR_AI_API_KEY` is set. Each model's evidence is checked first (Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs), then everything goes by Oblivious HTTP sealed to its attested key ([Verified private inference](engineering/notes-and-inference.md#verified-private-inference)). The model code inside isn't pinned yet |
 | — | Google | Sign-in (OpenID Connect) and Google Calendar | Working; Microsoft and SSO are still demo stand-ins |
 | `P01` | NEAR Intents 1Click | USDC credit purchases | Not connected |
 | `D01` | Postgres | Ciphertext rows | Working (local); Cloud SQL prepared |

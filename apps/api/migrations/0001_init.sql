@@ -104,13 +104,14 @@ CREATE TABLE transcript_translations (
 
 -- Notes waiting to be written from a finished recording's transcript. A worker claims a job by
 -- setting it to writing with a lease; a failed attempt goes back to queued, not to be tried again
--- before lease_until. A job is deleted once its notes are written, or after its third attempt.
+-- before lease_until. A job whose notes model didn't check out waits (waiting) without using up an
+-- attempt. A job is deleted once its notes are written, or after its third attempt.
 CREATE TABLE content_jobs (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   job_id alcove_id128 NOT NULL,
   revision_id alcove_id128 NOT NULL,
   kind text NOT NULL CHECK (kind IN ('notes')),
-  state text NOT NULL CHECK (state IN ('queued', 'writing')),
+  state text NOT NULL CHECK (state IN ('queued', 'writing', 'waiting')),
   lease_until timestamptz,
   attempt integer NOT NULL CHECK (attempt BETWEEN 0 AND 3),
   job_ciphertext bytea NOT NULL,

@@ -4,7 +4,7 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, DecisionSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
   type NoteSummary, type OpenAction, type Recipient
 } from '@alcove/api';
@@ -54,7 +54,9 @@ export const NoteManifest = z.object({
   summary: z.string(), decisions: z.array(DecisionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string()),
   /** Breakout rooms the call held, in seconds into the recording, kept until the notes are written and merged into their chapters. */
-  breakouts: z.array(HeldRooms)
+  breakouts: z.array(HeldRooms),
+  /** The verified models that transcribed the speech and wrote the notes, as they were checked. */
+  inference: z.array(InferenceEvidenceSchema)
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 
@@ -62,7 +64,7 @@ export function blankNote(o: { kind: NoteKind; title: string; recordingId: strin
   return {
     kind: o.kind, title: o.title, startedAt: new Date().toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
-    status: 'recording', summary: '', decisions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: []
+    status: 'recording', summary: '', decisions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: [], inference: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -95,11 +97,13 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = []): Promise<void> {
   const heard = await transcripts.lines(o, db, noteId);
+  const heardBy = await transcripts.heardBy(o, db, noteId);
   const organizer = await me(o);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts,
     // Calls have one person in them today, so whoever's microphone it was spoke; a room has no one to name.
-    transcript: transcripts.spoken(heard, n.kind === 'call' ? { name: organizer.name, person: organizer } : undefined)
+    transcript: transcripts.spoken(heard, n.kind === 'call' ? { name: organizer.name, person: organizer } : undefined),
+    inference: heardBy
   }));
   await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');
@@ -173,7 +177,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const m = l.note.manifest;
   return {
     ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, actions: m.actions, chapters: m.chapters,
-    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId)
+    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference
   };
 }
 /** The vault and recording to stream a note's audio from, after the access check. */
@@ -194,8 +198,9 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
     : undefined;
   const writing = !inference(o.cfg).configured ? 'Waiting for the notes service to be connected'
     : job?.state === 'writing' ? 'Writing the summary, decisions and follow-ups'
-      : job && job.attempt > 0 ? 'The notes service is busy. Trying again shortly'
-        : 'Queued for the notes service';
+      : job?.state === 'waiting' ? 'Waiting to verify the notes model. Nothing is sent until it checks out'
+        : job && job.attempt > 0 ? 'The notes service is busy. Trying again shortly'
+          : 'Queued for the notes service';
   return {
     noteId: id, title: m.title, ready: m.status === 'ready',
     steps: [

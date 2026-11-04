@@ -1,6 +1,7 @@
 /*
  * Boots the real API against a clean test database and bucket, with a stand-in Google to sign in
- * through and a stand-in NEAR AI Cloud to transcribe and write notes, and gives tests "browsers":
+ * through and a stand-in NEAR AI Cloud to transcribe and write notes (with stand-ins for the Intel and
+ * NVIDIA services that vouch for it, under test roots), and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
 import type { AlcoveApi } from '@alcove/api';
@@ -57,7 +58,7 @@ export interface Harness {
   logs: string[];
   /** The Google the API signs in with. */
   google: FakeGoogle;
-  /** The NEAR AI Cloud the API transcribes speech and writes notes with. */
+  /** The NEAR AI Cloud the API transcribes speech and writes notes with, and the stand-ins that vouch for it. */
   near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined }): Browser;
@@ -96,7 +97,8 @@ export async function startHarness(): Promise<Harness> {
   const cfg = await loadConfig(process.env, {
     DATABASE_URL: url, OBJECTS_BUCKET: bucket, WEB_ORIGIN: ORIGIN, API_URL: 'http://127.0.0.1',
     GOOGLE_ISSUER: google.issuer, GOOGLE_API_URL: google.issuer, GOOGLE_CLIENT_ID: google.clientId, GOOGLE_CLIENT_SECRET: google.clientSecret,
-    NEAR_AI_BASE_URL: near.baseUrl, NEAR_AI_API_KEY: near.apiKey,
+    // NEAR AI, and the stand-in Intel and NVIDIA roots its evidence is checked against.
+    ...near.settings,
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
     PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1'
   });
