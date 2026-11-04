@@ -1,6 +1,6 @@
 import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
-  type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
+  type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
   type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Person,
   type ScreenFrameReceipt, type Speaker
 } from '@alcove/api';
@@ -24,6 +24,7 @@ import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording } from './notes';
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
+import { mayStandIn, noticesFor, standIns, type HostChange } from './hosting';
 import {
   BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readersAt, relocate,
   type Room
@@ -40,13 +41,24 @@ const clog = log.child({ component: 'calls' });
  * the request (KMASTER), so guests' catch-up and ask work without an account. `inCall`: let in (the
  * organizer always is); someone still waiting only learns whether they've been let in. `role`: theirs as the
  * call stands, which can be more than their pass says (someone signed in whom the organizer let in from the link
- * is invited now).
+ * is invited now). `isHost`: this connection hosts now (the organizer's, or someone's standing in for them), with its
+ * account's session; `stale`: it hosted before and another connection hosts now, so what it still sends as host is out
+ * of date rather than never allowed.
  */
-export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean; inCall: boolean; role: CallRole }
+export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean; isHost: boolean; stale: boolean; inCall: boolean; role: CallRole }
 
-/** Something the call says happened, as a toast: to everyone in the call, or only to the people in one breakout room (`place`). */
-const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']), place: z.string().optional() });
+/**
+ * Something the call says happened, as a toast: to everyone in the call, only to the people in one breakout room
+ * (`place`), to one connection alone (`to`), or to everyone but one (`not`).
+ */
+const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']), place: z.string().optional(), to: z.string().optional(), not: z.string().optional() });
 const Stored = z.object({
+  /**
+   * The connection that hosts now (modules/hosting.ts): the organizer's, or someone's standing in while the organizer is
+   * away. It commits for every part of the call's group (see committerOf). The `host_identity` column says the same,
+   * for LiveKit's webhooks and upkeep, which read it without opening the call; both change only in newGeneration.
+   */
+  host: z.string().nullable(),
   notes: z.object({
     /** What the call captures now (modules/capture.ts): notes off, on, or on and paused by the organizer. */
     status: capture.CaptureStatus, everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number(),
@@ -96,6 +108,9 @@ async function save(o: Owner, db: Db, callId: string, s: Stored) {
 }
 const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes', place?: string | undefined): Stored =>
   ({ ...s, notices: [...s.notices.slice(-2), { id: id128(), text, kind, ...(place ? { place } : {}) }] });
+/** A host change, told: the new host in their own words, everyone else in the same sentence (modules/hosting.ts). */
+const hostNotices = (s: Stored, change: HostChange, organizer: string): Stored =>
+  ({ ...s, notices: [...s.notices, ...noticesFor(change, organizer).map((n) => ({ id: id128(), text: n.text, kind: 'people' as const, ...(n.to ? { to: n.to } : {}), ...(n.not ? { not: n.not } : {}) }))].slice(-4) });
 const withPerson = (s: Stored, identity: string, change: (j: Joined) => Joined): Stored => ({ ...s, people: s.people.map((j) => (j.identity === identity ? change(j) : j)) });
 const secondsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((at - startedAt.getTime()) / 1000));
 /** The same, to a tenth of a second: what notes and shared screens do, so even a short change shows where it was. */
@@ -196,26 +211,33 @@ function personFor(j: Joined | undefined, identity: string, fallbackName: string
 }
 
 /**
- * Who a call pass belongs to, for this request. A removed person's pass stops working, and once the call is
- * over only the organizer can read it. Host powers go with the organizer's current connection only, and
- * only together with the organizer's own session.
+ * Who a call pass belongs to, for this request. A removed person's pass stops working, and once the call is over only
+ * the organizer can read it. The organizer's powers go with the organizer's current connection only; host powers with
+ * the connection that hosts (the organizer's, or someone's standing in for them). Either only together with the same
+ * account's session (`session` opens it, only when it's needed): the organizer's own, or for someone standing in, an
+ * account with the invited address they joined with.
  */
-export async function viewerOf(d: Deps, pass: CallPass, sessionOwnerId: string | undefined): Promise<Viewer> {
+export async function viewerOf(d: Deps, pass: CallPass, session: () => Promise<Owner | undefined>): Promise<Viewer> {
   const organizer = await openOwner(d, pass.ownerId, undefined);
   const { row, state: s } = await load(organizer, organizer.pool, pass.callId);
-  const theOrganizer = pass.role === 'host' && sessionOwnerId === pass.ownerId;
+  const signedIn = pass.role === 'host' || s.host === pass.identity ? await session() : undefined;
+  const theOrganizer = pass.role === 'host' && signedIn?.ownerId === pass.ownerId;
   const ctx = { callId: pass.callId, role: pass.role };
   if (s.removed.includes(pass.person)) throw new ForbiddenError('The host removed you from this call.', { context: ctx });
   if (row.state !== 'live' && !theOrganizer) throw new ConflictError('This call has ended.', { context: ctx });
-  const isOrganizer = theOrganizer && pass.identity === row.host_identity;
   const mine = s.people.find((j) => j.identity === pass.identity);
+  // The organizer's current connection: the one of theirs that's in the call (joining again leaves the others).
+  const isOrganizer = theOrganizer && mine?.role === 'host' && mine.status === 'in';
+  const standingIn = !isOrganizer && s.host === pass.identity && mine !== undefined && mayStandIn(mine) && signedIn !== undefined && mine.email !== undefined
+    && (await profile(signedIn)).email.toLowerCase() === mine.email;
+  const isHost = s.host === pass.identity && (isOrganizer || standingIn);
   // Never more than the pass says, except a guest the organizer let in and so added to the invite.
   const role: CallRole = pass.role === 'guest' && mine?.role === 'invited' ? 'invited' : pass.role;
-  return { pass, organizer, isOrganizer, inCall: isOrganizer || mine?.status === 'in', role };
+  return { pass, organizer, isOrganizer, isHost, stale: (mine?.hosting.length ?? 0) > 0 && s.host !== pass.identity, inCall: isOrganizer || isHost || mine?.status === 'in', role };
 }
 /** Everything about a call but whether you're let in needs you to be in it. */
 export function requireIn(v: Viewer, what: string): void {
-  if (!v.inCall) throw new ForbiddenError('Wait until the organizer lets you in.', { context: { callId: v.pass.callId, role: v.pass.role, what } });
+  if (!v.inCall) throw new ForbiddenError('Wait until the host lets you in.', { context: { callId: v.pass.callId, role: v.pass.role, what } });
 }
 
 /**
@@ -269,10 +291,15 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const base = {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
-    locked: row.locked, generation: row.mls_generation, isOrganizer: v.isOrganizer, role: v.role
+    locked: row.locked, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost, role: v.role
   };
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
-  if (!v.inCall) return { ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
+  if (!v.inCall) {
+    return {
+      ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], notices: []
+    };
+  }
   const rooms = settle(s, row, end.getTime());
   const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
   // What was said where the viewer is now, while they were there: one room's lines never show in another, or in the main room.
@@ -281,16 +308,17 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const where = viewing ? placeOf(rooms, viewing) : MAIN_PLACE;
   const open = rooms.breakouts.open;
   const roomHere = open?.rooms.find((r) => r.id === where);
-  // Who's in: whoever the organizer's browser let into the group and hasn't left. Never asked of LiveKit, so reads cost nothing there.
+  // Who's in: whoever the host's browser let into the group and hasn't left. Never asked of LiveKit, so reads cost nothing there.
   const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in') : [];
   const seats = seatKey(o, callId);
   const mine = s.notes.asks.find((a) => a.person === v.pass.person);
   return {
     ...base,
-    participants: here.map((j) => ({ id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.identity === row.host_identity, hand: j.hand })),
+    participants: here.map((j) => ({ id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.role === 'host', hand: j.hand })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms, v, organizer),
-    waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
+    waiting: v.isHost ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
+    host: hostOf(rooms, v, organizer, row.state === 'live'),
     capture: {
       ...capture.stateFor({
         status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, screens: s.notes.screens,
@@ -311,8 +339,24 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
     // Lines stay inside their segment once it's over, so what was said before a pause is shown before it.
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
-    // Each notice to the people it's for: everyone, or only those in the room it's about.
-    notices: s.notices.filter((n) => n.place === undefined || n.place === where).map((n) => ({ id: n.id, text: n.text, kind: n.kind }))
+    // Each notice to the people it's for: everyone, only those in the room it's about, one connection, or everyone but one.
+    notices: s.notices.filter((n) => (n.place === undefined || n.place === where) && (n.to === undefined || n.to === v.pass.identity) && n.not !== v.pass.identity)
+      .map((n) => ({ id: n.id, text: n.text, kind: n.kind }))
+  };
+}
+
+/**
+ * Who hosts, as this viewer sees it: the connection hosting now and whether it stands in for the organizer, the
+ * organizer by name, and for whoever hosts, who could take over from them (never a guest).
+ */
+function hostOf(s: Stored, v: Viewer, organizer: Person, live: boolean): CallHost {
+  const host = live ? s.people.find((j) => j.identity === s.host) : undefined;
+  const organizerHere = s.people.find((j) => j.role === 'host' && j.status === 'in');
+  return {
+    id: host?.identity ?? null,
+    standIn: host !== undefined && host.role !== 'host',
+    organizer: forViewer(v, organizer, organizerHere?.identity ?? 'organizer'),
+    next: v.isHost ? standIns(s, new Set([v.pass.identity])).map((j) => j.identity) : []
   };
 }
 
@@ -339,7 +383,7 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
 }
 /**
  * Notes paused or off, `at` seconds into the call: the recording stops taking audio until notes are on again. What
- * the organizer's browser couldn't capture is forgotten with every change: it says again once notes are back on, so
+ * the host's browser couldn't capture is forgotten with every change: it says again once notes are back on, so
  * nobody is told something isn't captured when it is. Turning notes off stops shared screens being read too; pausing
  * holds them with everything else.
  */
@@ -381,13 +425,18 @@ const notesCanGo = (asker: { sample: boolean }, organizer: { sample: boolean }) 
 export async function card(d: Deps, code: string, owner?: Owner | undefined): Promise<CallCard> {
   const { organizer, meeting } = await meetingFor(d, code);
   const live = await liveCall(organizer, d.pool, meeting.itemId);
-  // What the call captures now, from the row just read.
-  const now = live ? anonymousCapture(openJson(key(organizer, live.call_id), header(organizer, live.call_id), live.state_ciphertext, Stored), live) : null;
+  // What the call captures now, and who hosts it, from the row just read.
+  const s = live ? openJson(key(organizer, live.call_id), header(organizer, live.call_id), live.state_ciphertext, Stored) : null;
+  const now = live && s ? anonymousCapture(s, live) : null;
   const host = await profile(organizer);
   const asker = owner ? await profile(owner) : undefined;
-  const you: CallCard['you'] = roleOf(owner, asker?.email, organizer, meeting.manifest) !== 'guest' ? 'invited' : asker && notesCanGo(asker, host) ? 'asks' : 'guest';
+  const role = roleOf(owner, asker?.email, organizer, meeting.manifest);
+  // Someone standing in for the organizer: named only to the organizer, whose joining takes the call back.
+  const standIn = live && hostHere(live) ? s?.people.find((j) => j.identity === s.host && j.role !== 'host') : undefined;
+  // Letting someone in adds them to the invite only when the organizer does it: while someone stands in, they'd be a guest.
+  const you: CallCard['you'] = role !== 'guest' ? 'invited' : asker && notesCanGo(asker, host) && !standIn ? 'asks' : 'guest';
   return {
-    title: meeting.manifest.title, organizerName: host.name, hostHere: live ? hostHere(live) : false, locked: live?.locked ?? false,
+    title: meeting.manifest.title, organizerName: host.name, hostHere: live ? hostHere(live) : false, standIn: standIn ? (role === 'host' ? { name: standIn.name } : {}) : null, locked: live?.locked ?? false,
     notes: meeting.manifest.notes, capture: now, ended: !live && meeting.manifest.status === 'ended', you,
     signInForNotes: host.sample ? ['google', 'microsoft', 'sso'] : ['google']
   };
@@ -421,26 +470,83 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   const joined: Joined = {
     identity, person: id128(), role, name, ...(asker && keepsAddress ? { email: asker.email.toLowerCase(), ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
     status: role === 'host' ? 'in' : 'waiting', admit: role === 'guest' ? 'ask' : 'auto', keysFor: 0, group: role === 'host' ? MAIN_PLACE : null, from: 0,
-    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, hand: false
+    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, hand: false, hosting: []
   };
   // A pass from this browser's earlier connection to the same call: someone let in before is let in again without asking.
   const earlier = who.previous ? readPass(d.cfg, who.previous) : undefined;
 
   const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, earlier);
-  // If the organizer's browser never reaches the room, the call doesn't carry on without them.
-  if (role === 'host') setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer joined failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
-  if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous organizer connection already gone', { callId: j.callId, err: e }));
+  // If the new host's browser never reaches the room, someone else hosts, or the call ends when nobody can.
+  if (j.hosts) setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after a host joined failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
+  if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous host connection already gone', { callId: j.callId, err: e }));
   await o.livekit.ensureRoom(j.roomName);
-  // The organizer joining starts a new group (everyone fetches the call and its log); someone asking only concerns the organizer's browser.
-  await nudge(o, j.roomName, j.callId, { call: role === 'host', log: true });
+  // A new host starts a new group (everyone fetches the call and its log); someone asking only concerns the host's browser.
+  await nudge(o, j.roomName, j.callId, { call: j.hosts, log: true });
   clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation });
   const pass = issuePass(d.cfg, { callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person });
   const ticket: CallTicket = { callId: j.callId, serverUrl: d.cfg.LIVEKIT_URL, roomName: j.roomName, identity, role, pass };
-  const viewer: Viewer = { pass: { v: 1, callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person, exp: 0 }, organizer: o, isOrganizer: role === 'host', inCall: role === 'host', role };
+  const viewer: Viewer = { pass: { v: 1, callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person, exp: 0 }, organizer: o, isOrganizer: role === 'host', isHost: j.hosts, stale: false, inCall: j.hosts, role };
   return { ticket, state: await view(viewer, d.pool, j.callId) };
 }
 
-interface Joining { callId: string; roomName: string; replaced: string | null; row: Pick<Row, 'host_identity' | 'locked'>; state: Stored; admit: 'auto' | 'ask'; generation: number; person: string }
+/** `hosts`: the connection joining hosts the call from now on (the organizer's, or a stand-in's reload). */
+interface Joining { callId: string; roomName: string; replaced: string | null; row: Pick<Row, 'host_identity' | 'locked'>; state: Stored; admit: 'auto' | 'ask'; generation: number; person: string; hosts: boolean }
+
+/**
+ * The call goes on with another connection hosting (docs: Calls and recordings › Host hand-off): `host` (already among
+ * the call's people, or `joining` now) hosts from now on, and `gone` (connections) have left. Every change of host
+ * starts a new generation of MLS groups for every part of the call, which the new host's browser creates, so it's leaf 0
+ * of each and the only committer there: the old host's keys stay with the old groups, everyone already let in rejoins
+ * their part's new group with fresh keys without asking, open rooms stay open, and anyone still waiting keeps waiting
+ * (key packages aren't tied to a group, so theirs carry over). What the notes capture carries over exactly: on stays on,
+ * its recording going on in a new segment from the new host's browser; paused or off stay so, since only the organizer
+ * changes them. `told` says what everyone hears about it. Runs in the caller's transaction, which holds the call's row:
+ * the host and the generation change together, so no two browsers ever commit in one generation.
+ */
+async function newGeneration(o: Owner, c: Db, live: Row, state: Stored, change: { host: Joined; joining: boolean; gone: string[] }, told?: { change: HostChange; organizer: string } | undefined): Promise<{ state: Stored; generation: number; roomName: string }> {
+  const generation = live.mls_generation + 1;
+  const waiting = new Set(state.people.filter((j) => j.status === 'waiting' && j.keysFor === live.mls_generation).map((j) => j.identity));
+  const kps = await rows(c, MlsRow, `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND kind = 'keypackage' ORDER BY seq`,
+    [o.ownerId, live.call_id, live.mls_generation]);
+  const carried = kps.flatMap((r) => (r.party && waiting.has(r.party) ? [{ party: r.party, body: openMls(o, live.call_id, r) }] : []));
+  const kept = new Set(carried.map((k) => k.party));
+  const gone = new Set(change.gone);
+  // The old host's connection was gone from when LiveKit said so; anyone else who goes, from now. Nothing either heard
+  // after that was sent.
+  const now = Date.now();
+  const goneAt = (j: Joined) => (j.status !== 'in' ? j.left : (j.identity === live.host_identity ? live.host_left_at?.getTime() : undefined) ?? now);
+  // The old host stops hosting when it went, or now; the new one hosts from now.
+  const hostedUntil = (j: Joined): Joined['hosting'] => j.hosting.map((h) => (h.to === null ? { ...h, to: (gone.has(j.identity) ? goneAt(j) : null) ?? now } : h));
+  const hosting = change.host.hosting.at(-1)?.to === null ? change.host.hosting : [...change.host.hosting, { from: now, to: null }];
+  const open = state.breakouts.open;
+  // In every group from the start of the generation: its own browser makes them.
+  const host: Joined = { ...change.host, status: 'in', keysFor: generation, group: MAIN_PLACE, placedSeq: live.mls_seq + carried.length, hosting };
+  let s: Stored = {
+    ...state,
+    host: host.identity,
+    people: [...state.people.map((j): Joined => (j.identity === host.identity ? host
+      : { ...j, group: null, leftAt: {}, hosting: hostedUntil(j), ...(gone.has(j.identity) ? { status: 'left' as const, left: goneAt(j) } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
+    ...(change.joining ? [host] : [])],
+    // Open rooms stay open, each with a new group from its first epoch.
+    breakouts: { ...state.breakouts, open: open ? { ...open, rooms: open.rooms.map((r) => ({ ...r, epoch: 0 })) } : null },
+    chatAt: {}
+  };
+  // Whoever left takes their shares with them.
+  s = sharesEnd(s, state.people.filter((j) => gone.has(j.identity) && j.status === 'in').map((j) => j.identity), tenthsIn(live.started_at));
+  // What the old host's browser couldn't capture was its own: the new host's says for itself. While notes are on, the
+  // old browser's part of the recording ends, and a new segment starts in the new one's.
+  s = { ...s, notes: { ...s.notes, unavailable: [] } };
+  if (state.host !== null && s.notes.status === 'on' && s.notes.recordingId) s = { ...s, notes: { ...s.notes, segment: s.notes.segment + 1 } };
+  if (told) s = hostNotices(s, told.change, told.organizer);
+  await save(o, c, live.call_id, s);
+  const roomName = live.room_name ?? `r_${id128()}`;
+  await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id]);
+  let seq = live.mls_seq;
+  for (const k of carried) { seq += 1; await appendMls(o, c, live.call_id, { seq, generation, epoch: 0, grp: null }, 'keypackage', k.party, k.body); }
+  await exec(c, 'UPDATE calls SET host_identity = $3, host_joined_at = now(), host_left_at = NULL, room_name = $4, mls_generation = $5, mls_epoch = 0, mls_seq = $6, version = version + 1 WHERE owner_id = $1 AND call_id = $2',
+    [o.ownerId, live.call_id, host.identity, roomName, generation, seq]);
+  return { state: s, generation, roomName };
+}
 
 async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, opts: { mic: boolean; cam: boolean }): Promise<Joining> {
   return tx(o.pool, async (c) => {
@@ -449,7 +555,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const callId = id128();
       const roomName = `r_${id128()}`;
       let s: Stored = {
-        people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatAt: {}, notices: [],
+        host: joined.identity, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatAt: {}, notices: [],
         notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [], asks: [], unavailable: [], screens: { on: false, history: [], ended: [] } }
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
@@ -458,46 +564,19 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       await save(o, c, callId, s);
       await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
       clog.info('call started', { callId, meetingId: meeting.itemId, mic: opts.mic, cam: opts.cam, notes: s.notes.status, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
-      return { callId, roomName, replaced: null, row: { host_identity: joined.identity, locked: false }, state: s, admit: 'auto', generation: 0, person: joined.person };
+      return { callId, roomName, replaced: null, row: { host_identity: joined.identity, locked: false }, state: s, admit: 'auto', generation: 0, person: joined.person, hosts: true };
     }
     const { state } = await load(o, c, live.call_id, true);
     if (state.people.some((j) => j.identity === joined.identity)) throw new ConflictError('Join the call again.', { context: { callId: live.call_id, reason: 'identity' } });
-    // A new organizer connection starts new MLS groups for every part of the call (the old ones' keys stay with the old
-    // browser): everyone already let in rejoins the group of the part they're in without asking, the old connection's
-    // place is over, and anyone waiting keeps waiting. Key packages aren't tied to a group, so theirs carry over.
-    const generation = live.mls_generation + 1;
-    // The old connection was gone from when LiveKit said so, or is from now: nothing it heard after that was sent.
-    const gone = live.host_left_at?.getTime() ?? Date.now();
-    const waiting = new Set(state.people.filter((j) => j.status === 'waiting' && j.keysFor === live.mls_generation).map((j) => j.identity));
-    const kps = await rows(c, MlsRow, `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND kind = 'keypackage' ORDER BY seq`,
-      [o.ownerId, live.call_id, live.mls_generation]);
-    const carried = kps.flatMap((r) => (r.party && waiting.has(r.party) ? [{ party: r.party, body: openMls(o, live.call_id, r) }] : []));
-    const kept = new Set(carried.map((k) => k.party));
-    const open = state.breakouts.open;
-    let s: Stored = {
-      ...state,
-      people: [...state.people.map((j): Joined => ({ ...j, group: null, leftAt: {}, ...(j.identity === live.host_identity ? { status: 'left' as const, left: gone } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
-        { ...joined, keysFor: generation, group: MAIN_PLACE, placedSeq: live.mls_seq + carried.length }],
-      // Open rooms stay open, each with a new group from its first epoch.
-      breakouts: { ...state.breakouts, open: open ? { ...open, rooms: open.rooms.map((r) => ({ ...r, epoch: 0 })) } : null },
-      chatAt: {}
-    };
-    const oldHost = state.people.find((j) => j.identity === live.host_identity && j.status === 'in');
-    if (oldHost) s = sharesEnd(s, [oldHost.identity], tenthsIn(live.started_at));
-    // Taking over from another of the organizer's connections: its part of the recording ends, a new segment starts here.
-    // Paused notes stay paused, and notes off stay off: only the organizer saying so changes them, never a new connection.
-    // What the old connection couldn't capture is its own: the new one says for itself.
-    s = { ...s, notes: { ...s.notes, unavailable: [] } };
-    if (live.host_identity && s.notes.status === 'on' && s.notes.recordingId) s = { ...s, notes: { ...s.notes, segment: s.notes.segment + 1 } };
-    await save(o, c, live.call_id, s);
-    const roomName = live.room_name ?? `r_${id128()}`;
-    await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id]);
-    let seq = live.mls_seq;
-    for (const k of carried) { seq += 1; await appendMls(o, c, live.call_id, { seq, generation, epoch: 0, grp: null }, 'keypackage', k.party, k.body); }
-    await exec(c, 'UPDATE calls SET host_identity = $3, host_joined_at = now(), host_left_at = NULL, room_name = $4, mls_generation = $5, mls_epoch = 0, mls_seq = $6, version = version + 1 WHERE owner_id = $1 AND call_id = $2',
-      [o.ownerId, live.call_id, joined.identity, roomName, generation, seq]);
-    clog.info('organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(live.host_identity), segment: s.notes.segment, generation, waiting: carried.length });
-    return { callId: live.call_id, roomName, replaced: live.host_identity, row: { host_identity: joined.identity, locked: live.locked }, state: s, admit: 'auto', generation, person: joined.person };
+    // A new organizer connection (a reload, another device, or coming back while someone stood in) hosts from now on, in a
+    // new generation: the organizer's earlier connection, if one is still in the call, leaves it; someone standing in
+    // stays, and rejoins their part's new group like everyone else.
+    const earlier = state.people.find((j) => j.role === 'host' && j.status === 'in');
+    const standIn = state.people.find((j) => j.identity === state.host && j.role !== 'host' && j.status === 'in');
+    const told = standIn ? { change: { kind: 'back' as const, standIn, organizer: joined }, organizer: (await me(o)).name } : undefined;
+    const { state: s, generation, roomName } = await newGeneration(o, c, live, state, { host: joined, joining: true, gone: earlier ? [earlier.identity] : [] }, told);
+    clog.info(standIn ? 'organizer back, hosting again' : 'organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(earlier), segment: s.notes.segment, generation });
+    return { callId: live.call_id, roomName, replaced: earlier?.identity ?? null, row: { host_identity: joined.identity, locked: live.locked }, state: s, admit: 'auto', generation, person: joined.person, hosts: true };
   });
 }
 
@@ -506,8 +585,7 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     const live = await liveCall(o, c, meeting.itemId, true);
     // Over and not started again: only the organizer can start it.
     if (!live && meeting.manifest.status === 'ended') throw new ConflictError('This call has ended.', { context: { meetingId: meeting.itemId, role: joined.role } });
-    if (!live || !hostHere(live) || !live.room_name) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
-    if (live.locked) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
+    if (!live || !live.room_name) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
     const { state } = await load(o, c, live.call_id, true);
     if (state.people.some((j) => j.identity === joined.identity)) throw new ConflictError('Join the call again.', { context: { callId: live.call_id, reason: 'identity' } });
     // Back from a reload or another device: whoever was let in before (and not removed) needn't ask again, and is
@@ -517,13 +595,22 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
       ? state.people.find((j) => j.identity === earlier.identity && j.person === earlier.person && !j.replaced && j.role !== 'host' && (j.status === 'in' || j.status === 'left')
         && (j.email ?? '') === (joined.email ?? '')) : undefined;
     const me: Joined = { ...joined, keysFor: live.mls_generation, group: null, ...(before ? { admit: 'auto' as const, person: before.person } : {}) };
+    // Someone standing in for the organizer who reloads comes back hosting, as the organizer would: the new connection
+    // hosts in a new generation, so the call is never left without a host meanwhile, locked or not.
+    if (before && before.identity === state.host && mayStandIn({ ...me, status: 'in' })) {
+      const { state: s, generation } = await newGeneration(o, c, live, withPerson(state, before.identity, (j) => ({ ...j, replaced: true })), { host: me, joining: true, gone: [before.identity] });
+      clog.info('stand-in host came back on a new connection', { callId: live.call_id, generation });
+      return { callId: live.call_id, roomName: live.room_name, replaced: before.identity, row: live, state: s, admit: 'auto', generation, person: me.person, hosts: true };
+    }
+    if (!hostHere(live)) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
+    if (live.locked) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
     let s: Stored = { ...state, people: [...state.people, me] };
     if (before) s = sharesEnd(withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true, left: j.status === 'in' ? Date.now() : j.left })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
     const seq = live.mls_seq + 1;
     await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch, grp: null }, 'keypackage', me.identity, keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, seq]);
     await save(o, c, live.call_id, s);
-    return { callId: live.call_id, roomName: live.room_name, replaced: null, row: live, state: s, admit: me.admit, generation: live.mls_generation, person: me.person };
+    return { callId: live.call_id, roomName: live.room_name, replaced: null, row: live, state: s, admit: me.admit, generation: live.mls_generation, person: me.person, hosts: false };
   });
 }
 
@@ -608,9 +695,11 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       s = withPerson(s, a.identity, (j) => ({ ...j, status: 'denied' }));
     } else if (a.type === 'remove') {
       // Every connection of theirs is out: their passes stop working here, LiveKit disconnects them, and the
-      // organizer's browser takes them out of the group, so the keys move on without them.
+      // host's browser takes them out of the group, so the keys move on without them.
       const target = s.people.find((j) => j.identity === a.identity);
-      if (a.identity === row.host_identity || target?.role === 'host') throw new ValidationError('The organizer can’t remove themselves.', { context: { callId } });
+      // Nobody removes the organizer (someone standing in hosts their call), and whoever hosts doesn't remove themselves.
+      if (target?.role === 'host') throw new ValidationError('Nobody can remove the organizer.', { context: { callId } });
+      if (a.identity === s.host) throw new ValidationError('You can’t remove yourself. Leave the call instead.', { context: { callId } });
       if (!target) throw new ValidationError('That person isn’t in this call.', { context: { callId } });
       gone = s.people.filter((j) => j.person === target.person && j.status === 'in').map((j) => j.identity);
       s = sharesEnd({
@@ -677,7 +766,7 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
     return notice(await startNotes(o, c, s, await meeting(), at, 'organizer'), 'The organizer resumed notes. Everyone here can see that.');
   }
   if (a.type === 'unavailable') {
-    // What the organizer's browser can't capture now (no microphone, or a browser that can't record or listen). It
+    // What the host's browser can't capture now (no microphone, or a browser that can't record or listen). It
     // only means something while notes are on; one that arrives after a pause or notes off is from before it.
     if (s.notes.status !== 'on') return s;
     return { ...s, notes: { ...s.notes, unavailable: [...new Set(a.parts)] } };
@@ -726,7 +815,7 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
 }
 
 /**
- * Speech the organizer's browser heard, into the live transcript under whoever said it while notes are on: the
+ * Speech the host's browser heard, into the live transcript under whoever said it while notes are on: the
  * organizer, or anyone else it plays (someone in the call, or just gone, for a clip still on its way). It's placed in
  * the part of the call its speaker was in when they began (`began`, ms on this server's clock): a clip still on its way
  * when someone moves stays where it was said. Said while rooms were open, it's kept for the people there then; a room's
@@ -862,12 +951,12 @@ export async function shareEnded(v: Viewer, callId: string, share: string): Prom
 const MLS_PAGE = 100;
 
 /**
- * The call's MLS log after `after`, as this person may see it. The organizer's browser reads every group's commits
- * from the start of the generation, and chat only from the part of the call it's in, since it got there; whom it may
- * add to each group comes with that person's latest key package, however long ago it arrived. Anyone else reads only
- * the group of the part of the call they're in: their welcome into it, its commits, and its chat while they're there,
- * since they last got there. Read up to the call's last seq as it stood, so nothing is skipped or sent twice. Also
- * where they stand and where they are, and for the organizer's browser whom to let into each group and take out of it.
+ * The call's MLS log after `after`, as this person may see it. The host's browser reads every group's commits from
+ * the start of the generation, and chat only from the part of the call it's in, since it got there; whom it may add to
+ * each group comes with that person's latest key package, however long ago it arrived. Anyone else reads only the group
+ * of the part of the call they're in: their welcome into it, its commits, and its chat while they're there, since they
+ * last got there. Read up to the call's last seq as it stood, so nothing is skipped or sent twice. Also where they stand
+ * and where they are, and for the host's browser whom to let into each group and take out of it.
  */
 export async function mlsSync(v: Viewer, callId: string, after: number): Promise<CallMls> {
   const o = v.organizer;
@@ -876,17 +965,20 @@ export async function mlsSync(v: Viewer, callId: string, after: number): Promise
   const s = settle(state, row);
   const gen = row.mls_generation;
   const mine = s.people.find((j) => j.identity === v.pass.identity);
-  // Where they stand as of this read, not the pass check's: the organizer's browser may have let them in in between.
-  const organizer = v.isOrganizer && row.host_identity === v.pass.identity;
-  const admission = organizer || mine?.status === 'in' ? 'in' : mine?.status === 'waiting' ? 'waiting' : 'denied';
+  // Where they stand as of this read, not the pass check's: the host's browser may have let them in in between. The
+  // connection that hosts gets the committer's view: it makes and commits every group in this generation.
+  const hosting = v.isHost && s.host === v.pass.identity;
+  // An organizer's connection that's gone while someone stands in: joining again takes the call back.
+  const away = mine?.role === 'host' && mine.status === 'left' && !s.people.some((j) => j.role === 'host' && j.status === 'in');
+  const admission = hosting || mine?.status === 'in' ? 'in' : mine?.status === 'waiting' ? 'waiting' : away && row.state === 'live' ? 'away' : 'denied';
   const place = mine ? placeOf(s, mine) : MAIN_PLACE;
   const group = mine ? groupOf(s, mine) : null;
-  const quiet: CallMls = { generation: gen, admission, committer: committerOf(row.host_identity), place, group, groups: [], items: [], earlierChat: false, keys: false, latest: after, more: false };
+  const quiet: CallMls = { generation: gen, admission, committer: committerOf(s), place, group, groups: [], items: [], earlierChat: false, keys: false, latest: after, more: false };
   if (admission !== 'in' || row.state !== 'live' || !mine) return quiet;
   const keys = needsKeys(s, gen, mine);
   let from = after;
   let found: z.infer<typeof MlsRow>[];
-  if (organizer) {
+  if (hosting) {
     found = await rows(o.pool, MlsRow,
       `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5
          AND (kind = 'commit' OR (kind = 'message' AND grp = $6 AND seq > $7)) ORDER BY seq LIMIT ${MLS_PAGE}`,
@@ -906,9 +998,9 @@ export async function mlsSync(v: Viewer, callId: string, after: number): Promise
   for (const r of found) if (r.grp !== null && r.kind !== 'keypackage') items.push({ kind: r.kind, seq: r.seq, group: r.grp, epoch: r.epoch, body: openMls(o, callId, r) });
   const more = found.length === MLS_PAGE;
   const latest = more ? (found.at(-1)?.seq ?? from) : Math.max(from, row.mls_seq);
-  const groups: CallMlsGroup[] = organizer ? await groupsFor(o, callId, row, s)
+  const groups: CallMlsGroup[] = hosting ? await groupsFor(o, callId, row, s)
     : group === null ? [] : [{ id: group, epoch: epochIn(row.mls_epoch, s, group) ?? 0, pending: [], departed: [] }];
-  const out: CallMls = { ...quiet, groups, items, latest, more, keys, earlierChat: (organizer || place === group) && mine.chatBefore };
+  const out: CallMls = { ...quiet, groups, items, latest, more, keys, earlierChat: (hosting || place === group) && mine.chatBefore };
   clog.debug('call keys synced', {
     callId, generation: gen, admission, groups: groups.length, items: items.length, more, after,
     departed: groups.reduce((n, g) => n + g.departed.length, 0), pending: groups.reduce((n, g) => n + g.pending.length, 0), room: place !== MAIN_PLACE, keys
@@ -917,7 +1009,7 @@ export async function mlsSync(v: Viewer, callId: string, after: number): Promise
 }
 
 /**
- * For the organizer's browser, every part of the call's group: its epoch, who to take out, and who it may add, each
+ * For the host's browser, every part of the call's group: its epoch, who to take out, and who it may add, each
  * with their latest key package. A key package can arrive before its owner may be added (someone being moved sends one
  * while still in their old group), so it's handed over with them rather than only as the log goes by.
  */
@@ -937,11 +1029,12 @@ async function groupsFor(o: Owner, callId: string, row: Row, s: Stored): Promise
 }
 
 /**
- * A commit from the organizer's browser to one part of the call's group: who it adds and removes, and the welcome for
- * whoever it adds. The API takes exactly one commit per epoch for each group, in order, so every browser applies the
- * same ones. Everyone added must be someone the organizer's browser may add to that group now (in no other group);
- * anyone removed is out of that group, and nothing else; a commit adding nobody and removing nobody just moves the
- * keys on.
+ * A commit from the host's browser to one part of the call's group: who it adds and removes, and the welcome for whoever
+ * it adds. The API takes exactly one commit per epoch for each group, in order, so every browser applies the same ones,
+ * and only from the connection hosting in this generation, checked again here under the call's row lock: a host that
+ * was replaced a moment ago can't slip one in. Everyone added must be someone the host's browser may add to that group
+ * now (in no other group); anyone removed is out of that group, and nothing else; a commit adding nobody and removing
+ * nobody just moves the keys on.
  */
 export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof CallCommitBodySchema>): Promise<{ epoch: number }> {
   const o = v.organizer;
@@ -950,6 +1043,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     let s = settle(state, row);
+    if (s.host !== v.pass.identity) throw new ConflictError('Someone else is hosting this call now.', { context: { ...ctx, why: 'not host' }, level: 'info' });
     const epoch = epochIn(row.mls_epoch, s, b.group);
     if (epoch === undefined) throw new ConflictError('That room has closed.', { context: ctx, level: 'info' });
     if (b.generation !== row.mls_generation || b.epoch !== epoch) {
@@ -991,9 +1085,10 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     // Taken out: out of that group, and nothing more. Leaving the call is the API's to say, not a commit's.
     for (const id of b.removed) s = withPerson(s, id, (j) => (j.group === b.group ? { ...j, group: null } : j));
     // Signed in and let in by the organizer, who saw who it was (they asked; nobody let in without asking counts):
-    // added to the invite, so they get the notes like everyone invited. An address comes with an ask only when the
-    // notes may go to it (see join).
-    const signedIn = b.added.flatMap((id) => { const j = people.get(id); return j?.status === 'waiting' && j.admit === 'ask' && j.role === 'guest' && j.email ? [{ id, email: j.email }] : []; });
+    // added to the invite, so they get the notes like everyone invited. Only the organizer adds anyone to their invite:
+    // whoever someone standing in lets in is in the call as a guest, without the notes. An address comes with an ask
+    // only when the notes may go to it (see join).
+    const signedIn = !v.isOrganizer ? [] : b.added.flatMap((id) => { const j = people.get(id); return j?.status === 'waiting' && j.admit === 'ask' && j.role === 'guest' && j.email ? [{ id, email: j.email }] : []; });
     if (signedIn.length) {
       const wanted = [...new Set(signedIn.map((x) => x.email))];
       const added = await addToInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, wanted);
@@ -1019,7 +1114,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
 
 /**
  * Chat, as an MLS message from someone in the group of the part of the call they're in: stored as it came, and
- * relayed to everyone in that group. Nobody chats into another part of the call, the organizer included.
+ * relayed to everyone in that group. Nobody chats into another part of the call, whoever hosts included.
  */
 export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof CallMessageBodySchema>): Promise<void> {
   requireIn(v, 'chat');
@@ -1030,7 +1125,8 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     const s = settle(state, row);
     const mine = s.people.find((j) => j.identity === v.pass.identity);
-    if (!mine || placeOf(s, mine) !== b.group || (!v.isOrganizer && groupOf(s, mine) !== b.group)) throw new ValidationError('You’re in another part of the call now.', { context: ctx });
+    // Whoever hosts is in every group, and chats only in the part of the call it's in; anyone else, in the group they're in.
+    if (!mine || placeOf(s, mine) !== b.group || (mine.identity !== s.host && groupOf(s, mine) !== b.group)) throw new ValidationError('You’re in another part of the call now.', { context: ctx });
     const epoch = epochIn(row.mls_epoch, s, b.group);
     if (epoch === undefined || b.generation !== row.mls_generation || b.epoch > epoch) throw new ConflictError('The call’s keys have moved on. Catch up and try again.', { context: { ...ctx, current: epoch ?? null }, level: 'info' });
     const seq = row.mls_seq + 1;
@@ -1046,7 +1142,7 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
 
 /**
  * A fresh key package from someone already let in who's on their way into a group (after the organizer's connection
- * changed, or a move to another part of the call): the organizer's browser adds them with it.
+ * changed, or a move to another part of the call): the host's browser adds them with it.
  */
 export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof CallKeyPackageBodySchema>): Promise<void> {
   requireIn(v, 'rejoin');
@@ -1069,7 +1165,7 @@ export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof
   await nudge(o, r.room, callId, { call: false, log: true });
 }
 
-/** A LiveKit token, only for someone the organizer's browser let in. It names nobody. */
+/** A LiveKit token, only for someone the host's browser let in. It names nobody. */
 export async function roomToken(v: Viewer, callId: string): Promise<{ token: string }> {
   requireIn(v, 'room');
   const { row } = await load(v.organizer, v.organizer.pool, callId);
@@ -1158,10 +1254,15 @@ function windowFor(v: Viewer, row: Row, s: Stored, mine: Joined | undefined, inv
   const time = mine ? catchup.presence(s.people, mine, row.started_at.getTime()) : [];
   return catchup.windowOf(now, row.started_at.getTime(), time, onlyHere(v, s, mine, row.started_at, invited) === null, gaps);
 }
-/** Stretches with notes on (not off or paused) and nothing transcribed: the organizer's browser, which sends what's said, wasn't in the call. */
+/**
+ * Stretches with notes on (not off or paused) and nothing transcribed: no hosting browser, which sends what's said, was
+ * in the call. The connection hosting now stopped sending when LiveKit said it left, though it hosts until another does.
+ */
 function missedIn(row: Row, s: Stored, w: catchup.Window): catchup.Open[] {
-  const host = s.people.find((j) => j.role === 'host');
-  return host ? catchup.missedOf(catchup.presence(s.people, host, row.started_at.getTime()), w) : [];
+  const left = row.host_left_at?.getTime();
+  const people = left === undefined ? s.people
+    : s.people.map((j) => (j.identity === s.host ? { ...j, hosting: j.hosting.map((h) => (h.to === null ? { ...h, to: left } : h)) } : j));
+  return catchup.missedOf(catchup.hostingOf(people, row.started_at.getTime()), w);
 }
 
 /**
@@ -1322,25 +1423,70 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   return end;
 }
 
-/** The organizer leaving ends the call for everyone. Anyone else just goes: the organizer's browser takes them out of the group. */
-export async function leave(v: Viewer, callId: string): Promise<CallEndResult | null> {
-  if (!v.isOrganizer) {
+/**
+ * Leaving. Anyone but whoever hosts just goes: the host's browser takes them out of the group. Whoever hosts ends the
+ * call for everyone when they say so (`end`); a host leaving without saying so (their browser hadn't heard yet that it
+ * hosts) hands the call to whoever's next, and is refused when nobody can take it, so a page going away never ends it.
+ */
+export async function leave(v: Viewer, callId: string, end: boolean): Promise<CallEndResult | null> {
+  if (!v.isHost) {
     await departed(v.organizer, callId, v.pass.identity);
     return null;
   }
-  const end = await endCall(v.organizer, callId);
-  if (!end) throw new ConflictError('This call has ended.', { context: { callId } });
-  return end;
+  if (!end) {
+    await handOff(v, callId, null);
+    return null;
+  }
+  const ended = await endCall(v.organizer, callId);
+  if (!ended) throw new ConflictError('This call has ended.', { context: { callId } });
+  return ended;
 }
 
 /**
- * Someone other than the organizer is gone (left, or LiveKit says so): the organizer's browser removes them from
- * the group, so the keys move on. Someone still asking to be let in takes their request back.
+ * Whoever hosts leaves, and the call goes on with `to` hosting until the organizer is back (docs: Calls and recordings ›
+ * Host hand-off), or with whoever's next when `to` is null: someone invited who's in the call and in its LiveKit room.
+ * One transaction takes the leaver out and starts the new host's generation, so the call is never without a host.
+ * Refused (409) when they can't host now, and nothing changes: the leaver stays, and can choose again or end the call.
+ */
+export async function handOff(v: Viewer, callId: string, to: string | null): Promise<void> {
+  const o = v.organizer;
+  const ctx = { callId, role: v.pass.role, standIn: !v.isOrganizer };
+  const { row: first } = await load(o, o.pool, callId);
+  if (first.state !== 'live' || !first.room_name) throw new ConflictError('This call has ended.', { context: ctx });
+  // A browser that isn't in the room can't take over. Asked before the row lock, so LiveKit never holds it up; if it
+  // can't be asked, the call's own word that they're in it will do.
+  const connected = await o.livekit.participants(first.room_name).then((ps) => new Set(ps.map((p) => p.identity)), () => undefined);
+  const r = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+    // Rooms whose time is up close now, taking what was said in them along.
+    const s = await roomsChanged(o, c, callId, state, settle(state, row));
+    if (s.host !== v.pass.identity) throw new ConflictError('Someone else is hosting this call now.', { context: { ...ctx, why: 'not host' } });
+    const from = s.people.find((j) => j.identity === v.pass.identity);
+    const can = standIns(s, new Set([v.pass.identity]), connected);
+    const next = to === null ? can[0] : can.find((j) => j.identity === to);
+    if (!from || !next) {
+      throw new ConflictError(to === null ? 'Nobody else here can host. End the call for everyone instead.' : 'They can’t host right now. Choose someone else, or end the call.',
+        { context: { ...ctx, why: 'not eligible', chosen: to !== null } });
+    }
+    const organizer = (await me(o)).name;
+    const { state: after, generation } = await newGeneration(o, c, row, s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
+    clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
+    return { room: row.room_name };
+  });
+  if (r.room) await o.livekit.removeParticipant(r.room, v.pass.identity).catch((e: unknown) => clog.info('host already gone from the room', { callId, err: e }));
+  await nudge(o, r.room, callId, { call: true, log: true });
+}
+
+/**
+ * Someone other than whoever hosts is gone (left, or LiveKit says so): the host's browser removes them from the group,
+ * so the keys move on. Someone still asking to be let in takes their request back. The host going is handOff's, or
+ * upkeep's (reconcile), never this.
  */
 async function departed(o: Owner, callId: string, identity: string, at = Date.now()): Promise<void> {
   const r = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
-    const j = state.people.find((x) => x.identity === identity && x.role !== 'host');
+    const j = state.people.find((x) => x.identity === identity && x.role !== 'host' && x.identity !== state.host);
     if (row.state !== 'live' || !j || (j.status !== 'in' && j.status !== 'waiting')) return null;
     // Someone who was in is kept, as having left (a reload's pass brings them back), and their shares end. Someone who
     // only asked is kept as turned away: nothing of theirs, a pass included, brings them in without asking again, and
@@ -1354,8 +1500,17 @@ async function departed(o: Owner, callId: string, identity: string, at = Date.no
 
 /* ---------- the call's lifecycle from LiveKit: webhooks and upkeep, with nobody's session ---------- */
 
-/** How long the organizer's connection may be gone before the call ends: LiveKit's 20 s departure timeout, plus margin. */
-const HOST_GRACE_MS = 25_000;
+/**
+ * How long the host's connection may be gone (LiveKit said it left, and still doesn't have it) before someone else hosts:
+ * long enough for a reload to come back hosting by itself, short enough that the call isn't long without anyone letting
+ * people in, moving its keys on or taking its notes.
+ */
+export const HANDOFF_MS = 10_000;
+/**
+ * How long the host's connection may be gone before the call ends when nobody can host instead, and how long a new
+ * host's browser has to reach the room at all: LiveKit's 20 s departure timeout, plus margin.
+ */
+export const HOST_GRACE_MS = 25_000;
 /** How long after LiveKit says someone left before asking it whether they're really gone. */
 const LEFT_CHECK_MS = 3_000;
 /** `at` is when LiveKit said they left (ms): their time in the call ends then, not when this check ran. */
@@ -1376,7 +1531,7 @@ export const ARRIVAL_MS = 90_000;
 async function arrivals(d: Deps, ownerId: string, callId: string, roomName: string, now: number): Promise<void> {
   const o = await openOwner(d, ownerId, undefined);
   const { row, state } = await load(o, o.pool, callId);
-  const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
+  const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.identity !== state.host && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
   if (!due.length) return;
   const here = new Set((await d.livekit.participants(roomName)).map((p) => p.identity));
   for (const j of due) {
@@ -1387,7 +1542,7 @@ async function arrivals(d: Deps, ownerId: string, callId: string, roomName: stri
 }
 const ByRoom = z.object({ owner_id: z.string(), call_id: z.string(), host_identity: z.string().nullable() });
 
-/** Applies a verified LiveKit webhook. Rooms are unique, so the room finds the call (and its organizer). */
+/** Applies a verified LiveKit webhook. Rooms are unique, so the room finds the call (and its organizer, and who hosts). */
 export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
   if (!e.roomName) return;
   const r = await maybeOne(d.pool, ByRoom, `SELECT owner_id, call_id, host_identity FROM calls WHERE room_name = $1 AND state = 'live'`, [e.roomName]);
@@ -1404,10 +1559,11 @@ export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
     return;
   }
   if (e.event === 'participant_left') {
-    // A reload or a dropped connection: the call ends only if the organizer doesn't come back in time.
+    // A reload or a dropped connection: if the host doesn't come back in time someone else hosts, and the call ends only
+    // when nobody can.
     await exec(d.pool, 'UPDATE calls SET host_left_at = now() WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [r.owner_id, r.call_id, e.identity]);
-    clog.info('organizer connection left', { callId: r.call_id });
-    setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer left failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
+    clog.info('host connection left', { callId: r.call_id });
+    for (const after of [HANDOFF_MS, HOST_GRACE_MS]) setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the host left failed', { err })); }, after + 1_000).unref();
   } else if (e.event === 'participant_joined') {
     await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [r.owner_id, r.call_id, e.identity]);
   }
@@ -1417,9 +1573,11 @@ const LiveCall = z.object({ owner_id: z.string(), call_id: z.string(), room_name
 type LiveCall = z.infer<typeof LiveCall>;
 
 /**
- * Ends live calls whose organizer has been gone past the grace period (left, or never reached the room),
- * or whose room LiveKit no longer has. Whether the organizer is in the room is asked of LiveKit, so a
- * missed webhook neither ends a call nor keeps one going.
+ * Looks after live calls whose host is gone: once LiveKit has said the host's connection left (HANDOFF_MS ago), or its
+ * browser never reached the room (HOST_GRACE_MS), someone else hosts (standInFor); if nobody can, the call ends once the
+ * host has been gone past HOST_GRACE_MS, as it always has. Calls whose room LiveKit no longer has end too. Whether the
+ * host is in the room is asked of LiveKit, so a missed webhook neither ends a call nor keeps one going, and nothing
+ * changes while LiveKit can't be asked.
  */
 export async function reconcile(d: Deps, now = Date.now()): Promise<number> {
   let ended = 0;
@@ -1438,26 +1596,66 @@ export async function reconcile(d: Deps, now = Date.now()): Promise<number> {
 async function reconcilePage(d: Deps, live: LiveCall[], now: number): Promise<number> {
   const rooms = await d.livekit.existingRooms(live.flatMap((c) => (now - c.started_at.getTime() > 60_000 ? [c.room_name] : [])));
   let ended = 0;
+  // Each call on its own: one that can't be handed on or ended this time never holds up the others.
   for (const c of live) {
-    const since = c.host_left_at ?? c.host_joined_at;
-    let hostGone = since !== null && now - since.getTime() > HOST_GRACE_MS;
-    if (hostGone) {
-      const inRoom = await d.livekit.participants(c.room_name).then((ps) => ps.some((p) => p.identity === c.host_identity), () => true);
-      if (inRoom) {
-        hostGone = false;
-        if (c.host_left_at) await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [c.owner_id, c.call_id, c.host_identity]);
-      }
-    }
-    const roomGone = now - c.started_at.getTime() > 60_000 && !rooms.has(c.room_name);
-    if (!hostGone && !roomGone) {
-      await arrivals(d, c.owner_id, c.call_id, c.room_name, now).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId: c.call_id, err }));
-      continue;
-    }
-    const end = await endCall(await openOwner(d, c.owner_id, undefined), c.call_id, (r) => !roomGone && r.host_identity !== c.host_identity);
-    if (!end) continue;
-    clog.info('call ended without the organizer', { callId: c.call_id, reason: hostGone ? 'organizer gone' : 'room gone' });
-    ended++;
+    const done = await reconcileCall(d, c, rooms, now).catch((err: unknown) => {
+      clog.warn('upkeep of a call failed', { callId: c.call_id, err });
+      return false;
+    });
+    if (done) ended++;
   }
   return ended;
+}
+/** Upkeep of one live call: who reached the room, a hand-off once its host is gone, or its end. True when it ended. */
+async function reconcileCall(d: Deps, c: LiveCall, rooms: ReadonlySet<string>, now: number): Promise<boolean> {
+  const since = c.host_left_at ?? c.host_joined_at;
+  const roomGone = now - c.started_at.getTime() > 60_000 && !rooms.has(c.room_name);
+  let hostGone = !roomGone && since !== null && now - since.getTime() > (c.host_left_at ? HANDOFF_MS : HOST_GRACE_MS);
+  let connected: Set<string> | undefined;
+  if (hostGone) {
+    connected = await d.livekit.participants(c.room_name).then((ps) => new Set(ps.map((p) => p.identity)), () => undefined);
+    if (!connected || (c.host_identity !== null && connected.has(c.host_identity))) {
+      hostGone = false;
+      if (connected && c.host_left_at) await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [c.owner_id, c.call_id, c.host_identity]);
+    }
+  }
+  if (!hostGone && !roomGone) {
+    await arrivals(d, c.owner_id, c.call_id, c.room_name, now).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId: c.call_id, err }));
+    return false;
+  }
+  if (hostGone && connected) {
+    // Someone else hosts if anyone can; if nobody can yet, the call waits until the grace runs out.
+    if ((await standInFor(d, c, connected, now)) !== 'nobody') return false;
+    if (since !== null && now - since.getTime() <= HOST_GRACE_MS) return false;
+  }
+  const end = await endCall(await openOwner(d, c.owner_id, undefined), c.call_id, (r) => !roomGone && r.host_identity !== c.host_identity);
+  if (!end) return false;
+  clog.info('call ended without a host', { callId: c.call_id, reason: hostGone ? 'host gone, nobody can host' : 'room gone' });
+  return true;
+}
+
+/**
+ * Someone else hosts, once the host's connection has been gone long enough: the best of the invited people in the call
+ * who are in its LiveKit room (`connected`). Reconcile decided from an earlier read, so it's all checked again under
+ * the call's row lock. `handed`: done; `nobody`: nobody can host; `moved on`: the host changed meanwhile (came back,
+ * or someone already took over), so there's nothing to do.
+ */
+async function standInFor(d: Deps, c: LiveCall, connected: ReadonlySet<string>, now: number): Promise<'handed' | 'nobody' | 'moved on'> {
+  const o = await openOwner(d, c.owner_id, undefined);
+  const r = await tx(o.pool, async (tc) => {
+    const { row, state } = await load(o, tc, c.call_id, true);
+    const same = row.state === 'live' && row.host_identity === c.host_identity && row.host_left_at?.getTime() === c.host_left_at?.getTime();
+    if (!same) return { result: 'moved on' as const, room: null };
+    const s = await roomsChanged(o, tc, c.call_id, state, settle(state, row, now));
+    const from = s.people.find((j) => j.identity === s.host);
+    const next = standIns(s, new Set(s.host ? [s.host] : []), connected)[0];
+    if (!next) return { result: 'nobody' as const, room: null };
+    const told = from ? { change: { kind: 'dropped' as const, from, to: next }, organizer: (await me(o)).name } : undefined;
+    const { generation, state: after } = await newGeneration(o, tc, row, s, { host: next, joining: false, gone: from ? [from.identity] : [] }, told);
+    clog.info('host gone; someone else hosts', { callId: c.call_id, generation, from: from?.role === 'host' ? 'organizer' : 'stand-in', segment: after.notes.segment, notes: after.notes.status });
+    return { result: 'handed' as const, room: row.room_name };
+  });
+  if (r.result === 'handed') await nudge(o, r.room, c.call_id, { call: true, log: true });
+  return r.result;
 }
 export const state = (v: Viewer, callId: string) => view(v, v.organizer.pool, callId);

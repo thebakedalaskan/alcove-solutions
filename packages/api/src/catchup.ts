@@ -54,8 +54,8 @@ export const CatchUpReadSchema = z.object({
   /** Stretches with nothing captured that touch it: before notes first came on, and while they were off or paused. */
   gaps: z.array(CaptureGapSchema),
   /**
-   * Stretches in it with notes on and nothing transcribed: the organizer's browser, which sends what's said to be
-   * transcribed, wasn't in the call (it reloaded, or its connection dropped).
+   * Stretches in it with notes on and nothing transcribed: no hosting browser, which sends what's said to be
+   * transcribed, was in the call (it reloaded, or its connection dropped before someone else hosted).
    */
   missed: z.array(CallStretchSchema),
   /**

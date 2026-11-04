@@ -28,7 +28,7 @@ export type CaptureChange = z.infer<typeof CaptureChange>;
 export const NotesAsk = z.object({ id: z.string(), person: z.string(), at: z.number(), state: z.enum(['asking', 'accepted', 'declined']) });
 export type NotesAsk = z.infer<typeof NotesAsk>;
 
-/** What the organizer's browser can say it can't capture now, kept in the call's sealed state. */
+/** What the host's browser can say it can't capture now, kept in the call's sealed state. */
 export const CapturePartName = CaptureDevicePartSchema;
 
 /**
@@ -140,7 +140,7 @@ function modes(status: CaptureStatus, everOn: boolean): Record<Part, CaptureMode
 
 /**
  * The capture state for one person. Each part says when it last changed and who changed it: `organizer` names them,
- * for people in the call; people asking to join get no name, no gaps and no asks. A part the organizer's browser says
+ * for people in the call; people asking to join get no name, no gaps and no asks. A part the host's browser says
  * it can't do is unavailable while notes are on, and so is everything when it can do neither. Shared screens are read
  * only once the organizer says so (`screens`), and then follow notes: on, paused with them, or off.
  */
@@ -218,7 +218,7 @@ function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, s
 /**
  * What's captured in a breakout room, for the people in it and the organizer visiting it. It's never recorded, and
  * stays out of the notes; the transcript and the notes model follow the call's notes, held while the organizer has
- * paused the room (and unavailable while the organizer's browser can't listen). Each part says when it last changed
+ * paused the room (and unavailable while the host's browser can't listen). Each part says when it last changed
  * and who changed it, from the call's changes and the room's together.
  */
 export function roomStateFor(c: {

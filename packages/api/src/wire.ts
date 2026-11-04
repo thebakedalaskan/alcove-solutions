@@ -38,13 +38,13 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('request-notes'), up: z.boolean() }),
   /** The organizer says not now to an ask for notes, and whoever asked is told. Saying yes is turning notes on, or resuming. */
   z.object({ type: z.literal('decline-notes'), requestId: z.string().min(1).max(64) }),
-  /** The organizer's browser says what it can't capture now (none, when it can again): everyone sees it, so nobody is told they're captured when they aren't. */
+  /** The host's browser says what it can't capture now (none, when it can again): everyone sees it, so nobody is told they're captured when they aren't. */
   z.object({ type: z.literal('unavailable'), parts: z.array(CaptureDevicePartSchema).max(2) }),
   /** The organizer has shared screens read for the notes, or stops it. Only while notes are on or paused; turning notes off stops it too. */
   z.object({ type: z.literal('screens'), on: z.boolean() }),
   /** Anyone in the call: a raised hand, which everyone sees. */
   z.object({ type: z.literal('hand'), up: z.boolean() }),
-  /** Turns away someone asking to join. Letting someone in is the organizer's browser adding them to the call's MLS group. */
+  /** Turns away someone asking to join. Letting someone in is the host's browser adding them to the call's MLS group. */
   z.object({ type: z.literal('deny'), identity: z.string().min(1).max(64) }),
   /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */
   z.object({ type: z.literal('mute'), identity: z.string().min(1).max(64), trackSid: z.string().min(1).max(64) }),
@@ -85,7 +85,7 @@ export const CallJoinBodySchema = z.object({
   /** The pass from this browser's last connection to the call, if it had one: someone let in before is let in again without asking. */
   previous: z.string().max(2000).optional()
 });
-/** The organizer's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
+/** The host's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
 export const CallCommitBodySchema = z.object({
   generation: z.number().int().nonnegative(),
   /** Which part of the call's group: `main`, or a breakout room's ID. */
@@ -99,8 +99,15 @@ export const CallCommitBodySchema = z.object({
 });
 /** An MLS application message (chat), from someone in the group of the part of the call they're in. */
 export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), group: CallPlaceSchema, epoch: z.number().int().nonnegative(), message: Mls(65_536) });
-/** A fresh key package from someone already in the call who's on their way into a group: a new generation (the organizer's connection changed), or another part of the call. */
+/** A fresh key package from someone already in the call who's on their way into a group: a new generation (the connection that hosts changed), or another part of the call. */
 export const CallKeyPackageBodySchema = z.object({ generation: z.number().int().nonnegative(), keyPackage: Mls(8192) });
+/** Whoever hosts, leaving and handing the call to someone invited who's in it: `to`, by participant ID. */
+export const CallHandOffBodySchema = z.object({ to: CallIdentity });
+/**
+ * Leaving a call. `end`: whoever hosts ends it for everyone. Without it, anyone else just leaves, and whoever hosts hands
+ * the call to whoever's next (refused when nobody can take it): a page going away never ends a call.
+ */
+export const CallLeaveBodySchema = z.object({ end: z.boolean() });
 
 export const RecordingActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rename'), title: z.string().trim().min(1).max(160) }),

@@ -12,7 +12,7 @@ import { ConflictError, ValidationError } from '../errors';
 export const AWAY_LEAD_IN = 30;
 /** Comings and goings closer together than this are one stretch in the call (a reload's own blink). */
 const MERGE = 1;
-/** Stretches without the organizer's browser shorter than this aren't worth saying: a reload hands over within it. */
+/** Stretches without a hosting browser shorter than this aren't worth saying: a reload hands over within it. */
 const MISSED_MIN = 2;
 
 const tenth = (s: number) => Math.round(s * 10) / 10;
@@ -25,6 +25,8 @@ export interface Connection {
   identity: string; person: string; role: 'host' | 'invited' | 'guest'; email?: string | undefined;
   status: 'waiting' | 'in' | 'left' | 'denied'; since: number; left: number | null;
 }
+/** A connection's stretches hosting the call (ms; `to` null while it still hosts). */
+export interface Hosting { hosting: { from: number; to: number | null }[] }
 /** A line of the live transcript with when it was said, if the call placed it. */
 export interface Placed { id: string; said?: number | undefined }
 
@@ -62,6 +64,12 @@ export function presence(people: Connection[], me: Connection, startedAt: number
     if (j.status === 'left') return [{ from: at(j.since), to: Math.max(at(j.since), at(j.left ?? j.since)) }];
     return [];
   }));
+}
+
+/** When a hosting browser, which sends what's said, was in the call: every connection's stretches hosting, merged. */
+export function hostingOf(people: Hosting[], startedAt: number): Open[] {
+  const at = (ms: number) => Math.max(0, tenth((ms - startedAt) / 1000));
+  return merged(people.flatMap((j) => j.hosting.map((h): Open => ({ from: at(h.from), to: h.to === null ? null : Math.max(at(h.from), at(h.to)) }))));
 }
 
 /** The stretches between `xs` (merged, in order) from the start of the call until `now`. */
@@ -116,8 +124,8 @@ const stretchOf = (g: CaptureGap, startedAt: number): Open => {
 };
 
 /**
- * Stretches with notes on and nothing transcribed: the organizer's browser, which sends what's said, was gone. `host`
- * is the organizer's time in the call. Stretches with notes off or paused are gaps, not this.
+ * Stretches with notes on and nothing transcribed: no hosting browser, which sends what's said, was in the call.
+ * `host` is when any connection hosted it. Stretches with notes off or paused are gaps, not this.
  */
 export function missedOf(host: Open[], w: Window): Open[] {
   return overlap(between(host, w.now), between(merged(w.gaps.map((g) => stretchOf(g, w.startedAt))), w.now)).filter((x) => length(x, w.now) >= MISSED_MIN);

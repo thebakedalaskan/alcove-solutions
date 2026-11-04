@@ -133,10 +133,10 @@ CREATE TABLE call_codes (
   FOREIGN KEY (owner_id, meeting_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
 );
 
--- A call knows its LiveKit room, the organizer's current connection, when it joined and left, whether it's
--- locked, and where its end-to-end encryption (MLS) has got to: counters only. The group's generation (a new
--- group when the organizer's connection changes), its epoch (the API takes one commit per epoch, in order)
--- and the last seq in its log.
+-- A call knows its LiveKit room, the connection that hosts it (the organizer's, or a stand-in's while the organizer
+-- is away), when that connection joined and left, whether it's locked, and where its end-to-end encryption (MLS) has
+-- got to: counters only. The group's generation (new groups whenever the connection that hosts changes), its epoch
+-- (the API takes one commit per epoch, in order) and the last seq in its log.
 CREATE TABLE calls (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   call_id alcove_id128 NOT NULL,
