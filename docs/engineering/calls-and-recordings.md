@@ -477,17 +477,27 @@ ever sent to the presenter's computer.
   second while it moves (`SHARE_POINT_EVERY_MS`), once a second while it's still, and stops after 6 seconds without
   moving; a pointer nothing has been heard of for 2.5 seconds goes. Its author takes their last mark back (Undo in the
   pointing bar, or Backspace), and the presenter clears every mark on their share (**Clear marks** on their share bar).
-  Everything goes when the share stops, its author leaves the call or your part of it, your part of the call changes
-  (rooms opening, closing or moving you), the room disconnects, or pointing is turned off; and the marks on a share go
-  when its presenter changes what's shared, since they were about the old picture. On a phone, a tap leaves a ring and
+  Everything goes when the share stops, its author leaves the call or your part of it, you move to another part of the
+  call (sent to a room, back to the main room, moved, or, for the organizer, visiting one), the room disconnects, or
+  pointing is turned off; someone else coming or going takes only their own pointer and marks with them. The marks on a
+  share go when its presenter changes what's shared, since they were about the old picture. On a phone, a tap leaves a ring and
   a drag a line; there's no pointer to hover with.
-- **Where marks land.** Every place is a fraction of the shared picture, 0 to 1 across and down, and each screen draws
-  it over the picture where its own video shows it (letterboxed in its tile), so a mark lands on the same spot of the
-  picture on a phone and on a wide screen, in a tile or big. A message names its share by the picture's LiveKit track
-  sid, which no later share has: a message about a share that stopped, or one this browser doesn't show, lands nowhere.
-- **Keyboard.** On a share shown big, L (or **Point and mark** in its ⋯) starts pointing. The arrow keys move your
-  pointer (with Shift, further), Enter or Space leaves a ring, Backspace takes back your last mark and Escape stops.
-  While you point, the arrows move your pointer rather than to the next tile.
+- **Where marks land.** Every place is a fraction of the shared picture, 0 to 1 across and down
+  ([the coordinate model](#looking-closer-at-a-share), `shareFrame.ts`), so a mark lands on the same spot of the picture
+  on a phone and on a wide screen, in a tile or big, however each viewer has framed it. The drawing sits on the
+  picture's own box, in parts of it: on a share someone looks at closer it's inside the box `place` gives for their
+  framing, so it moves with every zoom and pan and glides with the picture; elsewhere it's the box the video shows the
+  picture in (`place` with the whole picture, letterboxed in its tile). Rings and lines keep their size on screen at any
+  zoom. A press goes the other way, through the viewer's framing (`toShare`). A picture held still (frozen, or an
+  earlier one) shows no pointers or marks, as they're about the live picture, and holding one ends your pointing; a
+  share in its own window shows them, and you point in the call. A message names its share by the picture's LiveKit
+  track sid, which no later share has: a message about a share that stopped, or one this browser doesn't show, lands
+  nowhere.
+- **Keyboard.** On a share shown big and live, L (or **Point and mark** in its ⋯) starts pointing. The arrow keys move
+  your pointer (with Shift, further), Enter or Space leaves a ring, Backspace takes back your last mark and Escape
+  stops. While you point, the arrows move your pointer rather than to the next tile or around a zoomed picture; +, −,
+  0, F, comma and full stop still frame the share, and so do its bar, the wheel and a pinch. A drag draws rather than
+  moving the picture.
 - **Breakout rooms.** Pointers and marks stay in the part of the call they're made in. Each part has its own MLS
   group, so what's sealed in a room opens only with that room's keys. A browser also takes them only from the people
   in its own part, about shares it shows (a room's shares are shown only in the room), and drops them all when its
@@ -516,10 +526,18 @@ ever sent to the presenter's computer.
   decrypted as unencrypted (`Encryption_Type.NONE`: its sender never sets the field), the same as a packet sent in the
   clear, so a browser can't tell on arrival whether a packet was encrypted. The session's own seal is what a browser
   trusts.
-- **Replays and floods.** Each sender numbers its messages inside the seal, so a packet replayed or overtaken by a newer
-  one changes nothing, and a mark taken back can't come back. A browser reads messages of at most 8 KiB, at most 50 a
-  second from each sender after a burst of 100, and keeps at most 12 marks per person per share (a new one takes the
-  oldest away). A line has at most 96 places; a longer one keeps its shape with half as many.
+- **Replays.** Each sender numbers its messages inside the seal, and a browser keeps what it knows of every sender for
+  the whole call, whether or not anything of theirs shows: their newest numbers, and the last 1,024 marks they took back
+  or that went. A packet replayed, or overtaken by a newer one, brings back no pointer or mark, and a share is cleared
+  only by a newer clear from its presenter, so an old one can't wipe marks made since. A message more than 512 behind
+  its sender's newest is dropped. Only LiveKit could replay a packet as its sender: one a member sends again comes with
+  their own identity, so it opens only as theirs, which it isn't.
+- **Floods.** LiveKit limits no one's data, so each browser's room checks every packet before opening it
+  (`CallRoom.receive`): at most 8 KiB once sealed (`SHARE_MARK_BYTES` and the seal's 30 bytes,
+  `CALL_DATA_OVERHEAD`), and from each sender at most 50 a second after a burst of 100. The rest is dropped unopened,
+  so a flood from one browser costs the others a look at each packet's length. The store keeps at most 12 marks per
+  person per share (a new one takes the oldest away), and a line has at most 96 places; a longer one keeps its shape
+  with half as many.
 - **Who could pretend.** As with media under SFrame, every member can derive every sender's key, so a member working
   with LiveKit, which says who sent each packet, could make a pointer look like someone else's. Neither can alone:
   LiveKit has no keys, and a member's packets are opened with their own.
@@ -843,7 +861,8 @@ the coordinates). Your own share has none of this: you have the original.
   it), whatever its resolution and however anyone has zoomed, so it names the same spot on every screen. A framing is a
   zoom and the point of the picture at the middle of your view; `place` gives the rectangle the picture is drawn in for
   a view, and `toShare` and `toView` convert points. It's settled for each view, so a picture bigger than the view always
-  covers it. Pointers and marks on shares (#12) align with your zoom through it.
+  covers it. Pointers and marks ([Pointing at shared screens](#pointing-at-shared-screens)) align with your framing
+  through it: they're drawn on the picture's box, and a press maps back with `toShare`.
 - **Freezing and earlier pictures.** F, or the bar, holds the picture on screen still while the share goes on; comma
   steps back through earlier pictures (from live, it freezes first) and full stop forward, back to live after the
   newest. While a picture is held a ring goes round the share and a bar at its top says how far behind live it is
