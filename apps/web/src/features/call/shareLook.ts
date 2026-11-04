@@ -17,6 +17,7 @@
 import type { LiveStore } from '@alcove/api';
 import { log } from '~/lib/log';
 import { openPop, popKind, type PopKind } from './popOut';
+import { GRID_H, GRID_W, gridOf, moved } from './screenGrid';
 import { WHOLE, isZoomed, panBy, settle, stepZoom, zoomTo, type Framing, type Size } from './shareFrame';
 
 const slog = log.child({ component: 'share-look' });
@@ -25,8 +26,6 @@ const slog = log.child({ component: 'share-look' });
 export const HISTORY = { pictures: 30, bytes: 16 * 1024 * 1024, everyMs: 1000 } as const;
 /** Bigger pictures are kept at 4K. */
 const MAX_SIDE = 3840;
-/** The tiny copy a picture is compared by: enough to see a slide change or a scroll, not a cursor moving. */
-const SIG = { w: 48, h: 27 } as const;
 
 /** Why earlier pictures aren't being kept: the organizer paused notes, the device is low on memory, or this browser can't. */
 export type HistoryOff = 'paused' | 'memory' | 'unsupported';
@@ -69,29 +68,21 @@ const sameSize = (a: Size, b: Size) => a.w === b.w && a.h === b.h;
 
 /* ---------- comparing and keeping pictures ---------- */
 
-let sigCanvas: HTMLCanvasElement | null = null;
-/** A picture's tiny greyscale copy. The browser shrinks it first (on the GPU where it can), so only 48 × 27 pixels are read back. */
+let gridCanvas: HTMLCanvasElement | null = null;
+/** A picture on the grey grid (screenGrid.ts). The browser shrinks it first, on the GPU where it can, so only the grid is read back. */
 async function signature(src: ImageBitmap): Promise<Uint8Array | null> {
-  if (!sigCanvas) { sigCanvas = document.createElement('canvas'); sigCanvas.width = SIG.w; sigCanvas.height = SIG.h; }
-  const ctx = sigCanvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  const small = await createImageBitmap(src, { resizeWidth: SIG.w, resizeHeight: SIG.h, resizeQuality: 'low' });
-  try { ctx.drawImage(small, 0, 0, SIG.w, SIG.h); } finally { small.close(); }
-  const d = ctx.getImageData(0, 0, SIG.w, SIG.h).data;
-  const out = new Uint8Array(SIG.w * SIG.h);
-  for (let i = 0; i < out.length; i++) out[i] = Math.round((d[i * 4] ?? 0) * 0.299 + (d[i * 4 + 1] ?? 0) * 0.587 + (d[i * 4 + 2] ?? 0) * 0.114);
-  return out;
+  if (!gridCanvas) { gridCanvas = document.createElement('canvas'); gridCanvas.width = GRID_W; gridCanvas.height = GRID_H; }
+  const small = await createImageBitmap(src, { resizeWidth: GRID_W, resizeHeight: GRID_H, resizeQuality: 'low' });
+  try { return gridOf(small, gridCanvas); } finally { small.close(); }
 }
-/** Whether two tiny copies show a real change: a new slide, a scroll, a window moved. */
+/**
+ * Whether the screen really changed since the newest kept picture: a little of the grid moving (a new slide, a scroll, a
+ * window moved: finer than the notes need), or all of it shifting a little (a page fading to another colour).
+ */
 function differs(a: Uint8Array, b: Uint8Array): boolean {
   let sum = 0;
-  let big = 0;
-  for (let i = 0; i < a.length; i++) {
-    const d = Math.abs((a[i] ?? 0) - (b[i] ?? 0));
-    sum += d;
-    if (d > 24) big++;
-  }
-  return sum / a.length > 1.5 || big / a.length > 0.006;
+  for (let i = 0; i < a.length; i++) sum += Math.abs((a[i] ?? 0) - (b[i] ?? 0));
+  return moved(a, b) > 0.006 || sum / a.length > 1.5;
 }
 
 /** What this browser writes pictures as: WebP where it can, else JPEG. */
