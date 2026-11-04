@@ -78,6 +78,17 @@ const VIDEO: Record<VideoSend, MediaTrackConstraints> = {
   hd: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
   saver: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 } }
 };
+/**
+ * What a camera chosen to send at `send` is sent as: the choice, or 720p for HD on a camera that gives less (its
+ * 1080p layers on a smaller picture would send two full-size copies), with how far that camera goes.
+ */
+export function cameraSends(send: VideoSend, track: MediaStreamTrack | null | undefined): { as: VideoSend; most: number | null } {
+  const { width = 0, height = 0 } = track?.getSettings() ?? {};
+  const most = Math.min(width, height);
+  return send === 'hd' && most > 0 && most < 1080 ? { as: 'standard', most } : { as: send, most: null };
+}
+/** A size and, where the browser can switch it, blur, as one set: each `applyConstraints` replaces the last one whole. */
+const withBlur = (size: MediaTrackConstraints, blur: boolean | null): MediaTrackConstraints => (blur === null ? size : { ...size, advanced: [{ backgroundBlur: blur }] });
 const audioFor = (noiseSuppression: boolean): MediaTrackConstraints => ({ echoCancellation: true, noiseSuppression });
 const deviceOf = (t: MediaStreamTrack | null) => t?.getSettings().deviceId ?? null;
 /** Blur that the browser can switch both ways: a camera that only reports the system's setting can't be changed from here. */
@@ -628,24 +639,27 @@ export class LocalMedia {
     try { await this.audio?.applyConstraints({ ...audioFor(on), ...(this.snap.micId ? { deviceId: { exact: this.snap.micId } } : {}) }); } catch (e) { mlog.warn('could not change noise reduction', { err: e, on }); }
   }
   /**
-   * The most camera video to send, changed on the camera in use: smaller is the browser scaling it, larger asks the
-   * camera for at least that size (a running camera grows only when it must), else for the nearest it has. Only then
-   * is the choice made, so the call sends the camera again with that size's layers. Remembered in this browser.
+   * The most camera video to send, changed on the camera in use once device work already asked for is done (one that's
+   * opening opens at the old size first): smaller is the browser scaling it, larger asks the camera for at least that
+   * size (a running camera grows only when it must), else for the nearest it has. Only then is the choice made, so the
+   * call sends the camera again with that size's layers. Remembered in this browser.
    */
   async setSendVideo(send: VideoSend): Promise<void> {
     rememberDevice('sendVideo', send);
-    const t = this.video;
-    if (t?.readyState === 'live') {
-      const want = VIDEO[send];
-      const atLeast: MediaTrackConstraints = { ...want, width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } };
-      try { await t.applyConstraints(send === 'hd' ? atLeast : want); } catch {
-        try { await t.applyConstraints(want); } catch (e) { mlog.warn('could not change the camera’s size', { err: e, send }); }
+    await this.serial(async () => {
+      const t = this.video;
+      if (t?.readyState === 'live') {
+        const blur = blurOf(t).canBlur ? this.snap.blur : null;
+        const want = withBlur(VIDEO[send], blur);
+        const atLeast = withBlur({ ...VIDEO[send], width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } }, blur);
+        try { await t.applyConstraints(send === 'hd' ? atLeast : want); } catch {
+          try { await t.applyConstraints(want); } catch (e) { mlog.warn('could not change the camera’s size', { err: e, send }); }
+        }
       }
-      if (this.snap.blur) await this.applyBlur(true);
-    }
-    this.set({ sendVideo: send });
-    const { width, height } = t?.getSettings() ?? {};
-    mlog.info('video sent changed', { send, width: width ?? null, height: height ?? null });
+      this.set({ sendVideo: send });
+      const { width, height } = t?.getSettings() ?? {};
+      mlog.info('video sent changed', { send, width: width ?? null, height: height ?? null });
+    });
   }
   /** How everyone else's cameras come in: as sharp as each tile needs, capped low to save data, or not at all. Remembered in this browser. */
   setReceiveVideo(receive: VideoReceive): void {
@@ -656,14 +670,14 @@ export class LocalMedia {
   /** Background blur, where the browser can switch it (Chrome with the system's camera effects). */
   async setBlur(on: boolean): Promise<void> {
     rememberDevice('blur', on);
-    await this.applyBlur(on);
+    await this.serial(() => this.applyBlur(on));
     this.set(blurOf(this.video));
   }
+  /** Blur with the size being sent, as one set: blur alone would drop the size, and the camera could pick its own. */
   private async applyBlur(on: boolean) {
     const t = this.video;
     if (!t || !blurOf(t).canBlur) return;
-    const blur: MediaTrackConstraintSet = { backgroundBlur: on };
-    try { await t.applyConstraints({ advanced: [blur] }); } catch (e) { mlog.warn('could not change background blur', { err: e, on }); }
+    try { await t.applyConstraints(withBlur(VIDEO[this.snap.sendVideo], on)); } catch (e) { mlog.warn('could not change background blur', { err: e, on }); }
   }
   /**
    * Shares a tab, a window or a screen: the browser's own picker opens on that kind and asks which

@@ -589,6 +589,7 @@
   .ic-rs, .ic-divider { display: none; }
   .ic-side { left: 0; width: auto !important; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
+  .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 @media (max-width: 560px) {
   .ic-call { padding: 0 8px; }

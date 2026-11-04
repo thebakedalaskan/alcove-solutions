@@ -32,7 +32,7 @@ import {
 } from 'livekit-client';
 import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 import { log } from '~/lib/log';
-import type { LocalMedia } from './media';
+import { cameraSends, type LocalMedia } from './media';
 import { volumesFor, type CallVolumes } from './volume';
 
 const rlog = log.child({ component: 'call-room' });
@@ -148,14 +148,6 @@ const CAMERA: Record<VideoSend, TrackPublishOptions> = {
   hd: { videoEncoding: VideoPresets.h1080.encoding, videoSimulcastLayers: [VideoPresets.h360, VideoPresets.h720] },
   saver: { videoEncoding: VideoPresets.h360.encoding, videoSimulcastLayers: [VideoPresets.h180] }
 };
-/**
- * The size a camera is sent at: the one chosen, or 720p's for a camera that can't give 1080p. Its 1080p layers on a
- * 720p picture would send two full-size copies.
- */
-const camAs = (send: VideoSend, track: MediaStreamTrack): VideoSend => {
-  const { width = 0, height = 0 } = track.getSettings();
-  return send === 'hd' && Math.min(width, height) < 1080 ? 'standard' : send;
-};
 
 class LiveKitRoom implements CallRoom {
   private keys: CallKeys;
@@ -176,7 +168,7 @@ class LiveKitRoom implements CallRoom {
   /** How loud each person plays here, for this listener only (see volume.ts). */
   private volumes: CallVolumes;
   private stopVolumes: () => void = () => undefined;
-  /** The size the camera was last published at (see camAs), so a change of size sends it again. */
+  /** The size the camera was last published at (see cameraSends), so a change of size sends it again. */
   private camSentAs: VideoSend | null = null;
   /** The speaker everyone else's audio plays on now, and one the browser just refused (said once). */
   private speaker: string | null = null;
@@ -190,9 +182,10 @@ class LiveKitRoom implements CallRoom {
   constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
     this.keys = new CallKeys(session.ticket.identity);
     this.volumes = volumesFor(session);
-    // Each video as sharp as its tile on this screen (its own pixels, so a high-density screen gets more), and no
-    // copy anyone isn't watching is sent at all.
-    this.room = new Room({ adaptiveStream: { pixelDensity: 'screen' }, dynacast: true, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
+    // Each video as sharp as its tile on this screen, at up to 1.5 of its pixels to a CSS pixel: a large tile on a
+    // high-density screen gets 1080p, a grid of small ones keeps to small copies. A video nobody here can see (a
+    // background tab, another breakout room) is paused, and no copy anyone isn't watching is sent at all.
+    this.room = new Room({ adaptiveStream: { pixelDensity: Math.min(window.devicePixelRatio || 1, 1.5) }, dynacast: true, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
     const r = this.room;
     const changed = () => this.emit();
     const refetch = (what?: { call: boolean; log: boolean }) => { this.emit(); void session.refresh(what).catch((e: unknown) => rlog.warn('call refresh failed', { err: e })); };
@@ -423,7 +416,7 @@ class LiveKitRoom implements CallRoom {
     const have = me.getTrackPublication(SOURCE[kind]);
     // A camera sent at another size than it's sent at now is sent again: a publication's layers are set when it's
     // published.
-    const sendAs = kind === 'cam' && track ? camAs(send, track) : null;
+    const sendAs = kind === 'cam' && track ? cameraSends(send, track).as : null;
     const resend = sendAs !== null && Boolean(have?.track) && this.camSentAs !== sendAs;
     if (have?.track?.mediaStreamTrack === track && have && !resend) return;
     // Another microphone or camera, or something else shared: the same publication carries it, so nobody sees it stop
@@ -437,16 +430,19 @@ class LiveKitRoom implements CallRoom {
   }
 
   /**
-   * Everyone else's cameras as chosen here: as sharp as each tile needs (LiveKit's adaptive stream), capped at the
-   * smallest copy to save data, or not received at all. Screens are never capped: text has to stay readable.
+   * Everyone else's cameras as chosen here: as sharp as each tile needs (adaptive stream, which also pauses one nobody
+   * here can see), capped at the smallest copy to save data, or not received at all: unsubscribed, so LiveKit stops
+   * sending it. Never `setEnabled`: once called, it overrides adaptive stream's pausing for good. Screens are never
+   * capped: text has to stay readable.
    */
   private receiveCams() {
     const receive = this.media.getSnapshot().receiveVideo;
     for (const who of this.room.remoteParticipants.values()) {
       const pub = who.getTrackPublication(Track.Source.Camera);
-      if (!pub?.isSubscribed) continue;
-      pub.setEnabled(receive !== 'off');
-      if (receive !== 'off') pub.setVideoQuality(receive === 'saver' ? VideoQuality.LOW : VideoQuality.HIGH);
+      if (!pub) continue;
+      if (receive === 'off') { if (pub.isDesired) pub.setSubscribed(false); continue; }
+      if (!pub.isDesired) pub.setSubscribed(true);
+      pub.setVideoQuality(receive === 'saver' ? VideoQuality.LOW : VideoQuality.HIGH);
     }
   }
 

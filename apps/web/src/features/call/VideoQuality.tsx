@@ -5,7 +5,7 @@
  */
 import type { VideoReceive, VideoSend } from '@alcove/api';
 import { Segmented, type Choice } from '@alcove/ui';
-import type { LocalMedia, MediaSnapshot } from './media';
+import { cameraSends, type LocalMedia, type MediaSnapshot } from './media';
 
 const SEND: Choice<VideoSend>[] = [{ value: 'saver', label: '360p' }, { value: 'standard', label: '720p' }, { value: 'hd', label: 'HD 1080p' }];
 const SEND_SAYS: Record<VideoSend, string> = {
@@ -22,17 +22,16 @@ const SEE_SAYS: Record<VideoReceive, string> = {
 
 export function VideoQuality({ media, m }: { media: LocalMedia; m: MediaSnapshot }) {
   // HD where the camera has it: one that tops out lower says so, and that's what's sent.
-  const { width = 0, height = 0 } = m.camera?.getVideoTracks()[0]?.getSettings() ?? {};
-  const most = Math.min(width, height);
-  const sends = m.sendVideo === 'hd' && most > 0 && most < 1080 ? `Your camera gives ${most}p at most, so that’s what’s sent.` : SEND_SAYS[m.sendVideo];
+  const { most } = cameraSends(m.sendVideo, m.camera?.getVideoTracks()[0]);
+  const sends = most !== null ? `Your camera gives ${most}p at most, so that’s what’s sent.` : SEND_SAYS[m.sendVideo];
   return (
     <div className="ic-vq">
       <div className="ac-eyebrow">Video you send</div>
       <Segmented label="Video you send" value={m.sendVideo} onChange={(v) => void media.setSendVideo(v)} options={SEND} />
-      <p className="ic-vq-says">{sends}</p>
+      <p className="ic-vq-says" aria-live="polite">{sends}</p>
       <div className="ac-eyebrow mt">Video you see</div>
       <Segmented label="Video you see" value={m.receiveVideo} onChange={(v) => media.setReceiveVideo(v)} options={SEE} />
-      <p className="ic-vq-says">{SEE_SAYS[m.receiveVideo]}</p>
+      <p className="ic-vq-says" aria-live="polite">{SEE_SAYS[m.receiveVideo]}</p>
     </div>
   );
 }

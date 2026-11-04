@@ -948,9 +948,10 @@ function InCall({ session }: { session: CallSession }) {
       <button type="button" className="sp-btn is-strong" onClick={playSound}>Play sound</button>
     </div>
   );
-  // Hidden by this person's own choice, remembered in this browser: say so, or everyone just seems to have their camera off.
-  const camsPill = m.receiveVideo === 'off' && (
-    <div className="ic-spill"><Icon name="videoOff" size={15} /><span className="tx2">Cameras are hidden for you</span>
+  // Hidden by this person's own choice, remembered in this browser: said while anyone else is here, or everyone just seems
+  // to have their camera off. On a narrow screen it's the icon and the button, the words kept for screen readers.
+  const camsPill = m.receiveVideo === 'off' && others.length > 0 && (
+    <div className="ic-spill is-cams"><Icon name="videoOff" size={15} /><span className="tx2">Cameras are hidden for you</span>
       <button type="button" className="sp-btn is-strong" onClick={() => media.setReceiveVideo('auto')}>Show cameras</button>
     </div>
   );
