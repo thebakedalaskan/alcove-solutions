@@ -422,7 +422,9 @@ device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
    only it holds: the code works once. It learns the call's title, the organizer's name, who it'll be and whether
    their microphone and camera are on, and nothing else. The device being left sees that it was opened.
 3. **Ready.** The new device makes its own random identity and MLS key package (`POST /v1/moves/ready`); its keys
-   never leave it. The organizer and invited people move only to a device signed in to the same account (the
+   never leave it. The identity must be new to the call: one the call already has (the organizer's, anyone else's,
+   or the mover's own) is refused (`409`), so a move can never name someone else's place and be handed it. The
+   organizer and invited people move only to a device signed in to the same account (the
    organizer's own; an invited person's by the address they were let in with), checked here and again as the new
    device comes in; the move page signs in on the spot, and Google sign-in comes back to it (`?next=/move`, with the
    claim kept in that tab's `sessionStorage` meanwhile). A guest's move involves no account: their call pass is all
@@ -437,13 +439,24 @@ device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
 5. **In.** The new device comes in (`POST /v1/moves/arrive`) as the same person, with the identity and key package
    it sent: a guest or invited person the way a reload comes back (the same person, so the same seat and breakout
    room, name, role, raised hand and spotlight), the organizer as the organizer's new connection (a new key
-   generation, host powers, and the recording on a new segment, as when they join from another device). Asking
-   again, after a lost answer, hands back the same connection with a new pass. Its microphone and camera start in
+   generation, host powers, and the recording on a new segment, as when they join from another device). It brings in
+   only the identity named when the device was ready, so another connection already using it (someone who joined
+   with it in between) means `409`, never that connection's place. Asking again, after a lost answer, hands back the
+   same connection with a new pass, and only that one: the connection this move made, as the person who moved, in
+   the same role, and only once the move has happened. Its microphone and camera start in
    the call as they were on the device left, never more, and only after that device stopped its own: there are never
    two live microphones, and one that was off stays off. A screen being shared stops with the device that shared it.
 
 Either device can call the move off until the device being left lets go, and the other is told. Each step runs
-out: 2 minutes for an unopened code, 5 more to be ready (time to sign in), 3 to let go, 2 to come in. A move can't
+out: 2 minutes for an unopened code, 5 more to be ready (time to sign in), 3 to let go, 2 to come in.
+
+Requests about one move never wait on each other. Each change is made only if the move is still as that request
+read it (its sealed body unchanged), otherwise `409` and the device tries again; nothing holds a row lock while it
+reads the call or brings someone in. Only one request at a time brings the new device in (a short `arriving`
+stage, shown as `released`, that runs out after 30 seconds if that request fails on the way); others asking at the
+same moment get `409` and ask again, and find the connection made. The device being left's own changes (starting,
+letting go, calling off) never wait more than 2 seconds for a lock (then `409`). Each move is rate-limited by its
+secret's hash as well as by client address: checking on it 240 times a minute, changing it 60. A move can't
 go on once its person is removed, their place has gone elsewhere, or the call has ended, and each refusal says what
 to do next, with the request ID to quote. A browser that can't encrypt call media is told so before the code is
 used, so it still works on another device.
