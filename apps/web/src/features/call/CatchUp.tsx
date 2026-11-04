@@ -1,13 +1,14 @@
 /*
  * Catching up during a call, for you alone: what to read (a range), what a catch-up or an answer says with the
  * transcript moments behind each point, how complete and how current it is, and the transcript at one of those
- * moments. Nothing here goes into the call or is kept: answers come from what was said while notes were on, and point
- * only at lines that were really said.
+ * moments. Nothing here goes into the call, and nothing is kept unless you keep an answer in your own notes: answers come
+ * from what was said while notes were on, and point only at lines that were really said.
  */
 import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpItem, type CatchUpRange, type CatchUpRead, type CatchUpWindow, type Evidence, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, TimeChip, cn } from '@alcove/ui';
+import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, Scope, TimeChip, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
 import { hm, hms } from '~/lib/time';
@@ -271,13 +272,14 @@ function CatchUpCard({ c, range, room, times, onOpen }: { c: CatchUp; range: Cat
   );
 }
 
-function AnswerCard({ a, range, room, times, onOpen }: { a: CallAnswer; range: CatchUpRange; room: string | null; times: CallTimes; onOpen: (e: TranscriptMoment) => void }) {
+function AnswerCard({ a, range, room, times, onOpen, keep }: { a: CallAnswer; range: CatchUpRange; room: string | null; times: CallTimes; onOpen: (e: TranscriptMoment) => void; keep?: ReactNode }) {
   if (!a.read.lines) return <><div className="txt">{nothingIn(range, room)}</div><ReadNote read={a.read} room={room} times={times} /></>;
   return (
     <>
       <div className="txt">{a.text}</div>
       {a.evidence.length > 0 && <div className="cites"><Moments evidence={a.evidence} times={times} onOpen={onOpen} /></div>}
       <ReadNote read={a.read} room={room} times={times} />
+      {keep}
     </>
   );
 }
@@ -294,7 +296,7 @@ function LiveBar({ children, onLive }: { children: ReactNode; onLive: () => void
 
 const SUGGESTED = ['What did we decide?', 'Who’s doing what?'];
 
-export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, onRange, onWindow, onAsk, onCatchUp, onOpen, onLive }: {
+export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, onRange, onWindow, onAsk, onCatchUp, onOpen, onLive, keeping }: {
   asks: Asked[];
   /** There's a transcript to ask about. */
   ready: boolean;
@@ -309,6 +311,8 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
   catching: boolean;
   onRange: (r: CatchUpRange) => void; onWindow: () => void;
   onAsk: (q: string) => void; onCatchUp: () => void; onOpen: (e: TranscriptMoment) => void; onLive: () => void;
+  /** Keeping answers in your own notes, for someone with an account in the call: which you have, and keeping one. */
+  keeping?: { kept: ReadonlySet<number>; keep: (asked: number, question: string, answer: CallAnswer) => Promise<void> } | undefined;
 }) {
   const [text, setText] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -316,11 +320,15 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
   const busy = asks.some((a) => (a.kind === 'question' ? a.a === null && !a.error : a.c === null && !a.error));
   const times = callTimes(startedAt);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: reduce ? 'auto' : 'smooth' }); }, [asks, reduce]);
+  const keepFor = (x: Extract<Asked, { kind: 'question' }>) => {
+    const answer = x.a;
+    return keeping && answer ? <KeepAnswer kept={keeping.kept.has(x.id)} onKeep={() => keeping.keep(x.id, x.q, answer)} /> : null;
+  };
   return (
     <>
       {catching && <LiveBar onLive={onLive}><Icon name="history" size={14} />Catching up · only you</LiveBar>}
       <div className="ic-scroll ic-pad">
-        <Notice icon="lock"><b>Only you see this.</b> Answers come from what’s been said in this call, nothing else.</Notice>
+        <Notice icon="lock"><b>Only you see this.</b> Answers come from what’s been said in this call, nothing else.{keeping ? ' Nothing is kept unless you keep it.' : ' Nothing is kept.'}</Notice>
         <div className="ic-qa">
           {!asks.length && paused && <EmptyState title="Notes are paused" className="ic-empty">Nothing goes to the AI, questions included, until they resume.</EmptyState>}
           {!asks.length && !ready && !paused && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}
@@ -330,7 +338,7 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
               <motion.div className={cn('a', a.kind === 'catch-up' && 'is-catch')} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={reduce ? { duration: 0 } : UI}>
                 <div className="by"><Icon name={a.kind === 'catch-up' ? 'history' : 'sealed'} size={14} />{a.kind === 'catch-up' ? 'Catch up' : 'From this call'} · {rangeName(a.range, times)} · only you</div>
                 {a.error ? <div className="txt bad">{a.error}</div>
-                  : a.kind === 'question' ? (a.a === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : <AnswerCard a={a.a} range={a.range} room={a.room} times={times} onOpen={onOpen} />)
+                  : a.kind === 'question' ? (a.a === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : <AnswerCard a={a.a} range={a.range} room={a.room} times={times} onOpen={onOpen} keep={keepFor(a)} />)
                     : a.c === null ? <div className="txt ic-writing"><Dots />Reading {rangeName(a.range, times).toLowerCase()}</div> : <CatchUpCard c={a.c} range={a.range} room={a.room} times={times} onOpen={onOpen} />}
               </motion.div>
             </div>
@@ -340,6 +348,7 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
       </div>
       <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const q = text.trim(); if (q && !busy && ready) { onAsk(q); setText(''); } }}>
         <div className="chips">
+          <Scope>Only you</Scope>
           <RangeMenu range={range} window={w} times={times} onOpen={onWindow} onPick={onRange} />
           <button type="button" className="ac-chip" disabled={busy || !ready} onClick={onCatchUp}>Catch me up</button>
           {SUGGESTED.map((s) => <button key={s} type="button" className="ac-chip" disabled={busy || !ready} onClick={() => onAsk(s)}>{s}</button>)}

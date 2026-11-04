@@ -1,6 +1,6 @@
 import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, Tooltip, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, Scope, Tooltip, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -17,6 +17,7 @@ import { useCopyLink } from '~/features/call/links';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
+import { YoursView, useOwnInCall } from '~/features/call/Yours';
 import { useLiveNotes } from '~/features/call/liveNotes';
 import { ShareMarks } from '~/features/call/marks';
 import { useShareMarkCount } from '~/features/call/SharePointing';
@@ -875,6 +876,8 @@ function InCall({ session }: { session: CallSession }) {
   const cu = useCatchingUp(session, { panel, setPanel: (v) => { setPop(null); setPanel(v); }, narrow, everOn: state.notes.everOn, room: roomName });
   const catchUp = () => { setPop(null); cu.catchUp(); };
   const liveNotes = useLiveNotes(session, state.transcript.at(-1)?.id, on && live, panel === 'notes');
+  /* Your own notes: for someone with an account in the call, and for nobody else's eyes. */
+  const own = useOwnInCall(session, { role: state.role, noteId: state.notes.noteId, showing: panel === 'yours', line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null, onOpen: () => { cu.settle(); openPanel('yours'); } });
 
   /* ---------- captions: the live transcript's newest line, in your language if you chose one ---------- */
   const caption = useCaptions(session, state.transcript, lang, cc && live);
@@ -916,8 +919,8 @@ function InCall({ session }: { session: CallSession }) {
   /* ---------- keys ---------- */
   // Escape unpins only when you can see a pin: someone pinned who's here.
   const pinnedHere = layout.layout.pins.some((seat) => seatKey.split(' ').includes(seat));
-  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, pressMic, pressCam });
-  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, pressMic, pressCam };
+  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, pressMic, pressCam, own });
+  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, pressMic, pressCam, own };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -929,12 +932,13 @@ function InCall({ session }: { session: CallSession }) {
         else if (keys.current.panel) keys.current.setPanel(null);
         return;
       }
-      if (k !== 'm' && k !== 'v' && k !== 'c') return;
+      if (k !== 'm' && k !== 'v' && k !== 'c' && !(k === 'b' && keys.current.own.enabled)) return;
       // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
       if (k === 'm') keys.current.pressMic();
       if (k === 'v') keys.current.pressCam();
       if (k === 'c') keys.current.setPanel(keys.current.panel === 'chat' ? null : 'chat');
+      if (k === 'b') keys.current.own.mark();
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
@@ -1197,14 +1201,15 @@ function InCall({ session }: { session: CallSession }) {
             {shownPanel && (
               <motion.aside key="side" className="ic-side" aria-label="Call panel" style={{ width: sideW }}
                 initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
-                <SidePanel view={shownPanel} onView={(v) => { cu.settle(); openPanel(v); }} onClose={() => { cu.settle(); setPanel(null); }} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
+                <SidePanel view={shownPanel} onView={(v) => { cu.settle(); openPanel(v); }} onClose={() => { cu.settle(); setPanel(null); }} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'} own={own.enabled}>
                   {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
                     controls={controls} onSeek={cu.open} onTranscript={() => openPanel('transcript')} />}
+                  {shownPanel === 'yours' && <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />}
                   {shownPanel === 'transcript' && (cu.moment
                     ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-                    : <TranscriptView state={state} me={me?.person.email} />)}
+                    : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} />)}
                   {shownPanel === 'ask' && <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
-                    catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} />}
+                    catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
                     here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
                   {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} host={host} foot={privacyLine} volumes={volumes}
@@ -1244,7 +1249,8 @@ function InCall({ session }: { session: CallSession }) {
             </DockSplit>
             <DockSeparator />
             {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={shownPanel === 'rooms' || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
-            <DockButton icon="notesPen" label="Notes" tip="Notes" on={shownPanel === 'notes' || shownPanel === 'transcript' || shownPanel === 'ask'} onClick={() => setPanel((x) => (x === 'notes' || x === 'transcript' || x === 'ask' ? null : 'notes'))} />
+            {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" className="d-mark" onClick={() => own.mark()} />}
+            <DockButton icon="notesPen" label="Notes" tip="Notes" on={shownPanel === 'notes' || shownPanel === 'yours' || shownPanel === 'transcript' || shownPanel === 'ask'} onClick={() => setPanel((x) => (x === 'notes' || x === 'yours' || x === 'transcript' || x === 'ask' ? null : 'notes'))} />
             <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={shownPanel === 'chat'} badge={unread} onClick={() => flip('chat')} />
             <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
               className={pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : 'ic-menu'}
@@ -1260,6 +1266,7 @@ function InCall({ session }: { session: CallSession }) {
               ) : (
                 <>
                   <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on what you missed</span></button>
+                  {own.enabled && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); own.mark(); }}><Icon name="bookmark" size={17} /><span className="t">Mark this moment</span><Scope>Only you</Scope></button>}
                   <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
                   <button type="button" className="mi" onClick={() => setPop('quality')}><Icon name="sliders" size={17} /><span className="t">Video quality</span></button>
                   <button type="button" className="mi" onClick={() => { setPop(null); moving.show(); }}><Icon name="phone" size={17} /><span className="t">Move to another device</span></button>

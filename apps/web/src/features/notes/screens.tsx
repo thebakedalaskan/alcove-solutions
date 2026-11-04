@@ -20,6 +20,9 @@ export function screenMeta(m: ScreenMoment, me: string | undefined): string {
   return `${whose} · ${when}`;
 }
 
+/** Bookmarking a shared screen for yourself: which are bookmarked, and bookmarking one or taking it off. Only you see them. */
+export interface ScreenMarks { has(frameId: string): boolean; toggle(frameId: string): void }
+
 /** What's open in the viewer: a moment, and the part of it something pointed at. */
 export interface OpenScreen { id: string; region?: number | undefined }
 /** Opens a moment of a note's shared screens, at the part something points at when it does. */
@@ -50,9 +53,9 @@ export function ScreenRefChip({ screen, screens, onOpen }: { screen: ScreenRef; 
  * One moment of a note's shared screens, opened: the frame, the part meant outlined, what it is and whose, what the
  * notes say it shows, how legible it was, the text read on it, and the call from there. Arrows move through them.
  */
-export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSeek }: {
+export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSeek, marks }: {
   noteId: string; screens: ScreenMoment[]; open: OpenScreen | null; me: string | undefined;
-  onOpen: ScreenOpener; onClose: () => void; onSeek?: ((s: number) => void) | undefined;
+  onOpen: ScreenOpener; onClose: () => void; onSeek?: ((s: number) => void) | undefined; marks?: ScreenMarks | undefined;
 }) {
   const i = open ? screens.findIndex((m) => m.id === open.id) : -1;
   const m = screens[i];
@@ -99,6 +102,7 @@ export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSee
           </div>
           <div className="scr-f">
             <span className="ac-mono">{i + 1} of {screens.length}</span>
+            {marks && <IconButton icon={marks.has(m.id) ? 'bookmarked' : 'bookmark'} label={marks.has(m.id) ? 'Remove your bookmark' : 'Bookmark this screen, for you alone'} on={marks.has(m.id)} onClick={() => marks.toggle(m.id)} />}
             {onSeek && <Button variant="secondary" icon="play" onClick={() => { onSeek(m.at); onClose(); }}>Play from {position(m.at)}</Button>}
           </div>
         </>

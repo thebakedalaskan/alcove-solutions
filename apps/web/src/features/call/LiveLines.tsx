@@ -1,6 +1,6 @@
 /* The live transcript as it's written, on the call stage and in the room: the newest line at the bottom. */
 import type { CaptureGap, Speaker, TranscriptLine } from '@alcove/api';
-import { Avatar, CaptureGapMark, Icon, TimeChip, Unsure, UnsureKey, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, IconButton, TimeChip, Unsure, UnsureKey, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
@@ -80,9 +80,9 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
 /**
  * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
  * in marked where they fall, and what it isn't sure of dotted (words hard to hear, a line heard on two microphones),
- * explained once at the top.
+ * explained once at the top. `onMark` bookmarks a line for the reader alone.
  */
-export function CallLines({ lines, gaps = [], me }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined }) {
+export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined }) {
   const { ref, onScroll, away, jump } = useFollow(lines.length + gaps.length);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
@@ -108,6 +108,7 @@ export function CallLines({ lines, gaps = [], me }: { lines: TranscriptLine[]; g
                   )}
                   <p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p>
                 </div>
+                {onMark && <IconButton icon="bookmark" label="Bookmark this line, for you alone" size={14} className="tx-mark" onClick={() => onMark(l.id)} />}
               </div>
             </Fragment>
           );
