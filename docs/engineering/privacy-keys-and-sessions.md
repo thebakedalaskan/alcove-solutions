@@ -102,6 +102,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 | `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
 | `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team and who on it uses Alcove); who else may read a note |
 | `call-code` | The call's code from its link | `call_codes.code_hash` | Finding a call for anyone with the link, guests included |
+| `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
 [What is still visible](#what-is-still-visible)), and anyone holding `KMASTER` can test a guessed address.
@@ -419,7 +420,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Where | Visible |
 | --- | --- |
 | Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
-| Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
+| Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
 | Ciphertext lengths | Not padded, so title, guest list, transcript, clip and own-notes lengths leak approximately |
 | NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, with their dates (in the asker's time zone), decisions, open questions and follow-ups. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
@@ -442,7 +443,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   correcting a transcript line deletes nothing, and what it said before stays in earlier revisions and in the
   line's history ([Notes and inference › What's kept, and for how long](notes-and-inference.md#whats-kept-and-for-how-long)).
 - **Removing someone else's note** deletes your own `note_access` row and your own notes on it, in one
-  transaction. The organizer and everyone else keep the note, and what you added to the shared notes stays with it.
+  transaction. The organizer and everyone else keep the note, and what you added to the shared notes stays with it
+  until the organizer takes it out, or you delete your account.
 - **Your own notes** are one record, replaced with each change, so an entry you delete is gone with no earlier version
   left, and the last one takes the row with it. Postgres keeps a replaced row's old version until it's vacuumed, as it
   does for everything else that changes.
@@ -492,8 +494,11 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   been told those calls are cancelled, because that happens before the transaction. Treat this whole class as
   rare. Its own notes on anyone's notes go with its `owners` row. Notes it shared on stay with their organizers and
   whoever has them, and those notes still say it shared them: the sharer's name sits sealed in the organizer's note,
-  and deleting an account writes into no other vault. What it added to other people's shared notes stays the same way,
-  under its name. Signing in again with the same account starts a new one, empty, with the welcome credits.
+  and deleting an account writes into no other vault. What it added to other people's shared notes is its own words, so
+  those rows go, in the same transaction: found by `note_additions.author_index`, so opening nobody's keys, and whether
+  or not it still has the note or the entry they came from. That runs after the `owners` row goes: taking its own notes
+  with it waits for an addition being written, which is then there to delete, and any that gets there later fails on the
+  missing account. Signing in again with the same account starts a new one, empty, with the welcome credits.
 - **Series** have no record of their own: a series is the ID its calls share inside their sealed manifests
   (with Google's ID for a recurring event), so it goes when its calls do. What carries over is never stored,
   so a deleted or removed note leaves every series at once, with nothing derived from it left behind.
