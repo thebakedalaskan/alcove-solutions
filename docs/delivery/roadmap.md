@@ -38,6 +38,10 @@
   and chat; moving someone between rooms moves their keys; what's said in a room shows only there (transcript,
   captions, catching up) and is deleted when it closes; and each room has its own capture state, which the
   organizer can pause ([Calls and recordings › End-to-end encryption](../engineering/calls-and-recordings.md#end-to-end-encryption)).
+- Seamless reconnects and moving a call to another device: someone whose connection dropped comes back in as the
+  same person by themselves, and **Move to another device** hands a place in a call to a phone or another computer
+  (a QR code or link, one use, two minutes), releasing the old device's microphone before the new one's starts
+  ([Calls and recordings › Moving to another device](../engineering/calls-and-recordings.md#moving-to-another-device)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
