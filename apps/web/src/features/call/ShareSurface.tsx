@@ -8,6 +8,9 @@
  * and has focus as soon as the window opens. While a picture is held still, a bar at the top says how far behind live it
  * is, with Back to live.
  *
+ * What's drawn on the live picture (pointers and marks: SharePointing.tsx) sits on the picture itself, so it moves and
+ * glides with it, and goes while a picture is held still: it's about the live one.
+ *
  * Nothing here uses motion's frame loop or anything else timed by the call's tab: in its own window a share keeps
  * working while that tab is in the background.
  */
@@ -74,7 +77,7 @@ function BarButton({ icon, label, keys, onClick, disabled = false, where, classN
   return where === 'stage' && !disabled ? <Tooltip label={tip} side="top">{b}</Tooltip> : b;
 }
 
-export function ShareSurface({ look, feed, where, label, popOut, describe }: {
+export function ShareSurface({ look, feed, where, label, popOut, describe, overLive, children }: {
   look: ShareLook;
   feed: { room: CallRoom; sid: string };
   /** On the stage, or in its own window. */
@@ -85,6 +88,10 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
   popOut: { open: boolean; toggle: () => void } | null;
   /** The id of the line that describes how it's framed, for the tile's aria-describedby. */
   describe?: string | undefined;
+  /** Drawn on the live picture, in its box: it moves with it, and isn't shown while a picture is held still. */
+  overLive?: ReactNode;
+  /** Over the whole surface, under its bars: presses on anything marked `data-ui` are left to it. */
+  children?: ReactNode;
 }) {
   const s = useLive(look);
   const root = useRef<HTMLDivElement>(null);
@@ -294,7 +301,9 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
       <div className={cn('ic-sv-pic', glide && 'is-glide')} style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
         <video ref={video} className="is-remote" autoPlay playsInline muted />
         {held && <canvas ref={canvas} aria-hidden="true" />}
+        {!held && overLive}
       </div>
+      {children}
       {held && (
         <div className="ic-svheld" data-ui>
           <Icon name={newest ? 'pause' : 'history'} size={15} />
@@ -367,8 +376,10 @@ export function ShareAway({ onBack }: { onBack: () => void }) {
  * The share's own window: who shares it, the share to zoom, freeze and step back through, and Back to the call. A popup
  * window (not Picture-in-Picture) pauses with the call's tab, as LiveKit pauses every video there, so it says so.
  */
-export function ShareWindow({ look, feed, presenter, name, kind, onBack }: {
+export function ShareWindow({ look, feed, presenter, name, kind, onBack, over }: {
   look: ShareLook; feed: { room: CallRoom; sid: string }; presenter: Person; name: string; kind: PopKind; onBack: () => void;
+  /** Everyone's pointers and marks on the live picture, to see here too. */
+  over: ReactNode;
 }) {
   const [hidden, setHidden] = useState(() => document.visibilityState === 'hidden');
   useEffect(() => {
@@ -386,7 +397,7 @@ export function ShareWindow({ look, feed, presenter, name, kind, onBack }: {
         <button type="button" onClick={onBack}><Icon name="popIn" size={15} />Back to the call</button>
       </header>
       <div className="ic-popbox ic-scr">
-        <ShareSurface look={look} feed={feed} where="window" label={name} popOut={null} />
+        <ShareSurface look={look} feed={feed} where="window" label={name} popOut={null} overLive={over} />
         {kind === 'window' && hidden && <p className="ic-popwait">The share pauses while the call’s tab is hidden. Go back to it and the share carries on.</p>}
       </div>
     </div>

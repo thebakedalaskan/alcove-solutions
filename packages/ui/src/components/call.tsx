@@ -106,8 +106,8 @@ export function PointerTag({ person, name, className, style }: { person: AvatarP
 }
 
 /**
- * Someone's pointer on a shared screen: an arrow whose tip is the spot they point at, with whose it is beside it. It sits
- * at the top left of its box: move it to the spot with a transform.
+ * Someone's pointer on a shared screen: an arrow whose tip is the spot they point at, with whose it is beside it. The tip
+ * is at the top left of its box: place it on the spot with left and top.
  */
 export function SharePointer({ person, name, style, className }: { person: AvatarPerson; name: ReactNode; style?: CSSProperties | undefined; className?: string | undefined }) {
   return (

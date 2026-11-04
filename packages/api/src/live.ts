@@ -323,6 +323,11 @@ export interface CallChatMessage { id: string; from: string; isMe: boolean; text
 
 /** The longest chat message in a call, in characters. */
 export const CALL_CHAT_MAX = 4000;
+/**
+ * How much longer data browsers send each other is once sealed (CallSession.sealData): a version byte, the key's ring
+ * index and a 12-byte nonce in front, and AES-GCM's 16-byte tag.
+ */
+export const CALL_DATA_OVERHEAD = 30;
 /** How many keys LiveKit's frame encryption keeps per sender (its key index is one byte); media key indices are below it. */
 export const CALL_KEYRING = 256;
 /**

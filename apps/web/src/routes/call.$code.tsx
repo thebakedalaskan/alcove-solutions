@@ -18,7 +18,7 @@ import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
 import { useLiveNotes } from '~/features/call/liveNotes';
 import { ShareMarks } from '~/features/call/marks';
-import { useShareMarks } from '~/features/call/SharePointing';
+import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
@@ -594,9 +594,11 @@ function InCall({ session }: { session: CallSession }) {
   const pointingOn = state.pointing && live && roomView.connection === 'connected';
   const pointShares = shares.flatMap((s) => (s.point ? [{ sid: s.point.sid, owner: s.id, others: othersPointAt(s.id) }] : []));
   const pointPeople = unit ?? stagePeople.map((p) => p.id);
-  const pointKey = [pointingOn, unitKey ?? '', pointShares.map((s) => `${s.sid}:${s.owner}:${s.others}`).join(','), [...pointPeople].sort().join(',')].join('|');
+  // The part of the call is the one whose keys this browser holds (the main room, or a room by its ID): someone coming
+  // or going changes who's in it, and only their own pointer and marks go.
+  const pointKey = [pointingOn, crypto.place, pointShares.map((s) => `${s.sid}:${s.owner}:${s.others}`).join(','), [...pointPeople].sort().join(',')].join('|');
   useEffect(() => {
-    marks?.use({ on: pointingOn, shares: new Map(pointShares.map((s) => [s.sid, { owner: s.owner, others: s.others }])), people: new Set(pointPeople), part: unitKey ?? 'main' });
+    marks?.use({ on: pointingOn, shares: new Map(pointShares.map((s) => [s.sid, { owner: s.owner, others: s.others }])), people: new Set(pointPeople), part: crypto.place });
     // pointKey says everything this reads.
   }, [marks, pointKey]);
   // A share's big-or-tile choice goes when the share stops: one seen on this connection that's gone. Before the room
@@ -954,7 +956,7 @@ function InCall({ session }: { session: CallSession }) {
   const withSound = Boolean(m.screen?.getAudioTracks().some((t) => t.readyState === 'live'));
   /* Whether others may point at what you share (your choice, everyone sees it), and everyone's marks on it, to clear. */
   const othersPoint = me?.othersPoint ?? true;
-  const marksOnMine = useShareMarks(marks, myShare).marks.length;
+  const marksOnMine = useShareMarkCount(marks, myShare);
   // Something else shared in place of what was (Change: the same share, a new picture): marks on it were about the old
   // picture, so they go, for everyone.
   const screenStream = m.screen;
