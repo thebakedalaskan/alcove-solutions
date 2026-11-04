@@ -15,7 +15,8 @@
  * frozen, stepped back through its last pictures, or opened in its own window, where the stage keeps it as a tile.
  *
  * Anyone the call lets point can point at a share shown big and live here (SharePointing.tsx): their pointer, with their
- * name, and marks that fade, which everyone sees on that share wherever it is on their stage, however they've framed it.
+ * name, and marks that fade, which everyone sees on that share wherever it is on their stage (and in its own window),
+ * however they've framed it, while they see it live.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
 import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn, useToast } from '@alcove/ui';
@@ -27,7 +28,7 @@ import { callName } from '~/lib/people';
 import type { ShareMarks } from './marks';
 import { popKind } from './popOut';
 import { LOOK_ARIA, ShareLooks } from './shareLook';
-import { SharePointing, type PointingKeys } from './SharePointing';
+import { ShareMarksDrawing, SharePointing, type PointingKeys } from './SharePointing';
 import { ShareAway, ShareMenuFor, ShareSurface, ShareWindow } from './ShareSurface';
 import { useSettledSpeakers } from './speakers';
 import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
@@ -267,11 +268,13 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
   const pointingNow = pointingAt !== null && shares.some((s) => s.id === pointingAt && s.point !== null && s.point.closed === null && L.shares.has(s.id) && popped !== s.id) ? pointingAt : null;
   // A share that stops, goes back to a tile or to its own window, or closes to you (its presenter, or the organizer, said so) ends your pointing.
   useEffect(() => { if (pointingAt !== null && pointingNow === null) setPointingAt(null); }, [pointingAt, pointingNow]);
-  const togglePointing = (s: StageShare) => {
-    if (pointingAt !== s.id && !pointable(s)) return;
-    setPointingAt((x) => (x === s.id ? null : s.id));
+  /** Starts or stops pointing at a share, once however often it's said: focus goes to its tile, where its keys work. */
+  const pointAt = (s: StageShare, on: boolean) => {
+    if (on && !pointable(s)) return;
+    setPointingAt((x) => (on ? s.id : x === s.id ? null : x));
     focusTo(shareKey(s.id));
   };
+  const togglePointing = (s: StageShare) => pointAt(s, pointingAt !== s.id);
   // A share you brought back from its own window: focus comes back to its tile, where its keys work.
   const backN = seenLooks.back?.n ?? 0;
   useEffect(() => {
@@ -455,6 +458,7 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
         const away = popped === s.id;
         // Someone else's share you see big can be looked at closer: zoomed, frozen, stepped back through.
         const look = lookOf(s);
+        const surface = look && 'room' in s.feed ? { look, feed: s.feed } : null;
         const canPoint = pointable(s);
         const here = pointingNow === s.id;
         const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', away ? 'in its own window, P brings it back' : big ? '' : 'a tile, P shows it big',
@@ -470,13 +474,19 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
               if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false);
             }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
-            {away ? <ShareAway onBack={() => looks.popIn(true)} />
-              : look && 'room' in s.feed ? <ShareSurface look={look} feed={s.feed} where="stage" label={s.name} describe={`sv-${s.id}`} popOut={canPop ? { open: false, toggle: () => popOut(s) } : null} />
-                : <FeedVideo feed={s.feed} className="screen" />}
-            {!away && s.point && marks && (
-              <SharePointing marks={marks} share={s.point.sid} mine={s.mine} big={!!big} can={s.point.closed === null} active={here} whoIs={whoIs} me={me}
-                onKeys={keysOf(k)} onActive={(on) => { if (on !== here) togglePointing(s); }} />
-            )}
+            {(() => {
+              if (away) return <ShareAway onBack={() => looks.popIn(true)} />;
+              // Pointers and marks go on the picture: in a share you look at closer, on the picture it frames.
+              const drawing = s.point && marks ? <ShareMarksDrawing marks={marks} share={s.point.sid} whoIs={whoIs} me={me} /> : null;
+              const pointing = s.point && marks ? (
+                <SharePointing marks={marks} share={s.point.sid} look={surface?.look ?? null} mine={s.mine} big={!!big} can={s.point.closed === null} active={here}
+                  onKeys={keysOf(k)} onActive={(on) => pointAt(s, on)}>{surface ? null : drawing}</SharePointing>
+              ) : null;
+              return surface ? (
+                <ShareSurface look={surface.look} feed={surface.feed} where="stage" label={s.name} describe={`sv-${s.id}`} popOut={canPop ? { open: false, toggle: () => popOut(s) } : null}
+                  overLive={drawing}>{pointing}</ShareSurface>
+              ) : <><FeedVideo feed={s.feed} className="screen" />{pointing}</>;
+            })()}
             <span className="ac-tile-name">
               <Avatar person={s.presenter} size={18} /><span className="tl">{s.label}</span>
               {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
@@ -575,7 +585,8 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
         const s = ordered.find((x) => x.id === popped);
         const win = seenLooks.popped;
         return s && 'room' in s.feed ? createPortal(
-          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn(true)} />, win.win.document.body
+          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn(true)}
+            over={s.point && marks ? <ShareMarksDrawing marks={marks} share={s.point.sid} whoIs={whoIs} me={me} /> : null} />, win.win.document.body
         ) : null;
       })()}
     </div>

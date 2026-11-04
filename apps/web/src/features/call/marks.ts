@@ -8,27 +8,31 @@
  *
  * Who may point where is the call's (CallState.pointing, each presenter's `othersPoint`) and it's checked on both sides:
  * this browser sends only what it may, and takes only what its sender may, so marks from someone the presenter doesn't let
- * point never show here, whatever their browser sends. Each sender counts its messages inside the encryption, so a packet
- * LiveKit replays, or one overtaken by a newer one, changes nothing. Places are fractions of the shared picture (0 to 1):
- * every screen draws them on the same spot of the picture, whatever its size or zoom.
+ * point never show here, whatever their browser sends. Each sender numbers its messages inside the seal, and this
+ * browser keeps every sender's numbers for the whole call: a packet replayed (only LiveKit could: a member's copy comes
+ * from their own identity and doesn't open), or overtaken by a newer one, brings back no pointer or mark and clears no
+ * share again. Places are fractions of the shared picture (0 to 1): every screen draws them on the same spot of the
+ * picture, whatever its size, zoom or pan.
  */
 import {
-  CALL_MARKS_TOPIC, SHARE_MARKS_EACH, SHARE_MARK_BYTES, SHARE_MARK_FADE_MS, SHARE_MARK_MS, SHARE_MARK_POINTS, SHARE_POINTER_GONE_MS, SHARE_POINTER_IDLE_MS,
-  SHARE_POINTER_KEEP_MS, SHARE_POINT_EVERY_MS, ShareMarkMessageSchema, type LiveStore, type ShareMarkMessage, type SharePlace
+  CALL_DATA_OVERHEAD, CALL_MARKS_TOPIC, SHARE_MARKS_EACH, SHARE_MARK_BYTES, SHARE_MARK_FADE_MS, SHARE_MARK_MS, SHARE_MARK_POINTS, SHARE_POINTER_GONE_MS,
+  SHARE_POINTER_IDLE_MS, SHARE_POINTER_KEEP_MS, SHARE_POINT_EVERY_MS, ShareMarkMessageSchema, type LiveStore, type ShareMarkMessage, type SharePlace
 } from '@alcove/api';
 import { log } from '~/lib/log';
 import type { CallRoom } from './livekit';
+import type { SharePoint } from './shareFrame';
 
 const mlog = log.child({ component: 'call-marks' });
 
-/** A spot on a shared picture: 0 to 1 across its width (x) and down its height (y). */
-export interface SharePoint { x: number; y: number }
 export interface Pointer { from: string; at: SharePoint }
 /** A mark as drawn: a ring at one place or a line through several, whose it is, and whether it's fading out now. */
 export interface Mark { key: string; from: string; mine: boolean; kind: 'ring' | 'line'; points: SharePoint[]; done: boolean; fading: boolean }
-/** What's on one share now: everyone else's pointers, and every mark (yours too), oldest first. */
-export interface ShareMarksView { pointers: Pointer[]; marks: Mark[] }
-export const NO_MARKS: ShareMarksView = { pointers: [], marks: [] };
+/**
+ * What's on one share now: everyone else's pointers, every mark (yours too), oldest first, and your own pointer while
+ * you move it with the keys (a mouse shows its own).
+ */
+export interface ShareMarksView { pointers: Pointer[]; marks: Mark[]; mine: SharePoint | null }
+export const NO_MARKS: ShareMarksView = { pointers: [], marks: [], mine: null };
 export interface MarksSnapshot { shares: ReadonlyMap<string, ShareMarksView> }
 
 /** What the call says about pointing, and what this browser shows: the store follows it (`use`). */
@@ -39,7 +43,10 @@ export interface MarksContext {
   shares: ReadonlyMap<string, { owner: string; others: boolean }>;
   /** Who's in this browser's part of the call now (by participant ID): anyone else's pointers and marks go. */
   people: ReadonlySet<string>;
-  /** This browser's part of the call: the main room or a breakout room. Moving to another clears everything. */
+  /**
+   * This browser's part of the call, by its ID (CallCrypto.place): the main room or a breakout room. Moving to another
+   * clears everything; someone else coming or going doesn't.
+   */
   part: string;
 }
 
@@ -51,21 +58,24 @@ const LINE_STEP = 0.004;
 const REPLAY_WINDOW = 512;
 /** Marks each sender has had, kept after they go so a late or replayed copy can't bring one back. */
 const GONE_KEPT = 1024;
-/** How many messages a sender may send in a burst, and how many a second after that: a pointer and a line together are about 35. */
-const BURST = 100;
-const PER_SECOND = 50;
+/**
+ * What the room lets through from each sender before anything is opened (CallRoom.receive): a message's size, sealed,
+ * and a burst of 100 messages, then 50 a second. A pointer and a line drawn together are about 35 a second.
+ */
+const LIMITS = { bytes: SHARE_MARK_BYTES + CALL_DATA_OVERHEAD, burst: 100, perSecond: 50 } as const;
 /** How often lifetimes are checked while anything is showing. */
 const TICK_MS = 200;
 
 interface MarkState { share: string; id: string; kind: 'ring' | 'line'; points: SharePoint[]; done: boolean; seq: number; order: number; updated: number; madeAt: number }
+/** What this browser knows of one sender, kept for the whole call, so nothing of theirs comes back by being sent again. */
 interface Sender {
   pointer: { share: string; at: SharePoint; seen: number } | null;
   pointerSeq: number;
   maxSeq: number;
+  /** The last time this sender, as a presenter, cleared their share, by number. */
+  clearSeq: number;
   marks: Map<string, MarkState>;
   gone: Map<string, number>;
-  tokens: number;
-  filled: number;
 }
 
 const enc = new TextEncoder();
@@ -92,8 +102,11 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
   private seq = 0;
   private ticker: ReturnType<typeof setInterval> | null = null;
   private stopReceiving: () => void;
-  /* What this browser points at: the latest place, when it last went out and last moved, and the timers that send it. */
-  private aim: { share: string; at: SharePoint; sentAt: number; movedAt: number } | null = null;
+  /*
+   * What this browser points at: the latest place, when it last went out and last moved, whether it's drawn here (moved
+   * with the keys: a mouse shows its own), and the timers that send it.
+   */
+  private aim: { share: string; at: SharePoint; sentAt: number; movedAt: number; shown: boolean } | null = null;
   private aimTimer: ReturnType<typeof setTimeout> | null = null;
   private keepTimer: ReturnType<typeof setInterval> | null = null;
   /* A line this browser is drawing: when it last went out, and the timer for its next send. */
@@ -102,7 +115,7 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
   private drops: Record<string, number> = {};
 
   constructor(private readonly room: Pick<CallRoom, 'send' | 'receive'>, private readonly self: string) {
-    this.stopReceiving = room.receive(CALL_MARKS_TOPIC, (payload, from) => this.take(payload, from));
+    this.stopReceiving = room.receive(CALL_MARKS_TOPIC, (payload, from) => this.take(payload, from), LIMITS);
   }
 
   getSnapshot = (): MarksSnapshot => this.snapshot;
@@ -114,7 +127,10 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
     return this.ctx.on && !!s && (s.owner === who || s.others) && (who === this.self || this.ctx.people.has(who));
   }
 
-  /** Follows the call: anything that no longer may show (its share stopped, its sender left or may not point there, pointing off, another part of the call) goes. */
+  /**
+   * Follows the call: anything that no longer may show (its share stopped, its sender left or may not point there,
+   * pointing off, another part of the call) goes. What's known of each sender stays, for the whole call.
+   */
   use(ctx: MarksContext): void {
     const moved = ctx.part !== this.ctx.part;
     this.ctx = ctx;
@@ -123,7 +139,6 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
     for (const [from, s] of this.senders) {
       if (s.pointer && !this.may(s.pointer.share, from)) { this.dirty.add(s.pointer.share); s.pointer = null; }
       for (const [id, m] of s.marks) if (!this.may(m.share, from)) this.forget(s, id, m);
-      if (from !== this.self && !ctx.people.has(from) && !s.marks.size && !s.pointer) this.senders.delete(from);
     }
     this.publish();
   }
@@ -132,13 +147,15 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
 
   /**
    * Points at a spot on a share, or stops pointing (null). The newest spot goes out at most every SHARE_POINT_EVERY_MS, and
-   * again every SHARE_POINTER_KEEP_MS while it stays still, until it's been still for SHARE_POINTER_IDLE_MS.
+   * again every SHARE_POINTER_KEEP_MS while it stays still, until it's been still for SHARE_POINTER_IDLE_MS. `shown`: it's
+   * drawn here too (moved with the keys, where there's no mouse to see).
    */
-  point(share: string, at: SharePoint | null): void {
+  point(share: string, at: SharePoint | null, shown = false): void {
     if (!at || !this.may(share)) { if (this.aim?.share === share) this.stopAiming(true); return; }
     const t = now();
     const was = this.aim;
-    this.aim = { share, at: { x: clamp01(at.x), y: clamp01(at.y) }, sentAt: was?.share === share ? was.sentAt : 0, movedAt: t };
+    this.aim = { share, at: { x: clamp01(at.x), y: clamp01(at.y) }, sentAt: was?.share === share ? was.sentAt : 0, movedAt: t, shown };
+    if (shown || was?.shown) { this.dirty.add(share); if (was && was.share !== share) this.dirty.add(was.share); this.publish(); }
     if (!this.keepTimer) this.keepTimer = setInterval(() => this.keepAiming(), SHARE_POINTER_KEEP_MS);
     if (this.aimTimer) return;
     const wait = Math.max(0, this.aim.sentAt + SHARE_POINT_EVERY_MS - t);
@@ -166,6 +183,7 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
     this.aimTimer = null;
     this.keepTimer = null;
     if (a && say) this.send({ t: 'away', share: a.share, seq: ++this.seq }, true);
+    if (a?.shown) { this.dirty.add(a.share); this.publish(); }
   }
 
   /** A ring at a spot on a share, which everyone sees for a few seconds. */
@@ -256,20 +274,13 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
 
   /* ---------- what others send ---------- */
 
+  /** A message the room let through (its size and its sender's rate checked there, before it was opened) and opened. */
   private take(payload: Uint8Array, from: string) {
-    if (payload.byteLength > SHARE_MARK_BYTES) { this.drop('size'); return; }
-    const s = this.sender(from);
-    // Each sender gets a bucket of messages that fills again over time: a flood from one browser is dropped, not drawn.
-    const t = now();
-    s.tokens = Math.min(BURST, s.tokens + ((t - s.filled) / 1000) * PER_SECOND);
-    s.filled = t;
-    if (s.tokens < 1) { this.drop('rate'); return; }
-    s.tokens -= 1;
     let raw: unknown = null;
     try { raw = JSON.parse(dec.decode(payload)); } catch { this.drop('unreadable'); return; }
     const m = ShareMarkMessageSchema.safeParse(raw);
     if (!m.success) { this.drop('unreadable'); return; }
-    this.apply(from, s, m.data);
+    this.apply(from, this.sender(from), m.data);
   }
 
   private apply(from: string, s: Sender, m: ShareMarkMessage) {
@@ -280,8 +291,10 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
       s.pointerSeq = m.seq;
       if (s.pointer) { this.dirty.add(s.pointer.share); s.pointer = null; }
     } else if (m.t === 'clear') {
-      // Only the presenter clears their own share.
+      // Only the presenter clears their own share, and an earlier clear sent again clears nothing made since.
       if (this.ctx.shares.get(m.share)?.owner !== from) { this.drop('not allowed'); return; }
+      if (m.seq <= s.clearSeq) { this.drop('old'); return; }
+      s.clearSeq = m.seq;
       this.clearShare(m.share);
     } else if (m.t === 'unmark') {
       for (const id of m.ids) {
@@ -323,7 +336,7 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
   private sender(from: string): Sender {
     let s = this.senders.get(from);
     if (!s) {
-      s = { pointer: null, pointerSeq: -1, maxSeq: 0, marks: new Map(), gone: new Map(), tokens: BURST, filled: now() };
+      s = { pointer: null, pointerSeq: -1, maxSeq: 0, clearSeq: -1, marks: new Map(), gone: new Map() };
       this.senders.set(from, s);
     }
     return s;
@@ -392,9 +405,10 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
           ordered.push({ order: m.order, mark: { key: `${from}:${m.id}`, from, mine: from === this.self, kind: m.kind, points: m.points, done: m.done, fading } });
         }
       }
-      const view: ShareMarksView = { pointers, marks: ordered.sort((a, b) => a.order - b.order).map((x) => x.mark) };
+      const mine = this.aim?.shown && this.aim.share === share ? this.aim.at : null;
+      const view: ShareMarksView = { pointers, marks: ordered.sort((a, b) => a.order - b.order).map((x) => x.mark), mine };
       const was = this.snapshot.shares.get(share);
-      const empty = !pointers.length && !ordered.length;
+      const empty = !pointers.length && !ordered.length && !mine;
       if (empty ? !was : was !== undefined && sameView(was, view)) continue;
       shares ??= new Map(this.snapshot.shares);
       if (empty) shares.delete(share);
@@ -423,6 +437,7 @@ export class ShareMarks implements LiveStore<MarksSnapshot> {
 
 function sameView(a: ShareMarksView, b: ShareMarksView): boolean {
   if (a.pointers.length !== b.pointers.length || a.marks.length !== b.marks.length) return false;
+  if (a.mine?.x !== b.mine?.x || a.mine?.y !== b.mine?.y) return false;
   for (let i = 0; i < a.pointers.length; i++) {
     const p = a.pointers[i];
     const q = b.pointers[i];

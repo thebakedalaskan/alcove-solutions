@@ -113,11 +113,15 @@ export interface CallRoom extends LiveStore<RoomView> {
   send(topic: string, payload: Uint8Array, o: { reliable: boolean }): void;
   /**
    * Data on `topic` from someone whose media this browser would play (in its MLS group, in its part of the call), opened
-   * with their key. Anything else is dropped. Returns the function that stops listening.
+   * with their key. Before anything is opened, a packet bigger than `limits.bytes` is dropped, and so is one past its
+   * sender's rate (a burst of `limits.burst`, then `limits.perSecond`), opened or not: LiveKit limits no one's data.
+   * Anything else is dropped too. Returns the function that stops listening.
    */
-  receive(topic: string, on: (payload: Uint8Array, from: string) => void): () => void;
+  receive(topic: string, on: (payload: Uint8Array, from: string) => void, limits: DataLimits): () => void;
   leave(): Promise<void>;
 }
+/** What the room lets through on a topic before opening anything: a packet's size as sealed, and each sender's rate. */
+export interface DataLimits { bytes: number; burst: number; perSecond: number }
 
 function endReason(r: DisconnectReason | undefined): RoomView['endReason'] {
   switch (r) {
@@ -194,8 +198,12 @@ class LiveKitRoom implements CallRoom {
    * change of what's shared swaps tracks inside it) and across this browser's reconnects.
    */
   private quiet = new Set<string>();
-  /** Who takes the data on each topic (see CallRoom.receive), and how much data wasn't taken, for the log. */
-  private takers = new Map<string, Set<(payload: Uint8Array, from: string) => void>>();
+  /**
+   * Who takes the data on each topic (see CallRoom.receive) and what it lets through, each sender's allowance on each
+   * topic (a bucket that fills again over time), and how much data wasn't taken or sent, for the log.
+   */
+  private takers = new Map<string, { limits: DataLimits; on: Set<(payload: Uint8Array, from: string) => void> }>();
+  private allowance = new Map<string, { tokens: number; at: number }>();
   private dropped = 0;
   private unsent = 0;
 
@@ -259,13 +267,17 @@ class LiveKitRoom implements CallRoom {
         return;
       }
       const takers = topic ? this.takers.get(topic) : undefined;
-      if (!topic || !takers?.size) return;
+      if (!topic || !takers?.on.size) return;
       // Only from someone whose media would play here, and only what opens with their key: LiveKit's own data encryption
       // can't be told apart on arrival (it reports every packet as unencrypted), so the session seals data itself.
       if (!from || !this.hears(from)) { this.notTaken(topic, 'not here'); return; }
+      // LiveKit limits no one's data, so size and rate are checked here, before anything is copied or opened: a flood from
+      // one browser costs the others a look at each packet's length, and no more.
+      if (payload.byteLength > takers.limits.bytes) { this.notTaken(topic, 'too big'); return; }
+      if (!this.allows(topic, from, takers.limits)) { this.notTaken(topic, 'too many'); return; }
       void this.session.openData(topic, from, payload).then((plain) => {
         if (!plain) { this.notTaken(topic, 'unopened'); return; }
-        if (this.hears(from)) for (const take of takers) take(plain, from);
+        if (this.hears(from)) for (const take of takers.on) take(plain, from);
       });
     });
     r.on(RoomEvent.Reconnecting, () => this.set({ connection: 'reconnecting' }));
@@ -574,11 +586,27 @@ class LiveKitRoom implements CallRoom {
     this.dropped += 1;
     if (this.dropped === 1 || this.dropped % 100 === 0) rlog.debug('data not taken', { topic, why, dropped: this.dropped });
   }
-  receive(topic: string, on: (payload: Uint8Array, from: string) => void): () => void {
-    const set = this.takers.get(topic) ?? new Set<(payload: Uint8Array, from: string) => void>();
-    set.add(on);
-    this.takers.set(topic, set);
-    return () => { set.delete(on); };
+  receive(topic: string, on: (payload: Uint8Array, from: string) => void, limits: DataLimits): () => void {
+    const t = this.takers.get(topic) ?? { limits, on: new Set<(payload: Uint8Array, from: string) => void>() };
+    t.limits = limits;
+    t.on.add(on);
+    this.takers.set(topic, t);
+    return () => { t.on.delete(on); };
+  }
+  /**
+   * Whether `from` may send one more packet on `topic` now: each sender has a bucket of `burst` packets that fills
+   * again at `perSecond`, and a packet past it is dropped before it's opened.
+   */
+  private allows(topic: string, from: string, limits: DataLimits): boolean {
+    const key = `${topic}\n${from}`;
+    const t = performance.now();
+    const a = this.allowance.get(key) ?? { tokens: limits.burst, at: t };
+    a.tokens = Math.min(limits.burst, a.tokens + ((t - a.at) / 1000) * limits.perSecond);
+    a.at = t;
+    this.allowance.set(key, a);
+    if (a.tokens < 1) return false;
+    a.tokens -= 1;
+    return true;
   }
 
   /** The sound of a share this listener muted: it isn't played. */
