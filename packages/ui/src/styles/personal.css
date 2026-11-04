@@ -51,8 +51,6 @@
 .own-card .ac-scope { font-size: 12px; }
 .own-card .own-list { max-height: 460px; margin: 4px -6px 10px; padding: 0 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .own-card .own-compose { margin-top: 10px; }
-.own-none { display: grid; gap: 4px; padding: 8px 0 2px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
-.own-none b { font-weight: 600; color: var(--ink); }
 .own-empty.ac-empty { padding: 20px 8px 16px; }
 
 /* What would go to the shared notes: the words, where, and who. It opens where the entry is, never over it. */
@@ -77,11 +75,14 @@
 .ic-qa .a .own-keep { margin-top: 2px; }
 .ic-qa .a .own-keep .lk { font-size: 12.5px; }
 
-/* Bookmarking a line: beside the pencil on a written note, on hover or focus in the call. */
+/* Bookmarking a line: beside the pencil on a written note. In the call it has its own room at the end of the line, and
+   shows on hover or focus, always on touch screens. */
 .ln-mark.is-on { opacity: 1; color: var(--sun-text); }
 .tx-l { position: relative; }
+.tx-l.has-mark { padding-right: 30px; }
 .tx-l .tx-mark { position: absolute; right: 0; top: 2px; width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
 .tx-l:hover .tx-mark, .tx-l:focus-within .tx-mark { opacity: 1; }
+@media (hover: none) { .tx-l .tx-mark { opacity: 1; } }
 .tx-l .tx-mark:hover { background: var(--sunk); color: var(--ink); }
 .ask-bar .ac-scope { flex: none; }
 /* On a phone the dock has no room for it: it's in the More menu, and in the panel's Yours view. Six tabs fit a little closer. */
@@ -101,3 +102,5 @@
 .add-b { display: grid; gap: 6px; min-width: 0; }
 .add-b p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .add-m { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Under what it's about, with the whole width: it doesn't squeeze the words beside it. */
+.add-row .own-sure { grid-column: 2 / -1; flex-wrap: wrap; gap: 4px 10px; margin-left: 0; }

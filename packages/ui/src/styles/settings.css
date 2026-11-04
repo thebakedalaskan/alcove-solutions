@@ -64,7 +64,7 @@
 /* Deleting: a button in caution, and the one step before it, in place under it. */
 .ac-btn.set-caution { background: transparent; color: var(--caution); box-shadow: inset 0 0 0 1px currentColor; }
 .ac-btn.set-caution:hover { background: var(--caution-soft); }
-.set-confirm { display: grid; gap: 10px; margin: 0 0 18px; padding: 18px 20px; border-radius: var(--radius-lg); background: var(--caution-soft); color: var(--ink); scroll-margin: 24px; animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.set-confirm { display: grid; gap: 10px; margin: 0 0 18px; padding: 18px 20px; border-radius: var(--radius-lg); background: var(--caution-soft); color: var(--ink); scroll-margin-block: 24px 110px; animation: ac-rise var(--duration-3) var(--ease-out) both; }
 .set-confirm > b { font: 600 15px/1.35 var(--font-sans); }
 .set-confirm ul { display: grid; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; }
 .set-confirm li { position: relative; padding-left: 16px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }

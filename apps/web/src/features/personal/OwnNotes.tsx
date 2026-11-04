@@ -7,6 +7,7 @@ import { MAX_ADDITION_TEXT, errorCode, errorMessage, type Note, type NoteAdditio
 import { Avatar, Button, Card, Dots, EmptyState, Faces, Icon, IconButton, Scope, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { flushSync } from 'react-dom';
 import type { LineMarks } from '~/features/notes/lines';
 import { peopleLine } from '~/features/notes/meta';
 import { MomentLink, Section, type ScreenRefShown } from '~/features/notes/parts';
@@ -14,7 +15,7 @@ import type { ScreenMarks } from '~/features/notes/screens';
 import { sameEmail, spokenName } from '~/lib/people';
 import { q, qk, useAddToShared, useOwnNotes, useTakeBack } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
-import { OwnComposer, OwnEntries, Quote } from './parts';
+import { OwnComposer, OwnEntries, Quote, Sure } from './parts';
 
 const WHERE = 'Added by people';
 const say = (reach: 'later' | 'none') => (reach === 'later' ? 'It opens once the notes are written.' : 'Nothing was captured then.');
@@ -75,8 +76,8 @@ function Preview({ note, entry, me, shown, onClose, onAdded }: { note: Note; ent
             <dt>Who reads it</dt><dd><Faces people={p.audience} size={20} max={4} /><span>{peopleLine(p.audience, me)}, and anyone they share the notes with</span></dd>
           </dl>
           <div className="btns">
-            <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" size="sm" loading={add.isPending} disabled={!words.trim() && !p.moments.length} onClick={send}>Add for {p.audience.length === 1 ? 'you' : `${p.audience.length} people`}</Button>
+            <Button variant="quiet" size="sm" onClick={onClose}>Cancel</Button>
+            <Button variant="secondary" size="sm" loading={add.isPending} disabled={!words.trim() && !p.moments.length} onClick={send}>Add for {p.audience.length === 1 ? 'you' : `${p.audience.length} people`}</Button>
           </div>
         </>
       )}
@@ -135,6 +136,11 @@ export function OwnNotesCard({ note, me, entries, own, shown }: {
 function AdditionRow({ a, noteId, mine, me, shown, onTakeBack }: { a: NoteAddition; noteId: string; mine: boolean; me: string | undefined; shown: ScreenRefShown; onTakeBack: () => void }) {
   const d = new Date(a.at);
   const yours = !!me && sameEmail(a.by, { email: me });
+  const act = mine && !yours ? 'Remove' : 'Take back';
+  const [sure, setSure] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  /** Back on the button it came from, which it took the place of. */
+  const keep = () => { flushSync(() => setSure(false)); opener.current?.focus(); };
   return (
     <div className="add-row">
       <Avatar person={a.by} size={30} />
@@ -144,7 +150,8 @@ function AdditionRow({ a, noteId, mine, me, shown, onTakeBack }: { a: NoteAdditi
         {a.moments.map((m) => <Quote key={`q-${m.at}-${m.line?.id ?? ''}`} m={m} me={me} />)}
         {a.moments.length > 0 && <div className="add-m">{a.moments.map((m) => <NoteMoment key={`${m.at}-${m.line?.id ?? m.screen?.id ?? ''}`} noteId={noteId} m={m} shown={shown} />)}</div>}
       </div>
-      {a.removable && <button type="button" className="lk quiet" onClick={onTakeBack}>{yours ? 'Take back' : mine ? 'Remove' : 'Take back'}</button>}
+      {a.removable && !sure && <button ref={opener} type="button" className="lk quiet" onClick={() => setSure(true)}>{act}</button>}
+      {sure && <Sure ask="Take this out of the shared notes, for everyone?" act={act} onYes={() => { setSure(false); onTakeBack(); }} onNo={keep} />}
     </div>
   );
 }

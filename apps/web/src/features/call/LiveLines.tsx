@@ -97,7 +97,7 @@ export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptL
           return (
             <Fragment key={l.id}>
               {before.map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
-              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in')}>
+              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', onMark && 'has-mark')}>
                 {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
                 <div className="min-w-0">
                   {start && (
