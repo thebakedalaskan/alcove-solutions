@@ -78,8 +78,8 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
    commitment of method, path and body plus the encrypted response; a retry returns the same response,
    and a different request under the same ID is `409 conflict`. Note search, asking, catching up, caption
-   translations, audio pieces, transcript clips, changes to a note's decisions, open questions and
-   follow-ups, and sharing a note keep no receipt.
+   translations, audio pieces, transcript clips, changes to a note's decisions, open questions,
+   follow-ups and transcript lines, having its notes written again, and sharing a note keep no receipt.
 6. The handler reads and writes through the vault (encrypted manifests), the audio pipeline (encrypted
    objects), transcript rows, `note_access` (who else may read a note) or Kservice-sealed billing, and calls
    Google or NEAR AI where a feature needs them. Failures are `AppError` subclasses; `onError` logs each
@@ -94,7 +94,7 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | Attestation | 30 requests a minute per client address |
 | Google sign-in attempt | 10 minutes from leaving for Google to coming back |
 | Audio piece | At most 2 MiB (a larger `content-length` is refused before the body is read); WebM, MP4 or Ogg audio; 5-second timeslices |
-| Transcript clip | 16 kHz mono 16-bit WAV, at most 30 seconds (960,044 bytes); 120 a minute per account |
+| Transcript clip | 16 kHz mono 16-bit WAV, at most 30 seconds (960,044 bytes); 240 a minute per account, 40 for each voice in a call |
 | Live transcript | The latest 200 lines in a call's or room recording's state |
 | Asking | Questions of 1 to 500 characters; 20 a minute per account |
 | Notes job | Three attempts, a 180-second lease, retries 20 and 90 seconds after a failure; at most 120,000 characters of transcript sent |
