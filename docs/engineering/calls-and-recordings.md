@@ -262,8 +262,7 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   - While notes are on, what everyone the organizer hears says also goes to the API, outside the media encryption,
     as the call's People panel says: the organizer's microphone and every other microphone the organizer's browser
     plays, each person's speech on its own as clips to transcribe, and the recording, which mixes them
-    ([Notes and inference › What's left](notes-and-inference.md#whats-left)). Breakout rooms the organizer isn't in
-    aren't heard, and what's said in a room stays out of the notes: its lines aren't kept in the note, and the
+    ([The call screen](#the-call-screen)). Breakout rooms the organizer isn't in aren't heard. The call's notes have the main room's talk: a room's lines aren't kept in the note, and the
     recording is silent while the organizer is in a room ([Breakout rooms](#hands-spotlight-breakout-rooms-and-captions)).
   - LiveKit still sees addresses, when calls happen, who's in the call's room (by random identity), track kinds and
     mute state, packet sizes and timing, and the audio-level header, so exactly who is speaking when.
@@ -663,11 +662,12 @@ device pickers.
   what's heard). The recorder mixes them into one recording (`NotesRecorder` in `media.ts`), so playing the notes
   back sounds like the call and a guest's line points at a moment where they can be heard: each voice fades in
   when it's heard and out when it isn't (someone joining, leaving, muting, or a room move) while the same segment
-  carries on, through a limiter so voices over each other don't clip. While the organizer visits a breakout room
-  the recording is silent: what's said in a room stays out of the call's notes. Without a microphone of the
-  organizer's own it records everyone else. Once the organizer presses End, the last audio and speech are sent and
-  nothing starts listening again as people drop out of the room. Each person is heard on their own (`CallEars` in `speech.ts`: one `SpeechClips` per voice,
-  sharing one audio context and counting from the segment's start), so every clip says whose it is
+  carries on, through a limiter so voices over each other don't clip. Once the organizer presses End, or turns
+  notes off, the recorder is paused, the last audio and speech are sent, and nothing starts recording or listening
+  again while the server ends the call or turns notes off (as people drop out of the room, or anyone mutes); if it
+  can't, the same recorder carries on, so its pieces stay in order in the same segment. Each person is heard on
+  their own (`CallEars` in `speech.ts`: one `SpeechClips` per voice, sharing one audio context and counting from
+  the segment's start), so every clip says whose it is
   (`x-alcove-speaker`, a participant ID the server checks is someone in the call: not still asking, not turned
   away, not from another call), and every line is said by that person. A voice no longer heard (they left,
   muted, or a room move took them out of earshot) stops being listened to at once and sends what it had heard.
@@ -678,9 +678,10 @@ device pickers.
   began within the request's travel time before a move counts as said after it; the organizer moving ends every
   clip in progress (`CallEars.mark`), so none spans two parts and such a clip holds a fraction of a second at most.
   Nothing is heard while the organizer's browser is between two parts, or in a room it paused (`CallEars.quiet`).
-  The recorder hears silence while the organizer is in a breakout room, so the note's audio has none of a room's
-  talk. Without a microphone of the organizer's own, everyone else is still heard. Nothing shared, picture or
-  sound, is recorded or transcribed (`heard()` is microphones only, and the capture state's `screen` part, "Shared
+  The recorder hears silence while the organizer is in a breakout room (`hush()`: one gain after the limiter, so
+  the segment carries on and the transcript still lines up), so the note's audio has none of a room's talk.
+  Without a microphone of the organizer's own, everyone else is still heard. Nothing shared, picture or sound, is
+  recorded or transcribed (`heard()` is microphones only, and the capture state's `screen` part, "Shared
   screens", is always off): seeing a share takes only being in the same part of the call (its group), and what the
   notes capture is decided apart from it. Pausing holds the recorder and every voice (`hold()`) until the server
   answers, then drops what they held (`discard()`, `stop()`) or carries on (`release()`)

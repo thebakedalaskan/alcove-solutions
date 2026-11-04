@@ -362,16 +362,22 @@ account.
   shared-screen frames are read first ([Shared screens](#shared-screens)). A note without transcript lines is
   then finished, with its screens read but without notes and without a charge. Otherwise `draft` in
   `apps/api/src/modules/drafting.ts` asks the notes model, and one transaction writes the note `ready`
-  with what it wrote, when (`writtenAt`) and the model's verification (once: a verification already listed
-  isn't listed again), deletes the job and charges the account. The call's breakout rooms join the chapters
+  with what it wrote, when it read the transcript (`writtenAt`: the worker reads the note holding its row, as a
+  correction does, so a correction made after it is later) and the model's verification (once, by
+  `verificationKey`: a verification already listed isn't listed again), deletes the job and charges the account. The call's breakout rooms join the chapters
   in that transaction (one chapter per time rooms were open: who was in which room, and for how long); the
   rooms stay in the note so they do every time it's written.
-- **Writing again.** The same job, queued by the organizer ([Correcting the transcript](#correcting-the-transcript)).
-  The summary, chapters, suggested questions and what the notes say each screen shows are written afresh (frames
-  already read aren't read again); of the decisions, open questions and follow-ups, whatever someone has
-  confirmed, answered, taken on or otherwise changed stays as it is, and the new proposals take the place of the
-  ones nobody touched (one with the same words as a kept one isn't added). If they can't be written, the notes
-  stay as they were.
+- **Writing again.** The same job, queued by the organizer ([Correcting the transcript](#correcting-the-transcript)),
+  while the note stays `ready`. The summary, chapters, suggested questions and what the notes say each screen
+  shows are written afresh (frames already read aren't read again); of the decisions, open questions and
+  follow-ups, whatever someone has confirmed, answered, taken on or otherwise changed stays as it is, and the new
+  ones take the place of the ones nobody touched (`keepSettled` in `writer.ts`, which merges any part of the notes
+  with its own decisions, questions and follow-ups the same way). The notes model is told what's settled
+  ("Already settled (don't list these again)", each with where it stands, from `settledOf`), and a new item
+  that's still a kept one in other words is dropped anyway: most of the shorter one's words (60%) in the other,
+  pointing at moments within a minute of each other or one pointing at none. That also catches what someone
+  settled while the notes were being written, which the model never saw. If they can't be written, the notes stay
+  as they were.
 - **Waiting for evidence.** When the notes model's evidence doesn't check out, or can't be checked (Intel,
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
@@ -462,28 +468,38 @@ in `packages/api`, `correctLine` in `apps/api/src/modules/notes.ts`):
 - **What.** A line's words (`text`, 1 to 1,000 characters), who said it (`speaker`: someone from the call, by
   `Person.id`, which is anyone the transcript names, the organizer, or anyone invited; or null for nobody can
   tell), or that it's right as it was heard (`confirm`). Correcting the words clears the words doubt, naming the
-  speaker (the same person again, when it was in doubt) clears the speaker doubt, and confirming clears both.
+  speaker (the same person again, when it was in doubt) clears the speaker doubt, and the organizer confirming
+  clears both. Words are kept on one line, whatever was typed or pasted (whitespace collapsed, as for decisions,
+  questions and follow-ups reworded), so nothing typed can pass for another line where a prompt reads them.
 - **Who.** The organizer, any line. Anyone else who has the note, the words of a line said by them (the line's
-  speaker has their address), or confirming it; never who said a line (`403 forbidden`). Someone it was shared
-  with who didn't speak can read every line and correct none (`403`); someone without the note gets
-  `404 not-found`, as for every note; guests never have notes. A line that isn't in the note is `404`, and a
-  note still recording or being written is `409 conflict`. Refusals name nobody.
+  speaker has their address), or confirming them, which vouches for the words only; never who said a line
+  (`403 forbidden`, also for confirming a line whose only doubt is who said it). Someone it was shared with who
+  didn't speak can read every line and correct none (`403`); someone without the note gets `404 not-found`, as
+  for every note; guests never have notes. A line that isn't in the note is `404`, and a note still recording, or
+  whose notes are being written the first time, is `409 conflict` (checked again holding the note). Refusals name
+  nobody.
 - **Kept like every change.** Each correction is a new revision of the sealed manifest, with the line's
   `changes`: who (name and address), when, what (`reworded`, `reassigned` with the speakers' names before and
-  after, `confirmed`), and the words before. A line keeps its latest 20. Earlier revisions stay with the note
-  until it's deleted, so a correction never erases what was heard ([What's kept](#whats-kept-and-for-how-long)).
-  Asking the same again changes nothing and writes nothing; it keeps no operation receipt, as the answer is the
-  whole note.
+  after, `confirmed`), and the words before. A line keeps 20: its first, whose words before are what was heard,
+  and the latest 19. Earlier revisions stay with the note until it's deleted, so a correction never erases what
+  was heard ([What's kept](#whats-kept-and-for-how-long)). Asking the same again changes nothing and writes
+  nothing; it keeps no operation receipt, as the answer is the whole note.
 - **Where it shows.** Everything that reads the transcript reads it corrected: the note, asking about it, and
   asking across its series. The notes themselves were written from the transcript as it was: `Note.writtenAt`
-  says when, so the app tells the organizer how many lines were corrected since.
+  says when they read it (each correction is stamped holding the note, as the notes worker reads it), so the app
+  tells the organizer how many lines were corrected since, including any corrected while they were written.
 - **Writing the notes again.** `POST /v1/notes/:id/rewrite`, the organizer's alone (`403` for anyone else who
-  has the note), for a written note with transcript lines (`409` otherwise): the note goes back to `pending`
-  and the same notes job is queued ([The notes worker](#the-notes-worker)). Asking again while it's being
-  written changes nothing. It isn't charged, so it shares the 20-a-minute limit with questions. It's never
-  automatic: other people may be confirming decisions meanwhile, and Otter and Fireflies both leave regenerating
-  the summary to a person. The app offers it as "Write the notes again" once lines were corrected since, and as
-  "Try writing them again" when the notes couldn't be written.
+  has the note), for a written note with transcript lines (`409` otherwise): the same notes job is queued
+  ([The notes worker](#the-notes-worker)) and the note stays `ready`, with `Note.writingAgain` set until the job is
+  done. Meanwhile everyone who has it reads the notes as they were, asks about them, confirms and corrects, and
+  series read it as before; the progress stream follows the job, as for the first time. While a job is queued
+  or being written, asking again changes nothing (the job is looked for holding the note, so two asks at once
+  queue one). Writing them can wait as long as the notes model can't be verified or doesn't answer, and the
+  notes stay readable all the while. It isn't charged, so it shares the 20-a-minute limit with questions. It's
+  never automatic: other people may be confirming decisions meanwhile, and Otter and Fireflies both leave
+  regenerating the summary to a person. The app offers it as "Write the notes again" once lines were corrected since, and as
+  "Try writing them again" when the notes couldn't be written; while they're written it says so above the notes
+  ("Being written again"), with where the notes service has got to.
 
 ## Catching up during a call
 
@@ -680,7 +696,9 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   never inventing names, numbers, dates or decisions. What comes back is stored as proposals: decisions
   are `proposed`, questions `open` and follow-ups not `takenOn` until people say so
   (`PATCH /v1/notes/:id/decisions/:id`, `…/questions/:id` and `…/actions/:id`, each answering with the
-  note; see [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)).
+  note; see [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). Notes written
+  again list what people already settled before the transcript, under "Already settled (don't list these again)":
+  each decision, question and follow-up someone changed, with where it stands, one line each.
 - **Answering.** The summary, the asker's name and the question are added. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
   such as an email), "I" and "me" meaning the asker, saying plainly when the transcript doesn't cover it, up to
@@ -867,14 +885,18 @@ readable, in any encoding, and that nothing went to NEAR AI's plaintext endpoint
 `apps/api/src/transcripts.integration.test.ts` covers a transcript honest about what it heard: the fake NEAR
 hears a sentence written with a leading `~` with little confidence; words heard unclearly and lines heard on two
 people's microphones marked live (for the organizer and someone invited alike), in catch-up and in the notes, and
-told to the notes model; two people agreeing at once, and a reply that repeats the question, not marked;
-corrections by the organizer (words, who said it, a guest by the name they gave, nobody, it was heard right) and
-by someone invited (their own words only), each a new revision with who, what and when, the same again writing
-nothing; refusals for someone it was shared with, someone without the note, another account's note, a line that
-isn't there and a note still recording; questions answering from the corrected words; the corrected words in no
-row and no log line; writing the notes again (organizer only, once while it's being written, what someone
-confirmed kept, the rest written from the corrected words, not charged again, the verification not listed twice);
-and notes that couldn't be written, written on request and charged then.
+told to the notes model; two people agreeing at once in a few of the same words, and a reply that repeats the
+question, not marked; corrections by the organizer (words, who said it, a guest by the name they gave, nobody, it
+was heard right) and by someone invited (their own words, and that their words were heard right, never who said
+them), each a new revision with who, what and when, the same again writing nothing, a correction typed over
+several lines kept on one, and a line corrected 21 times keeping its first change with the latest; refusals for
+someone it was shared with, someone without the note, another account's note, a line that isn't there and a note
+still recording; questions answering from the corrected words; the corrected words in no row and no log line;
+writing the notes again (organizer only, one job however often it's asked, the note readable, asked about,
+confirmed and corrected meanwhile, the settled decision listed in the prompt, a decision the model lists again in
+other words, or one confirmed while they were written, kept once, the rest written from the corrected words, a
+correction made after the notes read the transcript offered again, not charged again, the verification not listed
+twice); and notes that couldn't be written, written on request and charged then.
 
 `apps/api/src/capture.integration.test.ts` covers what a call captures: only the organizer pausing, resuming
 and turning notes on or off (everyone else refused); everyone seeing the same state with who changed it;
