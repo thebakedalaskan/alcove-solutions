@@ -1,5 +1,5 @@
 import {
-  ALargeSmall, AudioWaveform, ChevronLeft, CornerDownRight, Diamond, Download, FolderOpen, Frame, Group, Highlighter, Image as ImageIcon, LayoutTemplate, Locate,
+  ALargeSmall, AudioWaveform, ChevronLeft, CornerDownRight, Diamond, Download, FolderOpen, Frame, Group, Highlighter, Image as ImageIcon, LayoutTemplate, LocateFixed,
   Map as MapIcon, MessageCircle, Minus, MoveUpRight, Redo2, Shapes, Spline, StickyNote, Sun, Table, Type, Vote, Workflow,
   ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, Circle, Clock, Copy, DoorOpen, Ellipsis, Hand,
   House, KeyRound, Languages, LayoutGrid, Link, Lock, LogOut, Mail, MessageCircleQuestion, MessageSquare, Mic, MicOff, MonitorUp,
@@ -20,7 +20,7 @@ import { cn } from '../cn';
 const ICONS = {
   stickyNote: StickyNote, type: Type, shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight,
   spline: Spline, highlighter: Highlighter, textSize: ALargeSmall, group: Group, vote: Vote, redo: Redo2, minus: Minus, map: MapIcon, image: ImageIcon, table: Table,
-  workflow: Workflow, comment: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform, locate: Locate, download: Download, folderOpen: FolderOpen,
+  workflow: Workflow, comment: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform, locate: LocateFixed, download: Download, folderOpen: FolderOpen,
   sun: Sun, chevronLeft: ChevronLeft,
   plus: Plus, home: House, notes: NotebookText, search: Search, video: Video, videoOff: VideoOff, mic: Mic, micOff: MicOff,
   screen: MonitorUp, chat: MessageSquare, people: Users, leave: PhoneOff, pen: Pencil, dot: Circle, pause: Pause, stop: Square,
