@@ -172,10 +172,11 @@ sequenceDiagram
     loop each clip of speech while notes are on (or the room is recording)
       B->>A: POST …/transcribe: WAV, segment, start, duration
       A->>D: clip tag already stored? then skip
+      A->>D: the note's people, and its newest 20 clips: the call's language, the words said before
       Note over A: the speech model verified (or verify it now)
-      A->>N: POST /ohttp: /audio/transcriptions (verbose_json), sealed to Whisper's attested key
-      N-->>A: timed segments with confidence scores, sealed
-      A->>D: one sealed transcript_clips row, with the verification, if a line survived the filter
+      A->>N: POST /ohttp: /audio/transcriptions (verbose_json, language, prompt), sealed to Whisper's attested key
+      N-->>A: timed segments with confidence scores, and the language, sealed
+      A->>D: one sealed transcript_clips row: the lines that survived the filter, the verification, the language Whisper picked
       A-->>B: call or recording state with the latest 200 lines
     end
 ```
@@ -184,8 +185,11 @@ sequenceDiagram
    runs the microphone (in a call, the organizer's browser runs each voice it plays, the organizer's own and
    each other microphone in its part of the call, on its own: `CallEars`) through an AudioWorklet (`apps/web/public/pcm-capture.js`) that mixes it to mono,
    filters out everything above the speech band and resamples it to 16 kHz. The samples are cut into clips
-   at natural pauses, clips with no voice in them are dropped, and the rest are sent one at a time, in
-   order, with a few retries. A lost clip costs a line of transcript, never the recording. Turning notes
+   at natural pauses (the first pause of 350 ms after 2.5 seconds, never past 10 seconds), clips with no
+   voice in them are dropped, and the rest are sent one at a time, in order, with a few retries. Measured
+   against NEAR AI's Whisper, longer pauses or minimums (500 to 700 ms, 3.5 to 5 seconds) changed the word
+   error rate by less than a point, as the prompt carries a sentence across clips, and showed captions
+   0.6 to 1.3 seconds later. A lost clip costs a line of transcript, never the recording. Turning notes
    off or leaving sends the last audio and speech first; pausing a call's notes drops whatever wasn't sent
    ([Calls and recordings › What's captured](calls-and-recordings.md#whats-captured)).
 2. **The request.** `POST /v1/live/calls/:id/transcribe` or `POST /v1/recordings/:id/transcribe`. The body
@@ -206,21 +210,47 @@ sequenceDiagram
    in a room recording), so two people starting at the same moment are both kept. If that tag is
    already stored, the clip is skipped without calling NEAR AI, so a retried upload is transcribed and
    kept once, whether or not anything in it survived the filter.
-5. **Transcription and the filter.** NEAR AI returns timed segments. Alcove drops what Whisper is known to
-   invent in silence and noise: segments with low confidence (`avg_logprob` below −1), looping text
-   (`compression_ratio` above 2.4), likely non-speech (`no_speech_prob` above 0.6 with `avg_logprob`
-   below −0.5), subtitle credits ("amara.org", "subtitles by", ...), lines that are only punctuation,
-   symbols or one bracketed sound description, and a clip whose whole text is a stock closing line such as
-   "Thank you." or "Thanks for watching". A reply without segments but with text becomes one line.
-6. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
+5. **What a clip is sent with** (`hear` and `callLanguage` in `apps/api/src/modules/transcripts.ts`).
+   Whisper gets more than the audio, all of it read from what the API already keeps for the note:
+   - **The call's language.** Each row keeps the language Whisper picked for its clip itself, when it was
+     sure: the clip went without a language, at least 4 words survived the filter and its segments'
+     average `avg_logprob` was −0.25 or better. Once at least 3 of the note's newest 20 rows hold one, and
+     all of them the same, it is sent as `language`. Whisper picks the language per clip from the sound
+     alone, and on short clips and accented speech it often picks another one, then transcribes into
+     it or mixes languages; a sure pick is almost never wrong. A row with a sure pick of another language
+     (someone speaks it, or the call moves on to it) stops the language being sent until that row is no
+     longer among the newest 20. Rows sent with the language say nothing new, so after 6 of them in a row
+     the next clip of at least 3.5 seconds goes without it and Whisper picks again; shorter clips keep it.
+   - **A prompt**, only with the call's language (`speechPrompt` in `apps/api/src/inference.ts`): the
+     names of the organizer and everyone invited (from the note's manifest; an address with no name known
+     is named from its local part, so `priya.raman@…` is "Priya Raman"), at most 120 bytes of them, then
+     the end of the words of the lines placed before the clip, at most 250 bytes. Whisper writes a clip in
+     its prompt's language, even names alone when they read as words ("Measure After"), so a prompt sent
+     without the call's language translated other speakers' clips. NEAR AI refuses a prompt that fills
+     Whisper's 448-token context, and 375 bytes or more of words before made it skip whole sentences.
+6. **Transcription and the filter.** NEAR AI returns timed segments and the language. Alcove drops what
+   Whisper is known to invent in silence and noise: segments with low confidence (`avg_logprob` below −1),
+   looping text (`compression_ratio` above 2.4), likely non-speech (`no_speech_prob` above 0.6 with
+   `avg_logprob` below −0.5; NEAR AI's Whisper doesn't report `no_speech_prob`, so this rarely applies),
+   subtitle credits in the languages Whisper invents them in ("amara.org", "subtitles by", "Untertitel
+   im Auftrag", "sous-titres", "subtítulos realizados", "субтитры", "字幕", ...), lines that are only
+   punctuation, symbols or one bracketed sound description, a line of three words or more four in five of
+   whose runs of three words the prompt has (Whisper saying back what it was told came before, word for
+   word or with a word changed), a run of sentences (three words or more in all) said again straight after
+   itself, and a line that only says the one before it again (Whisper looping, too rarely to cross the
+   compression ratio), and a clip whose whole text is a stock closing line in any of a dozen languages, such as
+   "Thank you.", "Thanks for watching", "To be continued", "¡Gracias!", "Obrigado." or "Продолжение
+   следует...". A reply without segments but with text becomes one line.
+7. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
    clip, to a tenth of a second.
-7. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), its segment and the
-   evidence of the verification it was sent to are one `transcript_clips` row, sealed under the state key
-   `transcript:<noteId>` (record kind `transcript-clip`; the header binds the owner, the note and the tag).
-   The insert holds a share lock on the recording row. A clip that arrives after the recording stopped is
-   dropped, because its note is already finished.
-8. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
+8. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), its segment, the
+   evidence of the verification it was sent to, the language Whisper picked for it if it was sure
+   (`language`, a code such as `en`) and whether it was sent with the call's (`pinned`) are one
+   `transcript_clips` row, sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`;
+   the header binds the owner, the note and the tag). The insert holds a share lock on the recording row.
+   A clip that arrives after the recording stopped is dropped, because its note is already finished.
+9. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
    oldest first. Each call line is said by whoever's voice it was, named from the call's people as
    the viewer may see them (a guest sees names, never email addresses), with the breakout room it was said in,
    by name, if any. A line said in a breakout room is shown only to the people sent there and the organizer
@@ -535,7 +565,7 @@ verified against. The measured OS images aren't configuration at all.
 | Request | Format | Timeout |
 | --- | --- | --- |
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
-| Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
+| Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 90 s |
 | Read a frame of a shared screen | The same, with the frame as an image part, `max_tokens` 1,200 | 60 s |
 | Answer a question (about a note, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
@@ -549,19 +579,30 @@ other status, such as `429` or `5xx`, become `503 unavailable`. So does evidence
 request itself, before anything inside it is read, means it didn't open it: the model is verified again
 first ([How long a verification holds](#how-long-a-verification-holds)).
 
-Measured on NEAR AI Cloud in November 2026: a 5-second clip transcribes in about 0.6 s; notes for a short
+Measured on NEAR AI Cloud in November 2026: a clip of a few seconds is transcribed and answered through
+the API in about 0.29 s at the median, or 0.25 s once the call's language is sent, as Whisper then
+skips picking one; notes for a short
 call are written in about 4 s with thinking disabled (about 48 s with it on, which is why it's off); a
 question is answered in about 1.5 to 3.5 s. Oblivious HTTP adds a few milliseconds; the first verification of
 a model adds about 1.3 s to its first request. NEAR AI answers pure
 digital silence with `502`, which Alcove reports as `503 unavailable`; the browser doesn't send silence.
+NEAR AI offers no other speech model: `openai/whisper-large-v3` is the only one it lists and the only one
+it attests, so there is no faster or larger one to move to on the same verified path. On synthetic
+meetings (macOS voices saying names, numbers and jargon, clean, noisy, quiet, reverberant and over
+chatter, cut the way the browser cuts them), sending each clip with the call's language and a prompt
+took the word error rate mid-call from 7.0% to 5.6% and the names heard right from 65% to 81%, with a
+native and an accented speaker together from 26% to 12%, short remarks from 10% to 5.8%, and lines
+invented from noise from 3 of 8 sounds to none. Calls in German, French and Spanish stayed at 1.5 to 2.7%.
 
 ## What's logged
 
 `inference.ts` logs only models, byte sizes, durations, segment and line counts, image counts, statuses,
-timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`). Shared screens
-log counts and sizes: `frame kept` and `frame already kept` at debug, `shared screens read` at info (how many
-frames, and how many were clear, partly legible, unreadable or unread), `a frame couldn’t be read; kept as
-unread` at warn; never a frame, its title, its text or what the notes say about it. `evidence.ts` logs every
+timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`); for a clip
+also whether a language was sent or found and the prompt's size in bytes (`languageSent`, `languageFound`,
+`promptBytes`), never which language or what the prompt said. Shared screens log counts and sizes: `frame
+kept` and `frame already kept` at debug, `shared screens read` at info (how many frames, and how many were
+clear, partly legible, unreadable or unread), `a frame couldn’t be read; kept as unread` at warn; never a frame,
+its title, its text or what the notes say about it. `evidence.ts` logs every
 verification at info, `model verified` with the model, the task, the code `verified`, the duration, Intel's
 TCB statuses and advisory IDs, the OS images, the GPUs, a short hash of the key, the quote's SHA-256 and the
 compose hashes; a refusal is `model evidence refused` (error, or warn when a service couldn't be reached)
@@ -591,8 +632,10 @@ the dstack images NEAR AI runs (`dstack-images.ts`), as NEAR AI's do. `apps/api/
 stands in for Intel's certification service and NVIDIA's attestation service, under test roots made at the
 start of the run (`apps/api/src/testing/pki.ts`), so its TDX quotes, collateral and GPU verdicts have the real
 formats and the API checks them with the code it checks NEAR AI's real evidence with; only `INTEL_ROOT_CA`,
-`NVIDIA_ROOT_CA` and the URLs differ. The fake "hears" words a test writes into the WAV samples, answers a
-clip without them with Whisper's favourite hallucination, writes notes (open questions included) from the
+`NVIDIA_ROOT_CA` and the URLs differ. The fake "hears" words a test writes into the WAV samples, in the
+language written with them (or the one it was sent, as NEAR AI's Whisper answers), keeps the language and
+prompt each clip was sent with (`transcriptions`), refuses a language that isn't a code, answers a
+clip without words with Whisper's favourite hallucination, writes notes (open questions included) from the
 transcript it was sent, answers a question across a series from the calls it was sent, "translates"
 captions by tagging each line with the language, and can fail its next replies (down, or prose instead of
 JSON) or take its time over the next one (`slowNext`). It keeps every request body as it arrived; its
@@ -601,7 +644,11 @@ or a model's), Intel and NVIDIA can be made unreachable, out of date or wrongly 
 refuse what was sealed to them or seal their replies wrong, and its models' keys can change.
 
 The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a call and
-a room recording, retried and silent clips, notes off and on again, the clip format and access checks, a
+a room recording, retried and silent clips, notes off and on again, what each clip is sent with (nothing
+until three clips agree on a language; then the language, and a prompt of the people's names and as
+many of the words before as fit; kept by a short clip and dropped for a long one after six; a clip in
+another language stopping both; every note starting from nothing), lines that only repeat the prompt
+or themselves, the clip format and access checks, a
 server without a key, writing and charging, asking and catching up (also by someone invited), an answer
 dropped because its note was deleted or removed while it was written, retries up to the third failure, and
 the evidence the note keeps. `in the call: hands, spotlight, breakout rooms and captions` covers translating
@@ -688,6 +735,15 @@ answers dropped because a note they read went while they were written.
   earlier slide sends it again as a new moment, rather than pointing at the earlier image.
 - **Regions are the model's word.** A part's box is where the notes model says it is; it's usually close, and
   the note shows it as the model gave it.
+- **A call of accented speakers only.** Whisper takes heavily accented English for the speaker's own
+  language (German, French) on most clips, and is less sure when it does, so a call where nobody else
+  speaks never settles on its language, and those clips stay as Whisper hears them. With anyone in the
+  call it hears surely, the language is found and sent for everyone. Nobody can choose the language yet.
+- **One language per call.** The call's language is the note's, not each speaker's: in a call where
+  people speak different languages it isn't sent at all, and neither is a prompt, so names and the
+  words before don't help there.
+- **Names of people who weren't invited.** The prompt names the organizer and everyone invited, not
+  people who joined by link.
 - **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the
   balance below zero ([Payments and usage](payments-and-usage.md)).
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't
