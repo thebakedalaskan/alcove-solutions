@@ -492,9 +492,10 @@ function InCall({ session }: { session: CallSession }) {
    */
   const settledAt = useRef<number | null>(null);
   // Starts again whenever the connection or your part of the call changes: shares come and go with either. A call that
-  // ends or a reconnect drops shares in the same render that says so, which `connected` covers.
+  // ends empties the call (its state, or the room's disconnect, whichever comes first) in the render that says so, as a
+  // reconnect does: `live` and `connected` cover those.
   useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
-  const settled = () => connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
+  const settled = () => live && connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
   const shareStarted = (s: StageShare, big: boolean, show: () => void) => {
     if (!big && settled()) toast(`${callName(s.presenter)} started sharing`, { icon: 'screen', ms: 6000, action: { label: 'Show it', onClick: show } });
   };

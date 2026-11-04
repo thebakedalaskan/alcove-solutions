@@ -366,9 +366,9 @@ device pickers.
 - **A share starting or stopping.** A new share glows for a moment where the layout puts it. Until you've chosen how
   to see any share, a second one goes big beside the first (each gets half); once you have, a new share comes in as
   a tile and nothing you see moves. When a new share comes in as a tile for you, a toast says who started sharing,
-  with Show it; when one you see big stops, the toast says that too. Neither is said while the room isn't connected,
-  nor for a few seconds after it connects, reconnects or your part of the call changes (breakout rooms opening,
-  closing or moving you), when shares come and go with the connection or the room.
+  with Show it; when one you see big stops, the toast says that too. Neither is said once the call has ended or while
+  the room isn't connected, nor for a few seconds after it connects, reconnects or your part of the call changes
+  (breakout rooms opening, closing or moving you), when shares come and go with the connection or the room.
 - **Changing what you share** swaps the track inside the same LiveKit publication, so everyone sees it change in
   place, with their choices and its muting kept, rather than one share stopping and another starting.
 - **A share's sound.** Anyone can mute the sound of someone else's share for themselves from its ⋯ (`CallRoom.muteShare`:
