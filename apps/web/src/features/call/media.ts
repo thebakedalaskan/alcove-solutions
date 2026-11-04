@@ -630,7 +630,8 @@ export class LocalMedia {
   /**
    * Shares a tab, a window or a screen: the browser's own picker opens on that kind and asks which
    * one. Sharing again while sharing swaps what's shared, and a cancelled swap keeps the share as it was.
-   * Nothing else is ever captured: sound only when asked for, and never the call's own (everyone's voices).
+   * Nothing else is captured: sound only when asked for, and, where the browser knows `restrictOwnAudio`, never the
+   * call's own (everyone's voices).
    */
   async shareScreen(choice: ShareChoice, onEnded: () => void): Promise<ShareStart> {
     const sound = choice.audio && choice.surface !== 'window';

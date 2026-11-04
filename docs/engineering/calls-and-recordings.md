@@ -349,31 +349,40 @@ device pickers.
 - **Shares.** Several people can share at once, a screen each, and nobody's share replaces anyone else's. A share
   starts only while fewer than four (`MAX_SHARES`, `share.ts`) are going in your part of the call, yours counted:
   two sit side by side and the rest wait as tiles, and past four the stage would give screens more room than people
-  while every browser decrypts and decodes one more stream for each. The cap is the browser's, not LiveKit's: two
-  people starting at the same moment can go one over, and the stage takes any number. While four share, the share
-  button says so.
+  while every browser decrypts and decodes one more stream for each. The cap is the browser's, not LiveKit's: it's
+  checked when the share picker opens and again at the click that starts sharing, so people still choosing in their
+  browser's own picker at the same moment can take it over, and the stage takes any number. While four share, the
+  share button says so.
 - **Seeing shares.** The stage keeps shares in the order they started here. Each names whoever shares it, in the arch
   with their name (never by colour alone), and marks a share that carries sound. Until you choose, the first two of
   everyone else's are big, side by side or one above the other, whichever shows both pictures bigger, with a line
   between them that you drag or move with the arrow keys (Home, End, Enter for half and half); one on a narrow
-  stage, where the rest sit under it as tiles to switch to. A click on a share's tile, or P on it, shows it big in
-  place of the one that's been big longest; its ⋯ shows it as a tile again (nothing takes its place). Your own share
-  starts as a tile on your stage: you see what you share on your screen already, and a whole screen shown big would
-  show itself. Choices about a share go when it stops: one seen on this connection that's gone.
-- **A share starting or stopping.** A new share glows for a moment where the layout puts it and never moves what you
-  look at. When it comes in as a tile for you, a toast says who started sharing, with Show it. When one you see big
-  stops, the toast says that too. Neither is said in the first seconds after the room connects or reconnects, when
-  shares come and go with the connection.
+  stage, where the rest sit under it as tiles to switch to. A click on a share's tile, or P on it, shows it big:
+  beside what's big, or, when as many are big as fit, in place of the one that's been big longest. The stage keeps
+  every share you made big and shows the latest that fit, so a stage that grows (the panel closing) shows them
+  again. Its ⋯ shows it as a tile again, and nothing takes its place. Your own share starts as a tile on your stage:
+  you see what you share on your screen already, and a whole screen shown big would show itself. Choices about a
+  share go when it stops: one seen on this connection that's gone.
+- **A share starting or stopping.** A new share glows for a moment where the layout puts it. Until you've chosen how
+  to see any share, a second one goes big beside the first (each gets half); once you have, a new share comes in as
+  a tile and nothing you see moves. When a new share comes in as a tile for you, a toast says who started sharing,
+  with Show it; when one you see big stops, the toast says that too. Neither is said while the room isn't connected,
+  nor for a few seconds after it connects, reconnects or your part of the call changes (breakout rooms opening,
+  closing or moving you), when shares come and go with the connection or the room.
 - **Changing what you share** swaps the track inside the same LiveKit publication, so everyone sees it change in
   place, with their choices and its muting kept, rather than one share stopping and another starting.
 - **A share's sound.** Anyone can mute the sound of someone else's share for themselves from its ⋯ (`CallRoom.muteShare`:
-  this browser stops playing that track); it's said on the share, lasts while that share goes on, and changes nothing
-  for anyone else.
+  this browser stops playing that track). It's kept by the share's picture's track sid, so it lasts while that share
+  goes on, through a change of what's shared and through this browser's own reconnects; it's said on the share, and
+  changes nothing for anyone else.
 - **Sharing honestly.** The bar says you're sharing only once LiveKit has your screen (until then it says it's
-  starting), and adds "with sound" while the capture's sound is live. A screen that can't be published is stopped and
-  you're told, with Try again. When the picture ends (the browser's own Stop, or the shared tab or window closing),
-  the whole capture stops, sound included, and LiveKit unpublishes it, so it goes for everyone at once; a presenter
-  who leaves or drops takes their share with them when LiveKit says they've gone.
+  starting), and adds "with sound" while the capture's sound is live. Publishing reads LiveKit's current publication
+  for each kind (after a full reconnect, the one LiveKit republished) and handles each kind on its own: a camera that
+  won't publish never keeps the screen from trying, and only the screen's own failure is said. A screen that can't
+  be published is stopped, if it's still the capture being shared, and you're told, with Try again. When the picture
+  ends (the browser's own Stop, or the shared tab or window closing), the whole capture stops, sound included, and
+  LiveKit unpublishes it, so it goes for everyone at once; a presenter who leaves or drops takes their share with
+  them when LiveKit says they've gone.
 - **Captions** show the newest live transcript line, under whoever said it, translated for each viewer who
   picks a language. They're hidden while rooms are open, and say so instead of showing an old line while notes
   are paused or off, or while the organizer's browser can't listen.

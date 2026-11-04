@@ -7,8 +7,9 @@
  * room; everyone else's shows the people in their own room.
  *
  * Several people can share at once. Each share names whoever shares it, in the arch; two fit side by side with a line
- * between them, and the rest wait as tiles: a click (or P) shows one big, in place of the one that's been big longest.
- * A share that starts later glows for a moment where the layout puts it and never takes the place of what you see.
+ * between them, and the rest wait as tiles: a click (or P) shows one big, beside what's big or, when two already are,
+ * in place of the one that's been big longest. A share that starts later glows for a moment where the layout puts it:
+ * until you choose, a second one goes big beside the first, and once you have, a new one comes in as a tile.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
 import { Avatar, Button, CallTile, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
@@ -46,7 +47,7 @@ export interface StageShare {
   /** The sound it carries, if any: muted for you or not, and the switch. Never for your own, which doesn't play here. */
   sound: { muted: boolean; toggle: () => void } | null;
 }
-/** How long a share that just started glows. */
+/** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
 /** Open rooms, as the organizer oversees them: who's in each, and who in a room raised a hand for help. */
 export interface StageRooms {
@@ -200,18 +201,18 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
     const target = g?.[g.indexOf(id) + d];
     if (g && target !== undefined) reorder(g, id, target);
   };
-  /** Shows a share big (in place of the one that's been big longest, when they don't all fit), or as a tile. */
-  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured, fit); onCustom(); };
+  /** Shows a share big (beside what's big, or in place of the one that's been big longest when they don't all fit), or as a tile. */
+  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
 
-  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, w, h, fit, live });
-  latest.current = { L, plan, view, onCustom, reorder, groupOf, w, h, fit, live };
+  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, w, h, live });
+  latest.current = { L, plan, view, onCustom, reorder, groupOf, w, h, live };
   /** Shows a share big from a toast, later, beside whatever is big by then (unless it has stopped since). */
   const showLater = (id: string) => () => {
     const c = latest.current;
     if (!c.live.has(id)) return;
-    c.view.showShare(id, c.plan.featured, c.fit);
+    c.view.showShare(id, c.plan.featured);
     c.onCustom();
   };
 
@@ -362,7 +363,11 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         return (
           <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts="Enter P"
             className={cn('ic-scr', !big && 'is-tile', fresh(s.id) && 'is-new')}
-            onClick={big ? undefined : (e) => { if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false); }}
+            onClick={big ? undefined : (e) => {
+              // Not a click in the menu it opened (React passes those up through the portal), nor on any of its buttons.
+              if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
+              if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false);
+            }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
             <FeedVideo feed={s.feed} className="screen" />
             <span className="ac-tile-name">

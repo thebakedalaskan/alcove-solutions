@@ -143,13 +143,11 @@ export function useCallView(callId: string, account: string | null | undefined) 
     setOrder: (order: string[]) => updateLayout((l) => ({ ...l, order: order.slice(0, CALL_LAYOUT_MAX.order) })),
     setBig: (seat: string, big: boolean) => updateLayout((l) => ({ ...l, big: big ? [...new Set([...l.big, seat])].slice(-CALL_LAYOUT_MAX.big) : l.big.filter((s) => s !== seat) })),
     /**
-     * Shows a share big beside the ones big now (`big`, which become your choice too) while they fit (`fit`); when they
-     * don't, the one that's been big longest goes back to a tile.
+     * Shows a share big, after the ones big now (`big`, which become your choice too). The stage shows the latest of them
+     * that fit: beside what's big, or in place of the one that's been big longest. Kept whole, so a stage that grows
+     * (the panel closing) shows them again.
      */
-    showShare: (id: string, big: string[], fit: number) => updateLayout((l) => {
-      const before = picked(l, big).filter((s) => s !== id);
-      return { ...l, shares: sharesWith(l, [...(fit > 1 ? before.slice(-(fit - 1)) : []), id], null) };
-    }),
+    showShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, [...picked(l, big).filter((s) => s !== id), id], null) })),
     /** Shows a share as a tile: the others big now stay big, and nothing takes its place, now or when another share starts. */
     hideShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, picked(l, big).filter((s) => s !== id), id) })),
     setSplit: (split: number) => updateLayout((l) => ({ ...l, split: clamp(split, CALL_SHARE_SPLIT) })),

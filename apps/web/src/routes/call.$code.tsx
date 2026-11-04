@@ -18,7 +18,7 @@ import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/med
 import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
-import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/share';
+import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, type ShareProblem } from '~/features/call/share';
 import { SharePicker } from '~/features/call/SharePicker';
 import { CallEars, canListen } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
@@ -272,13 +272,6 @@ function InCall({ session }: { session: CallSession }) {
     hostMuted.current = roomView.hostMuted;
     toast('The organizer muted your microphone. Unmute when you’re ready.', { icon: 'micOff', ms: 5000 });
   }, [roomView.hostMuted, toast]);
-  /* A screen LiveKit wouldn't publish reaches nobody: that capture is stopped (if it's still the one shared) and said. */
-  useEffect(() => {
-    const failed = roomView.screenFailed;
-    if (!failed || media.getSnapshot().screen?.getVideoTracks()[0]?.id !== failed) return;
-    media.stopScreen();
-    toast('Your screen couldn’t reach the call, so sharing stopped.', { icon: 'stopShare', ms: 8000, action: { label: 'Try again', onClick: () => setSharePick(true) } });
-  }, [roomView.screenFailed, media, toast]);
   /* A device unplugged, back, or allowed again, without anyone pressing anything: said once, as it happens. */
   const seenChange = useRef(m.changes.at(-1)?.n ?? 0);
   useEffect(() => {
@@ -491,43 +484,60 @@ function InCall({ session }: { session: CallSession }) {
     if (ended.length) endShares(ended);
   }, [shareKey, connected, endShares]);
   const sharing = shares.filter((s) => !s.mine);
+  // At most MAX_SHARES going at once in your part of the call, yours counted; changing what you share is always fine.
   const full = !m.screen && sharing.length >= MAX_SHARES;
   /*
    * A share that starts once you're settled in and isn't big for you is told, with a way to see it; one you were
    * watching that stops, too. Not while the room connects or reconnects, when shares come and go with the connection.
    */
   const settledAt = useRef<number | null>(null);
-  useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected]);
-  const settled = () => settledAt.current !== null && Date.now() - settledAt.current > 4000;
+  // Starts again whenever the connection or your part of the call changes: shares come and go with either. A call that
+  // ends or a reconnect drops shares in the same render that says so, which `connected` covers.
+  useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
+  const settled = () => connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
   const shareStarted = (s: StageShare, big: boolean, show: () => void) => {
     if (!big && settled()) toast(`${callName(s.presenter)} started sharing`, { icon: 'screen', ms: 6000, action: { label: 'Show it', onClick: show } });
   };
   const shareStopped = (s: StageShare, wasBig: boolean) => { if (wasBig && settled()) toast(`${callName(s.presenter)} stopped sharing`, { icon: 'stopShare' }); };
 
   /* ---------- actions ---------- */
+  const fullText = `${MAX_SHARES} people are sharing. You can share once one of them stops.`;
   const share = (c: ShareChoice) => {
     setSharePick(false);
     setShareTrouble(null);
+    // Others may have started while the picker was open: checked again here, at the click.
+    if (full) { toast(fullText, { icon: 'screen' }); return; }
     // The browser's picker needs this click: nothing is awaited before it opens.
     void media.shareScreen(c, () => toast('You stopped sharing', { icon: 'stopShare' })).then((r) => {
       if (!r.ok) {
         if (r.problem === 'unsupported') toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 });
-        else if (r.problem !== 'cancelled') { setShareTrouble(r.problem); setSharePick(true); }
+        else if (r.problem !== 'cancelled') reopen.current(r.problem);
         return;
       }
+      // The sound asked for didn't come (only asked where the browser can share it): its picker's switch was off, or
+      // the computer wouldn't share it.
       if (r.sound !== 'left-out') return;
-      // The sound asked for didn't come: the picker's own switch was off, or this browser or computer can't share it.
-      if (!canShareTabSound()) toast('This browser shares no sound. Chrome and Edge can share a tab’s sound.', { icon: 'speakerOff', ms: 8000 });
-      else toast(r.surface === 'browser' ? 'The tab’s sound isn’t shared. Change what you share and turn on Also share tab audio.' : 'Your computer’s sound isn’t shared here. A tab can share its sound.',
-        { icon: 'speakerOff', ms: 9000, action: { label: 'Change', onClick: () => setSharePick(true) } });
+      toast(r.surface === 'browser' ? 'The tab’s sound isn’t shared. Change what you share and turn on Also share tab audio.' : 'Your computer’s sound isn’t shared here. A tab can share its sound.',
+        { icon: 'speakerOff', ms: 9000, action: { label: 'Change', onClick: () => reopen.current() } });
     });
   };
-  const pickShare = () => {
+  /** Opens the share picker (saying why the last try didn't start, if it didn't), unless this browser can't share or four already are. */
+  const pickShare = (trouble: Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null = null) => {
     if (!canShareScreen()) { toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 }); return; }
-    if (full) { toast(`${MAX_SHARES} people are sharing. You can share once one of them stops.`, { icon: 'screen' }); return; }
-    setShareTrouble(null);
+    if (full) { toast(fullText, { icon: 'screen' }); return; }
+    setShareTrouble(trouble);
     setSharePick(true);
   };
+  // Toasts and refusals open the picker later, through what pickShare is then (who's sharing by then).
+  const reopen = useRef(pickShare);
+  reopen.current = pickShare;
+  /* A screen LiveKit wouldn't publish reaches nobody: that capture is stopped (if it's still the one shared) and said. */
+  useEffect(() => {
+    const failed = roomView.screenFailed;
+    if (!failed || media.getSnapshot().screen?.getVideoTracks()[0]?.id !== failed) return;
+    media.stopScreen();
+    toast('Your screen couldn’t reach the call, so sharing stopped.', { icon: 'stopShare', ms: 8000, action: { label: 'Try again', onClick: () => reopen.current() } });
+  }, [roomView.screenFailed, media, toast]);
   const stopShare = () => { media.stopScreen(); toast('You stopped sharing', { icon: 'stopShare' }); };
   const setHand = (up: boolean) => {
     session.setHand(up);
@@ -798,7 +808,7 @@ function InCall({ session }: { session: CallSession }) {
     <div className="ic-spill"><Icon name="screen" size={15} />
       <span className="tx2">{published ? <>You’re sharing <b>{m.screenLabel ?? 'your screen'}</b>{withSound && ' with sound'}</> : <>Starting to share <b>{m.screenLabel ?? 'your screen'}</b></>}</span>
       {!published && <Dots />}
-      <button type="button" className="sp-btn" onClick={pickShare}>Change</button>
+      <button type="button" className="sp-btn" onClick={() => pickShare()}>Change</button>
       <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
     </div>
   );
@@ -904,7 +914,7 @@ function InCall({ session }: { session: CallSession }) {
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>
             <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
-              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={pickShare} />
+              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={() => pickShare()} />
             <DockButton icon="hand" label={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Ask for help' : 'Raise your hand'} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Raise your hand to ask the organizer for help' : 'Raise your hand'}
               on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
             <DockSplit>

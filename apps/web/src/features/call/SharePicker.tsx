@@ -10,7 +10,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useState } from 'react';
 import { listNames } from '~/lib/people';
 import type { ShareChoice, ShareSurface } from './media';
-import { SHARE_PROBLEMS, type ShareProblem } from './share';
+import { SHARE_PROBLEMS, canShareTabSound, type ShareProblem } from './share';
 
 const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: string; body: string; go: string; audio: string | null }[] = [
   { surface: 'browser', label: 'Tab', icon: 'tab', title: 'One browser tab', body: 'Good for a page, a doc or a design. You can switch tabs while you share.', go: 'Choose a tab', audio: 'Share tab audio' },
@@ -34,6 +34,8 @@ export function SharePicker({ open, onOpenChange, sharing, others, trouble, onSh
   const reduce = useReducedMotion();
   const kind = KINDS.find((k) => k.surface === surface) ?? KINDS[0];
   if (!kind) return null;
+  // Sound is offered only where this browser can share it (Chrome and Edge); Firefox and Safari share none.
+  const sound = kind.audio && canShareTabSound() ? kind.audio : null;
   return (
     <Modal open={open} onOpenChange={onOpenChange} label="Choose what to share" className="ic-share">
       <div className="pk-h"><h2 className="ac-title">{trouble ? 'Sharing didn’t start' : sharing ? 'Share something else' : 'Choose what to share'}</h2><IconButton icon="x" label="Close" onClick={() => onOpenChange(false)} /></div>
@@ -53,10 +55,10 @@ export function SharePicker({ open, onOpenChange, sharing, others, trouble, onSh
         </AnimatePresence>
       </div>
       <div className="pk-f">
-        {kind.audio && <div className="ic-srow"><span>{kind.audio}</span><Switch checked={audio} label={kind.audio} onChange={setAudio} /></div>}
+        {sound && <div className="ic-srow"><span>{sound}</span><Switch checked={audio} label={sound} onChange={setAudio} /></div>}
         <span className="pk-note">Everyone in the call sees what you share.</span>
         <Button variant="quiet" onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button variant="primary" icon="screen" onClick={() => onShare({ surface: kind.surface, audio: !!kind.audio && audio })}>{kind.go}</Button>
+        <Button variant="primary" icon="screen" onClick={() => onShare({ surface: kind.surface, audio: !!sound && audio })}>{kind.go}</Button>
       </div>
     </Modal>
   );
