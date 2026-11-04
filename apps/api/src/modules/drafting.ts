@@ -246,14 +246,19 @@ const LANGUAGE_NAMES: Record<Exclude<NotesLanguage, 'call'>, string> = {
 };
 const SUMMARY_LENGTHS: Record<SummaryLength, string> = { short: 'two or three plain sentences', detailed: 'a short paragraph for each topic' };
 
+/** How many of each the notes keep. The model is told, so it doesn't spend its tokens on entries that would be dropped. */
+const MAX_DECISIONS = 12;
+const MAX_QUESTIONS = 12;
+const MAX_ACTIONS = 20;
+
 /** The system prompt for writing notes in a style. Only the summary's length and the language change; everything else is asked the same way. */
 export const notesPrompt = (style: NotesStyle): string => `You write the notes for a meeting from its transcript. Reply with a single JSON object and nothing else, in this shape:
 {"summary": string, "decisions": [{"text": string, "at": number, "lines": [number], "against": [number], "screen": number | null, "part": number | null, "sure": boolean}], "questions": [{"text": string, "at": number, "lines": [number], "against": [number], "screen": number | null, "part": number | null, "sure": boolean}], "actions": [{"text": string, "owner": string | null, "due": string | null, "at": number, "lines": [number], "against": [number], "screen": number | null, "part": number | null, "sure": boolean}], "chapters": [{"at": number, "title": string, "summary": string, "screen": number | null, "part": number | null, "sure": boolean}], "suggestedQuestions": [string], "screens": [{"n": number, "description": string}]}
 
 summary: ${SUMMARY_LENGTHS[style.length]} on what the meeting was about and where it landed. Start with the substance, not "The meeting" or "In this call".
-decisions: what the people agreed or settled, one short sentence each, with the second it was settled. An empty list if nothing was decided; something only suggested is not a decision.
-questions: what someone asked that the meeting didn't answer or settle by its end, one short question each, with the second it was asked. An empty list if every question was answered.
-actions: what someone said they, or someone else, would do. text starts with a verb, like "Send the new screens". owner is that person's name as the transcript gives it, or null if it doesn't say. due is when, as it was said ("Wednesday", "end of March"), or null. at is the second it came up.
+decisions: what the people agreed or settled, one short sentence each, with the second it was settled. At most ${MAX_DECISIONS}: the ones that matter most. An empty list if nothing was decided; something only suggested is not a decision.
+questions: what someone asked that the meeting didn't answer or settle by its end, one short question each, with the second it was asked. At most ${MAX_QUESTIONS}: the ones that matter most. An empty list if every question was answered.
+actions: what someone said they, or someone else, would do, at most ${MAX_ACTIONS}: the ones that matter most. text starts with a verb, like "Send the new screens". owner is that person's name as the transcript gives it, or null if it doesn't say. due is when, as it was said ("Wednesday", "end of March"), or null. at is the second it came up.
 Every at is read from the transcript's [mm:ss] marks.
 Each transcript line starts with its number, as in "L12 [03:41] Name: words". lines: the numbers of the lines each decision, question or action comes from, one to three of them, the ones where it was said. against: the numbers of any lines where someone disagreed with it or said otherwise, at most two; an empty list if nobody did. Only numbers of lines you were sent. What you write is only proposed: people confirm decisions, and owners agree to their actions themselves. Never say someone agreed to something they didn't say.
 chapters: the parts of the meeting in order, two to six of them (one for a short meeting). at is the second the part starts, read from the transcript's [mm:ss] marks. title is two to five words; summary is one short sentence.
@@ -320,8 +325,9 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
   const { json, evidence } = await complete(cfg, [
     { role: 'system', content: notesPrompt(style) },
     { role: 'user', content: `${about(b)}\n\n${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}Transcript:\n${fenced(sent.text)}` }
-  // A full draft can take the model well over a minute (about 24 tokens a second, up to 2,500 of them).
-  ], { what: 'notes', maxTokens: 2500, timeoutMs: 180_000 });
+  // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
+  // At the slowest the model has been seen (about 24 tokens a second), all of it fits inside the timeout.
+  ], { what: 'notes', maxTokens: 4000, timeoutMs: 180_000 });
   const reply = Draft.safeParse(json);
   if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
   const d = reply.data;
@@ -357,11 +363,11 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
   return {
     summary: clip(d.summary.trim(), 1500),
     // What the notes heard is only proposed: people who have the notes confirm it, or the organizer says it wasn't decided.
-    decisions: d.decisions.filter((x) => x.text.trim()).slice(0, 12).map((x): Decision => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'proposed', ...onScreen(shown, x), disputes: [], changes: [] })),
+    decisions: d.decisions.filter((x) => x.text.trim()).slice(0, MAX_DECISIONS).map((x): Decision => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'proposed', ...onScreen(shown, x), disputes: [], changes: [] })),
     // Open until someone who has the notes says it was answered, here or in a later call.
-    questions: d.questions.filter((x) => x.text.trim()).slice(0, 12).map((x): Question => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'open', ...onScreen(shown, x), changes: [] })),
+    questions: d.questions.filter((x) => x.text.trim()).slice(0, MAX_QUESTIONS).map((x): Question => ({ id: id128(), text: clip(x.text.trim(), 300), ...backed(x), state: 'open', ...onScreen(shown, x), changes: [] })),
     // Only ever suggestions: whatever the model replies, nobody has taken these on, and only the person it's for can.
-    actions: d.actions.filter((a) => a.text.trim()).slice(0, 20).map((a): ActionItem => {
+    actions: d.actions.filter((a) => a.text.trim()).slice(0, MAX_ACTIONS).map((a): ActionItem => {
       const who = owner(a.owner);
       const due = a.due?.trim();
       return { id: id128(), text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...backed(a), done: false, ...onScreen(shown, a), changes: [] };

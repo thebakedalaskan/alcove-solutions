@@ -399,8 +399,8 @@ account.
   later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes. The same goes when the
   notes model doesn't answer (`UnansweredError`: no answer within three minutes, unreachable, `429` or `5xx`):
   nothing about the note is wrong, so it waits rather than using its attempts up. A draft can take the model
-  well over a minute (about 24 tokens a second, up to 2,500 of them), so it gets three minutes, and the job's
-  lease five.
+  well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them), so it gets three minutes, and the
+  job's lease five.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
   expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds
   after the second, with a timer that starts the worker again then. The third failure finishes the note `ready`
@@ -875,7 +875,11 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   sentence or two on what it shows and what was said about it then), with `screen`, `part` and `sure` on any
   decision, question, follow-up or chapter about something on a screen, and `lines` and `against` on each
   decision, question and follow-up: the numbers of the lines it comes from, and of any that cut against it.
-  The prompt says what it writes is only proposed, and never to say someone agreed to what they didn't say. In the language the call was held in,
+  The prompt says what it writes is only proposed, and never to say someone agreed to what they didn't say. It also says
+  how many of each the notes keep (12 decisions, 12 questions, 20 follow-ups), so the model doesn't spend its tokens on
+  entries that would be dropped: a reply cut off at `max_tokens` isn't JSON, so it counts as a failed attempt. Measured
+  against the verified notes model on 4 November 2026, an 80-line call with 60 things to write down ran into a limit of
+  2,500 tokens and came back cut off; told the limits, it finished in 2,208, with all 44 entries pointing at lines. In the language the call was held in,
   or the one chosen in settings (English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
   Chinese, Korean, Hindi or Arabic); only the summary's length changes with the setting. The choices are the
   organizer's for a call and the recorder's for a room recording, read from their profile with keys opened for
@@ -966,7 +970,7 @@ verified against. The measured OS images aren't configuration at all.
 | --- | --- | --- |
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
-| Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 180 s |
+| Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 180 s |
 | Read a frame of a shared screen | The same, with the frame as an image part, `max_tokens` 1,200 | 60 s |
 | Answer a question (about a note, across notes, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
 | Catch up | The same, with `max_tokens` 1,500 | 60 s |

@@ -334,6 +334,8 @@ describe('what backs an entry', () => {
     const note = await org.api.notes.get(noteId);
     const entry = (starts: string) => note.decisions.find((d) => d.text.startsWith(starts));
 
+    // Told how many of each the notes keep, so a busy call's reply isn't cut off on entries that would be dropped.
+    expect(h.near.instructions.at(-1)).toMatch(/decisions: .*At most 12: .*\nquestions: .*At most 12: .*\nactions: .*at most 20: /);
     // The lines it was sent, and none the model made up: only what was really said comes back, with who said it.
     expect(said(entry('We agreed')?.evidence.moments ?? [])).toEqual([['We agreed to drop the beta.', false], ['No, the beta stays until March.', true]]);
     expect(entry('We agreed')).toMatchObject({ lines: [lineId(note, 'We agreed')], against: [lineId(note, 'No, the beta')] });
@@ -439,6 +441,25 @@ describe('the record, read back', () => {
     const stamps = decision(last, d)?.changes.map((c) => c.at) ?? [];
     expect(stamps).toEqual([...stamps].sort());
     expect(decision(await kofi.api.notes.get(noteId), d)?.changes).toEqual(decision(last, d)?.changes);
+  });
+
+  it('keeps who proposed something however long its history gets', async () => {
+    const org = await account(at('organizer'));
+    const [kofiEmail, priyaEmail] = [at('kofi'), at('priya')];
+    const noteId = await held(org, 'We talked about the launch.', [kofiEmail, priyaEmail]);
+    const [kofi, priya] = [await account(kofiEmail), await account(priyaEmail)];
+    const id = (await priya.api.notes.proposeDecision(noteId, { text: 'Launch on a Tuesday.' })).decisions[0]?.id ?? '';
+    // Saying so and taking it back, over and over: an entry keeps its first change and its latest ones.
+    for (let i = 0; i < 25; i++) {
+      await kofi.api.notes.updateDecision(noteId, id, { dispute: true });
+      await kofi.api.notes.updateDecision(noteId, id, { dispute: false });
+    }
+    const kept = decision(await org.api.notes.get(noteId), id);
+    expect(kept?.changes).toHaveLength(40);
+    expect(kept?.changes[0]).toMatchObject({ what: 'proposed', by: { email: priyaEmail } });
+    expect(kept?.changes.at(-1)).toMatchObject({ what: 'undisputed' });
+    // So it's still hers, and she still can't confirm it herself.
+    expect(await outcome(priya.api.notes.updateDecision(noteId, id, { state: 'confirmed' }))).toBe('forbidden');
   });
 
   it('keeps what people settled when the notes are written again', async () => {
