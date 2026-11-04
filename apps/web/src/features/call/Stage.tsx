@@ -10,15 +10,23 @@
  * between them, and the rest wait as tiles: a click (or P) shows one big, beside what's big or, when two already are,
  * in place of the one that's been big longest. A share that starts later glows for a moment where the layout puts it:
  * until you choose, a second one goes big beside the first, and once you have, a new one comes in as a tile.
+ *
+ * Someone else's share you see big can be looked at closer, for you only (ShareSurface.tsx): zoomed, moved around,
+ * frozen, stepped back through its last pictures, or opened in its own window, where the stage keeps it as a tile.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
-import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
+import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn, useToast } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useLive } from '~/lib/live';
 import { callName } from '~/lib/people';
+import { popKind } from './popOut';
+import { ShareLooks } from './shareLook';
+import { ShareAway, ShareMenuFor, ShareSurface, ShareWindow } from './ShareSurface';
 import { useSettledSpeakers } from './speakers';
 import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
-import { ShareMenu, TileMenu, type PersonMenu } from './TileMenu';
+import { TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
 import type { VolumeActions } from './volume';
@@ -98,7 +106,7 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
+export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, place: part, paused, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
   people: StageParticipant[];
   /** What's shared now, in any order: the stage keeps them in the order they started. */
   shares: StageShare[];
@@ -109,6 +117,10 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   bar: ReactNode;
   caption: ReactNode;
   rooms: StageRooms | null;
+  /** Your part of the call (breakout rooms): when it changes, nothing kept of any share carries over. */
+  place: string;
+  /** The organizer has paused notes: no earlier pictures of shares are kept meanwhile. */
+  paused: boolean;
   onSpotlight: (id: string | null) => void;
   /** Pin someone for you, or unpin them. */
   onPin: (p: StageParticipant) => void;
@@ -140,13 +152,20 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   // Two shares side by side; one on a narrow stage, where two would each be too small to read.
   const fit = narrow ? 1 : MAX_FEATURED;
   const own = ordered.find((s) => s.mine)?.id ?? null;
+  // How you look at each share (zoom, a picture held still, earlier pictures) and the one in its own window: this
+  // screen's only, let go of when it goes, when your part of the call changes, and (earlier pictures) while notes are paused.
+  const [looks] = useState(() => new ShareLooks());
+  const seenLooks = useLive(looks);
+  useEffect(() => () => looks.clear(), [looks]);
+  useEffect(() => { looks.policy(part, paused); }, [looks, part, paused]);
+  const popped = seenLooks.popped && shares.some((s) => s.id === seenLooks.popped?.id) ? seenLooks.popped.id : null;
   // The layout is worked out again only when something it depends on changes, not on every render (who's
   // speaking right now, a drag's pointer): in a big call it isn't free.
   const peopleKey = people.map((p) => `${p.id} ${p.seat} ${p.isMe ? 1 : 0}`).join(',');
   const shareIds = ordered.map((s) => s.id).join(' ');
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
-  const raw = useMemo(() => arrange({ people, shares: shareIds ? shareIds.split(' ') : [], own, fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay }),
-    [peopleKey, shareIds, own, fit, spotlight, talk.speaker, talk.dominant, prefs, lay]);
+  const raw = useMemo(() => arrange({ people, shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay }),
+    [peopleKey, shareIds, own, popped, fit, spotlight, talk.speaker, talk.dominant, prefs, lay]);
   // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
   const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
   const orderKey = lay.order.join(' ');
@@ -158,6 +177,10 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const top = bar ? 46 : 0;
   const bottom = caption ? (w < 700 ? 150 : 124) : 0;
   const L = useMemo(() => place(plan, { width: w, height: h, top, bottom, ratio: prefs.ratio, split: lay.split }), [plan, w, h, top, bottom, prefs.ratio, lay.split]);
+  // Everything about a share that stopped goes at once, its window too; one shown as a tile goes back to live and its earlier pictures go.
+  const othersKey = ordered.filter((s) => !s.mine).map((s) => s.id).join(' ');
+  const keptKey = [...plan.featured, ...(popped ? [popped] : [])].join(' ');
+  useEffect(() => { looks.sync(othersKey ? othersKey.split(' ') : [], keptKey ? keptKey.split(' ') : []); }, [looks, othersKey, keptKey]);
 
   const byId = new Map(people.map((p) => [p.id, p]));
   const seatOf = (id: string) => byId.get(id)?.seat;
@@ -207,6 +230,15 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
+  /** Someone else's share in its own window, from the click that asked: the browser opens one only from a click. */
+  const toast = useToast();
+  const [canPop] = useState(popKind);
+  const popOut = (s: StageShare) => {
+    const pic = looks.look(s.id).getSnapshot().pic;
+    void looks.popOut(s.id, s.name, pic.w > 0 && pic.h > 0 ? pic.w / pic.h : 1.6).then((r) => {
+      if (r === 'blocked') toast(canPop === 'window' ? 'Your browser blocked the window. Allow pop-ups for Alcove, then try again.' : 'Your browser didn’t open the window. Try again.', { icon: 'pip' });
+    });
+  };
 
   const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, w, h, live });
   latest.current = { L, plan, view, onCustom, reorder, groupOf, w, h, live };
@@ -221,7 +253,7 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   /* Someone else's share starting or stopping is told to the call screen, which says so when it isn't plain to see. */
   const told = useRef<{ key: string; big: Map<string, { s: StageShare; big: boolean }> } | null>(null);
   useEffect(() => {
-    const big = new Map(ordered.map((s) => [s.id, { s, big: plan.featured.includes(s.id) }]));
+    const big = new Map(ordered.map((s) => [s.id, { s, big: plan.featured.includes(s.id) || popped === s.id }]));
     const was = told.current;
     told.current = { key: shareIds, big };
     if (!was || was.key === shareIds || rooms) return;
@@ -311,11 +343,16 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
     const p = byId.get(k);
     const share = isShareKey(k) ? shares.find((s) => shareKey(s.id) === k) : undefined;
     const corner = cornered && k === cornered.id;
+    // Someone else's share you see big: + − 0 zoom, arrows move around while zoomed in, F freezes, comma and full stop step back and on.
+    const closer = share && !share.mine && L.shares.has(share.id) && onTile && !(e.shiftKey && ARROWS.has(key));
     let done = true;
-    if ((key === 'Enter' || key === ' ') && onTile) setMenu(k);
+    if (closer && looks.look(share.id).key(key)) { /* done */ }
+    else if ((key === 'Enter' || key === ' ') && onTile) setMenu(k);
     else if (key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) setMenu(k);
     else if ((key === 'p' || key === 'P') && !e.shiftKey) {
-      if (share) toggleShare(share.id, L.shares.has(share.id));
+      // A share in its own window comes back here, big.
+      if (share && popped === share.id) { looks.popIn(); toggleShare(share.id, false); }
+      else if (share) toggleShare(share.id, L.shares.has(share.id));
       else if (p && !corner) onPin(p);
     } else if (e.shiftKey && ARROWS.has(key)) {
       if (corner) view.setCorner(cornerBy(prefs.corner, key));
@@ -361,24 +398,31 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         const big = L.shares.get(s.id);
         const r = big ?? L.slots.get(k);
         if (!r) return null;
-        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', big ? '' : 'a tile, P shows it big'];
+        const away = popped === s.id;
+        // Someone else's share you see big can be looked at closer: zoomed, frozen, stepped back through.
+        const look = big && !s.mine && !away && 'room' in s.feed ? looks.look(s.id) : null;
+        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', away ? 'in its own window, P brings it back' : big ? '' : 'a tile, P shows it big'];
         return (
-          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts="Enter P"
-            className={cn('ic-scr', !big && 'is-tile', fresh(s.id) && 'is-new')}
-            onClick={big ? undefined : (e) => {
+          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={look ? 'Enter P + - 0 F , .' : 'Enter P'}
+            aria-describedby={look ? `sv-${s.id}` : undefined}
+            className={cn('ic-scr', !big && 'is-tile', away && 'is-away', fresh(s.id) && 'is-new')}
+            onClick={big || away ? undefined : (e) => {
               // Not a click in the menu it opened (React passes those up through the portal), nor on any of its buttons.
               if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
               if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false);
             }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
-            <FeedVideo feed={s.feed} className="screen" />
+            {away ? <ShareAway onBack={() => looks.popIn()} />
+              : look && 'room' in s.feed ? <ShareSurface look={look} feed={s.feed} where="stage" label={s.name} describe={`sv-${s.id}`} popOut={canPop ? { open: false, toggle: () => popOut(s) } : null} />
+                : <FeedVideo feed={s.feed} className="screen" />}
             <span className="ac-tile-name">
               <Avatar person={s.presenter} size={18} /><span className="tl">{s.label}</span>
               {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
             </span>
-            {!big && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
-            <ShareMenu presenter={s.presenter} label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big}
-              onToggle={() => toggleShare(s.id, !!big)} sound={s.sound} />
+            {!big && !away && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
+            <ShareMenuFor look={look} presenter={s.presenter} label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big}
+              onToggle={() => toggleShare(s.id, !!big)} sound={s.sound}
+              own={s.mine ? undefined : { open: away, toggle: away ? () => looks.popIn() : canPop ? () => popOut(s) : null, why: canPop ? null : 'Phones and tablets show shares in the call only.' }} />
           </motion.div>
         );
       })}
@@ -464,6 +508,13 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
       <AnimatePresence>
         {caption && <motion.div key="cap" className="ic-cap" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} transition={UI}>{caption}</motion.div>}
       </AnimatePresence>
+      {seenLooks.popped && popped && (() => {
+        const s = ordered.find((x) => x.id === popped);
+        const win = seenLooks.popped;
+        return s && 'room' in s.feed ? createPortal(
+          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn()} />, win.win.document.body
+        ) : null;
+      })()}
     </div>
   );
 }
