@@ -121,7 +121,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
  * What's captured right now, in a sentence: what everyone says is recorded and transcribed (through the organizer's
  * browser, from what it hears), less whatever it can't do now; nothing while paused; and while notes are off, that
  * what was transcribed before is still read for the notes. In a breakout room (`c` is the room's), what's said is
- * transcribed only while the organizer is there, never recorded, and never goes into the notes.
+ * transcribed only while the organizer is there, for the people there; it isn't recorded or put in the call's notes.
  */
 function saidFor(state: CallState, c: CallState['capture'], name: string): string {
   const host = state.isOrganizer;

@@ -852,7 +852,7 @@ export class NotesRecorder {
   /** Set by hold(): nothing more is recorded or sent until release() carries on or discard() drops it. */
   private gate: { wait: Promise<void>; open: () => void } | null = null;
   private graph: { ctx: AudioContext; mix: DynamicsCompressorNode; gain: GainNode; dest: MediaStreamAudioDestinationNode; voices: Map<string, Voice> } | null = null;
-  /** While the organizer is in a breakout room, the recording hears nothing: what's said in a room stays out of the call's notes. */
+  /** While the organizer is in a breakout room, the recording hears nothing: the call's recording has the main room's talk. */
   private hushed = false;
   /** `onBroken` hears whether this browser can record at all: false once a recorder runs, true if one can't start or fails. */
   constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void,
@@ -922,7 +922,10 @@ export class NotesRecorder {
     this.unhold();
     if (this.rec?.state === 'paused') this.rec.resume();
   }
-  /** Pauses, and resolves once everything recorded so far is uploaded: the server refuses audio once paused. */
+  /**
+   * Pauses, and resolves once everything recorded so far is uploaded: before notes are turned off or the call ends, since
+   * the server refuses audio after. release() carries on in the same recording if that fails; discard() ends it.
+   */
   async pause(): Promise<void> {
     const rec = this.rec;
     if (rec?.state === 'recording') {

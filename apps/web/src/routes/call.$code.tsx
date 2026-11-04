@@ -135,6 +135,7 @@ function InCall({ session }: { session: CallSession }) {
   const [shareTrouble, setShareTrouble] = useState<Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [turningOff, setTurningOff] = useState(false);
   const [ended, setEnded] = useState<Ended | null>(null);
   const [cc, setCc] = useState(false);
   const [lang, setLang] = useState<CaptionLanguage | null>(null);
@@ -208,8 +209,9 @@ function InCall({ session }: { session: CallSession }) {
    * The call's notes, in the organizer's browser, from what it hears: its own microphone and the people in its part of
    * the call, as their tracks arrived (nobody's volume here, nor the speaker, changes that). The recorder mixes them into
    * one recording, so playing the notes back sounds like the call; the live transcript hears each on its own, under their
-   * own name. While the organizer visits a breakout room the recording is silent: room talk stays out of the notes. Both
-   * run while notes are on; paused or off, they stop and drop whatever wasn't sent: the server refuses it anyway.
+   * own name. While the organizer visits a breakout room the recording is silent (hush, below), and the room's lines
+   * are live only: the call's notes have the main room's talk. Both run while notes are on; paused or off, they stop
+   * and drop whatever wasn't sent: the server refuses it anyway.
    */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError, setCantRecord);
@@ -220,13 +222,13 @@ function InCall({ session }: { session: CallSession }) {
   const live = state.phase === 'in-call';
   // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
   const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
-  // Once the organizer is ending the call, the last audio and speech have been sent: nothing starts listening again as
-  // people drop out of the room.
-  const capturing = organizer && on && live && !leaving && !ended;
+  // Once the organizer is ending the call or turning notes off, the last audio and speech are on their way: nothing
+  // starts recording or listening again meanwhile, as people drop out of the room or anyone mutes.
+  const capturing = organizer && on && live && !leaving && !ended && !turningOff;
   useEffect(() => {
     const r = recorder.current;
     if (!r) return;
-    // In a breakout room it records silence (hush, below): what's said in a room stays out of the notes.
+    // In a breakout room it records silence (hush, below): the call's recording has the main room's talk.
     if (capturing) r.start([...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
     else if (!on || !organizer) r.discard();
   }, [capturing, organizer, on, segment, micTrack, room, self, heardKey]);
@@ -260,7 +262,7 @@ function InCall({ session }: { session: CallSession }) {
   /*
    * The organizer moving to another part of the call ends every clip in progress (the server places each where its
    * speaker was when it began, so none may span two parts), and the recording that goes into the notes hears nothing
-   * while it's in a breakout room: what's said in a room stays out of the notes.
+   * while it's in a breakout room: the call's notes have the main room's talk.
    */
   useEffect(() => {
     ears.current?.mark();
@@ -697,18 +699,24 @@ function InCall({ session }: { session: CallSession }) {
 
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   /*
-   * Turning notes off keeps everything said while they were on: recording stops, and the last audio and speech are
-   * sent first. If notes can't be turned off, the same recorder carries on, so its pieces stay in order.
+   * Turning notes off keeps everything said while they were on and nothing after, like ending the call: capture stops
+   * at once, what was recorded and heard until then is sent first, and nothing starts again while the server turns
+   * them off. If it can't, the same recorder carries on, so its pieces stay in order in the same segment.
    */
   const switchNotes = async (v: boolean) => {
     const r = recorder.current;
-    if (!v && on) await Promise.all([r?.pause(), ears.current?.flush()]);
+    if (!v && on) {
+      setTurningOff(true);
+      await Promise.all([r?.pause(), ears.current?.flush()]);
+    }
     try {
       await session.setNotes(v);
     } catch (e) {
       if (!v) r?.release();
       failed(e);
       return;
+    } finally {
+      setTurningOff(false);
     }
     if (!v) r?.discard();
     if (v && !panel && innerWidth >= 1100) setPanel('notes');
@@ -826,11 +834,18 @@ function InCall({ session }: { session: CallSession }) {
   }, []);
 
   /* ---------- leaving: the organizer ends the call for everyone; anyone else just leaves ---------- */
+  /*
+   * The organizer's last audio and speech go before the call ends: the server refuses them after. The recorder is paused,
+   * not stopped, until it has: if ending fails, the same recorder carries on, so its pieces stay in order in the same
+   * segment (a new one would number its pieces from the start again, and the server keeps the first of each).
+   */
   const end = async () => {
     setLeaving(true);
+    const rec = organizer ? recorder.current : null;
     try {
-      if (organizer) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
+      if (organizer) await Promise.all([rec?.pause(), ears.current?.flush()]);
       const r = await session.leave();
+      rec?.discard();
       over.current = true;
       guard.release();
       forgetLayout();
@@ -847,6 +862,7 @@ function InCall({ session }: { session: CallSession }) {
         toast('You left the call', { icon: 'leave' });
       }
     } catch (e) {
+      rec?.release();
       clog.error('leaving the call failed', { err: e });
       toast(errorMessage(e), { icon: 'x' });
     } finally {

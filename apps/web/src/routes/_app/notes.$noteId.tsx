@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Provenance } from '~/features/notes/Evidence';
 import { Player, usePlayer } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
-import { speakersOf, type Correcting } from '~/features/notes/lines';
+import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
 import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, ScreensCard, useScreenViewer } from '~/features/notes/screens';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
@@ -61,8 +61,9 @@ function Stored({ id, me, at }: { id: string; me: string | undefined; at: number
 function useProgress(note: Note): NoteProgress | null {
   const qc = useQueryClient();
   const [p, setP] = useState<NoteProgress | null>(null);
+  // Followed until the notes are written: the first time, or again (the note stays ready meanwhile).
   useEffect(() => {
-    if (note.status === 'ready') return;
+    if (note.status === 'ready' && !note.writingAgain) return;
     let alive = true;
     let again: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => void qc.invalidateQueries({ queryKey: qk.notes });
@@ -87,7 +88,7 @@ function useProgress(note: Note): NoteProgress | null {
     };
     void follow();
     return () => { alive = false; clearTimeout(again); };
-  }, [note.id, note.status, qc]);
+  }, [note.id, note.status, note.writingAgain, qc]);
   return p;
 }
 
@@ -162,10 +163,12 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const correct: Correcting | undefined = ready ? {
     can: (l) => mine || (!!me && !!l.speaker?.person?.email && sameEmail(l.speaker.person, { email: me })),
     people: mine && note.kind === 'call' ? speakersOf(note) : null,
+    organizer: mine,
     onCorrect: (l, patch) => correctLine.mutate({ noteId: note.id, lineId: l.id, patch }, { onError: failed })
   } : undefined;
-  const since = note.writtenAt;
-  const corrected = since ? lines.filter((l) => (l.changes ?? []).some((c) => c.at > since)).length : 0;
+  const corrected = correctedSince(lines, note.writtenAt);
+  // Where writing them again has got to, once the notes service says.
+  const step = note.writingAgain && progress && !progress.ready ? progress.steps.at(-1)?.label : undefined;
   const writeAgain = () => rewrite.mutate(note.id, { onError: failed });
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
   const stillOpen = note.questions.filter((x) => x.state === 'open').length;
@@ -203,7 +206,8 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
             series={note.seriesId ? <Link to="/notes/series/$seriesId" params={{ seriesId: note.seriesId }} className="ser-link"><Icon name="repeat" size={15} />In a series</Link> : undefined}
             chip={note.status === 'recording' ? <NotesSign className="lead-chip">Still recording</NotesSign>
               : note.status === 'pending' ? <Chip className="lead-chip"><Spinner className="size-3" />Waiting to be written</Chip>
-                : !mine && organizer ? <Chip tone="sun" className="lead-chip">{myRole === 'shared' ? 'Shared with you' : `From ${firstName(organizer.name)}’s call`}</Chip> : null} />
+                : note.writingAgain ? <Chip className="lead-chip"><Spinner className="size-3" />Being written again</Chip>
+                  : !mine && organizer ? <Chip tone="sun" className="lead-chip">{myRole === 'shared' ? 'Shared with you' : `From ${firstName(organizer.name)}’s call`}</Chip> : null} />
           {confirm && (
             <div className="confirm" role="alertdialog" aria-label={mine ? 'Delete these notes' : 'Remove these notes'}>
               <span className="ic"><Icon name="trash" size={19} /></span>
@@ -216,6 +220,13 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
           )}
           {ready && written ? (
             <>
+              {note.writingAgain && (
+                <section className={cn('sec', going && 'going')}>
+                  <Notice tone="info" icon="pen">
+                    <b>Writing the notes again</b> from the transcript as it is now. Until then these are the notes as they were, and whatever anyone confirms or changes stays.{step ? ` ${step}.` : ''}
+                  </Notice>
+                </section>
+              )}
               <Section title="Summary" {...part(0)}><p className="summary">{note.summary}</p></Section>
               {note.decisions.length > 0 && (
                 <Section title="Decided" count={toConfirm ? `${toConfirm} to confirm` : note.decisions.length} {...part(1)}>
@@ -234,7 +245,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
               )}
               {lines.length > 0 && (
                 <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}>
-                  {mine && corrected > 0 && (
+                  {mine && corrected > 0 && !note.writingAgain && (
                     <div className="tr-again">
                       <Icon name="pen" size={16} />
                       <span>{corrected === 1 ? 'A line was corrected' : `${corrected} lines were corrected`} since these notes were written.</span>
@@ -248,10 +259,16 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
           ) : ready && lines.length ? (
             <>
               <section className={cn('sec', going && 'going')}>
-                <Notice tone="caution" icon="pen">
-                  <b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
-                </Notice>
-                {mine && <Button variant="secondary" size="sm" className="mt-3" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button>}
+                {note.writingAgain ? (
+                  <Notice tone="info" icon="pen"><b>Writing the notes</b> from the transcript as it is now.{step ? ` ${step}.` : ''}</Notice>
+                ) : (
+                  <>
+                    <Notice tone="caution" icon="pen">
+                      <b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
+                    </Notice>
+                    {mine && <Button variant="secondary" size="sm" className="mt-3" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button>}
+                  </>
+                )}
               </section>
               <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} /></Section>
             </>
@@ -264,15 +281,9 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
           ) : (
             <>
               <section className={cn('sec', going && 'going')}>
-                {note.status === 'pending' && note.writtenAt ? (
-                  <Notice tone="info" icon="pen">
-                    <b>Writing the notes again.</b> From the transcript as it is now, with its corrections. What people already confirmed or changed stays as it is.
-                  </Notice>
-                ) : (
-                  <Notice tone="info" icon="lock">
-                    <b>{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b> Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.
-                  </Notice>
-                )}
+                <Notice tone="info" icon="lock">
+                  <b>{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b> Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.
+                </Notice>
                 {progress && (
                   <ul className="steps">
                     {progress.steps.map((s) => <li key={s.label} className={cn(s.done && 'done')}><Icon name={s.done ? 'check' : 'clock'} size={15} />{s.label}</li>)}

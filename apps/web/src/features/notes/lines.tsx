@@ -15,7 +15,18 @@ export interface Correcting {
   can(line: TranscriptLine): boolean;
   /** People a line can be said by, for the organizer; null for anyone else, who can't change who said a line. */
   people: Speaker[] | null;
+  /** The reader is the organizer, who settles who said a line: anyone else saying it was heard right vouches only for its words. */
+  organizer: boolean;
   onCorrect(line: TranscriptLine, patch: LinePatch): void;
+}
+
+/**
+ * How many of these lines were corrected after the notes read them (`Note.writtenAt`), so writing them again would
+ * change something: any lines the notes were written from count the same way.
+ */
+export function correctedSince(lines: readonly TranscriptLine[], writtenAt: string | null): number {
+  if (!writtenAt) return 0;
+  return lines.filter((l) => (l.changes ?? []).some((c) => c.at > writtenAt)).length;
 }
 
 /** Who the reader may say said a line: everyone the transcript names, then the organizer and everyone invited. */
@@ -59,9 +70,11 @@ export function LineRow({ line, more, mark, time, me, correct }: {
   const close = () => { back.current = true; setEditing(false); };
   const named = !more || !!line.unsure?.speaker;
   const person = line.speaker ? line.speaker.person ?? { name: line.speaker.name } : undefined;
-  if (editing && correct) return <LineEditor line={line} me={me} people={correct.people} mark={mark} onDone={close} onSave={(patch) => { correct.onCorrect(line, patch); close(); }} />;
+  if (editing && correct) return <LineEditor line={line} me={me} people={correct.people} organizer={correct.organizer} mark={mark} onDone={close} onSave={(patch) => { correct.onCorrect(line, patch); close(); }} />;
   const name = line.speaker && named ? spokenName(line.speaker, me) : undefined;
   const history = (line.changes ?? []).map((c) => changeLine(c, me));
+  // The first correction says what was heard, so it stays in view with the latest.
+  const recent = history.length > 4 ? [history[0] ?? '', '…', ...history.slice(-3)] : history;
   return (
     <SpokenLine id={mark.id} className={cn(!named && 'more', mark.className, 'ln')} person={named ? person : undefined}
       name={name && (line.unsure?.speaker ? <Unsure of="speaker">{name}</Unsure> : name)}
@@ -69,7 +82,7 @@ export function LineRow({ line, more, mark, time, me, correct }: {
         <>
           {time}
           {history.length > 0 && (
-            <Tooltip label={<span className="ln-hist">{history.slice(-4).map((h) => <span key={h}>{h}</span>)}</span>}>
+            <Tooltip label={<span className="ln-hist">{recent.map((h, i) => <span key={i}>{h}</span>)}</span>}>
               <span tabIndex={0} className="ln-fixed"><Icon name="history" size={12} />Corrected<span className="sr-only">: {history.at(-1)}</span></span>
             </Tooltip>
           )}
@@ -82,8 +95,8 @@ export function LineRow({ line, more, mark, time, me, correct }: {
 }
 
 /** The line as its own editor: its words, who said it (for the organizer), or that it was heard right. */
-function LineEditor({ line, me, people, mark, onSave, onDone }: {
-  line: TranscriptLine; me: string | undefined; people: Speaker[] | null; mark: { id?: string; className?: string }; onSave: (patch: LinePatch) => void; onDone: () => void;
+function LineEditor({ line, me, people, organizer, mark, onSave, onDone }: {
+  line: TranscriptLine; me: string | undefined; people: Speaker[] | null; organizer: boolean; mark: { id?: string; className?: string }; onSave: (patch: LinePatch) => void; onDone: () => void;
 }) {
   const [text, setText] = useState(line.text);
   /** Who said it: a person's ID, null for nobody can tell, or undefined while it's unchanged. */
@@ -93,8 +106,11 @@ function LineEditor({ line, me, people, mark, onSave, onDone }: {
   // Opened with the caret after the words, ready for a small fix; after that the caret is wherever it's put.
   useEffect(() => { const el = box.current; if (!el) return; el.focus(); el.setSelectionRange(el.value.length, el.value.length); }, []);
   const speaker = who === undefined ? line.speaker : who === null ? undefined : people?.find((p) => p.person?.id === who);
+  // Saying it was heard right: the organizer vouches for all of it, anyone else for their words only.
+  const vouch = organizer ? !!line.unsure : !!line.unsure?.words;
   const save = () => {
-    const t = text.trim();
+    // A line is one line, however it was typed or pasted (the server keeps it so too).
+    const t = text.replace(/\s+/g, ' ').trim();
     const patch: LinePatch = {
       ...(t && t !== line.text ? { text: t } : {}),
       ...(who !== undefined && who !== (line.speaker?.person?.id ?? null) ? { speaker: who } : {})
@@ -128,12 +144,12 @@ function LineEditor({ line, me, people, mark, onSave, onDone }: {
         <textarea ref={box} className="ln-input" value={text} maxLength={1000} rows={Math.min(6, Math.max(2, Math.ceil(text.length / 64)))} aria-label="What was said"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+            if (e.key === 'Enter') { e.preventDefault(); save(); }
             if (e.key === 'Escape') { e.preventDefault(); onDone(); }
           }} />
         <div className="ln-acts">
           <Button type="submit" variant="secondary" size="sm" disabled={!text.trim()}>Save</Button>
-          {line.unsure && <button type="button" className="lk" onClick={() => onSave({ confirm: true })}>It was heard right</button>}
+          {vouch && <button type="button" className="lk" onClick={() => onSave({ confirm: true })}>{organizer || !line.unsure?.speaker ? 'It was heard right' : 'The words were heard right'}</button>}
           <button type="button" className="lk quiet" onClick={onDone}>Cancel</button>
         </div>
       </form>
