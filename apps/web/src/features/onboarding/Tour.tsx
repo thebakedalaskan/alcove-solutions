@@ -1,5 +1,5 @@
 /*
- * The tour of Home: after a new account comes in, and again from the account menu. Each slide points
+ * The tour of Home: after a new account comes in, and again from Settings. Each slide points
  * at the real thing on Home as it is now, found by its `data-tour` hook. A slide whose thing isn't
  * there (no calls yet, nothing to join) is left out, or points at what stands in for it (the example
  * note); nothing is drawn onto the page for the tour.
@@ -14,9 +14,9 @@ import { minutesUntil, untilLabel } from '~/lib/time';
 import { ArtCall, ArtNotes, ArtRoom, ArtSchedule, ArtSeal, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
 
-/** The first element with this hook that's on screen. */
+/** The first element with this hook that's on screen: laid out, and not in something inert (a hidden side panel). */
 const hook = (name: string) => (): HTMLElement | null => {
-  for (const el of document.querySelectorAll(`[data-tour="${name}"]`)) if (el instanceof HTMLElement && el.getClientRects().length) return el;
+  for (const el of document.querySelectorAll(`[data-tour="${name}"]`)) if (el instanceof HTMLElement && el.getClientRects().length && !el.closest('[inert]')) return el;
   return null;
 };
 
@@ -71,7 +71,7 @@ export function TourHost() {
     if (!tour || !session || stage !== 'none') return;
     if (tour.auto && tourSeen(session.ownerId)) { arrival.tourTaken(); return; }
     if (path !== '/home') { void navigate({ to: '/home' }); return; }
-    // Home settles in first (and a menu that asked for this closes).
+    // Home settles in first.
     const t = setTimeout(() => {
       const now = Date.now();
       const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
@@ -87,7 +87,7 @@ export function TourHost() {
     <TourDialog slides={slides} onClose={(finished) => {
       setSlides(null);
       rememberTour(session.ownerId);
-      toast(finished ? 'You can take the tour again from the menu under your name.' : 'Tour closed. It’s in the menu under your name.', { icon: 'compass', ms: 4200 });
+      toast(finished ? 'You can take the tour again from Settings.' : 'Tour closed. You can take it again from Settings.', { icon: 'compass', ms: 4200 });
     }} />
   );
 }

@@ -1,12 +1,11 @@
 /*
  * The phone's frame, at 860px and narrower, in place of the side panel: a top bar with the brand, search,
- * New call and you (the menu under your name); and the tab bar along the bottom, with Record raised in it.
+ * New call and you (Settings); and the tab bar along the bottom, with Record raised in it.
  */
 import { Avatar, Icon, IconButton, Logo, Tooltip, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { q } from '~/lib/queries';
-import { AccountMenu } from './AccountMenu';
 import { Offline } from './Sidebar';
 import { TABS } from './places';
 
@@ -24,7 +23,7 @@ export function PhoneTop({ onSearch, onNew }: { onSearch: () => void; onNew: () 
           <Tooltip label="New call" side="bottom">
             <IconButton icon="plus" size={20} label="New call" title={undefined} aria-haspopup="dialog" onClick={onNew} data-tour="new-call" />
           </Tooltip>
-          {me && <AccountMenu side="bottom" align="end" anchor={<button type="button" className="ph-me" aria-label={`${me.name}: account menu`}><Avatar person={me} size={34} /></button>} />}
+          {me && <Link to="/settings" className="ph-me" aria-label={`${me.name}, settings`}><Avatar person={me} size={34} /></Link>}
         </span>
       </div>
       <Offline className="ph-offline" />

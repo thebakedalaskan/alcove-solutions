@@ -1,0 +1,36 @@
+/* Small pieces Home's cards share. */
+import { errorMessage, type CalendarEvent } from '@alcove/api';
+import { Icon, useToast } from '@alcove/ui';
+import { listNames } from '~/lib/people';
+import { useAdoptEvent } from '~/lib/queries';
+
+/** "Show 4 more" under a list that's longer than its first few, and "Show fewer" once it's open. */
+export function More({ all, more, onToggle }: { all: boolean; more: number; onToggle: () => void }) {
+  return (
+    <div className="hm-more">
+      <button type="button" className="lk quiet" aria-expanded={all} onClick={onToggle}>
+        {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Makes one of your calendar meetings an Alcove call, and says who gets the new link. It waits for its own
+ * answer, so what it says never depends on what else happened meanwhile; it resolves true once it's done.
+ */
+export function useMoveToAlcove() {
+  const adopt = useAdoptEvent();
+  const toast = useToast();
+  const move = async (e: CalendarEvent): Promise<boolean> => {
+    try {
+      const m = await adopt.mutateAsync({ eventId: e.id });
+      toast(`${m.title} is an Alcove call now.${m.guests.length ? ` ${listNames(m.guests)} ${m.guests.length > 1 ? 'get' : 'gets'} the new link.` : ''}`, { icon: 'video' });
+      return true;
+    } catch (err) {
+      toast(errorMessage(err), { icon: 'x' });
+      return false;
+    }
+  };
+  return { move, busy: adopt.isPending };
+}

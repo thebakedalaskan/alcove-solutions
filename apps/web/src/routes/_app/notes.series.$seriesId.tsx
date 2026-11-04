@@ -159,7 +159,7 @@ function NextCall({ s }: { s: Series }) {
         <div className="ser-when"><b>{longDay(new Date(m.startsAt))}</b><span className="ac-mono">{hm(m.startsAt)} to {hm(m.endsAt)}</span></div>
         <div className="ser-acts">
           <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ size: 'sm' })}><Icon name="video" size={16} />Join</Link>
-          {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" onClick={() => open(m)} />}
+          {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" onClick={() => open({ meeting: m })} />}
         </div>
       </Card>
     );

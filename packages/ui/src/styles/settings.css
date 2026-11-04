@@ -1,0 +1,93 @@
+/*
+ * Settings (apps/web routes/_app/settings.tsx and features/settings): a nav to the parts beside a column of cards,
+ * the cards' rows being SettingsCard and SettingRow (kit.css). Classes start with `set-`. At 860px and narrower the
+ * nav goes and the cards take the width.
+ */
+.set-head, .set-layout { max-width: 1116px; }
+.set-lede { margin-top: 10px; max-width: 64ch; font-size: 16px; line-height: 24px; color: var(--ink-2); text-wrap: pretty; overflow-wrap: anywhere; }
+.set-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.set-layout { display: grid; grid-template-columns: 216px minmax(0, 1fr); gap: 40px; align-items: start; }
+/* The nav stays in view beside a long page; the part in view is marked as the page you're on is in the side panel. */
+.set-nav { position: sticky; top: 24px; }
+.set-nav .ac-nav-item { height: 38px; font-size: 14px; }
+.set-nav .ac-nav-item .ac-i { color: var(--ink-3); }
+.set-nav .ac-nav-item[aria-current="true"] { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
+.set-nav .ac-nav-item[aria-current="true"] .ac-i { color: var(--ink); }
+.set-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; max-width: 860px; min-width: 0; }
+
+/* A setting's name says Saved for a moment once its change is kept. */
+.set-saved { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; vertical-align: 1px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.set-saved .ac-i { color: var(--sun-text); }
+/* A fact in a control's place: who gets the notes, what's free, the time zone, a device that isn't there. */
+.set-fixed { display: inline-flex; align-items: center; gap: 7px; font: 500 13px/1.3 var(--font-sans); color: var(--ink-3); }
+.set-fixed .ac-i { flex: none; }
+
+/* ---- Profile ---- */
+.set-prof { display: flex; align-items: center; gap: 18px; padding: 18px 0 20px; flex-wrap: wrap; }
+.set-prof .who { flex: 1 1 200px; min-width: 0; }
+.set-prof b { display: block; font: 480 26px/1.15 var(--font-display); letter-spacing: -0.015em; overflow-wrap: anywhere; }
+.set-prof small { display: block; margin-top: 2px; font-size: 13.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+.set-via { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: var(--radius-pill); font: 500 12.5px/1 var(--font-sans); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.set-via .ac-logo, .set-via .ac-i { flex: none; width: 15px; height: 15px; }
+
+/* ---- Devices: Check the level holds the bars, pressed while the microphone is open ---- */
+.ac-btn.set-check { gap: 10px; padding-left: 12px; }
+.set-check > span[aria-hidden] { display: inline-flex; }
+.set-check .ac-mic-level i:not(.on) { background: var(--line); }
+.ac-btn.set-check[aria-pressed="true"] { background: var(--sunk); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* ---- Calendar: a calendar and whether it's connected ---- */
+.set-conn { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); }
+.ac-set-card > h3 + .set-conn { margin-top: 12px; }
+.set-conn .mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--surface); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+.set-conn .mark .ac-logo { width: 20px; height: 20px; }
+.set-conn .txt { min-width: 0; }
+.set-conn b { display: block; font: 600 14.5px/1.3 var(--font-sans); }
+.set-conn small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink-3); overflow-wrap: anywhere; }
+.set-conn .end { display: flex; align-items: center; gap: 8px; }
+
+/* ---- Appearance ---- */
+.set-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px 0 22px; }
+
+/* ---- Plan and credits ---- */
+.set-big { margin-top: 14px; font: 450 48px/1 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 48; }
+.set-big small { margin-left: 8px; font: 500 15px/1 var(--font-sans); letter-spacing: 0; color: var(--ink-3); }
+.ac-meter.set-meter { height: 8px; margin: 18px 0 12px; }
+.set-usage { padding-bottom: 18px; font-size: 13.5px; color: var(--ink-3); }
+
+/* ---- Privacy ---- */
+.ac-set-card.set-privacy { padding-bottom: 6px; }
+.set-ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 14px 0 16px; }
+.set-ledger > div { padding: 16px; border-radius: var(--radius-md); background: var(--sunk); }
+.set-ledger b { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 600; }
+.set-ledger ul { margin: 0; padding: 0; list-style: none; }
+.set-ledger li { padding: 3px 0; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
+.set-ledger .no b .ac-i { color: var(--sun-text); }
+.ac-sealed.set-seal { margin-bottom: 18px; }
+/* Deleting: a button in caution, and the one step before it, in place under it. */
+.ac-btn.set-caution { background: transparent; color: var(--caution); box-shadow: inset 0 0 0 1px currentColor; }
+.ac-btn.set-caution:hover { background: var(--caution-soft); }
+.set-confirm { display: grid; gap: 10px; margin: 0 0 18px; padding: 18px 20px; border-radius: var(--radius-lg); background: var(--caution-soft); color: var(--ink); scroll-margin: 24px; animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.set-confirm > b { font: 600 15px/1.35 var(--font-sans); }
+.set-confirm ul { display: grid; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; }
+.set-confirm li { position: relative; padding-left: 16px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.set-confirm li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 6px; height: 6px; border-radius: 50%; background: var(--caution); }
+.set-confirm p { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.set-step-status:empty { margin-top: -10px; }
+.set-refused { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--surface); color: var(--caution); font: 400 14px/1.45 var(--font-sans); }
+.set-refused .ac-i { margin-top: 1px; }
+.set-confirm .ac-btn[aria-disabled="true"] { cursor: default; }
+.set-confirm .ac-btn.is-secondary[aria-disabled="true"] { opacity: .5; }
+.set-confirm .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.set-unloaded .ac-btn { margin-top: 10px; }
+
+@media (max-width: 860px) {
+  .set-layout { grid-template-columns: minmax(0, 1fr); }
+  .set-nav { display: none; }
+  .set-ledger { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .set-conn { grid-template-columns: 40px minmax(0, 1fr); }
+  .set-conn > :last-child { grid-column: 2; justify-self: start; }
+  .set-big { font-size: 40px; }
+}

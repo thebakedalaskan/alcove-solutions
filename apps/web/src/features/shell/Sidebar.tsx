@@ -1,10 +1,10 @@
 /*
  * The side panel, beside every page: New call, Search or ask (the palette), the app's places, the next
  * call with Join, pinned notes, groups, the confidential-compute check, the minutes of notes left, and
- * you, which opens the menu under your name (AccountMenu.tsx). It can be hidden. At 860px and narrower
- * the phone's top bar and tab bar (TabBar.tsx) take its place.
+ * you, which opens Settings. It can be hidden. At 860px and narrower the phone's top bar and tab bar
+ * (TabBar.tsx) take its place.
  */
-import type { CalendarEvent, Meeting, Person } from '@alcove/api';
+import { NEW_GROUP, type CalendarEvent, type Meeting, type Person } from '@alcove/api';
 import { ArchThumb, Avatar, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
@@ -14,7 +14,6 @@ import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q, trustLine } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/lib/time';
-import { AccountMenu } from './AccountMenu';
 import { NAV, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
@@ -169,18 +168,23 @@ function Pinned({ onPin }: { onPin: () => void }) {
   );
 }
 
-/** Your groups: a name and how many people are in it. */
+/** Your groups: a name and how many people are in it. Each opens on the Team page, where + makes a new one. */
 function Groups() {
   const groups = useQuery(q.prefs()).data?.groups ?? [];
   if (!groups.length) return null;
   return (
     <div className="sb-sec">
-      <div className="sb-sec-h"><h2 className="ac-eyebrow">Groups</h2></div>
+      <div className="sb-sec-h">
+        <h2 className="ac-eyebrow">Groups</h2>
+        <Link to="/team" search={{ group: NEW_GROUP }} className="ac-icon-btn" aria-label="New group" title="New group"><Icon name="plus" size={15} /></Link>
+      </div>
       <ul className="sb-list">
         {groups.map((g) => (
-          <li key={g.id} className="sb-link is-static">
-            <Icon name="hash" size={15} /><span>{g.name}</span>
-            <b className="n">{g.emails.length}<span className="sr-only"> {g.emails.length === 1 ? 'person' : 'people'}</span></b>
+          <li key={g.id}>
+            <Link to="/team" search={{ group: g.id }} className="sb-link">
+              <Icon name="hash" size={15} /><span>{g.name}</span>
+              <b className="n">{g.emails.length}<span className="sr-only"> {g.emails.length === 1 ? 'person' : 'people'}</span></b>
+            </Link>
           </li>
         ))}
       </ul>
@@ -188,7 +192,7 @@ function Groups() {
   );
 }
 
-/** The check, the minutes of notes left, and you: the menu under your name. */
+/** The check, the minutes of notes left (Settings' minutes), and you (Settings). */
 function Foot({ online }: { online: boolean }) {
   const session = useQuery(q.session()).data;
   const team = useQuery(q.team()).data;
@@ -196,21 +200,19 @@ function Foot({ online }: { online: boolean }) {
   const trust = useQuery(q.trust()).data;
   return (
     <div className="sb-foot">
-      {online && <p className="sb-seal" title={trust?.tee === 'dstack' && trust.bound ? `Hardware checked at ${hm(new Date(trust.at))}` : undefined}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
+      {online && <p className="sb-seal" data-tour="sealed" title={trust?.tee === 'dstack' && trust.bound ? `Hardware checked at ${hm(new Date(trust.at))}` : undefined}><Icon name="sealed" size={15} />{trustLine(trust)}</p>}
       {credits && (
-        <Link to="/account" className="sb-credits">
+        <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
           <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>
           <Meter value={credits.balance / Math.max(1, credits.granted)} />
         </Link>
       )}
       {session && (
-        <AccountMenu side="top" align="start" anchor={
-          <button type="button" className="sb-me" aria-label={`${session.user.name}: account menu`}>
-            <Avatar person={session.user} size={30} />
-            <span className="who"><b>{session.user.name}</b><small>{team?.name ?? session.user.email}</small></span>
-            <Icon name="up" size={17} />
-          </button>
-        } />
+        <Link to="/settings" className="sb-me" aria-label={`${session.user.name}, settings`}>
+          <Avatar person={session.user} size={30} />
+          <span className="who"><b>{session.user.name}</b><small>{team?.name ?? session.user.email}</small></span>
+          <Icon name="settings" size={17} />
+        </Link>
       )}
     </div>
   );

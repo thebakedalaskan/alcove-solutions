@@ -1,0 +1,197 @@
+/*
+ * Home: the next call, what's waiting on you, your follow-ups, today on a line, asking your notes and the
+ * recent ones; before the first notes, the first call, the example note and your team. Two stacks side by
+ * side, then the recent notes. The layout follows the room Home has (container queries), not the window,
+ * since the side panel can be hidden. Every class here starts with hm-.
+ */
+.hm { container: home / inline-size; margin-bottom: 30px; }
+.hm-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+@container home (min-width: 1000px) { .hm-cols { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+/* Each stack is a container too: the cards in it follow its width. */
+.hm-stack { container-type: inline-size; display: grid; gap: 24px; align-content: start; min-width: 0; }
+/* One compute check at a time: wider than a phone the side panel shows it, unless the panel is hidden. */
+@media (min-width: 861px) { .shell:not(.is-bare) .hm-seal { display: none; } }
+.hm-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+@container (min-width: 560px) { .hm-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Small pieces: an icon on a tile, a quieter empty state, links that act, and "Show 4 more". */
+.hm-tile { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--sunk); color: var(--ink-2); transition: background-color var(--duration-2), color var(--duration-2); }
+.hm-tile.is-sun { background: var(--sun-soft); color: var(--sun-text); }
+.hm-tile.is-lg { width: 52px; height: 52px; border-radius: 16px; }
+.hm .lk { display: inline-flex; align-items: center; gap: 5px; }
+.hm .lk:disabled { opacity: .5; text-decoration: none; }
+.hm-more { padding-top: 12px; border-top: 1px solid var(--line); }
+.hm-empty.ac-empty { padding: 30px 8px 22px; }
+.hm-empty .ac-empty-act { margin-top: 8px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+
+/* ---------------------------------------------------------------- Up next */
+.hm-next {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "arch head ring" "arch meta ring" "arch acts ring" "last last last";
+  column-gap: 24px; align-items: start; padding: 28px 30px 24px;
+}
+.hm-next > .ac-arch-thumb { --w: 88px; grid-area: arch; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), var(--shadow-2); }
+.hm-next-head { grid-area: head; min-width: 0; }
+.hm-next-head .ac-eyebrow { display: flex; align-items: center; gap: 8px; }
+.hm-next-head .ac-eyebrow b { color: var(--sun-text); font-weight: 500; }
+.hm-next-head h3 { margin-top: 8px; font-size: 36px; line-height: 1.08; font-variation-settings: 'opsz' 36; }
+.hm-next-meta { grid-area: meta; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; min-width: 0; margin-top: 12px; color: var(--ink-2); font-size: 14px; }
+.hm-next-meta .who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.hm-next-acts { grid-area: acts; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 22px; }
+.hm-next-notes { display: none; }
+.hm-ring { grid-area: ring; position: relative; width: 84px; height: 84px; }
+.hm-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.hm-ring circle { fill: none; stroke-width: 5; stroke-linecap: round; }
+.hm-ring .bg { stroke: var(--sunk); }
+.hm-ring .fg { stroke: var(--sun); transition: stroke-dashoffset var(--duration-4) var(--ease-out); }
+.hm-ring b { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; font: 480 26px/1 var(--font-display); letter-spacing: -0.015em; }
+.hm-ring b small { display: block; margin-top: 3px; font: 500 11px/1 var(--font-mono); color: var(--ink-3); letter-spacing: 0; }
+
+/* Last time: the latest earlier note in the call's series. */
+.hm-last { grid-area: last; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; margin-top: 24px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunk); color: var(--ink); transition: background-color var(--duration-1); }
+.hm-last > .ac-arch-thumb { --w: 26px; box-shadow: none; }
+.hm-last .k { display: block; font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.hm-last p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin-top: 5px; font-size: 14px; line-height: 1.4; text-wrap: pretty; }
+.hm-last p span { color: var(--ink-3); }
+.hm-last .ac-btn { pointer-events: none; }
+.hm-last:hover { background: color-mix(in srgb, var(--sunk) 70%, var(--line)); }
+.hm-last:hover .ac-btn { color: var(--ink); }
+.hm-last:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-md); }
+
+/* On a phone (or any narrow column): the arch beside the title, Join across, the link as an icon, and no ring. */
+@container (max-width: 639px) {
+  .hm-next > .ac-arch-thumb { --w: 50px; }
+  .hm-next { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "arch head" "meta meta" "acts acts" "notes notes" "last last"; column-gap: 14px; padding: 18px; }
+  .hm-next > .ac-arch-thumb, .hm-next-head { align-self: center; }
+  .hm-next-head .ac-eyebrow { gap: 6px; }
+  .hm-next-head h3 { margin-top: 6px; font-size: 26px; font-variation-settings: 'opsz' 28; }
+  .hm-next-meta { gap: 8px 12px; margin-top: 14px; font-size: 13.5px; }
+  .hm-next-meta .flag, .hm-ring, .hm-next-acts .kb { display: none; }
+  .hm-next-acts { margin-top: 16px; flex-wrap: wrap; }
+  .hm-next-acts > :first-child { flex: 1 1 auto; }
+  .hm-copy { width: 52px; padding: 0; }
+  .hm-copy .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hm-next-notes { grid-area: notes; display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12.5px; color: var(--ink-3); }
+  .hm-next-notes .ac-chip { height: 24px; }
+  .hm-last { grid-template-columns: auto minmax(0, 1fr); align-items: start; margin-top: 18px; padding: 14px; }
+  .hm-last > .ac-arch-thumb { margin-top: 2px; }
+  .hm-last > .ac-btn { grid-column: 2; justify-self: start; height: 30px; margin: -4px 0 -6px -14px; }
+}
+
+/* ------------------------------------------- the line to start a call */
+.hm-start {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "arch head" "arch body"; column-gap: 30px; align-items: center; padding: 32px;
+}
+.hm-start > .ac-arch-thumb { --w: 118px; grid-area: arch; align-self: center; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), var(--shadow-2); }
+.hm-start-head { grid-area: head; min-width: 0; align-self: end; }
+.hm-start-head h3 { margin-top: 8px; font-size: 32px; font-variation-settings: 'opsz' 32; }
+.hm-start-body { grid-area: body; min-width: 0; align-self: start; }
+.hm-start-body > p { margin-top: 8px; max-width: 52ch; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.hm-line.ac-composer { margin-top: 20px; min-height: 56px; padding: 0 6px 0 18px; box-shadow: inset 0 0 0 1px var(--line-control); }
+.hm-line:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+.hm-line input.text { flex: 1; min-width: 0; height: 54px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 15.5px/1.4 var(--font-sans); }
+.hm-line input.text::placeholder { color: var(--ink-3); }
+.hm-line .ac-btn { flex: none; }
+.hm-line .ac-btn .go { display: none; }
+.hm-start .try { margin-top: 14px; }
+.hm-start .try button { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+@container (max-width: 639px) {
+  .hm-start > .ac-arch-thumb { --w: 56px; }
+  .hm-start { grid-template-areas: "arch head" "body body"; column-gap: 16px; padding: 22px 20px; }
+  .hm-start-head { align-self: center; }
+  .hm-start-head h3 { margin-top: 6px; font-size: 26px; font-variation-settings: 'opsz' 28; }
+  .hm-start-body > p { margin-top: 14px; font-size: 14.5px; }
+  .hm-line.ac-composer { margin-top: 16px; padding-left: 14px; gap: 10px; }
+  .hm-line input.text { font-size: 15px; }
+  .hm-line .ac-btn { width: 44px; padding: 0; }
+  .hm-line .ac-btn .lbl, .hm-line .ac-btn .kb { display: none; }
+  .hm-line .ac-btn .go { display: block; }
+}
+
+/* ------------------------------------------------------- Waiting on you */
+.hm-wait-list, .hm-fu ul { margin: 0; padding: 0; list-style: none; }
+.hm-wait-item { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 14px; padding: 15px 0; border-top: 1px solid var(--line); outline: none; }
+.hm-wait-item:first-child { border-top: 0; padding-top: 10px; }
+.hm-wait-item:focus-visible { box-shadow: -10px 0 0 -8px var(--focus); }
+.hm-wait-k { font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.hm-wait-t { margin-top: 6px; font: 500 14.5px/1.4 var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; transition: color var(--duration-2); }
+.hm-wait-from { margin-top: 3px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
+.hm-wait-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 9px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.hm-wait-item[aria-busy="true"] .hm-wait-acts { opacity: .6; }
+.hm-wait-item.is-confirmed .hm-wait-k, .hm-wait-item.is-taken .hm-wait-k { color: var(--sun-text); }
+.hm-wait-item.is-rejected .hm-wait-t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.hm-wait-item.is-not-mine .hm-wait-t { color: var(--ink-3); }
+/* The note a line came from: quiet, and underlined when pointed at. */
+.hm-src { color: inherit; border-radius: 4px; text-decoration: none; }
+.hm-src:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-control); }
+
+/* ------------------------------------------------------- Your follow-ups */
+.hm-grp { margin: 0; padding: 16px 0 6px; font: 500 12px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.hm-fu-group:first-of-type .hm-grp { padding-top: 10px; }
+.hm-todo { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 13px 0; border-top: 1px solid var(--line); }
+.hm-todo:first-child { border-top: 0; }
+.hm-todo .ac-check { margin-top: 1px; }
+.hm-todo .txt { font-size: 14.5px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; transition: color var(--duration-2); }
+.hm-todo .from { margin-top: 4px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
+.hm-todo.is-done .txt { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.hm-todo.is-new { animation: hm-arrive 1400ms var(--ease-out) both; }
+.hm-due { flex: none; max-width: calc(16ch + 14px); padding: 5px 7px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-due.is-now { color: var(--ink); font-weight: 600; }
+.hm-due.is-late { background: var(--caution-soft); color: var(--caution); }
+.hm-todo.is-done .hm-due { opacity: .55; }
+@keyframes hm-arrive { 0% { opacity: 0; transform: translateY(-6px); } 40% { opacity: 1; transform: none; } }
+
+/* ----------------------------------------------------------------- Today */
+.hm-today .ac-card-head > span { white-space: nowrap; }
+.hm-today .ac-tl-item .meta .who { min-width: 0; max-width: 100%; }
+/* The next seven days, folded under one line until opened. */
+.hm-soon { margin-top: 6px; border-top: 1px solid var(--line); }
+.hm-today .hm-empty + .hm-soon { margin-top: 0; }
+.hm-soon-toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 14px 0 2px; border-radius: 6px; font-size: 13px; line-height: 1.4; color: var(--ink-3); text-align: left; transition: color var(--duration-1); }
+.hm-soon-toggle:hover { color: var(--ink); }
+.hm-soon-toggle .ac-i { flex: none; }
+.hm-soon-day .hm-grp { padding: 14px 0 0; }
+.hm-soon-day .ac-tl { margin-top: 2px; }
+.hm-anchor { border-radius: 4px; }
+.hm-today .ac-tl-item.is-new { animation: hm-arrive 1400ms var(--ease-out) both; }
+.ac-pop.hm-row-menu { width: min(270px, calc(100vw - 24px)); }
+
+/* ------------------------------------------------------- Ask your notes */
+.hm-ask-line { display: flex; align-items: center; gap: 10px; height: 48px; margin-top: 14px; padding: 0 8px 0 14px; border-radius: var(--radius-md); background: var(--sunk); color: var(--sun-text); transition: box-shadow var(--duration-1); }
+.hm-ask-line:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+.hm-ask-line input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 14.5px/1 var(--font-sans); }
+.hm-ask-line input::placeholder { color: var(--ink-3); }
+.hm-ask-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.hm-ask-chips button { height: 32px; max-width: 100%; padding: 0 12px; border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font: 500 13px/1 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background-color var(--duration-1), color var(--duration-1); }
+.hm-ask-chips button:hover { background: var(--sunk); color: var(--ink); }
+.hm-ask-note { display: flex; align-items: center; gap: 7px; margin-top: 14px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.hm-ask-note .ac-i { flex: none; color: var(--sun-text); }
+
+/* ---------------------------------------------------------- Recent notes */
+.hm-recent { container: recent / inline-size; }
+.hm-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 6px 4px 12px; }
+.hm-row-head h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
+.hm-row-head a { display: inline-flex; align-items: center; gap: 4px; font: 600 13px/1 var(--font-sans); color: var(--ink-3); border-radius: 6px; transition: color var(--duration-1); }
+.hm-row-head a:hover { color: var(--sun-text); }
+.hm-tiles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@container recent (min-width: 520px) { .hm-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container recent (min-width: 960px) { .hm-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ------------------------------------------------------------ first day */
+.hm-example { display: grid; min-width: 0; }
+.hm-example-link { display: block; border-radius: var(--radius-lg); }
+.hm-example-link .ac-notes { transition: box-shadow var(--duration-2), transform var(--duration-2) var(--ease-out); }
+.hm-example-link:hover .ac-notes { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.hm-ex-cap { display: flex; align-items: center; gap: 8px; padding: 10px 6px 0; font-size: 13px; color: var(--ink-3); }
+.hm-ex-cap .ac-i { flex: none; }
+.hm-team .ac-card-head > span { min-width: 0; }
+.hm-ghosts { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; margin: 18px 0 16px; }
+.hm-ghosts.is-center { justify-content: center; margin: 0 0 4px; }
+.hm-team-said { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; overflow-wrap: anywhere; }
+.hm-team-acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+
+/* Signed in with Google without the calendar. */
+.hm-connect { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; align-items: start; }
+.hm-connect .hm-tile { width: 44px; height: 44px; border-radius: var(--radius-md); }
+.hm-connect b { display: block; font: 600 15px/1.3 var(--font-sans); }
+.hm-connect p { margin-top: 4px; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
+.hm-connect .acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }

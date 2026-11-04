@@ -6,12 +6,15 @@ import { q } from '~/lib/queries';
 /*
  * Where a new account lands after its first sign-in. What came with it is fetched first, so the
  * account screen can say so as it plays; then Home loads behind that screen, and the arch opens into it.
+ * The team is only asked for: a Google work account's can take a few seconds to put together, and the
+ * screen doesn't wait for it.
  */
 export const Route = createFileRoute('/ready')({
   beforeLoad: async ({ context: { queryClient: qc }, preload }) => {
     await requireAccount(qc, preload);
     void qc.prefetchQuery(q.trust());
-    await Promise.allSettled([qc.ensureQueryData(q.calendar()), qc.ensureQueryData(q.upcoming()), qc.ensureQueryData(q.team())]);
+    void qc.prefetchQuery(q.team());
+    await Promise.allSettled([qc.ensureQueryData(q.calendar()), qc.ensureQueryData(q.upcoming())]);
     arrival.begin();
     throw redirect({ to: '/home', replace: true });
   }
