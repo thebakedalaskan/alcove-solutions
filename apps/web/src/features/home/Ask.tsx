@@ -3,7 +3,7 @@
  * across every note you have (calls and recordings in the room), in confidential compute.
  */
 import { firstName, type NoteSummary, type Person } from '@alcove/api';
-import { Card, Icon } from '@alcove/ui';
+import { Card, Icon, Scope } from '@alcove/ui';
 import { useState } from 'react';
 import { useOpenPalette } from '~/features/shell/context';
 import { isEmail } from '~/lib/parse';
@@ -42,7 +42,7 @@ export function Ask({ questions }: { questions: string[] }) {
     openPalette(q ? { mode: 'find', ask: q } : { mode: 'find' });
   };
   return (
-    <Card title="Ask your notes" className="hm-ask">
+    <Card title="Ask your notes" aside={<Scope>Only you</Scope>} className="hm-ask">
       <form className="hm-ask-line" onSubmit={(e) => { e.preventDefault(); ask(text); setText(''); }}>
         <Icon name="ask" size={18} />
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="What did we decide this week?" aria-label="Ask your notes a question"

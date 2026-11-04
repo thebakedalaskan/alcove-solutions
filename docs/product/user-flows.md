@@ -301,7 +301,7 @@ dock at the bottom.
   doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
 - **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
   who is invited and not here).
-- **Catching up**, for you alone and not saved. **Catch up** (top bar or **More**) reads what you most likely
+- **Catching up**, for you alone, and not saved unless you keep an answer. **Catch up** (top bar or **More**) reads what you most likely
   missed: your time away if you just came back, what was said before you came if you joined late, or the last
   five minutes. In **Ask**, a chip says what's read (**Whole call** at first) and changes it: the last 5 or 15
   minutes, before you joined, since you joined, while you were away, the whole call, or a stretch picked on the

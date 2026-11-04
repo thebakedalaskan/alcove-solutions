@@ -24,7 +24,7 @@ export function Quote({ m, me }: { m: SourceMoment; me: string | undefined }) {
  * Writing something for yourself. Who it's for is in the box before you type. Enter keeps it; Shift and Enter starts a
  * new line. The draft is the caller's: it stays where you left it however you move around, and never reaches another box.
  */
-export function OwnComposer({ value, onChange, onSend, busy = false }: { value: string; onChange: (v: string) => void; onSend: (text: string) => void; busy?: boolean }) {
+export function OwnComposer({ value, onChange, onSend, busy = false, focus = false }: { value: string; onChange: (v: string) => void; onSend: (text: string) => void; busy?: boolean; focus?: boolean }) {
   const send = () => { const t = value.trim(); if (t && !busy) onSend(t); };
   const keys = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
@@ -32,7 +32,7 @@ export function OwnComposer({ value, onChange, onSend, busy = false }: { value: 
   return (
     <form className="own-compose" autoComplete="off" onSubmit={(e) => { e.preventDefault(); send(); }}>
       <span className="to"><Scope>Only you</Scope>Nobody else reads this</span>
-      <textarea value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder="Write something for yourself" aria-label="Write something only you can read" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
+      <textarea autoFocus={focus} value={value} rows={rowsFor(value, 34, 5)} maxLength={MAX_PERSONAL_TEXT} placeholder="Write something for yourself" aria-label="Write something only you can read" onChange={(e) => onChange(e.target.value)} onKeyDown={keys} />
       <button type="submit" className="ac-btn is-secondary" aria-label="Keep it in your notes" disabled={!value.trim() || busy}><Icon name="sendLine" size={17} /></button>
     </form>
   );

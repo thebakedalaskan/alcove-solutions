@@ -30,7 +30,7 @@ function NoteMoment({ noteId, m, shown }: { noteId: string; m: SourceMoment; sho
 }
 
 /** What adding an entry would do, read fresh when it's opened, and adding it. */
-function Preview({ note, entry, me, shown, onClose }: { note: Note; entry: PersonalEntry; me: string | undefined; shown: ScreenRefShown; onClose: () => void }) {
+function Preview({ note, entry, me, shown, onClose, onAdded }: { note: Note; entry: PersonalEntry; me: string | undefined; shown: ScreenRefShown; onClose: () => void; onAdded: () => void }) {
   const toast = useToast();
   const qc = useQueryClient();
   const add = useAddToShared(note.id);
@@ -50,7 +50,7 @@ function Preview({ note, entry, me, shown, onClose }: { note: Note; entry: Perso
   const send = () => {
     if (!p) return;
     add.mutate({ entryId: entry.id, body: { text: words.trim(), seal: p.seal } }, {
-      onSuccess: () => { toast('It’s in the shared notes. Your own stays yours.', { icon: 'check' }); onClose(); },
+      onSuccess: () => { toast('It’s in the shared notes. Your own stays yours.', { icon: 'check' }); onAdded(); },
       onError: (e) => {
         toast(errorMessage(e), { icon: 'x' });
         // The people or the moments changed: show them as they are now, and let the person decide again.
@@ -112,9 +112,10 @@ export function OwnNotesCard({ note, me, entries, own, shown }: {
   const write = (text: string) => own.add.mutate({ kind: 'note', text }, { onSuccess: () => setDraft(''), onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
   const ready = note.status === 'ready';
   const picked = entries?.find((e) => e.id === adding);
-  /** Back where the keyboard was: the preview took it into its box. */
+  /** Back where the keyboard was: the preview took it into its box. Once something's added, that button has gone, so it's the box you write in. */
   const back = useRef<HTMLElement | null>(null);
-  const open = (e: PersonalEntry) => { back.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setAdding(e.id); };
+  const [added, setAdded] = useState(false);
+  const open = (e: PersonalEntry) => { back.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setAdded(false); setAdding(e.id); };
   const close = () => { setAdding(null); back.current?.focus(); };
   return (
     <Card title="Your notes" aside={<Scope>Only you</Scope>} className="own-card">
@@ -124,8 +125,8 @@ export function OwnNotesCard({ note, me, entries, own, shown }: {
           share={(e) => (ready && !e.shared ? <IconButton icon="share" label="Add to the shared notes" size={15} onClick={() => open(e)} /> : null)} />
       ) : entries && <EmptyState title="Nothing here yet" className="own-empty">Write something, bookmark a line, or keep an answer. Nobody else can read it, the organizer included.</EmptyState>}
       {/* In the composer's place, outside the list that scrolls: all of it shows, the people and the button too. */}
-      {picked ? <Preview key={picked.id} note={note} entry={picked} me={me} shown={shown} onClose={close} />
-        : <OwnComposer value={draft} onChange={setDraft} onSend={write} busy={own.add.isPending} />}
+      {picked ? <Preview key={picked.id} note={note} entry={picked} me={me} shown={shown} onClose={close} onAdded={() => { setAdded(true); setAdding(null); }} />
+        : <OwnComposer value={draft} onChange={setDraft} onSend={write} busy={own.add.isPending} focus={added} />}
     </Card>
   );
 }
