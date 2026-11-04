@@ -253,13 +253,29 @@ describe('end-to-end encryption', () => {
     const browser = guestBrowser();
     const first = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, first);
-    // The page reloads: a new connection, with the pass of the old one.
+    // The page reloads: it closes (telling the server this connection has gone), and a new connection comes with the
+    // pass of the old one.
+    first.closing();
     const again = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: first.ticket.pass });
     await inGroup(again);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(first.ticket.identity), 'the old connection out of the group');
     expect(host.crypto.getSnapshot().members).toContain(again.ticket.identity);
     expect((await settle(host, (s) => s.participants.length === 2)).participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
     await host.leave();
+  });
+
+  it('keeps the call going when the organizer’s page closes, so a reload comes back to it', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    host.closing();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await callState(host.ticket.callId)).toBe('live');
+    const back = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(back);
+    expect(back.ticket.callId).toBe(host.ticket.callId);
+    await back.leave();
   });
 
   it('starts a new group when the organizer’s connection changes, and everyone already in rejoins it', async () => {
@@ -402,6 +418,61 @@ describe('keeping in step', () => {
     expect([...host.crypto.getSnapshot().members].sort()).toEqual([host.ticket.identity, lee.ticket.identity].sort());
     expect(kim.crypto.getSnapshot().status).toBe('denied');
     expect(refused).toEqual([]);
+    await host.leave();
+  });
+
+  it('takes an ask back when the tab asking closes', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === sam.ticket.identity));
+    sam.closing();
+    expect((await settle(host, (s) => s.waiting.length === 0)).waiting).toEqual([]);
+    await host.leave();
+  });
+
+  it('makes anyone who stopped asking ask again: their pass doesn’t let them in', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const browser = guestBrowser();
+    const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === sam.ticket.identity));
+    await sam.leave();
+    await settle(host, (s) => s.waiting.length === 0);
+    // The same tab asks again with its old pass, as a reload would: Sam still has to be let in.
+    const again = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    expect((await settle(host, (s) => s.waiting.some((w) => w.id === again.ticket.identity))).waiting.map((w) => w.id)).toEqual([again.ticket.identity]);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(again.crypto.getSnapshot().status).toBe('waiting');
+    expect(host.crypto.getSnapshot().members).not.toContain(again.ticket.identity);
+    await host.leave();
+  });
+
+  it('takes out anyone let in who never reaches the room, once they’ve had time to get there', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await joinRoom(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    await joinRoom(sam);
+    // Kim's browser dies while asking, so nothing tells the server, and the organizer lets Kim in.
+    const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === kim.ticket.identity));
+    kim.close();
+    await host.admit(kim.ticket.identity);
+    await waitFor(() => host.crypto.getSnapshot().members.includes(kim.ticket.identity), 'Kim in the group');
+    const { reconcile, ARRIVAL_MS } = await import('./modules/calls');
+    await reconcile(h.deps, Date.now() + ARRIVAL_MS / 2);
+    expect(host.crypto.getSnapshot().members).toContain(kim.ticket.identity);
+    await reconcile(h.deps, Date.now() + ARRIVAL_MS + 1_000);
+    await waitFor(() => !host.crypto.getSnapshot().members.includes(kim.ticket.identity), 'Kim out of the group');
+    expect((await settle(host, (s) => s.participants.length === 2)).participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, sam.ticket.identity].sort());
+    expect(host.crypto.getSnapshot().members).toContain(sam.ticket.identity);
     await host.leave();
   });
 

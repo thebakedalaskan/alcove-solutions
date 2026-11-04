@@ -348,6 +348,12 @@ export interface CallSession extends LiveStore<CallState> {
   leave(): Promise<CallEndResult | null>;
   /** Stops keeping up with the call here, without leaving it: the call ended, or this person is out of it. */
   close(): void;
+  /**
+   * The page is going away (closed, reloaded or left for another): stops here and tells the server this connection
+   * has gone, without waiting for an answer, so nobody waits on it. The organizer's doesn't say so: their reload
+   * mustn't end the call, which ends only if they don't come back.
+   */
+  closing(): void;
 }
 
 export const RoomRecordingStateSchema = z.object({

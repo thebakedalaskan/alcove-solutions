@@ -56,13 +56,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     }
     return r.data;
   };
-  async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}): Promise<Response> {
+  async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}, keepalive = false): Promise<Response> {
     const mutating = method !== 'GET';
     const where = { method, path: safePath(path) };
     const t0 = Date.now();
     let res: Response;
     try {
-      res = await f(base + path, { method, credentials: 'include', headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null });
+      res = await f(base + path, { method, credentials: 'include', keepalive, headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null });
     } catch (cause) {
       emit('warn', 'request could not reach the API', { ...where, ms: Date.now() - t0, error: cause instanceof Error ? cause.name : 'unknown' });
       throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { ...where, cause });
@@ -80,8 +80,9 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     emit('debug', 'request', { ...where, status: res.status, requestId: requestId ?? null, ms: Date.now() - t0 });
     return res;
   }
-  async function req<S extends z.ZodType>(schema: S, method: string, path: string, body?: unknown, extra: Record<string, string> = {}): Promise<z.infer<S>> {
-    const res = await send(method, path, body === undefined ? null : JSON.stringify(body), { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra });
+  /** `keepalive`: the request outlives the page that sends it (one sent as the page goes away). */
+  async function req<S extends z.ZodType>(schema: S, method: string, path: string, body?: unknown, extra: Record<string, string> = {}, keepalive = false): Promise<z.infer<S>> {
+    const res = await send(method, path, body === undefined ? null : JSON.stringify(body), { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra }, keepalive);
     return parse(schema, await res.json(), `response from ${method} ${path}`);
   }
   async function* ndjson<S extends z.ZodType>(schema: S, path: string): AsyncIterable<z.infer<S>> {
@@ -161,7 +162,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
           catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
           askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `${live(id)}/ask`, { question }, p),
           translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
-          leave: async (id) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, {}, p)).ended,
+          leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, {}, p, o?.keepalive ?? false)).ended,
           mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
           commit: (id, c) => req(z.object({ epoch: z.number() }), 'POST', `${live(id)}/mls/commits`, c, p),
           message: async (id, m) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/messages`, m, p); },
@@ -230,7 +231,7 @@ interface CallTransport {
   catchUp(id: string, minutes: number | undefined): Promise<CatchUp>;
   askSoFar(id: string, question: string): Promise<AnswerPart[]>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
-  leave(id: string): Promise<z.infer<typeof CallEndResultSchema> | null>;
+  leave(id: string, o?: { keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
   mls(id: string, after: number): Promise<CallMls>;
   commit(id: string, c: { generation: number; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
   message(id: string, m: { generation: number; epoch: number; message: string }): Promise<void>;
@@ -651,6 +652,13 @@ class HttpCall extends Live<CallState> implements CallSession {
     if (this.switchTimer) clearTimeout(this.switchTimer);
     this.timer = null;
     this.switchTimer = null;
+  };
+  /** The page is going away: everyone but the organizer says they've gone, in a request that outlives the page. */
+  closing = () => {
+    if (this.closed) return;
+    this.close();
+    // A failure has already been reported by the request itself, and a page going away can do nothing more.
+    if (!this.organizer) this.t.leave(this.state.callId, { keepalive: true }).catch(() => undefined);
   };
   /** The organizer leaving ends the call for everyone; anyone else just goes (and is taken out of the group). */
   leave = async () => {

@@ -555,6 +555,12 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
+  if (b.added.length && room) {
+    // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
+    const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit };
+    const ownerId = o.ownerId;
+    setTimeout(() => { arrivals(d, ownerId, callId, room, Date.now()).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId, err })); }, ARRIVAL_MS + 1_000).unref();
+  }
   return { epoch: b.epoch + 1 };
 }
 
@@ -750,7 +756,11 @@ async function departed(o: Owner, callId: string, identity: string): Promise<voi
     const { row, state } = await load(o, c, callId, true);
     const j = state.people.find((x) => x.identity === identity && x.role !== 'host');
     if (row.state !== 'live' || !j || (j.status !== 'in' && j.status !== 'waiting')) return null;
-    await save(o, c, callId, withPerson(state, identity, (x) => ({ ...x, status: 'left', hand: false })));
+    // Someone who was in is kept, as having left (a reload's pass brings them back). Someone who only asked is
+    // forgotten, so nothing of theirs, a pass included, can bring them in without asking again.
+    await save(o, c, callId, j.status === 'waiting'
+      ? { ...state, people: state.people.filter((x) => x.identity !== identity) }
+      : withPerson(state, identity, (x) => ({ ...x, status: 'left', hand: false })));
     return { room: row.room_name, was: j.status };
   });
   if (r) { clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId }); await nudge(o, r.room, callId, { call: true, log: true }); }
@@ -766,6 +776,27 @@ async function goneFromRoom(d: Deps, ownerId: string, callId: string, roomName: 
   const here = roomName ? await d.livekit.participants(roomName).then((ps) => ps.some((p) => p.identity === identity), () => false) : false;
   if (here) { clog.info('left and came back to the room', { callId }); return; }
   await departed(await openOwner(d, ownerId, undefined), callId, identity);
+}
+/**
+ * How long someone let in has to reach the room before they're taken out. A tab in the background can take a
+ * minute to notice it was let in; a browser that closed or died while asking never will.
+ */
+export const ARRIVAL_MS = 90_000;
+/**
+ * Takes out whoever was let in at least ARRIVAL_MS ago and isn't in the room: they never got there, or LiveKit's
+ * word that they left was missed. Nobody is taken out while LiveKit can't be asked.
+ */
+async function arrivals(d: Deps, ownerId: string, callId: string, roomName: string, now: number): Promise<void> {
+  const o = await openOwner(d, ownerId, undefined);
+  const { row, state } = await load(o, o.pool, callId);
+  const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
+  if (!due.length) return;
+  const here = new Set((await d.livekit.participants(roomName)).map((p) => p.identity));
+  for (const j of due) {
+    if (here.has(j.identity)) continue;
+    clog.info('someone let in isn’t in the room', { callId, role: j.role });
+    await departed(o, callId, j.identity);
+  }
 }
 const ByRoom = z.object({ owner_id: z.string(), call_id: z.string(), host_identity: z.string().nullable() });
 
@@ -830,7 +861,10 @@ async function reconcilePage(d: Deps, live: LiveCall[], now: number): Promise<nu
       }
     }
     const roomGone = now - c.started_at.getTime() > 60_000 && !rooms.has(c.room_name);
-    if (!hostGone && !roomGone) continue;
+    if (!hostGone && !roomGone) {
+      await arrivals(d, c.owner_id, c.call_id, c.room_name, now).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId: c.call_id, err }));
+      continue;
+    }
     const end = await endCall(await openOwner(d, c.owner_id, undefined), c.call_id, (r) => !roomGone && r.host_identity !== c.host_identity);
     if (!end) continue;
     clog.info('call ended without the organizer', { callId: c.call_id, reason: hostGone ? 'organizer gone' : 'room gone' });

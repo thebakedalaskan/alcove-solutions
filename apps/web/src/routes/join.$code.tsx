@@ -10,7 +10,7 @@ import { useDevices } from '~/features/call/devices';
 import { LocalMedia, type MediaSnapshot } from '~/features/call/media';
 import { lastPass, rememberPass } from '~/features/call/pass';
 import { api } from '~/lib/api';
-import { sessions, useLive } from '~/lib/live';
+import { sessions, useClosingWithPage, useLive } from '~/lib/live';
 import { listNames } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, shortDay } from '~/lib/time';
@@ -139,8 +139,9 @@ function GuestPrejoin({ card, code, me }: { card: CallCard; code: string; me: Pe
     sessions.call = { code, session: s };
     void navigate({ to: '/call/$code', params: { code }, replace: true });
   }, [code, navigate]);
-  // Leaving the page while still asking takes the request back.
+  // Leaving the page while still asking takes the request back: for another screen here, or closing the tab.
   useEffect(() => () => { if (asked && !entered.current) void asked.leave().catch(() => undefined); }, [asked]);
+  useClosingWithPage(asked);
   const join = async () => {
     setJoining(true);
     try {

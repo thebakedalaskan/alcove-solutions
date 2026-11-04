@@ -20,6 +20,19 @@ export const sessions: { call: { code: string; session: CallSession } | null; re
   recording: null,
   media: null
 };
+/**
+ * Tells `session`'s call when this page goes away (closed, reloaded, or left for another), at once: someone asking
+ * takes the ask back, and anyone else in the call drops out then rather than when LiveKit notices. A page only put
+ * away to come back to (the back-forward cache) carries on where it was.
+ */
+export function useClosingWithPage(session: CallSession | null) {
+  useEffect(() => {
+    if (!session) return;
+    const gone = (e: PageTransitionEvent) => { if (!e.persisted) session.closing(); };
+    window.addEventListener('pagehide', gone);
+    return () => window.removeEventListener('pagehide', gone);
+  }, [session]);
+}
 
 /**
  * Keeps someone on a live screen (a call, a room recording) until they end it. Going back, or
