@@ -28,8 +28,8 @@ export interface TestParticipant {
    * encrypted like everything this participant sends. Returns their track sids.
    */
   publishScreen(withSound: boolean): Promise<{ screen: string; sound: string | null }>;
-  /** Publishes a small grey picture as this participant's shared screen, or their camera. Returns the track sid. */
-  publishVideo(as: 'screen' | 'camera'): Promise<string>;
+  /** Publishes a small grey picture as this participant's camera. Returns the track sid. */
+  publishCamera(): Promise<string>;
   /** Stops publishing one of this participant's tracks, as a browser does when a share ends. */
   unpublish(sid: string): Promise<void>;
   /** Mean absolute sample of `identity`'s audio over `ms` (a tone at our amplitude is about 7600; silence is 0). */
@@ -152,11 +152,11 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
       pumps.push(setInterval(() => { void source.captureFrame(new AudioFrame(new Int16Array(FRAME).fill(2_000), RATE, 1, FRAME)); }, 10));
       return { screen: screen.sid ?? '', sound: sound.sid ?? null };
     },
-    async publishVideo(as) {
+    async publishCamera() {
       const source = new VideoSource(64, 64);
-      const track = LocalVideoTrack.createVideoTrack(as, source);
+      const track = LocalVideoTrack.createVideoTrack('camera', source);
       const opts = new TrackPublishOptions();
-      opts.source = as === 'screen' ? TrackSource.SOURCE_SCREENSHARE : TrackSource.SOURCE_CAMERA;
+      opts.source = TrackSource.SOURCE_CAMERA;
       const local = room.localParticipant;
       if (!local) throw new Error('not connected');
       const pub = await local.publishTrack(track, opts);

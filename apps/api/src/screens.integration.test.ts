@@ -60,6 +60,8 @@ async function joinRoom(call: CallSession): Promise<TestParticipant> {
   return p;
 }
 afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
+/** Shares a screen, without its sound, the way a browser does. Returns the share's track sid. */
+const screenOf = async (p: TestParticipant) => (await p.publishScreen(false)).screen;
 
 const audio = (segment: number, s: number): AudioPiece => {
   const src = Buffer.concat([Buffer.from('audio'), randomBytes(1024)]);
@@ -167,8 +169,8 @@ describe('shared screens in the notes', () => {
     await letIn(host, guest);
     const hostRoom = await joinRoom(host);
     const guestRoom = await joinRoom(guest);
-    const share = await guestRoom.publishVideo('screen');
-    const camera = await hostRoom.publishVideo('camera');
+    const share = await screenOf(guestRoom);
+    const camera = await hostRoom.publishCamera();
     expect(share).toMatch(/^TR_/);
 
     // Before the organizer turns it on, nothing is taken.
@@ -226,7 +228,7 @@ describe('shared screens in the notes', () => {
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Ade' });
     await letIn(host, guest);
-    const share = await (await joinRoom(guest)).publishVideo('screen');
+    const share = await screenOf(await joinRoom(guest));
     await host.setScreens(true);
     // Over 1 MiB: refused before it's read, and nothing is kept.
     expect(await oversized(guest, share, MAX_FRAME_BYTES + 1)).toBe(400);
@@ -236,7 +238,7 @@ describe('shared screens in the notes', () => {
     expect((await sendFrame(guest, screenJpeg(CHART, 1280, 720, 'one-too-many'), { 'x-alcove-share': share })).status).toBe(503);
     expect((await frames(org.session.ownerId)).length).toBe(24);
     // Someone else's allowance is their own.
-    const hostShare = await (await joinRoom(host)).publishVideo('screen');
+    const hostShare = await screenOf(await joinRoom(host));
     expect((await host.shareFrame(frameOf(hostShare, CODE))).duplicate).toBe(false);
     await host.leave();
   });
@@ -247,7 +249,7 @@ describe('shared screens in the notes', () => {
     const { session } = await api.auth.signIn('sso', { email: unique('organizer') });
     const host = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     try {
-      const share = await (await joinRoom(host)).publishVideo('screen');
+      const share = await screenOf(await joinRoom(host));
       await host.setScreens(true);
       await host.shareFrame(frameOf(share, CHART));
       await host.shareFrame(frameOf(share, CODE));
@@ -274,7 +276,7 @@ describe('shared screens in the notes', () => {
     const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Ines' });
     await letIn(host, guest);
     const room = await joinRoom(guest);
-    const first = await room.publishVideo('screen');
+    const first = await screenOf(room);
     await host.setScreens(true);
     const a = await guest.shareFrame(frameOf(first, CHART));
     // Taken down without the browser saying so: once what LiveKit said runs out (10 s), its frames are refused.
@@ -282,7 +284,7 @@ describe('shared screens in the notes', () => {
     await sleep(10_500);
     expect(await fails(guest.shareFrame(frameOf(first, CODE)))).toEqual(['forbidden', NOT_YOURS]);
     // The browser says a share ended: its frames are refused at once, though LiveKit still lists it.
-    const second = await room.publishVideo('screen');
+    const second = await screenOf(room);
     const b = await guest.shareFrame(frameOf(second, CODE));
     await sleep(1000);
     await guest.shareEnded(second);
@@ -292,7 +294,7 @@ describe('shared screens in the notes', () => {
     await sleep(1000);
     await host.pause();
     await host.resume();
-    const third = await room.publishVideo('screen');
+    const third = await screenOf(room);
     const d = await guest.shareFrame(frameOf(third, CHART));
     await sleep(1500);
     await guest.leave();
@@ -321,8 +323,8 @@ describe('shared screens in the notes', () => {
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
     await inGroup(kofi);
-    const kofiShare = await (await joinRoom(kofi)).publishVideo('screen');
-    const hostShare = await (await joinRoom(host)).publishVideo('screen');
+    const kofiShare = await screenOf(await joinRoom(kofi));
+    const hostShare = await screenOf(await joinRoom(host));
     await host.setScreens(true);
     host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
     const s = await settle(host, (x) => x.breakouts.open !== null);
@@ -352,8 +354,8 @@ describe('shared screens in the notes', () => {
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     const priya = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Priya Shah' });
     await letIn(host, priya);
-    const priyaShare = await (await joinRoom(priya)).publishVideo('screen');
-    const hostShare = await (await joinRoom(host)).publishVideo('screen');
+    const priyaShare = await screenOf(await joinRoom(priya));
+    const hostShare = await screenOf(await joinRoom(host));
     // A minute of audio, so every line and frame below sits inside the recording.
     for (let i = 0; i < 12; i++) await host.appendAudio(audio(0, i));
     await host.setScreens(true);
@@ -435,7 +437,7 @@ describe('shared screens in the notes', () => {
   it('deletes every frame with its note: rows, objects and what was read on them', async () => {
     const org = await account(unique('organizer'));
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const share = await (await joinRoom(host)).publishVideo('screen');
+    const share = await screenOf(await joinRoom(host));
     await host.appendAudio(audio(0, 0));
     await host.setScreens(true);
     await host.shareFrame(frameOf(share, CHART));
@@ -466,7 +468,7 @@ describe('shared screens in the notes', () => {
   it('keeps frames, and what was read on them, sealed: nothing readable in rows, objects, logs or on the wire', async () => {
     const org = await account(unique('organizer'));
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const share = await (await joinRoom(host)).publishVideo('screen');
+    const share = await screenOf(await joinRoom(host));
     await host.appendAudio(audio(0, 0));
     await host.setScreens(true);
     const secret: ScreenShown = { title: 'CANARY-SCREEN-TITLE board deck', lines: ['CANARY-SCREEN-TEXT acquisition price 41M'], regions: [{ label: 'CANARY-SCREEN-PART', box: [0.1, 0.1, 0.5, 0.5] }] };
