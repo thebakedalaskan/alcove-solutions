@@ -396,6 +396,54 @@ describe('host hand-off', () => {
     await priya.call.leave();
   });
 
+  it('hosts from inside a breakout room when everyone invited is in one: the room keeps a scribe of its own, never the host, and nothing hears the main room until rooms close', async () => {
+    const { org, host, hostRoom, people: [kofi, mia, lena], guest } = await hostedCall(['Kofi', 'Mia', 'Lena'], { guest: 'Sam' });
+    if (!kofi || !mia || !lena || !guest) throw new Error('Kofi, Mia, Lena and Sam expected');
+    const sam = guest.call;
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const [design = '', support = ''] = (await settle(host, (x) => x.breakouts.open !== null, 'rooms open')).breakouts.open?.rooms.map((r) => r.id) ?? [];
+    await inPlace(kofi.call, design);
+    await inPlace(mia.call, design);
+    await inPlace(lena.call, support);
+
+    // The organizer drops. Everyone invited is in a room and Sam, a guest, can't host, so Kofi, who came first, hosts
+    // from Design, and his browser stays there.
+    await drop(host, hostRoom);
+    await upkeepAfter(HANDOFF_MS);
+    await settle(kofi.call, (x) => x.isHost, 'Kofi hosting');
+    await inPlace(kofi.call, design);
+    await inPlace(mia.call, design);
+    await inPlace(lena.call, support);
+    const taken = (p: Promise<unknown>) => p.then(() => 'taken', (e: unknown) => code(e));
+    const segment = (await settle(mia.call, (x) => x.capture.room?.scribe === mia.call.ticket.identity, 'Mia hearing Design')).notes.recording.segment;
+
+    // Design goes on with Mia's browser: whoever hosts is never a room's scribe, and Kofi's voice is heard there like anyone's.
+    expect(mia.call.getSnapshot().capture.room).toMatchObject({ id: design, mode: 'on', transcript: { mode: 'on' } });
+    expect(await taken(kofi.call.transcribe(speech('From the host’s browser.', segment, 100), mia.call.ticket.identity))).toBe('forbidden');
+    expect(await taken(mia.call.transcribe(speech('Kofi hosts, and we carry on.', segment, 200), kofi.call.ticket.identity))).toBe('taken');
+    // The main room is only ever heard by whoever hosts, and the connection that hosted before is told it's out of date.
+    expect(await taken(mia.call.transcribe(speech('Sam, overheard.', segment, 300), sam.ticket.identity))).toBe('forbidden');
+    expect(await taken(host.transcribe(speech('Still here.', segment, 400), sam.ticket.identity))).toBe('conflict');
+    expect(await taken(host.transcribe(speech('Still in Design.', segment, 500), mia.call.ticket.identity))).toBe('conflict');
+
+    // His browser can't hear the main room from Design, and says so: Sam is told, and the rooms carry on regardless.
+    await kofi.call.setUnavailable(['recording', 'transcript']);
+    expect((await settle(sam, (x) => x.capture.mode === 'unavailable', 'Sam told')).capture).toMatchObject({ recording: { mode: 'unavailable' }, transcript: { mode: 'unavailable' } });
+    expect((await settle(mia.call, (x) => x.capture.mode === 'unavailable', 'Design told')).capture.room).toMatchObject({ mode: 'on', transcript: { mode: 'on' } });
+
+    // He brings everyone back: his browser hears the main room again, as whoever hosts does.
+    kofi.call.closeRooms();
+    await inPlace(kofi.call, 'main');
+    await kofi.call.setUnavailable([]);
+    expect((await settle(sam, (x) => x.capture.mode === 'on', 'Sam told it’s back')).capture.transcript.mode).toBe('on');
+    expect(await taken(kofi.call.transcribe(speech('Sam, back in the main room.', segment, 9000), sam.ticket.identity))).toBe('taken');
+    const noteId = (await kofi.call.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    expect(note.transcript?.map((l) => l.text)).toEqual(['Sam, back in the main room.']);
+    expect(note.rooms.map((r) => [r.name, r.transcript.map((l) => l.text)])).toEqual([['Design', ['Kofi hosts, and we carry on.']], ['Support', []]]);
+  });
+
   it('counts a stand-in whose connection dropped as gone from then when the organizer comes back', async () => {
     const { org, host, hostRoom, code: c, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
     if (!priya || !kofi) throw new Error('Priya and Kofi expected');
