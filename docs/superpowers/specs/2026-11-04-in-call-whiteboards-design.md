@@ -59,7 +59,8 @@ Two roots.
 | `ink` | `tool` `pen`/`marker`, `c`, `pts` flat numbers relative to `x y`, at most 2000 points | none |
 | `image` | `media` | none |
 | `shot` | `media`, `caption` | none |
-| `table` | `rows`, `cols`: arrays of sizes; cells are `Y.Text` at `r<row>c<col>` | cells |
+| `link` | `item`, a workspace item's id and nothing else | none |
+| `table` | `rows`, `cols`: each a `Y.Array` of `{ id, size }` | `cells`, a `Y.Map` of `Y.Text` keyed `<rowId>:<colId>` |
 | `node` | a mind map's node: `parent` | `t` |
 
 `at` orders objects within a layer (frames, then lines, then everything else); `f` is the frame an object sits in, or `''`.
@@ -67,6 +68,10 @@ A frame's order on the board is its order as slides. `x y w h` are board units, 
 one transaction. `t` and `title` are `Y.Text`, so two people typing in one sticky merge. Everything else is last-write-wins per
 key, which is what "move" and "recolour" should mean: whoever let go last. Deleting wins over a concurrent edit, and undo brings
 the object back.
+
+A `link` stores only an id because a name on the board would reach people who can't open that item: each reader's name for it comes from
+their own tree, and someone who can't open it sees that. A table's rows and columns have ids so that inserting one while someone types in a
+cell is safe.
 
 What other people's browsers wrote is `unknown` until parsed: `readBoard` runs every object through a zod schema and leaves out
 any that don't parse, so one bad object can't take a board down for everyone.
@@ -87,15 +92,25 @@ and `documentTodos` switch on `kind`; the board case comes from `@alcove/board` 
 
 Boards need one thing from `access.ts` beyond documents: **`grantDocumentToCall(d, workspace, documentId, call, { role, place? })`**,
 which gives one board to the people in a call or, with `place`, a room's people. Seat entries end with the call. A reader in a
-call can be both an account and a seat, and room access is by seat, so a request carrying both a session and a call pass is
-checked against both.
+call can be both an account and a seat, and room access is by seat, so a request carrying both a session and a call pass keeps both
+identities, and either can grant.
 
-- **A new board in a call:** the call's invited people get `edit` by email, so it stays theirs through the note. Guests get a seat.
-- **A saved board brought to a call:** if anyone here can't open it, the opener decides in the menu, before anything opens: "Let them
-  in for this call" (seats only, ending with the call) or "Open without them".
-- **A board in a room:** seats of whoever is in that room now, kept in step with the room by one function, `syncRoomBoards(call)`,
-  run wherever people move. The organizer gets a seat while visiting and loses it on leaving. Being organizer gives nothing.
-- **When rooms close:** room seats go, and the call's invited people get `edit` by email, the same rule as a room's sub-note.
+Who can read what:
+
+- **A main board** is an ordinary workspace item, as #83 asks: "Saved in Product" means that workspace's members can open it, by their
+  role. On top of that, the call's invited people get `edit` by email, so it stays theirs through the note, and guests get a seat.
+- **A saved board brought to a call.** Bringing one needs `edit` on it. If anyone here can't open it, the opener decides in the menu,
+  before anything opens. "Let them in for this call" is offered only to someone who may share that board (the workspace's rule, so
+  nobody gets past it through a call): it's a policy on the call, not a list, so anyone admitted later gets a seat too, and every seat
+  ends with the call. "Open without them" leaves them out, and anyone admitted later who can't open it sees "A board you can't open".
+- **A board in a room** is `restricted`, with no creator, because a restricted document opens for its creator and whoever started a
+  room's board mustn't keep it after being moved out. Its readers are the seats of whoever is in that room now, kept in step by one
+  function, `syncRoomBoards(call)`, run wherever people move. The organizer gets a seat while visiting and loses it on leaving. Being
+  organizer gives nothing.
+- **When rooms close** room seats go. A room's board stays `restricted`, and the call's invited people get `edit` by email, the same people
+  as its sub-note: it's a saved board like any other to them, and workspace members who weren't invited never see it. What lands on the
+  main board is readable by whoever can read that board. A saved board opened without someone still takes the frames; they keep their
+  room's own board.
 - Every change re-checks live streams (the workspace's rule), so someone moved out of a room loses the board at once.
 
 ## Pointers and following
@@ -147,7 +162,9 @@ board: {
 - **From the workspace list.** Opening a board there moves only you, like any item. "Open for everyone" is the Board button's flow.
 - **With a share.** The board is the `board` leaf; a share goes at the top of the column beside it, tiles under it, and the same line
   resizes them, for your view only. Clicking swaps them. `Put on the board` takes the picture this browser is already showing, uploads it
-  to the workspace's media and adds a `shot`; the sharer is told.
+  to the workspace's media and adds a `shot`; the sharer is told. It's the one capture of a screen that doesn't come from the presenter's
+  own browser: a person's deliberate picture of what's on their own screen, which they could take anyway, so the docs say so plainly. It
+  has nothing to do with notes, so pausing doesn't stop it.
 - **Timer and votes** are the call's, not the board's, because they're about this session: a late joiner gets them from `CallState`, and
   a saved board has none. Votes are kept on the server, so nobody's browser holds anyone else's until the end. Each person's dots come
   back as `mine`; `results` is empty until the vote ends, then the counts for everyone at once. Done clears them. Nothing about a vote
@@ -157,7 +174,9 @@ board: {
 - **Ideas from the call** run only while notes are on, from the part of the call you're in, at most once a minute while a board is open,
   through `inference.ts`. Each names who said it and the frame it fits. Adding one writes a sticky. Nothing is kept once it's added
   or dismissed.
-- **Sort into themes** sends the selected stickies' text through `inference.ts` and applies the answer in one transaction.
+- **Sort into themes** sends the selected stickies' text through `inference.ts` and applies the answer in one transaction. Someone asked
+  for it, about what people wrote, so it works with notes off and on a board's page. While a call is paused nothing goes to the AI, so the
+  server refuses and the bar doesn't offer it.
 
 ### Rooms
 
@@ -168,16 +187,25 @@ board: {
 - **Shared.** The main board gets a frame per room and everyone stays on it. The panel and the pill say plainly that it isn't private.
 - **When rooms close** the server reads each room's board and writes a frame for it onto the main board in one Yjs update
   (`landBoards`), the frame named for the room with who was there. If there's no main board, one is made. Stickies flow in reading order
-  into a two-column grid, as the canvas shows; anything else follows below them. It's a copy for looking at together: the room's own board
-  stays whole, saved like any other, and its sub-note links to it.
+  into a two-column grid, as the canvas shows; anything else follows below them, except a `shot`, because what's shared in a room stays in
+  the room. It's a copy for looking at together: the room's own board stays whole, saved like any other, and its sub-note links to it.
 
 ### After the call
 
 The note carries the boards worked on (the workspace's `workedOn`, with `kind`), each room's in its own sub-note. A board shows as a small
-live picture drawn by `mode="read"` from the document, with its name and "Open the board". Follow-ups come from `boardFollowUps`:
-the stickies in frames with `role: 'actions'`. Templates set that role.
+live picture drawn by `mode="read"` from the document, with its name and "Open the board".
 
-A board's page has the same surface without the call: no Timer, Vote or Present. "Start a call here" starts a call with the board open.
+The note writer reads boards, as the seal says. When it drafts, it takes `boardText` of each board that was open in the call for everyone
+as well as the transcript, and a room's board feeds that room's section. A board opened without someone is left out, because one summary goes
+to everyone. Follow-ups from a board are ordinary `ActionItem`s written by the same writer, with `boardFollowUps` (the stickies in frames with
+`role: 'actions'`, which templates set) marked in what it's given, so owners, ticking, the inbox and series carry-over all work with nothing
+new. A `from: 'board'` field, default null, is what puts them under "Follow-ups from the board".
+
+A board's page has the same surface without the call: no Timer, Vote or Present.
+
+Scheduling a board into a call uses the call-creation work's `documents` on the meeting (`CallDocument`, kind `board`), not a second field.
+It comes first in the Board menu and doesn't open by itself, because joining a call never opens a board. "Start a call here" opens the same
+start flow with the board attached, and the board opens when the call starts, because that person asked for it.
 
 ## Copy
 

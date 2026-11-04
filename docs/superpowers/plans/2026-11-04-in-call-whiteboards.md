@@ -104,7 +104,7 @@
 
 ### Task 6: Media (the workspace's Task B2)
 
-Exactly as `docs/superpowers/plans/2026-11-04-in-call-workspace.md` Task B2 has it, contract unchanged: its C3 builds on it. Tell the workspace session if anything has to change.
+As `docs/superpowers/plans/2026-11-04-in-call-workspace.md` Task B2 has it: 4 MiB sealed pieces, `Range`, `nosniff`, `no-store`, its formats, 512 MiB a file. One change, proposed to the workspace session and not yet agreed: media is reached through a document, because a guest's seat covers one document and an `<img>` can't send a header. A `workspace_media_uses` table; `upload(workspaceId, documentId, file, { onProgress })`; `url(workspaceId, documentId, mediaId): Promise<string>` with a short-lived signed token; `attach(workspaceId, documentId, mediaId)` for reuse. Its C3 builds on this, so settle it before starting.
 
 ## Stage 3: after B1 merges
 
@@ -125,7 +125,7 @@ Refine these from A2's final contract before starting. Tasks 10 to 14 can run in
 
 ### Task 9: `CallState.board`
 
-Contract, `workspaceForCall` and `grantDocumentToCall` in `access.ts` (tell the workspace session), `workspaceId` on the meeting manifest, opening with a template or a saved board, the access step, closing. Tests: starting, late joiners, reconnects, guests add but can't start, saved board and its seats ending, a stored call still opens, cross-owner IDs.
+Contract, `workspaceForCall` and `grantDocumentToCall` in `access.ts` (tell the workspace session), `workspaceId` on the meeting manifest, opening with a template or a saved board, the access step, closing. Tests: starting, late joiners, reconnects, guests add but can't start, bringing a board needs `edit`, "Let them in" needs the right to share, someone admitted later under each choice, seats ending with the call, a stored call still opens, cross-owner IDs.
 
 ### Task 10: The board on the stage
 
@@ -141,11 +141,11 @@ Journey: run. Server-side votes, `mine`, results at the end, the chime. Tests: n
 
 ### Task 13: Rooms
 
-Journeys: setup, in a room, no board, oversee, close, shared. `BreakoutPlan.board`, `syncRoomBoards`, the panel's row, the seals, the organizer's visit, `landBoards` on close, Shared. Tests: a room's board refuses anyone outside it, the moved and the visiting lose and gain it at once, landing happens once however many browsers are there, and a landed frame holds the room's stickies.
+Journeys: setup, in a room, no board, oversee, close, shared. `BreakoutPlan.board`, `syncRoomBoards`, the panel's row, the seals, the organizer's visit, `landBoards` on close, Shared. Tests: a room's board refuses anyone outside it, workspace members and its starter included once they're not in the room; the moved and the visiting lose and gain it at once; landing happens once however many browsers are there; a landed frame holds the room's stickies and no pictures; after close, invited people can open a room's board and uninvited members can't.
 
 ### Task 14: The call helps
 
-Journey: help. Ideas while notes are on, the tray, adding, Sort into themes through `inference.ts`. Tests: nothing runs with notes off; a room's ideas stay in the room.
+Journey: help. Ideas while notes are on, the tray, adding, Sort into themes through `inference.ts`. Tests: no ideas with notes off; Sort works with notes off and is refused while paused; a room's ideas stay in the room.
 
 ## Stage 5: after the workspace's C5 and C6
 
@@ -155,7 +155,7 @@ Journey: present. Frames as slides, the presenter view, the audience's view, Loo
 
 ### Task 16: After the call
 
-Journeys: close's last steps, notes. Boards on the note and in sub-notes with `mode="read"`, follow-ups from `boardFollowUps`, Open the board, Start a call here, a board brought to the next call.
+Journeys: close's last steps, notes. Boards on the note and in sub-notes with `mode="read"`; the note writer reading boards; follow-ups as `ActionItem`s with `from: 'board'`; Open the board; a board scheduled into a call through the meeting's `documents` once call creation has merged; Start a call here through its start flow; a board brought to the next call. Tests: a board opened without someone isn't in the summary; a room's board feeds only its section; a stored note still opens.
 
 ## Stage 6
 
