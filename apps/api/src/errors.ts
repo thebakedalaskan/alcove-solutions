@@ -59,6 +59,11 @@ export class UnavailableError extends AppError { constructor(m: string, o?: Erro
  * to it. The notes worker waits for evidence that checks out instead of counting this as a failed attempt.
  */
 export class UnverifiedError extends UnavailableError {}
+/**
+ * NEAR AI didn't answer: it timed out, couldn't be reached, or was busy. Nothing about the request was wrong,
+ * so the notes worker waits and tries again instead of counting this as a failed attempt.
+ */
+export class UnansweredError extends UnavailableError {}
 export class InternalError extends AppError { constructor(m = 'Something went wrong on our side.', o?: ErrorOptions) { super('unknown', m, o); } }
 export class DatabaseError extends InternalError {}
 export class ObjectStoreError extends InternalError {}

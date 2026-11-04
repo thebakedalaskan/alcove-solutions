@@ -151,9 +151,9 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    invited address, marked as from the organizer.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no
    summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
-   While the notes model's evidence can't be checked or doesn't check out, nothing is sent: notes wait with
-   "Waiting to verify the notes model. Nothing is sent until it checks out" and are tried again every five
-   minutes.
+   While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it
+   doesn't answer, nothing is lost. Either way notes wait with "Waiting for the notes model. The notes are
+   written as soon as it’s verified and answering" and are tried again every five minutes.
 
 ## 7. Notes
 

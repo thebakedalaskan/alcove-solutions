@@ -13,7 +13,7 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { openJson, stateKey } from '../crypto';
 import { bytea, exec, maybeOne, tx } from '../db';
-import { NotFoundError, UnverifiedError } from '../errors';
+import { NotFoundError, UnansweredError, UnverifiedError } from '../errors';
 import { inference } from '../inference';
 import { log } from '../log';
 import { openOwner } from '../owners';
@@ -27,11 +27,11 @@ import { personOf } from './portraits';
 
 const wlog = log.child({ component: 'writer' });
 const ATTEMPTS = 3;
-/** Long enough for the slowest draft; a worker that dies mid-job frees it after this. */
-const LEASE_SECONDS = 180;
+/** Longer than the slowest draft (three minutes) and checking the model first; a worker that dies mid-job frees it after this. */
+const LEASE_SECONDS = 300;
 /** How long to wait before trying a job again, after its first and second failures. */
 const RETRY_SECONDS = [20, 90];
-/** How long a job waits before checking the notes model's evidence again, when it didn't check out. */
+/** How long a job waits before trying the notes model again, when its evidence didn't check out or it didn't answer. */
 const VERIFY_AGAIN_SECONDS = 300;
 
 const Claimed = z.object({ owner_id: z.string(), job_id: z.string(), revision_id: z.string(), job_ciphertext: bytea, attempt: z.number(), tried: z.number() });
@@ -108,9 +108,10 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       wlog.info('notes written', { ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, ms: Math.round(performance.now() - t0) });
     } catch (e) {
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
-      if (e instanceof UnverifiedError) {
-        // Nothing was sent. An outage at Intel or NVIDIA, or NEAR AI out of date, mustn't use the attempts up.
-        wlog.warn('notes waiting for the notes model to check out', { ...at, retryInS: VERIFY_AGAIN_SECONDS, err: e });
+      if (e instanceof UnverifiedError || e instanceof UnansweredError) {
+        // Unverified: nothing was sent (an outage at Intel or NVIDIA, or NEAR AI out of date). Unanswered: NEAR AI
+        // timed out, couldn't be reached or was busy. Neither is the note's fault, so neither uses the attempts up.
+        wlog.warn(e instanceof UnverifiedError ? 'notes waiting for the notes model to check out' : 'notes waiting for the notes model to answer', { ...at, retryInS: VERIFY_AGAIN_SECONDS, err: e });
         await exec(d.pool, `UPDATE content_jobs SET state = 'waiting', attempt = $3, lease_until = now() + make_interval(secs => $4) WHERE owner_id = $1 AND job_id = $2`,
           [job.owner_id, job.job_id, job.tried, VERIFY_AGAIN_SECONDS]);
         setTimeout(() => kick(d, job.owner_id), VERIFY_AGAIN_SECONDS * 1000 + 250).unref();

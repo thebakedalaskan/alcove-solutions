@@ -103,7 +103,9 @@ the model name is the report's word; and the OHTTP key's signature doesn't cover
 - **When the key changes.** A model's endpoint answers a request sealed to a key it no longer holds with
   `400` ("OHTTP decapsulation failed"). Then Alcove drops the verification, verifies again, and sends the
   request once more if the key changed; if it didn't, or the new evidence doesn't check out, the request fails.
-  A connection the endpoint cuts is treated the same way; a timeout isn't.
+  A connection the endpoint cuts is treated the same way; a timeout isn't. A model that doesn't answer (it
+  times out, can't be reached or is busy) has its verification dropped too, so the next request verifies
+  again and may reach one that answers.
 - Verifications live in the API process's memory. Nothing about them is stored except what a note keeps.
 
 ### What a note keeps
@@ -259,10 +261,14 @@ account.
 - **Waiting for evidence.** When the notes model's evidence doesn't check out, or can't be checked (Intel,
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
-  later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes.
-- **Retries.** A failed attempt (NEAR AI unreachable, busy or refusing, a reply that won't open, or one that
-  isn't the expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and
-  90 seconds after the second, with a timer that starts the worker again then. The third failure finishes the note `ready`
+  later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes. The same goes when the
+  notes model doesn't answer (`UnansweredError`: no answer within three minutes, unreachable, `429` or `5xx`):
+  nothing about the note is wrong, so it waits rather than using its attempts up. A draft can take the model
+  well over a minute (about 24 tokens a second, up to 2,500 of them), so it gets three minutes, and the job's
+  lease five.
+- **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
+  expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds
+  after the second, with a timer that starts the worker again then. The third failure finishes the note `ready`
   without notes: its transcript and audio stay, and nothing is charged. A job found with all three attempts
   used (its last worker died) is finished the same way.
 - **Charging.** 25 credits a minute recorded (the seconds of encrypted audio across every segment, rounded
@@ -279,7 +285,7 @@ account.
 | 1 | `Call ended` or `Recording stopped` |
 | 2 | `<time> of audio saved, encrypted`, or `No audio was recorded` |
 | 3 | `Transcribing as it goes` while recording; then `Transcript of N lines` or `Nothing was transcribed` |
-| 4 | `Notes written` once `ready`. Before that: `Queued for the notes service`, `Writing the summary, decisions and follow-ups`, `The notes service is busy. Trying again shortly` (after a failed attempt), `Waiting to verify the notes model. Nothing is sent until it checks out` (waiting) or `Waiting for the notes service to be connected` (no key) |
+| 4 | `Notes written` once `ready`. Before that: `Queued for the notes service`, `Writing the summary, decisions and follow-ups`, `The notes service is busy. Trying again shortly` (after a failed attempt), `Waiting for the notes model. The notes are written as soon as it’s verified and answering` (waiting) or `Waiting for the notes service to be connected` (no key) |
 
 `ready` is true only when the note is `ready`.
 
@@ -499,7 +505,8 @@ compose hashes; a refusal is `model evidence refused` (error, or warn when a ser
 with its code, a short reason and the duration, and each refused model report `model report refused` at
 warn. A reply that won't open is `reply refused` at error, with its code; a key a model no longer takes is
 `model key not accepted; verified again` at info; a notes job that waits for evidence is
-`notes waiting for the notes model to check out` at warn. Evidence itself, keys and anything sent are
+`notes waiting for the notes model to check out` at warn, and one that waits for an answer
+`notes waiting for the notes model to answer`, also at warn. Evidence itself, keys and anything sent are
 never logged. Around it, IDs, attempts, counts and timings: `series read` at debug; `notes job queued`,
 `notes written` (with decision, follow-up and chapter counts), `question answered`, `series question
 answered`, `question changed`, `next call in a series scheduled`, `notes job dropped`, `nothing was

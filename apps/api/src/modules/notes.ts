@@ -233,7 +233,7 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
     : undefined;
   const writing = !inference(o.cfg).configured ? 'Waiting for the notes service to be connected'
     : job?.state === 'writing' ? 'Writing the summary, decisions and follow-ups'
-      : job?.state === 'waiting' ? 'Waiting to verify the notes model. Nothing is sent until it checks out'
+      : job?.state === 'waiting' ? 'Waiting for the notes model. The notes are written as soon as it’s verified and answering'
         : job && job.attempt > 0 ? 'The notes service is busy. Trying again shortly'
           : 'Queued for the notes service';
   return {

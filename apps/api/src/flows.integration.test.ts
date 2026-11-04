@@ -834,7 +834,7 @@ describe('live transcript and written notes', () => {
     expect((await h.pool.query('SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND item_id = $2', [session.ownerId, pendingNoteId])).rows[0]?.n).toBe(0);
   });
 
-  it('tries again when the notes model fails, and keeps the transcript if it never answers', async () => {
+  it('tries again when the notes model’s answer can’t be used, and keeps the transcript if it never can', async () => {
     const { maintain } = await import('./maintenance');
     const { api, session } = await account();
     const job = async () => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [session.ownerId])).rows[0];
@@ -854,9 +854,10 @@ describe('live transcript and written notes', () => {
     await retryNow();
     expect((await api.notes.get(pendingNoteId)).decisions.map((d) => d.text)).toEqual(['We agreed to ship on Monday.']);
 
-    // Down for good: after three attempts the note is finished without a summary, keeps its transcript, and costs nothing.
+    // Never a usable answer: after three attempts the note is finished without a summary, keeps its transcript, and
+    // costs nothing. (A model that doesn't answer at all makes the note wait instead: see below.)
     const before = (await api.credits.balance()).balance;
-    h.near.failNext(3, 'down');
+    h.near.failNext(3, 'prose');
     rec = await api.recordings.start('Never');
     await rec.transcribe(speech('Nobody will read this summary.', 0, 0));
     ({ pendingNoteId } = await rec.stop());
@@ -1139,6 +1140,33 @@ describe('verified private inference', () => {
     }
   });
 
+  it('keeps a note waiting while the notes model doesn’t answer, without using up its attempts', async () => {
+    const own = await ownNear();
+    try {
+      const rec = await own.api.recordings.start('Waits for an answer');
+      await rec.transcribe(speech('We agreed to wait for an answer.', 0, 0));
+      // NEAR AI is busy for a while: the sealed notes request gets a 503 every time it's tried.
+      own.near.failNext(4, 'down');
+      const { pendingNoteId } = await rec.stop();
+      await until(async () => (await job(own.session.ownerId))?.state === 'waiting', 'the job to wait');
+      const { maintain } = await import('./maintenance');
+      for (let i = 0; i < 3; i++) {
+        await dueNow(own.session.ownerId);
+        await maintain(own.deps);
+        expect(await job(own.session.ownerId)).toEqual({ state: 'waiting', attempt: 0 });
+      }
+      expect((await own.api.notes.get(pendingNoteId)).status).toBe('pending');
+      expect(logLines().some((l) => l.msg === 'notes waiting for the notes model to answer')).toBe(true);
+      // It answers again: the notes are written, with no attempt used up along the way.
+      await dueNow(own.session.ownerId);
+      await maintain(own.deps);
+      expect(await own.api.notes.get(pendingNoteId)).toMatchObject({ status: 'ready', summary: 'Heard 1 lines. It ended on: We agreed to wait for an answer.' });
+      expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions').map((c) => c.encryption)).toEqual(['ohttp', 'ohttp', 'ohttp', 'ohttp', 'ohttp']);
+    } finally {
+      await own.close();
+    }
+  });
+
   it('keeps a note waiting while the notes model can’t be verified, without using up its attempts', async () => {
     const own = await ownNear();
     try {
@@ -1154,7 +1182,7 @@ describe('verified private inference', () => {
         await maintain(own.deps);
         expect(await job(own.session.ownerId)).toEqual({ state: 'waiting', attempt: 0 });
       }
-      for await (const p of own.api.notes.progress(pendingNoteId)) { expect(p.steps.at(-1)).toEqual({ label: 'Waiting to verify the notes model. Nothing is sent until it checks out', done: false }); break; }
+      for await (const p of own.api.notes.progress(pendingNoteId)) { expect(p.steps.at(-1)).toEqual({ label: 'Waiting for the notes model. The notes are written as soon as it’s verified and answering', done: false }); break; }
       expect((await own.api.notes.get(pendingNoteId)).status).toBe('pending');
       expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions')).toEqual([]);
       expect(logLines().some((l) => l.msg === 'notes waiting for the notes model to check out')).toBe(true);

@@ -110,7 +110,8 @@ export async function draft(cfg: Config, b: Brief): Promise<Written> {
   const { json, evidence } = await complete(cfg, [
     { role: 'system', content: NOTES_PROMPT },
     { role: 'user', content: `${about(b)}\n\nTranscript:\n${transcriptText(b.lines)}` }
-  ], { what: 'notes', maxTokens: 2500 });
+  // A full draft can take the model well over a minute (about 24 tokens a second, up to 2,500 of them).
+  ], { what: 'notes', maxTokens: 2500, timeoutMs: 180_000 });
   const reply = Draft.safeParse(json);
   if (!reply.success) throw new UnavailableError('The notes came back in the wrong shape.', { context: { what: 'notes', issues: issues(reply.error) } });
   const d = reply.data;
