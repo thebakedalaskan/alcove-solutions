@@ -1,4 +1,3 @@
-import type { Meeting } from '@alcove/api';
 import { IconButton, cn } from '@alcove/ui';
 import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -8,29 +7,25 @@ import { TourHost } from '~/features/onboarding/Tour';
 import { Palette } from '~/features/shell/Palette';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
-import { ComposerContext, PaletteContext, type PaletteStart } from '~/features/shell/context';
+import { ComposerContext, PaletteContext, type ComposerStart, type PaletteStart } from '~/features/shell/context';
 import { requireAccount } from '~/lib/guards';
-import { withMod } from '~/lib/keys';
+import { overlayOpen, typing, withMod } from '~/lib/keys';
 
-/* Everything in the frame: the side panel (on a phone, the top bar and the tab bar) beside Home, Notes, a note and Account. */
+/* Everything in the frame: the side panel (on a phone, the top bar and the tab bar) beside Home, Notes, a note and Settings. */
 export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
   component: Shell
 });
 
-const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable="true"]');
-/** A dialog, a menu or a list of choices is open: shortcuts leave the page alone, and nothing opens on top. */
-const overlayOpen = () => !!document.querySelector('[role="dialog"], [role="listbox"]');
-
 function Shell() {
   const [composer, setComposer] = useState(false);
-  const [editing, setEditing] = useState<Meeting | undefined>(undefined);
+  const [composing, setComposing] = useState<ComposerStart>({});
   const [palette, setPalette] = useState(false);
   const [start, setStart] = useState<PaletteStart>({ mode: 'find' });
   const side = useSidePanel();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { stage, opened } = useArrival();
-  const openComposer = useCallback((meeting?: Meeting) => { setEditing(meeting); setComposer(true); }, []);
+  const openComposer = useCallback((s: ComposerStart = {}) => { setComposing(s); setComposer(true); }, []);
   const openPalette = useCallback((s: PaletteStart = { mode: 'find' }) => { setStart(s); setPalette(true); }, []);
   const paletteOpen = useRef(false);
   useEffect(() => { paletteOpen.current = palette; }, [palette]);
@@ -66,7 +61,7 @@ function Shell() {
           </main>
           <TabBar />
         </div>
-        <Composer open={composer} onOpenChange={setComposer} editing={editing} />
+        <Composer open={composer} onOpenChange={setComposer} start={composing} />
         <Palette open={palette} onOpenChange={setPalette} start={start} />
         <TourHost />
       </PaletteContext.Provider>

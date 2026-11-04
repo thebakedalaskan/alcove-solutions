@@ -3,13 +3,13 @@
  * that's up next; beside a call's notes, the series it's in and its next call, or a way to start one.
  * Everything comes from the notes the reader has, put together when they look.
  */
-import { firstName, type Note, type Series } from '@alcove/api';
-import { Button, Card, EmptyState, Icon } from '@alcove/ui';
+import { firstName, minutesLabel, type Note, type Series, type SeriesNote } from '@alcove/api';
+import { ArchThumb, Button, Card, Chip, EmptyState, Icon, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { q } from '~/lib/queries';
-import { hm, shortDay } from '~/lib/time';
+import { daysFromToday, hm, shortDay, weekday } from '~/lib/time';
 import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from './carried';
 
 /** At most this many of each on Home; the series page has the rest. */
@@ -79,10 +79,24 @@ export function PrepCard({ seriesId, me }: { seriesId: string; me: string | unde
   );
 }
 
+/** Days between two calls, by the calendar. */
+const apart = (a: SeriesNote, b: SeriesNote) => daysFromToday(new Date(a.startedAt)) - daysFromToday(new Date(b.startedAt));
+/** "Every Tuesday" when the series' last three calls you have were a week apart; otherwise nothing. */
+export function weeklyLabel(s: Series): string | undefined {
+  const [a, b, c] = s.notes;
+  return a && b && c && apart(a, b) === 7 && apart(b, c) === 7 ? `Every ${weekday(new Date(a.startedAt))}` : undefined;
+}
+
+/** Beside a note's state: the series its call is in, "Every Tuesday" or "In a series". */
+export function SeriesChip({ seriesId }: { seriesId: string }) {
+  const s = useQuery(q.series(seriesId)).data;
+  return <Chip tone="outline" icon="history">{(s && weeklyLabel(s)) ?? 'In a series'}</Chip>;
+}
+
 /** Beside a call's notes: the series it's in, or for the organizer, a way to meet again. Room recordings have neither. */
 export function SeriesCard({ note }: { note: Note }) {
   if (note.kind !== 'call' || note.status === 'recording') return null;
-  if (note.seriesId) return <InSeries seriesId={note.seriesId} />;
+  if (note.seriesId) return <InSeries seriesId={note.seriesId} noteId={note.id} />;
   return !note.received && note.meetingId ? <MeetAgain meetingId={note.meetingId} /> : null;
 }
 
@@ -96,17 +110,36 @@ function MeetAgain({ meetingId }: { meetingId: string }) {
   );
 }
 
-function InSeries({ seriesId }: { seriesId: string }) {
+/* The series' other calls shown beside a note; the series page has them all. */
+const OTHER_CALLS = 3;
+
+/** The series a note's call is in: its other calls, newest first, what's still open across them, and for the organizer the next call. */
+function InSeries({ seriesId, noteId }: { seriesId: string; noteId: string }) {
   const s = useQuery(q.series(seriesId)).data;
+  const notes = useQuery(q.notes()).data;
   const next = useScheduleNextCall();
   if (!s) return null;
+  const others = s.notes.filter((n) => n.id !== noteId).slice(0, OTHER_CALLS);
+  /* Under each call's day, the start of its summary, from the notes list. */
+  const gist = (n: SeriesNote) => (n.status === 'ready' ? notes?.find((x) => x.id === n.id)?.excerpt || n.title : 'Notes being written');
   const latest = s.notes.find((n) => n.meetingId)?.meetingId;
   const questions = s.questions.length;
   const actions = s.actions.filter((a) => !a.done).length;
   const open = [questions ? `${questions} question${questions === 1 ? '' : 's'}` : '', actions ? `${actions} follow-up${actions === 1 ? '' : 's'}` : ''].filter(Boolean);
   const across = s.isOrganizer ? (s.notes.length === 1 ? 'from its first call' : `across its ${calls(s.notes.length)}`) : 'across the calls you have notes from';
   return (
-    <Card title="Series" aside={<span className="ac-mono">{calls(s.notes.length)}</span>}>
+    <Card title={weeklyLabel(s) ?? 'In a series'} aside={<Link to="/notes/series/$seriesId" params={{ seriesId }} aria-label={`All ${calls(s.notes.length + s.older)} in this series`}>All<Icon name="right" size={14} /></Link>}>
+      {others.length > 0 && (
+        <div className="ser-rows">
+          {others.map((n) => (
+            <Link key={n.id} to="/notes/$noteId" params={{ noteId: n.id }}>
+              <ArchThumb cover={coverFor(n.id)} width={20} />
+              <span className="min-w-0"><b>{new Date(n.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</b><small className="ac-clamp-1">{gist(n)}</small></span>
+              <span className="ac-mono">{minutesLabel(n.duration)}</span>
+            </Link>
+          ))}
+        </div>
+      )}
       <p className="ser-p">
         {s.isOrganizer ? '' : `From ${firstName(s.organizer.name)}’s calls. `}
         {open.length ? `${open.join(' and ')} ${questions + actions === 1 ? 'is' : 'are'} still open ${across}.` : `Nothing is left open ${across}.`}
@@ -116,7 +149,6 @@ function InSeries({ seriesId }: { seriesId: string }) {
         : s.recurring
           ? <NextOnCalendar><div className="ser-next"><Icon name="cal" size={15} /><span>The next one is on your Google Calendar.</span></div></NextOnCalendar>
           : latest && <Button icon="repeat" className="ser-btn" loading={next.pending} onClick={() => next.run(latest)}>Schedule next week’s call</Button>)}
-      <Link to="/notes/series/$seriesId" params={{ seriesId }} className="ser-go">What carries over<Icon name="right" size={14} /></Link>
     </Card>
   );
 }

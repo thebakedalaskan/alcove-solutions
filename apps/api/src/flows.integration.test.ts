@@ -2081,6 +2081,39 @@ describe('who has the notes', () => {
     expect(entry?.group).toBeUndefined();
   });
 
+  it('the notes list says who shared each note with which group, older notes too, for everyone who has it', async () => {
+    const org = await account(unique('organizer'));
+    const guest = await account(unique('guest'));
+    const member = await account(unique('member'));
+    const friend = await account(unique('friend'));
+    // The older note goes to a group, twice to the same one, then on to the guest's own group; the newer one to nobody's.
+    const older = await noteFrom(org, [guest.session.user.email]);
+    const newer = await noteFrom(org);
+    await org.api.notes.share(older, { emails: [member.session.user.email, unique('not-yet')], group: 'Product' });
+    await org.api.notes.share(older, { emails: [unique('late-joiner')], group: 'Product' });
+    await guest.api.notes.share(older, { emails: [friend.session.user.email], group: 'Design crit' });
+    await org.api.notes.share(newer, { emails: [member.session.user.email] });
+
+    const listed = (await org.api.notes.list()).find((n) => n.id === older)?.groupShares ?? [];
+    // Once for each sharer and group, at the latest time, newest first; whoever it reached isn't named.
+    expect(listed.map((s) => [s.by.email, s.group])).toEqual([[guest.session.user.email, 'Design crit'], [org.session.user.email, 'Product']]);
+    expect(listed[1]?.by).toMatchObject({ id: org.session.ownerId, name: org.session.user.name });
+    expect(Date.parse(listed[0]?.at ?? '')).toBeGreaterThanOrEqual(Date.parse(listed[1]?.at ?? ''));
+    const product = (await org.api.notes.get(older)).recipients.filter((r) => r.group === 'Product').map((r) => Date.parse(r.at ?? ''));
+    expect(Date.parse(listed[1]?.at ?? '')).toBe(Math.max(...product));
+    // Everyone who has the note sees the same, and so does the note itself; a share to people, not a group, isn't one.
+    expect((await member.api.notes.list()).find((n) => n.id === older)?.groupShares).toEqual(listed);
+    expect((await guest.api.notes.list()).find((n) => n.id === older)?.groupShares).toEqual(listed);
+    expect((await org.api.notes.get(older)).groupShares).toEqual(listed);
+    expect((await org.api.notes.list()).find((n) => n.id === newer)?.groupShares).toEqual([]);
+    expect((await member.api.notes.list()).find((n) => n.id === newer)?.groupShares).toEqual([]);
+
+    // Once everyone a share reached has removed the note, that share isn't listed; one reaching anyone still is.
+    await friend.api.notes.delete(older);
+    await member.api.notes.delete(older);
+    expect((await guest.api.notes.list()).find((n) => n.id === older)?.groupShares.map((s) => s.group)).toEqual(['Product']);
+  });
+
   it('invited people see the organizer as who it came from', async () => {
     const org = await account(unique('organizer'));
     const guest = await account(unique('guest'));
@@ -2876,18 +2909,18 @@ describe('confidential computing', () => {
 });
 
 describe('maintenance', () => {
-  it('refuses to start on a database built from a different version of the schema', async () => {
+  it('refuses a database whose applied migrations were edited or removed', async () => {
     const { migrate } = await import('./migrate');
     expect(await migrate(h.pool)).toEqual([]);
     const [row] = (await h.pool.query<{ name: string; checksum: string }>('SELECT name, checksum FROM schema_migrations ORDER BY name LIMIT 1')).rows;
     if (!row) throw new Error('no migrations recorded');
     // As if the file had been edited in place after this database was built.
     await h.pool.query('UPDATE schema_migrations SET checksum = $2 WHERE name = $1', [row.name, 'edited-since']);
-    await expect(migrate(h.pool)).rejects.toThrow(/reset/);
+    await expect(migrate(h.pool)).rejects.toThrow(/changed after it was applied/);
     // As if a migration had been deleted.
     await h.pool.query('UPDATE schema_migrations SET checksum = $2 WHERE name = $1', [row.name, row.checksum]);
     await h.pool.query("INSERT INTO schema_migrations (name, checksum) VALUES ('0099_gone.sql', 'x')");
-    await expect(migrate(h.pool)).rejects.toThrow(/reset/);
+    await expect(migrate(h.pool)).rejects.toThrow(/no longer in the repository/);
     await h.pool.query("DELETE FROM schema_migrations WHERE name = '0099_gone.sql'");
     expect(await migrate(h.pool)).toEqual([]);
   });

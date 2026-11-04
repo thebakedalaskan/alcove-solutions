@@ -41,8 +41,10 @@ Application Load Balancer for production custom domains. See
    `main`. Runs are serialized.
 4. **API release.** Build and push the commit-SHA image, which records its commit (`ALCOVE_COMMIT`, reported
    by `/health` and `/v1/attestation`); execute the migration job, which gets only `DATABASE_URL`, and wait;
-   deploy Cloud Run; check `/health` through its service URL. The migration job refuses a database built
-   from a different version of the schema (it changes in place): reset that database first. Checking `run.app` first avoids making the initial
+   deploy Cloud Run; check `/health` through its service URL. The migration job applies only the migrations
+   the database hasn't had, and refuses one whose applied migrations were since edited or removed, so such a
+   deploy stops before the new API starts and the previous release keeps serving (migrations only move
+   forward: restore the file and put the change in a new one). Checking `run.app` first avoids making the initial
    deployment depend on an API domain mapping that needs the service to exist.
 5. **Web release.** Build against `https://api.alcove.solutions`, write the CSP for that origin with
    `apps/web/scripts/csp.mjs` (inline scripts by hash, nothing third-party) and

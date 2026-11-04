@@ -6,37 +6,34 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { troubles } from '~/features/call/access';
 import { RoomLines } from '~/features/call/LiveLines';
 import { useLevels } from '~/features/call/Video';
-import { LocalMedia, NotesRecorder } from '~/features/call/media';
-import { SpeechClips } from '~/features/call/speech';
+import { LocalMedia } from '~/features/call/media';
+import { RoomCapture } from '~/features/record/capture';
 import { api } from '~/lib/api';
 import { requireAccount } from '~/lib/guards';
 import { log } from '~/lib/log';
 import { sessions, useLeaveGuard, useLive } from '~/lib/live';
 import { hm, shortDay } from '~/lib/time';
 
-/* Notes in the room: one microphone on the table, no call. */
-export const Route = createFileRoute('/record')({
+/*
+ * The stage recorder: one microphone on the table, no call. Record (/record) names the recording and opens this
+ * screen, handing the name over in memory (sessions.roomTitle), never in the address; recording starts at once.
+ */
+export const Route = createFileRoute('/record/live')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
-  component: Record
+  component: RecordLive
 });
 
 const rlog = log.child({ component: 'room' });
+/** A recording started without a name, or opened without Record (a reload, a link). */
+const UNNAMED = 'Notes from the room';
 
-function Record() {
+function RecordLive() {
   const [media] = useState(() => new LocalMedia());
-  const [rec, setRec] = useState<RoomRecording | null>(sessions.recording);
-  const [failed, setFailed] = useState<string | null>(null);
   useEffect(() => {
     void media.start({ mic: true, cam: false });
-    if (sessions.recording) return () => media.stop();
-    let cancelled = false;
-    api.recordings.start({ title: 'Notes from the room' }).then((r) => {
-      if (cancelled) { void r.discard(); return; }
-      sessions.recording = r;
-      setRec(r);
-    }, (e: unknown) => setFailed(errorMessage(e)));
-    return () => { cancelled = true; media.stop(); };
+    return () => media.stop();
   }, [media]);
+  const { rec, failed } = useRoomRecording();
   if (failed) {
     return (
       <div className="stage ac-stage"><div className="stg room-stg">
@@ -47,6 +44,28 @@ function Record() {
   }
   if (!rec) return <div className="stage ac-stage"><div className="stg room-stg"><Top /><div className="room-wait"><Spinner /></div></div></div>;
   return <Recorder rec={rec} media={media} />;
+}
+
+/**
+ * The recording this screen records into: the one already going in this tab (the screen came back to it), or a new
+ * one, started once under the name Record handed over, which is used up then. Everything after this works on any
+ * RoomRecording, so this is the one place that decides where a recording is kept.
+ */
+function useRoomRecording(): { rec: RoomRecording | null; failed: string | null } {
+  const [rec, setRec] = useState<RoomRecording | null>(sessions.recording);
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    if (sessions.recording) return;
+    let cancelled = false;
+    api.recordings.start({ title: sessions.roomTitle ?? UNNAMED }).then((r) => {
+      if (cancelled) { void r.discard(); return; }
+      sessions.roomTitle = null;
+      sessions.recording = r;
+      setRec(r);
+    }, (e: unknown) => setFailed(errorMessage(e)));
+    return () => { cancelled = true; };
+  }, []);
+  return { rec, failed };
 }
 
 function Top({ right }: { right?: ReactNode }) {
@@ -81,33 +100,23 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
   const bars = useLevels(media, 48, !paused && m.mic && !!m.camera, wave);
   /* A microphone that isn't working: what's wrong and how to fix it, in place of the reminder. */
   const micTrouble = troubles(m, ['mic'])[0];
-  const recorder = useRef<NotesRecorder | null>(null);
-  if (!recorder.current) recorder.current = new NotesRecorder((p) => rec.appendAudio(p), (msg) => toast(msg, { icon: 'x' }));
-  const speech = useRef<SpeechClips | null>(null);
-  if (!speech.current) speech.current = new SpeechClips((c) => rec.transcribe(c), setHeardProblem);
+  const capture = useRef<RoomCapture | null>(null);
+  if (!capture.current) capture.current = new RoomCapture(rec, { lost: (msg) => toast(msg, { icon: 'x' }), heard: setHeardProblem });
   const mic = media.micTrack();
-  useEffect(() => {
-    const r = recorder.current;
-    const sp = speech.current;
-    if (!r || !sp || !mic) return;
-    if (s.status === 'recording') { r.start([{ identity: 'microphone', track: mic }], 0); sp.start(mic, 0); }
-    if (s.status === 'paused') { void r.pause(); sp.pause(); }
-  }, [s.status, mic]);
-  useEffect(() => () => speech.current?.stop(), []);
+  useEffect(() => { if (mic) capture.current?.follow(mic, s.status); }, [s.status, mic]);
+  useEffect(() => () => capture.current?.close(), []);
 
   /* Pausing keeps everything said until then: the last audio and speech are sent before the recording pauses. */
   const pause = async () => {
     setHolding(true);
-    speech.current?.pause();
-    await Promise.all([recorder.current?.pause(), speech.current?.flush()]);
+    await capture.current?.pause();
     rec.pause();
     setHolding(false);
   };
   const finish = async () => {
     setBusy(true);
     try {
-      await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
-      speech.current?.stop();
+      await capture.current?.finish();
       const r = await rec.stop();
       sessions.recording = null;
       guard.release();
@@ -121,8 +130,7 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
   };
   const discard = async () => {
     setLeave(false);
-    recorder.current?.stop();
-    speech.current?.stop();
+    capture.current?.discard();
     try { await rec.discard(); } catch (e) { rlog.warn('discarding the recording failed', { err: e }); }
     sessions.recording = null;
     if (!guard.proceed()) await navigate({ to: '/home' });

@@ -923,10 +923,14 @@ the coordinates). Your own share has none of this: you have the original.
 
 ## Room recordings
 
-`POST /v1/recordings` creates a private note (`kind: room`, nobody invited) and a recording. The browser
-records the microphone in 5-second pieces to `POST /v1/recordings/:id/audio` and sends clips of speech to
-`POST /v1/recordings/:id/transcribe`; a room recording has one segment, and clips are refused while it's
-paused. `RoomRecordingState.transcript` carries the latest 200 lines, with no speaker. Rename, pause and
+`POST /v1/recordings` creates a private note (`kind: room`, nobody invited) and a recording. In the app, Record
+(`/record`) takes the name and opens the stage recorder (`/record/live`), which starts it. The name is handed over
+in memory (`sessions.roomTitle` in `apps/web/src/lib/live.ts`), never in the address; the stage recorder opened
+any other way (a reload, a link) starts with "Notes from the room". Without a connection, starting currently ends
+at "Couldn't start recording". The browser records the microphone in 5-second pieces to
+`POST /v1/recordings/:id/audio` and sends clips of speech to `POST /v1/recordings/:id/transcribe` (both through
+`RoomCapture`, `apps/web/src/features/record/capture.ts`); a room recording has one segment, and clips are
+refused while it's paused. `RoomRecordingState.transcript` carries the latest 200 lines, with no speaker. Rename, pause and
 resume are actions; **Stop** finishes the note like leaving a call (stopping twice finishes it once);
 **Discard** deletes the note, its recording and every object, as deleting your own note does.
 
@@ -1077,7 +1081,10 @@ already is skipped, and stopping finishes the note once.
   `getDisplayMedia` (phones and tablets) is told it can't share and can still see shares. Sound asked for that didn't
   come (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
-  in its menu), the speaking ring and the recorder waveform.
+  in its menu), the speaking ring and the recorder waveform. On Record the page has its own `LocalMedia`, which
+  opens the microphone only when **Check the level** is pressed and lets it go on **Stop** or when the page is
+  left; choosing a microphone while it's closed only remembers it, and one that doesn't start while it's open
+  says so and isn't shown as chosen.
 - Sound the browser won't play until the page is clicked (Safari, when nothing is being captured) is said in the
   status bar for as long as it lasts, with **Play sound**, and every click, tap or key tries again
   (`CallRoom.startAudio`) until it plays.

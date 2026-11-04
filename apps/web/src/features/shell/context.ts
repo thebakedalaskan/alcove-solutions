@@ -1,8 +1,13 @@
-import type { Meeting } from '@alcove/api';
+import type { Meeting, Person } from '@alcove/api';
 import { createContext, useContext } from 'react';
 
-/** Opens the composer from anywhere inside the app shell: for a new call, or to change `meeting`. */
-export const ComposerContext = createContext<(meeting?: Meeting) => void>(() => {});
+/**
+ * What New call opens with: an empty line, a sentence already typed (`text`), people already invited (`people`), or a
+ * scheduled call to change (`meeting`).
+ */
+export interface ComposerStart { text?: string | undefined; people?: Person[] | undefined; meeting?: Meeting | undefined }
+/** Opens the composer from anywhere inside the app shell. An empty line is the default. */
+export const ComposerContext = createContext<(start?: ComposerStart) => void>(() => {});
 export const useOpenComposer = () => useContext(ComposerContext);
 
 /**

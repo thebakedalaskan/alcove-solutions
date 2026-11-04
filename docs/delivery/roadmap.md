@@ -10,9 +10,9 @@
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and credits display.
-- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: the coming week's
-  meetings on Home, scheduled calls on the organizer's calendar with Google's invitations, changes and
-  cancellations kept in step, and an organizer's own event made an Alcove call.
+- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: the next meeting
+  and the rest of today's on Home, scheduled calls on the organizer's calendar with Google's invitations,
+  changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
   the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and
   suggested questions, retries a failed attempt twice, and charges 25 credits a minute; anyone with the note

@@ -1,6 +1,6 @@
 import type { CallParticipant, CallSession, CallState, LiveStore, RoomRecording } from '@alcove/api';
 import { useBlocker } from '@tanstack/react-router';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { LocalMedia } from '~/features/call/media';
 
 export function useLive<S>(store: LiveStore<S>): S {
@@ -16,6 +16,16 @@ const onConnection = (changed: () => void) => {
 /** Whether this browser has a connection. Recording and calls need one; everything else waits for it. */
 export const useOnline = (): boolean => useSyncExternalStore(onConnection, onLine, () => true);
 
+/** Whether a media query matches, such as the phone's width, following it as the window changes. */
+export function useMedia(query: string): boolean {
+  const subscribe = useCallback((changed: () => void) => {
+    const m = matchMedia(query);
+    m.addEventListener('change', changed);
+    return () => m.removeEventListener('change', changed);
+  }, [query]);
+  return useSyncExternalStore(subscribe, () => matchMedia(query).matches, () => false);
+}
+
 /** The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. */
 export function useNow(every = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
@@ -23,11 +33,15 @@ export function useNow(every = 30_000): number {
   return now;
 }
 
-/* Live sessions and local media outlive a single route (pre-join hands both to the call screen). */
-export const sessions: { call: { code: string; session: CallSession } | null; recording: RoomRecording | null; media: LocalMedia | null } = {
+/*
+ * Live sessions and local media outlive a single route (pre-join hands both to the call screen). Record hands the
+ * stage recorder the name for its next recording the same way, in memory: nothing readable goes in the address.
+ */
+export const sessions: { call: { code: string; session: CallSession } | null; recording: RoomRecording | null; media: LocalMedia | null; roomTitle: string | null } = {
   call: null,
   recording: null,
-  media: null
+  media: null,
+  roomTitle: null
 };
 /**
  * Tells `session`'s call when this page goes away (closed, reloaded, or left for another), at once: someone asking

@@ -5,7 +5,8 @@
 Postgres (`D01`) holds ciphertext plus the minimum clear projection: opaque IDs, keyed hashes, relationships,
 states, timestamps, byte counts and sequence numbers. The object store (`O01`: RustFS locally, Cloudflare R2 in
 production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). The authoritative schema is
-`apps/api/migrations/0001_init.sql`, edited in place when the schema changes; this page explains it.
+`apps/api/migrations/`, applied in order (`0001_init.sql`, then each file after it); this page explains the
+result, and [Changing what's stored](#changing-whats-stored) how it changes without losing anyone's data.
 
 ## Tables
 
@@ -86,8 +87,10 @@ decision never erases what was there before.
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).
 - **Who has a note** is its organizer and everyone with a `note_access` row for it. The note's manifest says how
   each of them got it (invited, or shared by whom, with which group, when), and each reader is told their own
-  way as `received`. Someone who removed the note from theirs has no row, so isn't listed; sharing with them
-  again gives it back.
+  way as `received`. Every reader's list of notes also carries each share to a group (`groupShares`: who, the
+  group's name, the latest time), worked out from the same recipients. Someone who removed the note from theirs
+  has no row, so isn't listed, and a share to a group nobody still holds drops out; sharing with them again gives
+  it back.
 - **Deleting** is physical, whether it's a note, a meeting or a whole account: rows, receipts and objects
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
@@ -112,9 +115,28 @@ One fixed behaviour, with no settings ([Notes and inference › What's kept, and
 
 ```
 pnpm db:up      # Postgres 17 + RustFS in Docker
-pnpm migrate    # apply migrations (the API also applies them at start)
-pnpm db:reset   # drop local data and start fresh, after the schema changes
+pnpm migrate    # apply new migrations (the API also applies them at start)
+pnpm db:reset   # drop your local data and start over (never needed for a schema change)
 pnpm db:down
 ```
 
-Production runs migrations as the Cloud Run job `alcove-migrate` before each deploy.
+Production runs migrations as the Cloud Run job `alcove-migrate` before each deploy, while the previous API
+is still serving. Cloud SQL keeps a backup a day for a week, with point-in-time recovery over the same week.
+
+## Changing what's stored
+
+Data survives every deploy (AGENTS.md › Stored data survives every deploy), so both of the shapes it's stored
+in move forward without a reset:
+
+- **Tables.** Each change is a new migration, `apps/api/migrations/NNNN_what_it_does.sql`. The API and the
+  migration job apply the files a database hasn't had, in order, each once and in its own transaction, under
+  an advisory lock so two runs never interleave. They keep each applied file's checksum and refuse a database
+  whose applied files were since edited or removed; `scripts/check-migrations.mjs` stops that in CI first. Because
+  the previous release is still serving while its successor migrates, a migration only adds (tables, nullable
+  or defaulted columns, indexes); dropping, renaming or retyping a column waits for a release that no longer
+  uses it.
+- **Sealed records.** The API can't change ciphertext from a migration: only the owner's keys, opened per
+  request, read it. So a record's shape evolves where it's read. A field added to a stored schema gets a zod
+  `.default(...)`, older records take it when they open and are sealed in the new shape the next time they're
+  saved; a removed field is ignored when older records open. A field is never renamed or retyped in place, and
+  a record's header and its key's derivation label never change while data under them exists.

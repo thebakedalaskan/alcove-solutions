@@ -45,6 +45,10 @@ function readLayout(callId: string): CallLayout {
     return EMPTY_LAYOUT;
   }
 }
+/** The account is gone: so is how it liked to see calls in this browser. */
+export function forgetView(account: string) {
+  try { localStorage.removeItem(prefsKey(account)); } catch (e) { vlog.debug('view not forgotten', { err: e }); }
+}
 function keep(store: 'local' | 'session', key: string, value: unknown) {
   try { (store === 'local' ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch (e) { vlog.debug('view not remembered', { store, err: e }); }
 }

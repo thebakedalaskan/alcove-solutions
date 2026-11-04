@@ -17,6 +17,7 @@ export function exampleNote(me: Person): Note {
     id: 'example', kind: 'call', status: 'ready', title: 'Weekly product call', startedAt: started.toISOString(), duration: 24 * 60,
     people: [me, theo, priya, kofi], excerpt: 'Sign-ups are back up, and the launch moves to the 18th.', openActions: 1, totalActions: 1,
     recipients: [{ person: me, role: 'organizer' }, { person: theo, role: 'invited' }, { person: priya, role: 'invited' }, { person: kofi, role: 'invited' }],
+    groupShares: [],
     summary: 'Sign-ups are back up since Tuesday’s fix, so the launch moves to the 18th. Kofi sends the new screens by Wednesday.',
     decisions: [{ id: 'launch', text: 'The launch moves to the 18th.', at: 252, state: 'confirmed', changes: [{ by: { name: theo.name, email: theo.email }, at: started.toISOString(), what: 'confirmed' }] }],
     questions: [{ id: 'press', text: 'Do we tell the press before the 18th?', at: 281, state: 'open', changes: [] }],

@@ -87,6 +87,21 @@ export function SealedBadge({ title, detail, inline = false, className, ...rest 
   );
 }
 
+/**
+ * The badge as a button, for when it opens what was checked (a Popover's anchor): the same look, with a chevron
+ * that turns while it's open. `title` and `detail` as on the badge.
+ */
+export const SealedButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> & { title: ReactNode; detail?: ReactNode }>(
+  function SealedButton({ title, detail, className, type = 'button', ...rest }, ref) {
+    return (
+      <button ref={ref} type={type} className={cn('ac-sealed is-button', className)} {...rest}>
+        <span className="ic"><Icon name="sealed" size={18} /></span>
+        <span className="min-w-0"><b>{title}</b>{detail && <small>{detail}</small>}</span>
+        <Icon name="down" size={16} className="chev" />
+      </button>
+    );
+  });
+
 /** One thing that was checked: what, what it showed, and the value it showed it with (a hash, a status), if any. */
 export interface Checked { label: ReactNode; detail?: ReactNode | undefined; value?: ReactNode | undefined; title?: string | undefined }
 /** A list of what was checked, each with a tick. For evidence and receipts: information, not something to press. */
@@ -209,9 +224,12 @@ export function coverFor(id: string): Cover {
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return COVERS[h % COVERS.length] ?? 'dawn';
 }
-/** The alcove motif: a small arched window with the sun coming up. */
-export function ArchThumb({ cover, width = 34, room = false, className }: { cover: Cover; width?: number; room?: boolean; className?: string }) {
-  return <span aria-hidden="true" className={cn('ac-arch-thumb', room && 'in-room', className)} style={{ '--w': `${width}px`, '--cover': `var(--cover-${cover})` }} />;
+/**
+ * The alcove motif: a small arched window with the sun coming up. `width` is in px; without it the
+ * stylesheet decides (34px, unless a screen sets `--w` for its own layout).
+ */
+export function ArchThumb({ cover, width, room = false, className }: { cover: Cover; width?: number | undefined; room?: boolean | undefined; className?: string | undefined }) {
+  return <span aria-hidden="true" className={cn('ac-arch-thumb', room && 'in-room', className)} style={{ ...(width === undefined ? {} : { '--w': `${width}px` }), '--cover': `var(--cover-${cover})` }} />;
 }
 
 /** An on/off switch, labelled for screen readers. The sun fills it when it's on. */
