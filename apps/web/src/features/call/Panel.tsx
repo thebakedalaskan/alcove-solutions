@@ -1,10 +1,11 @@
 /*
- * The side panel: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
- * people, one view at a time. It slides in beside the stage and the stage makes room. Notes, the transcript
+ * The side panels: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
+ * people, one tab at a time in each panel. A panel slides in and the stage makes room; any tab can be pulled out to
+ * be a panel of its own, and panels sit wherever you put them (panels.ts, Panels.tsx). Notes, the transcript
  * and answers come from what was really said while notes were on; nothing here is invented. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallState, type CatchUpItem, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -16,13 +17,11 @@ import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '.
 import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
+import { tabName } from './PanelHost';
 import type { VolumeActions } from './volume';
 import { VolumeControl } from './VolumeControl';
 
-export type PanelView = 'notes' | 'yours' | 'transcript' | 'ask' | 'chat' | 'people' | 'rooms';
-const TABS: { v: PanelView; label: string }[] = [
-  { v: 'notes', label: 'Notes' }, { v: 'yours', label: 'Yours' }, { v: 'transcript', label: 'Transcript' }, { v: 'ask', label: 'Ask' }, { v: 'chat', label: 'Chat' }, { v: 'people', label: 'People' }
-];
+export type PanelView = CallPanelView;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
 /** Someone shown in the panel: in the call (and how), or invited and not here. `volume`: how loud they are for you, null for yourself. */
@@ -43,22 +42,25 @@ export interface HostControls {
   setPointing: (on: boolean) => Promise<void>;
 }
 
-export function SidePanel({ view, onView, onClose, children, roomsTitle, own }: {
-  view: PanelView; onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string;
-  /** You have an account in this call, so you can keep your own notes on it. */
-  own: boolean;
+export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }: {
+  view: PanelView;
+  /** The tabs in this panel: dragging one out makes it a panel of its own, and one on its own has its name instead. */
+  tabs: CallPanelTab[];
+  onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string;
 }) {
   const reduce = useReducedMotion();
+  const [only] = tabs;
+  const name = view === 'rooms' ? roomsTitle : tabName(only ?? 'notes');
   return (
     <>
-      {view === 'rooms' ? (
-        <div className="ic-side-head"><span className="ttl">{roomsTitle}</span><IconButton icon="x" label="Close the panel" onClick={onClose} /></div>
+      {view === 'rooms' || tabs.length < 2 ? (
+        <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={`Close ${name}`} onClick={onClose} /></div>
       ) : (
         <div className="ic-side-head">
           <div className="ac-tabs" role="tablist" aria-label="Call panel">
-            {TABS.filter((t) => own || t.v !== 'yours').map((t) => <button key={t.v} type="button" role="tab" className="ac-tab" aria-selected={view === t.v} onClick={() => onView(t.v)}>{t.label}</button>)}
+            {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
           </div>
-          <IconButton icon="x" label="Close the panel" onClick={onClose} />
+          <IconButton icon="x" label={`Close ${tabName(view)}`} onClick={onClose} />
         </div>
       )}
       <div className="ic-views">

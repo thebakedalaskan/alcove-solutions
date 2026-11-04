@@ -159,9 +159,9 @@
 }
 
 /* ---- in a call ----
- * Top bar, the stage with the side panel beside it, and the dock. All of it is night in both themes,
- * the panel, menus and sheets included. Tiles are placed in stage pixels by the layout
- * engine (apps/web features/call/stageLayout.ts) and glide there with motion.
+ * Top bar, the panels, and the dock. All of it is night in both themes, the panels, menus and sheets
+ * included. Panels sit where apps/web features/call/panels.ts solves them, and tiles where stageLayout.ts
+ * puts them, in one layer over the whole of the call's area, gliding there with motion.
  */
 .ic-call { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); overflow: hidden; animation: ac-fade var(--duration-3) var(--ease-out) both; }
 .ic-call.is-ended .ic-main, .ic-call.is-ended .ic-dockbar { opacity: .35; transition: opacity var(--duration-3) var(--ease-out); }
@@ -173,16 +173,14 @@
 .ic-top .vr { flex: none; width: 1px; height: 20px; background: rgb(255 255 255 / 0.1); }
 .ic-top .nz { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ic-top .end { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
-.ic-vc { display: inline-flex; gap: 2px; padding: 3px; border-radius: 11px; background: rgb(255 255 255 / 0.06); }
-.ic-vc .vbtn { display: grid; place-items: center; width: 32px; height: 28px; border-radius: 8px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
-.ic-vc .vbtn:hover { color: var(--stage-ink); background: rgb(255 255 255 / 0.06); }
-.ic-vc .vbtn[aria-pressed="true"], .ic-vc .vbtn.is-on { background: rgb(255 255 255 / 0.16); color: var(--stage-ink); }
-.ic-vc .vbtn.is-more { width: 26px; }
-.ic-vc .vbtn .wide, .ic-vc .vbtn .narrow { display: grid; place-items: center; }
-.ic-vc .vbtn .narrow { display: none; }
-.ic-top .ac-btn.is-quiet { color: var(--stage-ink-2); }
-.ic-top .ac-btn.is-quiet:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
-.ic-top .ic-reset { height: 32px; padding: 0 10px; }
+.ic-viewbtn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-radius: var(--radius-sm); background: rgb(255 255 255 / 0.06); color: var(--stage-ink); font: 600 13.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
+.ic-viewbtn:hover, .ic-viewbtn.is-on { background: rgb(255 255 255 / 0.12); }
+.ic-reset { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-reset:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
+/* What's showing, when there isn't room for all of it at once. */
+.ic-swap { flex: 0 1 auto; display: inline-flex; gap: 2px; min-width: 0; margin: 0 auto; padding: 3px; border-radius: 11px; background: rgb(255 255 255 / 0.08); }
+.ic-swap button { min-width: 0; height: 30px; padding: 0 11px; overflow: hidden; border-radius: 8px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
+.ic-swap button[aria-pressed="true"] { background: rgb(255 255 255 / 0.18); color: var(--stage-ink); }
 .ic-top .ic-catch { background: transparent; color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
 .ic-top .ic-catch:hover { background: rgb(255 255 255 / 0.07); }
 .ic-sicon { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
@@ -201,10 +199,11 @@
 .ic-seal .rows b { font-weight: 500; color: var(--ink); }
 .ic-seal .last { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--ink); }
 
-/* the stage and the panel beside it */
+/* the stage: one layer over the whole of the call's area, and its frame for what sits on it */
 .ic-main { position: relative; min-height: 0; }
-.ic-stage-box { position: absolute; left: 0; top: 0; bottom: 0; }
 .ic-stage { position: absolute; inset: 0; }
+.ic-frame { position: absolute; pointer-events: none; }
+.ic-frame.is-rooms, .ic-frame .ic-cap { pointer-events: auto; }
 .ic-slot { position: absolute; container-type: size; border-radius: var(--radius-md); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* A small tile keeps its pin and spotlight as icons, so they never run into its menu. */
 @container (max-width: 260px) { .ic-tch { height: 26px; padding: 0 2px 0 7px; gap: 4px; } .ic-tch .tl { display: none; } }
@@ -356,11 +355,67 @@
 /* Nothing on the stage but you, folded away. */
 .ic-stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
 .ic-stage-empty > * { pointer-events: auto; }
-.ic-divider { position: absolute; z-index: 6; display: grid; place-items: center; width: 24px; height: 56px; cursor: ew-resize; touch-action: none; }
-.ic-divider.is-v { width: 56px; height: 24px; cursor: ns-resize; }
-.ic-divider i { display: block; width: 6px; height: 56px; border-radius: 3px; background: rgba(238, 237, 248, .55); box-shadow: 0 0 0 5px rgb(255 255 255 / 0.06); transition: background-color var(--duration-1); }
-.ic-divider.is-v i { width: 56px; height: 6px; }
-.ic-divider:hover i, .ic-divider:focus-visible i { background: rgba(238, 237, 248, .95); }
+/*
+ * Arranging the call: the line between two panels, the handle each has, the glow that shows where something will land,
+ * the people's own small controls, and a share's. Only your screen changes.
+ */
+.ic-div { position: absolute; z-index: 7; display: grid; place-items: center; cursor: col-resize; touch-action: none; outline: none; }
+.ic-div.is-col { cursor: row-resize; }
+.ic-div i { display: block; width: 3px; height: 46px; border-radius: 2px; background: transparent; transition: background-color var(--duration-1); }
+.ic-div.is-col i { width: 46px; height: 3px; }
+.ic-div:hover i, .ic-div:focus-visible i { background: rgb(238 237 248 / 0.5); }
+.ic-div.is-on i, .ic-div:active i { background: var(--speak); }
+.ic-main.is-resizing, .ic-main.is-resizing * { transition: none !important; user-select: none; -webkit-user-select: none; }
+.ic-main.is-dragging, .ic-main.is-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.ic-grab { position: absolute; z-index: 8; top: 3px; left: 50%; width: 44px; height: 10px; margin-left: -22px; border-radius: 6px; cursor: grab; opacity: 0; touch-action: none; transition: opacity var(--duration-1); }
+.ic-grab::after { content: ""; position: absolute; left: 7px; right: 7px; top: 3px; height: 4px; border-radius: 2px; background: var(--line-control); }
+.ic-scr > .ic-grab::after { background: rgb(255 255 255 / 0.55); }
+.ic-side:hover > .ic-grab, .ic-scr:hover > .ic-grab, .ic-ws:hover > .ic-grab, .ic-board:hover > .ic-grab, .ic-grab:focus-visible { opacity: 1; }
+.ic-drop { position: absolute; z-index: 30; border-radius: var(--radius-lg); pointer-events: none; background: linear-gradient(0deg, rgb(255 160 106 / 0.3), rgb(169 178 255 / 0.16) 70%); box-shadow: inset 0 0 0 2px var(--speak); transition: left var(--duration-1) var(--ease-out), top var(--duration-1) var(--ease-out), width var(--duration-1) var(--ease-out), height var(--duration-1) var(--ease-out); }
+.ic-ghost { position: absolute; z-index: 31; display: inline-flex; align-items: center; gap: 7px; max-width: 280px; height: 32px; padding: 0 10px; border-radius: 9px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); font: 500 13.5px/1 var(--font-sans); pointer-events: none; }
+.ic-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+/* Over the people: move them, fold them to arches, or hide them. */
+.ic-ppl { position: absolute; z-index: 8; display: inline-flex; gap: 1px; padding: 2px; transform: translateX(-50%); border-radius: 9px; background: rgba(11, 10, 24, .78); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); opacity: 0; transition: opacity var(--duration-1); }
+.ic-stage:has(.ic-slot:hover) .ic-ppl, .ic-ppl:hover, .ic-ppl:focus-within { opacity: 1; }
+.ic-ppl .b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--stage-ink); transition: background-color var(--duration-1); }
+.ic-ppl .b:hover { background: rgb(255 255 255 / 0.14); }
+.ic-ppl .b.is-grab { cursor: grab; touch-action: none; }
+/* On a share that's a panel: more room, and back to a tile. */
+.ic-scr-ac { position: absolute; z-index: 3; right: 76px; top: 9px; display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(11, 10, 24, .68); opacity: 0; transition: opacity var(--duration-1); }
+.ic-scr:hover .ic-scr-ac, .ic-scr-ac:focus-within { opacity: 1; }
+.ic-scr-ac button { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--stage-ink); transition: background-color var(--duration-1); }
+.ic-scr-ac button:hover { background: rgb(255 255 255 / 0.14); }
+/* People as arches, in a column or a strip: their faces, and everything else on the tile's menu. */
+.ic-slot.is-arch > .ac-tile { border-radius: 999px 999px 14px 14px; }
+.ic-slot.is-arch > .ac-tile.is-speaking { box-shadow: inset 0 0 0 2px var(--speak); }
+.ic-slot.is-arch .ac-figure { height: 84%; }
+.ic-slot.is-arch, .ic-slot.is-horizon { cursor: pointer; }
+.ic-slot.is-arch :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate), .ic-slot.is-horizon :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate) { display: none; }
+.ic-slot.is-arch .ic-more, .ic-slot.is-horizon .ic-more { opacity: 0 !important; pointer-events: none; }
+.ic-slot.is-arch .ac-tile-face .ac-avatar { --size: 48px !important; }
+/* People on the horizon: small arches beside the dock. Whoever's talking, or has a hand up, rises. */
+.ic-slot.is-horizon { z-index: 3; }
+.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
+.ic-slot.is-horizon > .ac-tile::after { display: none; }
+.ic-slot.is-horizon .ac-figure { height: 92%; filter: none; }
+.ic-slot.is-horizon .ac-tile-face .ac-avatar { --size: 24px !important; }
+.ic-slot.is-horizon > .ac-tile.is-speaking { box-shadow: inset 0 0 0 1.5px var(--speak); }
+.ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: inset 0 0 0 1.5px var(--gold); }
+.ic-slot.is-up > .ac-tile { transform: translateY(-9px); }
+/* Toasts stand clear of the horizon, where they'd otherwise sit on people's heads. */
+body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
+.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; }
+/* A share waiting among arches or on the horizon, and whoever there's no room for. */
+.ic-scr.is-arch { border-radius: 14px; }
+.ic-scr.is-horizon { z-index: 3; border-radius: 6px; }
+.ic-scr:is(.is-arch, .is-horizon) :is(.ac-tile-name, .ic-sgrow, .ic-spoint) { display: none; }
+.ic-scr:is(.is-arch, .is-horizon) .ic-more { opacity: 0 !important; pointer-events: none; }
+.ic-scr.is-behind { display: none; }
+.ic-slot.is-off, .ic-scr.is-off { visibility: hidden; pointer-events: none; }
+.ic-tmore { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); font: 600 14px/1 var(--font-sans); transition: color var(--duration-1), background-color var(--duration-1); }
+.ic-tmore:hover { background: var(--stage-raised); color: var(--stage-ink); }
+.ic-tmore.is-arch { border-radius: 999px 999px 14px 14px; }
+.ic-tmore.is-horizon { border-radius: 999px 999px 8px 8px; font-size: 11.5px; }
 .ic-sbar { position: absolute; z-index: 8; left: 0; right: 0; top: 0; height: 36px; display: flex; justify-content: center; align-items: center; gap: 8px; pointer-events: none; }
 .ic-spill { display: inline-flex; align-items: center; gap: 10px; height: 36px; max-width: 100%; min-width: 0; padding: 0 4px 0 12px; border-radius: 12px; background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); white-space: nowrap; pointer-events: auto; }
 .ic-spill .ac-i { flex: none; color: var(--stage-ink); }
@@ -410,14 +465,19 @@
 .ic-banner { display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 7px 16px 7px 7px; border-radius: 999px; background: var(--stage-ink); color: var(--stage); font-size: 13.5px; line-height: 1.3; box-shadow: 0 18px 40px -14px rgba(0, 0, 0, .7); }
 .ic-banner span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* the side panel: a surface on the night stage */
-.ic-side { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; }
+/* side panels: surfaces on the night stage, placed by the panels */
+.ic-side { position: absolute; z-index: 20; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; }
+.ic-side.is-float { z-index: 22; box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.ic-side.is-off { display: none; }
+/* The workspace and the board on the stage. */
+.ic-ws, .ic-board { position: absolute; z-index: 2; display: flex; min-width: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; }
+.ic-ws.is-off, .ic-board.is-off { display: none; }
 .ic-side-head { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 .ic-side-head .ac-tabs { border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ic-side-head .ac-tabs::-webkit-scrollbar { display: none; }
-.ic-side-head .ac-tab { height: 52px; padding: 0 9px; font-size: 13.5px; flex: none; }
-.ic-side-head .ac-tab[aria-selected="true"]::after { left: 8px; right: 8px; bottom: 0; }
-.ic-side-head .ttl { flex: 1; padding-left: 10px; font: 600 15px/1.2 var(--font-sans); letter-spacing: -0.01em; }
+.ic-side-head .ac-tab { height: 52px; padding: 0 8px; font-size: 13.5px; flex: none; }
+.ic-side-head .ac-tab[aria-selected="true"]::after { left: 7px; right: 7px; bottom: 0; }
+.ic-side-head .ttl { flex: 1; padding-left: 8px; font: 600 14.5px/1.2 var(--font-sans); }
 .ic-views { position: relative; flex: 1; min-height: 0; }
 .ic-view { position: absolute; inset: 0; display: flex; flex-direction: column; }
 .ic-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
@@ -628,11 +688,43 @@
 .ic-menu .ac-eyebrow:first-child { margin-top: 6px; }
 .ic-tmenu { width: 280px; }
 .ic-mgrp { margin-top: 4px; }
-.ic-vmenu { width: 304px; max-height: min(640px, calc(100dvh - 96px)); overflow-y: auto; }
-.ic-vself { display: grid; gap: 2px; padding: 2px 6px 4px; }
-.ic-vself .ac-seg { display: flex; }
-.ic-vself .ac-seg button { flex: 1; justify-content: center; padding: 0 6px; font-size: 12.5px; }
-.ic-vself .hint { margin: 6px 4px 0; }
+.ic-vmenu { display: grid; gap: 10px; width: 330px; max-height: min(680px, calc(100dvh - 96px)); padding: 12px; overflow-y: auto; }
+.ic-vmenu .ic-msep { margin: 0; }
+.ic-vmenu .hint { margin: 0 2px; max-width: none; }
+.ic-vmenu .mi { margin: 0 -6px; width: calc(100% + 12px); }
+.ic-vhd { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ic-vhd b { font: 600 15px/1.2 var(--font-sans); }
+.ic-vhd span { font-size: 12.5px; color: var(--ink-3); }
+.ic-lays { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ic-lay { display: grid; gap: 5px; justify-items: center; padding: 6px 2px 5px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-lay:hover { background: var(--sunk); }
+.ic-lay[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); }
+.ic-lay small { font: 500 11.5px/1.15 var(--font-sans); text-align: center; }
+.ic-lay .th { position: relative; display: grid; gap: 2px; width: 60px; height: 40px; padding: 3px; border-radius: 6px; background: var(--stage); }
+.ic-lay .th i { display: block; border-radius: 2px; }
+.ic-lay .th .s { background: #6C66A8; }
+.ic-lay .th .d { background: #F1EFF8; }
+.ic-lay .th .p { background: #FFA06A; }
+.ic-lay .t1 { grid-template-columns: 1fr 1.3fr 7px; }
+.ic-lay .t2 { grid-template-columns: 1fr 7px; grid-template-rows: 1fr 1.2fr; }
+.ic-lay .t2 .s { grid-area: 1 / 1; }
+.ic-lay .t2 .d { grid-area: 2 / 1; }
+.ic-lay .t2 .p { grid-area: 1 / 2 / 3 / 3; }
+.ic-lay .t3 { grid-template-columns: 2fr 1fr; grid-template-rows: 6px 1fr; }
+.ic-lay .t3 .s { grid-area: 1 / 1 / 3 / 2; }
+.ic-lay .t3 .p { grid-area: 1 / 2; }
+.ic-lay .t3 .d { grid-area: 2 / 2; }
+.ic-lay .t4 { grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 6px; }
+.ic-lay .t4 .d { grid-area: 1 / 1 / 3 / 2; }
+.ic-lay .t4 .s { grid-area: 1 / 2; }
+.ic-lay .t4 .p { grid-area: 2 / 2; }
+.ic-vrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; font: 500 14px/1.2 var(--font-sans); }
+.ic-vstack { display: grid; gap: 8px; font: 500 14px/1.2 var(--font-sans); }
+.ic-vrow .ac-seg, .ic-vstack .ac-seg { padding: 3px; border-radius: 10px; }
+.ic-vrow .ac-seg button, .ic-vstack .ac-seg button { height: 26px; padding: 0 9px; border-radius: 7px; font: 600 12.5px/1 var(--font-sans); }
+.ic-vrow .ac-seg .pill, .ic-vstack .ac-seg .pill { border-radius: 7px; }
+.ic-vstack .ac-seg { display: flex; }
+.ic-vstack .ac-seg button { flex: 1; justify-content: center; padding: 0 6px; }
 .ic-keys { display: flex; align-items: flex-start; gap: 8px; }
 .ic-keys .ac-i { flex: none; margin-top: 2px; }
 .ic-keys .ac-kbd { margin: 0 1px; }
@@ -687,20 +779,18 @@
 .ic-leave .next-host .pick > :first-child { margin-top: 6px; }
 .ic-leave .next-host .ic-opt { height: 40px; }
 
-/* narrower screens: words give way to icons, the panel covers the stage on phones */
-@media (max-width: 980px) {
-  .ic-top .catchtxt, .ic-top .rtxt { display: none; }
+/* narrower windows: the top bar keeps its controls and drops their words */
+@media (max-width: 1040px) {
+  .ic-top { gap: 10px; }
+  .ic-top .ttl { max-width: 120px; }
+  .ic-top .catchtxt, .ic-top .rtxt, .ic-viewbtn .vt, .ic-faces .n { display: none; }
   .ic-top .ic-catch { padding: 0 10px; }
+  .ic-swap button { padding: 0 8px; font-size: 12.5px; }
   .ic-share .pk-note { display: none; }
 }
 @media (max-width: 760px) {
-  .ic-top { height: 60px; gap: 10px; }
-  .ic-top .clock, .ic-top .vr.v1, .ic-reset { display: none; }
-  .ic-vc { padding: 0; background: none; }
-  .ic-vc .vbtn.is-mode { display: none; }
-  .ic-vc .vbtn.is-more { width: 36px; height: 36px; border-radius: 10px; }
-  .ic-vc .vbtn .wide { display: none; }
-  .ic-vc .vbtn .narrow { display: grid; }
+  .ic-top { height: 60px; }
+  .ic-top .clock, .ic-top .vr.v1 { display: none; }
   .ic-faces .ac-faces .ac-avatar:nth-child(n+3), .ic-faces .ac-faces .more { display: none; }
   .ic-dockbar { height: 76px; }
   .ic-dockbar .ac-dock { gap: 2px; padding: 5px; }
@@ -709,8 +799,7 @@
   .ic-dockbar .ac-dock-sep { margin: 0 2px; }
   .ic-dockbar .ac-dock-leave { padding: 0 12px; }
   .ic-dockbar .ac-dock-leave .lt { display: none; }
-  .ic-rs, .ic-divider { display: none; }
-  .ic-side { left: 0; width: auto !important; }
+  .ic-rs { display: none; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
   .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
@@ -718,7 +807,7 @@
   .ic-call { padding: 0 8px; }
   .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:first-of-type { display: none; }
   .ic-menu .only-narrow { display: flex; }
-  .ic-catch, .ic-top .end > .vr { display: none; }
+  .ic-catch, .ic-reset { display: none; }
   .ic-dockbar .ac-dock-chev { display: none; }
   .ic-dockbar .ac-dock-split .ac-dock-btn { border-radius: 12px; }
   .ic-dockbar .ac-dock-btn { width: 36px; height: 36px; }

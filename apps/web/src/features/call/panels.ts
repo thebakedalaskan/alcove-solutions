@@ -319,6 +319,15 @@ export function solve(a: CallPanels, size: Size, f: PanelFacts): Solved {
   return { A, rects, dividers, gave: A.gave, box };
 }
 
+/** Where the stage and what's on it are, side panels aside: what's said over the call goes here, where no panel covers it. */
+export function mainRoom(s: Solved): Box {
+  const boxes = (['stage', 'people', 'ws', 'board', 'share:1', 'share:2'] as const).flatMap((k) => { const r = s.rects[k]; return r ? [r] : []; });
+  if (!boxes.length) return s.box;
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
+}
+
 /* ---------- changing the arrangement ---------- */
 
 interface Found { parent: CallPanelBranch; i: number; node: CallPanelNode }

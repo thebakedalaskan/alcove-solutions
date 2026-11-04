@@ -1018,7 +1018,7 @@ export type CallLayout = z.infer<typeof CallLayoutSchema>;
  * seats (`share:1`, `share:2`) that whoever shares takes for the length of a share.
  */
 /** What a side panel can show as a tab. */
-export const CallPanelTabSchema = z.enum(['notes', 'transcript', 'ask', 'chat', 'people']);
+export const CallPanelTabSchema = z.enum(['notes', 'yours', 'transcript', 'ask', 'chat', 'people']);
 export type CallPanelTab = z.infer<typeof CallPanelTabSchema>;
 /** What a side panel can show: a tab, or the organizer's breakout rooms, which are never torn off or kept. */
 export const CallPanelViewSchema = z.enum([...CallPanelTabSchema.options, 'rooms']);
@@ -1027,7 +1027,7 @@ export type CallPanelView = z.infer<typeof CallPanelViewSchema>;
 export const CallPanelGroupIdSchema = z.enum(['side', ...CallPanelTabSchema.options]);
 export type CallPanelGroupId = z.infer<typeof CallPanelGroupIdSchema>;
 /** Everything that can have a place: the stage, people, each seat for a share, the workspace, the board and a panel of tabs. */
-export const CallPanelLeafIdSchema = z.enum(['stage', 'people', 'ws', 'board', 'share:1', 'share:2', 'g:side', 'g:notes', 'g:transcript', 'g:ask', 'g:chat', 'g:people']);
+export const CallPanelLeafIdSchema = z.enum(['stage', 'people', 'ws', 'board', 'share:1', 'share:2', 'g:side', 'g:notes', 'g:yours', 'g:transcript', 'g:ask', 'g:chat', 'g:people']);
 export type CallPanelLeafId = z.infer<typeof CallPanelLeafIdSchema>;
 /** How you see people while something else is on the stage. */
 export const CallPeopleModeSchema = z.enum(['tiles', 'arches', 'hidden']);
