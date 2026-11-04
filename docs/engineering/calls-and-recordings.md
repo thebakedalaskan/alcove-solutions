@@ -107,8 +107,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
 - **Who's in** comes from admission, sealed in the call's state: never from LiveKit's API on reads, so a
   call's reads cost LiveKit nothing.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
-  room: it publishes `LocalMedia`'s tracks as they are, encrypted, plays everyone else's audio on the chosen
-  speaker, and refetches the call on nudges, arrivals and departures. One screen is shared at a time.
+  room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera into the
+  same publication, plays everyone else's audio on the chosen speaker at each person's volume for this listener,
+  and refetches the call on nudges, arrivals and departures. One screen is shared at a time.
 
 ## End-to-end encryption
 
@@ -226,6 +227,8 @@ rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and
 - **Host controls** are the organizer's, in People: mute someone's microphone (LiveKit mutes the track, their
   dock shows it off, they're told, and only they can unmute), remove someone (they're told and go back to the
   call's page), and lock the call.
+- **Each person's volume, for you.** Anyone can turn someone else up to 100% or down to muted for themselves,
+  from that person's tile menu or their row in People ([Media in the browser](#media-in-the-browser)).
 - **Chat** is `crypto.chat`, decrypted in the browser; names come from the people in the call. It's off until
   the browser holds the call's keys, takes up to 4,000 characters, says when there was earlier chat it can't
   read, and gives back a message that couldn't be sent.
@@ -269,17 +272,60 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
-- Switching microphones keeps mute as it was; switching cameras with the camera off is remembered for later.
-  The speaker is applied where the browser can choose one (`setSinkId`; not Safari).
+  Browsers that hand out new device IDs (after clearing site data, say) start from their defaults again.
+- **Permission and device state.** Before asking, `LocalMedia` reads the Permissions API (`microphone`,
+  `camera`; Chrome, Firefox 132+, Safari 16+) and never asks for a device the browser already refuses. It asks
+  for both together and, if that fails, for each alone, so a blocked, missing or busy camera never costs the
+  microphone. Each device then has a state (`MediaSnapshot.access`): allowed, refused or not asked yet, and,
+  when it isn't working, why: blocked by the browser, kept from the browser by the computer (allowed in the
+  browser yet refused; Chrome says "by system"), the question went unanswered, none plugged in, busy in another
+  app, or didn't start. A refusal that comes back faster than anyone could answer counts as blocked. Pre-join
+  shows the state in place of the picker, says in plain words how to allow it in this browser (or in the
+  computer's privacy settings), offers Try again, and never keeps anyone from joining: they join with both off.
+  In the call the dock's buttons carry a caution mark, and pressing one that can't work opens its menu with the
+  same explanation (`apps/web/src/features/call/access.ts` holds the copy).
+- **Watching devices.** From the first start, `LocalMedia` follows `devicechange`, each track's `ended`, the
+  permissions' `change` events and, because Safari never sends those, the page coming back into view. A
+  microphone or camera that's unplugged gives way to the chosen one or the system's, muted or not and on or off
+  as it was; with none left it turns off and says so. A chosen device that comes back is used again, and a
+  microphone left on the system's follows the system when its default moves (Chrome's `default` entry changes
+  group). Before the call, a device that becomes usable (plugged in, or allowed again) starts the way the person
+  wanted it; in the call nothing turns a microphone or camera on by itself: it says the device is ready and
+  waits for its button. Each change nobody pressed for is said once (`MediaSnapshot.changes`): under the
+  preview before the call, as a toast in it.
+- **Switching tracks safely.** A new microphone or camera is swapped into its existing LiveKit publication
+  (`replaceTrack`): nobody sees it stop and start, it stays muted or not, and the organizer's mute still finds
+  it. LiveKit mutes a publication whose device was unplugged; the room tells that apart from the organizer's
+  mute, and unmutes it again only if the person's microphone (or camera) was on.
+- **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
+  doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays
+  there, now and as people arrive, and LiveKit's device handling knows it. Firefox lists speakers only once the
+  page has used the microphone. A chosen speaker that's unplugged falls back to the system's, and is used again
+  when it's back. Where a page can't choose (Safari), the menus say calls play through the speaker the system
+  uses, and where to change it.
+- **Each person's volume, for you** (`apps/web/src/features/call/volume.ts`). From 0 (muted for you) to 100%,
+  on the element that plays that person's voice (`RemoteAudioTrack.setVolume`, LiveKit's element playback;
+  a tab they share plays at its own volume). Their track itself is never touched: it stays exactly as it
+  arrived, so turning someone down, or a muted speaker, never changes what the person sends, what's recorded or
+  transcribed, or anyone else's sound. It's set again on every element that plays them (a resubscribed track,
+  media held back and played again around a key change or breakout rooms, a reconnect). Levels are kept for
+  this call in this tab's `sessionStorage` (`alcove.callVolumes`, `CallVolumesSchema`), by the random identity
+  each connection has in the call, never a name or address: a reload keeps them, leaving the call or closing the
+  tab forgets them, and someone with an account who comes back on a new connection keeps theirs (matched in
+  memory only). Browsers that lock an element's volume (iPhones) don't offer it. There's no going above 100%:
+  that needs Web Audio on the way to the speaker, which LiveKit turned off by default because echo cancellation
+  doesn't cover it everywhere.
 - The microphone test (`apps/web/src/features/call/devices.ts`) records three seconds in memory and plays
   them back through the chosen speaker. Nothing is uploaded or kept. In the call, **Play test sound** plays a
   short chime through the chosen speaker.
 - `getDisplayMedia` for screen sharing; ending it from the browser's own control updates the call.
-- A Web Audio analyser drives the mic meter, the speaking ring and the recorder waveform.
+- A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
+  in its menu), the speaking ring and the recorder waveform.
+- Sound the browser won't play until the page is clicked (Safari, when nothing is being captured) is asked for
+  with a toast, and the first click or key press starts it (`CallRoom.startAudio`).
 - `NotesRecorder` picks the first supported codec (Opus in WebM, then MP4, then Ogg) at 32 kbps. It records
   through a Web Audio graph (a `MediaStreamAudioDestinationNode`), so switching microphones mid-recording
   carries on in the same recording instead of going silent; MediaRecorder can't change its input track.
-- There's no per-person playback volume yet. Choosing a speaker already applies to the test sound.
 
 Beside it, `SpeechClips` (`apps/web/src/features/call/speech.ts`) feeds the live transcript: an
 AudioWorklet (`apps/web/public/pcm-capture.js`) mixes the microphone to mono, filters and resamples it to
