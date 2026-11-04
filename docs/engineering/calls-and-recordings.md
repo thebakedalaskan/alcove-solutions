@@ -111,8 +111,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
   calls whose room is gone.
 - **Who's in** comes from admission, sealed in the call's state: never from LiveKit's API on reads, so a
   call's reads cost LiveKit nothing. Each participant also has a `seat`, the same across their reconnections (a
-  reload) and, for the organizer, on any device, which viewers' own layouts key them by
-  ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device gets a new seat.
+  reload, a comeback, a move to another device) and, for the organizer, on any device, which viewers' own layouts
+  key them by ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device without
+  moving gets a new seat.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, encrypted, plays everyone else's audio on the chosen
   speaker, and refetches the call on nudges, arrivals and departures. One screen is shared at a time.
@@ -350,8 +351,9 @@ device pickers.
   `sessionStorage` for the tab, `alcove.callLayout.<callId>`: a reload keeps it, and leaving the call deletes it.
   It names people by their `seat` (`CallParticipant.seat`), not their participant ID: participant IDs are LiveKit
   identities, new for every connection (a reload is a new connection), while a seat is the same across someone's
-  reconnections (a reload's pass carries their random `person`; the organizer has one seat on any device; anyone
-  else joining from a second browser is a new person with a new seat). The API makes it when the call is read, a MAC
+  reconnections (a reload's pass carries their random `person`, and so does a move to another device; the organizer
+  has one seat on any device; anyone else joining from a second browser without moving is a new person with a new
+  seat). The API makes it when the call is read, a MAC
   of that `person` under a key for the call from the organizer's root, so nobody can work one out, it stores nothing
   new, and it differs in every call. Shares are named by their sharer's participant ID, since a share lives and dies
   with its connection. Neither store holds a name, an address, or anything said or shared.
