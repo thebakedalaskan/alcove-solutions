@@ -1,7 +1,7 @@
 import {
   CALL_TOPIC, CAPTION_LANGUAGES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, type AnswerPart, type Breakouts, type CallAction, type CallCard,
   type CallEndResult, type CallMls, type CallMlsItem, type CallNudge, type CallRole, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CatchUp,
-  type Person
+  type Person, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
@@ -181,6 +181,20 @@ function forViewer(v: Viewer, p: Person, identity: string): Person {
   return { id: identity, name: p.name, email: '', ...(p.portrait ? { portrait: p.portrait } : {}) };
 }
 
+/**
+ * Who said each line: the person behind the participant ID it was heard from, as `v` may see them (everyone in
+ * full for the notes). An ID the call doesn't know names nobody.
+ */
+function speakersIn(s: Stored, organizer: Person, v?: Viewer | undefined): (identity: string) => Speaker | undefined {
+  const by = new Map(s.people.map((j) => [j.identity, j]));
+  return (identity) => {
+    const j = by.get(identity);
+    if (!j) return undefined;
+    const p = personFor(j, identity, j.name, organizer);
+    return { name: p.name, person: v ? forViewer(v, p, identity) : p };
+  };
+}
+
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const o = v.organizer;
   const { row, state: s } = await load(o, db, callId);
@@ -205,7 +219,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     breakouts: breakoutsOf(rooms),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     notes: { status: s.notes.status, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
-    transcript: transcripts.spoken(heard, { name: organizer.name, person: forViewer(v, organizer, row.host_identity ?? 'organizer') }),
+    transcript: transcripts.spoken(heard, speakersIn(s, organizer, v)),
     notices: s.notices
   };
 }
@@ -448,14 +462,22 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
 }
 
 /** Transcribes a few seconds of speech into the call's live transcript, while notes are on. */
-export async function transcribe(v: Viewer, callId: string, clip: transcripts.Clip): Promise<CallState> {
+/**
+ * Speech the organizer's browser heard, into the live transcript under whoever said it: the organizer, or anyone
+ * else it plays (someone in the call, or just gone, for a clip still on its way). It's placed in the breakout room
+ * the organizer is in, if any, so the notes can keep rooms apart.
+ */
+export async function transcribe(v: Viewer, callId: string, clip: transcripts.Clip, speaker: string): Promise<CallState> {
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
   const ctx = { callId, segment: clip.segment, startMs: clip.startMs, notes: state.notes.status, currentSegment: state.notes.segment };
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
   if (state.notes.status !== 'on' || !state.notes.recordingId || !state.notes.noteId) throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
-  await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip);
+  const who = state.people.find((j) => j.identity === speaker);
+  if (!who || (who.status !== 'in' && who.status !== 'left')) throw new ValidationError('That speech isn’t from anyone in this call.', { context: ctx });
+  const room = state.breakouts.open?.visiting ?? undefined;
+  await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip, { speaker, ...(room ? { room } : {}) });
   await nudge(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
@@ -672,7 +694,7 @@ async function sofar(o: Owner, callId: string, what: string) {
   const all = await transcripts.lines(o, o.pool, s.notes.noteId);
   const brief = (ls: transcripts.Line[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
-    seconds: asOf, lines: transcripts.spoken(ls, { name: person.name, person }), live: true
+    seconds: asOf, lines: transcripts.spoken(ls, speakersIn(s, person)), live: true
   });
   return { all, asOf, gaps: gapsOf(s.notes.history, asOf), person, brief };
 }
@@ -723,7 +745,10 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       // The MLS log only matters while the call runs.
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
-      if (s.notes.noteId) await finishRecording(o, c, s.notes.noteId, duration, s.breakouts.held.map((h) => ({ ...h, from: recorded(s.notes.history, h.from, duration), to: recorded(s.notes.history, h.to, duration) })));
+      if (s.notes.noteId) {
+        const held = s.breakouts.held.map((h) => ({ ...h, from: recorded(s.notes.history, h.from, duration), to: recorded(s.notes.history, h.to, duration) }));
+        await finishRecording(o, c, s.notes.noteId, duration, held, speakersIn(s, await me(o)));
+      }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }
     clog.info(row.state === 'live' ? 'call ended' : 'left an ended call', { callId, meetingId: row.meeting_item_id, duration, noteId: s.notes.noteId });

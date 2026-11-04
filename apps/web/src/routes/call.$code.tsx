@@ -17,7 +17,7 @@ import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/med
 import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { SharePicker } from '~/features/call/SharePicker';
-import { SpeechClips } from '~/features/call/speech';
+import { CallEars } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms } from '~/features/call/Stage';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
@@ -39,7 +39,7 @@ const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.fl
 const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
 /** Before the room has connected: nobody's media yet. */
 const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0 };
-const NO_ROOM: CallRoom = { getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, playOnly: () => undefined, leave: async () => undefined };
+const NO_ROOM: CallRoom = { getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, leave: async () => undefined };
 /**
  * One room connection per call session. React may mount the screen twice (StrictMode in dev); a second
  * connection under the same identity would push the first out of the room, so remounts share this one,
@@ -166,22 +166,33 @@ function InCall({ session }: { session: CallSession }) {
     };
   }, [session, media, toast]);
 
-  /* The recorder and the live transcript follow the call's notes, from the organizer's microphone only. */
+  /*
+   * The call's notes, in the organizer's browser. The recorder keeps the organizer's microphone; the live transcript
+   * hears everyone this browser plays (its own microphone and the people in its part of the call), each under
+   * their own name.
+   */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError);
-  const speech = useRef<SpeechClips | null>(null);
-  if (!speech.current) speech.current = new SpeechClips((c) => session.transcribe(c), setHeardProblem);
+  const ears = useRef<CallEars | null>(null);
+  if (!ears.current) ears.current = new CallEars((c, speaker) => session.transcribe(c, speaker), setHeardProblem);
   const micTrack = media.micTrack();
   const segment = state.notes.recording.segment;
   const live = state.phase === 'in-call';
   useEffect(() => {
     const r = recorder.current;
-    const s = speech.current;
-    if (!r || !s) return;
-    if (organizer && on && live && micTrack) { r.start(micTrack, segment); s.start(micTrack, segment); }
-    else if (!on || !organizer) { r.stop(); s.stop(); }
+    if (!r) return;
+    if (organizer && on && live && micTrack) r.start(micTrack, segment);
+    else if (!on || !organizer) r.stop();
   }, [organizer, on, live, segment, micTrack]);
-  useEffect(() => () => speech.current?.stop(), []);
+  // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
+  const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
+  useEffect(() => {
+    const e = ears.current;
+    if (!e) return;
+    if (organizer && on && live && micTrack) e.follow(segment, [{ identity: self, track: micTrack }, ...room.heard()]);
+    else if (!on || !organizer) e.stop();
+  }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
+  useEffect(() => () => ears.current?.stop(), []);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. */
   const shown = useRef(new Set<string>());
@@ -237,7 +248,7 @@ function InCall({ session }: { session: CallSession }) {
     if (!gone && !outOfGroup) return;
     over.current = true;
     recorder.current?.stop();
-    speech.current?.stop();
+    ears.current?.stop();
     session.close();
     void room.leave();
     guardRef.current.release();
@@ -406,7 +417,7 @@ function InCall({ session }: { session: CallSession }) {
 
   /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
   const switchNotes = async (v: boolean) => {
-    if (!v) await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
+    if (!v) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
     session.setNotes(v);
     if (v && !panel && innerWidth >= 1100) setPanel('notes');
   };
@@ -497,7 +508,7 @@ function InCall({ session }: { session: CallSession }) {
   const end = async () => {
     setLeaving(true);
     try {
-      if (organizer) await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
+      if (organizer) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
       const r = await session.leave();
       over.current = true;
       guard.release();

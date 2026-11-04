@@ -158,7 +158,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
           get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
           act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
           audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
-          transcribe: async (id, c) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, p), 'call state'),
+          transcribe: async (id, c, speaker) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, { ...p, [AUDIO_HEADERS.speaker]: speaker }), 'call state'),
           catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
           askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `${live(id)}/ask`, { question }, p),
           translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
@@ -227,7 +227,7 @@ interface CallTransport {
   get(id: string): Promise<CallState>;
   act(id: string, a: CallAction): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
-  transcribe(id: string, c: TranscriptClip): Promise<CallState>;
+  transcribe(id: string, c: TranscriptClip, speaker: string): Promise<CallState>;
   catchUp(id: string, minutes: number | undefined): Promise<CatchUp>;
   askSoFar(id: string, question: string): Promise<AnswerPart[]>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
@@ -642,7 +642,10 @@ class HttpCall extends Live<CallState> implements CallSession {
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
   appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
   /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
-  transcribe = async (c: TranscriptClip) => { const s = await this.t.transcribe(this.state.callId, c); this.set({ ...this.state, transcript: s.transcript }); };
+  transcribe = async (c: TranscriptClip, speaker?: string | undefined) => {
+    const s = await this.t.transcribe(this.state.callId, c, speaker ?? this.ticket.identity);
+    this.set({ ...this.state, transcript: s.transcript });
+  };
   catchUp = (minutes?: number | undefined) => this.t.catchUp(this.state.callId, minutes);
   askSoFar = (question: string) => this.t.askSoFar(this.state.callId, question);
   close = () => {

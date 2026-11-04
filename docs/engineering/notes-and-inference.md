@@ -180,7 +180,8 @@ sequenceDiagram
 ```
 
 1. **In the browser.** Beside the encrypted MediaRecorder pieces, `apps/web/src/features/call/speech.ts`
-   runs the microphone through an AudioWorklet (`apps/web/public/pcm-capture.js`) that mixes it to mono,
+   runs the microphone (in a call, the organizer's browser runs each voice it plays, the organizer's own and
+   each other microphone in its part of the call, on its own: `CallEars`) through an AudioWorklet (`apps/web/public/pcm-capture.js`) that mixes it to mono,
    filters out everything above the speech band and resamples it to 16 kHz. The samples are cut into clips
    at natural pauses, clips with no voice in them are dropped, and the rest are sent one at a time, in
    order, with a few retries. A lost clip costs a line of transcript, never the recording. Turning notes
@@ -189,7 +190,8 @@ sequenceDiagram
    is 16 kHz mono 16-bit PCM WAV (`content-type: audio/wav`) of at most 30 seconds
    (`MAX_TRANSCRIPT_CLIP_MS`, 960,044 bytes). The headers are `x-alcove-segment` (the recording segment),
    `x-alcove-start-ms` (where the clip starts in its segment, pauses not counted) and
-   `x-alcove-duration-ms`. A declared `content-length` over the limit is refused before the body is read;
+   `x-alcove-duration-ms`, and for a call `x-alcove-speaker` (the participant ID of whoever's voice it is,
+   which must be someone in the call, or `400 invalid`). A declared `content-length` over the limit is refused before the body is read;
    then the WAV header is checked (RIFF/WAVE, PCM, one channel, 16,000 Hz, 16 bits). Anything else is
    `400 invalid`. Each account may send 120 clips a minute, calls and room recordings together; past that
    the answer is `503 unavailable` ("Too many attempts").
@@ -197,7 +199,8 @@ sequenceDiagram
    current one. For a room recording, only while it is recording (not paused), and only segment 0.
    Otherwise `409 conflict` (`400 invalid` for a room segment other than 0). Only the account's own calls
    and recordings: anyone else gets `404 not-found`.
-4. **Once only.** A clip is tagged `HMAC(transcript key, "clip:<segment>:<startMs>")`. If that tag is
+4. **Once only.** A clip is tagged `HMAC(transcript key, "clip:<segment>:<startMs>:<speaker>")` (no speaker
+   in a room recording), so two people starting at the same moment are both kept. If that tag is
    already stored, the clip is skipped without calling NEAR AI, so a retried upload is transcribed and
    kept once, whether or not anything in it survived the filter.
 5. **Transcription and the filter.** NEAR AI returns timed segments. Alcove drops what Whisper is known to
@@ -215,8 +218,9 @@ sequenceDiagram
    The insert holds a share lock on the recording row. A clip that arrives after the recording stopped is
    dropped, because its note is already finished.
 8. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
-   oldest first. Call lines are attributed to the organizer (calls have one participant); room lines name
-   nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
+   oldest first. Each call line is said by whoever's voice it was, named from the call's people as
+   the viewer may see them (a guest sees names, never email addresses), with the breakout room it was said in,
+   if any; room lines name nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
    newer mic or notes change.
 
 ## When the recording stops
@@ -227,7 +231,7 @@ sequenceDiagram
 1. The note becomes `pending` with its duration: for a call, its length from start to leave; for a room
    recording, the seconds recorded.
 2. The transcript rows are opened, sorted by `at` and written into the note's sealed manifest (in a call
-   every line is the organizer's; in a room nobody is named), with the verifications they went to as
+   each line keeps who said it and where; in a room nobody is named), with the verifications they went to as
    `inference`. Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
    deleted. A call's breakout rooms are written into the manifest too, in recording time, until the notes
    are written.
@@ -593,8 +597,9 @@ answers dropped because a note they read went while they were written.
 - **New images need measuring.** When NEAR AI moves to another dstack release or another machine size,
   verification refuses it (`os-image`) and notes wait until its measurements are added to
   `dstack-images.ts`, computed the same way.
-- **Who said what.** Calls have one participant, so every call line is attributed to the organizer. Room
-  recordings have no speaker diarization.
+- **Who said what.** A call line is said by whoever's voice it was, as the organizer's browser heard each
+  voice on its own; someone in a breakout room the organizer isn't in isn't heard. The notes recording keeps
+  the organizer's microphone only. Room recordings have no speaker diarization.
 - **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the
   balance below zero ([Payments and usage](payments-and-usage.md)).
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't

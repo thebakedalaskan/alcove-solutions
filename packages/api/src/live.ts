@@ -329,8 +329,12 @@ export interface CallSession extends LiveStore<CallState> {
   translate(lineIds: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** Encrypts and stores one piece of the notes recording. */
   appendAudio(piece: AudioPiece): Promise<void>;
-  /** Transcribes a few seconds of speech into the live transcript. Only while notes are on. */
-  transcribe(clip: TranscriptClip): Promise<void>;
+  /**
+   * Transcribes a few seconds of speech into the live transcript, under whoever said it. The organizer's browser
+   * hears everyone it plays, each on their own: `speaker` is the participant ID of the person heard, and this
+   * browser's own when left out. Only while notes are on.
+   */
+  transcribe(clip: TranscriptClip, speaker?: string | undefined): Promise<void>;
   /** What's happened so far, for you alone: the last `minutes`, or the whole call. */
   catchUp(minutes?: number | undefined): Promise<CatchUp>;
   /** Asks about the call so far, for you alone, with the moments the answer comes from. */

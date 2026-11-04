@@ -877,6 +877,50 @@ describe('joining by link', () => {
     await host.leave();
   });
 
+  it('transcribes everyone the organizer hears, each line under whoever said it, live and in the notes', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    host.setNotes(true);
+    await settle(host, (x) => x.notes.status === 'on');
+    await host.appendAudio(piece(audioBytes('everyone'), 0, 0));
+    // The organizer's browser hears its own microphone and Sam's, each on its own: both may start at once, and a
+    // retried clip is kept once.
+    await host.transcribe(speech('Shall we start with the budget?', 0, 0));
+    await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
+    await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
+    const organizer = host.getSnapshot().participants.find((p) => p.isOrganizer)?.person.name ?? '';
+    const said = (ls: { speaker?: { name: string } | undefined; text: string }[]) => ls.map((l) => `${l.speaker?.name ?? '?'}: ${l.text}`).sort();
+    const both = [`${organizer}: Shall we start with the budget?`, 'Sam: Yes, the budget first.'];
+    expect(said((await settle(sam, (x) => x.transcript.length === 2)).transcript)).toEqual(both);
+    // Sam, a guest, sees the organizer as guests see everyone: a name and an arch, no email.
+    expect(sam.getSnapshot().transcript.find((l) => l.speaker?.name === organizer)?.speaker?.person?.email).toBe('');
+    // Nobody outside the call can be named.
+    expect(code(await host.transcribe(speech('Who said this?', 0, 9000), 'p_nobodynobodynobodynobo').catch((e: unknown) => e))).toBe('invalid');
+
+    // In a breakout room, what's said there is kept as said there.
+    host.openRooms({ rooms: [{ name: 'Design', emails: [] }, { name: 'Support', emails: [] }], minutes: 5 });
+    const design = (await settle(host, (x) => x.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
+    host.visitRoom(design);
+    await settle(host, (x) => x.breakouts.open?.rooms.find((r) => r.id === design)?.members.includes(host.ticket.identity) ?? false);
+    await host.transcribe(speech('Design starts with the colours.', 0, 12_000));
+    host.visitRoom(null);
+    await settle(host, (x) => !(x.breakouts.open?.rooms.some((r) => r.members.includes(host.ticket.identity)) ?? true));
+    await host.transcribe(speech('Back in the main room.', 0, 16_000));
+    const rooms = (await settle(host, (x) => x.transcript.length === 4)).transcript.map((l) => [l.text, l.room ?? null]);
+    expect(rooms).toEqual(expect.arrayContaining([['Design starts with the colours.', design], ['Back in the main room.', null]]));
+
+    // The notes keep who said what, and where.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const lines = (await org.api.notes.get(noteId)).transcript ?? [];
+    expect(said(lines)).toEqual([...both, `${organizer}: Back in the main room.`, `${organizer}: Design starts with the colours.`].sort());
+    expect(lines.find((l) => l.text === 'Design starts with the colours.')?.room).toBe(design);
+  });
+
   it('validates guest names and keeps them and passes out of rows and logs', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});

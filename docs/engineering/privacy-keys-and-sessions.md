@@ -422,8 +422,9 @@ Moving, in order:
    than experimental ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
 4. **End-to-end encrypted call media.** Done ([Calls and recordings › End-to-end
    encryption](calls-and-recordings.md#end-to-end-encryption)): MLS keys made in browsers, frames encrypted
-   before they reach an SFU that holds no keys, new keys with every join and leave. Left: every speaker in
-   the notes (each browser sending its own audio to the notes service while notes are on).
+   before they reach an SFU that holds no keys, new keys with every join and leave. While notes are on,
+   the organizer's browser sends everyone's speech it hears to the notes service, outside the media
+   encryption (left: an attested notes participant, so no browser sends audio in the clear to the API).
 5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
    the subjects and emails the indexes hide), `Kowner` on suspected compromise, and `Kservice`; use
    `keyVersion`.

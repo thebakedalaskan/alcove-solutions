@@ -306,7 +306,7 @@ export function createApp(d: Deps) {
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
     const v = organizerOnly(c);
     speechLimiter(v.organizer.ownerId, 'transcribe');
-    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c)));
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speakerOf(c)));
   });
   /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
@@ -497,6 +497,13 @@ function isSpeechWav(b: Uint8Array): boolean {
 }
 
 /** Reads a transcript clip: 16 kHz mono WAV, and where it starts in its segment. */
+/** Whose speech a call's clip is: a participant ID, which the call checks is someone in it. */
+function speakerOf(c: Context): string {
+  const s = c.req.header(AUDIO_HEADERS.speaker) ?? '';
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) throw new ValidationError('Speech for a call’s transcript must say whose it is.', { context: { header: AUDIO_HEADERS.speaker } });
+  return s;
+}
+
 async function clip(c: Context): Promise<Clip> {
   const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
   if (!/^audio\/(?:wav|x-wav|wave)\b/.test((c.req.header('content-type') ?? '').toLowerCase())) throw new ValidationError('Speech for the transcript must be WAV audio.');

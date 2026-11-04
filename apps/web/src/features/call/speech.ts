@@ -48,6 +48,19 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 interface Frame { pcm: Float32Array; rms: number; voice: boolean }
 interface Graph { ctx: AudioContext; node: Promise<AudioWorkletNode>; source: MediaStreamAudioSourceNode | null }
+/**
+ * Listening beside others, as CallEars does: one audio context for every voice, and the segment's clock (pauses
+ * not counted) instead of one's own, so a voice heard from part-way through still places its clips right.
+ */
+export interface Shared { context: AudioContext; elapsedMs: () => number }
+
+/** The capture worklet, loaded once in each audio context however many voices it hears. */
+const loaded = new WeakMap<AudioContext, Promise<void>>();
+function loadCapture(ctx: AudioContext): Promise<void> {
+  let p = loaded.get(ctx);
+  if (!p) { p = ctx.audioWorklet.addModule('/pcm-capture.js'); loaded.set(ctx, p); }
+  return p;
+}
 
 /**
  * Cuts the microphone into clips of speech and sends them, in order, while notes are on. The screen
@@ -76,7 +89,8 @@ export class SpeechClips {
   private restUntil = 0;
   private shown: string | null = null;
 
-  constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
+  constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void,
+    private readonly shared: Shared | null = null) {}
 
   /** Starts (or carries on) listening into `segment`. A new segment counts from 0 again. */
   start(track: MediaStreamTrack, segment: number): void {
@@ -124,7 +138,8 @@ export class SpeechClips {
     if (!g) return;
     g.source?.disconnect();
     void g.node.then((n) => { n.port.onmessage = null; n.disconnect(); }, () => undefined);
-    void g.ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
+    // A shared context belongs to whoever shares it.
+    if (!this.shared) void g.ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
   }
 
   private clear() {
@@ -158,9 +173,9 @@ export class SpeechClips {
       this.say('The live transcript can’t start in this browser. The recording is still saved.');
       return null;
     }
-    const ctx = new AudioContext();
-    wakeAudio(ctx);
-    const node = ctx.audioWorklet.addModule('/pcm-capture.js').then(() => {
+    const ctx = this.shared?.context ?? new AudioContext();
+    if (!this.shared) wakeAudio(ctx);
+    const node = loadCapture(ctx).then(() => {
       const n = new AudioWorkletNode(ctx, 'pcm-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
       n.port.onmessage = (e: MessageEvent<unknown>) => { if (this.graph?.ctx === ctx && e.data instanceof Float32Array) this.take(e.data); };
       // Some browsers only run nodes that lead to the speakers. Nothing is heard: the gain is zero.
@@ -175,7 +190,7 @@ export class SpeechClips {
 
   private take(chunk: Float32Array) {
     if (this.paused || this.segment < 0) return;
-    if (this.at < 0) this.at = Math.max(0, Math.round(((performance.now() - this.startedAt) * RATE) / 1000) - chunk.length);
+    if (this.at < 0) this.at = Math.max(0, Math.round(((this.shared?.elapsedMs() ?? performance.now() - this.startedAt) * RATE) / 1000) - chunk.length);
     for (const v of chunk) {
       this.partial[this.filled++] = v;
       if (this.filled < FRAME) continue;
@@ -312,3 +327,99 @@ function wav(pcm: Float32Array): Blob {
   return new Blob([bytes], { type: 'audio/wav' });
 }
 
+/**
+ * The live transcript of a call, heard in the organizer's browser: its own microphone and everyone else's it plays
+ * (the people in its part of the call), each on its own, so every line is said by whoever's voice it was. Every
+ * voice keeps the segment's one clock, which stops while paused, so lines fall where they were said. A voice that
+ * goes sends what it had heard first.
+ */
+export class CallEars {
+  private ctx: AudioContext | null = null;
+  private voices = new Map<string, SpeechClips>();
+  private segment = -1;
+  private startedAt = 0;
+  private pausedAt: number | null = null;
+  private pausedFor = 0;
+  private problems = new Map<string, string>();
+
+  constructor(private readonly upload: (clip: TranscriptClip, speaker: string) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
+
+  /**
+   * Listens to exactly `voices` (by participant ID) in `segment`. New voices start, a voice on a new track carries
+   * on with it, and a voice that's gone sends what it had heard and stops. A new segment starts the clock again.
+   */
+  follow(segment: number, voices: readonly { identity: string; track: MediaStreamTrack }[]): void {
+    if (segment !== this.segment) {
+      this.drop();
+      this.segment = segment;
+      this.startedAt = performance.now();
+      this.pausedAt = null;
+      this.pausedFor = 0;
+    }
+    const want = new Map(voices.map((v) => [v.identity, v.track]));
+    for (const [identity, clips] of this.voices) {
+      if (want.has(identity)) continue;
+      this.voices.delete(identity);
+      this.problem(identity, null);
+      void clips.flush().finally(() => clips.stop());
+    }
+    for (const [identity, track] of want) {
+      let clips = this.voices.get(identity);
+      if (!clips) {
+        clips = new SpeechClips((c) => this.upload(c, identity), (m) => this.problem(identity, m), { context: this.context(), elapsedMs: () => this.elapsedMs() });
+        this.voices.set(identity, clips);
+      }
+      clips.start(track, segment);
+      if (this.pausedAt !== null) clips.pause();
+    }
+  }
+
+  /** Stops hearing everyone, the clock with them, until resume(). Each voice still sends the clip it was in. */
+  pause(): void {
+    if (this.pausedAt !== null || this.segment < 0) return;
+    this.pausedAt = performance.now();
+    for (const clips of this.voices.values()) clips.pause();
+  }
+
+  resume(): void {
+    if (this.pausedAt === null) return;
+    this.pausedFor += performance.now() - this.pausedAt;
+    this.pausedAt = null;
+    for (const clips of this.voices.values()) clips.resume();
+  }
+
+  /** Sends what every voice has heard so far and waits for it to be transcribed. */
+  async flush(): Promise<void> {
+    await Promise.all([...this.voices.values()].map((c) => c.flush()));
+  }
+
+  /** Stops hearing everyone. What hasn't been sent is dropped: flush() first to keep it. */
+  stop(): void {
+    this.drop();
+    this.segment = -1;
+    const ctx = this.ctx;
+    this.ctx = null;
+    if (ctx) void ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
+  }
+
+  private drop() {
+    for (const clips of this.voices.values()) clips.stop();
+    this.voices.clear();
+    this.problems.clear();
+    this.onProblem(null);
+  }
+
+  private context(): AudioContext {
+    if (!this.ctx) { this.ctx = new AudioContext(); wakeAudio(this.ctx); }
+    return this.ctx;
+  }
+
+  private elapsedMs(): number { return (this.pausedAt ?? performance.now()) - this.startedAt - this.pausedFor; }
+
+  /** One trouble shown at a time: the first voice's that's still unsolved, or none. */
+  private problem(identity: string, message: string | null) {
+    if (message) this.problems.set(identity, message);
+    else this.problems.delete(identity);
+    this.onProblem(this.problems.values().next().value ?? null);
+  }
+}

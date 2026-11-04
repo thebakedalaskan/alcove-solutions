@@ -90,7 +90,8 @@ export type RecordingAction = z.infer<typeof RecordingActionSchema>;
  * Audio pieces and transcript clips travel as raw bytes with their position in these headers: a
  * piece by its sequence number, a clip by where it starts in its segment.
  */
-export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms' } as const;
+/** Audio's place in the recording, and for a call's speech, whose it is (`speaker`: a participant ID in the call). */
+export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms', speaker: 'x-alcove-speaker' } as const;
 /** Mutations carry an operation ID so a retried request never applies twice (docs: Network and API contract). */
 export const OPERATION_HEADER = 'x-alcove-operation';
 export const MAX_AUDIO_PIECE_BYTES = 2 * 1024 * 1024;
