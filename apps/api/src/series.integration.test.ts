@@ -170,7 +170,7 @@ describe('memory across a series', () => {
     // The next call can't come before the one it follows, nor be over already, nor be at no time at all.
     const dayBefore = new Date(new Date(third.startsAt).getTime() - 86_400_000).toISOString();
     expect(refusal(await org.api.meetings.scheduleNext(three.meetingId, dayBefore).catch((e: unknown) => e))).toEqual(['invalid', 'The next call has to start after this one.']);
-    const afterButPast = new Date(new Date(first.startsAt).getTime() + 1000).toISOString();
+    const afterButPast = new Date(new Date(first.startsAt).getTime() + 1).toISOString();
     expect(refusal(await org.api.meetings.scheduleNext(one.meetingId, afterButPast).catch((e: unknown) => e))).toEqual(['invalid', 'The next call has to start in the future.']);
     expect(code(await org.api.meetings.scheduleNext(three.meetingId, 'next Tuesday').catch((e: unknown) => e))).toBe('invalid');
     expect((await org.api.meetings.upcoming()).filter((m) => m.seriesId === seriesId)).toEqual([]);
