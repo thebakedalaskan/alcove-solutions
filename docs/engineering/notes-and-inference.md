@@ -1003,6 +1003,9 @@ has one behaviour, the same for everyone, and says it here.
   it moved.
 - **Corrections are line by line.** A line's words and speaker can be corrected, not split, merged or removed,
   and the notes take a correction only when the organizer has them written again.
+- **Written again, kept by words.** A new decision, question or follow-up that shares most of a settled one's
+  words, near the same moment, is dropped as the same one, even when it says the opposite (a new "Drop the old
+  logo" beside a rejected "Keep the old logo"). Telling the notes model what's settled is the main guard.
 - **An attested notes participant.** What the notes are made from leaves the call through the organizer's
   browser: it sends what it hears to the API, everyone's speech as clips to transcribe and the recording's
   pieces, over TLS but outside the media's end-to-end encryption. The API seals both at rest and sends speech on
