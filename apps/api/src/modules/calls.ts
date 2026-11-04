@@ -26,7 +26,7 @@ import { blankNote, createNoteWithRecording, finishRecording } from './notes';
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
 import { mayStandIn, noticesFor, standIns, type HostChange } from './hosting';
 import {
-  BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readersAt, relocate,
+  BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, mainScribeOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readersAt, relocate,
   type Room
 } from './places';
 import * as screens from './screens';
@@ -771,12 +771,24 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */
 
+/** Everything in `act` but a raised hand, an ask for notes and your own share's pointing is whoever hosts' (the organizer's own besides, checked by the API). */
+const anyone = (a: CallAction) => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point';
+/**
+ * Refused for a connection that doesn't host now (`who`: the connection that does, by default whoever hosts): checked
+ * again where it counts, as the host may have changed since the request came in. The same 409 as the API's for a
+ * connection that hosted before, so its browser drops what it was still sending.
+ */
+function stillHosting(v: Viewer, s: Stored, ctx: Record<string, string | number | boolean | null>, who: string | null = s.host): void {
+  if (who !== v.pass.identity) throw new ConflictError('You’re not hosting this call from here any more.', { context: { ...ctx, why: 'not host' }, level: 'info' });
+}
+
 export async function act(v: Viewer, callId: string, a: CallAction): Promise<CallState> {
   const o = v.organizer;
   if (a.type === 'mute') {
     // Carried out by LiveKit; nothing about the call changes here.
-    const { row } = await load(o, o.pool, callId);
+    const { row, state } = await load(o, o.pool, callId);
     if (row.state !== 'live' || !row.room_name) throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
+    stillHosting(v, state, { callId, action: a.type });
     await o.livekit.muteTrack(row.room_name, a.identity, a.trackSid);
     clog.info('host control', { callId, action: a.type, target: a.identity });
     return view(v, o.pool, callId);
@@ -792,6 +804,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     let locked = row.locked;
     let gone: string[] = [];
     const ctx = { callId, action: a.type };
+    // Under the call's row lock: a stand-in's last click as the organizer takes the call back is refused, not carried out.
+    if (!anyone(a)) stillHosting(v, state, ctx);
     if (a.type === 'hand') {
       s = withPerson(s, v.pass.identity, (j) => ({ ...j, hand: a.up }));
     } else if (a.type === 'others-point') {
@@ -869,11 +883,12 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
         ...s, removed: [...s.removed, target.person],
         people: s.people.map((j) => (j.person === target.person ? { ...j, status: j.status === 'in' ? 'left' : j.status === 'waiting' ? 'denied' : j.status, left: j.status === 'in' ? Date.now() : j.left } : j))
       }, gone, tenthsIn(row.started_at));
-      // On the invite because they were let in from the link (in this run of the call or an earlier one): removing
-      // them takes that back, so they don't get the notes, once no other connection of theirs is still in the call.
+      // On the invite because they were let in from the link (in this run of the call or an earlier one): the organizer
+      // removing them takes that back, so they don't get the notes, once no other connection of theirs is still in the
+      // call. The invite is the organizer's alone: someone standing in only takes them out of the call.
       const email = target.email;
       const stillIn = (e: string) => s.people.some((j) => j.email === e && j.status === 'in' && !s.removed.includes(j.person));
-      if (email && !stillIn(email) && await addedFromLink(o, c, row.meeting_item_id, email)) {
+      if (v.isOrganizer && email && !stillIn(email) && await addedFromLink(o, c, row.meeting_item_id, email)) {
         await takeOffInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, email);
         clog.info('taken off the invite', { callId, meetingId: row.meeting_item_id, noteId: s.notes.noteId });
       }
@@ -972,6 +987,7 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
   const ctx = { callId, segment: piece.segment, seq: piece.seq, currentSegment: state.notes.segment };
+  stillHosting(v, state, ctx, mainScribeOf(state));
   const into = capture.mayCapture(capturing(row, state), 'audio', ctx);
   if (piece.segment !== state.notes.segment) throw new ConflictError('That audio belongs to an earlier part of the recording.', { context: ctx });
   await appendPiece(o, into.recordingId, piece);
@@ -991,6 +1007,8 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   const nowMs = Date.now();
   const s = settle(state, row, nowMs);
   const ctx = { callId, segment: clip.segment, atMs: clip.atMs, currentSegment: state.notes.segment, agoMs: nowMs - began };
+  // Only the browser that transcribes the main room now (whoever hosts): another's clips are out of date, and dropped.
+  stillHosting(v, state, ctx, mainScribeOf(state));
   const into = capture.mayCapture(capturing(row, state), 'speech', ctx);
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
   const who = s.people.find((j) => j.identity === speaker);
@@ -1207,7 +1225,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     let s = settle(state, row);
-    if (s.host !== v.pass.identity) throw new ConflictError('Someone else is hosting this call now.', { context: { ...ctx, why: 'not host' }, level: 'info' });
+    stillHosting(v, s, ctx, committerOf(s));
     const epoch = epochIn(row.mls_epoch, s, b.group);
     if (epoch === undefined) throw new ConflictError('That room has closed.', { context: ctx, level: 'info' });
     if (b.generation !== row.mls_generation || b.epoch !== epoch) {
@@ -1663,7 +1681,7 @@ export async function handOff(v: Viewer, callId: string, to: string | null): Pro
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     // Rooms whose time is up close now, taking what was said in them along.
     const s = await roomsChanged(o, c, callId, state, settle(state, row));
-    if (s.host !== v.pass.identity) throw new ConflictError('Someone else is hosting this call now.', { context: { ...ctx, why: 'not host' } });
+    stillHosting(v, s, ctx);
     const from = s.people.find((j) => j.identity === v.pass.identity);
     const can = standIns(s, new Set([v.pass.identity]), connected);
     const next = to === null ? can[0] : can.find((j) => j.identity === to);

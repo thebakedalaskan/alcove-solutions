@@ -124,6 +124,12 @@ export const epochIn = (mainEpoch: number, s: Placing, place: string): number | 
  * one leaf whose commits a group takes, which a joining browser checks is the connection named here).
  */
 export const committerOf = (s: Placing): string | null => s.host;
+/**
+ * The connection whose browser transcribes the main room now (and the room the organizer visits, while they're
+ * there), and records the call's notes: whoever hosts, the organizer's connection or a stand-in's. The same connection
+ * as the committer today, but its own question: a breakout room's own scribe is never this, and never the committer.
+ */
+export const mainScribeOf = (s: Placing): string | null => s.host;
 
 /** Whether there was chat in `place` while this person wasn't in it (they never were, or left before it). */
 export const chatSince = (s: Placing, j: Joined, place: string): boolean => {
