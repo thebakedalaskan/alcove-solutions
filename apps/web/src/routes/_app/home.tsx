@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { NotesFlag, useCopyLink } from '~/features/call/links';
 import { NoteCard } from '~/features/notes/NoteCard';
 import { noteMeta } from '~/features/notes/meta';
+import { PrepCard } from '~/features/series/cards';
 import { freshCalls, useOpenComposer } from '~/features/shell/context';
 import { useNow } from '~/lib/live';
 import { listNames } from '~/lib/people';
@@ -21,6 +22,8 @@ const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('i
 
 /** Alcove's calls and someone's other calendar events, as one agenda. */
 type Item = { kind: 'call'; id: string; startsAt: string; endsAt: string; m: Meeting } | { kind: 'event'; id: string; startsAt: string; endsAt: string; e: CalendarEvent };
+/** The series a call or event continues, when it does. */
+const seriesOf = (i: Item) => (i.kind === 'call' ? i.m.seriesId : i.e.seriesId);
 
 function Home() {
   const session = useQuery(q.session()).data;
@@ -36,6 +39,7 @@ function Home() {
     ...(calendar?.events ?? []).map((e): Item => ({ kind: 'event', id: e.id, startsAt: e.startsAt, endsAt: e.endsAt, e }))
   ].filter((i) => new Date(i.endsAt).getTime() > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const next = items[0];
+  const nextSeries = next ? seriesOf(next) : undefined;
   const rest = items.slice(1);
   const day = (i: Item) => daysFromToday(new Date(i.startsAt));
   const fromCalendar = calendar?.source === 'google' && !calendar.needsAccess;
@@ -65,6 +69,7 @@ function Home() {
         <div className="hcol">
           {calendar?.needsAccess && <ConnectCalendar />}
           {next ? (next.kind === 'call' ? <NextCall m={next.m} now={now} /> : <NextEvent e={next.e} now={now} />) : <NothingScheduled />}
+          {nextSeries && <PrepCard seriesId={nextSeries} me={session?.user.email} />}
           {next && (
             <section className="ac-card" aria-labelledby="laterH">
               <div className="ac-card-head"><h3 id="laterH">Later today</h3>{(firstDay || fromCalendar) && <span className="src"><Icon name="cal" size={14} />{fromCalendar ? 'With Google Calendar' : 'From your calendar'}</span>}</div>
@@ -203,6 +208,7 @@ function EventRow({ e, day = false }: { e: CalendarEvent; day?: boolean }) {
     <CalendarRow when={hm(e.startsAt)} whenNote={day ? shortDay(new Date(e.startsAt)).replace(/ \d+ \w+$/, '') : hm(e.endsAt)}
       title={<a href={e.calendarUrl} target="_blank" rel="noreferrer">{e.title}</a>} people={e.isOrganizer ? e.guests : [e.organizer, ...e.guests]} who={who}
       end={<>
+        {e.seriesId && <SeriesLink seriesId={e.seriesId} title={e.title} />}
         {e.isOrganizer && <Button variant="quiet" size="sm" className="hov" loading={adopt.pending(e.id)} onClick={() => adopt.run(e)}>Use Alcove</Button>}
         {e.join
           ? <a href={e.join.url} target="_blank" rel="noreferrer" className="nflag"><Icon name="video" size={14} />{e.join.label}</a>
@@ -250,10 +256,20 @@ function CallRow({ m, day = false }: { m: Meeting; day?: boolean }) {
       title={<Link to="/join/$code" params={{ code: m.code }} onClick={(e) => e.stopPropagation()}>{m.title}</Link>}
       people={m.guests} who={m.guests.length ? listNames(m.guests) : 'Just you'}
       end={<>
+        {m.seriesId && <SeriesLink seriesId={m.seriesId} title={m.title} />}
         <IconButton icon="pen" size={17} label={`Change ${m.title}`} className="hov" onClick={(e) => { e.stopPropagation(); open(m); }} />
         <IconButton icon="link" size={17} label={`Copy link for ${m.title}`} className="hov" onClick={(e) => { e.stopPropagation(); copy(m.code); }} />
         <NotesFlag notes={m.notes} />
       </>} />
+  );
+}
+
+/** A call in a series, later on: what carries over into it is a click away. */
+function SeriesLink({ seriesId, title }: { seriesId: string; title: string }) {
+  return (
+    <Link to="/notes/series/$seriesId" params={{ seriesId }} className="ac-icon-btn hov" aria-label={`What carries over into ${title}`} title="What carries over" onClick={(e) => e.stopPropagation()}>
+      <Icon name="repeat" size={17} />
+    </Link>
   );
 }
 

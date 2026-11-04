@@ -93,11 +93,14 @@ export function NoteRow({ owner, isNew = false, children }: { owner?: AvatarPers
 
 /**
  * One spoken line: the speaker's arch, their name, what they said and when. Without a person (the
- * same speaker again, or a room recording) the avatar column stays empty.
+ * same speaker again, or a room recording) the avatar column stays empty. `id` makes it a place a
+ * link can go to.
  */
-export function TranscriptLine({ person, name, time, children, className }: { person?: AvatarPerson | undefined; name?: ReactNode; time?: ReactNode; children: ReactNode; className?: string | undefined }) {
+export function TranscriptLine({ person, name, time, children, className, id }: {
+  person?: AvatarPerson | undefined; name?: ReactNode; time?: ReactNode; children: ReactNode; className?: string | undefined; id?: string | undefined;
+}) {
   return (
-    <div className={cn('ac-line', className)}>
+    <div id={id} className={cn('ac-line', className)}>
       {person ? <Avatar person={person} size={26} /> : <span />}
       <div className="min-w-0">{name && <b>{name}</b>}{children}{time}</div>
     </div>

@@ -1,7 +1,7 @@
 import {
   ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, Circle, Clock, Copy, DoorOpen, Ellipsis, Hand,
   House, KeyRound, Languages, LayoutGrid, Link, Lock, LogOut, Mail, MessageCircleQuestion, MessageSquare, Mic, MicOff, MonitorUp, Moon,
-  NotebookText, PanelsTopLeft, Pause, Pencil, PhoneOff, Pin, PinOff, Plane, Play, Plus, Radio, Search, Send, Server, Share, ShieldCheck,
+  NotebookText, PanelsTopLeft, Pause, Pencil, PhoneOff, Pin, PinOff, Plane, Play, Plus, Radio, Repeat, Search, Send, Server, Share, ShieldCheck,
   Smartphone, Split, Square, Sun, Trash2, UserPlus, Users, Video, VideoOff, Volume2, Wifi, X, type LucideIcon, type LucideProps,
   AppWindow, AudioLines, Captions, ChevronUp, Eye, FileText, Focus, Globe, GripVertical, HistoryIcon, LayoutDashboard, LayoutPanelLeft, Maximize2,
   Minimize2, Monitor, MonitorOff, MoveDiagonal2, NotebookPen, RotateCcw, SendHorizontal, Shuffle, Timer
@@ -20,7 +20,7 @@ const ICONS = {
   captions: Captions, up: ChevronUp, viewAuto: LayoutDashboard, viewSpeaker: LayoutPanelLeft, reset: RotateCcw, history: HistoryIcon,
   spotlight: Focus, grow: Maximize2, shrink: Minimize2, notesPen: NotebookPen, tab: Globe, window: AppWindow, monitor: Monitor,
   stopShare: MonitorOff, grip: GripVertical, shuffle: Shuffle, timer: Timer, noise: AudioLines, resize: MoveDiagonal2, transcript: FileText,
-  sendLine: SendHorizontal, eye: Eye
+  sendLine: SendHorizontal, eye: Eye, repeat: Repeat
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

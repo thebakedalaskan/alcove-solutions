@@ -48,7 +48,7 @@ flowchart TB
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
 The API is one application with modules (account, people, meetings, calendar, calls, recordings, audio,
-transcripts, notes, drafting, writer, billing), not separate services. Modules share one database pool and
+transcripts, notes, drafting, writer, series, billing), not separate services. Modules share one database pool and
 one object store, and receive the owner context (the account's keys, opened for this request) explicitly.
 Billing is given only the owner ID and seals its state under `Kservice`. Google sign-in and Calendar live
 in `apps/api/src/google.ts` and `modules/calendar.ts`; only `apps/api/src/inference.ts` and `apps/api/src/evidence.ts`
@@ -74,8 +74,9 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
    for this request (`openOwner`) and adds `ownerId` to the log context.
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
    commitment of method, path and body plus the encrypted response; a retry returns the same response,
-   and a different request under the same ID is `409 conflict`. Note search, asking, audio pieces and
-   transcript clips keep no receipt.
+   and a different request under the same ID is `409 conflict`. Note search, asking, catching up, caption
+   translations, audio pieces, transcript clips, changes to a note's decisions, open questions and
+   follow-ups, and sharing a note keep no receipt.
 6. The handler reads and writes through the vault (encrypted manifests), the audio pipeline (encrypted
    objects), transcript rows, `note_access` (who else may read a note) or Kservice-sealed billing, and calls
    Google or NEAR AI where a feature needs them. Failures are `AppError` subclasses; `onError` logs each

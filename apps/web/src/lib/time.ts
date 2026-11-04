@@ -63,3 +63,15 @@ export function hoursAndMinutes(minutes: number): string {
 }
 /** "4:05" for positions in a recording. */
 export const position = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+
+/**
+ * The same clock time here a week after `iso`, a week further each time until it's still to come.
+ * Moving the date keeps the clock time when summer time starts or ends in between; adding 168 hours wouldn't.
+ */
+export function weekOn(iso: string, now = Date.now()): string {
+  const d = new Date(iso);
+  do { d.setDate(d.getDate() + 7); } while (d.getTime() <= now);
+  return d.toISOString();
+}
+/** Where the browser is, such as "Europe/London": the days in an answer about a series are read in it. */
+export const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;

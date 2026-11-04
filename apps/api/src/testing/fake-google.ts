@@ -16,6 +16,8 @@ export type Spoil = 'deny' | 'wrong-audience' | 'wrong-nonce' | 'expired' | 'no-
 /** A calendar event as Google stores it (the fields Alcove uses). */
 export interface FakeEvent {
   id: string; status?: string; summary?: string; description?: string; location?: string; htmlLink?: string; eventType?: string; hangoutLink?: string;
+  /** On each occurrence of a recurring event: the series' ID. */
+  recurringEventId?: string;
   start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
   organizer?: { email?: string; displayName?: string; self?: boolean };
   attendees?: { email?: string; displayName?: string; self?: boolean; resource?: boolean; responseStatus?: string }[];

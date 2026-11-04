@@ -1,8 +1,8 @@
 import type { CallSession, NoteProgress, RoomRecording } from './live';
-import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider } from './wire';
+import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, QuestionPatch } from './wire';
 import type {
-  AnswerPart, Attestation, Calendar, CreditBalance, ID, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
-  Preferences, Session, SignInResult, Team
+  AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
+  Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
 /** A partial update: any field may be missing or explicitly undefined. */
@@ -47,6 +47,14 @@ export interface AlcoveApi {
     update(id: ID, input: Patch<MeetingInput>): Promise<Meeting>;
     /** Cancels a call; a connected calendar tells everyone. */
     cancel(id: ID): Promise<void>;
+    /**
+     * Schedules the next call in a call's series, starting the series if it isn't in one: the same
+     * title, people, length and notes setting, at `startsAt`, which must be still to come and after the
+     * call. The app sends the same clock time a week on where the person is (the first such time still
+     * to come), so it doesn't move an hour when the clocks change. Not for an occurrence of a recurring
+     * Google Calendar event, whose next one is on the calendar already.
+     */
+    scheduleNext(id: ID, startsAt: ISODate): Promise<Meeting>;
   };
   calendar: {
     /** The coming week's other calendar events, beside Alcove's own calls. */
@@ -75,12 +83,24 @@ export interface AlcoveApi {
     updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
     /** Takes on (owner only), gives, rewords, dates or ticks a follow-up. */
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
+    /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
+    updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
     openActions(): Promise<OpenAction[]>;
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
     /** Shares the notes with more people, by email. They find them in Alcove when they sign in. */
     share(id: ID, emails: string[]): Promise<Note>;
     /** Deletes your own notes for everyone, or removes someone else's from your notes. */
     delete(id: ID): Promise<void>;
+  };
+  series: {
+    /** A series as you see it: what carries over from the newest 24 calls in it whose notes you have, and only those. */
+    get(id: ID): Promise<Series>;
+    /**
+     * Asks across the calls in a series whose notes you have, with the calls and moments the answer
+     * comes from. `timeZone` is where the asker is, as an IANA name such as "Europe/London": the
+     * calls' dates are read in it, so they're the days the asker sees.
+     */
+    ask(id: ID, question: string, timeZone: string): AsyncIterable<SeriesAnswerPart>;
   };
   credits: {
     balance(): Promise<CreditBalance>;

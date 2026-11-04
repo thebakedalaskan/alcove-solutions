@@ -4,9 +4,9 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type Recipient
+  type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -17,7 +17,7 @@ import { inference } from '../inference';
 import { nameFrom } from '../identity';
 import { log } from '../log';
 import { masterKey, openOwner } from '../owners';
-import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
+import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile } from './account';
 import { queueDelete, recordingObjects, segments } from './audio';
 import { answer, briefOf } from './drafting';
@@ -51,7 +51,7 @@ export const NoteManifest = z.object({
   invited: z.array(z.string()),
   /** Email addresses the notes were shared with afterwards. */
   shared: z.array(z.string()),
-  summary: z.string(), decisions: z.array(DecisionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
+  summary: z.string(), decisions: z.array(DecisionSchema), questions: z.array(QuestionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string()),
   /** Breakout rooms the call held, in seconds into the recording, kept until the notes are written and merged into their chapters. */
   breakouts: z.array(HeldRooms),
@@ -64,7 +64,7 @@ export function blankNote(o: { kind: NoteKind; title: string; recordingId: strin
   return {
     kind: o.kind, title: o.title, startedAt: new Date().toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
-    status: 'recording', summary: '', decisions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: [], inference: []
+    status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: [], inference: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -118,19 +118,48 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
 /* ---------- finding a note: your own, or one you have access to ---------- */
 
 /** A note, the vault it lives in, and whether that vault is yours. */
-interface Located { owner: Owner; note: Loaded<NoteManifest>; mine: boolean }
+export interface Located { owner: Owner; note: Loaded<NoteManifest>; mine: boolean }
 const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
 
 async function myIndex(o: Owner): Promise<Uint8Array> { return emailIndex(o, (await profile(o)).email); }
 
-async function sharedWithMe(o: Owner): Promise<Located[]> {
+/**
+ * Every note someone else gave you, by invitation or by sharing it with you: each found by your
+ * email's index right now. Each organizer's keys are opened once, however many of their notes you have.
+ */
+export async function sharedWithMe(o: Owner): Promise<Located[]> {
   const access = await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [await myIndex(o), o.ownerId]);
+  const owners = new Map<string, Owner>();
   const out: Located[] = [];
   for (const a of access) {
-    const owner = await openOwner(o, a.owner_id, undefined);
-    out.push({ owner, note: await getItem(owner, owner.pool, 'note', a.note_item_id, NoteManifest, 'Those notes'), mine: false });
+    const owner = owners.get(a.owner_id) ?? await openOwner(o, a.owner_id, undefined);
+    owners.set(a.owner_id, owner);
+    // Deleted since its access row was read: it's gone, not an error.
+    const note = await findItem(owner, owner.pool, 'note', a.note_item_id, NoteManifest);
+    if (note) out.push({ owner, note, mine: false });
   }
   return out;
+}
+
+/**
+ * How many of these notes, found earlier in this request, the asker can't read any more: deleted,
+ * or (someone else's) no longer given to them. An answer that took a while to write is checked with
+ * this before it's sent, since it may quote a note that went in the meantime.
+ */
+export async function goneSince(o: Owner, found: Located[]): Promise<number> {
+  const Count = z.object({ n: z.number() });
+  const mine = found.filter((l) => l.mine).map((l) => l.note.itemId);
+  const theirs = found.filter((l) => !l.mine);
+  const ownLeft = mine.length
+    ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND kind = 'note' AND deleted_at IS NULL AND item_id = ANY($2::text[])`, [o.ownerId, mine]))?.n ?? 0
+    : 0;
+  const givenLeft = theirs.length
+    ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM note_access a
+        JOIN unnest($2::text[], $3::text[]) AS t(owner_id, note_item_id) ON a.owner_id = t.owner_id AND a.note_item_id = t.note_item_id
+        JOIN items i ON i.owner_id = a.owner_id AND i.item_id = a.note_item_id AND i.deleted_at IS NULL
+        WHERE a.email_index = $1`, [await myIndex(o), theirs.map((l) => l.owner.ownerId), theirs.map((l) => l.note.itemId)]))?.n ?? 0
+    : 0;
+  return found.length - ownLeft - givenLeft;
 }
 async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const own = await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId, id]);
@@ -172,12 +201,18 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
   all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
   return Promise.all(all.map(summary));
 }
+/** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
+export async function seriesOf(l: Located): Promise<string | undefined> {
+  const meetingId = l.note.manifest.meetingId;
+  return meetingId ? (await findItem(l.owner, l.owner.pool, 'meeting', meetingId, MeetingManifest))?.manifest.seriesId : undefined;
+}
 export async function get(o: Owner, id: string): Promise<Note> {
   const l = await locate(o, id);
   const m = l.note.manifest;
+  const seriesId = await seriesOf(l);
   return {
-    ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, actions: m.actions, chapters: m.chapters,
-    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference
+    ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
+    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
 }
 /** The vault and recording to stream a note's audio from, after the access check. */
@@ -212,15 +247,23 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
   };
 }
 
-/** Answers a question about written notes from their transcript, for anyone who has them. */
+/**
+ * Answers a question about written notes from their transcript, for anyone who has them. The answer
+ * goes only if they still have the notes once it's written: it may quote them.
+ */
 export async function ask(o: Owner, id: string, question: string): Promise<AnswerPart[]> {
-  const { owner, note } = await locate(o, id);
+  const l = await locate(o, id);
+  const { owner, note } = l;
   const m = note.manifest;
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
   if (!m.transcript?.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
   const t0 = performance.now();
   const parts = await answer(o.cfg, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
-  nlog.info('question answered', { noteId: id, mine: owner.ownerId === o.ownerId, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
+  const ms = Math.round(performance.now() - t0);
+  if (await goneSince(o, [l])) {
+    throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
+  }
+  nlog.info('question answered', { noteId: id, mine: l.mine, cites: parts.length - 1, ms });
   return parts;
 }
 export async function openActions(o: Owner): Promise<OpenAction[]> {
@@ -240,8 +283,8 @@ async function writtenNote(o: Owner, noteId: string) {
 }
 
 /**
- * Confirms a decision, says it wasn't decided, puts it back to proposed, or rewords it. Anyone who
- * has the notes can, and everyone sees who did.
+ * Confirms a decision, says it wasn't decided, puts it back to proposed, rewords it, or says a
+ * confirmed one no longer holds. Anyone who has the notes can, and everyone sees who did.
  */
 export async function updateDecision(o: Owner, noteId: string, decisionId: string, patch: DecisionPatch): Promise<Note> {
   const { owner, by, at } = await writtenNote(o, noteId);
@@ -253,13 +296,33 @@ export async function updateDecision(o: Owner, noteId: string, decisionId: strin
     let next: Decision = d;
     if (patch.text !== undefined && patch.text !== d.text) { changes.push({ by, at, what: 'reworded', before: d.text, after: patch.text }); next = { ...next, text: patch.text }; }
     if (patch.state !== undefined && patch.state !== d.state) {
-      changes.push({ by, at, what: patch.state === 'confirmed' ? 'confirmed' : patch.state === 'rejected' ? 'rejected' : 'reopened' });
+      // Only something that was decided can stop holding; what nobody confirmed is reopened or said not to be decided.
+      if (patch.state === 'superseded' && d.state !== 'confirmed') throw new ConflictError('Only a confirmed decision can stop holding.', { context: { noteId, decisionId, state: d.state } });
+      changes.push({ by, at, what: patch.state === 'proposed' ? 'reopened' : patch.state });
       next = { ...next, state: patch.state };
     }
     made = changes.slice(d.changes.length).map((x) => x.what);
     return made.length ? { ...n, decisions: n.decisions.map((x) => (x.id === decisionId ? { ...next, changes } : x)) } : n;
   }));
   nlog.info('decision changed', { noteId, decisionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can, and everyone sees who did. */
+export async function updateQuestion(o: Owner, noteId: string, questionId: string, patch: QuestionPatch): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  let made: Change['what'][] = [];
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    const q = n.questions.find((x) => x.id === questionId);
+    if (!q) throw new NotFoundError('That question doesn’t exist.', { context: { noteId, questionId } });
+    const changes = [...q.changes];
+    let next: Question = q;
+    if (patch.text !== undefined && patch.text !== q.text) { changes.push({ by, at, what: 'reworded', before: q.text, after: patch.text }); next = { ...next, text: patch.text }; }
+    if (patch.state !== undefined && patch.state !== q.state) { changes.push({ by, at, what: patch.state === 'answered' ? 'answered' : 'reopened' }); next = { ...next, state: patch.state }; }
+    made = changes.slice(q.changes.length).map((x) => x.what);
+    return made.length ? { ...n, questions: n.questions.map((x) => (x.id === questionId ? { ...next, changes } : x)) } : n;
+  }));
+  nlog.info('question changed', { noteId, questionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
   return get(o, noteId);
 }
 

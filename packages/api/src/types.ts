@@ -110,7 +110,9 @@ export const MeetingSchema = z.object({
   /** Seconds the call actually lasted, once ended. */
   duration: z.number().optional(),
   /** The call in the organizer's Google Calendar, which sends its invitations. */
-  calendarUrl: z.string().url().optional()
+  calendarUrl: z.string().url().optional(),
+  /** The series it's in: the calls before and after it, whose decisions, open questions and follow-ups carry over. */
+  seriesId: IDSchema.optional()
 });
 export type Meeting = z.infer<typeof MeetingSchema>;
 
@@ -130,7 +132,9 @@ export const CalendarEventSchema = z.object({
   /** The event's own video link and what it is ("Google Meet", "Zoom", ...), when it has one. */
   join: z.object({ url: z.string().url(), label: z.string() }).optional(),
   /** The event in the calendar it came from. */
-  calendarUrl: z.string().url()
+  calendarUrl: z.string().url(),
+  /** Your series this event continues: it's the next occurrence of a recurring event you've held in Alcove. */
+  seriesId: IDSchema.optional()
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
 
@@ -180,11 +184,11 @@ export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
 export const ScreenCaptureSchema = z.object({ at: z.number(), by: z.string(), title: z.string(), text: z.string() });
 export type ScreenCapture = z.infer<typeof ScreenCaptureSchema>;
 
-/** Someone changing a note's decisions or follow-ups: who, when, what, and what it was before. */
+/** Someone changing a note's decisions, open questions or follow-ups: who, when, what, and what it was before. */
 export const ChangeSchema = z.object({
   by: z.object({ name: z.string(), email: z.string() }),
   at: ISODateSchema,
-  what: z.enum(['confirmed', 'rejected', 'reopened', 'reworded', 'took-on', 'reassigned', 'due', 'done', 'undone']),
+  what: z.enum(['confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'reassigned', 'due', 'done', 'undone']),
   /** The wording, owner or due date before a change to it, and after. */
   before: z.string().optional(),
   after: z.string().optional()
@@ -193,18 +197,34 @@ export type Change = z.infer<typeof ChangeSchema>;
 
 /**
  * Something the call settled, as the notes heard it. It stays proposed until someone who has the
- * notes confirms it, or says it wasn't decided.
+ * notes confirms it, or says it wasn't decided. A confirmed decision can later stop holding
+ * (superseded), when a later one replaces it.
  */
 export const DecisionSchema = z.object({
   id: IDSchema,
   text: z.string(),
   /** When it was said, in seconds into the recording, if the notes could tell. */
   at: z.number().optional(),
-  state: z.enum(['proposed', 'confirmed', 'rejected']),
-  /** Who confirmed, rejected, reopened or reworded it, oldest first. */
+  state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']),
+  /** Who confirmed, rejected, superseded, reopened or reworded it, oldest first. */
   changes: z.array(ChangeSchema)
 });
 export type Decision = z.infer<typeof DecisionSchema>;
+
+/**
+ * Something the call asked and didn't settle, as the notes heard it. It stays open until someone
+ * who has the notes says it was answered.
+ */
+export const QuestionSchema = z.object({
+  id: IDSchema,
+  text: z.string(),
+  /** When it was asked, in seconds into the recording, if the notes could tell. */
+  at: z.number().optional(),
+  state: z.enum(['open', 'answered']),
+  /** Who said it was answered, reopened or reworded it, oldest first. */
+  changes: z.array(ChangeSchema)
+});
+export type Question = z.infer<typeof QuestionSchema>;
 
 export const ActionItemSchema = z.object({
   id: IDSchema, text: z.string(),
@@ -284,6 +304,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
   decisions: z.array(DecisionSchema),
+  /** What the call asked and didn't settle. */
+  questions: z.array(QuestionSchema),
   actions: z.array(ActionItemSchema),
   chapters: z.array(ChapterSchema),
   screens: z.array(ScreenCaptureSchema),
@@ -293,7 +315,9 @@ export const NoteSchema = NoteSummarySchema.extend({
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
   audio: z.array(AudioSegmentSchema),
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
-  inference: z.array(InferenceEvidenceSchema)
+  inference: z.array(InferenceEvidenceSchema),
+  /** The series its call is in, when it's in one: see series.get. */
+  seriesId: IDSchema.optional()
 });
 export type Note = z.infer<typeof NoteSchema>;
 
@@ -305,6 +329,66 @@ export const AnswerPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cite'), at: z.number() })
 ]);
 export type AnswerPart = z.infer<typeof AnswerPartSchema>;
+
+/* ---------- series: what carries over from one call to the next ---------- */
+
+/*
+ * A series is calls that follow on from each other: the occurrences of one recurring Google
+ * Calendar event held in Alcove, or calls scheduled as the next one. What carries over is put
+ * together for whoever asks, from the notes they have, each time they ask, and never kept: being
+ * invited to one call in a series opens nothing from the others.
+ */
+
+/** One call in a series whose notes you have. */
+export const SeriesNoteSchema = z.object({
+  id: IDSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(), status: NoteStatusSchema,
+  /** For the organizer: the call the note is from, to schedule the next one after it. */
+  meetingId: IDSchema.optional(),
+  /** Present when the note is someone else's: the organizer, who gave it to you. */
+  from: PersonSchema.optional()
+});
+export type SeriesNote = z.infer<typeof SeriesNoteSchema>;
+
+/** A decision from one of the series' notes (`noteId`, one of `Series.notes`). */
+export const CarriedDecisionSchema = DecisionSchema.extend({ noteId: IDSchema });
+export type CarriedDecision = z.infer<typeof CarriedDecisionSchema>;
+/** How long something has gone unsettled: the later calls (whose notes you have) it stayed open through. Stale from two. */
+const Carried = { noteId: IDSchema, later: z.number(), stale: z.boolean() };
+export const CarriedQuestionSchema = QuestionSchema.extend(Carried);
+export type CarriedQuestion = z.infer<typeof CarriedQuestionSchema>;
+export const CarriedActionSchema = ActionItemSchema.extend(Carried);
+export type CarriedAction = z.infer<typeof CarriedActionSchema>;
+
+export const SeriesSchema = z.object({
+  id: IDSchema,
+  /** The next call's title, or the latest one's. */
+  title: z.string(),
+  /** Whose calls they are. */
+  organizer: PersonSchema,
+  isOrganizer: z.boolean(),
+  /** For the organizer: the next call in the series, when one is scheduled in Alcove. */
+  next: MeetingSchema.optional(),
+  /** For the organizer: the series follows a recurring Google Calendar event, so its next call is the next occurrence there. */
+  recurring: z.boolean(),
+  /** The calls in the series whose notes you have, newest first: the newest 24 of them. Everything below comes from these alone. */
+  notes: z.array(SeriesNoteSchema),
+  /** How many older calls in it you also have notes from. They aren't shown, and nothing carries over from them. */
+  older: z.number(),
+  /** Confirmed decisions, ones that no longer hold, and ones nobody has confirmed yet, newest call first. Never ones people said weren't decided. */
+  decisions: z.array(CarriedDecisionSchema),
+  /** Questions nobody has said were answered yet. */
+  questions: z.array(CarriedQuestionSchema),
+  /** Follow-ups not done yet, and ones done since the latest call started. */
+  actions: z.array(CarriedActionSchema)
+});
+export type Series = z.infer<typeof SeriesSchema>;
+
+/** An answer about a series: its text, then the calls it comes from, with the moment in each when it can tell. */
+export const SeriesAnswerPartSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({ type: z.literal('source'), noteId: IDSchema, title: z.string(), startedAt: ISODateSchema, at: z.number().optional() })
+]);
+export type SeriesAnswerPart = z.infer<typeof SeriesAnswerPartSchema>;
 
 /* ---------- what's running ---------- */
 

@@ -64,12 +64,37 @@ export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
 export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
-/** A change to a decision: confirm it, say it wasn't decided, put it back to proposed, or reword it. */
+
+/** Whether dates can be read in `name`: a time zone the runtime knows, such as "Europe/London". Anything else throws a RangeError. */
+function isTimeZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+/** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
+export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
+/**
+ * A change to a decision: confirm it, say it wasn't decided, put it back to proposed, reword it, or
+ * say a confirmed one no longer holds (superseded).
+ */
 export const DecisionPatchSchema = z.object({
-  state: z.enum(['proposed', 'confirmed', 'rejected']).optional(),
+  state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']).optional(),
   text: z.string().trim().min(1).max(300).optional()
 }).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
 export type DecisionPatch = z.infer<typeof DecisionPatchSchema>;
+
+/** A change to an open question: say it was answered, open it again, or reword it. */
+export const QuestionPatchSchema = z.object({
+  state: z.enum(['open', 'answered']).optional(),
+  text: z.string().trim().min(1).max(300).optional()
+}).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
+export type QuestionPatch = z.infer<typeof QuestionPatchSchema>;
+
+/** Scheduling the next call in a series: when it starts (the app sends the same clock time a week on). */
+export const NextCallBodySchema = z.object({ startsAt: z.string().max(40) });
 
 /** A change to a follow-up. Only its owner can take it on; anyone who has the notes can do the rest. */
 export const ActionPatchSchema = z.object({

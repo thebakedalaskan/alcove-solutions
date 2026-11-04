@@ -6,6 +6,7 @@
 import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CalendarSchema, CallEndResultSchema, CaptionTranslationSchema, CallStateSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
+  SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, isAlcoveErrorCode,
   type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptionTranslation, type CallSession, type CallState, type CatchUp, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type TranscriptClip
@@ -29,8 +30,8 @@ export interface ClientEvent {
 }
 
 const ErrorBodySchema = z.object({ code: z.string().optional(), message: z.string().optional(), requestId: z.string().optional() }).catch({});
-/** IDs in paths are random; call codes are join tokens, so they're masked in diagnostics. */
-const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code');
+/** IDs in paths are random; call codes are join tokens and a Google event's ID names its recurring series, so both are masked in diagnostics. */
+const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code').replace(/^\/calendar\/events\/(?!$)[^/]+/, '/calendar/events/:id');
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const opId = () => b64u(randomBytes(16));
@@ -125,7 +126,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       byCode: (code) => req(MeetingSchema.nullable(), 'GET', `/calls/${encodeURIComponent(code)}/meeting`),
       create: (input) => req(MeetingSchema, 'POST', '/meetings', input),
       update: (id, input) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, input),
-      cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); }
+      cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); },
+      scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt })
     },
     calendar: {
       get: () => req(CalendarSchema, 'GET', '/calendar'),
@@ -161,6 +163,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       audioUrl: (id, segment) => `${base}/notes/${encodeURIComponent(id)}/audio/${segment}`,
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),
       updateAction: (noteId, actionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/actions/${encodeURIComponent(actionId)}`, patch),
+      updateQuestion: (noteId, questionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/questions/${encodeURIComponent(questionId)}`, patch),
       openActions: () => req(z.array(OpenActionSchema), 'GET', '/notes/actions'),
       ask: async function* (noteId, question) {
         const parts = await req(z.array(AnswerPartSchema), 'POST', `/notes/${encodeURIComponent(noteId)}/ask`, { question });
@@ -168,6 +171,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       },
       share: (id, emails) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails }),
       delete: async (id) => { await req(z.unknown(), 'DELETE', `/notes/${encodeURIComponent(id)}`); }
+    },
+    series: {
+      get: (id) => req(SeriesSchema, 'GET', `/series/${encodeURIComponent(id)}`),
+      ask: async function* (id, question, timeZone) {
+        const parts = await req(z.array(SeriesAnswerPartSchema), 'POST', `/series/${encodeURIComponent(id)}/ask`, { question, timeZone });
+        yield* parts;
+      }
     },
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits')
