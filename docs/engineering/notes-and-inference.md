@@ -790,8 +790,8 @@ into the next (`apps/api/src/modules/series.ts`).
 - **In the app.** Home shows **From earlier calls** under the call that's up next when it's in a series:
   confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest, and what
   stopped holding or was answered since the latest call. The pre-join shows the same in brief, and the call's Notes
-  view a fold, **From last time**, open until the call has notes of its own, with follow-ups nobody took on as well;
-  each says it's for you alone. Sources there open in a new tab, so the call, or the camera at the pre-join, stays as it
+  view a fold, **From last time**, open until the call has notes of its own, with follow-ups nobody took on as well,
+  which says only you see it. Sources there open in a new tab, so the call, or the camera at the pre-join, stays as it
   is. The Ask view's **Earlier calls** asks across the series. A note
   says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
   (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under

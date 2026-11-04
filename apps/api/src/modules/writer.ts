@@ -5,7 +5,8 @@
  * questions, and each breakout room's own notes from that room's transcript (one request a room),
  * and, for a call in a series, compares it with what earlier calls left standing (one more request,
  * whose failure costs only the comparison). Then it writes them into the note, charges the recorded
- * minutes and deletes the job in one transaction. A failed attempt is tried again a little later, up to three times; after the
+ * minutes and deletes the job in one transaction. A failed attempt is tried again a little later, up
+ * to three times; after the
  * third, the note is finished without a summary, so its transcript and audio are still there. When
  * the notes model's evidence doesn't check out, or can't be checked, nothing was sent: the job waits
  * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
@@ -202,7 +203,9 @@ async function comparedWithEarlier(o: Owner, noteId: string, m: NoteManifest, or
     const earlier = await standing(o, noteId, m);
     const decisions = decisionsOf(m).filter((d) => d.state !== 'rejected');
     const said = Boolean(m.transcript?.length) || m.rooms.some((r) => r.transcript.length > 0);
-    if (!earlier.length || !said) return [];
+    // A question can be answered by what was said; a decision only replaced by one of this call's.
+    const canFind = earlier.some((x) => x.kind === 'question') || (decisions.length > 0 && earlier.length > 0);
+    if (!said || !canFind) return [];
     await renew();
     const t0 = performance.now();
     const found = await revisited(o.cfg, briefOf(m, organizer, m.invited.map((e) => personOf(e))), decisions, earlier);

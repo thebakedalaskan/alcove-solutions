@@ -100,7 +100,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
                     {proposed.map((d) => row(d, <>
                       <button type="button" className="lk" onClick={() => decide(d, 'confirmed')}>Confirm</button>
                       <button type="button" className="lk quiet" onClick={() => decide(d, 'rejected')}>It wasn’t decided</button>
-                    </>))}
+                    </>, d.replacedBy && <LaterWrong later={d.replacedBy} onWrong={wrong}>It wasn’t replaced</LaterWrong>))}
                     {superseded.length > 0 && <div className="grp">No longer holds</div>}
                     {superseded.map((d) => row(d, <button type="button" className="lk on-hover" onClick={() => decide(d, 'confirmed')}>It still holds</button>))}
                   </div>
