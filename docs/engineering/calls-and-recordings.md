@@ -103,8 +103,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
   invited, and notes already given when an earlier run ended stay given. The calendar event isn't changed:
   Google would email everyone on it in the middle of the call.
 - **The room.** `GET /v1/live/calls/:id/room` gives a LiveKit token for that one room (120 seconds, no
-  admin rights, no data messages) to people let in, and to nobody else. Tokens carry no name: LiveKit knows
-  people only by random identity.
+  admin rights) to people let in, and to nobody else. It may send data, which browsers use for pointers and marks on
+  shared screens, sealed end to end ([Pointing at shared screens](#pointing-at-shared-screens)); the API is never in the
+  room, so it never receives any. Tokens carry no name: LiveKit knows people only by random identity.
 - **The call pass** is an HMAC (a key derived from `KMASTER`) over the call, the organizer, the person's
   LiveKit identity, role and name, valid for 12 hours. It goes in the `x-alcove-call` header on every
   `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
@@ -112,14 +113,17 @@ The call itself stays in the API: who's let in, notes and the transcript.
   organizer can read it.
 - **What each role can do.** Everyone let in: read the call, chat, catch up and ask, for themselves alone
   ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), raise a hand, ask for notes,
-  and, while screen notes are on, send frames of their own shared screen ([Shared screens](#shared-screens)).
+  point at and mark shared screens and say whether others may point at what they share
+  ([Pointing at shared screens](#pointing-at-shared-screens)), and, while screen notes are on, send frames of their own
+  shared screen ([Shared screens](#shared-screens)).
   Everyone reads the live transcript of the part of the call they're in, as said while they were there; a guest
   with the link, who doesn't get the notes, reads only what was said while they were in the call as well (the
   live transcript, captions, catching up, asking and moments), while the organizer and everyone on the invite
   (people signed in whom the organizer let in included) read all of it. Only the organizer (pass role `host`, their
   own session and their current connection: joining from another device takes the powers with it): let people in
   or turn them away, notes on/off, pause and resume, say not now to an ask for notes, say what their browser can't
-  capture, audio and speech uploads, mute someone's microphone, remove someone, lock the call, and end it. The
+  capture, audio and speech uploads, mute someone's microphone, remove someone, lock the call, turn pointing at
+  shared screens off for everyone, and end it. The
   recording and the live transcript both come from what the organizer's browser hears (see Notes below). Link guests get no notes; invited people, and people signed in whom the organizer let in, get them.
 - **Leaving and ending.** Anyone but the organizer leaving is taken out of their part of the call's group, so
   its keys move on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
@@ -143,7 +147,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera (or a
   change of what's shared) into the same publication, plays everyone else's audio on the chosen speaker at each
-  person's volume for this listener, and refetches the call on nudges, arrivals and departures. Several people can
+  person's volume for this listener, and refetches the call on the server's nudges, arrivals and departures. Nudges are
+  taken only from the server (a packet from no participant): anyone in the room can send data, which carries pointers
+  and marks, and a stream of nudges from one of them would keep every browser fetching the call. Several people can
   share a screen at once ([The call screen › Shares](#the-call-screen)).
 
 ## End-to-end encryption
@@ -229,6 +235,11 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   posts into a room they're not in. The sender comes from MLS (the message's sender leaf and signature), not from
   the text. A message that can't be sent after a few tries, or whose sender moved before it went out, is taken
   back, and the sender is told. Messages are at most 4,000 characters.
+- **Data between browsers** (pointers and marks on shared screens) goes through LiveKit, not the API, sealed by the
+  sender's session with a key derived from its own media key for the epoch, in its part of the call's group
+  (`CallSession.sealData`), and opened with the media key of whoever LiveKit says sent it (`openData`). It's read only
+  from the people whose media would play, and a room's data doesn't open anywhere else: other parts hold other keys
+  ([Pointing at shared screens › How it travels](#how-it-travels)).
 - **People, not connections.** Each browser keeps one `person` across its reconnections (its pass brings
   it back once, without asking; a second use of the same pass has to ask), so removing someone removes
   every connection of theirs and none of their passes works again. A reload comes straight back into the group
@@ -265,7 +276,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
     ([The call screen](#the-call-screen)). Breakout rooms the organizer isn't in aren't heard. The call's notes have the main room's talk: a room's lines aren't kept in the note, and the
     recording is silent while the organizer is in a room ([Breakout rooms](#hands-spotlight-breakout-rooms-and-captions)).
   - LiveKit still sees addresses, when calls happen, who's in the call's room (by random identity), track kinds and
-    mute state, packet sizes and timing, and the audio-level header, so exactly who is speaking when.
+    mute state, packet sizes and timing, the audio-level header, so exactly who is speaking when, and the size and
+    timing of the data browsers send each other, so roughly when someone points or draws on a shared screen (not
+    where, nor at what).
 
 ## What's captured
 
@@ -435,6 +448,86 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
 - **For catch-up.** `screens.framesOf` lists a live call's frames (ID, presenter, share, time) for a catch-up to
   point at; catch-up doesn't read screens yet ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
 
+## Pointing at shared screens
+
+People in a call can point at what someone shares and leave marks that fade, so "this, here" is easy to say
+(`apps/web/src/features/call/marks.ts`, `SharePointing.tsx`, the wire format in `packages/api/src/marks.ts`). Pointers
+and marks go from browser to browser, end-to-end encrypted: nothing of them reaches the API, nothing is kept anywhere,
+and nothing reaches anyone's computer but a picture drawn over the share on their own screen. No input of any kind is
+ever sent to the presenter's computer.
+
+- **Who may point.** Anyone let in, at any share they show big, while the organizer allows pointing for the call
+  (`CallState.pointing`; `{type: "pointing", on}`, the organizer's only, on until they turn it off, each change a
+  notice for everyone) and the share's presenter lets others point at it (`CallParticipant.othersPoint`;
+  `{type: "others-point", on}`, anyone in the call about their own shares, kept by person so it holds across their
+  reconnections, 20 changes a minute per person). A presenter can always point at their own share. Both live in the
+  call's sealed state, the server checks who may change them, and every browser enforces them on what it sends and on
+  what it takes: marks from someone the presenter doesn't let point never show, whatever that person's browser sends.
+  Turning either off takes the pointers and marks it covers away at once, everywhere. Everyone may point by default
+  because in a working call pointing is how people talk about what's shared; a presenter keeps their screen to
+  themselves with one switch on their share bar (a demo, something sensitive), and the organizer turns it off for a
+  large or formal call from People.
+- **On screen.** A pointer is an arrow with its owner's face in the arch and their name beside it, never told apart by
+  colour alone. A click leaves a ring and a drag a line, named the same way (at a ring, and where a line starts). Marks
+  last 8 seconds (`SHARE_MARK_MS`), fading over the last 1.5. A pointer's browser says where it is up to 20 times a
+  second while it moves (`SHARE_POINT_EVERY_MS`), once a second while it's still, and stops after 6 seconds without
+  moving; a pointer nothing has been heard of for 2.5 seconds goes. Its author takes their last mark back (Undo in the
+  pointing bar, or Backspace), and the presenter clears every mark on their share (**Clear marks** on their share bar).
+  Everything goes when the share stops, its author leaves the call or your part of it, your part of the call changes
+  (rooms opening, closing or moving you), the room disconnects, or pointing is turned off; and the marks on a share go
+  when its presenter changes what's shared, since they were about the old picture. On a phone, a tap leaves a ring and
+  a drag a line; there's no pointer to hover with.
+- **Where marks land.** Every place is a fraction of the shared picture, 0 to 1 across and down, and each screen draws
+  it over the picture where its own video shows it (letterboxed in its tile), so a mark lands on the same spot of the
+  picture on a phone and on a wide screen, in a tile or big. A message names its share by the picture's LiveKit track
+  sid, which no later share has: a message about a share that stopped, or one this browser doesn't show, lands nowhere.
+- **Keyboard.** On a share shown big, L (or **Point and mark** in its ⋯) starts pointing. The arrow keys move your
+  pointer (with Shift, further), Enter or Space leaves a ring, Backspace takes back your last mark and Escape stops.
+  While you point, the arrows move your pointer rather than to the next tile.
+- **Breakout rooms.** Pointers and marks stay in the part of the call they're made in. Each part has its own MLS
+  group, so what's sealed in a room opens only with that room's keys. A browser also takes them only from the people
+  in its own part, about shares it shows (a room's shares are shown only in the room), and drops them all when its
+  part changes; between two parts it has no key to seal with, so it sends nothing.
+- **Never captured.** Pointers and marks are drawn in each viewer's browser, over the video. They aren't in the shared
+  picture, so a presenter's browser never captures them for screen notes ([Shared screens](#shared-screens)), and
+  nothing adds them. The only way one reaches a frame is the presenter's own screen showing it: someone sharing a whole
+  screen with the call's window on it shares whatever that window shows, marks included, like anything else on that
+  screen. The notes don't link marks to what was said.
+- **The presenter's view.** Marks show on the presenter's own share as well, in its tile or shown big. A web page can't
+  draw over other apps, so they aren't drawn on the presenter's own screen outside Alcove.
+
+### How it travels
+
+- **LiveKit data packets.** Room tokens may send data (`canPublishData`). Pointer places go unreliable (newest wins,
+  nothing waits); marks, taking them back and clearing go reliably, in order. The API is never in the room.
+- **Sealed in the browser.** Each message is sealed by the sender's call session (`CallSession.sealData`): AES-GCM-256
+  under a key derived with HKDF-SHA-256 from the sender's own media key for the epoch it sends in (label
+  `alcove/call-data/v1`, so a media key never encrypts data itself), with the topic and the sender's identity as
+  associated data, behind a version byte, the key's ring index and a random 12-byte nonce. The receiving session opens
+  it with the media key of whoever LiveKit says sent it, from the last four epochs (`openData`), and the room takes it
+  only from someone whose media it would play: in its MLS group and in its part of the call. Someone who joined later
+  can't read what was sent before, and someone who left can't read what comes after, as with media.
+- **Why not only LiveKit's encryption.** livekit-client 2.23 also encrypts every data packet with the sender's key when
+  the room is made with `encryption`, which Alcove's is, so packets are encrypted twice. But it reports a packet it
+  decrypted as unencrypted (`Encryption_Type.NONE`: its sender never sets the field), the same as a packet sent in the
+  clear, so a browser can't tell on arrival whether a packet was encrypted. The session's own seal is what a browser
+  trusts.
+- **Replays and floods.** Each sender numbers its messages inside the seal, so a packet replayed or overtaken by a newer
+  one changes nothing, and a mark taken back can't come back. A browser reads messages of at most 8 KiB, at most 50 a
+  second from each sender after a burst of 100, and keeps at most 12 marks per person per share (a new one takes the
+  oldest away). A line has at most 96 places; a longer one keeps its shape with half as many.
+- **Who could pretend.** As with media under SFrame, every member can derive every sender's key, so a member working
+  with LiveKit, which says who sent each packet, could make a pointer look like someone else's. Neither can alone:
+  LiveKit has no keys, and a member's packets are opened with their own.
+- **What LiveKit sees.** That a participant sends data, when and how big: roughly when someone points or draws, never
+  where or at what. The API sees only the grant: whether pointing is on, and who doesn't let others point.
+- **Latency.** Measured on the local stack (three Chromium browsers, two shares, three runs of 40 moves): from a mouse
+  move in one browser to the pointer drawn in another, a median of 31 to 39 ms, the 90th percentile 51 to 55 ms and
+  the slowest 85 ms. Chat between the same two browsers, which goes through the API as MLS messages (a request, a
+  database write, a nudge through LiveKit and a read by every browser), took a median of 103 to 153 ms there, and
+  would load the API and database with every move. Pointers glide between places (90 ms), and lines go out at most
+  every 80 ms as they're drawn.
+
 ## Hands, spotlight, breakout rooms and captions
 
 - **Raised hands** are call state, one per person (`{type: "hand", up}`): anyone in the call raises or lowers
@@ -593,11 +686,12 @@ device pickers.
   when they stop everything is where it was. Cameras turning off move nothing.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu,
   P pins or unpins (on a share, shows it big or as a tile), Shift with an arrow moves a tile earlier or later (your
-  corner picture to another corner), and + and − make it bigger or smaller; Escape unpins everyone. The line beside a
-  shared screen, and the one between two, is a separator moved with the arrow keys, Home and End. On someone else's
-  share you see big, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in, F freezes it or
-  goes back to live, and comma and full stop step through earlier pictures ([below](#looking-closer-at-a-share)). Each
-  tile's menu shows its keys, and on touch screens its ⋯ is always there.
+  corner picture to another corner), and + and − make it bigger or smaller; L on a share shown big starts pointing at it
+  ([Pointing at shared screens](#pointing-at-shared-screens)); Escape stops pointing, then unpins everyone. The line
+  beside a shared screen, and the one between two, is a separator moved with the arrow keys, Home and End. On someone
+  else's share you see big, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your
+  pointer, while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
+  ([below](#looking-closer-at-a-share)). Each tile's menu shows its keys, and on touch screens its ⋯ is always there.
 - **Shares.** Several people can share at once, a screen each, and nobody's share replaces anyone else's. A share
   starts only while fewer than four (`MAX_SHARES`, `share.ts`) are going in your part of the call, yours counted:
   two sit side by side and the rest wait as tiles, and past four the stage would give screens more room than people
