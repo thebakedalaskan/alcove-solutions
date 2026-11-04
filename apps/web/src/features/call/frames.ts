@@ -9,6 +9,7 @@
  */
 import { errorCode, type ScreenFrame } from '@alcove/api';
 import { log } from '~/lib/log';
+import { GRID_H, GRID_W, gridOf, moved } from './screenGrid';
 
 const flog = log.child({ component: 'screen-frames' });
 
@@ -20,11 +21,7 @@ const FIRST_AFTER_MS = 10_000;
 const MIN_GAP_MS = 4000;
 /** A screen that never settles (a video playing) still gets a frame this often while it keeps changing. */
 const BUSY_MS = 15_000;
-/** The share is compared on a small grey grid: cheap, and blind to a moving cursor. */
-const GRID_W = 48;
-const GRID_H = 27;
-/** How far a cell's brightness must move to count, and how much of the grid must move for the screen to have changed. */
-const CELL = 24;
+/** How much of the grey grid (screenGrid.ts) must move for the screen to have changed. */
 const CHANGED = 0.02;
 /** Frames go up at most this many pixels across, as JPEG. */
 const MAX_EDGE = 1600;
@@ -62,22 +59,6 @@ function grabberFor(track: MediaStreamTrack): Grabber {
   };
 }
 
-/** The share on a small grey grid. */
-function gridOf(src: CanvasImageSource, canvas: HTMLCanvasElement): Uint8Array | null {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(src, 0, 0, GRID_W, GRID_H);
-  const px = ctx.getImageData(0, 0, GRID_W, GRID_H).data;
-  const out = new Uint8Array(GRID_W * GRID_H);
-  for (let i = 0; i < out.length; i++) out[i] = Math.round(0.299 * (px[i * 4] ?? 0) + 0.587 * (px[i * 4 + 1] ?? 0) + 0.114 * (px[i * 4 + 2] ?? 0));
-  return out;
-}
-/** How much of the grid moved between two looks, from 0 to 1. */
-function moved(a: Uint8Array, b: Uint8Array): number {
-  let n = 0;
-  for (let i = 0; i < a.length; i++) if (Math.abs((a[i] ?? 0) - (b[i] ?? 0)) > CELL) n++;
-  return n / a.length;
-}
 /** A frame as JPEG, at most MAX_EDGE across. */
 function jpegOf(src: CanvasImageSource, width: number, height: number): Promise<Blob | null> {
   const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
