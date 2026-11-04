@@ -508,6 +508,8 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-nr .meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 400 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .ic-nr .nr-due { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
 .ic-nr .ac-time-chip { margin-top: 1px; }
+.ic-nr:has(> .ac-check) { grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ic-nr.is-done .tx { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
 .ic-sum { font: 400 14px/1.6 var(--font-sans); color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .ic-sum.is-open { display: block; }
 .ic-more-text { margin-top: 4px; padding: 2px 0; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink-2); }
