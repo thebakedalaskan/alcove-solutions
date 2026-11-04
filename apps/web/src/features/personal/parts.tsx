@@ -50,6 +50,17 @@ export function KeepAnswer({ kept, onKeep }: { kept: boolean; onKeep: () => Prom
   return <span className="own-keep"><button type="button" className="lk" disabled={busy} onClick={keep}>Keep in your notes</button><Scope>Only you</Scope></span>;
 }
 
+/** The one step before something goes for good, in place. The keyboard lands on keeping it, and Escape keeps it too. */
+export function Sure({ ask, act, onYes, onNo }: { ask: string; act: string; onYes: () => void; onNo: () => void }) {
+  return (
+    <span className="own-sure" role="group" aria-label={ask} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onNo(); } }}>
+      {ask}
+      <button type="button" className="lk" onClick={onYes}>{act}</button>
+      <button type="button" className="lk quiet" autoFocus onClick={onNo}>Keep</button>
+    </span>
+  );
+}
+
 /** Changing what you wrote, or what a bookmark is called, in place. */
 function EditBox({ text, label, max, multiline, onSave, onDone }: { text: string; label: string; max: number; multiline: boolean; onSave: (t: string) => void; onDone: () => void }) {
   const [value, setValue] = useState(text);
@@ -108,7 +119,7 @@ function OwnRow({ e, me, actions, moment, away, share, picked }: {
           {moments.map((m) => <Fragment key={`${m.at}-${m.line?.id ?? m.screen?.id ?? ''}`}>{moment(m)}</Fragment>)}
           {e.shared && <span className="own-shared"><Icon name="share" size={12} />In the shared notes</span>}
           {sure ? (
-            <span className="own-sure">Delete this {name}?<button type="button" className="lk" onClick={() => { setSure(false); actions.remove(e.id).catch(failed); }}>Delete</button><button type="button" className="lk quiet" onClick={() => setSure(false)}>Keep</button></span>
+            <Sure ask={`Delete this ${name}?`} act="Delete" onYes={() => { setSure(false); actions.remove(e.id).catch(failed); }} onNo={() => setSure(false)} />
           ) : !editing && (
             <span className="own-acts">
               {share?.(e)}

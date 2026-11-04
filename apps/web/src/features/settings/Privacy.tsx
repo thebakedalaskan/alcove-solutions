@@ -28,7 +28,7 @@ export function PrivacyCard() {
       </div>
       <SealedBadge className="set-seal" detail="Where your audio is opened and your notes are written"
         title={trust?.tee === 'dstack' && trust.bound ? `Confidential compute · hardware verified ${hm(new Date(trust.at))}` : trustLine(trust)} />
-      <SettingRow tone="caution" label="Delete your account" help="Deletes your account and the notes and recordings you made from Alcove, for good."
+      <SettingRow tone="caution" label="Delete your account" help="Deletes your account, the notes and recordings you made, and what you added to other people’s notes, for good."
         control={(
           <Button ref={opener} size="sm" icon="trash" className="set-caution" aria-expanded={confirming} aria-controls={confirming ? step : undefined}
             onClick={() => setConfirming(true)}>Delete account</Button>
@@ -82,6 +82,7 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
       : calls > 0 ? `${plural(calls, 'call', 'calls')} you scheduled, cancelled for everyone invited` : null,
     credits === undefined ? 'The minutes of notes left on your account'
       : credits.balance > 0 ? `Your ${hoursAndMinutes(credits.balance / credits.perMinute)} of notes left` : null,
+    'Your own notes on every call, and anything you added from them to other people’s notes',
     kept ? 'Your groups and pinned notes' : null,
     google ? 'Your Google Calendar connection, and Alcove’s access to your Google account' : null,
     'Your sign-in, on every browser'
@@ -99,7 +100,7 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
     <div ref={box} id={id} className="set-confirm" role="group" aria-labelledby={title} onKeyDown={keys}>
       <b id={title}>Delete your account for good?</b>
       <ul>{goes.map((g) => <li key={g}>{g}</li>)}</ul>
-      <p>Notes other people gave you stay with them, without you. This can’t be undone.</p>
+      <p>Notes other people gave you stay with them, without you. Those notes still have what you said in the call, and still say where you changed or shared them. This can’t be undone.</p>
       <div role="status" className="set-step-status">{problem && <p className="set-refused"><Icon name="alert" size={18} />{problem.text}</p>}</div>
       <div className="btns">
         <Button ref={cancel} variant="secondary" size="sm" aria-disabled={pending || undefined} onClick={() => { if (!pending) onClose(); }}>{problem?.final ? 'Close' : 'Cancel'}</Button>
