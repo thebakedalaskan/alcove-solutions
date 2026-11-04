@@ -290,6 +290,12 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
     room's chat to it only while it's there, and the room is told when the organizer comes and goes. Zoom's end-to-end
     encrypted breakout rooms give each room a leader of its own instead; here every room's committer is the host's
     browser, so a room committed by one of its own members is still to come.
+  - The host's browser also writes the organizer's notes: it records what it hears and sends each voice's speech
+    to be transcribed, saying whose voice it is. The API checks that this comes from the connection that hosts, with
+    its own session, but it can't check what it hears or whose it says it is. So while someone stands in, the
+    notes that go to everyone invited are only as true as the stand-in's browser: a modified one could leave words
+    out, add some, or put them in someone else's mouth. That's the same trust the call places in the organizer's
+    browser, given to someone the organizer invited, and only while the organizer is away.
   - Every part of the call shares one LiveKit room, so LiveKit forwards each room's encrypted frames to everyone
     in the call: a modified browser gets frames it can't decrypt from other rooms, with their audio-level header,
     so it can tell who is speaking when in another room, though not what they say. Each frame also carries its
