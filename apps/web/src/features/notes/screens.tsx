@@ -15,7 +15,8 @@ import { position } from '~/lib/time';
 export function screenMeta(m: ScreenMoment, me: string | undefined): string {
   const name = m.presenter ? spokenName(m.presenter, me) : null;
   const whose = !name ? 'A shared screen' : name === 'You' ? 'Your screen' : `${name}’s screen`;
-  const when = m.until - m.at >= 1 ? `${position(m.at)}–${position(m.until)}` : position(m.at);
+  // The range stays on one line: word joiners either side of the dash.
+  const when = m.until - m.at >= 1 ? `${position(m.at)}\u2060–\u2060${position(m.until)}` : position(m.at);
   return `${whose} · ${when}`;
 }
 

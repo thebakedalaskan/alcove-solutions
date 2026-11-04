@@ -68,7 +68,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
       <CaptureParts capture={c} />
       {host && c.mode !== 'off' && (
         <div className="cap-screens">
-          <span><b>Read shared screens</b><small>Whoever shares, their browser sends what changes on it to the notes. Cameras never.</small></span>
+          <span><b>Read shared screens</b><small>What anyone shares is read for the notes, from their own browser. Cameras never are.</small></span>
           <Switch checked={c.screen.mode !== 'off'} label="Read shared screens for the notes" onChange={(on) => controls.screens(on)} />
         </div>
       )}
