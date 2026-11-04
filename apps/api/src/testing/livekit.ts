@@ -54,10 +54,18 @@ export type Keys =
   | { sending: LiveStore<CallCrypto> }
   | { hearing: LiveStore<CallCrypto>; from: string; senderSends: LiveStore<CallCrypto> }
   | { key: Uint8Array; index: number };
+/**
+ * The key a test participant uses now, or null to keep the one it has. A sender between two parts of the call has no
+ * key to send with (`send` is null): like a browser, it then sends under a key nobody has.
+ */
 const keyFor = (k: Keys): { key: Uint8Array; index: number } | null => {
   if ('key' in k) return k;
-  if ('sending' in k) return k.sending.getSnapshot().media?.send ?? null;
-  const at = k.senderSends.getSnapshot().media?.send.index;
+  if ('sending' in k) {
+    const media = k.sending.getSnapshot().media;
+    if (!media) return null;
+    return media.send ?? { key: new Uint8Array(randomBytes(32)), index: 0 };
+  }
+  const at = k.senderSends.getSnapshot().media?.send?.index;
   const epoch = k.hearing.getSnapshot().media?.epochs.find((e) => e.index === at);
   const key = epoch?.keys[k.from];
   return epoch && key ? { key, index: epoch.index } : null;

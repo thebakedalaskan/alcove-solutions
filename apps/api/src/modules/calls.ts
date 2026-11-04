@@ -1,7 +1,7 @@
 import {
-  CALL_TOPIC, CAPTION_LANGUAGES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, type AnswerPart, type Breakouts, type CallAction, type CallCard,
-  type CallEndResult, type CallMls, type CallMlsItem, type CallNudge, type CallRole, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CatchUp,
-  type Person
+  CALL_TOPIC, CAPTION_LANGUAGES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type AnswerPart, type Breakouts, type CallAction, type CallCard,
+  type CallEndResult, type CallMls, type CallMlsGroup, type CallMlsItem, type CallNudge, type CallRole, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation,
+  type CatchUp, type Person
 } from '@alcove/api';
 import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
@@ -36,22 +36,28 @@ export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean
 const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']) });
 /** A breakout room as kept: invited people by email, shown with their names when the call is read. */
 const Room = HeldRooms.shape.rooms.element;
+/** A breakout room while it's open: also the epoch of its MLS group in this generation. */
+const OpenRoom = Room.extend({ epoch: z.number() });
 /**
  * Everyone who has joined, by LiveKit identity, so the call can show account names and photos. Sealed: LiveKit
  * never gets names, emails or photos.
  * - `person`: the same for every connection one browser makes to the call, so removing someone removes all of them.
  * - `status`: waiting to be let in, in, left, or turned away.
  * - `admit`: whether the organizer's browser adds them without asking (invited people, and people let in before who came back).
- * - `keysFor`: the generation their latest key package is for.
- * - `inGroup`: in the current generation's MLS group (a commit added them and none has removed them).
+ * - `keysFor`: the generation of their latest key package while it's unused; -1 once a commit has added them with it.
+ * - `group`: the part of the call whose MLS group they're in, in this generation (`main`, or a breakout room's ID; null for
+ *   none): a commit added them and none has taken them out. The organizer is in every group, and counts as `main`.
+ * - `from`: where in the log their part of the call starts for them: their welcome into their group, or for the organizer,
+ *   when it came into the part it's in. Chat from before it isn't theirs to read.
+ * - `leftAt`: where in the log they last left each part of the call, so coming back says whether there was chat meanwhile.
  * - `replaced`: their pass brought them back on another connection, so it can't again.
- * - `chatBefore`: chat had been sent before they were let in, so their browser can't read all of it.
+ * - `chatBefore`: there had been chat in their part of the call while they weren't in it, so their browser can't read all of it.
  * - `since`: when they were let in, in ms.
  */
 const Joined = z.object({
   identity: z.string(), person: z.string(), role: z.enum(['host', 'invited', 'guest']), name: z.string(), email: z.string().optional(), photoUrl: z.string().optional(),
-  status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), inGroup: z.boolean(), replaced: z.boolean(), chatBefore: z.boolean(),
-  since: z.number(), hand: z.boolean()
+  status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), group: z.string().nullable(), from: z.number(),
+  leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), hand: z.boolean()
 });
 type Joined = z.infer<typeof Joined>;
 const Stored = z.object({
@@ -68,13 +74,13 @@ const Stored = z.object({
    * for the main room), and those that have closed, which go into the notes.
    */
   breakouts: z.object({
-    open: z.object({ rooms: z.array(Room), from: z.number(), until: z.number(), message: z.object({ text: z.string(), at: z.number() }).nullable(), visiting: z.string().nullable() }).nullable(),
+    open: z.object({ rooms: z.array(OpenRoom), from: z.number(), until: z.number(), message: z.object({ text: z.string(), at: z.number() }).nullable(), visiting: z.string().nullable() }).nullable(),
     held: z.array(HeldRooms)
   }),
   /** People (by `person`) the organizer removed: every pass of theirs stops working. */
   removed: z.array(z.string()),
-  /** Whether anyone has chatted yet, so people let in later know there was chat they can't read. */
-  chatEver: z.boolean(),
+  /** Where in this generation's log each part of the call last had chat, so people who come in later know there was chat they can't read. */
+  chatAt: z.record(z.string(), z.number()),
   notices: z.array(Notice)
 });
 type Stored = z.infer<typeof Stored>;
@@ -100,11 +106,83 @@ const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'no
 const withPerson = (s: Stored, identity: string, change: (j: Joined) => Joined): Stored => ({ ...s, people: s.people.map((j) => (j.identity === identity ? change(j) : j)) });
 const secondsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((at - startedAt.getTime()) / 1000));
 
+/* ---------- the parts of a call: the main room, and each breakout room while they're open, each with its own MLS group ---------- */
+
+/** The parts of the call open now: the main room, and each breakout room while rooms are open. */
+const placesOf = (s: Stored): string[] => [MAIN_PLACE, ...(s.breakouts.open?.rooms.map((r) => r.id) ?? [])];
+/** Where someone is in the call now: the organizer where it's visiting (or the main room); an invited person in the room they were sent to; anyone else in the main room. */
+function placeOf(s: Stored, j: Joined): string {
+  const open = s.breakouts.open;
+  if (!open) return MAIN_PLACE;
+  if (j.role === 'host') return open.visiting ?? MAIN_PLACE;
+  const email = j.email?.toLowerCase();
+  return (email ? open.rooms.find((r) => r.emails.includes(email))?.id : undefined) ?? MAIN_PLACE;
+}
+/** The group someone is in, if its part of the call is still open (a closed room's group is nobody's any more). The organizer is in every group. */
+const groupOf = (s: Stored, j: Joined): string | null => (j.role === 'host' ? MAIN_PLACE : j.group !== null && placesOf(s).includes(j.group) ? j.group : null);
+/**
+ * Someone the organizer's browser may add to `place`'s group now: asking (or invited, on their way in), or let in and
+ * on their way into this part of the call, in no group, with a key package for this generation. Nobody but the
+ * organizer is ever in two groups at once.
+ */
+const pendingFor = (s: Stored, generation: number, place: string) => (j: Joined) =>
+  j.role !== 'host' && (j.status === 'waiting' || j.status === 'in') && groupOf(s, j) === null && j.keysFor === generation && placeOf(s, j) === place;
+/** In `place`'s group and no longer to be: gone, removed, or sent to another part of the call. The organizer's browser takes them out. */
+const departedFrom = (s: Stored, place: string) => (j: Joined) => j.role !== 'host' && groupOf(s, j) === place && (j.status !== 'in' || placeOf(s, j) !== place);
+/** Let in, on their way into a part of the call's group (a new generation, or a move), and without an unused key package. */
+const needsKeys = (s: Stored, generation: number, j: Joined) => j.role !== 'host' && j.status === 'in' && j.keysFor !== generation && groupOf(s, j) !== placeOf(s, j);
+/** The epoch of a part of the call's group: the main room's is the call's, each open room's is its own. */
+const epochIn = (row: Pick<Row, 'mls_epoch'>, s: Stored, place: string): number | undefined =>
+  place === MAIN_PLACE ? row.mls_epoch : s.breakouts.open?.rooms.find((r) => r.id === place)?.epoch;
+/**
+ * Who commits for a part of the call's group: the organizer's current connection, for every group. Its browser created
+ * them all, so it's leaf 0 in each. The one place to change if another connection were to take over committing.
+ */
+const committerOf = (row: Pick<Row, 'host_identity'>): string | null => row.host_identity;
+/** Whether there was chat in `place` while this person wasn't in it (they never were, or left before it). */
+const chatSince = (s: Stored, j: Joined, place: string): boolean => { const last = s.chatAt[place]; return last !== undefined && last > (j.leftAt[place] ?? -1); };
+
+/** Rooms, closing: everyone in one goes back to the main room (their browsers rejoin its group), and the rooms go to the notes. */
+function closeRooms(s: Stored, to: number): Stored {
+  const open = s.breakouts.open;
+  if (!open) return s;
+  const closed = new Set(open.rooms.map((r) => r.id));
+  return {
+    ...s,
+    people: s.people.map((j) => (j.group !== null && closed.has(j.group) ? { ...j, group: null } : j)),
+    breakouts: { open: null, held: [...s.breakouts.held, { rooms: open.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails })), from: open.from, to }] }
+  };
+}
 /** Rooms whose time is up have closed, whether or not anyone said so: everyone is back, and the rooms go to the notes. */
 function settleRooms(s: Stored, now: number): Stored {
   const open = s.breakouts.open;
-  if (!open || now < open.until) return s;
-  return { ...s, breakouts: { open: null, held: [...s.breakouts.held, { rooms: open.rooms, from: open.from, to: open.until }] } };
+  return !open || now < open.until ? s : closeRooms(s, open.until);
+}
+/**
+ * What a change to the rooms does beyond the state itself, in the transaction that saves it: the organizer's place
+ * changing starts its part of the log there, and rooms that closed take what was said in them with them (their
+ * MLS log, so their chat, and what was heard in them).
+ */
+async function roomsChanged(o: Owner, db: Db, callId: string, before: Stored, after: Stored, seq: number): Promise<Stored> {
+  let s = after;
+  const host = s.people.find((j) => j.role === 'host' && j.status === 'in');
+  const was = host ? before.people.find((j) => j.identity === host.identity) : undefined;
+  if (host && was) {
+    const from = placeOf(before, was);
+    const to = placeOf(s, host);
+    if (from !== to) {
+      const leftAt = { ...host.leftAt, [from]: seq };
+      s = withPerson(s, host.identity, (j) => ({ ...j, from: seq, leftAt, chatBefore: chatSince(s, { ...j, leftAt }, to) }));
+    }
+  }
+  const open = new Set(placesOf(s));
+  const closed = placesOf(before).filter((p) => !open.has(p));
+  if (closed.length) {
+    await exec(db, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND grp = ANY($3::text[])', [o.ownerId, callId, closed]);
+    if (s.notes.noteId) await transcripts.dropPlaces(o, db, s.notes.noteId, closed);
+    clog.info('breakout rooms closed', { callId, rooms: closed.length });
+  }
+  return s;
 }
 /** Rooms as the call shows them: invited people by name, and who's in each now, by identity (the organizer too, in the room they're visiting). */
 function breakoutsOf(s: Stored): Breakouts {
@@ -112,7 +190,7 @@ function breakoutsOf(s: Stored): Breakouts {
   const open = s.breakouts.open;
   const roomsOf = (rooms: z.infer<typeof Room>[], live: boolean) => rooms.map((r) => ({
     id: r.id, name: r.name, people: r.emails.map((e) => personOf(e)),
-    members: live ? here.filter((j) => (j.role === 'host' ? open?.visiting === r.id : Boolean(j.email && r.emails.includes(j.email.toLowerCase())))).map((j) => j.identity) : []
+    members: live ? here.filter((j) => placeOf(s, j) === r.id).map((j) => j.identity) : []
   }));
   return {
     open: open ? { rooms: roomsOf(open.rooms, true), from: open.from, until: open.until, message: open.message } : null,
@@ -124,17 +202,15 @@ function breakoutsOf(s: Stored): Breakouts {
 
 type MlsKind = 'keypackage' | 'commit' | 'welcome' | 'message';
 const mlsKey = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call-mls:${callId}`);
-const mlsHeader = (o: Owner, callId: string, seq: number, kind: MlsKind) => ({ v: 1 as const, kind: 'call-mls', ownerId: o.ownerId, callId, seq, mlsKind: kind });
-const MlsRow = z.object({ seq: z.coerce.number().int(), kind: z.enum(['keypackage', 'commit', 'welcome', 'message']), party: z.string().nullable(), epoch: z.coerce.number().int(), body_ciphertext: bytea });
-/** Appends to the call's log at `seq` (the caller holds the call's row lock and moves mls_seq on). */
-async function appendMls(o: Owner, db: Db, callId: string, at: { seq: number; generation: number; epoch: number }, kind: MlsKind, party: string | null, body: string): Promise<void> {
-  await exec(db, 'INSERT INTO call_mls (owner_id, call_id, seq, generation, kind, party, epoch, body_ciphertext) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-    [o.ownerId, callId, at.seq, at.generation, kind, party, at.epoch, sealRecord(mlsKey(o, callId), mlsHeader(o, callId, at.seq, kind), unb64u(body))]);
+/** Binds a log entry to its call, place in the log, kind and part of the call's group (none for a key package). */
+const mlsHeader = (o: Owner, callId: string, seq: number, kind: MlsKind, grp: string | null) => ({ v: 1 as const, kind: 'call-mls', ownerId: o.ownerId, callId, seq, mlsKind: kind, grp });
+const MlsRow = z.object({ seq: z.coerce.number().int(), kind: z.enum(['keypackage', 'commit', 'welcome', 'message']), party: z.string().nullable(), grp: z.string().nullable(), epoch: z.coerce.number().int(), body_ciphertext: bytea });
+/** Appends to the call's log at `seq` (the caller holds the call's row lock and moves mls_seq on): a key package (no group), or a commit, welcome or message for one part of the call's group. */
+async function appendMls(o: Owner, db: Db, callId: string, at: { seq: number; generation: number; epoch: number; grp: string | null }, kind: MlsKind, party: string | null, body: string): Promise<void> {
+  await exec(db, 'INSERT INTO call_mls (owner_id, call_id, seq, generation, kind, party, grp, epoch, body_ciphertext) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [o.ownerId, callId, at.seq, at.generation, kind, party, at.grp, at.epoch, sealRecord(mlsKey(o, callId), mlsHeader(o, callId, at.seq, kind, at.grp), unb64u(body))]);
 }
-/** Someone whose key package the organizer's browser may act on now: asking (or invited, on their way in), or let in before and rejoining this generation's group. */
-const pendingIn = (generation: number) => (j: Joined) => j.role !== 'host' && !j.inGroup && j.keysFor === generation && (j.status === 'waiting' || j.status === 'in');
-/** Let in before the organizer's connection changed: they need to send a fresh key package for this generation's group. */
-const needsRejoin = (j: Joined, generation: number) => j.role !== 'host' && j.status === 'in' && !j.inGroup && j.keysFor < generation;
+const openMls = (o: Owner, callId: string, r: z.infer<typeof MlsRow>) => b64u(openRecord(mlsKey(o, callId), mlsHeader(o, callId, r.seq, r.kind, r.grp), r.body_ciphertext));
 const hostHere = (r: Pick<Row, 'state' | 'host_identity' | 'host_left_at'>) => r.state === 'live' && r.host_identity !== null && r.host_left_at === null;
 /** Tells everyone in the room what changed (the call itself, its MLS log, or both), so they fetch that again. Nothing else. */
 async function nudge(o: Owner, roomName: string | null, callId: string, what: { call: boolean; log: boolean }): Promise<void> {
@@ -195,7 +271,10 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   // Someone still waiting to be let in learns only whether notes are on: nobody's name, nothing that was said.
   if (!v.inCall) return { ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, notes: { status: s.notes.status, everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
   const rooms = settleRooms(s, secondsIn(row.started_at, end.getTime()));
-  const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, transcripts.LIVE_LINES) : [];
+  // What was said where the viewer is now, and nowhere else: one room's lines never show in another, or in the main room.
+  const mine = rooms.people.find((j) => j.identity === v.pass.identity);
+  const place = mine ? placeOf(rooms, mine) : MAIN_PLACE;
+  const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, transcripts.LIVE_LINES, place) : [];
   // Who's in: whoever the organizer's browser let into the group and hasn't left. Never asked of LiveKit, so reads cost nothing there.
   const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in') : [];
   return {
@@ -265,7 +344,8 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   const identity = who.identity;
   const joined: Joined = {
     identity, person: id128(), role, name, ...(asker && role !== 'guest' ? { email: asker.email, ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
-    status: role === 'host' ? 'in' : 'waiting', admit: role === 'guest' ? 'ask' : 'auto', keysFor: 0, inGroup: role === 'host', replaced: false, chatBefore: false, since: Date.now(), hand: false
+    status: role === 'host' ? 'in' : 'waiting', admit: role === 'guest' ? 'ask' : 'auto', keysFor: 0, group: role === 'host' ? MAIN_PLACE : null, from: 0, leftAt: {},
+    replaced: false, chatBefore: false, since: Date.now(), hand: false
   };
   // A pass from this browser's earlier connection to the same call: someone let in before is let in again without asking.
   const earlier = who.previous ? readPass(d.cfg, who.previous) : undefined;
@@ -292,7 +372,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     if (!live) {
       const callId = id128();
       const roomName = `r_${id128()}`;
-      let s: Stored = { people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatEver: false, notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
+      let s: Stored = { people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatAt: {}, notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
       if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting, 0), 'Notes are on. Everyone here can see that.');
@@ -303,19 +383,23 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     }
     const { state } = await load(o, c, live.call_id, true);
     if (state.people.some((j) => j.identity === joined.identity)) throw new ConflictError('Join the call again.', { context: { callId: live.call_id, reason: 'identity' } });
-    // A new organizer connection starts a new MLS group (the old one's keys stay with the old browser): everyone
-    // already let in rejoins it without asking, the old connection's place is over, and anyone waiting keeps
-    // waiting. Key packages aren't tied to a group, so theirs carry over.
+    // A new organizer connection starts new MLS groups for every part of the call (the old ones' keys stay with the old
+    // browser): everyone already let in rejoins the group of the part they're in without asking, the old connection's
+    // place is over, and anyone waiting keeps waiting. Key packages aren't tied to a group, so theirs carry over.
     const generation = live.mls_generation + 1;
     const waiting = new Set(state.people.filter((j) => j.status === 'waiting' && j.keysFor === live.mls_generation).map((j) => j.identity));
-    const kps = await rows(c, MlsRow, `SELECT seq, kind, party, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND kind = 'keypackage' ORDER BY seq`,
+    const kps = await rows(c, MlsRow, `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND kind = 'keypackage' ORDER BY seq`,
       [o.ownerId, live.call_id, live.mls_generation]);
-    const carried = kps.flatMap((r) => (r.party && waiting.has(r.party) ? [{ party: r.party, body: b64u(openRecord(mlsKey(o, live.call_id), mlsHeader(o, live.call_id, r.seq, 'keypackage'), r.body_ciphertext)) }] : []));
+    const carried = kps.flatMap((r) => (r.party && waiting.has(r.party) ? [{ party: r.party, body: openMls(o, live.call_id, r) }] : []));
     const kept = new Set(carried.map((k) => k.party));
+    const open = state.breakouts.open;
     let s: Stored = {
       ...state,
-      people: [...state.people.map((j): Joined => ({ ...j, inGroup: false, ...(j.identity === live.host_identity ? { status: 'left' as const } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
-        { ...joined, keysFor: generation, inGroup: true }]
+      people: [...state.people.map((j): Joined => ({ ...j, group: null, leftAt: {}, ...(j.identity === live.host_identity ? { status: 'left' as const } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
+        { ...joined, keysFor: generation, group: MAIN_PLACE, from: live.mls_seq + carried.length }],
+      // Open rooms stay open, each with a new group from its first epoch.
+      breakouts: { ...state.breakouts, open: open ? { ...open, rooms: open.rooms.map((r) => ({ ...r, epoch: 0 })) } : null },
+      chatAt: {}
     };
     // Taking over from another of the organizer's connections: its part of the recording ends, a new segment starts here.
     if (live.host_identity && s.notes.status === 'on' && s.notes.recordingId) s = { ...s, notes: { ...s.notes, segment: s.notes.segment + 1 } };
@@ -323,7 +407,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     const roomName = live.room_name ?? `r_${id128()}`;
     await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id]);
     let seq = live.mls_seq;
-    for (const k of carried) { seq += 1; await appendMls(o, c, live.call_id, { seq, generation, epoch: 0 }, 'keypackage', k.party, k.body); }
+    for (const k of carried) { seq += 1; await appendMls(o, c, live.call_id, { seq, generation, epoch: 0, grp: null }, 'keypackage', k.party, k.body); }
     await exec(c, 'UPDATE calls SET host_identity = $3, host_joined_at = now(), host_left_at = NULL, room_name = $4, mls_generation = $5, mls_epoch = 0, mls_seq = $6, version = version + 1 WHERE owner_id = $1 AND call_id = $2',
       [o.ownerId, live.call_id, joined.identity, roomName, generation, seq]);
     clog.info('organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(live.host_identity), segment: s.notes.segment, generation, waiting: carried.length });
@@ -342,11 +426,11 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     // the same person. Their old connection's place is over, and its pass can't bring anyone back again.
     const before = earlier && earlier.callId === live.call_id && !state.removed.includes(earlier.person)
       ? state.people.find((j) => j.identity === earlier.identity && j.person === earlier.person && !j.replaced && j.role !== 'host' && (j.status === 'in' || j.status === 'left')) : undefined;
-    const me: Joined = { ...joined, keysFor: live.mls_generation, ...(before ? { admit: 'auto' as const, person: before.person } : {}) };
+    const me: Joined = { ...joined, keysFor: live.mls_generation, group: null, ...(before ? { admit: 'auto' as const, person: before.person } : {}) };
     let s: Stored = { ...state, people: [...state.people, me] };
     if (before) s = withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true }));
     const seq = live.mls_seq + 1;
-    await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch }, 'keypackage', me.identity, keyPackage);
+    await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch, grp: null }, 'keypackage', me.identity, keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, seq]);
     await save(o, c, live.call_id, s);
     return { callId: live.call_id, roomName: live.room_name, replaced: null, row: live, state: s, admit: me.admit, generation: live.mls_generation, person: me.person };
@@ -386,10 +470,23 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       const placed = a.rooms.flatMap((r) => r.emails);
       if (placed.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: { ...ctx, rooms: a.rooms.length } });
       if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: { ...ctx, rooms: a.rooms.length } });
-      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails })), from: at, until: at + a.minutes * 60, message: null, visiting: null } } };
+      // Each room gets its own MLS group: everyone sent to one leaves the main room's group and joins the room's.
+      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails, epoch: 0 })), from: at, until: at + a.minutes * 60, message: null, visiting: null } } };
     } else if (a.type === 'rooms-close') {
+      s = closeRooms(s, at);
+    } else if (a.type === 'rooms-rename') {
       const open = s.breakouts.open;
-      if (open) s = { ...s, breakouts: { open: null, held: [...s.breakouts.held, { rooms: open.rooms, from: open.from, to: at }] } };
+      if (!open) throw new ConflictError('No rooms are open.', { context: ctx });
+      if (!open.rooms.some((r) => r.id === a.roomId)) throw new ValidationError('That room isn’t open.', { context: ctx });
+      s = { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => (r.id === a.roomId ? { ...r, name: a.name } : r)) } } };
+    } else if (a.type === 'rooms-move') {
+      // Someone invited, to another open room or back to the main room: their browser leaves its group and joins the new part's.
+      const open = s.breakouts.open;
+      if (!open) throw new ConflictError('No rooms are open.', { context: ctx });
+      if (a.roomId !== null && !open.rooms.some((r) => r.id === a.roomId)) throw new ValidationError('That room isn’t open.', { context: ctx });
+      const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+      if (!meeting.manifest.guests.some((e) => e.toLowerCase() === a.email)) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: ctx });
+      s = { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => ({ ...r, emails: [...r.emails.filter((e) => e !== a.email), ...(r.id === a.roomId ? [a.email] : [])] })) } } };
     } else if (a.type === 'rooms-message') {
       const open = s.breakouts.open;
       if (!open) throw new ConflictError('No rooms are open.', { context: ctx });
@@ -426,12 +523,15 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
         s = notice({ ...s, notes: { ...s.notes, status: 'off', history: [...s.notes.history, { at, on: false }] } }, 'The organizer turned off notes. What was written so far is kept.');
       }
     }
+    s = await roomsChanged(o, c, callId, state, s, row.mls_seq);
     await save(o, c, callId, s);
-    clog.info('call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment, connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length });
-    return { room: row.room_name, gone };
-  }).then(async ({ room, gone }) => {
+    // Anyone sent to another part of the call (or back) moves group: their browser and the organizer's read the log again.
+    const moved = s.people.filter((j) => j.status === 'in' && j.role !== 'host' && placeOf(state, j) !== placeOf(s, j)).length;
+    clog.info('call action', { callId, action: a.type, notes: s.notes.status, segment: s.notes.segment, connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved });
+    return { room: row.room_name, gone, moved };
+  }).then(async ({ room, gone, moved }) => {
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
-    await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' });
+    await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
   });
   return view(v, o.pool, callId);
 }
@@ -447,15 +547,20 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
   return view(v, o.pool, callId);
 }
 
-/** Transcribes a few seconds of speech into the call's live transcript, while notes are on. */
-export async function transcribe(v: Viewer, callId: string, clip: transcripts.Clip): Promise<CallState> {
+/**
+ * Transcribes a few seconds of speech into the call's live transcript, while notes are on, as heard in one part of the
+ * call (`place`, where the organizer was when it was said). Speech from a room that has closed since is refused: that
+ * room's lines are gone.
+ */
+export async function transcribe(v: Viewer, callId: string, clip: transcripts.Clip, place: string): Promise<CallState> {
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
-  const ctx = { callId, segment: clip.segment, startMs: clip.startMs, notes: state.notes.status, currentSegment: state.notes.segment };
+  const ctx = { callId, segment: clip.segment, startMs: clip.startMs, notes: state.notes.status, currentSegment: state.notes.segment, room: place !== MAIN_PLACE };
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
   if (state.notes.status !== 'on' || !state.notes.recordingId || !state.notes.noteId) throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
-  await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip);
+  if (!placesOf(settleRooms(state, secondsIn(row.started_at))).includes(place)) throw new ConflictError('That room has closed.', { context: ctx });
+  await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId, place }, clip);
   await nudge(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
@@ -466,90 +571,120 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
 const MLS_PAGE = 100;
 
 /**
- * The call's MLS log after `after`, as this person may see it: the organizer's browser reads it from the start
- * of the generation (commits, chat, and key packages it may act on); anyone else from their welcome on, since
- * nothing before it is any use to them. Read up to the call's last seq as it stood, so nothing is skipped or
- * sent twice. Also where they stand, and for the organizer's browser whom to let in and take out.
+ * The call's MLS log after `after`, as this person may see it. The organizer's browser reads every group's commits
+ * from the start of the generation, the key packages it may act on, and chat only from the part of the call it's in,
+ * since it got there. Anyone else reads only the group of the part of the call they're in: their welcome into it,
+ * its commits, and its chat while they're there. Read up to the call's last seq as it stood, so nothing is skipped
+ * or sent twice. Also where they stand and where they are, and for the organizer's browser whom to let into each
+ * group and take out of it.
  */
 export async function mlsSync(v: Viewer, callId: string, after: number): Promise<CallMls> {
   const o = v.organizer;
-  const { row, state: s } = await load(o, o.pool, callId);
+  const { row, state } = await load(o, o.pool, callId);
+  // Rooms whose time is up have closed for the keys too: nobody is in their groups any more.
+  const s = settleRooms(state, secondsIn(row.started_at));
   const gen = row.mls_generation;
   const mine = s.people.find((j) => j.identity === v.pass.identity);
   // Where they stand as of this read, not the pass check's: the organizer's browser may have let them in in between.
   const organizer = v.isOrganizer && row.host_identity === v.pass.identity;
   const admission = organizer || mine?.status === 'in' ? 'in' : mine?.status === 'waiting' ? 'waiting' : 'denied';
-  const quiet: CallMls = { generation: gen, epoch: row.mls_epoch, admission, organizer: row.host_identity, items: [], departed: [], pending: [], earlierChat: false, rejoin: false, latest: after, more: false };
-  if (admission !== 'in' || row.state !== 'live') return quiet;
+  const place = mine ? placeOf(s, mine) : MAIN_PLACE;
+  const group = mine ? groupOf(s, mine) : null;
+  const quiet: CallMls = { generation: gen, admission, committer: committerOf(row), place, group, groups: [], items: [], earlierChat: false, keys: false, latest: after, more: false };
+  if (admission !== 'in' || row.state !== 'live' || !mine) return quiet;
+  const keys = needsKeys(s, gen, mine);
   let from = after;
-  if (!organizer) {
-    const welcome = await maybeOne(o.pool, z.object({ seq: z.coerce.number().int() }),
-      `SELECT seq FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND kind = 'welcome' AND party = $4 ORDER BY seq DESC LIMIT 1`, [o.ownerId, callId, gen, v.pass.identity]);
-    // Let in, but not into this generation's group yet: nothing to read until the welcome comes (rejoining: ask for it).
-    if (!welcome) return { ...quiet, rejoin: Boolean(mine && needsRejoin(mine, gen)) };
-    from = Math.max(after, welcome.seq - 1);
+  let found: z.infer<typeof MlsRow>[];
+  if (organizer) {
+    found = await rows(o.pool, MlsRow,
+      `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5
+         AND (kind IN ('commit', 'keypackage') OR (kind = 'message' AND grp = $6 AND seq > $7)) ORDER BY seq LIMIT ${MLS_PAGE}`,
+      [o.ownerId, callId, gen, from, row.mls_seq, place, mine.from]);
+  } else {
+    // In no group yet (or between two): nothing to read until the welcome comes; fresh keys first, if there are none to add them with.
+    if (group === null) return { ...quiet, keys };
+    from = Math.max(after, mine.from - 1);
+    found = await rows(o.pool, MlsRow,
+      `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5 AND grp = $6
+         AND (kind = 'commit' OR (kind = 'welcome' AND party = $7) OR (kind = 'message' AND $8)) ORDER BY seq LIMIT ${MLS_PAGE}`,
+      [o.ownerId, callId, gen, from, row.mls_seq, group, v.pass.identity, place === group]);
   }
-  const found = await rows(o.pool, MlsRow,
-    `SELECT seq, kind, party, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5
-       AND (kind IN ('commit', 'message') OR (kind = 'welcome' AND party = $6) OR (kind = 'keypackage' AND $7)) ORDER BY seq LIMIT ${MLS_PAGE}`,
-    [o.ownerId, callId, gen, from, row.mls_seq, v.pass.identity, organizer]);
-  const pendingNow = s.people.filter(pendingIn(gen));
-  const asking = new Set(pendingNow.map((j) => j.identity));
+  // The organizer's browser keeps every unused key package it's given, so whoever moves can be added the moment they may be.
+  const keyed = new Set(s.people.filter((j) => j.role !== 'host' && j.keysFor === gen && (j.status === 'waiting' || j.status === 'in')).map((j) => j.identity));
   const items: CallMlsItem[] = [];
   for (const r of found) {
-    // Only key packages the organizer's browser may still act on.
-    if (r.kind === 'keypackage' && !(r.party && asking.has(r.party))) continue;
-    const body = b64u(openRecord(mlsKey(o, callId), mlsHeader(o, callId, r.seq, r.kind), r.body_ciphertext));
-    if (r.kind === 'keypackage') { if (r.party) items.push({ kind: 'keypackage', seq: r.seq, from: r.party, body }); }
-    else items.push({ kind: r.kind, seq: r.seq, epoch: r.epoch, body });
+    if (r.kind === 'keypackage') { if (r.party && keyed.has(r.party)) items.push({ kind: 'keypackage', seq: r.seq, from: r.party, body: openMls(o, callId, r) }); }
+    else if (r.grp !== null) items.push({ kind: r.kind, seq: r.seq, group: r.grp, epoch: r.epoch, body: openMls(o, callId, r) });
   }
   const more = found.length === MLS_PAGE;
   const latest = more ? (found.at(-1)?.seq ?? from) : Math.max(from, row.mls_seq);
-  const out: CallMls = {
-    ...quiet, items, latest, more, earlierChat: mine?.chatBefore ?? false,
-    // For the organizer's browser: whoever is still in the group but has left (or was removed), and whom it may add now.
-    departed: organizer ? s.people.filter((j) => j.status === 'left' && j.inGroup && j.role !== 'host').map((j) => j.identity) : [],
-    pending: organizer ? pendingNow.map((j) => ({ id: j.identity, admit: j.admit })) : []
-  };
-  clog.debug('call keys synced', { callId, generation: gen, epoch: row.mls_epoch, admission, items: items.length, more, departed: out.departed.length, pending: out.pending.length, after });
+  const groups: CallMlsGroup[] = organizer
+    ? placesOf(s).map((p) => ({
+      id: p, epoch: epochIn(row, s, p) ?? 0,
+      pending: s.people.filter(pendingFor(s, gen, p)).map((j) => ({ id: j.identity, admit: j.admit })),
+      departed: s.people.filter(departedFrom(s, p)).map((j) => j.identity)
+    }))
+    : group === null ? [] : [{ id: group, epoch: epochIn(row, s, group) ?? 0, pending: [], departed: [] }];
+  const out: CallMls = { ...quiet, groups, items, latest, more, keys, earlierChat: (organizer || place === group) && mine.chatBefore };
+  clog.debug('call keys synced', {
+    callId, generation: gen, admission, groups: groups.length, items: items.length, more, after,
+    departed: groups.reduce((n, g) => n + g.departed.length, 0), pending: groups.reduce((n, g) => n + g.pending.length, 0), room: place !== MAIN_PLACE, keys
+  });
   return out;
 }
 
 /**
- * A commit from the organizer's browser: who it adds and removes, and the welcome for whoever it adds. The
- * API takes exactly one commit per epoch, in order, so every browser applies the same ones. Everyone added
- * must be someone the organizer's browser may add now; a commit adding nobody and removing nobody just moves
- * the keys on.
+ * A commit from the organizer's browser to one part of the call's group: who it adds and removes, and the welcome for
+ * whoever it adds. The API takes exactly one commit per epoch for each group, in order, so every browser applies the
+ * same ones. Everyone added must be someone the organizer's browser may add to that group now (in no other group);
+ * anyone removed is out of that group, and nothing else; a commit adding nobody and removing nobody just moves the
+ * keys on.
  */
 export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof CallCommitBodySchema>): Promise<{ epoch: number }> {
   const o = v.organizer;
-  const ctx = { callId, generation: b.generation, epoch: b.epoch, added: b.added.length, removed: b.removed.length };
+  const ctx = { callId, generation: b.generation, epoch: b.epoch, added: b.added.length, removed: b.removed.length, room: b.group !== MAIN_PLACE };
   const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
-    if (b.generation !== row.mls_generation || b.epoch !== row.mls_epoch) {
-      throw new ConflictError('The call’s keys have moved on. Catch up and try again.', { context: { ...ctx, current: row.mls_epoch, currentGeneration: row.mls_generation }, level: 'info' });
+    let s = settleRooms(state, secondsIn(row.started_at));
+    const epoch = epochIn(row, s, b.group);
+    if (epoch === undefined) throw new ConflictError('That room has closed.', { context: ctx, level: 'info' });
+    if (b.generation !== row.mls_generation || b.epoch !== epoch) {
+      throw new ConflictError('The call’s keys have moved on. Catch up and try again.', { context: { ...ctx, current: epoch, currentGeneration: row.mls_generation }, level: 'info' });
     }
-    const may = pendingIn(row.mls_generation);
-    const people = new Map(state.people.map((j) => [j.identity, j]));
+    const may = pendingFor(s, row.mls_generation, b.group);
+    const people = new Map(s.people.map((j) => [j.identity, j]));
     for (const id of b.added) {
       const j = people.get(id);
       if (!j || !may(j)) throw new ValidationError('Someone in that commit isn’t waiting to join.', { context: ctx });
     }
     if (new Set(b.added).size !== b.added.length) throw new ValidationError('Someone is in that commit twice.', { context: ctx });
     if (b.added.length && !b.welcome) throw new ValidationError('Adding people needs a welcome for them.', { context: ctx });
-    let seq = row.mls_seq + 1;
-    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch }, 'commit', null, b.commit);
+    const at = row.mls_seq + 1;
+    await appendMls(o, c, callId, { seq: at, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'commit', null, b.commit);
+    let seq = at;
+    const welcomed = new Map<string, number>();
     for (const id of b.added) {
       seq += 1;
-      if (b.welcome) await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch + 1 }, 'welcome', id, b.welcome);
+      welcomed.set(id, seq);
+      if (b.welcome) await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch + 1, grp: b.group }, 'welcome', id, b.welcome);
     }
-    await exec(c, 'UPDATE calls SET mls_epoch = $3, mls_seq = $4, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, b.epoch + 1, seq]);
-    let s = state;
+    if (b.group === MAIN_PLACE) {
+      await exec(c, 'UPDATE calls SET mls_epoch = $3, mls_seq = $4, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, b.epoch + 1, seq]);
+    } else {
+      await exec(c, 'UPDATE calls SET mls_seq = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
+      const open = s.breakouts.open;
+      if (open) s = { ...s, breakouts: { ...s.breakouts, open: { ...open, rooms: open.rooms.map((r) => (r.id === b.group ? { ...r, epoch: b.epoch + 1 } : r)) } } };
+    }
     const now = Date.now();
-    // Newly let in: in the group from now, and told whether there was chat before. Rejoining: as they were.
-    for (const id of b.added) s = withPerson(s, id, (j) => ({ ...j, status: 'in', inGroup: true, ...(j.status === 'in' ? {} : { since: now, chatBefore: state.chatEver }) }));
-    for (const id of b.removed) s = withPerson(s, id, (j) => ({ ...j, inGroup: false, status: j.status === 'in' ? 'left' : j.status }));
+    // Added: in that group from now (their key package is used up), reading its log from their welcome, and told whether
+    // there was chat there they can't read. Newly let in: in the call from now.
+    for (const id of b.added) {
+      s = withPerson(s, id, (j) => ({ ...j, status: 'in', group: b.group, keysFor: -1, from: welcomed.get(id) ?? seq, chatBefore: chatSince(s, j, b.group), ...(j.status === 'in' ? {} : { since: now }) }));
+    }
+    // Taken out: out of that group, and nothing more. Leaving the call is the API's to say, not a commit's.
+    for (const id of b.removed) s = withPerson(s, id, (j) => (j.group === b.group ? { ...j, group: null, leftAt: { ...j.leftAt, [b.group]: at } } : j));
+    s = await roomsChanged(o, c, callId, state, s, seq);
     await save(o, c, callId, s);
     return row.room_name;
   });
@@ -564,43 +699,56 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
   return { epoch: b.epoch + 1 };
 }
 
-/** Chat, as an MLS message from someone in the group: stored as it came, and relayed to everyone in it. */
+/**
+ * Chat, as an MLS message from someone in the group of the part of the call they're in: stored as it came, and
+ * relayed to everyone in that group. Nobody chats into another part of the call, the organizer included.
+ */
 export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof CallMessageBodySchema>): Promise<void> {
   requireIn(v, 'chat');
   const o = v.organizer;
+  const ctx = { callId, epoch: b.epoch, room: b.group !== MAIN_PLACE };
   const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
-    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId } });
-    if (b.generation !== row.mls_generation || b.epoch > row.mls_epoch) throw new ConflictError('The call’s keys have moved on. Catch up and try again.', { context: { callId, epoch: b.epoch, current: row.mls_epoch }, level: 'info' });
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+    const s = settleRooms(state, secondsIn(row.started_at));
+    const mine = s.people.find((j) => j.identity === v.pass.identity);
+    if (!mine || placeOf(s, mine) !== b.group || (!v.isOrganizer && groupOf(s, mine) !== b.group)) throw new ValidationError('You’re in another part of the call now.', { context: ctx });
+    const epoch = epochIn(row, s, b.group);
+    if (epoch === undefined || b.generation !== row.mls_generation || b.epoch > epoch) throw new ConflictError('The call’s keys have moved on. Catch up and try again.', { context: { ...ctx, current: epoch ?? null }, level: 'info' });
     const seq = row.mls_seq + 1;
-    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch }, 'message', null, b.message);
+    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'message', null, b.message);
     await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
-    if (!state.chatEver) await save(o, c, callId, { ...state, chatEver: true });
+    await save(o, c, callId, await roomsChanged(o, c, callId, state, { ...s, chatAt: { ...s.chatAt, [b.group]: seq } }, seq));
     return row.room_name;
   });
   // Sizes only: what was said is in the MLS message, which nobody here can read.
-  clog.debug('chat relayed', { callId, epoch: b.epoch, bytes: b.message.length });
+  clog.debug('chat relayed', { ...ctx, bytes: b.message.length });
   await nudge(o, room, callId, { call: false, log: true });
 }
 
-/** A fresh key package from someone already let in, after the organizer's connection changed: the organizer's browser adds them to the new group. */
+/**
+ * A fresh key package from someone already let in who's on their way into a group (after the organizer's connection
+ * changed, or a move to another part of the call): the organizer's browser adds them with it.
+ */
 export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof CallKeyPackageBodySchema>): Promise<void> {
   requireIn(v, 'rejoin');
   const o = v.organizer;
   const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
-    const mine = state.people.find((j) => j.identity === v.pass.identity);
-    if (row.state !== 'live' || !mine || b.generation !== row.mls_generation || !needsRejoin(mine, row.mls_generation)) {
+    const s = settleRooms(state, secondsIn(row.started_at));
+    const mine = s.people.find((j) => j.identity === v.pass.identity);
+    if (row.state !== 'live' || !mine || b.generation !== row.mls_generation || !needsKeys(s, row.mls_generation, mine)) {
       throw new ConflictError('There’s nothing to rejoin.', { context: { callId, generation: b.generation, current: row.mls_generation }, level: 'info' });
     }
     const seq = row.mls_seq + 1;
-    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: row.mls_epoch }, 'keypackage', mine.identity, b.keyPackage);
+    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: row.mls_epoch, grp: null }, 'keypackage', mine.identity, b.keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
-    await save(o, c, callId, withPerson(state, mine.identity, (j) => ({ ...j, admit: 'auto', keysFor: row.mls_generation })));
-    return row.room_name;
+    const next = withPerson(s, mine.identity, (j) => ({ ...j, admit: 'auto', keysFor: row.mls_generation }));
+    await save(o, c, callId, await roomsChanged(o, c, callId, state, next, seq));
+    return { room: row.room_name, moving: placeOf(s, mine) !== MAIN_PLACE || groupOf(s, mine) !== null };
   });
-  clog.info('rejoining a new key generation', { callId, generation: b.generation });
-  await nudge(o, room, callId, { call: false, log: true });
+  clog.info('keys sent to join another group', { callId, generation: b.generation, moving: room.moving });
+  await nudge(o, room.room, callId, { call: false, log: true });
 }
 
 /** A LiveKit token, only for someone the organizer's browser let in. It names nobody. */
@@ -622,26 +770,34 @@ function recorded(history: Stored['notes']['history'], at: number, end: number):
   return total;
 }
 
+/** Where the person asking is in the call now: their part of it is all of the live transcript they may read. */
+function placeFor(v: Viewer, s: Stored): string {
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  return mine ? placeOf(s, mine) : MAIN_PLACE;
+}
+
 /**
- * Live transcript lines in another language, for the person asking. Each line is translated once per
- * language and kept sealed with the live transcript, which goes when the recording stops.
+ * Live transcript lines in another language, for the person asking: only lines from the part of the call they're in.
+ * Each line is translated once per language and kept sealed with the live transcript, which goes when the recording
+ * stops (and a room's, when it closes).
  */
 export async function translate(v: Viewer, callId: string, language: CaptionLanguage, lineIds: string[]): Promise<CaptionTranslation[]> {
   requireIn(v, 'translate');
   const o = v.organizer;
-  const { row, state: s } = await load(o, o.pool, callId);
+  const { row, state } = await load(o, o.pool, callId);
+  const s = settleRooms(state, secondsIn(row.started_at));
   const ctx = { callId, language, asked: lineIds.length };
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
   if (!s.notes.noteId || !s.notes.recordingId) throw new ConflictError('Notes haven’t been on in this call, so there are no captions to translate.', { context: ctx });
   const asked = new Set(lineIds);
-  const wanted = (await transcripts.lines(o, o.pool, s.notes.noteId)).filter((l) => asked.has(l.id));
+  const wanted = (await transcripts.lines(o, o.pool, s.notes.noteId, placeFor(v, s))).filter((l) => asked.has(l.id));
   if (!wanted.length) return [];
   const have = await transcripts.translations(o, s.notes.noteId, wanted.map((l) => l.id), language);
   const missing = wanted.filter((l) => !have.has(l.id));
   if (missing.length) {
     const t0 = performance.now();
     const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language);
-    await transcripts.keepTranslations(o, { recordingId: s.notes.recordingId, noteId: s.notes.noteId }, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
+    await transcripts.keepTranslations(o, { recordingId: s.notes.recordingId, noteId: s.notes.noteId, place: placeFor(v, s) }, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
   } else clog.debug('captions translated from cache', { ...ctx, found: wanted.length });
@@ -660,16 +816,22 @@ function gapsOf(history: Stored['notes']['history'], now: number): CatchUp['gaps
   return gaps;
 }
 
-/** A live call and its transcript so far, for the person asking. Nothing about catching up is stored. */
-async function sofar(o: Owner, callId: string, what: string) {
-  const { row, state: s } = await load(o, o.pool, callId);
-  const ctx = { callId, what };
+/**
+ * A live call and its transcript so far, for the person asking: what was said in the part of the call they're in
+ * now, and nowhere else. Nothing about catching up is stored.
+ */
+async function sofar(v: Viewer, callId: string, what: string) {
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  const s = settleRooms(state, secondsIn(row.started_at));
+  const place = placeFor(v, s);
+  const ctx = { callId, what, room: place !== MAIN_PLACE };
   if (row.state !== 'live') throw new ConflictError('This call has ended. Its notes have everything.', { context: ctx });
   if (!s.notes.noteId) throw new ConflictError('Notes haven’t been on in this call, so nothing has been transcribed.', { context: ctx });
   const asOf = secondsIn(row.started_at);
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const person = await me(o);
-  const all = await transcripts.lines(o, o.pool, s.notes.noteId);
+  const all = await transcripts.lines(o, o.pool, s.notes.noteId, place);
   const brief = (ls: transcripts.Line[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
     seconds: asOf, lines: transcripts.spoken(ls, { name: person.name, person }), live: true
@@ -679,7 +841,7 @@ async function sofar(o: Owner, callId: string, what: string) {
 
 /** Where the call has got to, from the live transcript: the last `minutes`, or all of it. For the person asking alone. */
 export async function catchUp(v: Viewer, callId: string, minutes: number | undefined): Promise<CatchUp> {
-  const { all, asOf, gaps, brief } = await sofar(v.organizer, callId, 'catch-up');
+  const { all, asOf, gaps, brief } = await sofar(v, callId, 'catch-up');
   const through = all.at(-1)?.at ?? 0;
   const from = minutes ? Math.max(0, through - minutes * 60) : 0;
   const read = all.filter((l) => l.at >= from);
@@ -693,7 +855,7 @@ export async function catchUp(v: Viewer, callId: string, minutes: number | undef
 
 /** Answers a question about the call so far, from the live transcript, for the person asking alone. */
 export async function askSoFar(v: Viewer, callId: string, question: string): Promise<AnswerPart[]> {
-  const { all, person, brief } = await sofar(v.organizer, callId, 'ask');
+  const { all, person, brief } = await sofar(v, callId, 'ask');
   if (!all.length) throw new ConflictError('Nothing has been transcribed yet, so there’s nothing to ask about.', { context: { callId } });
   const asker: Person = v.isOrganizer ? person : { id: v.pass.identity, name: v.pass.name, email: '' };
   const t0 = performance.now();
@@ -714,11 +876,14 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     if (unless?.(row)) return null;
     room = row.room_name;
     const duration = Math.max(1, secondsIn(row.started_at));
-    // Rooms still open come back when the call ends, and go into the notes with the rest.
+    // Rooms still open come back when the call ends, and go into the notes with the rest (who was in which, not what they said).
     const open = state.breakouts.open;
-    const s: Stored = open ? { ...state, breakouts: { open: null, held: [...state.breakouts.held, { rooms: open.rooms, from: open.from, to: Math.min(open.until, duration) }] } } : state;
+    const closed = open ? closeRooms(state, Math.min(open.until, duration)) : state;
     if (row.state === 'live') {
       await exec(c, `UPDATE calls SET state = 'ended', ended_at = now(), version = version + 1 WHERE owner_id = $1 AND call_id = $2`, [o.ownerId, callId]);
+    }
+    const s = row.state === 'live' ? await roomsChanged(o, c, callId, state, closed, row.mls_seq) : closed;
+    if (row.state === 'live') {
       await save(o, c, callId, s);
       // The MLS log only matters while the call runs.
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);

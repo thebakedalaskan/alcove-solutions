@@ -3,10 +3,11 @@
  * sends a few seconds of speech at a time; each clip is transcribed and kept as one sealed row, even
  * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording,
  * so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
- * model the clip was sent to. When the recording stops, the lines and that evidence move into the note
- * and the rows go.
+ * model the clip was sent to, and, in a call, the part of the call it was heard in: the main room or a breakout
+ * room. A room's lines are only ever read back in that room, and go when it closes. When the recording stops, the
+ * main room's lines and that evidence move into the note and the rows go.
  */
-import { InferenceEvidenceSchema, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
+import { InferenceEvidenceSchema, MAIN_PLACE, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../crypto';
@@ -22,13 +23,16 @@ export const LIVE_LINES = 200;
 
 /** Speech from the browser: where it starts in its segment (pauses not counted), and its WAV bytes. */
 export interface Clip { segment: number; startMs: number; durationMs: number; wav: Uint8Array }
-/** Where a clip's lines go: the recording it was part of, and the note being made from it. */
-export interface Target { recordingId: string; noteId: string }
+/**
+ * Where a clip's lines go: the recording it was part of, the note being made from it, and the part of the call it
+ * was heard in (`main`, or a breakout room's ID; a room recording is all `main`).
+ */
+export interface Target { recordingId: string; noteId: string; place: string }
 
 /** A line as kept. Who said it comes from the note when it's shown: the organizer in a call, nobody in particular in a room. */
 const Line = z.object({ id: z.string(), at: z.number(), text: z.string() });
 export type Line = z.infer<typeof Line>;
-const Stored = z.object({ lines: z.array(Line), evidence: InferenceEvidenceSchema });
+const Stored = z.object({ lines: z.array(Line), evidence: InferenceEvidenceSchema, place: z.string() });
 
 const key = (o: Owner, noteId: string) => stateKey(o.root, o.ownerId, `transcript:${noteId}`);
 const tagOf = (o: Owner, noteId: string, segment: number, startMs: number) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}`));
@@ -40,7 +44,7 @@ const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, 
  */
 export async function hear(o: Owner, t: Target, clip: Clip): Promise<void> {
   const tag = tagOf(o, t.noteId, clip.segment, clip.startMs);
-  const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, startMs: clip.startMs, durationMs: clip.durationMs, bytes: clip.wav.length };
+  const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, startMs: clip.startMs, durationMs: clip.durationMs, bytes: clip.wav.length, room: t.place !== MAIN_PLACE };
   const seen = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = $3', [o.ownerId, t.noteId, tag]);
   if (seen) { tlog.debug('clip already transcribed', ctx); return; }
   // Lines are placed in the whole recording the way the note's player counts it: earlier segments first.
@@ -54,22 +58,22 @@ export async function hear(o: Owner, t: Target, clip: Clip): Promise<void> {
     if (!r || r.state === 'stopped') return false;
     // Kept even without lines: the note says which verified models everything said in it went to.
     await exec(c, 'INSERT INTO transcript_clips (owner_id, note_item_id, clip_tag, clip_ciphertext) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-      [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson({ lines, evidence }))]);
+      [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson({ lines, evidence, place: t.place }))]);
     return true;
   });
   if (kept) tlog.debug('clip transcribed into the live transcript', { ...ctx, lines: lines.length });
   else tlog.info('clip arrived after the recording stopped; dropped', { ...ctx, lines: lines.length });
 }
 
-async function clips(o: Owner, db: Db, noteId: string): Promise<z.infer<typeof Stored>[]> {
+async function clips(o: Owner, db: Db, noteId: string): Promise<(z.infer<typeof Stored> & { tag: Uint8Array })[]> {
   const found = await rows(db, z.object({ clip_tag: bytea, clip_ciphertext: bytea }), 'SELECT clip_tag, clip_ciphertext FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, noteId]);
   const k = key(o, noteId);
-  return found.map((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored));
+  return found.map((r) => ({ ...openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored), tag: r.clip_tag }));
 }
 
-/** Every line heard so far for a note that's still recording, in order. */
-export async function lines(o: Owner, db: Db, noteId: string): Promise<Line[]> {
-  return (await clips(o, db, noteId)).flatMap((c) => c.lines).sort((a, b) => a.at - b.at);
+/** Every line heard so far for a note that's still recording, in order: in one part of the call (`place`), or everywhere. */
+export async function lines(o: Owner, db: Db, noteId: string, place?: string): Promise<Line[]> {
+  return (await clips(o, db, noteId)).filter((c) => place === undefined || c.place === place).flatMap((c) => c.lines).sort((a, b) => a.at - b.at);
 }
 
 /**
@@ -87,14 +91,33 @@ export async function heardBy(o: Owner, db: Db, noteId: string): Promise<Inferen
 }
 
 /**
- * The latest `n` lines for a note that's still recording, in order: read from its newest clips only, so a long
- * call's live view costs the same as a short one's. (Each kept clip has at least one line.)
+ * The latest `n` lines heard in one part of the call (`place`) for a note that's still recording, in order: read
+ * from its newest clips only, so a long call's live view costs the same as a short one's. (Each kept clip has at
+ * least one line.)
  */
-export async function latest(o: Owner, db: Db, noteId: string, n: number): Promise<Line[]> {
+export async function latest(o: Owner, db: Db, noteId: string, n: number, place: string): Promise<Line[]> {
   const found = await rows(db, z.object({ clip_tag: bytea, clip_ciphertext: bytea }),
     'SELECT clip_tag, clip_ciphertext FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 ORDER BY heard_at DESC LIMIT $3', [o.ownerId, noteId, n]);
   const k = key(o, noteId);
-  return found.flatMap((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored).lines).sort((a, b) => a.at - b.at).slice(-n);
+  return found.map((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored)).filter((c) => c.place === place).flatMap((c) => c.lines).sort((a, b) => a.at - b.at).slice(-n);
+}
+
+/**
+ * Deletes what was heard in breakout rooms that have closed, and those lines in other languages: a room's lines
+ * live only as long as the room. Returns how many clips went.
+ */
+export async function dropPlaces(o: Owner, db: Db, noteId: string, places: string[]): Promise<number> {
+  if (!places.length) return 0;
+  const gone = (await clips(o, db, noteId)).filter((c) => places.includes(c.place));
+  if (!gone.length) return 0;
+  const lineIds = new Set(gone.flatMap((c) => c.lines.map((l) => l.id)));
+  await exec(db, 'DELETE FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = ANY($3::bytea[])', [o.ownerId, noteId, gone.map((c) => Buffer.from(c.tag))]);
+  const found = await rows(db, z.object({ line_tag: bytea, translation_ciphertext: bytea }), 'SELECT line_tag, translation_ciphertext FROM transcript_translations WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, noteId]);
+  const k = key(o, noteId);
+  const stale = found.filter((r) => lineIds.has(openJson(k, translationHeader(o, noteId, r.line_tag), r.translation_ciphertext, Translated).lineId)).map((r) => Buffer.from(r.line_tag));
+  if (stale.length) await exec(db, 'DELETE FROM transcript_translations WHERE owner_id = $1 AND note_item_id = $2 AND line_tag = ANY($3::bytea[])', [o.ownerId, noteId, stale]);
+  tlog.info('a closed room’s lines deleted', { noteId, clips: gone.length, translations: stale.length });
+  return gone.length;
 }
 
 /** Lines as the app shows them, said by `speaker` when anyone can tell. */

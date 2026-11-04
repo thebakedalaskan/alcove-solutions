@@ -4,7 +4,7 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, MAIN_PLACE, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
   type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient
 } from '@alcove/api';
@@ -96,7 +96,8 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
  * note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = []): Promise<void> {
-  const heard = await transcripts.lines(o, db, noteId);
+  // Only the main room's lines go into the note: what was said in a breakout room stays in that room, and went when it closed.
+  const heard = await transcripts.lines(o, db, noteId, MAIN_PLACE);
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const organizer = await me(o);
   const next = await updateNote(o, db, noteId, (n) => ({

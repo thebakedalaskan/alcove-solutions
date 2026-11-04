@@ -1,24 +1,32 @@
 /*
- * One browser's MLS client (RFC 9420) for one call (docs: Calls and recordings › End-to-end encryption). Its
+ * One browser's MLS clients (RFC 9420) for one call (docs: Calls and recordings › End-to-end encryption). Their
  * keys are made and kept here and never sent anywhere: the API only orders and relays MLS messages. The keys
- * LiveKit encrypts media frames with come from the group's exporter secret, one per sender, so they change
- * with every epoch: whenever someone is added or removed, and every few minutes besides.
+ * LiveKit encrypts media frames with come from a group's exporter secret, one per sender, so they change with
+ * every epoch: whenever someone is added or removed, and every few minutes besides.
  *
- * Only the organizer's browser commits. It created the group, so its leaf is 0, and every other browser takes
- * commits from leaf 0 alone. Operations run one at a time, in order, so nothing reads the group's state while
- * something else is moving it on. Nothing a message carries can stop this client: anything unreadable is
- * reported as such and the next message is read as usual.
+ * A call has one group for each part of it: the main room, and while breakout rooms are open, one per room. So a
+ * room's media keys and chat belong to the people in that room alone. Only the organizer's browser commits: it
+ * creates every group, so its leaf is 0 in each, and every other browser takes commits from leaf 0 alone. It's
+ * therefore in every group; anyone else is in one at a time. Each group's operations run one at a time, in order,
+ * so nothing reads its state while something else is moving it on. Nothing a message carries can stop a group:
+ * anything unreadable is reported as such and the next message is read as usual.
  */
 import { CALL_CHAT_MAX } from '@alcove/api';
 import { z } from 'zod';
-import type { CiphersuiteImpl, ClientConfig, ClientState, IncomingMessageCallback, KeyPackage, MLSMessage, PrivateKeyPackage, PrivateMessage, Proposal, RatchetTree, Welcome } from 'ts-mls';
+import type { CiphersuiteImpl, ClientConfig, ClientState, IncomingMessageCallback, KeyPackage, MLSMessage, PrivateKeyPackage, PrivateMessage, Proposal, RatchetTree } from 'ts-mls';
 
 const SUITE = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519' as const;
 const MEDIA_LABEL = 'alcove/call-media/v1';
 export const IDENTITY = /^p_[A-Za-z0-9_-]{22}$/;
-const ORGANIZER_LEAF = 0;
+/**
+ * The leaf whose commits a group takes: the committer's. The organizer's browser creates every group, so that's
+ * leaf 0. Kept in one place (MlsGroup.committerLeaf) so another connection could take over committing.
+ */
+const COMMITTER_LEAF = 0;
 /** At most this many people go into one commit: a crowd arriving at once is let in over a few. */
 export const MAX_ADDS = 50;
+/** Key packages a browser keeps ready to join with: the newest few it has sent, until one is used. */
+const KEEP_KEY_PACKAGES = 4;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -34,10 +42,13 @@ export const unb64u = (s: string): Uint8Array => {
   return out;
 };
 
-/** A new random identity for a call connection: what LiveKit and the call's MLS group know someone by. */
+/** A new random identity for a call connection: what LiveKit and the call's MLS groups know someone by. */
 export const newIdentity = (): string => `p_${b64u(crypto.getRandomValues(new Uint8Array(16)))}`;
-/** The name of a call's MLS group for one generation (a new group whenever the organizer's connection changes). */
-export const groupName = (callId: string, generation: number): string => `alcove/call/${callId}/${generation}`;
+/**
+ * The name of one part of a call's MLS group for one generation (a new set of groups whenever the organizer's
+ * connection changes): `main`, or a breakout room's ID.
+ */
+export const groupName = (callId: string, generation: number, place: string): string => `alcove/call/${callId}/${generation}/${place}`;
 
 /* The library loads on first use, so it stays out of the app's first page load. */
 interface Lib { m: typeof import('ts-mls'); sender: typeof import('ts-mls/privateMessage.js'); kps: typeof import('ts-mls/keyPackage.js'); cs: CiphersuiteImpl }
@@ -74,8 +85,100 @@ function epochOf(m: MLSMessage): number | undefined {
   if (m.wireformat === 'mls_public_message') return Number(m.publicMessage.content.epoch);
   return undefined;
 }
+function decode(l: Lib, body: string): MLSMessage {
+  let d: ReturnType<Lib['m']['decodeMlsMessage']>;
+  try { d = l.m.decodeMlsMessage(unb64u(body), 0); } catch { throw new MlsError('Not an MLS message.'); }
+  if (!d) throw new MlsError('Not an MLS message.');
+  return d[0];
+}
+/** Every member's credential is a call identity; anything else is refused. */
+function config(l: Lib): ClientConfig {
+  const m = l.m;
+  return {
+    keyRetentionConfig: m.defaultKeyRetentionConfig, lifetimeConfig: m.defaultLifetimeConfig,
+    keyPackageEqualityConfig: m.defaultKeyPackageEqualityConfig, paddingConfig: m.defaultPaddingConfig,
+    authService: { validateCredential: (credential) => Promise.resolve(identityOf(credential) !== undefined) }
+  };
+}
 
 export class MlsError extends Error {}
+
+interface KeyPair { publicPackage: KeyPackage; privatePackage: PrivateKeyPackage; body: string }
+
+/**
+ * A connection's way into groups: key packages made here (each joins one group at most, and its private init key
+ * goes once it has), and new groups for the organizer's browser to start.
+ */
+export class MlsKeys {
+  private unused: KeyPair[] = [];
+  private constructor(private readonly l: Lib, readonly identity: string) {}
+
+  static async make(identity: string): Promise<MlsKeys> {
+    if (!IDENTITY.test(identity)) throw new MlsError('Not a call identity.');
+    const k = new MlsKeys(await lib(), identity);
+    await k.fresh();
+    return k;
+  }
+  private async pair(): Promise<KeyPair> {
+    const kp = await this.l.m.generateKeyPackage({ credentialType: 'basic', identity: enc.encode(this.identity) }, this.l.m.defaultCapabilities(), this.l.m.defaultLifetime, [], this.l.cs);
+    return { ...kp, body: b64u(this.l.m.encodeMlsMessage({ keyPackage: kp.publicPackage, wireformat: 'mls_key_package', version: 'mls10' })) };
+  }
+  private forget(k: KeyPair) { this.l.m.zeroOutUint8Array(k.privatePackage.initPrivateKey); }
+
+  /** The newest key package, to send with joining. */
+  keyPackage(): string { return this.unused.at(-1)?.body ?? ''; }
+  /** A new key package, to be added to another group with (a new generation, or another part of the call). The newest few stay ready to join with. */
+  async fresh(): Promise<string> {
+    const k = await this.pair();
+    this.unused.push(k);
+    for (const old of this.unused.splice(0, Math.max(0, this.unused.length - KEEP_KEY_PACKAGES))) this.forget(old);
+    return k.body;
+  }
+
+  /** The organizer's browser starts one part of the call's group, with a key package of its own that nobody else ever sees. */
+  async create(place: string, name: string): Promise<MlsGroup> {
+    const k = await this.pair();
+    const st = await this.l.m.createGroup(enc.encode(name), k.publicPackage, k.privatePackage, [], this.l.cs, config(this.l));
+    this.forget(k);
+    return new MlsGroup(this.l, this.identity, place, st, 0);
+  }
+
+  /**
+   * Joins from the welcome the organizer's browser made for one of this connection's key packages: only into the
+   * group named, with this browser in it, and the committer the API names at the committer's leaf. That key
+   * package is used up.
+   */
+  async join(welcome: string, place: string, expect: { group: string; committer: string | null }): Promise<MlsGroup> {
+    const m = decode(this.l, welcome);
+    if (m.wireformat !== 'mls_welcome') throw new MlsError('Expected a welcome.');
+    let joined: { st: ClientState; k: KeyPair } | null = null;
+    for (const k of [...this.unused].reverse()) {
+      // A welcome carries secrets only for the key packages it adds: any other doesn't open it.
+      const st = await this.l.m.joinGroup(m.welcome, k.publicPackage, k.privatePackage, this.l.m.emptyPskIndex, this.l.cs, undefined, undefined, config(this.l)).catch(() => null);
+      if (st) { joined = { st, k }; break; }
+    }
+    if (!joined) throw new MlsError('That welcome isn’t for this browser.');
+    const { st, k } = joined;
+    this.unused = this.unused.filter((x) => x !== k);
+    this.forget(k);
+    if (dec.decode(st.groupContext.groupId) !== expect.group) throw new MlsError('That welcome is for another group.');
+    const ids = leaves(st.ratchetTree);
+    if (![...ids.values()].includes(this.identity)) throw new MlsError('That welcome isn’t for this browser.');
+    const committer = ids.get(COMMITTER_LEAF);
+    if (!committer || (expect.committer !== null && committer !== expect.committer)) throw new MlsError('That group’s committer isn’t this call’s organizer.');
+    return new MlsGroup(this.l, this.identity, place, st, Number(st.groupContext.epoch));
+  }
+
+  /** The organizer's browser checks each key package before adding anyone with it: well formed, this suite, signed by its own key, naming the identity it came with. */
+  async checked(a: { identity: string; keyPackage: string }): Promise<KeyPackage | null> {
+    let m: MLSMessage;
+    try { m = decode(this.l, a.keyPackage); } catch { return null; }
+    if (m.wireformat !== 'mls_key_package') return null;
+    const kp = m.keyPackage;
+    if (kp.cipherSuite !== SUITE || identityOf(kp.leafNode.credential) !== a.identity) return null;
+    return (await this.l.kps.verifyKeyPackage(kp, this.l.cs.signature).catch(() => false)) ? kp : null;
+  }
+}
 
 export interface PendingCommit {
   commit: string;
@@ -91,123 +194,44 @@ export type Applied = 'applied' | 'skipped' | 'refused' | 'removed' | 'behind';
 /** Chat from the log, read: who sent it as MLS vouches for it, or why it can't be read here. */
 export type Read = { kind: 'chat'; from: string; text: string; at: number } | { kind: 'before' } | { kind: 'unreadable' };
 
-export class MlsClient {
-  private state: ClientState | null = null;
+/** One part of the call's MLS group, as this browser holds it. */
+export class MlsGroup {
+  private state: ClientState | null;
   private pending: { body: string; next: ClientState; consumed: Uint8Array[]; sent: PendingCommit } | null = null;
-  /** The epoch this browser joined at: chat from before it can't be read here. */
-  private joinedAt = -1;
   private queue: Promise<unknown> = Promise.resolve();
+  /** The leaf whose commits count here (see COMMITTER_LEAF). */
+  private readonly committerLeaf = COMMITTER_LEAF;
 
-  private constructor(private readonly l: Lib, readonly identity: string, private kp: { publicPackage: KeyPackage; privatePackage: PrivateKeyPackage }) {}
+  /** `joinedAt`: the epoch this browser came in at; chat from before it can't be read here. */
+  constructor(private readonly l: Lib, readonly identity: string, readonly place: string, state: ClientState, private readonly joinedAt: number) { this.state = state; }
 
-  static async make(identity: string): Promise<MlsClient> {
-    if (!IDENTITY.test(identity)) throw new MlsError('Not a call identity.');
-    const l = await lib();
-    return new MlsClient(l, identity, await MlsClient.keys(l, identity));
-  }
-  private static keys(l: Lib, identity: string) {
-    return l.m.generateKeyPackage({ credentialType: 'basic', identity: enc.encode(identity) }, l.m.defaultCapabilities(), l.m.defaultLifetime, [], l.cs);
-  }
   /** One operation at a time, in the order they were asked for, whether or not the one before worked. */
   private run<T>(f: () => Promise<T>): Promise<T> {
     const next = this.queue.then(f, f);
     this.queue = next.catch(() => undefined);
     return next;
   }
-  /** The key package's private init key is only for opening a welcome: once in a group, it's gone. */
-  private forgetInitKey() { this.l.m.zeroOutUint8Array(this.kp.privatePackage.initPrivateKey); }
+  /** Commits only from the committer's leaf, and no standalone proposals from anyone. */
+  private readonly policy: IncomingMessageCallback = (incoming) => (incoming.kind === 'commit' && incoming.senderLeafIndex === this.committerLeaf ? 'accept' : 'reject');
 
-  /** Fresh keys for a new group (the organizer's connection changed, or this browser lost its place): the old group is over here. */
-  renew(): Promise<void> {
-    return this.run(async () => {
-      this.kp = await MlsClient.keys(this.l, this.identity);
-      this.state = null;
-      this.pending = null;
-      this.joinedAt = -1;
-    });
-  }
-
-  /** Every member's credential is a call identity; anything else is refused. */
-  private config(): ClientConfig {
-    const m = this.l.m;
-    return {
-      keyRetentionConfig: m.defaultKeyRetentionConfig, lifetimeConfig: m.defaultLifetimeConfig,
-      keyPackageEqualityConfig: m.defaultKeyPackageEqualityConfig, paddingConfig: m.defaultPaddingConfig,
-      authService: { validateCredential: (credential) => Promise.resolve(identityOf(credential) !== undefined) }
-    };
-  }
-  /** Commits only from the organizer's leaf, and no standalone proposals from anyone. */
-  private readonly policy: IncomingMessageCallback = (incoming) => (incoming.kind === 'commit' && incoming.senderLeafIndex === ORGANIZER_LEAF ? 'accept' : 'reject');
-
-  keyPackage(): string {
-    return b64u(this.l.m.encodeMlsMessage({ keyPackage: this.kp.publicPackage, wireformat: 'mls_key_package', version: 'mls10' }));
-  }
   get inGroup(): boolean { return this.state !== null; }
   epoch(): number { return this.state ? Number(this.state.groupContext.epoch) : -1; }
   members(): string[] { return this.state ? [...leaves(this.state.ratchetTree).values()] : []; }
+  /** This browser is done with the group (it left, or the part of the call closed): nothing more is read or sent with it. */
+  leave(): Promise<void> { return this.run(async () => { this.state = null; this.pending = null; }); }
 
-  /** The organizer's browser starts the call's group (for this generation). */
-  create(callId: string, generation: number): Promise<void> {
-    return this.run(async () => {
-      this.state = await this.l.m.createGroup(enc.encode(groupName(callId, generation)), this.kp.publicPackage, this.kp.privatePackage, [], this.l.cs, this.config());
-      this.pending = null;
-      this.joinedAt = 0;
-      this.forgetInitKey();
-    });
-  }
-
-  private decode(body: string): MLSMessage {
-    let d: ReturnType<Lib['m']['decodeMlsMessage']>;
-    try { d = this.l.m.decodeMlsMessage(unb64u(body), 0); } catch { throw new MlsError('Not an MLS message.'); }
-    if (!d) throw new MlsError('Not an MLS message.');
-    return d[0];
-  }
-  private welcomeOf(body: string): Welcome {
-    const m = this.decode(body);
-    if (m.wireformat !== 'mls_welcome') throw new MlsError('Expected a welcome.');
-    return m.welcome;
-  }
   private privateOf(body: string): PrivateMessage {
-    const m = this.decode(body);
+    const m = decode(this.l, body);
     if (m.wireformat !== 'mls_private_message') throw new MlsError('Expected an encrypted message.');
     return m.privateMessage;
   }
 
   /**
-   * Joins from the welcome the organizer's browser made for this one: only into this call's group for this
-   * generation, with this browser in it, and the call's organizer at leaf 0.
-   */
-  join(welcome: string, expect: { group: string; organizer: string | null }): Promise<void> {
-    return this.run(async () => {
-      const st = await this.l.m.joinGroup(this.welcomeOf(welcome), this.kp.publicPackage, this.kp.privatePackage, this.l.m.emptyPskIndex, this.l.cs, undefined, undefined, this.config());
-      if (dec.decode(st.groupContext.groupId) !== expect.group) throw new MlsError('That welcome is for another group.');
-      const ids = leaves(st.ratchetTree);
-      if (![...ids.values()].includes(this.identity)) throw new MlsError('That welcome isn’t for this browser.');
-      const organizer = ids.get(ORGANIZER_LEAF);
-      if (!organizer || (expect.organizer !== null && organizer !== expect.organizer)) throw new MlsError('That group’s organizer isn’t this call’s organizer.');
-      this.state = st;
-      this.pending = null;
-      this.joinedAt = Number(st.groupContext.epoch);
-      this.forgetInitKey();
-    });
-  }
-
-  /** A key package that's well formed, for this suite, signed by its own key, and naming the identity it came with; otherwise null. */
-  private async checked(a: { identity: string; keyPackage: string }): Promise<KeyPackage | null> {
-    let m: MLSMessage;
-    try { m = this.decode(a.keyPackage); } catch { return null; }
-    if (m.wireformat !== 'mls_key_package') return null;
-    const kp = m.keyPackage;
-    if (kp.cipherSuite !== this.kp.publicPackage.cipherSuite || identityOf(kp.leafNode.credential) !== a.identity) return null;
-    return (await this.l.kps.verifyKeyPackage(kp, this.l.cs.signature).catch(() => false)) ? kp : null;
-  }
-
-  /**
-   * The organizer's browser: one commit adding these key packages (up to MAX_ADDS) and removing these
+   * The organizer's browser: one commit adding these checked key packages (up to MAX_ADDS) and removing these
    * identities, or only moving the keys on (`rekey`). It takes effect once the API has taken it (`settle`);
    * until then the same commit is sent again. Key packages that can't be used come back in `refused`.
    */
-  commit(adds: { identity: string; keyPackage: string }[], removes: string[], opts: { rekey: boolean }): Promise<{ commit: PendingCommit | null; refused: string[] }> {
+  commit(adds: { identity: string; kp: KeyPackage }[], removes: string[], opts: { rekey: boolean }): Promise<{ commit: PendingCommit | null; refused: string[] }> {
     return this.run(async () => {
       const st = this.state;
       if (!st) throw new MlsError('Not in the group.');
@@ -218,11 +242,9 @@ export class MlsClient {
       for (const a of adds) {
         if (add.length >= MAX_ADDS) break;
         if (byId.has(a.identity) || add.some((x) => x.identity === a.identity)) continue;
-        const kp = await this.checked(a);
-        if (kp) add.push({ identity: a.identity, kp });
-        else refused.push(a.identity);
+        add.push(a);
       }
-      const removed = [...new Set(removes)].filter((id) => { const leaf = byId.get(id); return leaf !== undefined && leaf !== ORGANIZER_LEAF; });
+      const removed = [...new Set(removes)].filter((id) => { const leaf = byId.get(id); return leaf !== undefined && leaf !== this.committerLeaf; });
       if (!add.length && !removed.length && !opts.rekey) return { commit: null, refused };
       const removals: Proposal[] = removed.flatMap((id) => { const leaf = byId.get(id); return leaf === undefined ? [] : [{ proposalType: 'remove' as const, remove: { removed: leaf } }]; });
       const make = (xs: { kp: KeyPackage }[]) => this.l.m.createCommit({ state: st, cipherSuite: this.l.cs },
@@ -270,7 +292,7 @@ export class MlsClient {
       const st = this.state;
       if (!st) return 'skipped';
       let m: MLSMessage;
-      try { m = this.decode(body); } catch { return 'refused'; }
+      try { m = decode(this.l, body); } catch { return 'refused'; }
       if (m.wireformat !== 'mls_private_message' && m.wireformat !== 'mls_public_message') return 'refused';
       const epoch = epochOf(m);
       if (epoch === undefined) return 'refused';
@@ -293,7 +315,8 @@ export class MlsClient {
 
   /**
    * The media keys for this epoch, one per member: each sender encrypts its frames with its own key, and every
-   * member can derive every sender's key to decrypt them. A key is never used by two senders (RFC 9605 §4.4.1).
+   * member can derive every sender's key to decrypt them. A key is never used by two senders (RFC 9605 §4.4.1),
+   * and no two groups share one: each comes from its own group's exporter secret.
    */
   mediaKeys(): Promise<Record<string, Uint8Array>> {
     return this.run(async () => {
@@ -322,7 +345,7 @@ export class MlsClient {
   /**
    * Chat from the log: its text, and who sent it as MLS vouches for it (the sender's leaf, whose signature the
    * message must carry). `before`: sent before this browser was in the group. Anything else that can't be read
-   * (malformed, replayed, not chat) is `unreadable`, and leaves this client as it was.
+   * (malformed, replayed, not chat) is `unreadable`, and leaves the group as it was.
    */
   decrypt(body: string): Promise<Read> {
     return this.run(async (): Promise<Read> => {

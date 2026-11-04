@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CallPlaceSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -306,7 +306,10 @@ export function createApp(d: Deps) {
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
     const v = organizerOnly(c);
     speechLimiter(v.organizer.ownerId, 'transcribe');
-    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c)));
+    // Which part of the call it was heard in: the main room, or the breakout room the organizer was in.
+    const place = CallPlaceSchema.safeParse(c.req.header(AUDIO_HEADERS.place));
+    if (!place.success) throw new ValidationError('Say which part of the call that speech was heard in.');
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), place.data));
   });
   /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
   app.post('/v1/live/calls/:id/catch-up', async (c) => {

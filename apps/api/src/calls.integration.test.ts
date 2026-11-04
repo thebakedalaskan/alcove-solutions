@@ -35,7 +35,8 @@ async function account(email = unique(), o: Parameters<Harness['browser']>[0] = 
 const guestBrowser = () => h.browser().api;
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** Speech heard in one part of the call: the main room unless said otherwise. */
+const speech = (words: string, segment: number, startMs: number, ms = 4000, place = 'main'): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms, place });
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
   const until = Date.now() + ms;
   while (!pred()) {
@@ -60,7 +61,7 @@ async function letIn(host: CallSession, who: CallSession) {
 const latestKeys = (call: CallSession) => call.crypto.getSnapshot().media?.epochs.at(-1)?.keys ?? {};
 const keyOf = (call: CallSession) => JSON.stringify(Object.entries(latestKeys(call)).sort(([a], [b]) => a.localeCompare(b)).map(([id, k]) => [id, Buffer.from(k).toString('hex')]));
 const senderKey = (call: CallSession, sender: string) => Buffer.from(latestKeys(call)[sender] ?? []).toString('hex');
-const sendIndex = (call: CallSession) => call.crypto.getSnapshot().media?.send.index;
+const sendIndex = (call: CallSession) => call.crypto.getSnapshot().media?.send?.index;
 /** Sending with its key for the latest epoch: a moment after every change (so everyone has the new keys first). */
 const onLatestKey = (call: CallSession) => waitFor(() => sendIndex(call) !== undefined && sendIndex(call) === call.crypto.getSnapshot().media?.epochs.at(-1)?.index, `${call.ticket.role} sending with its new key`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -328,8 +329,9 @@ describe('keeping in step', () => {
     const log = CallMlsSchema.parse(await (await asMember(sam, 'GET', '/mls?after=0')).json());
     const real = log.items.find((i) => i.kind === 'message')?.body ?? '';
     expect(real).not.toBe('');
-    for (const junk of [{ epoch: log.epoch, message: 'AAAA' }, { epoch: log.epoch, message: real }, { epoch: 0, message: real }]) {
-      expect((await asMember(sam, 'POST', '/mls/messages', { generation: log.generation, ...junk })).status).toBe(200);
+    const epoch = log.groups.find((g) => g.id === 'main')?.epoch ?? 0;
+    for (const junk of [{ epoch, message: 'AAAA' }, { epoch, message: real }, { epoch: 0, message: real }]) {
+      expect((await asMember(sam, 'POST', '/mls/messages', { generation: log.generation, group: 'main', ...junk })).status).toBe(200);
     }
     // Everyone carries on: chat, and letting someone else in.
     await host.sendChat('still talking');

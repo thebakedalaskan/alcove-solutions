@@ -27,7 +27,7 @@ const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api
 /** An error's code and the message the app shows for it. */
 const refusal = (e: unknown) => (e instanceof AlcoveApiError ? [e.code, e.message] : ['not-an-api-error', '']);
 /** A clip of speech saying `words`; sentences split by " // " come back as lines two seconds apart. */
-const speech = (words: string): TranscriptClip => ({ data: new Blob([speechWav(words)], { type: 'audio/wav' }), segment: 0, startMs: 0, durationMs: 4000 });
+const speech = (words: string): TranscriptClip => ({ data: new Blob([speechWav(words)], { type: 'audio/wav' }), segment: 0, startMs: 0, durationMs: 4000, place: 'main' });
 
 /** Holds a call with notes on: joins it by its code, says `words`, ends it and waits for its notes to be written. */
 async function hold(api: AlcoveApi, callCode: string, words: string, during?: () => Promise<void>): Promise<{ noteId: string; meetingId: string }> {

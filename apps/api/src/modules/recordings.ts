@@ -1,4 +1,4 @@
-import type { RecordingAction, RecordingStopResult, RoomRecordingState } from '@alcove/api';
+import { MAIN_PLACE, type RecordingAction, type RecordingStopResult, type RoomRecordingState } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { maybeOne, timestamp, tx } from '../db';
@@ -62,7 +62,8 @@ export async function transcribe(o: Owner, recordingId: string, clip: transcript
   const ctx = { recordingId, segment: clip.segment, startMs: clip.startMs, state: r.state };
   if (clip.segment !== 0) throw new ValidationError('Room recordings have one segment.', { context: ctx });
   if (r.state !== 'recording') throw new ConflictError(r.state === 'paused' ? 'Recording is paused.' : 'This recording has stopped.', { context: ctx });
-  await transcripts.hear(o, { recordingId, noteId: r.note_item_id }, clip);
+  // A room recording has one part: everything in it is the note's.
+  await transcripts.hear(o, { recordingId, noteId: r.note_item_id, place: MAIN_PLACE }, clip);
   return view(o, recordingId);
 }
 

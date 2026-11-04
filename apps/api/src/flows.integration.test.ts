@@ -28,7 +28,8 @@ function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
 }
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, seq: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
 /** A clip of speech saying `words` (sentences split by " // "); empty words are silence. */
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** Speech heard in the main room of a call (a room recording has no parts, and ignores where it was heard). */
+const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms, place: 'main' });
 /** Follows a note's progress until its notes are written (or the stream gives up). */
 async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> {
   const steps: NoteProgress[] = [];
@@ -793,11 +794,18 @@ describe('live transcript and written notes', () => {
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
     // The organizer's browser sends the call's pass with everything about the call; nobody else has it.
-    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string } = {}) => who.fetch(`${base}/v1${path}`, {
+    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string; place?: string | null } = {}) => who.fetch(`${base}/v1${path}`, {
       method: 'POST', body: new Blob([bytes]),
-      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000', ...(who === a ? { 'x-alcove-call': call.ticket.pass } : {}) }
+      headers: {
+        'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000',
+        ...(o.place === null ? {} : { 'x-alcove-place': o.place ?? 'main' }), ...(who === a ? { 'x-alcove-call': call.ticket.pass } : {})
+      }
     });
     const hello = () => speechWav('Hello there.');
+    // A call's speech says which part of the call it was heard in: the main room, or a breakout room that's open.
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { place: null })).status).toBe(400);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { place: 'not a room' })).status).toBe(400);
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { place: 'AAAAAAAAAAAAAAAAAAAAAA' })).status).toBe(409);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { type: 'audio/webm' })).status).toBe(400);
     const stereo = hello(); new DataView(stereo.buffer).setUint16(22, 2, true);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, stereo)).status).toBe(400);

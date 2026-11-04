@@ -3,6 +3,7 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
+import { CallPlaceSchema } from './live';
 import { CaptionLanguageSchema } from './types';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
@@ -45,7 +46,10 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rooms-close') }),
   z.object({ type: z.literal('rooms-message'), text: z.string().trim().min(1).max(300) }),
   /** The organizer going to one of the open rooms, or back to the main room (null): the people in that room see and hear them. */
-  z.object({ type: z.literal('rooms-visit'), roomId: z.string().max(64).nullable() })
+  z.object({ type: z.literal('rooms-visit'), roomId: z.string().max(64).nullable() }),
+  z.object({ type: z.literal('rooms-rename'), roomId: z.string().max(64), name: z.string().trim().min(1).max(40) }),
+  /** Sends an invited person to another open room, or back to the main room (null). Their keys move with them: out of the old room's group, into the new one's. */
+  z.object({ type: z.literal('rooms-move'), email: z.string().trim().toLowerCase().max(254), roomId: z.string().max(64).nullable() })
 ]);
 export type CallAction = z.infer<typeof CallActionSchema>;
 
@@ -64,18 +68,20 @@ export const CallJoinBodySchema = z.object({
   /** The pass from this browser's last connection to the call, if it had one: someone let in before is let in again without asking. */
   previous: z.string().max(2000).optional()
 });
-/** The organizer's browser, adding and removing people: the commit, the welcome for anyone added, and who that was. */
+/** The organizer's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
 export const CallCommitBodySchema = z.object({
   generation: z.number().int().nonnegative(),
-  /** The epoch the commit was made in; the API takes commits in order, one per epoch. */
+  /** Which part of the call's group: `main`, or a breakout room's ID. */
+  group: CallPlaceSchema,
+  /** The epoch the commit was made in; the API takes each group's commits in order, one per epoch. */
   epoch: z.number().int().nonnegative(),
   commit: Mls(1_000_000),
   welcome: Mls(1_000_000).optional(),
   added: z.array(CallIdentity).max(100),
   removed: z.array(CallIdentity).max(100)
 });
-/** An MLS application message (chat), from anyone in the call's group. */
-export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(), message: Mls(65_536) });
+/** An MLS application message (chat), from someone in the group of the part of the call they're in. */
+export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), group: CallPlaceSchema, epoch: z.number().int().nonnegative(), message: Mls(65_536) });
 /** A fresh key package for a new group generation (after the organizer's connection changed), from someone already in the call. */
 export const CallKeyPackageBodySchema = z.object({ generation: z.number().int().nonnegative(), keyPackage: Mls(8192) });
 
@@ -90,7 +96,7 @@ export type RecordingAction = z.infer<typeof RecordingActionSchema>;
  * Audio pieces and transcript clips travel as raw bytes with their position in these headers: a
  * piece by its sequence number, a clip by where it starts in its segment.
  */
-export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms' } as const;
+export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms', place: 'x-alcove-place' } as const;
 /** Mutations carry an operation ID so a retried request never applies twice (docs: Network and API contract). */
 export const OPERATION_HEADER = 'x-alcove-operation';
 export const MAX_AUDIO_PIECE_BYTES = 2 * 1024 * 1024;

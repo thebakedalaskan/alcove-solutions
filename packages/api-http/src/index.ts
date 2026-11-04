@@ -4,14 +4,15 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_CHAT_MAX, CALL_KEYRING, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_CHAT_MAX, CALL_KEYRING, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
 SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
   type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CatchUp, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type TranscriptClip
 } from '@alcove/api';
-import { MlsClient, MlsError, groupName, newIdentity } from './mls';
+import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
+import type { KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
 export interface HttpOptions {
@@ -105,9 +106,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
     ...extra, 'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
-  /** Speech for the live transcript: WAV bytes, placed by where the clip starts in its segment. */
+  /** Speech for the live transcript: WAV bytes, placed by where the clip starts in its segment (and, in a call, the part of the call it was heard in). */
   const clip = (path: string, c: TranscriptClip, extra: Record<string, string> = {}) => send('POST', path, c.data, {
-    ...extra, 'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
+    ...extra, 'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs)),
+    ...(c.place ? { [AUDIO_HEADERS.place]: c.place } : {})
   }).then((r) => r.json());
 
   return {
@@ -146,9 +148,9 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
       join: async (code, opts) => {
-        // This connection's identity and MLS keys are made here; the key package is all the API gets.
+        // This connection's identity and MLS keys are made here; key packages are all the API gets.
         const identity = newIdentity();
-        const mls = await MlsClient.make(identity);
+        const mls = await MlsKeys.make(identity);
         const body = { mic: opts.mic, cam: opts.cam, identity, keyPackage: mls.keyPackage(), ...(opts.name ? { name: opts.name } : {}), ...(opts.previous ? { previous: opts.previous } : {}) };
         const joined = await req(z.object({ ticket: CallTicketSchema, state: CallStateSchema }), 'POST', `/calls/${encodeURIComponent(code)}/join`, body);
         // Every request about the call carries its pass; guests have no session, so this is all they have.
@@ -233,8 +235,8 @@ interface CallTransport {
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   leave(id: string, o?: { keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
   mls(id: string, after: number): Promise<CallMls>;
-  commit(id: string, c: { generation: number; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
-  message(id: string, m: { generation: number; epoch: number; message: string }): Promise<void>;
+  commit(id: string, c: { generation: number; group: string; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
+  message(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<void>;
   keyPackage(id: string, k: { generation: number; keyPackage: string }): Promise<void>;
   room(id: string): Promise<{ token: string }>;
 }
@@ -264,11 +266,15 @@ class Live<S extends { elapsed: number }> {
 
 /** How a call keeps up: how often it checks while nothing nudges it, how long a new send key waits, how often the keys move on anyway. */
 interface CallTiming { pollMs: number; switchMs: number; rekeyMs: number }
+/** Epoch keys use 127 indices in each half of LiveKit's ring, so the last index stays free for sending between two parts of the call. */
+const RING_HALF = (CALL_KEYRING - 2) / 2;
 /**
  * Where an epoch's keys sit in LiveKit's key ring. Consecutive generations use different halves, so the keys
  * of a group being left (when the organizer's connection changes) stay put while people still send with them.
+ * Each part of the call has its own group, but a browser only ever holds one part's keys for any sender, so the
+ * parts can share the indices.
  */
-export const keyIndex = (generation: number, epoch: number): number => (generation % 2) * (CALL_KEYRING / 2) + (epoch % (CALL_KEYRING / 2));
+export const keyIndex = (generation: number, epoch: number): number => (generation % 2) * RING_HALF + (epoch % RING_HALF);
 /** How many epochs' keys a browser keeps to decrypt with: frames still under a slightly older key play. */
 const KEEP_EPOCHS = 4;
 /**
@@ -278,17 +284,33 @@ const KEEP_EPOCHS = 4;
  */
 const ADDED_SWITCH_MS = 500;
 type MediaEpoch = CallMediaKeys['epochs'][number];
+type SendKey = NonNullable<CallMediaKeys['send']>;
+
+/** One part of the call's MLS group as this browser keeps it: the group, its media keys, and when the organizer's browser last moved its keys on. */
+interface Held {
+  group: MlsGroup;
+  /** The latest few epochs' keys, to decrypt with. */
+  epochs: { tag: string; entry: MediaEpoch }[];
+  /** This browser's own key to send with in this group (the same object until it changes). */
+  send: { tag: string; key: SendKey } | null;
+  switchTimer: ReturnType<typeof setTimeout> | null;
+  switchFirst: number | null;
+  lastCommit: number;
+}
+const held = (group: MlsGroup): Held => ({ group, epochs: [], send: null, switchTimer: null, switchFirst: null, lastCommit: Date.now() });
 
 class HttpCall extends Live<CallState> implements CallSession {
-  readonly crypto = new Box<CallCrypto>({ status: 'joining', members: [], media: null, chat: [], missedChat: false });
+  readonly crypto = new Box<CallCrypto>({ status: 'joining', place: MAIN_PLACE, members: [], everyone: [], media: null, chat: [], missedChat: false });
   private hidden = new Set<string>();
   /** How far this browser has read the call's MLS log. */
   private after = 0;
   private generation: number;
-  /** The generation this browser's MLS group is from (it's in the call's group when that's the current one). */
-  private inGen = -1;
-  /** The generation this browser made fresh keys for, to rejoin the organizer's new group. */
-  private renewedFor = -1;
+  /** The groups this browser keeps, by part of the call: the organizer's browser every part's, anyone else's the one they're in. */
+  private groups = new Map<string, Held>();
+  /** The part of the call this browser is in (for the organizer, the room it's visiting): its media and chat use that part's group. */
+  private place: string = MAIN_PLACE;
+  /** The part of the call this browser was last in, in this generation: when it changes, this browser is moving. */
+  private lastIn: string | null = null;
   /** The organizer's browser: key packages it has, whose it may act on now and how, whom the organizer let in, key packages it couldn't use, and asks already shown. */
   private asks = new Map<string, string>();
   private pending = new Map<string, 'auto' | 'ask'>();
@@ -298,16 +320,10 @@ class HttpCall extends Live<CallState> implements CallSession {
   /** A refused commit waits before the next one, longer each time, so a refusal can never turn into a loop. */
   private commitAfter = 0;
   private refusals = 0;
-  private lastCommit = Date.now();
-  /** Chat waiting to go out (it's encrypted in the sync loop, so nothing else touches the keys meanwhile), and chat sent, by body, until it shows up in the log. */
-  private outbox: { local: string; text: string; at: number; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
+  /** Chat waiting to go out (it's encrypted in the sync loop, so nothing else touches the keys meanwhile), and chat sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all. */
+  private outbox: { local: string; text: string; at: number; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
   private sent = new Map<string, string>();
-  /** Media keys: the latest few epochs' (to decrypt with), and this browser's own key to send with. */
-  private epochs: { tag: string; entry: MediaEpoch }[] = [];
-  private send: { tag: string; generation: number; index: number; key: Uint8Array } | null = null;
   private media: CallMediaKeys | null = null;
-  private switchTimer: ReturnType<typeof setTimeout> | null = null;
-  private switchFirst: number | null = null;
   private running: Promise<void> | null = null;
   private again = false;
   private fetching: Promise<void> | null = null;
@@ -315,22 +331,34 @@ class HttpCall extends Live<CallState> implements CallSession {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
 
-  constructor(initial: CallState, readonly ticket: CallTicket, private readonly mls: MlsClient, private readonly timing: CallTiming, private readonly t: CallTransport,
+  constructor(initial: CallState, readonly ticket: CallTicket, private readonly mls: MlsKeys, private readonly timing: CallTiming, private readonly t: CallTransport,
     private readonly emit: (level: ClientEvent['level'], msg: string, context: ClientEvent['context']) => void) {
     super(initial, (s) => s.phase === 'in-call');
     this.generation = initial.generation;
   }
   private get organizer() { return this.ticket.role === 'host'; }
-  private get inCurrentGroup() { return this.mls.inGroup && this.inGen === this.generation; }
+  /** In the group of the part of the call this browser is in. */
+  private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
 
-  /** The organizer's browser starts the call's group; anyone else starts asking to be let in. */
+  /** The organizer's browser starts the call's main group; anyone else starts asking to be let in. */
   async start(): Promise<void> {
-    if (this.organizer) {
-      await this.mls.create(this.state.callId, this.generation);
-      this.inGen = this.generation;
-      await this.keysMoved(true);
-    }
+    if (this.organizer) await this.open(MAIN_PLACE);
     await this.sync();
+  }
+  /** The organizer's browser: one part of the call's group, with only itself in it. Its first commit lets people in. */
+  private async open(place: string): Promise<void> {
+    this.groups.set(place, held(await this.mls.create(place, groupName(this.state.callId, this.generation, place))));
+    await this.keysMoved(place, true);
+  }
+  /** Done with a group: this browser left that part of the call, the part closed, or the call moved to a new generation. */
+  private async drop(place: string, why: string): Promise<void> {
+    const h = this.groups.get(place);
+    if (!h) return;
+    if (h.switchTimer) clearTimeout(h.switchTimer);
+    this.groups.delete(place);
+    await h.group.leave();
+    this.publishMedia();
+    this.emit('debug', 'left a part of the call’s group', { why, room: place !== MAIN_PLACE });
   }
 
   /** The server's state, minus notices this screen has dismissed. */
@@ -373,14 +401,13 @@ class HttpCall extends Live<CallState> implements CallSession {
     if (this.closed) return;
     const st = this.crypto.getSnapshot().status;
     if (st === 'denied' || st === 'removed' || st === 'failed') return;
-    // While waiting there's no room to be nudged through, so this is how the welcome arrives; after that it's a backstop.
+    // While waiting (or moving) there's no group to be nudged through, so this is how the welcome arrives; after that it's a backstop.
     this.timer = setTimeout(() => { void this.sync(); }, st === 'in' ? this.timing.pollMs * 4 : this.timing.pollMs);
     unref(this.timer);
   }
   /** Out of the call (turned away, removed, or this call went on elsewhere) or out of step: stop keeping up. */
   private out(status: 'denied' | 'removed' | 'failed', why: string) {
-    if (this.switchTimer) clearTimeout(this.switchTimer);
-    this.switchTimer = null;
+    for (const h of this.groups.values()) if (h.switchTimer) clearTimeout(h.switchTimer);
     this.media = null;
     this.patch({ status, media: null });
     this.emit(status === 'failed' ? 'warn' : 'info', 'call keys stopped', { status, why });
@@ -401,41 +428,53 @@ class HttpCall extends Live<CallState> implements CallSession {
     const was = this.crypto.getSnapshot().status;
     if (log.admission === 'denied') { this.out(was === 'waiting' || was === 'joining' ? 'denied' : 'removed', 'admission'); return; }
     if (log.generation !== this.generation) {
-      // The organizer's connection changed: its new group starts over, and everyone already let in rejoins it.
+      // The organizer's connection changed: every part of the call starts over in new groups, and everyone already let in rejoins.
       this.generation = log.generation;
+      for (const place of [...this.groups.keys()]) await this.drop(place, 'generation');
       this.asks.clear(); this.pending.clear(); this.approved.clear(); this.refused.clear();
+      this.lastIn = null;
     }
-    // Let in before the organizer's connection changed: fresh keys for its new group, asked for until they arrive.
-    if (log.rejoin && !this.organizer) {
-      if (this.renewedFor !== log.generation) { await this.mls.renew(); this.renewedFor = log.generation; }
+    if (log.place !== this.place) {
+      // Sent to another part of the call, or the organizer went there: chat sent there before now can't be read here.
+      this.place = log.place;
+      this.patch({ place: log.place, missedChat: false });
+      this.publishMedia();
+    }
+    // Anyone but the organizer is in one group at a time: one the API no longer counts them in (they were sent elsewhere, or its room closed) is done with.
+    if (!this.organizer) for (const place of [...this.groups.keys()]) if (place !== log.group) await this.drop(place, 'moved');
+    // To be added to a group (a new generation, or another part of the call) without a key package left: a fresh one.
+    if (log.keys && !this.organizer) {
       try {
-        await this.t.keyPackage(id, { generation: log.generation, keyPackage: this.mls.keyPackage() });
-        this.emit('info', 'rejoining the call’s new key generation', { generation: log.generation });
+        await this.t.keyPackage(id, { generation: log.generation, keyPackage: await this.mls.fresh() });
+        this.emit('info', 'sent keys to join another group', { generation: log.generation, room: log.place !== MAIN_PLACE });
       } catch (e) {
         if (errorCode(e) !== 'conflict') throw e;
       }
     }
-    let ended: 'removed' | 'failed' | null = null;
+    let ended: 'failed' | null = null;
     for (const item of log.items) {
       try {
         if (item.kind === 'keypackage') {
           if (this.organizer) this.asks.set(item.from, item.body);
         } else if (item.kind === 'welcome') {
-          if (!this.organizer && !this.inCurrentGroup) {
-            await this.mls.join(item.body, { group: groupName(id, this.generation), organizer: log.organizer });
-            this.inGen = this.generation;
-            await this.keysMoved(true);
+          // Only into the group the API counts this browser in now: a welcome from before a move is spent.
+          if (!this.organizer && item.group === log.group && !this.groups.has(item.group)) {
+            for (const place of [...this.groups.keys()]) await this.drop(place, 'moved');
+            this.groups.set(item.group, held(await this.mls.join(item.body, item.group, { group: groupName(id, this.generation, item.group), committer: log.committer })));
+            await this.keysMoved(item.group, true);
           }
         } else if (item.kind === 'commit') {
-          if (this.inCurrentGroup) {
-            const before = this.mls.members();
-            const r = await this.mls.process(item.body);
-            if (r === 'applied') { const now = this.mls.members(); await this.keysMoved(false, before.every((id) => now.includes(id)) && now.length > before.length); }
-            else if (r === 'removed') ended = 'removed';
+          const h = this.groups.get(item.group);
+          if (h) {
+            const before = h.group.members();
+            const r = await h.group.process(item.body);
+            if (r === 'applied') { const now = h.group.members(); await this.keysMoved(item.group, false, before.every((x) => now.includes(x)) && now.length > before.length); }
+            // Taken out of that group: whether that's out of the call too is the API's to say (admission), next time round.
+            else if (r === 'removed') { await this.drop(item.group, 'removed'); this.again = true; }
             else if (r === 'behind') ended = 'failed';
             else if (r === 'refused') this.emit('warn', 'a commit in the call’s log was refused', { seq: item.seq });
           }
-        } else await this.read(item.seq, item.body, log.generation);
+        } else await this.read(item.seq, item.group, item.body, log.generation);
       } catch (e) {
         // One entry that can't be used doesn't hold up the rest. A welcome that can't be opened leaves this browser outside the group.
         this.emit('warn', 'an entry in the call’s log couldn’t be used', { kind: item.kind, seq: item.seq, code: e instanceof MlsError ? 'mls' : errorCode(e) });
@@ -448,24 +487,35 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.after = Math.max(this.after, log.latest);
     if (log.more) { this.again = true; return; }
     // Everything up to the server's epoch has been read; still behind it means a commit couldn't be applied here.
-    if (!this.organizer && this.inCurrentGroup && this.mls.epoch() < log.epoch) { this.out('failed', 'behind'); return; }
-    if (this.inCurrentGroup && log.earlierChat && !this.crypto.getSnapshot().missedChat) this.patch({ missedChat: true });
-    let newAsk = false;
-    if (this.organizer && this.inCurrentGroup) {
-      this.pending = new Map(log.pending.map((p) => [p.id, p.admit]));
-      for (const who of [...this.asks.keys()]) if (!this.pending.has(who)) this.asks.delete(who);
-      for (const p of log.pending) if (p.admit === 'ask' && !this.shownAsks.has(p.id)) { this.shownAsks.add(p.id); newAsk = true; }
-      await this.commit(log.departed);
+    if (!this.organizer) {
+      for (const g of log.groups) {
+        const h = this.groups.get(g.id);
+        if (h && h.group.epoch() < g.epoch) { this.out('failed', 'behind'); return; }
+      }
     }
-    if (this.inCurrentGroup) await this.flushChat();
-    const status: CallCrypto['status'] = this.inCurrentGroup ? 'in' : log.admission === 'waiting' ? 'waiting' : 'joining';
-    this.patch({ status, members: this.inCurrentGroup ? this.mls.members() : this.crypto.getSnapshot().members, media: this.media });
-    // Let in: the call (who's in it, what's been said) is this browser's to see now. Someone new asking: the organizer sees them.
+    let newAsk = false;
+    if (this.organizer) {
+      this.pending = new Map(log.groups.flatMap((g) => g.pending.map((p): [string, 'auto' | 'ask'] => [p.id, p.admit])));
+      for (const who of [...this.asks.keys()]) if (!this.pending.has(who)) this.asks.delete(who);
+      for (const p of this.pending) if (p[1] === 'ask' && !this.shownAsks.has(p[0])) { this.shownAsks.add(p[0]); newAsk = true; }
+      await this.commitAll(log.groups);
+    }
+    const inPlace = this.inPlace;
+    if (inPlace) {
+      this.lastIn = this.place;
+      if (log.earlierChat && !this.crypto.getSnapshot().missedChat) this.patch({ missedChat: true });
+    }
+    await this.flushChat();
+    const status: CallCrypto['status'] = inPlace ? 'in' : log.admission === 'waiting' ? 'waiting' : this.lastIn !== null && this.lastIn !== this.place ? 'moving' : 'joining';
+    const everyone = [...new Set([...this.groups.values()].flatMap((h) => h.group.members()))];
+    this.publishMedia();
+    this.patch({ status, place: this.place, members: inPlace ? this.groups.get(this.place)?.group.members() ?? [] : [], everyone, media: this.media });
+    // Let in (or into a new part of the call): who's in it and what's been said there is this browser's to see now. Someone new asking: the organizer sees them.
     if ((status === 'in' && was !== 'in') || newAsk) await this.fetchState();
   }
 
-  /** Chat from the log, in order. The sender's own message takes its place there, so everyone sees chat in the same order. */
-  private async read(seq: number, body: string, generation: number): Promise<void> {
+  /** Chat from the log, in order, from the part of the call this browser is in. The sender's own message takes its place there, so everyone sees chat in the same order. */
+  private async read(seq: number, place: string, body: string, generation: number): Promise<void> {
     const id = `${generation}:${seq}`;
     const local = this.sent.get(body);
     if (local !== undefined) {
@@ -475,74 +525,100 @@ class HttpCall extends Live<CallState> implements CallSession {
       if (mine) this.patch({ chat: [...s.chat.filter((m) => m.id !== local), { ...mine, id }] });
       return;
     }
-    if (!this.inCurrentGroup) return;
-    const m = await this.mls.decrypt(body);
+    const h = this.groups.get(place);
+    if (!h || place !== this.place) return;
+    const m = await h.group.decrypt(body);
     if (m.kind === 'chat') {
       const s = this.crypto.getSnapshot();
-      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, at: m.at }] });
+      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, at: m.at, place }] });
     } else if (m.kind === 'before') {
       if (!this.crypto.getSnapshot().missedChat) this.patch({ missedChat: true });
     } else this.emit('debug', 'a chat message couldn’t be read', { seq });
   }
 
   /**
-   * The organizer's browser: one commit that lets in whoever may come in now (up to 50 at a time), takes out
-   * whoever left, and otherwise moves the keys on every few minutes. The API takes it in order or refuses it.
+   * The organizer's browser: a group for every part of the call that's open (and none for a part that's closed),
+   * then for each, one commit that lets in whoever may come in now (up to 50 at a time), takes out whoever left or
+   * was sent elsewhere, and otherwise moves the keys on every few minutes. The API takes each in order or refuses it.
    */
-  private async commit(departed: string[]): Promise<void> {
-    if (Date.now() < this.commitAfter) return;
+  private async commitAll(groups: CallMls['groups']): Promise<void> {
+    for (const place of [...this.groups.keys()]) if (!groups.some((g) => g.id === place)) await this.drop(place, 'closed');
+    for (const g of groups) if (!this.groups.has(g.id)) await this.open(g.id);
+    for (const g of groups) {
+      if (Date.now() < this.commitAfter) return;
+      if (!(await this.commit(g))) return;
+    }
+  }
+  /** One group's commit. False when it was refused, so the others wait too. */
+  private async commit(g: CallMls['groups'][number]): Promise<boolean> {
     const id = this.state.callId;
-    const adds = [...this.asks].filter(([who]) => {
-      const admit = this.pending.get(who);
-      return admit !== undefined && !this.refused.has(who) && (admit === 'auto' || this.approved.has(who));
-    }).map(([identity, keyPackage]) => ({ identity, keyPackage }));
-    const rekey = Date.now() - this.lastCommit >= this.timing.rekeyMs;
-    const { commit: c, refused } = await this.mls.commit(adds, departed.filter((who) => who !== this.ticket.identity), { rekey });
-    for (const who of refused) {
-      // A key package nobody can be added with: they're told they weren't let in, rather than waiting for ever.
+    const h = this.groups.get(g.id);
+    if (!h) return true;
+    const refused: string[] = [];
+    const adds: { identity: string; kp: KeyPackage }[] = [];
+    for (const p of g.pending) {
+      const body = this.asks.get(p.id);
+      if (body === undefined || this.refused.has(p.id) || (p.admit === 'ask' && !this.approved.has(p.id))) continue;
+      const kp = await this.mls.checked({ identity: p.id, keyPackage: body });
+      if (kp) adds.push({ identity: p.id, kp });
+      else refused.push(p.id);
+    }
+    const rekey = Date.now() - h.lastCommit >= this.timing.rekeyMs;
+    const made = await h.group.commit(adds, g.departed.filter((who) => who !== this.ticket.identity), { rekey });
+    for (const who of [...refused, ...made.refused]) {
+      // A key package nobody can be added with: someone asking is told they weren't let in, rather than waiting for ever.
       this.refused.add(who);
       this.asks.delete(who);
       this.emit('warn', 'a key package couldn’t be used', { pending: this.pending.get(who) ?? null });
       await this.t.act(id, { type: 'deny', identity: who }).catch((e: unknown) => this.emit('info', 'couldn’t turn away a broken key package', { code: errorCode(e) }));
     }
-    if (!c) return;
+    const c = made.commit;
+    if (!c) return true;
     try {
-      await this.t.commit(id, { generation: this.generation, epoch: c.epoch, commit: c.commit, ...(c.welcome ? { welcome: c.welcome } : {}), added: c.added, removed: c.removed });
+      await this.t.commit(id, { generation: this.generation, group: g.id, epoch: c.epoch, commit: c.commit, ...(c.welcome ? { welcome: c.welcome } : {}), added: c.added, removed: c.removed });
     } catch (e) {
       const code = errorCode(e);
       if (code === 'conflict' || code === 'invalid') {
         // Refused: the call moved on, or someone in it isn't waiting any more. It's dropped, the log is read again, and the next commit waits a little.
-        await this.mls.drop();
+        await h.group.drop();
         this.refusals += 1;
         this.commitAfter = Date.now() + Math.min(30_000, 250 * 2 ** this.refusals);
         this.emit('info', 'a commit was refused', { code, refusals: this.refusals });
         this.again = true;
-        return;
+        return false;
       }
       // Lost on the way: it's sent again, exactly as it was, next time (or found in the log, if it arrived).
       throw e;
     }
-    await this.mls.settle();
+    await h.group.settle();
     this.refusals = 0;
-    this.lastCommit = Date.now();
+    h.lastCommit = Date.now();
     for (const who of c.added) { this.asks.delete(who); this.approved.delete(who); }
-    await this.keysMoved(false, c.added.length > 0 && c.removed.length === 0);
-    this.emit('info', 'call keys moved on', { added: c.added.length, removed: c.removed.length, epoch: c.epoch + 1, rekey: !c.added.length && !c.removed.length });
+    await this.keysMoved(g.id, false, c.added.length > 0 && c.removed.length === 0);
+    this.emit('info', 'call keys moved on', { added: c.added.length, removed: c.removed.length, epoch: c.epoch + 1, rekey: !c.added.length && !c.removed.length, room: g.id !== MAIN_PLACE });
     this.again = true;
+    return true;
   }
 
-  /** Chat waiting to go out, in order. A message that can't go after a few tries is taken back, and the sender is told. */
+  /** Chat waiting to go out, in order. A message that can't go after a few tries, or whose part of the call this browser has left, is taken back, and the sender is told. */
   private async flushChat(): Promise<void> {
     const id = this.state.callId;
     while (this.outbox[0]) {
       const m = this.outbox[0];
+      const h = this.groups.get(m.place);
+      if (m.place !== this.place || !h || !this.inPlace) {
+        // Still on the way into the part of the call it was written in: it waits. Moved on since: it's taken back.
+        if (m.place === this.place && this.crypto.getSnapshot().status !== 'failed') return;
+        this.unsend(m.local);
+        continue;
+      }
       if (!m.sealed || m.sealed.generation !== this.generation) {
-        try { m.sealed = { ...(await this.mls.encrypt(m.text, m.at)), generation: this.generation }; }
+        try { m.sealed = { ...(await h.group.encrypt(m.text, m.at)), generation: this.generation }; }
         catch { this.unsend(m.local); continue; }
       }
       this.sent.set(m.sealed.message, m.local);
       try {
-        await this.t.message(id, { generation: m.sealed.generation, epoch: m.sealed.epoch, message: m.sealed.message });
+        await this.t.message(id, { generation: m.sealed.generation, group: m.place, epoch: m.sealed.epoch, message: m.sealed.message });
         this.outbox.shift();
         // Read the log again straight away: the message takes its place there, among everyone else's.
         this.again = true;
@@ -564,80 +640,94 @@ class HttpCall extends Live<CallState> implements CallSession {
   }
 
   /**
-   * The group moved to a new epoch (or this browser just joined it): every member's media keys for it, kept
-   * with the last few. This browser's own key to send with moves to the new one a moment later, so everyone
-   * has the new keys before anyone sends with them; straight away if it's only just been let in.
+   * One group moved to a new epoch (or this browser just joined or started it): every member's media keys for it,
+   * kept with the last few. This browser's own key to send with in it moves to the new one a moment later, so
+   * everyone has the new keys before anyone sends with them; straight away if it's only just come in.
    */
-  private async keysMoved(letIn: boolean, onlyAdded = false): Promise<void> {
-    const epoch = this.mls.epoch();
+  private async keysMoved(place: string, letIn: boolean, onlyAdded = false): Promise<void> {
+    const h = this.groups.get(place);
+    if (!h) return;
+    const epoch = h.group.epoch();
     const tag = `${this.generation}:${epoch}`;
-    if (this.epochs.at(-1)?.tag === tag) return;
-    const entry: MediaEpoch = { index: keyIndex(this.generation, epoch), keys: await this.mls.mediaKeys() };
-    this.epochs = [...this.epochs.filter((e) => e.tag !== tag), { tag, entry }].slice(-KEEP_EPOCHS);
+    if (h.epochs.at(-1)?.tag === tag) return;
+    const entry: MediaEpoch = { index: keyIndex(this.generation, epoch), keys: await h.group.mediaKeys() };
+    h.epochs = [...h.epochs.filter((e) => e.tag !== tag), { tag, entry }].slice(-KEEP_EPOCHS);
     const own = entry.keys[this.ticket.identity];
-    if (own && (letIn || !this.send || this.send.generation !== this.generation)) {
-      if (this.switchTimer) clearTimeout(this.switchTimer);
-      this.switchTimer = null;
-      this.switchFirst = null;
-      this.send = { tag, generation: this.generation, index: entry.index, key: own };
-    } else if (own) this.switchSoon(onlyAdded ? Math.min(ADDED_SWITCH_MS, this.timing.switchMs) : this.timing.switchMs);
+    if (own && (letIn || !h.send)) {
+      if (h.switchTimer) clearTimeout(h.switchTimer);
+      h.switchTimer = null;
+      h.switchFirst = null;
+      h.send = { tag, key: { index: entry.index, key: own } };
+    } else if (own) this.switchSoon(h, onlyAdded ? Math.min(ADDED_SWITCH_MS, this.timing.switchMs) : this.timing.switchMs);
     this.publishMedia();
   }
-  private switchSoon(wait: number) {
+  private switchSoon(h: Held, wait: number) {
     const now = Date.now();
-    this.switchFirst ??= now;
+    h.switchFirst ??= now;
     // A burst of changes doesn't keep the old key in use for long: at most twice the full wait after the first one.
-    const at = Math.min(now + wait, this.switchFirst + this.timing.switchMs * 2);
-    if (this.switchTimer) clearTimeout(this.switchTimer);
-    this.switchTimer = setTimeout(() => this.switchNow(), Math.max(0, at - now));
-    unref(this.switchTimer);
+    const at = Math.min(now + wait, h.switchFirst + this.timing.switchMs * 2);
+    if (h.switchTimer) clearTimeout(h.switchTimer);
+    h.switchTimer = setTimeout(() => this.switchNow(h), Math.max(0, at - now));
+    unref(h.switchTimer);
   }
-  private switchNow() {
-    this.switchTimer = null;
-    this.switchFirst = null;
-    const latest = this.epochs.at(-1);
+  private switchNow(h: Held) {
+    h.switchTimer = null;
+    h.switchFirst = null;
+    const latest = h.epochs.at(-1);
     const own = latest?.entry.keys[this.ticket.identity];
-    if (this.closed || !latest || !own || this.send?.tag === latest.tag) return;
-    this.send = { tag: latest.tag, generation: this.generation, index: latest.entry.index, key: own };
+    if (this.closed || !latest || !own || h.send?.tag === latest.tag || !h.group.inGroup) return;
+    h.send = { tag: latest.tag, key: { index: latest.entry.index, key: own } };
     this.publishMedia();
     this.patch({ media: this.media });
   }
+  /**
+   * The media keys LiveKit uses: those of the part of the call this browser is in. Between two parts (let in, but
+   * not in the new part's group yet), none to decrypt with and none to send with, so nothing it sends can be heard
+   * or seen anywhere until it's there.
+   */
   private publishMedia() {
-    if (!this.send) return;
-    this.media = { epochs: this.epochs.map((e) => e.entry), send: { index: this.send.index, key: this.send.key } };
+    const h = this.groups.get(this.place);
+    if (h?.group.inGroup && h.send) this.media = { epochs: h.epochs.map((e) => e.entry), send: h.send.key };
+    else this.media = this.lastIn !== null ? { epochs: [], send: null } : null;
   }
 
   room = async () => {
     const r = await this.t.room(this.state.callId);
     return { serverUrl: this.ticket.serverUrl, roomName: this.ticket.roomName, identity: this.ticket.identity, token: r.token };
   };
-  private act(a: CallAction) {
-    void this.t.act(this.state.callId, a).then((s) => this.take(s), (e: unknown) => this.notify(e instanceof Error ? e.message : 'That didn’t work.'));
+  private act(a: CallAction, then?: () => void) {
+    void this.t.act(this.state.callId, a).then((s) => { this.take(s); then?.(); }, (e: unknown) => this.notify(e instanceof Error ? e.message : 'That didn’t work.'));
   }
+  /** Room changes move people's keys: this browser reads the log straight away rather than waiting to be nudged. */
+  private actAndSync(a: CallAction) { this.act(a, () => { void this.sync(); }); }
   sendChat = async (text: string) => {
     const t = text.trim();
     if (!t) return;
     if (t.length > CALL_CHAT_MAX) throw new AlcoveApiError('invalid', `Messages can be up to ${CALL_CHAT_MAX} characters.`);
-    if (this.crypto.getSnapshot().status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the organizer lets you in.');
+    const status = this.crypto.getSnapshot().status;
+    if (status === 'moving') throw new AlcoveApiError('conflict', 'You’re moving to another room. Send it once you’re there.');
+    if (status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the organizer lets you in.');
     const local = `me:${b64u(randomBytes(6))}`;
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: t, at: this.state.elapsed }] });
-    this.outbox.push({ local, text: t, at: this.state.elapsed, tries: 0, sealed: null });
+    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: t, at: this.state.elapsed, place: this.place }] });
+    this.outbox.push({ local, text: t, at: this.state.elapsed, place: this.place, tries: 0, sealed: null });
     await this.sync();
   };
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   setNotes = (on: boolean) => this.act({ type: 'notes', on });
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
-  /** They're disconnected at once; the organizer's browser then takes them out of the group, so the keys move on without them. */
+  /** They're disconnected at once; the organizer's browser then takes them out of their group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
   setHand = (up: boolean) => this.act({ type: 'hand', up });
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
-  openRooms = (plan: BreakoutPlan) => this.act({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes });
-  closeRooms = () => this.act({ type: 'rooms-close' });
+  openRooms = (plan: BreakoutPlan) => this.actAndSync({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes });
+  closeRooms = () => this.actAndSync({ type: 'rooms-close' });
   messageRooms = (text: string) => { if (text.trim()) this.act({ type: 'rooms-message', text }); };
-  visitRoom = (roomId: string | null) => this.act({ type: 'rooms-visit', roomId });
+  visitRoom = (roomId: string | null) => this.actAndSync({ type: 'rooms-visit', roomId });
+  renameRoom = (roomId: string, name: string) => { if (name.trim()) this.act({ type: 'rooms-rename', roomId, name }); };
+  moveToRoom = (email: string, roomId: string | null) => this.actAndSync({ type: 'rooms-move', email, roomId });
   translate = (lineIds: string[], language: CaptionLanguage) => this.t.translate(this.state.callId, lineIds, language);
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
   appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
@@ -649,9 +739,8 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.closed = true;
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
-    if (this.switchTimer) clearTimeout(this.switchTimer);
     this.timer = null;
-    this.switchTimer = null;
+    for (const h of this.groups.values()) { if (h.switchTimer) clearTimeout(h.switchTimer); h.switchTimer = null; }
   };
   /** The page is going away: everyone but the organizer says they've gone, in a request that outlives the page. */
   closing = () => {
