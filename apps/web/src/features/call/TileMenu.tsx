@@ -102,14 +102,23 @@ export interface ShareLookMenu {
 /** The share in its own window: open now or not, and why it can't be where it can't. */
 export interface ShareWindowMenu { open: boolean; toggle: (() => void) | null; why: string | null }
 
-/** A shared screen's menu: see it big or as a tile, look closer, open it in its own window, and mute its sound, for you. */
-export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound, look, own }: {
+/**
+ * A shared screen's menu: see it big or as a tile, look closer, open it in its own window, and mute its sound, for you;
+ * and point at it, which everyone sees.
+ */
+export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound, look, own, point }: {
   presenter: Person; label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void;
   sound: { muted: boolean; toggle: () => void } | null;
   /** Shown big: zoom, freeze, earlier pictures. */
   look?: ShareLookMenu | undefined;
   /** Its own window, for someone else's share. */
   own?: ShareWindowMenu | undefined;
+  /**
+   * Pointing at it: whether you are, whether you can now (it's big and live here), and what keeps you from it, if
+   * anything (the organizer turned pointing off, its presenter doesn't let others point, or you're looking at a picture
+   * held still).
+   */
+  point: { on: boolean; can: boolean; closed: 'call' | 'presenter' | null; held: boolean; toggle: () => void } | null;
 }) {
   const pick = (f: () => void) => () => { onOpenChange(false); f(); };
   return (
@@ -133,6 +142,15 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
       {look?.zoomed && <p className="hint">The arrow keys move around the picture while it’s zoomed in.</p>}
       {look && <p className="hint">{look.note}</p>}
       {own?.why && <p className="hint">{own.why}</p>}
+      {point && (
+        <>
+          <div className="ic-msep" />
+          {point.closed === 'call' ? <p className="hint">The organizer turned off pointing at shared screens.</p>
+            : point.closed === 'presenter' ? <p className="hint">{callName(presenter)} isn’t letting others point at their screen.</p>
+              : point.can || point.on ? <Item icon="pointer" label={point.on ? 'Stop pointing' : 'Point and mark'} kb="L" keys="L" onPick={pick(point.toggle)} end={<Scope everyone>Everyone</Scope>} />
+                : <p className="hint">{point.held ? 'Back to live to point at it: pointers and marks are about the picture now.' : 'Show it big to point at it.'}</p>}
+        </>
+      )}
     </Popover>
   );
 }

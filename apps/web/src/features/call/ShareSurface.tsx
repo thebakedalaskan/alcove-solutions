@@ -337,10 +337,12 @@ type ShareMenuProps = Omit<Parameters<typeof ShareMenu>[0], 'look'>;
 export function ShareMenuFor({ look, ...menu }: ShareMenuProps & { look: ShareLook | null }) {
   return look ? <LookedMenu look={look} {...menu} /> : <ShareMenu {...menu} />;
 }
-function LookedMenu({ look, ...menu }: ShareMenuProps & { look: ShareLook }) {
+function LookedMenu({ look, point, ...menu }: ShareMenuProps & { look: ShareLook }) {
   const s = useLive(look);
+  // Pointers and marks are about the picture now: while one is held still, you go back to live to point.
+  const held = s.held !== null;
   return (
-    <ShareMenu {...menu} look={{
+    <ShareMenu {...menu} point={point ? { ...point, held, can: point.can && !held } : null} look={{
       zoomed: isZoomed(s.framing), max: s.framing.zoom >= ZOOM_MAX - 0.001,
       zoomIn: () => look.zoomStep(1), zoomOut: () => look.zoomStep(-1), whole: () => look.whole(),
       held: s.held !== null, canEarlier: s.canEarlier,
