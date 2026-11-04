@@ -190,7 +190,7 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => {
     const e = ears.current;
     if (!e) return;
-    if (organizer && on && live) e.follow(segment, [...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()]);
+    if (organizer && on && live) e.follow(segment, [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))]);
     else if (!on || !organizer) e.stop();
   }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
   useEffect(() => () => ears.current?.stop(), []);
@@ -564,7 +564,7 @@ function InCall({ session }: { session: CallSession }) {
     lock: (v) => session.lock(v)
   } : undefined;
   const privacyLine = on
-    ? 'Video, audio and chat are encrypted end to end. While notes are on, the organizer’s microphone also goes to Alcove for the notes.'
+    ? 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says also goes to Alcove for the notes.'
     : 'Video, audio and chat are encrypted end to end between the people here.';
 
   /* ---------- the status bar ---------- */

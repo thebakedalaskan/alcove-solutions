@@ -32,7 +32,7 @@ const speech = (words: string): TranscriptClip => ({ data: new Blob([speechWav(w
 /** Holds a call with notes on: joins it by its code, says `words`, ends it and waits for its notes to be written. */
 async function hold(api: AlcoveApi, callCode: string, words: string, during?: () => Promise<void>): Promise<{ noteId: string; meetingId: string }> {
   const call = await api.calls.join(callCode, { mic: true, cam: false });
-  await call.transcribe(speech(words));
+  await call.transcribe(speech(words), call.ticket.identity);
   await during?.();
   const end = await call.leave();
   if (!end) throw new Error('the organizer’s leave ended nothing');

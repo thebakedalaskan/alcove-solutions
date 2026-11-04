@@ -4,7 +4,7 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_CHAT_MAX, CALL_KEYRING, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_KEYRING, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, MeetingSchema, NoteProgressSchema, NoteSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
 SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
@@ -642,9 +642,14 @@ class HttpCall extends Live<CallState> implements CallSession {
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
   appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
   /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
-  transcribe = async (c: TranscriptClip, speaker?: string | undefined) => {
-    const s = await this.t.transcribe(this.state.callId, c, speaker ?? this.ticket.identity);
-    this.set({ ...this.state, transcript: s.transcript });
+  /**
+   * Several voices upload at once, so an answer computed before another voice's line was kept can arrive last: the
+   * lines are merged by ID, newest 200 kept, rather than replaced.
+   */
+  transcribe = async (c: TranscriptClip, speaker: string) => {
+    const s = await this.t.transcribe(this.state.callId, c, speaker);
+    const byId = new Map([...this.state.transcript, ...s.transcript].map((l) => [l.id, l]));
+    this.set({ ...this.state, transcript: [...byId.values()].sort((a, b) => a.at - b.at).slice(-LIVE_TRANSCRIPT_LINES) });
   };
   catchUp = (minutes?: number | undefined) => this.t.catchUp(this.state.callId, minutes);
   askSoFar = (question: string) => this.t.askSoFar(this.state.callId, question);

@@ -46,7 +46,7 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Scheduling and instant calls | Working. Alcove sends no emails of its own; invitations come from Google Calendar when it's connected. Calls started now don't go on the calendar |
 | Calls with real camera, microphone, screen sharing, chat | Working for groups on LiveKit, end-to-end encrypted (MLS): invited people join with their accounts, anyone else with the link asks and the organizer lets them in. The live transcript and notes hear everyone the organizer hears, each line under who said it |
 | Notes recording (encrypted audio pieces, playback) | Working |
-| Live transcript (NEAR AI) | Working while notes are on, in calls and room recordings. Call lines are all attributed to the organizer; room recordings don't say who spoke |
+| Live transcript (NEAR AI) | Working while notes are on, in calls and room recordings. Call lines name whoever said them, from everyone the organizer hears; room recordings don't say who spoke |
 | Written notes and questions (NEAR AI) | Working: summary, decisions, open questions, follow-ups, chapters and suggested questions, written when the recording stops; answers cite moments in the recording. If the notes service fails three times, the note keeps its transcript and audio without a summary. Each model's hardware evidence is checked first and everything sent is sealed to the key it vouches for; the note says which verified models wrote it and what was checked |
 | Series | Working on Home, the notes and the series page: recurring Google events held in Alcove and calls scheduled as the next one. Not in the call or at pre-join yet |
 | Notes for everyone invited, sharing by email | Working |

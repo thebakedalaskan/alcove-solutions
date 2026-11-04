@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -90,8 +90,12 @@ export function createApp(d: Deps) {
   const backToWelcome = (reason: google.Refusal) => `${d.cfg.WEB_ORIGIN}/welcome?signin=${reason}`;
   const telemetryLimiter = rateLimit(60, 60_000);
   const attestLimiter = rateLimit(30, 60_000);
-  /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
-  const speechLimiter = rateLimit(120, 60_000);
+  /*
+   * Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks: in a call the
+   * organizer's browser sends one stream of clips per voice it hears, each limited on its own, all within the account's.
+   */
+  const speechLimiter = rateLimit(240, 60_000);
+  const voiceLimiter = rateLimit(40, 60_000);
   const askLimiter = rateLimit(20, 60_000);
   /** Reading call cards and joining by link: public, so limited per client address. */
   const callLimiter = rateLimit(120, 60_000);
@@ -305,8 +309,10 @@ export function createApp(d: Deps) {
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(organizerOnly(c), c.req.param('id'), await piece(c))));
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
     const v = organizerOnly(c);
+    const speaker = speakerOf(c);
+    voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
     speechLimiter(v.organizer.ownerId, 'transcribe');
-    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speakerOf(c)));
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker));
   });
   /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
@@ -496,14 +502,14 @@ function isSpeechWav(b: Uint8Array): boolean {
   return tag(0) === 'RIFF' && tag(8) === 'WAVE' && tag(12) === 'fmt ' && v.getUint16(20, true) === 1 && v.getUint16(22, true) === 1 && v.getUint32(24, true) === 16_000 && v.getUint16(34, true) === 16;
 }
 
-/** Reads a transcript clip: 16 kHz mono WAV, and where it starts in its segment. */
 /** Whose speech a call's clip is: a participant ID, which the call checks is someone in it. */
 function speakerOf(c: Context): string {
-  const s = c.req.header(AUDIO_HEADERS.speaker) ?? '';
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) throw new ValidationError('Speech for a call’s transcript must say whose it is.', { context: { header: AUDIO_HEADERS.speaker } });
-  return s;
+  const s = CallIdentity.safeParse(c.req.header(AUDIO_HEADERS.speaker));
+  if (!s.success) throw new ValidationError('Speech for a call’s transcript must say whose it is.', { context: { header: AUDIO_HEADERS.speaker } });
+  return s.data;
 }
 
+/** Reads a transcript clip: 16 kHz mono WAV, and where it starts in its segment. */
 async function clip(c: Context): Promise<Clip> {
   const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
   if (!/^audio\/(?:wav|x-wav|wave)\b/.test((c.req.header('content-type') ?? '').toLowerCase())) throw new ValidationError('Speech for the transcript must be WAV audio.');

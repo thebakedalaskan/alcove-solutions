@@ -41,9 +41,13 @@ const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${St
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+/** Who said it, as the model reads it: on one line, and marked when it's a guest, who named themselves. */
+const saidBy = (s: Speaker) => `${oneLine(s.name)}${s.person && !s.person.email ? ' (guest)' : ''}`;
+
 /** The transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who spoke. */
 function transcriptText(lines: TranscriptLine[]): string {
-  const all = lines.map((l) => `[${mmss(l.at)}] ${l.speaker ? `${l.speaker.name}: ` : ''}${l.text}`);
+  const all = lines.map((l) => `[${mmss(l.at)}] ${l.speaker ? `${saidBy(l.speaker)}: ` : ''}${oneLine(l.text)}`);
   const text = all.join('\n');
   if (text.length <= MAX_TRANSCRIPT_CHARS) return text;
   const head: string[] = [];

@@ -1,5 +1,5 @@
 import {
-  CALL_TOPIC, CAPTION_LANGUAGES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, type AnswerPart, type Breakouts, type CallAction, type CallCard,
+  CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, type AnswerPart, type Breakouts, type CallAction, type CallCard,
   type CallEndResult, type CallMls, type CallMlsItem, type CallNudge, type CallRole, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CatchUp,
   type Person, type Speaker
 } from '@alcove/api';
@@ -187,12 +187,41 @@ function forViewer(v: Viewer, p: Person, identity: string): Person {
  */
 function speakersIn(s: Stored, organizer: Person, v?: Viewer | undefined): (identity: string) => Speaker | undefined {
   const by = new Map(s.people.map((j) => [j.identity, j]));
+  const named = new Map<string, Speaker | undefined>();
   return (identity) => {
+    if (named.has(identity)) return named.get(identity);
     const j = by.get(identity);
-    if (!j) return undefined;
-    const p = personFor(j, identity, j.name, organizer);
-    return { name: p.name, person: v ? forViewer(v, p, identity) : p };
+    const p = j ? personFor(j, identity, j.name, organizer) : undefined;
+    const speaker = p ? { name: p.name, person: v ? forViewer(v, p, identity) : p } : undefined;
+    named.set(identity, speaker);
+    return speaker;
   };
+}
+
+/** The breakout room someone is in now: the organizer the one they're visiting, an invited person the one they were sent to, a guest none. */
+function roomOf(s: Stored, j: Joined): string | undefined {
+  const open = s.breakouts.open;
+  if (!open) return undefined;
+  if (j.role === 'host') return open.visiting ?? undefined;
+  const email = j.email?.toLowerCase();
+  return email ? open.rooms.find((r) => r.emails.includes(email))?.id : undefined;
+}
+
+/** Every breakout room the call has had, by ID, with its name. */
+function roomsIn(s: Stored): (id: string) => { id: string; name: string } | undefined {
+  const all = new Map([...(s.breakouts.open?.rooms ?? []), ...s.breakouts.held.flatMap((h) => h.rooms)].map((r) => [r.id, { id: r.id, name: r.name }]));
+  return (id) => all.get(id);
+}
+
+/**
+ * Which lines someone may read: what's said in a breakout room is for the people sent there, and for the organizer,
+ * whose notes they are. What's said in the main room is anyone's in the call.
+ */
+function readableBy(v: Viewer, s: Stored): (l: transcripts.Line) => boolean {
+  if (v.pass.role === 'host') return () => true;
+  const email = s.people.find((j) => j.identity === v.pass.identity)?.email?.toLowerCase();
+  const mine = new Set([...(s.breakouts.open?.rooms ?? []), ...s.breakouts.held.flatMap((h) => h.rooms)].filter((r) => email && r.emails.includes(email)).map((r) => r.id));
+  return (l) => !l.room || mine.has(l.room);
 }
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
@@ -209,7 +238,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   // Someone still waiting to be let in learns only whether notes are on: nobody's name, nothing that was said.
   if (!v.inCall) return { ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, notes: { status: s.notes.status, everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
   const rooms = settleRooms(s, secondsIn(row.started_at, end.getTime()));
-  const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, transcripts.LIVE_LINES) : [];
+  const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, LIVE_TRANSCRIPT_LINES) : [];
   // Who's in: whoever the organizer's browser let into the group and hasn't left. Never asked of LiveKit, so reads cost nothing there.
   const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in') : [];
   return {
@@ -219,7 +248,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     breakouts: breakoutsOf(rooms),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     notes: { status: s.notes.status, everOn: s.notes.everOn, noteId: s.notes.noteId, recording: await progress(o, s.notes.recordingId, s.notes.segment) },
-    transcript: transcripts.spoken(heard, speakersIn(s, organizer, v)),
+    transcript: transcripts.spoken(heard.filter(readableBy(v, s)), speakersIn(s, organizer, v), roomsIn(s)),
     notices: s.notices
   };
 }
@@ -256,7 +285,8 @@ export async function card(d: Deps, code: string): Promise<CallCard> {
   return { title: meeting.manifest.title, organizerName: (await me(organizer)).name, hostHere: live ? hostHere(live) : false, locked: live?.locked ?? false };
 }
 
-const GuestName = z.string().transform((n) => n.trim()).pipe(z.string().min(1).max(60));
+/** A guest's name as typed, on one line: control characters and line breaks become spaces, and runs of spaces one. */
+const GuestName = z.string().transform((n) => n.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(60));
 
 /**
  * Lets someone into a call by its link. The organizer hosts (one organizer connection at a time: a new one
@@ -461,11 +491,10 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
   return view(v, o.pool, callId);
 }
 
-/** Transcribes a few seconds of speech into the call's live transcript, while notes are on. */
 /**
- * Speech the organizer's browser heard, into the live transcript under whoever said it: the organizer, or anyone
- * else it plays (someone in the call, or just gone, for a clip still on its way). It's placed in the breakout room
- * the organizer is in, if any, so the notes can keep rooms apart.
+ * Speech the organizer's browser heard, into the live transcript under whoever said it while notes are on: the
+ * organizer, or anyone else it plays (someone in the call, or just gone, for a clip still on its way). It's kept in
+ * the breakout room the speaker was in, if any, so a room's lines stay with the room's people.
  */
 export async function transcribe(v: Viewer, callId: string, clip: transcripts.Clip, speaker: string): Promise<CallState> {
   const o = v.organizer;
@@ -476,7 +505,8 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
   const who = state.people.find((j) => j.identity === speaker);
   if (!who || (who.status !== 'in' && who.status !== 'left')) throw new ValidationError('That speech isn’t from anyone in this call.', { context: ctx });
-  const room = state.breakouts.open?.visiting ?? undefined;
+  // Where the speaker was, rooms that have run out counted as closed.
+  const room = roomOf(settleRooms(state, secondsIn(row.started_at)), who);
   await transcripts.hear(o, { recordingId: state.notes.recordingId, noteId: state.notes.noteId }, clip, { speaker, ...(room ? { room } : {}) });
   await nudge(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
@@ -656,7 +686,7 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
   if (!s.notes.noteId || !s.notes.recordingId) throw new ConflictError('Notes haven’t been on in this call, so there are no captions to translate.', { context: ctx });
   const asked = new Set(lineIds);
-  const wanted = (await transcripts.lines(o, o.pool, s.notes.noteId)).filter((l) => asked.has(l.id));
+  const wanted = (await transcripts.lines(o, o.pool, s.notes.noteId)).filter((l) => asked.has(l.id)).filter(readableBy(v, s));
   if (!wanted.length) return [];
   const have = await transcripts.translations(o, s.notes.noteId, wanted.map((l) => l.id), language);
   const missing = wanted.filter((l) => !have.has(l.id));
@@ -683,7 +713,8 @@ function gapsOf(history: Stored['notes']['history'], now: number): CatchUp['gaps
 }
 
 /** A live call and its transcript so far, for the person asking. Nothing about catching up is stored. */
-async function sofar(o: Owner, callId: string, what: string) {
+async function sofar(v: Viewer, callId: string, what: string) {
+  const o = v.organizer;
   const { row, state: s } = await load(o, o.pool, callId);
   const ctx = { callId, what };
   if (row.state !== 'live') throw new ConflictError('This call has ended. Its notes have everything.', { context: ctx });
@@ -691,17 +722,17 @@ async function sofar(o: Owner, callId: string, what: string) {
   const asOf = secondsIn(row.started_at);
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const person = await me(o);
-  const all = await transcripts.lines(o, o.pool, s.notes.noteId);
+  const all = (await transcripts.lines(o, o.pool, s.notes.noteId)).filter(readableBy(v, s));
   const brief = (ls: transcripts.Line[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
-    seconds: asOf, lines: transcripts.spoken(ls, speakersIn(s, person)), live: true
+    seconds: asOf, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), live: true
   });
   return { all, asOf, gaps: gapsOf(s.notes.history, asOf), person, brief };
 }
 
 /** Where the call has got to, from the live transcript: the last `minutes`, or all of it. For the person asking alone. */
 export async function catchUp(v: Viewer, callId: string, minutes: number | undefined): Promise<CatchUp> {
-  const { all, asOf, gaps, brief } = await sofar(v.organizer, callId, 'catch-up');
+  const { all, asOf, gaps, brief } = await sofar(v, callId, 'catch-up');
   const through = all.at(-1)?.at ?? 0;
   const from = minutes ? Math.max(0, through - minutes * 60) : 0;
   const read = all.filter((l) => l.at >= from);
@@ -715,7 +746,7 @@ export async function catchUp(v: Viewer, callId: string, minutes: number | undef
 
 /** Answers a question about the call so far, from the live transcript, for the person asking alone. */
 export async function askSoFar(v: Viewer, callId: string, question: string): Promise<AnswerPart[]> {
-  const { all, person, brief } = await sofar(v.organizer, callId, 'ask');
+  const { all, person, brief } = await sofar(v, callId, 'ask');
   if (!all.length) throw new ConflictError('Nothing has been transcribed yet, so there’s nothing to ask about.', { context: { callId } });
   const asker: Person = v.isOrganizer ? person : { id: v.pass.identity, name: v.pass.name, email: '' };
   const t0 = performance.now();
@@ -747,7 +778,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
       if (s.notes.noteId) {
         const held = s.breakouts.held.map((h) => ({ ...h, from: recorded(s.notes.history, h.from, duration), to: recorded(s.notes.history, h.to, duration) }));
-        await finishRecording(o, c, s.notes.noteId, duration, held, speakersIn(s, await me(o)));
+        await finishRecording(o, c, s.notes.noteId, duration, held, speakersIn(s, await me(o)), roomsIn(s));
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }

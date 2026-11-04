@@ -4,7 +4,7 @@
  * (docker-compose.yml) and main's fake Google and NEAR AI. Participants are @livekit/rtc-node rooms joined with
  * the tokens the API hands out, encrypting media with keys from the call's MLS group, so media travels for real.
  */
-import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import type { ClientEvent } from '@alcove/api-http';
 import { DisconnectReason } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
@@ -218,7 +218,7 @@ describe('end-to-end encryption', () => {
     const { code: c } = await org.api.calls.startNow({ notes: 'on' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
-    await host.transcribe(speech('CANARY-SAID something private.', 0, 0));
+    await host.transcribe(speech('CANARY-SAID something private.', 0, 0), host.ticket.identity);
     const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
 
     // Waiting: the organizer sees who's asking; Sam sees only that notes are on, and gets no room and nothing said.
@@ -651,7 +651,7 @@ describe('host controls', () => {
     await inGroup(host);
     const invited = await (await account(invitedEmail)).api.calls.join(c, { mic: true, cam: false });
     await inGroup(invited);
-    await host.transcribe(speech('Hello everyone.', 0, 0));
+    await host.transcribe(speech('Hello everyone.', 0, 0), host.ticket.identity);
     const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, guest);
     const seen = await settle(guest, (s) => s.participants.length === 3 && s.transcript.length > 0);
@@ -695,7 +695,7 @@ describe('ending', () => {
     const inv = await invited.api.calls.join(c, { mic: true, cam: false });
     const invRoom = await joinRoom(inv);
     await host.appendAudio(piece(audioBytes('ending'), 0, 0));
-    await host.transcribe(speech('We agreed to ship on Friday.', 0, 0));
+    await host.transcribe(speech('We agreed to ship on Friday.', 0, 0), host.ticket.identity);
 
     const end = await host.leave();
     expect(end?.pendingNoteId).toBeTruthy();
@@ -864,10 +864,10 @@ describe('joining by link', () => {
     host.setNotes(true);
     await settle(host, (x) => x.notes.status === 'on');
     await host.appendAudio(piece(audioBytes('catch'), 0, 0));
-    await host.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0));
+    await host.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0), host.ticket.identity);
     expect(await guest.catchUp()).toMatchObject({ lines: 2 });
     expect(await guest.askSoFar('What should move?')).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text' })]));
-    expect(code(await guest.transcribe(speech('Not mine to send.', 0, 5000)).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await guest.transcribe(speech('Not mine to send.', 0, 5000), guest.ticket.identity).catch((e: unknown) => e))).toBe('forbidden');
 
     const otherOrg = await account();
     const otherCall = await otherOrg.api.calls.join((await otherOrg.api.calls.startNow({})).code, { mic: true, cam: false });
@@ -877,7 +877,7 @@ describe('joining by link', () => {
     await host.leave();
   });
 
-  it('transcribes everyone the organizer hears, each line under whoever said it, live and in the notes', async () => {
+  it('transcribes everyone the organizer hears, each line under whoever said it, live, in catch-up and in the notes', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -889,36 +889,86 @@ describe('joining by link', () => {
     await host.appendAudio(piece(audioBytes('everyone'), 0, 0));
     // The organizer's browser hears its own microphone and Sam's, each on its own: both may start at once, and a
     // retried clip is kept once.
-    await host.transcribe(speech('Shall we start with the budget?', 0, 0));
+    await host.transcribe(speech('Shall we start with the budget?', 0, 0), host.ticket.identity);
     await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
     await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
     const organizer = host.getSnapshot().participants.find((p) => p.isOrganizer)?.person.name ?? '';
-    const said = (ls: { speaker?: { name: string } | undefined; text: string }[]) => ls.map((l) => `${l.speaker?.name ?? '?'}: ${l.text}`).sort();
+    const said = (ls: TranscriptLine[]) => ls.map((l) => `${l.speaker?.name ?? '?'}: ${l.text}`).sort();
     const both = [`${organizer}: Shall we start with the budget?`, 'Sam: Yes, the budget first.'];
     expect(said((await settle(sam, (x) => x.transcript.length === 2)).transcript)).toEqual(both);
     // Sam, a guest, sees the organizer as guests see everyone: a name and an arch, no email.
     expect(sam.getSnapshot().transcript.find((l) => l.speaker?.name === organizer)?.speaker?.person?.email).toBe('');
-    // Nobody outside the call can be named.
-    expect(code(await host.transcribe(speech('Who said this?', 0, 9000), 'p_nobodynobodynobodynobo').catch((e: unknown) => e))).toBe('invalid');
+    // Catching up reads who said what, a guest marked as one.
+    await sam.catchUp();
+    expect(h.near.prompts.at(-1)).toContain('Sam (guest): Yes, the budget first.');
+    expect(h.near.prompts.at(-1)).toContain(`${organizer}: Shall we start with the budget?`);
 
-    // In a breakout room, what's said there is kept as said there.
-    host.openRooms({ rooms: [{ name: 'Design', emails: [] }, { name: 'Support', emails: [] }], minutes: 5 });
-    const design = (await settle(host, (x) => x.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
-    host.visitRoom(design);
-    await settle(host, (x) => x.breakouts.open?.rooms.find((r) => r.id === design)?.members.includes(host.ticket.identity) ?? false);
-    await host.transcribe(speech('Design starts with the colours.', 0, 12_000));
-    host.visitRoom(null);
-    await settle(host, (x) => !(x.breakouts.open?.rooms.some((r) => r.members.includes(host.ticket.identity)) ?? true));
-    await host.transcribe(speech('Back in the main room.', 0, 16_000));
-    const rooms = (await settle(host, (x) => x.transcript.length === 4)).transcript.map((l) => [l.text, l.room ?? null]);
-    expect(rooms).toEqual(expect.arrayContaining([['Design starts with the colours.', design], ['Back in the main room.', null]]));
+    // Only someone in the call can be named: nobody still asking or turned away, nobody from another call.
+    const refused = async (speaker: string) => code(await host.transcribe(speech('Who said this?', 0, 9000), speaker).catch((e: unknown) => e));
+    const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
+    await settle(host, (x) => x.waiting.some((w) => w.id === kim.ticket.identity));
+    expect(await refused(kim.ticket.identity)).toBe('invalid');
+    await host.deny(kim.ticket.identity);
+    await settle(host, (x) => x.waiting.length === 0);
+    expect(await refused(kim.ticket.identity)).toBe('invalid');
+    const other = await account();
+    const elsewhere = await other.api.calls.join((await other.api.calls.startNow({})).code, { mic: true, cam: false });
+    expect(await refused(elsewhere.ticket.identity)).toBe('invalid');
+    await elsewhere.leave();
+    expect(await refused('p_nobodynobodynobodynobo')).toBe('invalid');
+    // Someone who has just left: their last words, still on the way, are kept under their name.
+    await sam.leave();
+    await settle(host, (x) => !x.participants.some((p) => p.id === sam.ticket.identity));
+    await host.transcribe(speech('See you all next week.', 0, 11_000), sam.ticket.identity);
 
-    // The notes keep who said what, and where.
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    const lines = (await org.api.notes.get(noteId)).transcript ?? [];
-    expect(said(lines)).toEqual([...both, `${organizer}: Back in the main room.`, `${organizer}: Design starts with the colours.`].sort());
-    expect(lines.find((l) => l.text === 'Design starts with the colours.')?.room).toBe(design);
+    expect(said((await org.api.notes.get(noteId)).transcript ?? [])).toEqual([...both, 'Sam: See you all next week.'].sort());
+  });
+
+  it('keeps what’s said in a breakout room to the people sent there and the organizer, under the room’s name', async () => {
+    const org = await account();
+    const kofiEmail = unique('kofi');
+    const { code: c } = await org.api.calls.startNow({ guests: [kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    host.setNotes(true);
+    await settle(host, (x) => x.notes.status === 'on');
+    await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    const design = (await settle(host, (x) => x.breakouts.open !== null)).breakouts.open?.rooms.find((r) => r.name === 'Design')?.id ?? '';
+    host.visitRoom(design);
+    await settle(host, (x) => x.breakouts.open?.rooms.find((r) => r.id === design)?.members.includes(host.ticket.identity) ?? false);
+    // In Design: the organizer, visiting, and Kofi, who was sent there. Sam, a guest, stays in the main room.
+    await host.transcribe(speech('Design starts with the colours.', 0, 4000), host.ticket.identity);
+    await host.transcribe(speech('Blue for the buttons.', 0, 4000), kofi.ticket.identity);
+    // The organizer goes back; a clip of Kofi's still on its way is kept where Kofi was.
+    host.visitRoom(null);
+    await settle(host, (x) => !(x.breakouts.open?.rooms.some((r) => r.members.includes(host.ticket.identity)) ?? true));
+    await host.transcribe(speech('And green for links.', 0, 8000), kofi.ticket.identity);
+    await host.transcribe(speech('Sam, how is support going?', 0, 8000), host.ticket.identity);
+    const where = (ls: TranscriptLine[]) => ls.map((l) => `${l.text} @ ${l.room?.name ?? 'main'}`).sort();
+    const all = ['And green for links. @ Design', 'Blue for the buttons. @ Design', 'Design starts with the colours. @ Design', 'Sam, how is support going? @ main'];
+    expect(where((await settle(host, (x) => x.transcript.length === 4)).transcript)).toEqual(all);
+    expect(where((await settle(kofi, (x) => x.transcript.length === 4)).transcript)).toEqual(all);
+    // Sam reads only the main room: not in the live transcript, catching up, or captions in another language.
+    expect(where((await settle(sam, (x) => x.transcript.length === 1)).transcript)).toEqual(['Sam, how is support going? @ main']);
+    expect(await sam.catchUp()).toMatchObject({ lines: 1 });
+    const inDesign = host.getSnapshot().transcript.find((l) => l.text === 'Blue for the buttons.')?.id ?? '';
+    expect(await sam.translate([inDesign], 'fr')).toEqual([]);
+    // Rooms that have run out are closed, whatever is stored: what's said after is the main room's.
+    await h.pool.query(`UPDATE calls SET started_at = started_at - interval '6 minutes' WHERE call_id = $1`, [host.ticket.callId]);
+    await host.transcribe(speech('Back together now.', 0, 12_000), kofi.ticket.identity);
+    expect(where((await settle(sam, (x) => x.transcript.length === 2)).transcript)).toEqual(['Back together now. @ main', 'Sam, how is support going? @ main']);
+
+    // The notes keep each line's room, by name.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    expect(where((await org.api.notes.get(noteId)).transcript ?? [])).toEqual([...all, 'Back together now. @ main'].sort());
   });
 
   it('validates guest names and keeps them and passes out of rows and logs', async () => {
@@ -926,11 +976,12 @@ describe('joining by link', () => {
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     const guest = guestBrowser();
-    for (const name of [undefined, '   ', 'x'.repeat(61)]) {
+    for (const name of [undefined, '   ', '\n\t ', 'x'.repeat(61)]) {
       expect(code(await guest.calls.join(c, { mic: true, cam: false, ...(name === undefined ? {} : { name }) }).catch((e: unknown) => e))).toBe('invalid');
     }
-    const g = await guest.calls.join(c, { mic: true, cam: false, name: '  CANARY-NAME Ada  ' });
-    expect((await settle(host, (s) => s.waiting.length === 1)).waiting[0]?.person.name).toBe('CANARY-NAME Ada');
+    // A name is one line: a line break can't make a guest's words read as someone else's in the notes.
+    const g = await guest.calls.join(c, { mic: true, cam: false, name: '  CANARY-NAME\n[00:00]   Ada\u2028  ' });
+    expect((await settle(host, (s) => s.waiting.length === 1)).waiting[0]?.person.name).toBe('CANARY-NAME [00:00] Ada');
     await expectNotInRows(['calls', 'call_codes', 'call_mls'], ['CANARY-NAME', c]);
     const logs = h.logs.join('');
     expect(logs.includes('CANARY-NAME')).toBe(false);

@@ -5,7 +5,7 @@
 ## Status
 
 Notes are written end to end with NEAR AI Cloud (`I01`). While notes are on, the browser sends short clips
-of speech; Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
+of speech (in a call, the organizer's browser, for everyone it hears); Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
 recorder show a live transcript. When the recording stops, the transcript moves into the note, and a
 worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
 chapters and suggested questions. Anyone who has the note can then ask questions about the call. Calls that
@@ -193,8 +193,8 @@ sequenceDiagram
    `x-alcove-duration-ms`, and for a call `x-alcove-speaker` (the participant ID of whoever's voice it is,
    which must be someone in the call, or `400 invalid`). A declared `content-length` over the limit is refused before the body is read;
    then the WAV header is checked (RIFF/WAVE, PCM, one channel, 16,000 Hz, 16 bits). Anything else is
-   `400 invalid`. Each account may send 120 clips a minute, calls and room recordings together; past that
-   the answer is `503 unavailable` ("Too many attempts").
+   `400 invalid`. Each account may send 240 clips a minute, calls and room recordings together, and in a call
+   each voice 40; past that the answer is `503 unavailable` ("Too many attempts").
 3. **When a clip is taken.** For a call, only while it is live, notes are on and the clip's segment is the
    current one. For a room recording, only while it is recording (not paused), and only segment 0.
    Otherwise `409 conflict` (`400 invalid` for a room segment other than 0). Only the account's own calls
@@ -220,7 +220,9 @@ sequenceDiagram
 8. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
    oldest first. Each call line is said by whoever's voice it was, named from the call's people as
    the viewer may see them (a guest sees names, never email addresses), with the breakout room it was said in,
-   if any; room lines name nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
+   by name, if any. A line said in a breakout room is shown only to the people sent there and the organizer
+   (and only those lines go into their catching up, questions and caption translations). Room lines name
+   nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
    newer mic or notes change.
 
 ## When the recording stops
@@ -599,7 +601,9 @@ answers dropped because a note they read went while they were written.
   `dstack-images.ts`, computed the same way.
 - **Who said what.** A call line is said by whoever's voice it was, as the organizer's browser heard each
   voice on its own; someone in a breakout room the organizer isn't in isn't heard. The notes recording keeps
-  the organizer's microphone only. Room recordings have no speaker diarization.
+  the organizer's microphone only: without one, nothing is recorded, and lines in later segments are placed
+  from the start of the recording. Guests name themselves, so the notes model reads them marked as guests.
+  Room recordings have no speaker diarization.
 - **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the
   balance below zero ([Payments and usage](payments-and-usage.md)).
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't

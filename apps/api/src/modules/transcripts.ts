@@ -1,8 +1,8 @@
 /*
  * The live transcript of a note while it is being recorded (docs: notes-and-inference). The browser
  * sends a few seconds of speech at a time; each clip is transcribed and kept as one sealed row, even
- * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording,
- * so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
+ * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording
+ * and whose speech it is, so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
  * model the clip was sent to. When the recording stops, the lines and that evidence move into the note
  * and the rows go.
  */
@@ -17,8 +17,6 @@ import { segments } from './audio';
 
 const tlog = log.child({ component: 'transcripts' });
 
-/** How many of the latest lines a call or room recording shows while it's going. */
-export const LIVE_LINES = 200;
 
 /** Speech from the browser: where it starts in its segment (pauses not counted), and its WAV bytes. */
 export interface Clip { segment: number; startMs: number; durationMs: number; wav: Uint8Array }
@@ -107,11 +105,13 @@ export async function latest(o: Owner, db: Db, noteId: string, n: number): Promi
   return found.flatMap((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored).lines).sort((a, b) => a.at - b.at).slice(-n);
 }
 
-/** Lines as the app shows them, each said by whoever `speakerOf` names (nobody, in a room recording). */
-export const spoken = (ls: Line[], speakerOf: (identity: string) => Speaker | undefined = () => undefined): TranscriptLine[] =>
+/** Lines as the app shows them: each said by whoever `speakerOf` names (nobody, in a room recording), in the room `roomOf` names. */
+export const spoken = (ls: Line[], speakerOf: (identity: string) => Speaker | undefined = () => undefined,
+  roomOf: (id: string) => { id: string; name: string } | undefined = () => undefined): TranscriptLine[] =>
   ls.map((l) => {
     const speaker = l.speaker ? speakerOf(l.speaker) : undefined;
-    return { id: l.id, at: l.at, ...(speaker ? { speaker } : {}), ...(l.room ? { room: l.room } : {}), text: l.text };
+    const room = l.room ? roomOf(l.room) : undefined;
+    return { id: l.id, at: l.at, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}), text: l.text };
   });
 
 /** Removes a note's live transcript, and its lines in other languages, once its lines are in the note. */

@@ -41,7 +41,7 @@
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 1 | Every speaker in a group call's notes (each browser sends its own audio while notes are on), and host hand-off when the organizer drops (#30) | Group calls are end-to-end encrypted with MLS already: [Calls and recordings](../engineering/calls-and-recordings.md#end-to-end-encryption) |
+| 1 | Host hand-off when the organizer drops (#30) | Group calls are end-to-end encrypted with MLS already: [Calls and recordings](../engineering/calls-and-recordings.md#end-to-end-encryption) |
 | 2 | Real Microsoft and SSO sign-in, with their calendars and company directories | Replaces `apps/api/src/demo.ts`; shared notes depend on verified emails |
 | 3 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
 | 4 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |

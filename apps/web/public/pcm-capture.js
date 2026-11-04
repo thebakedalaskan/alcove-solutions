@@ -36,9 +36,13 @@ class PcmCapture extends AudioWorkletProcessor {
     this.pos = 0;
     this.out = new Float32Array(CHUNK);
     this.n = 0;
+    /** Told "stop" when nobody listens any more: the node then ends, rather than running until its context closes. */
+    this.done = false;
+    this.port.onmessage = (e) => { if (e.data === 'stop') this.done = true; };
   }
 
   process(inputs) {
+    if (this.done) return false;
     const channels = inputs[0];
     if (!channels || channels.length === 0) return true;
     const length = channels[0].length;
