@@ -242,7 +242,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   sets an explicit state (confirmed, answered, done, these addresses added), so a retry changes nothing anyway.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
   `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute
-  per account, calls and room recordings together. Questions and catch-ups (about notes, a call so far or a
+  per account, calls and room recordings together. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
   series): 20 a minute per account, together. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
@@ -303,7 +303,7 @@ third-party loads.
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on |
 | The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size. Deleted when the call ends |
-| The API (calls) | Who's in each call, asking or turned away, and their names (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
+| The API (calls) | Who's in each call, asking or turned away, and their names (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms; when notes were turned on, off, paused and resumed, and who asked for notes. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion

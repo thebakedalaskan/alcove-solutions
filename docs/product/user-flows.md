@@ -98,19 +98,24 @@ says so ("Microphone blocked", "No camera") and a note under it says how to allo
 **Try again**; you can still join, with them off, and turn them on later. Allowing them in the browser's
 settings is noticed by itself. In the call, the arrow beside the microphone and camera buttons switches
 devices without leaving the call or interrupting the notes. **Join now** opens the call; **Copy link**
-copies the join link. A link to a call that isn't on your calendar says so: only the person who set it up can
-join it.
+copies the join link. Someone joining by link, a guest or someone invited, sees what the call captures before
+they ask to join and while they wait: whether notes are on, paused or off, the recording, transcript, AI notes
+and shared screens each with its state, that the notes are written in confidential compute, and that the people
+invited get them. Never anyone's name or anything said.
 
 ## 5. In the call
 
 The call opens full screen: the stage with everyone's tiles, a side panel that slides in beside it, and one
 dock at the bottom.
 
-- **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, or **Notes off**), the same for
-  everyone, which opens the notes; your view: **Auto**, **Speaker** or **Grid**, which change only your
-  screen, beside a menu with the same three, two ready-made layouts (**Everyone equal**, **Presenter and me**),
-  where you see yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once you've
-  arranged it; **Catch up**; the shield, whose hover says what
+- **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes off**,
+  or **Notes requested** while someone has asked), the same for everyone, which opens what's captured: each
+  kind of capture and its state, who changed it and when, who gets the notes, and the organizer's **Pause
+  notes**, **Resume notes** and **Turn off** (or **Turn on notes**), or anyone else's **Ask for notes**; your
+  view: **Auto**, **Speaker** or **Grid**, which change only your screen, beside a menu with the same three,
+  two ready-made layouts (**Everyone equal**, **Presenter and me**), where you see yourself, and a reset (on a
+  phone, that menu is the one button); **Reset my view** once you've arranged it; **Catch up**; the shield,
+  whose hover says what
   confidential compute covers (verified only when the server's hardware check is bound to this browser's
   request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
@@ -152,6 +157,12 @@ dock at the bottom.
   main room**, **Message every room**, and **Bring everyone back now**. Everyone comes back when time is up,
   and the rooms go into the call's notes.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
+- **Pausing** stops everything at once: nothing is recorded, transcribed or sent to the AI, catch-up and
+  captions included, until the organizer resumes. Nothing resumes it by itself. The transcript, a catch-up and
+  the notes everyone gets say where it was paused ("Paused 10:02–10:05"), and where notes were off.
+- **Asking for notes.** While notes are off or paused, anyone can ask for them, from the notes sign or the Notes
+  panel. Everyone sees who asked. The organizer gets a toast and sees the ask in People, then turns notes on (or
+  resumes them) or says not now, and whoever asked is told.
 - Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
 
 Calls are for groups: invited people join with their accounts, anyone else with the link asks and the
