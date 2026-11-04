@@ -473,6 +473,11 @@
 .ic-dtrouble b { display: block; }
 .ic-dtrouble p { margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
 .ic-dtrouble .ac-btn { margin-top: 10px; }
+/* Video quality: what you send and what you see, each a choice of three, with a line on what it does. */
+.ic-vq .ac-seg { width: 100%; }
+/* Each choice as wide as its words, on one line, the rest shared out evenly. */
+.ic-vq .ac-seg > button { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
+.ic-vq-says { margin: 6px 4px 0; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 /* How loud someone is for you: a quick mute, a slider and the level. */
 .ic-vol { padding: 4px 10px 6px; }
 .ic-vol-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; font: 500 13.5px/1 var(--font-sans); color: var(--ink); }
@@ -584,6 +589,7 @@
   .ic-rs, .ic-divider { display: none; }
   .ic-side { left: 0; width: auto !important; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
+  .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 @media (max-width: 560px) {
   .ic-call { padding: 0 8px; }

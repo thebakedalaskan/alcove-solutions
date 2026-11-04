@@ -741,6 +741,31 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
   reconnected, so nothing is ever sent twice. LiveKit mutes a publication whose device was unplugged; the room
   tells that apart from the organizer's mute by whether the track's `ended` event really fired, and unmutes it
   again only if the person's microphone (or camera) is on by then.
+- **Video quality** (`apps/web/src/features/call/VideoQuality.tsx`, under More → **Video quality**). Two choices,
+  remembered in this browser with the devices (`sendVideo` and `receiveVideo` in `alcove.devices`), changeable at
+  any moment of a call:
+  - **Video you send:** 360p, 720p (the default) or HD 1080p. The camera is asked for that size (`VIDEO` in
+    `media.ts`: 30 fps, 24 at 360p) when it opens. A change in the call goes to the running camera
+    (`applyConstraints`, after any device work already asked for, with blur in the same set, as each call replaces
+    the last): a smaller size is the browser scaling it, and HD asks it for at least 1920×1080, then for the nearest
+    it has, so it never stops. The camera is published with simulcast layers for its size
+    (`CAMERA` in `livekit.ts`): 180p, 360p and 720p up to 1.7 Mbps; 360p, 720p and 1080p up to 3 Mbps for HD;
+    180p and 360p for 360p. A publication's layers are fixed when it's published, so a camera sent at a new
+    size is published again, and everyone sees it stop and start for a moment. A camera that can't give 1080p
+    is sent with 720p's layers (`cameraSends`, which the choice reads too), not as two full-size copies, and the
+    choice says how far it goes ("Your camera gives 720p at most, so that's what's sent.").
+  - **Video you see:** Auto, Data saver or No cameras, for everyone else's cameras.
+    - **Auto** is LiveKit's adaptive stream at up to 1.5 device pixels to a CSS pixel (`pixelDensity`): each camera
+      comes in as sharp as its tile is on this screen, so a large tile on a high-density screen gets 1080p while a
+      grid of small ones keeps to small copies. A camera nobody here can see (the tab in the background, another
+      breakout room, a tile not shown) is paused, and dynacast stops layers nobody is watching. Nothing calls
+      `setEnabled`: once called, livekit-client keeps that over adaptive stream's pausing for good.
+    - **Data saver** caps each camera at its smallest layer (`setVideoQuality(LOW)`).
+    - **No cameras** unsubscribes from them (`setSubscribed(false)`, and `true` to come back), so LiveKit stops
+      sending them, and the tiles show people's arches. While anyone else is in the call, "Cameras are hidden for
+      you", with **Show cameras**, stays at the top of the call, so it isn't taken for everyone's camera being off;
+      on a narrow screen it's the icon and the button.
+    - Shared screens are never capped: their text has to stay readable.
 - **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
   doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays
   there, now and as people arrive, and LiveKit's device handling knows it. Firefox lists speakers only once the
