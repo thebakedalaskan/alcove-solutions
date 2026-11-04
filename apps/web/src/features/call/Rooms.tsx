@@ -205,7 +205,11 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
                 </div>
                 {r.people.length > 0 && (
                   <div className="ic-rchips">
-                    {r.people.map((p) => <RoomPerson key={p.email} person={p} here={inRoom.some((x) => sameEmail(x, p))} room={k} rooms={open.rooms.map((x) => x.name)} onMove={(to) => onMove(p.email, to)} />)}
+                    {r.people.map((p) => {
+                      // Shown as the call knows them (their name and picture) once they're here; by address until then.
+                      const known = [...people.values()].find((x) => x.email !== '' && sameEmail(x, p)) ?? p;
+                      return <RoomPerson key={p.email} person={known} here={inRoom.some((x) => sameEmail(x, p))} room={k} rooms={open.rooms.map((x) => x.name)} onMove={(to) => onMove(p.email, to)} />;
+                    })}
                   </div>
                 )}
               </div>
