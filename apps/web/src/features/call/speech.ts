@@ -1,9 +1,10 @@
 /*
- * The live transcript's ears. While notes are on, the microphone also runs through a small audio
- * worklet (public/pcm-capture.js) that hands over 16 kHz mono samples. They're cut into clips at
- * natural pauses, clips without a voice in them are dropped, and the rest go to the server one at a
- * time as WAV files to be transcribed. This runs beside NotesRecorder and never touches the
- * encrypted recording: a clip that can't be transcribed costs a line of transcript, nothing more.
+ * The live transcript's ears. While notes are on, a voice (a room recording's microphone, or in a call each voice
+ * the organizer's browser plays: see CallEars) also runs through a small audio worklet (public/pcm-capture.js) that
+ * hands over 16 kHz mono samples. They're cut into clips at natural pauses, clips without a voice in them are
+ * dropped, and the rest go to the server one at a time as WAV files to be transcribed. This runs beside
+ * NotesRecorder and never touches the encrypted recording: a clip that can't be transcribed costs a line of
+ * transcript, nothing more.
  */
 import { MAX_TRANSCRIPT_CLIP_MS, errorCode, errorMessage, type TranscriptClip } from '@alcove/api';
 import { log } from '~/lib/log';
@@ -47,12 +48,26 @@ const FLUSH_LIMIT_MS = 8000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 interface Frame { pcm: Float32Array; rms: number; voice: boolean }
-interface Graph { ctx: AudioContext; node: Promise<AudioWorkletNode>; source: MediaStreamAudioSourceNode | null }
+interface Graph { ctx: AudioContext; parts: Promise<{ node: AudioWorkletNode; mute: GainNode }>; source: MediaStreamAudioSourceNode | null }
+/**
+ * Listening beside other voices, as CallEars does: one audio context for every voice, and the segment's start
+ * (`origin`, from performance.now()) instead of one's own, so a voice heard from part-way through still places its
+ * clips right. `own` marks the organizer's own microphone, for the logs.
+ */
+export interface Shared { context: AudioContext; origin: number; own: boolean }
+
+/** The capture worklet, loaded once in each audio context however many voices it hears. */
+const loaded = new WeakMap<AudioContext, Promise<void>>();
+function loadCapture(ctx: AudioContext): Promise<void> {
+  let p = loaded.get(ctx);
+  if (!p) { p = ctx.audioWorklet.addModule('/pcm-capture.js'); loaded.set(ctx, p); }
+  return p;
+}
 
 /**
- * Cuts the microphone into clips of speech and sends them, in order, while notes are on. The screen
- * hears about trouble through `onProblem` (a sentence to show, or null once clips get through
- * again); the call and the recording carry on regardless.
+ * Cuts one voice into clips of speech and sends them, in order, while notes are on. The screen hears
+ * about trouble through `onProblem` (a sentence to show, or null once clips get through again); the
+ * call and the recording carry on regardless.
  */
 export class SpeechClips {
   private graph: Graph | null = null;
@@ -76,7 +91,8 @@ export class SpeechClips {
   private restUntil = 0;
   private shown: string | null = null;
 
-  constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
+  constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void,
+    private readonly shared: Shared | null = null) {}
 
   /** Starts (or carries on) listening into `segment`. A new segment counts from 0 again. */
   start(track: MediaStreamTrack, segment: number): void {
@@ -123,8 +139,10 @@ export class SpeechClips {
     this.graph = null;
     if (!g) return;
     g.source?.disconnect();
-    void g.node.then((n) => { n.port.onmessage = null; n.disconnect(); }, () => undefined);
-    void g.ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
+    // The worklet ends, rather than running on in a shared context until it closes.
+    void g.parts.then(({ node, mute }) => { node.port.postMessage('stop'); node.port.onmessage = null; node.disconnect(); mute.disconnect(); }, () => undefined);
+    // A shared context belongs to whoever shares it.
+    if (!this.shared) void g.ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
   }
 
   private clear() {
@@ -139,12 +157,12 @@ export class SpeechClips {
     const g = this.graph ?? this.build();
     if (!g) return;
     const gen = this.gen;
-    void g.node.then((node) => {
+    void g.parts.then(({ node }) => {
       if (gen !== this.gen || this.graph !== g || this.track !== track) return;
       g.source?.disconnect();
       g.source = g.ctx.createMediaStreamSource(new MediaStream([track]));
       g.source.connect(node);
-      slog.info('listening for the live transcript', { segment: this.segment, sampleRate: g.ctx.sampleRate });
+      slog.info('listening for the live transcript', { segment: this.segment, sampleRate: g.ctx.sampleRate, own: this.shared?.own ?? true });
     }, (e: unknown) => {
       if (gen !== this.gen) return;
       slog.warn('could not listen for the live transcript', { err: e });
@@ -158,24 +176,24 @@ export class SpeechClips {
       this.say('The live transcript can’t start in this browser. The recording is still saved.');
       return null;
     }
-    const ctx = new AudioContext();
-    wakeAudio(ctx);
-    const node = ctx.audioWorklet.addModule('/pcm-capture.js').then(() => {
-      const n = new AudioWorkletNode(ctx, 'pcm-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
-      n.port.onmessage = (e: MessageEvent<unknown>) => { if (this.graph?.ctx === ctx && e.data instanceof Float32Array) this.take(e.data); };
+    const ctx = this.shared?.context ?? new AudioContext();
+    if (!this.shared) wakeAudio(ctx);
+    const parts = loadCapture(ctx).then(() => {
+      const node = new AudioWorkletNode(ctx, 'pcm-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      node.port.onmessage = (e: MessageEvent<unknown>) => { if (this.graph?.ctx === ctx && e.data instanceof Float32Array) this.take(e.data); };
       // Some browsers only run nodes that lead to the speakers. Nothing is heard: the gain is zero.
       const mute = ctx.createGain();
       mute.gain.value = 0;
-      n.connect(mute).connect(ctx.destination);
-      return n;
+      node.connect(mute).connect(ctx.destination);
+      return { node, mute };
     });
-    this.graph = { ctx, node, source: null };
+    this.graph = { ctx, parts, source: null };
     return this.graph;
   }
 
   private take(chunk: Float32Array) {
     if (this.paused || this.segment < 0) return;
-    if (this.at < 0) this.at = Math.max(0, Math.round(((performance.now() - this.startedAt) * RATE) / 1000) - chunk.length);
+    if (this.at < 0) this.at = Math.max(0, Math.round(((performance.now() - (this.shared?.origin ?? this.startedAt)) * RATE) / 1000) - chunk.length);
     for (const v of chunk) {
       this.partial[this.filled++] = v;
       if (this.filled < FRAME) continue;
@@ -312,3 +330,93 @@ function wav(pcm: Float32Array): Blob {
   return new Blob([bytes], { type: 'audio/wav' });
 }
 
+/**
+ * The live transcript of a call, heard in the organizer's browser: its own microphone and everyone else's it plays
+ * (the people in its part of the call), each on its own, so every line is said by whoever's voice it was. Every
+ * voice counts from the segment's start, so lines fall where they were said. A voice no longer heard stops being
+ * listened to at once and sends what it had already heard.
+ */
+export class CallEars {
+  private ctx: AudioContext | null = null;
+  private voices = new Map<string, SpeechClips>();
+  /** Voices no longer heard, still sending what they'd heard: flush() waits for them, stop() ends them. */
+  private leaving = new Set<SpeechClips>();
+  private segment = -1;
+  private origin = 0;
+  private problems = new Map<string, string>();
+
+  constructor(private readonly upload: (clip: TranscriptClip, speaker: string) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
+
+  /**
+   * Listens to exactly `voices` (by participant ID) in `segment`. New voices start, a voice on a new track carries
+   * on with it, and a voice that's gone is no longer listened to and sends what it had heard. A new segment starts
+   * again from nobody.
+   */
+  follow(segment: number, voices: readonly { identity: string; track: MediaStreamTrack; own: boolean }[]): void {
+    if (segment !== this.segment) {
+      this.drop();
+      this.segment = segment;
+      this.origin = performance.now();
+    }
+    const want = new Map(voices.map((v) => [v.identity, v]));
+    let added = 0;
+    let gone = 0;
+    for (const [identity, clips] of this.voices) {
+      if (want.has(identity)) continue;
+      this.voices.delete(identity);
+      this.problem(identity, null);
+      clips.pause();
+      this.leaving.add(clips);
+      void clips.flush().finally(() => { clips.stop(); this.leaving.delete(clips); });
+      gone++;
+    }
+    for (const [identity, v] of want) {
+      let clips = this.voices.get(identity);
+      if (!clips) {
+        const mine: SpeechClips = new SpeechClips((c) => this.upload(c, identity),
+          // A voice that's gone can't raise a problem nobody would clear.
+          (m) => { if (this.voices.get(identity) === mine) this.problem(identity, m); },
+          { context: this.context(), origin: this.origin, own: v.own });
+        clips = mine;
+        this.voices.set(identity, clips);
+        added++;
+      }
+      clips.start(v.track, segment);
+    }
+    if (added || gone) slog.debug('voices heard for the live transcript', { voices: this.voices.size, added, gone });
+  }
+
+  /** Sends what every voice has heard so far, those just gone too, and waits for it to be transcribed. */
+  async flush(): Promise<void> {
+    await Promise.all([...this.voices.values(), ...this.leaving].map((c) => c.flush()));
+  }
+
+  /** Stops hearing everyone. What hasn't been sent is dropped: flush() first to keep it. */
+  stop(): void {
+    this.drop();
+    this.segment = -1;
+    const ctx = this.ctx;
+    this.ctx = null;
+    if (ctx) void ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
+  }
+
+  private drop() {
+    for (const clips of [...this.voices.values(), ...this.leaving]) clips.stop();
+    this.voices.clear();
+    this.leaving.clear();
+    this.problems.clear();
+    this.onProblem(null);
+  }
+
+  private context(): AudioContext {
+    if (!this.ctx) { this.ctx = new AudioContext(); wakeAudio(this.ctx); }
+    return this.ctx;
+  }
+
+  /** One trouble shown at a time: the first voice's that's still unsolved, or none. */
+  private problem(identity: string, message: string | null) {
+    if (message) this.problems.set(identity, message);
+    else this.problems.delete(identity);
+    this.onProblem(this.problems.values().next().value ?? null);
+  }
+}

@@ -177,6 +177,8 @@ export const TranscriptLineSchema = z.object({
   at: z.number(),
   /** Who spoke. Absent when nobody can tell, as in a room recording. */
   speaker: SpeakerSchema.optional(),
+  /** The breakout room it was said in. Absent for the main room, and outside calls. */
+  room: z.object({ id: IDSchema, name: z.string() }).optional(),
   text: z.string()
 });
 export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;

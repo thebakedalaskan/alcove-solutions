@@ -622,13 +622,13 @@ describe('live transcript and written notes', () => {
     await call.appendAudio(piece(audioBytes('seg0-a'), 0, 0));
     await call.appendAudio(piece(audioBytes('seg0-b'), 0, 1));
 
-    await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0));
+    await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript).toEqual([
       { id: expect.any(String), at: 0, text: 'We agreed to move the launch to the 18th.', speaker: { name: org.session.user.name, person: expect.objectContaining({ email: org.session.user.email }) } }
     ]);
-    await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0)); // a retry is kept once, and not transcribed again
-    await call.transcribe(speech('', 0, 4000)); // silence: what Whisper "hears" in it is dropped
-    await call.transcribe(speech('Kofi will send the new screens by Wednesday. // Priya checks the numbers.', 0, 6000));
+    await call.transcribe(speech('We agreed to move the launch to the 18th.', 0, 0), call.ticket.identity); // a retry is kept once, and not transcribed again
+    await call.transcribe(speech('', 0, 4000), call.ticket.identity); // silence: what Whisper "hears" in it is dropped
+    await call.transcribe(speech('Kofi will send the new screens by Wednesday. // Priya checks the numbers.', 0, 6000), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => [l.at, l.text])).toEqual([
       [0, 'We agreed to move the launch to the 18th.'], [6, 'Kofi will send the new screens by Wednesday.'], [8, 'Priya checks the numbers.']
     ]);
@@ -637,11 +637,11 @@ describe('live transcript and written notes', () => {
     // Notes off: nothing more is transcribed. Back on, lines continue after the first segment's 10 seconds.
     call.setNotes(false);
     await settle(call, (x) => x.notes.status === 'off');
-    expect(code(await call.transcribe(speech('Off the record.', 0, 12_000)).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await call.transcribe(speech('Off the record.', 0, 12_000), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     call.setNotes(true);
     await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
-    expect(code(await call.transcribe(speech('From before.', 0, 14_000)).catch((e: unknown) => e))).toBe('conflict');
-    await call.transcribe(speech('That is everything for today.', 1, 0));
+    expect(code(await call.transcribe(speech('From before.', 0, 14_000), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    await call.transcribe(speech('That is everything for today.', 1, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.at(-1)).toMatchObject({ at: 10, text: 'That is everything for today.' });
 
     const noteId = (await ended(call)).pendingNoteId ?? '';
@@ -691,7 +691,7 @@ describe('live transcript and written notes', () => {
     const org = await account(unique('organizer'));
     const guestEmail = unique('guest');
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
-    await call.transcribe(speech('We agreed to sell the old van. // The buyer pays on Monday.', 0, 0));
+    await call.transcribe(speech('We agreed to sell the old van. // The buyer pays on Monday.', 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const guest = await account(guestEmail);
@@ -718,8 +718,8 @@ describe('live transcript and written notes', () => {
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
     await call.appendAudio(piece(audioBytes('catch-a'), 0, 0));
-    await call.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0));
-    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000));
+    await call.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0), call.ticket.identity);
+    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000), call.ticket.identity);
     const sent = h.near.calls.length;
     const c = await call.catchUp();
     // It went sealed to the verified notes model, at its own endpoint, like everything else with content.
@@ -733,7 +733,7 @@ describe('live transcript and written notes', () => {
     expect(c.asOf).toBeGreaterThanOrEqual(0);
 
     // Only the last minute: what was said before it isn't read.
-    await call.transcribe(speech('Two minutes later we will look at pricing.', 0, 120_000));
+    await call.transcribe(speech('Two minutes later we will look at pricing.', 0, 120_000), call.ticket.identity);
     expect(await call.catchUp(1)).toMatchObject({ from: 60, through: 120, lines: 1, next: [{ text: 'Two minutes later we will look at pricing.', at: 120 }] });
 
     // Asking about the call so far answers with the moment it comes from.
@@ -793,9 +793,12 @@ describe('live transcript and written notes', () => {
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
     // The organizer's browser sends the call's pass with everything about the call; nobody else has it.
-    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string } = {}) => who.fetch(`${base}/v1${path}`, {
+    const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string; speaker?: string } = {}) => who.fetch(`${base}/v1${path}`, {
       method: 'POST', body: new Blob([bytes]),
-      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000', ...(who === a ? { 'x-alcove-call': call.ticket.pass } : {}) }
+      headers: {
+        'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000',
+        ...(who === a ? { 'x-alcove-call': call.ticket.pass, 'x-alcove-speaker': o.speaker ?? call.ticket.identity } : {})
+      }
     });
     const hello = () => speechWav('Hello there.');
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { type: 'audio/webm' })).status).toBe(400);
@@ -804,6 +807,8 @@ describe('live transcript and written notes', () => {
     const cd = hello(); new DataView(cd.buffer).setUint32(24, 44_100, true);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, cd)).status).toBe(400);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ms: '45000' })).status).toBe(400);
+    // A call's speech says whose it is.
+    expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { speaker: '' })).status).toBe(400);
     expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(401);
     const rec = await a.api.recordings.start('Mine');
     expect((await post(b, h.baseUrl, `/recordings/${rec.getSnapshot().id}/transcribe`, hello())).status).toBe(404);
@@ -817,7 +822,7 @@ describe('live transcript and written notes', () => {
       await plain.close();
     }
     await call.leave();
-    expect(code(await call.transcribe(speech('Too late.', 0, 0)).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await call.transcribe(speech('Too late.', 0, 0), call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
   });
 
   it('deletes a note while its notes are still being written', async () => {
@@ -921,7 +926,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const lena = `lena@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [kofi, lena] })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
-    await call.transcribe(speech('We agreed to split into two rooms.', 0, 0));
+    await call.transcribe(speech('We agreed to split into two rooms.', 0, 0), call.ticket.identity);
 
     // Only people invited to the call, each in one room, in two to eight rooms.
     expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5 }, call.ticket.pass)).toBe(400);
@@ -1015,7 +1020,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const a = await account();
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
-    await call.transcribe(speech('The launch moves to the 18th. // Kofi will send the screens.', 0, 0));
+    await call.transcribe(speech('The launch moves to the 18th. // Kofi will send the screens.', 0, 0), call.ticket.identity);
     const lines = call.getSnapshot().transcript;
     const ids = lines.map((l) => l.id);
     const translated = () => h.near.calls.filter((x) => x.path.endsWith('/chat/completions')).length;
@@ -1040,7 +1045,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: 'es', lines: ids }) });
     expect(steal.status).toBe(401);
     const theirs = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    await theirs.transcribe(speech('Something else entirely.', 0, 0));
+    await theirs.transcribe(speech('Something else entirely.', 0, 0), theirs.ticket.identity);
     expect(await theirs.translate(ids, 'es')).toEqual([]);
     await theirs.leave();
     expect((await a.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify({ language: 'xx', lines: ids }) })).status).toBe(400);
@@ -1298,7 +1303,7 @@ describe('confirming what the notes say', () => {
     const org = await account(unique('organizer'));
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
-    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0));
+    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0), call.ticket.identity);
     const noteId = (await ended(call)).pendingNoteId ?? '';
     await written(org.api, noteId);
     let note = await org.api.notes.get(noteId);
@@ -1405,7 +1410,7 @@ describe('who has the notes', () => {
     const org = await account(unique('organizer'));
     const guestEmail = unique('guest');
     const call = await org.api.calls.join((await org.api.calls.startNow({ title: 'Receipt canary', notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
-    await call.transcribe(speech('We agreed to ship on Thursday. // Can we test it first? // Someone will write the release notes.', 0, 0));
+    await call.transcribe(speech('We agreed to ship on Thursday. // Can we test it first? // Someone will write the release notes.', 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
@@ -1503,7 +1508,7 @@ describe('privacy at rest', () => {
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
     const call = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: true });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
-    await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0));
+    await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
     // While the call is on, the live transcript is sealed rows too.
     const liveClips = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
@@ -1537,7 +1542,7 @@ describe('privacy at rest', () => {
     // A series: a question its call left open, the next call in it, and a question asked across it. A
     // recurring Google event's ID, which names its series, stays sealed and out of logged paths.
     const sync = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    await sync.transcribe(speech('CANARY-QUESTION who signs the merger?', 0, 0));
+    await sync.transcribe(speech('CANARY-QUESTION who signs the merger?', 0, 0), sync.ticket.identity);
     const synced = await sync.leave();
     await written(c.api, synced?.pendingNoteId ?? '');
     expect((await c.api.notes.get(synced?.pendingNoteId ?? '')).questions.map((x) => x.text)).toEqual(['CANARY-QUESTION who signs the merger?']);

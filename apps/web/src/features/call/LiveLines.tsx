@@ -55,7 +55,8 @@ const Latest = ({ onClick }: { onClick: () => void }) => (
   <button type="button" className="tx-latest" onClick={onClick}><Icon name="down" size={14} />Latest</button>
 );
 
-const who = (s: Speaker | undefined) => (s ? (s.person?.email.toLowerCase() ?? `name:${s.name}`) : '');
+/** One key per person: guests (and everyone, to a guest) have no email, so the person's ID tells them apart. */
+const who = (s: Speaker | undefined) => (s ? (s.person?.id ?? `name:${s.name}`) : '');
 
 /** Lines that start a group: a new speaker, or the same one a minute on, so a time is never far away. */
 function groupStarts(lines: TranscriptLine[]): Set<string> {

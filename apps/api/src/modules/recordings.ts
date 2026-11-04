@@ -1,4 +1,4 @@
-import type { RecordingAction, RecordingStopResult, RoomRecordingState } from '@alcove/api';
+import { LIVE_TRANSCRIPT_LINES, type RecordingAction, type RecordingStopResult, type RoomRecordingState } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { maybeOne, timestamp, tx } from '../db';
@@ -23,10 +23,10 @@ export async function view(o: Owner, recordingId: string): Promise<RoomRecording
   const r = await row(o, recordingId);
   const note = await getItem(o, o.pool, 'note', r.note_item_id, NoteManifest, 'That recording');
   const p = await progress(o, recordingId, 0);
-  const heard = r.state === 'stopped' ? [] : (await transcripts.lines(o, o.pool, r.note_item_id)).slice(-transcripts.LIVE_LINES);
+  const heard = r.state === 'stopped' ? [] : (await transcripts.lines(o, o.pool, r.note_item_id)).slice(-LIVE_TRANSCRIPT_LINES);
   return {
     id: recordingId, noteId: r.note_item_id, title: note.manifest.title, startedAt: r.started_at.toISOString(), elapsed: p.seconds, status: r.state, recording: p,
-    transcript: transcripts.spoken(heard, undefined)
+    transcript: transcripts.spoken(heard)
   };
 }
 

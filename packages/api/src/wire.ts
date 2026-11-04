@@ -54,7 +54,8 @@ export type CallAction = z.infer<typeof CallActionSchema>;
  * an MLS client; the API only orders and relays MLS messages, which it can't read. Bodies are base64url.
  */
 const Mls = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/).max(max);
-const CallIdentity = z.string().regex(/^p_[A-Za-z0-9_-]{22}$/);
+/** A connection's participant ID in a call: its random LiveKit identity. */
+export const CallIdentity = z.string().regex(/^p_[A-Za-z0-9_-]{22}$/);
 /** Joining by link: devices to start with, a name for guests, and this browser's MLS key package. */
 export const CallJoinBodySchema = z.object({
   mic: z.boolean(), cam: z.boolean(), name: z.string().max(200).optional(),
@@ -90,10 +91,16 @@ export type RecordingAction = z.infer<typeof RecordingActionSchema>;
  * Audio pieces and transcript clips travel as raw bytes with their position in these headers: a
  * piece by its sequence number, a clip by where it starts in its segment.
  */
-export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms' } as const;
+/**
+ * Where audio goes in the recording: its segment, its place in the segment (`start`, pauses not counted, or `seq`
+ * for recorded pieces) and its length. A call's speech also says whose it is (`speaker`: a participant ID).
+ */
+export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms', speaker: 'x-alcove-speaker' } as const;
 /** Mutations carry an operation ID so a retried request never applies twice (docs: Network and API contract). */
 export const OPERATION_HEADER = 'x-alcove-operation';
 export const MAX_AUDIO_PIECE_BYTES = 2 * 1024 * 1024;
+/** How many of the newest transcript lines a live call or room recording carries. */
+export const LIVE_TRANSCRIPT_LINES = 200;
 /** A transcript clip: at most 30 seconds of 16 kHz mono 16-bit WAV. */
 export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
 export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;

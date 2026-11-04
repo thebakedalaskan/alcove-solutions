@@ -252,7 +252,8 @@ export function Transcript({ lines, seconds, me, onSeek, focus }: { lines: Trans
   );
 }
 
-const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.email.toLowerCase() ?? `name:${s.name}`) : '');
+/** One key per person: guests have no email, so the person's ID tells them apart. */
+const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.id ?? `name:${s.name}`) : '');
 
 /** Where a link to a moment lands: the transcript line said then, which the router scrolls to the middle of the view. */
 const MOMENT = 'moment';

@@ -65,6 +65,12 @@ export interface CallRoom extends LiveStore<RoomView> {
    * or attached.
    */
   playOnly(who: ((identity: string) => boolean) | null): void;
+  /**
+   * Everyone else's microphone this browser plays now (the people in your part of the call, not muted), as the raw
+   * decrypted tracks: the live transcript hears each person on their own, whatever their volume here or the speaker
+   * chosen.
+   */
+  heard(): { identity: string; track: MediaStreamTrack }[];
   leave(): Promise<void>;
 }
 
@@ -248,6 +254,16 @@ class LiveKitRoom implements CallRoom {
   playOnly(who: ((identity: string) => boolean) | null): void {
     this.only = who;
     this.recheck();
+  }
+
+  heard(): { identity: string; track: MediaStreamTrack }[] {
+    const out: { identity: string; track: MediaStreamTrack }[] = [];
+    for (const who of this.room.remoteParticipants.values()) {
+      const pub = who.getTrackPublication(Track.Source.Microphone);
+      const track = pub?.track;
+      if (track?.sid && !pub?.isMuted && this.audio.has(track.sid) && this.allowed(pub, who)) out.push({ identity: who.identity, track: track.mediaStreamTrack });
+    }
+    return out;
   }
 
   private people(): Record<string, RoomPerson> {

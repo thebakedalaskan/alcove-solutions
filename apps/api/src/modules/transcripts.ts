@@ -1,8 +1,8 @@
 /*
  * The live transcript of a note while it is being recorded (docs: notes-and-inference). The browser
  * sends a few seconds of speech at a time; each clip is transcribed and kept as one sealed row, even
- * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording,
- * so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
+ * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording
+ * and whose speech it is, so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
  * model the clip was sent to. When the recording stops, the lines and that evidence move into the note
  * and the rows go.
  */
@@ -17,36 +17,44 @@ import { segments } from './audio';
 
 const tlog = log.child({ component: 'transcripts' });
 
-/** How many of the latest lines a call or room recording shows while it's going. */
-export const LIVE_LINES = 200;
 
 /** Speech from the browser: where it starts in its segment (pauses not counted), and its WAV bytes. */
 export interface Clip { segment: number; startMs: number; durationMs: number; wav: Uint8Array }
 /** Where a clip's lines go: the recording it was part of, and the note being made from it. */
 export interface Target { recordingId: string; noteId: string }
 
-/** A line as kept. Who said it comes from the note when it's shown: the organizer in a call, nobody in particular in a room. */
-const Line = z.object({ id: z.string(), at: z.number(), text: z.string() });
+/**
+ * A line as kept. In a call, `speaker` is the participant ID of whoever said it (named from the call when it's
+ * shown) and `room` the breakout room it was said in, if any. A room recording names nobody.
+ */
+const Line = z.object({ id: z.string(), at: z.number(), text: z.string(), speaker: z.string().optional(), room: z.string().optional() });
 export type Line = z.infer<typeof Line>;
 const Stored = z.object({ lines: z.array(Line), evidence: InferenceEvidenceSchema });
 
 const key = (o: Owner, noteId: string) => stateKey(o.root, o.ownerId, `transcript:${noteId}`);
-const tagOf = (o: Owner, noteId: string, segment: number, startMs: number) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}`));
+/** One clip of one person's speech: the same person's retried clip has the same tag, two people speaking at once don't. */
+const tagOf = (o: Owner, noteId: string, segment: number, startMs: number, speaker: string) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}:${speaker}`));
 const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, kind: 'transcript-clip', ownerId: o.ownerId, noteId, tag: b64u(tag) });
+
+/** Whose speech a call's clip is (a participant ID), and the breakout room it was said in, if any. */
+export interface Heard { speaker: string; room?: string | undefined }
 
 /**
  * Transcribes one clip into a note's live transcript. A clip heard before is skipped; one that
  * comes back after the recording stopped is dropped, because its note has already been finished.
  */
-export async function hear(o: Owner, t: Target, clip: Clip): Promise<void> {
-  const tag = tagOf(o, t.noteId, clip.segment, clip.startMs);
+export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefined): Promise<void> {
+  const tag = tagOf(o, t.noteId, clip.segment, clip.startMs, by?.speaker ?? '');
   const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, startMs: clip.startMs, durationMs: clip.durationMs, bytes: clip.wav.length };
   const seen = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = $3', [o.ownerId, t.noteId, tag]);
   if (seen) { tlog.debug('clip already transcribed', ctx); return; }
   // Lines are placed in the whole recording the way the note's player counts it: earlier segments first.
   const before = (await segments(o, t.recordingId)).filter((s) => s.index < clip.segment).reduce((n, s) => n + s.seconds, 0);
   const { heard, evidence } = await transcribe(o.cfg, clip.wav, clip.durationMs);
-  const lines: Line[] = heard.map((x) => ({ id: id128(), at: Math.round((before + clip.startMs / 1000 + x.start) * 10) / 10, text: x.text }));
+  const lines: Line[] = heard.map((x) => ({
+    id: id128(), at: Math.round((before + clip.startMs / 1000 + x.start) * 10) / 10, text: x.text,
+    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}) } : {})
+  }));
   const kept = await tx(o.pool, async (c) => {
     // Stopping takes this row's lock to move the transcript into the note. Sharing it here means
     // a clip either lands before the move, or sees the recording stopped and stays out.
@@ -97,9 +105,14 @@ export async function latest(o: Owner, db: Db, noteId: string, n: number): Promi
   return found.flatMap((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored).lines).sort((a, b) => a.at - b.at).slice(-n);
 }
 
-/** Lines as the app shows them, said by `speaker` when anyone can tell. */
-export const spoken = (ls: Line[], speaker: Speaker | undefined): TranscriptLine[] =>
-  ls.map((l) => ({ id: l.id, at: l.at, ...(speaker ? { speaker } : {}), text: l.text }));
+/** Lines as the app shows them: each said by whoever `speakerOf` names (nobody, in a room recording), in the room `roomOf` names. */
+export const spoken = (ls: Line[], speakerOf: (identity: string) => Speaker | undefined = () => undefined,
+  roomOf: (id: string) => { id: string; name: string } | undefined = () => undefined): TranscriptLine[] =>
+  ls.map((l) => {
+    const speaker = l.speaker ? speakerOf(l.speaker) : undefined;
+    const room = l.room ? roomOf(l.room) : undefined;
+    return { id: l.id, at: l.at, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}), text: l.text };
+  });
 
 /** Removes a note's live transcript, and its lines in other languages, once its lines are in the note. */
 export async function clear(o: Owner, db: Db, noteId: string): Promise<number> {

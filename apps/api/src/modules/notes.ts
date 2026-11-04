@@ -6,7 +6,7 @@
 import {
   ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient
+  type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -95,14 +95,14 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
  * The recording is complete: its live transcript moves into the note, everyone invited gets the
  * note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
  */
-export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = []): Promise<void> {
+export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, roomOf?: ((id: string) => { id: string; name: string } | undefined) | undefined): Promise<void> {
   const heard = await transcripts.lines(o, db, noteId);
   const heardBy = await transcripts.heardBy(o, db, noteId);
-  const organizer = await me(o);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts,
-    // Calls have one person in them today, so whoever's microphone it was spoke; a room has no one to name.
-    transcript: transcripts.spoken(heard, n.kind === 'call' ? { name: organizer.name, person: organizer } : undefined),
+    // In a call, each line keeps whoever said it and the breakout room it was said in, by name; a room recording names nobody.
+    transcript: transcripts.spoken(heard, speakerOf, roomOf),
     inference: heardBy
   }));
   await transcripts.clear(o, db, noteId);
