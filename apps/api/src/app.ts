@@ -529,6 +529,8 @@ export function createApp(d: Deps) {
   app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(c.get('owner'), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
   app.post('/v1/notes/:id/rewrite', async (c) => {
     const o = c.get('owner');
+    // Writing the notes again costs inference and isn't charged, so it shares the questions' allowance.
+    askLimiter(o.ownerId, 'rewrite');
     const note = await notes.rewrite(o, c.req.param('id'));
     writer.kick(o, o.ownerId);
     return c.json(note);
