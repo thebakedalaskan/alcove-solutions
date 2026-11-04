@@ -5,12 +5,14 @@
  * what a test wrote into a frame. The organizer turns screen notes on; each presenter's own browser sends frames of
  * its own share; the notes model reads them after the call, sealed to its verified key; the notes point at them.
  */
-import { AlcoveApiError, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type NoteProgress, type ScreenFrame, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, MAX_FRAME_BYTES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type NoteProgress, type ScreenFrame, type TranscriptClip } from '@alcove/api';
+import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
+import { request } from 'node:http';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { maintain } from './maintenance';
 import { screenJpeg, speechWav, type ScreenShown } from './testing/fake-near';
-import { ORIGIN, startHarness, type Harness } from './testing/harness';
+import { ORIGIN, cookieFetch, startHarness, type Harness } from './testing/harness';
 import { connect, disposeLiveKit, type TestParticipant } from './testing/livekit';
 
 // Presenters share through a real LiveKit server, which a busy CI runner can be slow to set up; every wait says what it waited for.
@@ -76,6 +78,20 @@ const CODE: ScreenShown = { title: 'billing/charge.ts', lines: ['export async fu
 const sendFrame = (call: CallSession, body: Uint8Array<ArrayBuffer>, headers: Record<string, string>, callId = call.ticket.callId) => fetch(`${h.baseUrl}/v1/live/calls/${callId}/frames`, {
   method: 'POST', headers: { origin: ORIGIN, 'x-alcove-call': call.ticket.pass, 'content-type': 'image/jpeg', ...headers }, body
 });
+/**
+ * A frame over the size limit, on a connection of its own: the API refuses it from its declared length without
+ * reading it, and the connection isn't one a later request shares.
+ */
+const oversized = (call: CallSession, share: string, bytes: number) => new Promise<number>((resolve, reject) => {
+  const body = Buffer.alloc(bytes);
+  Buffer.from(screenJpeg(CHART)).copy(body);
+  const req = request(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/frames`, {
+    method: 'POST', agent: false,
+    headers: { origin: ORIGIN, 'x-alcove-call': call.ticket.pass, 'content-type': 'image/jpeg', 'content-length': String(bytes), 'x-alcove-share': share }
+  }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
+  req.on('error', reject);
+  req.end(body);
+});
 const act = async (call: CallSession, action: unknown) => (await fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, {
   method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(action)
 })).status;
@@ -88,6 +104,7 @@ const frames = async (ownerId: string) => (await h.pool.query<{ object_id: strin
 const PAUSED = 'Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.';
 const OFF = 'Shared screens aren’t read for the notes right now.';
 const NOT_YOURS = 'That isn’t a screen you’re sharing in this call.';
+const FULL = 'The notes have kept as many shared screens as they can for this call.';
 
 describe('shared screens in the notes', () => {
   it('lets only the organizer have shared screens read, only with notes on, and shows everyone, and anyone asking to join, what’s read', async () => {
@@ -107,11 +124,9 @@ describe('shared screens in the notes', () => {
     expect(host.getSnapshot().capture.screen.mode).toBe('off');
 
     // Frames go into the notes, so there have to be notes.
-    host.setNotes(false);
-    await settle(host, (x) => x.capture.mode === 'off');
+    await host.setNotes(false);
     expect(await fails(host.setScreens(true))).toEqual(['conflict', 'Turn on notes first: shared screens are read for the notes.']);
-    host.setNotes(true);
-    await settle(host, (x) => x.capture.mode === 'on');
+    await host.setNotes(true);
 
     await host.setScreens(true);
     let s = host.getSnapshot();
@@ -132,11 +147,10 @@ describe('shared screens in the notes', () => {
     await host.resume();
     expect(host.getSnapshot().capture.screen.mode).toBe('on');
     // Turning notes off stops it; turning them on again doesn't bring it back: that's the organizer's choice each time.
-    host.setNotes(false);
-    s = await settle(host, (x) => x.capture.mode === 'off');
-    expect(s.capture.screen).toMatchObject({ mode: 'off', by: { kind: 'organizer' } });
-    host.setNotes(true);
-    expect((await settle(host, (x) => x.capture.mode === 'on')).capture.screen.mode).toBe('off');
+    await host.setNotes(false);
+    expect(host.getSnapshot().capture.screen).toMatchObject({ mode: 'off', by: { kind: 'organizer' } });
+    await host.setNotes(true);
+    expect(host.getSnapshot().capture.screen.mode).toBe('off');
     await host.setScreens(true);
     await host.setScreens(false);
     s = host.getSnapshot();
@@ -200,11 +214,104 @@ describe('shared screens in the notes', () => {
     // Screen notes off, or notes off: nothing more.
     await host.setScreens(false);
     expect(await fails(guest.shareFrame(frameOf(share, CODE)))).toEqual(['conflict', OFF]);
-    host.setNotes(false);
-    await settle(host, (x) => x.capture.mode === 'off');
+    await host.setNotes(false);
     expect(await fails(guest.shareFrame(frameOf(share, CODE)))).toEqual(['conflict', 'Notes aren’t on right now.']);
     expect((await frames(org.session.ownerId)).length).toBe(2);
     await host.leave();
+  });
+
+  it('takes 24 frames a minute from a presenter and none over 1 MiB, keeping nothing it refuses', async () => {
+    const org = await account(unique('organizer'));
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Ade' });
+    await letIn(host, guest);
+    const share = await (await joinRoom(guest)).publishVideo('screen');
+    await host.setScreens(true);
+    // Over 1 MiB: refused before it's read, and nothing is kept.
+    expect(await oversized(guest, share, MAX_FRAME_BYTES + 1)).toBe(400);
+    expect(await frames(org.session.ownerId)).toEqual([]);
+    // 24 a minute from one presenter, each kept; the 25th is refused before anything is read or kept.
+    for (let i = 0; i < 24; i++) expect((await guest.shareFrame(frameOf(share, CHART))).duplicate).toBe(false);
+    expect((await sendFrame(guest, screenJpeg(CHART, 1280, 720, 'one-too-many'), { 'x-alcove-share': share })).status).toBe(503);
+    expect((await frames(org.session.ownerId)).length).toBe(24);
+    // Someone else's allowance is their own.
+    const hostShare = await (await joinRoom(host)).publishVideo('screen');
+    expect((await host.shareFrame(frameOf(hostShare, CODE))).duplicate).toBe(false);
+    await host.leave();
+  });
+
+  it('turns screen notes off for everyone once the notes have kept as many frames as they can', async () => {
+    const server = await h.secondServer({ SCREEN_FRAMES_MAX: 2 });
+    const api = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN), callPollMs: 50 });
+    const { session } = await api.auth.signIn('sso', { email: unique('organizer') });
+    const host = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    try {
+      const share = await (await joinRoom(host)).publishVideo('screen');
+      await host.setScreens(true);
+      await host.shareFrame(frameOf(share, CHART));
+      await host.shareFrame(frameOf(share, CODE));
+      // One too many: refused, and screen notes turn off for everyone, saying why.
+      expect(await fails(host.shareFrame(frameOf(share, CHART)))).toEqual(['conflict', FULL]);
+      const s = await settle(host, (x) => x.capture.screen.mode === 'off');
+      expect(s.capture.screen.by).toEqual({ kind: 'organizer', name: session.user.name });
+      expect(s.notices.at(-1)?.text).toBe('Shared screens are off: the notes have kept as many as they can for this call. What was shared is kept.');
+      // They stay off for this call: the organizer can't turn them on again, and what was kept stays.
+      expect(await fails(host.setScreens(true))).toEqual(['conflict', FULL]);
+      expect((await frames(session.ownerId)).length).toBe(2);
+      await host.leave();
+    } finally {
+      host.close();
+      await server.close();
+    }
+  });
+
+  it('stops a share where its presenter’s browser says it ended, or where they leave, and refuses frames of a share that’s over', async () => {
+    const org = await account(unique('organizer'));
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    // No microphone, so no audio: frames are placed by the call's clock.
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Ines' });
+    await letIn(host, guest);
+    const room = await joinRoom(guest);
+    const first = await room.publishVideo('screen');
+    await host.setScreens(true);
+    const a = await guest.shareFrame(frameOf(first, CHART));
+    // Taken down without the browser saying so: once what LiveKit said runs out (10 s), its frames are refused.
+    await room.unpublish(first);
+    await sleep(10_500);
+    expect(await fails(guest.shareFrame(frameOf(first, CODE)))).toEqual(['forbidden', NOT_YOURS]);
+    // The browser says a share ended: its frames are refused at once, though LiveKit still lists it.
+    const second = await room.publishVideo('screen');
+    const b = await guest.shareFrame(frameOf(second, CODE));
+    await sleep(1000);
+    await guest.shareEnded(second);
+    expect(await fails(guest.shareFrame(frameOf(second, CHART)))).toEqual(['forbidden', NOT_YOURS]);
+    await room.unpublish(second);
+    // A pause, then a share after it; the presenter leaves while sharing, and the call goes on without them.
+    await sleep(1000);
+    await host.pause();
+    await host.resume();
+    const third = await room.publishVideo('screen');
+    const d = await guest.shareFrame(frameOf(third, CHART));
+    await sleep(1500);
+    await guest.leave();
+    await settle(host, (x) => !x.participants.some((p) => p.id === guest.ticket.identity));
+    await sleep(2500);
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    const [ma, mb, md] = note.screens;
+    if (!ma || !mb || !md) throw new Error('expected three screen moments');
+    expect([ma.id, mb.id, md.id]).toEqual([a.id, b.id, d.id]);
+    // The second stops where its browser said it ended, a second after it was shown; the first, with nothing said, at the pause.
+    expect(mb.until - mb.at).toBeGreaterThanOrEqual(0.9);
+    expect(mb.until).toBeLessThan(ma.until);
+    // After the pause, in order: not placed from the start again.
+    expect(md.at).toBeGreaterThanOrEqual(ma.until);
+    // The third stops where its presenter left, not at the end of the recording.
+    expect(md.until - md.at).toBeGreaterThanOrEqual(1.4);
+    expect(md.until).toBeLessThan(note.duration - 2);
   });
 
   it('keeps what’s shared in a breakout room out of the notes, and takes the main room’s', async () => {
@@ -301,7 +408,7 @@ describe('shared screens in the notes', () => {
     expect(note.questions.map((x) => [x.text, x.screen])).toEqual([['Is the target still 12,000?', undefined]]);
     // The notes model read the screens among the lines, where they were shown.
     const prompt = h.near.prompts.at(-1) ?? '';
-    expect(prompt).toContain(`[screen 1 from Priya Shah, clear] Q3 sign-ups by week. Reads: Q3 sign-ups by week / Launch moves to Nov 18, target 12,000 / W3 dip: the form was broken Parts: (1) Bar chart`);
+    expect(prompt).toContain(`[screen 1 from Priya Shah (guest), clear] Q3 sign-ups by week. Reads: Q3 sign-ups by week / Launch moves to Nov 18, target 12,000 / W3 dip: the form was broken Parts: (1) Bar chart`);
     expect(prompt).toContain(`[screen 3 from ${org.session.user.name}, unreadable] Untitled.`);
 
     // Answers say which screen they come from.

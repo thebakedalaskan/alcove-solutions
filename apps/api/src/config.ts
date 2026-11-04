@@ -72,6 +72,8 @@ const EnvSchema = z.object({
   NVIDIA_NRAS_URL: z.string().url().default(NVIDIA_NRAS),
   /** The root NRAS's signing keys must chain to: NVIDIA Attestation Service CA 001. Tests set their own. */
   NVIDIA_ROOT_CA: RootCa('NVIDIA_ROOT_CA', NVIDIA_NRAS_ROOT_CA),
+  /** At most this many shared-screen frames in one call's notes: about one a minute for four hours. Then screen notes turn off for everyone, saying why. */
+  SCREEN_FRAMES_MAX: z.coerce.number().int().min(1).max(10_000).default(240),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */

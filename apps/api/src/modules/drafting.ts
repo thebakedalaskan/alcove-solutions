@@ -64,7 +64,10 @@ function gapLine(g: CaptureGap, now: number): string {
   return g.to ? `-- at ${mmss(g.at)} notes were ${kind} for ${long}: nothing said then was recorded --`
     : `-- at ${mmss(g.at)} notes went ${kind}, ${long} ago: nothing said since was recorded --`;
 }
-/** How much of a screen's text the notes model reads among the lines: its whole reading stays with the note. */
+/**
+ * How much of a screen's text is kept: what the notes model reads among the lines, and what the note shows. The
+ * note keeps every frame's reading, and every edit copies the note, so it stays short.
+ */
 const SCREEN_TEXT_CHARS = 700;
 const LEGIBLE: Record<ScreenMoment['legible'], string> = { clear: 'clear', partly: 'partly legible', unreadable: 'unreadable', unread: 'not read' };
 /**
@@ -308,7 +311,7 @@ const READ_SCREEN_PROMPT = `You read one frame of a screen someone shared in a m
 {"title": string, "text": string, "legible": "clear" | "partly" | "unreadable", "regions": [{"label": string, "box": [number, number, number, number]}]}
 
 title: what it is, in a few words: a slide's heading, a document's or page's name, or the app and what's open in it.
-text: the words and numbers you can read on it, exactly as written, top to bottom, one line each, at most 1,500 characters. Leave out what you can't read; never guess at it or fill it in.
+text: the words and numbers you can read on it, exactly as written, top to bottom, one line each, at most 600 characters. Leave out what you can't read; never guess at it or fill it in.
 legible: clear if you can read all of it, partly if some of it is too small, blurred or cut off, unreadable if you can't make it out at all.
 regions: up to four parts someone might point at while talking, such as a chart, a table, a code block or a paragraph, each with a short label and its box as [left, top, right, bottom], each a fraction of the frame's width or height from 0 to 1. An empty list if nothing stands out.
 Describe only what is on the frame. Write in the language on the screen.`;
@@ -339,5 +342,5 @@ export async function readScreen(cfg: Config, jpeg: Uint8Array): Promise<Reading
     const label = clip(g.label.trim(), 60);
     return label && rt - l >= 0.02 && b - t >= 0.02 ? [{ label, x: l, y: t, w: Math.round((rt - l) * 1000) / 1000, h: Math.round((b - t) * 1000) / 1000 }] : [];
   }).slice(0, 4);
-  return { legible: r.legible, title: clip(r.title.trim(), 120), text: clip(r.text.trim(), 2000), regions };
+  return { legible: r.legible, title: clip(r.title.trim(), 120), text: clip(r.text.trim(), SCREEN_TEXT_CHARS), regions };
 }

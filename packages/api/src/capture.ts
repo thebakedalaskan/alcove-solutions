@@ -55,7 +55,8 @@ export const CaptureStateSchema = z.object({
   /**
    * Shared screens read for the notes: each presenter's own browser sends frames of their share when it changes, and
    * the private notes model reads them. Off until the organizer turns it on; it runs only while notes are on, pauses
-   * with them, and stops when they're turned off. Cameras are never read.
+   * with them, and stops when they're turned off, or once the notes have kept as many frames as they can for the call.
+   * Cameras are never read.
    */
   screen: CapturePartSchema,
   /** The stretches with nothing captured, oldest first; the last may still be going. Empty for people asking to join. */

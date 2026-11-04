@@ -20,10 +20,10 @@ import { readScreen } from './drafting';
 
 const slog = log.child({ component: 'screens' });
 
-/** At most this many frames for one call's notes: about one a minute for four hours. */
-export const MAX_FRAMES = 240;
 /** How many frames the notes model reads at once while the notes are written. */
 const READ_AT_ONCE = 4;
+/** How long to wait before fetching a frame's image a second time. */
+const FETCH_AGAIN_MS = 2_000;
 
 /** What the notes model read on a frame: how legible it was, its title, the text on it, and the parts worth pointing at. */
 export const Reading = z.object({ legible: ScreenLegibleSchema, title: z.string(), text: z.string(), regions: z.array(ScreenRegionSchema) });
@@ -83,20 +83,25 @@ export function jpegSize(b: Uint8Array): { width: number; height: number } | nul
 
 const Row = z.object({ frame_id: z.string(), info_ciphertext: bytea });
 
+/** How many frames a note has kept. */
+const countOf = async (o: Owner, db: Db, noteId: string) =>
+  (await maybeOne(db, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM screen_frames WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, noteId]))?.n ?? 0;
+/** Whether a note has kept as many frames as one call's notes may (`SCREEN_FRAMES_MAX`). */
+export const full = async (o: Owner, db: Db, noteId: string) => (await countOf(o, db, noteId)) >= o.cfg.SCREEN_FRAMES_MAX;
+
 /**
  * Keeps one frame of someone's share in a note, while its recording is taking things: the image sealed under the
  * recording's key as an object, read back and checked, then the row. The same frame again (a retry) is kept once and
  * answers with the ID it already has. A frame that arrives once the recording paused or stopped is refused, and its
- * object deleted.
+ * object deleted. Once the note has as many frames as it may keep, it says `full` and keeps nothing.
  */
-export async function keep(o: Owner, t: Target, f: Upload): Promise<ScreenFrameReceipt> {
+export async function keep(o: Owner, t: Target, f: Upload): Promise<ScreenFrameReceipt | 'full'> {
   const tag = tagOf(o, t.noteId, f.share, f.jpeg);
   const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: f.segment, bytes: f.jpeg.length, width: f.width, height: f.height };
   const same = () => maybeOne(o.pool, z.object({ frame_id: z.string() }), 'SELECT frame_id FROM screen_frames WHERE owner_id = $1 AND note_item_id = $2 AND frame_tag = $3', [o.ownerId, t.noteId, tag]);
   const seen = await same();
   if (seen) { slog.debug('frame already kept', ctx); return { id: seen.frame_id, duplicate: true }; }
-  const count = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM screen_frames WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, t.noteId]);
-  if ((count?.n ?? 0) >= MAX_FRAMES) throw new ConflictError('These notes have kept as many shared-screen frames as they can.', { context: { ...ctx, frames: count?.n ?? 0 } });
+  if (await full(o, o.pool, t.noteId)) { slog.info('frame refused: the notes have kept as many as they can', { ...ctx, max: o.cfg.SCREEN_FRAMES_MAX }); return 'full'; }
 
   const frameId = id128();
   const objectId = id128();
@@ -192,14 +197,17 @@ export async function readAll(o: Owner, noteId: string, recordingId: string): Pr
   return frames;
 }
 async function readOne(o: Owner, noteId: string, recordingId: string, f: Frame): Promise<Reading> {
-  let jpeg: Uint8Array;
-  try {
-    jpeg = await image(o, noteId, recordingId, f.id);
-  } catch (e) {
-    // The object store being down is worth waiting for; a frame that's gone or won't open is just unread.
-    if (!(e instanceof IntegrityError)) throw e;
-    slog.error('a frame failed its integrity check; kept as unread', { noteId, frameId: f.id, err: e });
-    return UNREAD;
+  // One image never costs the notes: a frame that won't open, or that still can't be fetched on a second try (the
+  // object store failing, or its object gone), is kept as unread and the notes carry on without it.
+  let jpeg: Uint8Array | null = null;
+  for (let tries = 1; !jpeg; tries++) {
+    try {
+      jpeg = await image(o, noteId, recordingId, f.id);
+    } catch (e) {
+      if (e instanceof IntegrityError) { slog.error('a frame failed its integrity check; kept as unread', { noteId, frameId: f.id, err: e }); return UNREAD; }
+      if (tries >= 2) { slog.warn('a frame’s image couldn’t be fetched; kept as unread', { noteId, frameId: f.id, err: e }); return UNREAD; }
+      await new Promise((r) => setTimeout(r, FETCH_AGAIN_MS));
+    }
   }
   for (let tries = 1; ; tries++) {
     try {
@@ -211,8 +219,13 @@ async function readOne(o: Owner, noteId: string, recordingId: string, f: Frame):
   }
 }
 
-/** The organizer's choices about shared screens, and the shares their presenters said ended (in seconds since the call started). */
-export interface ShareEnd { share: string; presenter: string; at: number }
+/**
+ * Where a share stopped showing anything, `at` seconds into the call while the recording was in `segment`: its
+ * presenter's browser said it ended (`share`), or the presenter's connection left the call, which ends every share of
+ * theirs (`share` null).
+ */
+export const ShareEnd = z.object({ share: z.string().nullable(), presenter: z.string(), at: z.number(), segment: z.number().int() });
+export type ShareEnd = z.infer<typeof ShareEnd>;
 export interface Timeline {
   /** Notes on, off and paused, with the segment each started or ended. */
   history: CaptureChange[];
@@ -229,34 +242,40 @@ export interface Timeline {
 }
 
 /**
- * A call's frames as its note's screen moments: each placed in the recording the way its transcript lines are (in its
- * segment, from when that segment started), on screen until its share's next frame, its share ending, screen notes
- * stopping, a stretch with nothing captured, or the end of the recording. Whatever was read on each comes with it.
+ * A call's frames as its note's screen moments: each placed in the recording, on screen until its share's next
+ * frame, its share ending (or its presenter leaving), screen notes stopping, notes pausing or going off, a stretch
+ * with nothing captured, or the end of the recording. Whatever was read on each comes with it.
  */
 export function moments(frames: Frame[], t: Timeline): ScreenMoment[] {
   const before = (segment: number) => t.segments.filter((g) => g.index < segment).reduce((n, g) => n + g.seconds, 0);
   const length = (segment: number) => t.segments.find((g) => g.index === segment)?.seconds ?? 0;
-  const recordedEnd = t.segments.reduce((n, g) => n + g.seconds, 0) || recorded(t.history, t.duration, t.duration);
-  /** The segment being recorded at a moment of the call: the latest that started by then. */
-  const segmentAt = (at: number) => t.history.filter((h) => h.status === 'on' && h.at <= at).at(-1)?.segment ?? 0;
-  /** A moment of the call (seconds since it started) in its segment of the recording, as speech clips are placed. */
+  /**
+   * A moment of the call (seconds since it started) in the recording. In a segment with audio, as speech clips are
+   * placed: from when the segment started, kept inside its audio. In one without (the organizer had no microphone),
+   * as the call ran, less the stretches notes were paused or off.
+   */
   const place = (at: number, segment: number): number => {
-    const start = t.history.find((h) => h.status === 'on' && h.segment === segment)?.at;
-    let into = start === undefined ? recorded(t.history, at, t.duration) : before(segment) + Math.max(0, at - start);
     const seconds = length(segment);
-    if (seconds) into = Math.min(Math.max(into, before(segment)), before(segment) + Math.max(0, seconds - 0.1));
-    return Math.round(into * 10) / 10;
+    if (!seconds) return Math.round(recorded(t.history, at, t.duration) * 10) / 10;
+    const start = t.history.find((h) => h.status === 'on' && h.segment === segment)?.at;
+    const into = start === undefined ? recorded(t.history, at, t.duration) : before(segment) + Math.max(0, at - start);
+    return Math.round(Math.min(Math.max(into, before(segment)), before(segment) + Math.max(0, seconds - 0.1)) * 10) / 10;
   };
   const placed = frames.map((f) => ({ f, at: place(f.at, f.segment) }));
+  const audio = t.segments.reduce((n, g) => n + g.seconds, 0);
+  const called = recorded(t.history, t.duration, t.duration);
+  // The recording ends with its audio; frames placed by the call's clock (no audio then) run to the call's end.
+  const recordedEnd = placed.some((p) => !length(p.f.segment)) ? Math.max(audio, called) : audio || called;
   const stops = [
-    ...t.screens.filter((c) => !c.on).map((c) => place(c.at, segmentAt(c.at))),
+    ...t.screens.filter((c) => !c.on).map((c) => place(c.at, c.segment)),
+    ...t.history.filter((h) => h.status !== 'on').map((h) => place(h.at, h.segment)),
     ...t.gaps.map((g) => g.at)
   ];
   // In recording order, which is how the notes model reads and numbers them.
   return placed.sort((a, b) => a.at - b.at || a.f.at - b.f.at).map(({ f, at }) => {
     const next = placed.find((p) => p.f.presenter === f.presenter && p.f.share === f.share && p.f.at > f.at)?.at;
-    const end = t.ended.find((e) => e.presenter === f.presenter && e.share === f.share && e.at >= f.at);
-    const until = Math.min(recordedEnd, ...[next, end ? place(end.at, segmentAt(end.at)) : undefined, ...stops].filter((x): x is number => x !== undefined && x > at));
+    const end = t.ended.find((e) => e.presenter === f.presenter && (e.share === null || e.share === f.share) && e.at >= f.at);
+    const until = Math.min(recordedEnd, ...[next, end ? place(end.at, end.segment) : undefined, ...stops].filter((x): x is number => x !== undefined && x > at));
     const r = f.reading ?? UNREAD;
     const presenter = t.presenterOf(f.presenter);
     return {

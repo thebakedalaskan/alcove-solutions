@@ -92,9 +92,11 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     const note = await getItem(o, o.pool, 'note', noteId, NoteManifest, 'Those notes');
     const lines = note.manifest.transcript?.length ?? 0;
     const at = { ...ctx, noteId, recordingId, lines, seconds: note.manifest.duration };
+    // Finishing without notes still keeps what was read on each shared screen so far (kept in its frame's row).
+    const readSoFar = async () => screens.withReadings(note.manifest.screens, note.manifest.screens.length ? await screens.framesOf(o, o.pool, noteId) : []);
     if (job.tried >= ATTEMPTS) {
       wlog.error('notes job outlived its last attempt; finishing the note without a summary', at);
-      await settle(o, job.job_id, noteId, recordingId, undefined);
+      await settle(o, job.job_id, noteId, recordingId, undefined, await readSoFar());
       return;
     }
     try {
@@ -127,7 +129,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       }
       if (job.attempt >= ATTEMPTS) {
         wlog.error('notes could not be written after three attempts; finishing the note without a summary', { ...at, err: e });
-        await settle(o, job.job_id, noteId, recordingId, undefined);
+        await settle(o, job.job_id, noteId, recordingId, undefined, await readSoFar());
         return;
       }
       const wait = RETRY_SECONDS[job.attempt - 1] ?? 90;

@@ -29,10 +29,11 @@ export type NotesAsk = z.infer<typeof NotesAsk>;
 export const CapturePartName = CaptureDevicePartSchema;
 
 /**
- * The organizer having shared screens read for the notes, or stopping it, `at` seconds into the call. Turning notes off
- * stops it too, at the same moment.
+ * Shared screens read for the notes, or stopped, `at` seconds into the call (to a tenth), while the recording was in
+ * `segment`: the organizer's choice. Turning notes off stops it too, at the same moment, and so does the notes having
+ * kept as many frames as they can.
  */
-export const ScreenChange = z.object({ at: z.number(), on: z.boolean() });
+export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int() });
 export type ScreenChange = z.infer<typeof ScreenChange>;
 
 /** The paths that capture something, or send what was captured to the AI. */

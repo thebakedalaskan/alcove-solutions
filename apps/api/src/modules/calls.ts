@@ -74,10 +74,11 @@ const Stored = z.object({
     /** What the organizer's current connection says it can't capture now (no microphone, or a browser that can't record or listen). */
     unavailable: z.array(capture.CapturePartName),
     /**
-     * Shared screens read for the notes (modules/screens.ts): whether the organizer has them read now, every time they
-     * turned it on or off, and the shares whose presenters said they ended, so what a share showed last stops there.
+     * Shared screens read for the notes (modules/screens.ts): whether they're read now, every time that changed, and
+     * the shares that ended (their presenter's browser said so, or the presenter left), so what a share showed last
+     * stops there.
      */
-    screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(z.object({ share: z.string(), presenter: z.string(), at: z.number() })) })
+    screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(screens.ShareEnd) })
   }),
   people: z.array(Joined),
   /** Who the organizer put on everyone's main stage, by identity. */
@@ -118,6 +119,8 @@ async function save(o: Owner, db: Db, callId: string, s: Stored) {
 const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes'): Stored => ({ ...s, notices: [...s.notices.slice(-2), { id: id128(), text, kind }] });
 const withPerson = (s: Stored, identity: string, change: (j: Joined) => Joined): Stored => ({ ...s, people: s.people.map((j) => (j.identity === identity ? change(j) : j)) });
 const secondsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((at - startedAt.getTime()) / 1000));
+/** The same, to a tenth of a second: what notes and shared screens do, so even a short change shows where it was. */
+const tenthsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((at - startedAt.getTime()) / 100) / 10);
 
 /** Rooms whose time is up have closed, whether or not anyone said so: everyone is back, and the rooms go to the notes. */
 function settleRooms(s: Stored, now: number): Stored {
@@ -337,7 +340,7 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
 async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'paused' | 'off'): Promise<Stored> {
   if (s.notes.recordingId && s.notes.status === 'on') await setRecordingState(o, db, s.notes.recordingId, 'paused');
   const sc = s.notes.screens;
-  const screensNow = status === 'off' && sc.on ? { ...sc, on: false, history: [...sc.history, { at, on: false }] } : sc;
+  const screensNow = status === 'off' && sc.on ? { ...sc, on: false, history: [...sc.history, { at, on: false, segment: s.notes.segment }] } : sc;
   return { ...s, notes: { ...s.notes, status, screens: screensNow, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
 }
 
@@ -466,6 +469,8 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       people: [...state.people.map((j): Joined => ({ ...j, inGroup: false, ...(j.identity === live.host_identity ? { status: 'left' as const } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
         { ...joined, keysFor: generation, inGroup: true }]
     };
+    const oldHost = state.people.find((j) => j.identity === live.host_identity && j.status === 'in');
+    if (oldHost) s = sharesEnd(s, [oldHost.identity], tenthsIn(live.started_at));
     // Taking over from another of the organizer's connections: its part of the recording ends, a new segment starts here.
     // Paused notes stay paused, and notes off stay off: only the organizer saying so changes them, never a new connection.
     // What the old connection couldn't capture is its own: the new one says for itself.
@@ -500,7 +505,7 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
         && (j.email ?? '') === (joined.email ?? '')) : undefined;
     const me: Joined = { ...joined, keysFor: live.mls_generation, ...(before ? { admit: 'auto' as const, person: before.person } : {}) };
     let s: Stored = { ...state, people: [...state.people, me] };
-    if (before) s = withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true }));
+    if (before) s = sharesEnd(withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
     const seq = live.mls_seq + 1;
     await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch }, 'keypackage', me.identity, keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, seq]);
@@ -566,10 +571,10 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (a.identity === row.host_identity || target?.role === 'host') throw new ValidationError('The organizer can’t remove themselves.', { context: { callId } });
       if (!target) throw new ValidationError('That person isn’t in this call.', { context: { callId } });
       gone = s.people.filter((j) => j.person === target.person && j.status === 'in').map((j) => j.identity);
-      s = {
+      s = sharesEnd({
         ...s, removed: [...s.removed, target.person],
         people: s.people.map((j) => (j.person === target.person ? { ...j, status: j.status === 'in' ? 'left' : j.status === 'waiting' ? 'denied' : j.status } : j))
-      };
+      }, gone, tenthsIn(row.started_at));
       // On the invite because they were let in from the link (in this run of the call or an earlier one): removing
       // them takes that back, so they don't get the notes, once no other connection of theirs is still in the call.
       const email = target.email;
@@ -582,8 +587,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       locked = a.on;
       await exec(c, 'UPDATE calls SET locked = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, locked]);
     } else {
-      // To a tenth of a second, so even a short pause shows where it was.
-      s = await changeCapture(v, c, row, s, a, Math.round((Date.now() - row.started_at.getTime()) / 100) / 10);
+      s = await changeCapture(v, c, row, s, a, tenthsIn(row.started_at));
     }
     await save(o, c, callId, s);
     clog.info('call action', {
@@ -635,7 +639,8 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
     if (a.on === sc.on) return s;
     // Frames go into the notes, beside what was said, so they're read only while there are notes to read them into.
     if (a.on && s.notes.status === 'off') throw new ConflictError('Turn on notes first: shared screens are read for the notes.', { context: ctx });
-    const next: Stored = { ...s, notes: { ...s.notes, screens: { ...sc, on: a.on, history: [...sc.history, { at, on: a.on }] } } };
+    if (a.on && s.notes.noteId && await screens.full(o, c, s.notes.noteId)) throw new ConflictError(FULL, { context: { ...ctx, max: o.cfg.SCREEN_FRAMES_MAX } });
+    const next: Stored = { ...s, notes: { ...s.notes, screens: { ...sc, on: a.on, history: [...sc.history, { at, on: a.on, segment: s.notes.segment }] } } };
     return notice(next, a.on ? 'The organizer turned on shared screens in the notes. What anyone shares is read for them.' : 'The organizer turned off shared screens in the notes. What was shared before is kept.');
   }
   if (a.type === 'request-notes') {
@@ -721,27 +726,59 @@ async function ownShare(o: Owner, roomName: string, identity: string, share: str
 /**
  * A frame of someone's own shared screen, into the call's notes, while screen notes are on (the capture gate decides,
  * as for audio and speech). Only the presenter's own share: LiveKit must list it as a screen this person is sharing in
- * this call, so another person's share, a camera or a share that's over is refused. Nothing is taken from a breakout
- * room, or that was taken before screen notes came on or were resumed. It's placed where it was on screen: when it
- * was taken, by the server's clock.
+ * this call, so another person's share, a camera or a share that's over is refused, as is one their browser said
+ * ended. Nothing is taken from a breakout room, or that was taken before screen notes came on or were resumed. It's
+ * placed where it was on screen: when it was taken, by the server's clock. Once the notes have kept as many frames
+ * as they may, screen notes turn off for everyone, saying why.
  */
 export async function shareFrame(v: Viewer, callId: string, f: FrameUpload): Promise<ScreenFrameReceipt> {
   requireIn(v, 'screen');
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
   const s = settleRooms(state, secondsIn(row.started_at));
-  const at = Math.round((Date.now() - f.ageMs - row.started_at.getTime()) / 100) / 10;
+  const at = tenthsIn(row.started_at, Date.now() - f.ageMs);
   const ctx = { callId, segment: s.notes.segment, bytes: f.jpeg.length, ageMs: f.ageMs, role: v.pass.role };
   const into = capture.mayCapture({ ...capturing(row, s), inRoom: inBreakout(s, v.pass.identity) }, 'screen', ctx);
   // Taken before notes came on, were resumed, or screens were turned on: from a stretch that wasn't captured.
   const since = Math.max(s.notes.history.filter((h) => h.status === 'on').at(-1)?.at ?? 0, s.notes.screens.history.filter((h) => h.on).at(-1)?.at ?? 0);
   if (at < since) throw new ConflictError('That frame was taken before screen notes were on, so it isn’t kept.', { context: { ...ctx, early: Math.round((since - at) * 10) / 10 } });
-  if (!row.room_name || !(await ownShare(o, row.room_name, v.pass.identity, f.share))) throw new ForbiddenError('That isn’t a screen you’re sharing in this call.', { context: ctx });
-  return screens.keep(o, into, { presenter: v.pass.identity, share: f.share, at: Math.max(0, at), segment: s.notes.segment, jpeg: f.jpeg, width: f.width, height: f.height });
+  const over = s.notes.screens.ended.some((e) => e.presenter === v.pass.identity && e.share === f.share && e.at <= at);
+  if (over || !row.room_name || !(await ownShare(o, row.room_name, v.pass.identity, f.share))) throw new ForbiddenError(NOT_YOURS, { context: { ...ctx, ended: over } });
+  const kept = await screens.keep(o, into, { presenter: v.pass.identity, share: f.share, at, segment: s.notes.segment, jpeg: f.jpeg, width: f.width, height: f.height });
+  if (kept !== 'full') return kept;
+  await screensFull(o, callId);
+  throw new ConflictError(FULL, { context: { ...ctx, max: o.cfg.SCREEN_FRAMES_MAX } });
+}
+const NOT_YOURS = 'That isn’t a screen you’re sharing in this call.';
+const FULL = 'The notes have kept as many shared screens as they can for this call.';
+
+/** The notes are full of frames: screen notes turn off for everyone, with a notice saying why, as if the organizer had. */
+async function screensFull(o: Owner, callId: string): Promise<void> {
+  const turned = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    const sc = state.notes.screens;
+    if (row.state !== 'live' || !sc.on) return null;
+    const off: Stored = { ...state, notes: { ...state.notes, screens: { ...sc, on: false, history: [...sc.history, { at: tenthsIn(row.started_at), on: false, segment: state.notes.segment }] } } };
+    await save(o, c, callId, notice(off, 'Shared screens are off: the notes have kept as many as they can for this call. What was shared is kept.'));
+    return { room: row.room_name };
+  });
+  if (!turned) return;
+  clog.info('screen notes turned off: the notes are full', { callId, max: o.cfg.SCREEN_FRAMES_MAX });
+  await nudge(o, turned.room, callId, { call: true, log: false });
 }
 
 /** At most this many ended shares are remembered in a call (its sealed state stays small). */
 const MAX_ENDED = 500;
+/**
+ * Shares that ended, `at` seconds into the call: what each showed last stops there in the notes. Only while screens
+ * have ever been read in the call (otherwise there's nothing to stop).
+ */
+function sharesEnd(s: Stored, ends: (string | { share: string | null; presenter: string })[], at: number): Stored {
+  const sc = s.notes.screens;
+  if (!sc.history.length || !ends.length) return s;
+  const more = ends.map((e) => (typeof e === 'string' ? { share: null, presenter: e } : e)).map((e) => ({ ...e, at, segment: s.notes.segment }));
+  return { ...s, notes: { ...s.notes, screens: { ...sc, ended: [...sc.ended, ...more].slice(0, MAX_ENDED) } } };
+}
 /** The presenter's browser says one of its shares ended: what it showed last stops there in the notes. Only their own shares. */
 export async function shareEnded(v: Viewer, callId: string, share: string): Promise<void> {
   requireIn(v, 'share-ended');
@@ -749,11 +786,11 @@ export async function shareEnded(v: Viewer, callId: string, share: string): Prom
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId } });
-    const sc = state.notes.screens;
-    if (sc.ended.length >= MAX_ENDED || sc.ended.some((e) => e.share === share && e.presenter === v.pass.identity)) return;
-    const at = Math.round((Date.now() - row.started_at.getTime()) / 100) / 10;
-    await save(o, c, callId, { ...state, notes: { ...state.notes, screens: { ...sc, ended: [...sc.ended, { share, presenter: v.pass.identity, at }] } } });
+    if (state.notes.screens.ended.some((e) => e.share === share && e.presenter === v.pass.identity)) return;
+    await save(o, c, callId, sharesEnd(state, [{ share, presenter: v.pass.identity }], tenthsIn(row.started_at)));
   });
+  // Frames of it already checked with LiveKit stop being taken at once, not when that check runs out.
+  for (const id of sharing.keys()) if (id.endsWith(`|${v.pass.identity}|${share}`)) sharing.delete(id);
   clog.debug('share ended', { callId, role: v.pass.role });
 }
 
@@ -847,6 +884,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     // Newly let in: in the group from now, and told whether there was chat before. Rejoining: as they were.
     for (const id of b.added) s = withPerson(s, id, (j) => ({ ...j, status: 'in', inGroup: true, ...(j.status === 'in' ? {} : { since: now, chatBefore: state.chatEver }) }));
     for (const id of b.removed) s = withPerson(s, id, (j) => ({ ...j, inGroup: false, status: j.status === 'in' ? 'left' : j.status }));
+    s = sharesEnd(s, b.removed.filter((id) => state.people.some((j) => j.identity === id && j.status === 'in')), tenthsIn(row.started_at));
     // Signed in and let in by the organizer, who saw who it was (they asked; nobody let in without asking counts):
     // added to the invite, so they get the notes like everyone invited. An address comes with an ask only when the
     // notes may go to it (see join).
@@ -1058,10 +1096,11 @@ async function departed(o: Owner, callId: string, identity: string): Promise<voi
     const { row, state } = await load(o, c, callId, true);
     const j = state.people.find((x) => x.identity === identity && x.role !== 'host');
     if (row.state !== 'live' || !j || (j.status !== 'in' && j.status !== 'waiting')) return null;
-    // Someone who was in is kept, as having left (a reload's pass brings them back). Someone who only asked is kept
-    // as turned away: nothing of theirs, a pass included, brings them in without asking again, and their identity
-    // can't come back as someone else (to be let in by a toast still showing the first ask).
-    await save(o, c, callId, withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', hand: false })));
+    // Someone who was in is kept, as having left (a reload's pass brings them back), and their shares end. Someone who
+    // only asked is kept as turned away: nothing of theirs, a pass included, brings them in without asking again, and
+    // their identity can't come back as someone else (to be let in by a toast still showing the first ask).
+    await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', hand: false })),
+      j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
     return { room: row.room_name, was: j.status };
   });
   if (r) { clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId }); await nudge(o, r.room, callId, { call: true, log: true }); }
