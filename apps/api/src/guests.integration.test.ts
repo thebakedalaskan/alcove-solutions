@@ -339,6 +339,30 @@ describe('signed-in people let in from the link', () => {
     await host.leave();
   });
 
+  it('lets nobody in from a late Let in, for someone already in or an ask taken back, and lets the next ask in as usual', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === lee.ticket.identity));
+    await lee.leave();
+    expect((await settle(host, (s) => s.waiting.length === 0)).waiting).toEqual([]);
+    // Let in pressed on toasts still showing their asks: Sam is in already, and Lee took the ask back.
+    await host.admit(sam.ticket.identity);
+    await host.admit(lee.ticket.identity);
+    // The organizer's browser goes on as before: the next person to ask gets in, and Lee doesn't.
+    const ada = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Ada' });
+    await letIn(host, ada);
+    const after = await settle(host, (s) => s.participants.length === 3);
+    expect(after.participants.map((p) => p.person.name).sort()).toEqual([org.session.user.name, 'Ada', 'Sam'].sort());
+    expect(after.participants.some((p) => p.id === lee.ticket.identity)).toBe(false);
+    expect(sam.crypto.getSnapshot().status).toBe('in');
+    await host.leave();
+  });
+
   it('keeps a sealed record of a signed-in asker’s name and address: out of rows and logs', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({ notes: 'on' });

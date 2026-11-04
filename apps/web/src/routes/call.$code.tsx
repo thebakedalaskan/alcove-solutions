@@ -279,20 +279,32 @@ function InCall({ session }: { session: CallSession }) {
 
   /*
    * Someone asking to join: the organizer hears about it once. A guest can be let in from the toast; letting in someone
-   * signed in gives them the notes, so their toast opens People, where their address is.
+   * signed in gives them the notes, so their toast opens People, where their address is. The toast goes as soon as the
+   * ask is answered, wherever that happens (let in or turned away in People, or on another device), when the asker
+   * takes it back or goes, and with the call. A press that still comes too late lets nobody in, and says why.
    */
   const asked = useRef(new Set<string>());
+  const askToasts = useRef(new Map<string, () => void>());
   useEffect(() => {
     if (!organizer) return;
+    const asking = new Set(state.waiting.map((w) => w.id));
+    for (const [id, close] of askToasts.current) if (!asking.has(id)) { close(); askToasts.current.delete(id); }
     for (const w of state.waiting) {
       if (asked.current.has(w.id)) continue;
       asked.current.add(w.id);
-      const action = w.person.email
-        ? { label: 'Review', onClick: () => setPanel('people') }
-        : { label: 'Let in', onClick: () => { void session.admit(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); } };
-      toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action });
+      const letIn = () => {
+        const now = session.getSnapshot();
+        if (now.waiting.some((x) => x.id === w.id)) { void session.admit(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); return; }
+        toast(now.participants.some((p) => p.id === w.id) ? `${w.person.name} is already in the call.` : `${w.person.name} isn’t asking to join any more.`, { icon: 'people' });
+      };
+      const action = w.person.email ? { label: 'Review', onClick: () => setPanel('people') } : { label: 'Let in', onClick: letIn };
+      askToasts.current.set(w.id, toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action }));
     }
   }, [state.waiting, organizer, session, toast]);
+  useEffect(() => {
+    const open = askToasts.current;
+    return () => { for (const close of open.values()) close(); };
+  }, []);
   /* Letting someone signed in in from the link adds them to the invite: the organizer reads who's invited again when someone with an account is here and not on it yet. */
   const uninvited = organizer && told.participants.some((p) => !p.isOrganizer && p.person.email && !(meeting?.guests ?? []).some((g) => sameEmail(g, p.person)));
   useEffect(() => { if (uninvited) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) }); }, [uninvited, state.code, qc]);
