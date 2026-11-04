@@ -120,8 +120,8 @@ const parsed = (b: Uint8Array): unknown => { try { return JSON.parse(fromUtf8(b)
 
 /* ---------- speech to text ---------- */
 
-/** One stretch of speech, in seconds from the start of the clip. */
-export interface Heard { start: number; end: number; text: string }
+/** One stretch of speech, in seconds from the start of the clip, and whether Whisper was unsure of its words (UNSURE). */
+export interface Heard { start: number; end: number; text: string; unsure: boolean }
 
 /**
  * What a clip is sent with besides its audio. `language`: the call's language, once its clips agree on it
@@ -147,6 +147,15 @@ const PROMPT_BYTES = NAMES_BYTES + 1 + SAID_BYTES;
  * it takes short clips, and whole clips of accented speech, for another language, and then it's less sure.
  */
 const SURE = { words: 4, logprob: -0.25 };
+/**
+ * Words Whisper heard with little confidence: kept, and marked so people can see they may not be what was said.
+ * A segment's average log-probability below `logprob` (below −1 it's dropped as invented), text close to looping
+ * (a compression ratio over `compression`; over 2.4 it's dropped), or, where Whisper reports it, a good chance there
+ * was no speech at all. Measured against NEAR AI's Whisper (600 clips of synthetic meeting speech, ten voices, clean,
+ * in noise and over another voice): of the lines below −0.4, 97% had a word error rate of 20% or more, against 1% of
+ * the lines that were right; between −0.4 and −0.3, only half. NEAR AI doesn't report no_speech_prob.
+ */
+const UNSURE = { logprob: -0.4, compression: 2.0, noSpeech: 0.5 };
 
 /** The end of `text` that fits in `bytes` of UTF-8, from a word boundary. */
 function endWithin(text: string, bytes: number): string {
@@ -235,13 +244,17 @@ function unlooped(text: string): string {
   return said.join(' ');
 }
 
+/** Whether Whisper was unsure of a segment it kept (UNSURE). A reply that says nothing about it counts as sure. */
+const unsureOf = (s: z.infer<typeof Segment>) =>
+  (s.avg_logprob ?? 0) < UNSURE.logprob || (s.compression_ratio ?? 0) > UNSURE.compression || (s.no_speech_prob ?? 0) > UNSURE.noSpeech;
+
 /** Keeps what was plausibly said: confident, not looping, not a known hallucination, not the prompt said back. */
 function keepSpeech(segments: z.infer<typeof Segment>[], prompt: string | undefined): Heard[] {
   const told = new Set(prompt ? trigrams(prompt) : []);
   let previous = '';
   const kept = segments
     .filter((s) => (s.avg_logprob ?? 0) >= -1 && (s.compression_ratio ?? 0) <= 2.4 && !((s.no_speech_prob ?? 0) > 0.6 && (s.avg_logprob ?? 0) < -0.5))
-    .map((s) => ({ start: Math.max(0, s.start), end: Math.max(s.start, s.end), text: unlooped(s.text.replace(/\s+/g, ' ').trim()) }))
+    .map((s) => ({ start: Math.max(0, s.start), end: Math.max(s.start, s.end), text: unlooped(s.text.replace(/\s+/g, ' ').trim()), unsure: unsureOf(s) }))
     .filter((s) => s.text && !CREDITS.test(s.text) && !MARKS_ONLY.test(s.text) && !echoes(told, s.text))
     // A line that only says the one before it again is the same loop, across Whisper's segments.
     .filter((s) => { const p = plain(s.text); const again = p === previous && p.split(' ').length >= 3; previous = p; return !again; });
@@ -281,7 +294,10 @@ export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: numbe
     const picked = r.data.language ?? '';
     const detected = !language && LANGUAGE_CODE.test(picked) && words >= SURE.words && sure ? picked : null;
     // Which language is neither logged nor kept readable: only whether one was sent, found, and the prompt's size.
-    ilog.debug('clip transcribed', { model: v.model, bytes: wav.length, requestBytes: body.length, durationMs, segments: segments.length, kept: heard.length, ms, languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt).length : 0 });
+    ilog.debug('clip transcribed', {
+      model: v.model, bytes: wav.length, requestBytes: body.length, durationMs, segments: segments.length, kept: heard.length, unsure: heard.filter((h) => h.unsure).length, ms,
+      languageSent: Boolean(language), languageFound: detected !== null, promptBytes: prompt ? utf8(prompt).length : 0
+    });
     return { heard, language: detected, evidence: v.evidence };
   });
 }

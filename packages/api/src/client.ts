@@ -1,5 +1,5 @@
 import type { CallCard, CallSession, NoteProgress, RoomRecording } from './live';
-import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, QuestionPatch } from './wire';
+import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
   Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
@@ -93,6 +93,16 @@ export interface AlcoveApi {
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
     updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
+    /**
+     * Corrects a line of a written note's transcript: its words, who said it, or that it's right as heard. The
+     * organizer can correct any line; anyone else who has the notes, the words of their own lines.
+     */
+    correctLine(noteId: ID, lineId: ID, patch: LinePatch): Promise<Note>;
+    /**
+     * Writes the notes again from the transcript as it is now, corrections included. The organizer's alone. The
+     * decisions, open questions and follow-ups someone has already confirmed or changed stay as they are.
+     */
+    rewrite(noteId: ID): Promise<Note>;
     openActions(): Promise<OpenAction[]>;
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
     /** Shares the notes with more people, by email. They find them in Alcove when they sign in. */

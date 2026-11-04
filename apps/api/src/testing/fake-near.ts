@@ -81,7 +81,8 @@ export interface FakeNear {
 
 /**
  * A clip of "speech" for the fake: 16 kHz mono 16-bit WAV of `ms` milliseconds whose samples carry
- * the words, said in `language`. Sentences separated by " // " come back as separate lines, two seconds apart.
+ * the words, said in `language`. Sentences separated by " // " come back as separate lines, two seconds apart, and
+ * one written with a leading "~" comes back heard with little confidence, as Whisper hears a mumble or a noisy line.
  * Not `sure`: heard with less confidence, as Whisper hears accented speech it takes for another language.
  */
 export function speechWav(words: string, ms = 4000, language = 'en', sure = true): Uint8Array<ArrayBuffer> {
@@ -180,10 +181,13 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
   const seconds = Math.max(0, wav.length - 44) / 32_000;
   const speech = speechIn(wav);
   // Silence: Whisper's favourite hallucination, with high confidence, as the real one does.
-  const said = speech === null ? [' Thank you.'] : speech.words.split(' // ').map((w) => ` ${w}`);
-  const segments = said.map((text, i) => ({ id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text, tokens: [], temperature: 0, avg_logprob: speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null }));
+  const said = speech === null ? [{ text: ' Thank you.', unclear: false }] : speech.words.split(' // ').map((w) => ({ text: ` ${w.replace(/^~/, '')}`, unclear: w.startsWith('~') }));
+  const segments = said.map((x, i) => ({
+    id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text: x.text, tokens: [], temperature: 0,
+    avg_logprob: x.unclear ? -0.8 : speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null
+  }));
   // The language it was told, or the one it hears.
-  return { status: 200, body: { text: said.join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}` } };
+  return { status: 200, body: { text: said.map((x) => x.text).join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}` } };
 }
 
 interface Shown { n: number; at: number; title: string; parts: number }

@@ -1,6 +1,6 @@
 import {
   ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
+  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -32,6 +32,7 @@ import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
 import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
+import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
 
 type Env = { Variables: { owner: Owner; viewer: calls.Viewer; requestId: string } };
@@ -48,14 +49,14 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * Mutations that keep no stored receipt. Searching, asking and translating captions only read. Audio
  * pieces and transcript clips are already idempotent by their place in the recording (and their
  * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
- * decisions, open questions and follow-ups, and sharing it, each set an explicit state, so a retry
- * changes nothing; and their answer is the whole note, which a receipt kept under someone it was given
- * to would still hold after the organizer deleted it.
+ * decisions, open questions, follow-ups and transcript lines, sharing it, and having it written again
+ * each set an explicit state, so a retry changes nothing; and their answer is the whole note, which a
+ * receipt kept under someone it was given to would still hold after the organizer deleted it.
  */
 const NO_RECEIPT = [
   /^\/v1\/notes\/search$/, /^\/v1\/(?:notes|series)\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions)\/[^/]+|share)$/
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -504,6 +505,13 @@ export function createApp(d: Deps) {
   app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(c.get('owner'), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
   app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
   app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(c.get('owner'), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
+  app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(c.get('owner'), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
+  app.post('/v1/notes/:id/rewrite', async (c) => {
+    const o = c.get('owner');
+    const note = await notes.rewrite(o, c.req.param('id'));
+    writer.kick(o, o.ownerId);
+    return c.json(note);
+  });
   app.post('/v1/notes/:id/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask');
     return c.json(await notes.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
