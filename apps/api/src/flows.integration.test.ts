@@ -849,7 +849,7 @@ describe('live transcript and written notes', () => {
     let rec = await api.recordings.start('Retry');
     await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
     let { pendingNoteId } = await rec.stop();
-    await until(async () => (await job())?.state === 'queued', 'the first attempt to fail');
+    await until(async () => { const j = await job(); return j?.state === 'queued' && j.attempt === 1; }, 'the first attempt to fail');
     expect(await job()).toEqual({ state: 'queued', attempt: 1 });
     for await (const p of api.notes.progress(pendingNoteId)) { expect(p.steps.at(-1)).toEqual({ label: 'The notes service is busy. Trying again shortly', done: false }); break; }
     await retryNow();
@@ -862,7 +862,7 @@ describe('live transcript and written notes', () => {
     rec = await api.recordings.start('Never');
     await rec.transcribe(speech('Nobody will read this summary.', 0, 0));
     ({ pendingNoteId } = await rec.stop());
-    await until(async () => (await job())?.state === 'queued', 'the first attempt to fail');
+    await until(async () => { const j = await job(); return j?.state === 'queued' && j.attempt === 1; }, 'the first attempt to fail');
     await retryNow();
     expect(await job()).toEqual({ state: 'queued', attempt: 2 });
     await retryNow();
@@ -1217,7 +1217,7 @@ describe('verified private inference', () => {
       expect(logsSince(from).find((l) => l.msg === 'reply refused')).toMatchObject({ what: 'transcribe', code: 'reply-sealed' });
       const { pendingNoteId } = await rec.stop();
       // For the notes, that's a failed attempt like any other: content went out, sealed, and the reply was bad.
-      await until(async () => (await job(own.session.ownerId))?.state === 'queued', 'the first attempt to fail');
+      await until(async () => { const j = await job(own.session.ownerId); return j?.state === 'queued' && j.attempt === 1; }, 'the first attempt to fail');
       expect(await job(own.session.ownerId)).toEqual({ state: 'queued', attempt: 1 });
       own.near.tamper(null);
       const { maintain } = await import('./maintenance');
