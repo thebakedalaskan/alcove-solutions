@@ -89,9 +89,15 @@ The call itself stays in the API: who's let in, notes and the transcript.
   powers with it): let people in or turn them away, notes on/off, audio and speech uploads, mute someone's
   microphone, remove someone, lock the call, and end it. Notes come from the organizer's microphone only;
   link guests get no notes, invited people get them as before.
-- **Leaving and ending.** Anyone but the organizer leaving (`POST /v1/live/calls/:id/leave`, or LiveKit's
-  `participant_left` webhook) is taken out of the call's group, so the keys move on without them. The
-  organizer leaving ends the call for everyone: the normal ending above, then the room is
+- **Leaving and ending.** Anyone but the organizer leaving is taken out of the call's group, so the keys move
+  on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
+  (closed, reloaded or left for another), which sends the same request as a keepalive request. A page that is
+  only put in the back-forward cache sends nothing. A browser that dies without a word leaves by LiveKit's
+  `participant_left` webhook. Anyone let in who isn't in the room 90 seconds later is taken out too. That covers
+  a tab closed while asking, and a webhook that was missed. It's checked 90 seconds after the commit that let
+  them in, and at every upkeep, and 90 seconds leaves time for a tab in the background, which can take a minute
+  to notice it was let in. The organizer's page sends nothing as it goes. The organizer leaving ends the call
+  for everyone: the normal ending above, then the room is
   deleted (everyone else is disconnected with "room deleted"). The organizer reloading doesn't end it:
   `POST /hooks/livekit` (signed by LiveKit with the API key) records when the organizer's connection left,
   and the call ends only if they're gone for more than 25 seconds (upkeep asks LiveKit whether they're in
@@ -148,8 +154,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   the sender is told. Messages are at most 4,000 characters.
 - **People, not connections.** Each browser keeps one `person` across its reconnections (its pass brings
   it back once, without asking; a second use of the same pass has to ask), so removing someone removes
-  every connection of theirs and none of their passes works again. Leaving while still asking takes the
-  request back. A LiveKit `participant_left` webhook only takes someone out of the group after LiveKit
+  every connection of theirs and none of their passes works again. Leaving while still asking, closing the
+  page included, takes the request back and forgets it: a pass only brings back someone who was let in, so
+  asking again means being let in again. A LiveKit `participant_left` webhook only takes someone out of the group after LiveKit
   confirms, three seconds later, that they're really gone. A browser taken out of the group, or whose place
   another tab took, is told and stops.
 - **A new organizer connection** (a reload or another device) starts a new group generation: the old

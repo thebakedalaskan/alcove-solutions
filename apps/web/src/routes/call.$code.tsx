@@ -22,7 +22,7 @@ import { Stage, type StageParticipant, type StageRooms } from '~/features/call/S
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
 import { isCustom, useCallView } from '~/features/call/view';
-import { selfIn, sessions, useLeaveGuard, useLive } from '~/lib/live';
+import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
@@ -83,6 +83,7 @@ function useWidth() {
 }
 
 function InCall({ session }: { session: CallSession }) {
+  useClosingWithPage(session);
   const told = useLive(session);
   const crypto = useLive(session.crypto);
   const self = session.ticket.identity;
