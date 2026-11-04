@@ -578,8 +578,31 @@ describe('ticking a follow-up', () => {
     await host.leave();
   });
 
+  it('never takes one person’s follow-up for another’s, however alike their words', async () => {
+    const { org, host } = await twoInCall();
+    const KOFI = 'Kofi will send the deck to legal by Friday.';
+    const PRIYA = 'Priya will send the deck to legal by Friday.';
+    await say(host, KOFI);
+    const stop = host.watchNotes();
+    const kofis = followUp((await notesOf(host)).next, KOFI);
+    await host.tickFollowUp(kofis.id, true);
+    // The model stops listing Kofi's, and hears the same words from Priya a moment later: that's Priya's own, not ticked.
+    h.near.reword(KOFI, '');
+    await say(host, PRIYA, 3000);
+    await later(host);
+    const n = await notesOf(host, (x) => x.read.lines === 2);
+    expect(n.next.map((x) => [x.text, x.owner, x.done])).toEqual([[KOFI, 'Kofi', true], [PRIYA, 'Priya', false]]);
+    expect(followUp(n.next, PRIYA).id).not.toBe(kofis.id);
+    stop();
+    // The notes make the same choice: Priya's stays open, and Kofi's tick is its own follow-up.
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    h.near.reword(KOFI, null);
+    expect(note.actions.map((a) => [a.text, a.owner?.name, a.done])).toEqual([[KOFI, 'Kofi', true], ['Send the deck to legal by Friday', 'Priya', false]]);
+  });
+
   it('refuses what isn’t in the notes here: made-up IDs, another call’s, someone asking to join, and an ended call', async () => {
-    const { host, kofi, code: c } = await twoInCall();
+    const { org, host, kofi, code: c } = await twoInCall();
     await say(host, DECK);
     const stop = kofi.watchNotes();
     const deck = followUp((await notesOf(kofi)).next, DECK);
@@ -588,6 +611,9 @@ describe('ticking a follow-up', () => {
     expect(code(await kofi.tickFollowUp('x'.repeat(65), true).catch((e: unknown) => e))).toBe('invalid');
 
     // The same organizer's other call, and another account's: a follow-up of this call isn't theirs to tick.
+    const sameOrganizer = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    expect(code(await sameOrganizer.tickFollowUp(deck.id, true).catch((e: unknown) => e))).toBe('not-found');
+    await sameOrganizer.leave();
     const org2 = await account();
     const theirs = await org2.api.calls.join((await org2.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     await inGroup(theirs);
@@ -713,6 +739,7 @@ describe('when notes are off or paused', () => {
     await later(kofi);
     await sleep(400);
     expect(runs()).toBe(before);
+    expect(await look(h.baseUrl, kofi)).toEqual({ status: 200, body: { refreshed: false } });
     await kofi.refresh();
     expect(kofi.getSnapshot().liveNotes).toEqual({ notes: seen, writing: false, error: null });
     await kofi.tickFollowUp(id, true);
@@ -732,6 +759,7 @@ describe('when notes are off or paused', () => {
     await later(kofi);
     await sleep(400);
     expect(runs()).toBe(before + 1);
+    expect(await look(h.baseUrl, kofi)).toEqual({ status: 200, body: { refreshed: false } });
     expect((await notesOf(host)).read.lines).toBe(2);
     expect((await notesOf(host)).next[0]?.done).toBe(true);
     stop();
