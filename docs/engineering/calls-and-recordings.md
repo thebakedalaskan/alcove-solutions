@@ -466,6 +466,8 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
   `POST /v1/live/calls/:id/mls/back`. That puts it back as the same connection and person (seat, hand and all), in
   the same part of the call, with a fresh 90 seconds to reach the room; the log then asks it for keys, as for anyone
   on their way into a group, and the organizer's browser adds it to that part's group (a breakout room's included).
+  Its time in before the drop is kept as a stretch of its own (`earlier`), so its time away stays time away: a guest
+  reads nothing said then, and catching up "while you were away" finds it ([Notes and inference](notes-and-inference.md#catching-up-during-a-call)).
   Until the organizer's browser has taken the old connection out of its group, `mls/back` answers `409` and the
   browser asks again a few seconds later. Someone removed, turned away or replaced gets `admission: "denied"` and stops. Chat sent while it was out
   stays unreadable to it, as for anyone let in later.
@@ -503,7 +505,8 @@ device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
    the fragment, which browsers never send, so no server or log sees it, and the page takes it out of the address
    bar at once. While this screen is being shared the code stays hidden, so nobody watching can use it. One move per
    person: a new code makes the last one useless. The organizer starts one only from their current connection with
-   their own session, an invited person only together with their account's session.
+   their own session, an invited person (someone signed in whom the organizer let in from the link included, by the
+   role the call gives them, not their pass's) only together with their account's session.
 2. **Opened.** The new device sends the code once, in a POST body (`POST /v1/moves/claim`), and gets back a claim
    only it holds: the code works once. It learns the call's title, the organizer's name, who it'll be and whether
    their microphone and camera are on, and nothing else. The device being left sees that it was opened.
@@ -530,7 +533,9 @@ device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
    the call, host powers, back in the room it was visiting, and the recording on a new segment, as when they join
    from another device), with nothing resumed: a paused call, or a room it paused, stays paused. It brings in
    only the identity named when the device was ready, so another connection already using it (someone who joined
-   with it in between) means `409`, never that connection's place. Asking again, after a lost answer, hands back the
+   with it in between) means `409`, never that connection's place; and only the person whose place it was, as they
+   are when it comes in, under the call's lock: someone removed (or whose place went elsewhere) since the move last
+   looked brings nobody in (`409`), and a commit adding anyone whose person was removed is refused. Asking again, after a lost answer, hands back the
    same connection with a new pass, and only that one: the connection this move made, as the person who moved, in
    the same role, and only once the move has happened. Its microphone and camera start in
    the call as they were on the device left, never more, and only after that device stopped its own: there are never

@@ -388,11 +388,14 @@ export function createApp(d: Deps) {
     await calls.mlsBack(c.get('viewer'), c.req.param('id'), await body(c, CallBackBodySchema));
     return c.json({ sent: true });
   });
-  /* Moving to another device, from the device being left: by its pass (and, for invited people, their session). */
+  /*
+   * Moving to another device, from the device being left: by its pass, and for invited people their session too: by
+   * the role the call has for them, which can be more than their pass says (someone signed in let in from the link).
+   */
   app.post('/v1/live/calls/:id/moves', async (c) => {
     const v = c.get('viewer');
     moveLimiter(v.pass.identity, 'move');
-    return c.json(await moves.start(v, c.req.param('id'), (await body(c, MoveStartBodySchema)).media, v.pass.role === 'invited' ? await optionalOwner(c) : undefined));
+    return c.json(await moves.start(v, c.req.param('id'), (await body(c, MoveStartBodySchema)).media, v.role === 'invited' ? await optionalOwner(c) : undefined));
   });
   app.get('/v1/live/calls/:id/moves', async (c) => c.json({ move: await moves.current(c.get('viewer'), c.req.param('id')) }));
   app.post('/v1/live/calls/:id/moves/confirm', async (c) => { await moves.confirm(c.get('viewer'), c.req.param('id'), (await body(c, MoveConfirmBodySchema)).media); return c.json({ released: true }); });

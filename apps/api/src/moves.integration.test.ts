@@ -360,6 +360,8 @@ describe('moving to another device', () => {
     });
     expect(asked.status).toBe(200);
     await waitFor(() => out.getSnapshot().stage === 'ready', 'Sam’s old device told the new one is ready');
+    // As the app does, the old device stops its call before it lets go (left running, it would come back by itself).
+    sam.close();
     await out.confirm({ mic: true, cam: false });
     for (let i = 0; i < 3; i++) {
       const r = await asDevice('arrive', { claim });
@@ -642,6 +644,91 @@ describe('coming back after a connection drops', () => {
     expect(seen.participants.find((p) => p.id === sam.ticket.identity)?.hand).toBe(true);
     await sam.sendChat('back again');
     await waitFor(() => host.crypto.getSnapshot().chat.some((m) => m.text === 'back again'), 'chat after coming back');
+    // The time it was out is still time away (#78): catching up finds it, and Sam, a guest with the link, reads what
+    // was said before and after it, never during it.
+    const w = await sam.catchUpWindow();
+    expect(w.away).not.toBeNull();
+    expect(w.here).toHaveLength(2);
+    const [first, second] = w.here ?? [];
+    expect(first?.to).toBeLessThanOrEqual(w.away?.from ?? 0);
+    expect(second?.from).toBeGreaterThanOrEqual(w.away?.to ?? Infinity);
+    await host.leave();
+  });
+
+  it('never lets in the new device of someone removed while their move comes in', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const out = await sam.startMove({ mic: true, cam: false });
+    const claim = await claimOf(out.getSnapshot().code ?? '');
+    const x = freshIdentity();
+    expect((await asDevice('ready', { claim, identity: x, keyPackage: 'AAAA', device: PHONE })).status).toBe(200);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'Sam’s old device told the new one is ready');
+    sam.close();
+    await out.confirm({ mic: true, cam: false });
+
+    // The race, made certain: the call's row is held, the organizer's removal of Sam queues for it first, and the new
+    // device's arrival (past its own first look, which takes no lock) second. The removal lands in between.
+    const waiting = async () => Number((await h.pool.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'")).rows[0]?.n ?? 0);
+    const until = async (pred: () => Promise<boolean>, what: string) => { for (let i = 0; !(await pred()); i++) { if (i > 400) throw new Error(`timed out waiting for ${what}`); await sleep(25); } };
+    const held = await h.pool.connect();
+    let arrival: Response | undefined;
+    try {
+      await held.query('BEGIN');
+      await held.query('SELECT 1 FROM calls WHERE call_id = $1 FOR UPDATE', [host.ticket.callId]);
+      const base = await waiting();
+      const removing = host.remove(sam.ticket.identity);
+      await until(async () => (await waiting()) > base, 'the removal to wait for the call');
+      const arriving = asDevice('arrive', { claim });
+      await until(async () => (await waiting()) > base + 1, 'the arrival to wait for the call');
+      await held.query('COMMIT');
+      await removing;
+      arrival = await arriving;
+    } finally {
+      held.release();
+    }
+    // The move brings nobody in: Sam's place went with Sam.
+    expect(arrival?.status).toBe(409);
+    const s = await settle(host, (v) => !v.participants.some((p) => p.person.name === 'Sam'));
+    expect(s.participants.map((p) => p.id)).not.toContain(x);
+    expect(s.waiting.map((wt) => wt.id)).not.toContain(x);
+    expect(host.crypto.getSnapshot().members).not.toContain(x);
+    await host.leave();
+  });
+
+  it('moves someone signed in whom the organizer let in from the link, as the invited person the call made them', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    // Signed in but not on the invite: they ask with their address, and being let in adds them to it (#62).
+    const email = unique('priya');
+    const priya = await account(email);
+    const laptop = await priya.api.calls.join(c, { mic: true, cam: false });
+    await letIn(host, laptop);
+    expect(laptop.ticket.role).toBe('guest');
+    expect((await settle(laptop, (v) => v.role === 'invited')).role).toBe('invited');
+    // Their pass still says guest, but the call says invited: moving takes their session, and the new device theirs.
+    const out = await laptop.startMove({ mic: true, cam: false });
+    const phone = h.browser();
+    const there = await open(phone.api, out.getSnapshot().code ?? '');
+    expect(there.getSnapshot().move).toMatchObject({ you: { role: 'invited' }, account: 'needed' });
+    expect(code(await there.ready(PHONE).catch((e: unknown) => e))).toBe('forbidden');
+    await phone.api.auth.signIn('sso', { email });
+    await there.refresh();
+    await there.ready(PHONE);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'the laptop told the phone is ready');
+    laptop.close();
+    await out.confirm({ mic: true, cam: false });
+    const now = await arrived(there);
+    await inGroup(now);
+    expect((await settle(now, (v) => v.role === 'invited')).role).toBe('invited');
+    const seen = await settle(host, (v) => v.participants.some((p) => p.id === now.ticket.identity));
+    expect(seen.participants.filter((p) => p.person.email === email)).toHaveLength(1);
     await host.leave();
   });
 
