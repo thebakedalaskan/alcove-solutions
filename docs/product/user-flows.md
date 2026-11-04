@@ -180,9 +180,11 @@ dock at the bottom.
   minutes, before you joined, since you joined, while you were away, the whole call, or a stretch picked on the
   call's timeline. Ask a question, or **Catch me up** for what was decided, suggested, left open and what's next.
   Each answer says the stretch it read, as of when, and what isn't in it (notes off or paused, the organizer's
-  connection away), and each point has the times it was said: one opens the transcript there, that line marked.
+  connection away, the middle of a stretch too long to read whole), all as times of day, and each point has the
+  times it was said: one opens the transcript there, that line marked.
   **Back to live** returns to the call as it was before you started catching up; your own view stays as you
-  arranged it. Coming back after time away, or joining well after the start, offers a catch-up once. A guest with
+  arranged it. Coming back after time away, or joining well after the start, offers a catch-up once, if notes have
+  been on. A guest with
   the link can catch up on what was said while they were in the call; the notes go to the people invited.
 - **Breakout rooms.** Pick two or three rooms and how long, drag people between rooms and rename them, then
   **Open rooms**. While they're open: a shared timer, each room and who is in it, **Join room** and **Back to
