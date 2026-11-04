@@ -27,7 +27,10 @@ const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 /** Someone shown in the panel: in the call (and how), or invited and not here. `volume`: how loud they are for you, null for yourself. */
 export interface PanelPerson { id: string; person: Person; isMe: boolean; organizer: boolean; mic: boolean; hand: boolean; speaking: boolean; volume: number | null; detail: string; tags: string[] }
 
-/** The organizer's controls in People. Mute has no remote unmute; removing only disconnects; a locked call keeps everyone new out. */
+/**
+ * The organizer's controls in People. Mute has no remote unmute; removing only disconnects; a locked call keeps everyone
+ * new out; pointing off takes every pointer and mark off shared screens, for everyone.
+ */
 export interface HostControls {
   admit: (id: string) => Promise<void>;
   deny: (id: string) => Promise<void>;
@@ -35,6 +38,8 @@ export interface HostControls {
   remove: (id: string) => Promise<void>;
   locked: boolean;
   lock: (on: boolean) => Promise<void>;
+  pointing: boolean;
+  setPointing: (on: boolean) => Promise<void>;
 }
 
 export function SidePanel({ view, onView, onClose, children, roomsTitle }: { view: PanelView; onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string }) {
@@ -393,6 +398,13 @@ export function PeopleView({ here, invited, asking, notesAsks, host, foot, volum
             <Icon name="lock" size={17} />
             <div className="min-w-0"><b>Lock the call</b><small>{host.locked ? 'Nobody new can join. People who leave can’t come back.' : 'Nobody new can join while it’s locked.'}</small></div>
             <Switch checked={host.locked} label="Lock the call" onChange={(on) => { host.lock(on).then(() => toast(on ? 'The call is locked. Nobody new can join.' : 'The call is unlocked', { icon: 'lock' }), (e: unknown) => toast(errorMessage(e), { icon: 'x' })); }} />
+          </div>
+        )}
+        {host && (
+          <div className="ic-lock">
+            <Icon name={host.pointing ? 'pointer' : 'pointerOff'} size={17} />
+            <div className="min-w-0"><b>Pointing at shared screens</b><small>{host.pointing ? 'Anyone here can point and mark, unless whoever shares says only they can.' : 'Nobody can point at or mark what’s shared.'}</small></div>
+            <Switch checked={host.pointing} label="Pointing at shared screens" onChange={(on) => { host.setPointing(on).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); }} />
           </div>
         )}
       </div>

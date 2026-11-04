@@ -13,6 +13,10 @@
  *
  * Someone else's share you see big can be looked at closer, for you only (ShareSurface.tsx): zoomed, moved around,
  * frozen, stepped back through its last pictures, or opened in its own window, where the stage keeps it as a tile.
+ *
+ * Anyone the call lets point can point at a share shown big and live here (SharePointing.tsx): their pointer, with their
+ * name, and marks that fade, which everyone sees on that share wherever it is on their stage (and in its own window),
+ * however they've framed it, while they see it live.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
 import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn, useToast } from '@alcove/ui';
@@ -21,8 +25,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent 
 import { createPortal } from 'react-dom';
 import { useLive } from '~/lib/live';
 import { callName } from '~/lib/people';
+import type { ShareMarks } from './marks';
 import { popKind } from './popOut';
 import { LOOK_ARIA, ShareLooks } from './shareLook';
+import { ShareMarksDrawing, SharePointing, type PointingKeys } from './SharePointing';
 import { ShareAway, ShareMenuFor, ShareSurface, ShareWindow } from './ShareSurface';
 import { useSettledSpeakers } from './speakers';
 import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
@@ -54,6 +60,12 @@ export interface StageShare {
   name: string;
   /** The sound it carries, if any: muted for you or not, and the switch. Never for your own, which doesn't play here. */
   sound: { muted: boolean; toggle: () => void } | null;
+  /**
+   * Pointing at it: its picture's track sid, which pointers and marks name it by, and what keeps you from pointing at it
+   * now, if anything (the organizer turned pointing off, or its presenter doesn't let others point). Null until the call's
+   * room has it (your own share, until it's published).
+   */
+  point: { sid: string; closed: 'call' | 'presenter' | null } | null;
 }
 /** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
@@ -106,10 +118,14 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, place: part, paused, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
+export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organizer, bar, caption, rooms, place: part, paused, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
   people: StageParticipant[];
   /** What's shared now, in any order: the stage keeps them in the order they started. */
   shares: StageShare[];
+  /** Pointers and marks on what's shared (null before the room connects), who you are, and who anyone pointing is. */
+  marks: ShareMarks | null;
+  me: Person;
+  whoIs: (id: string) => Person;
   spotlight: string | null;
   view: CallView;
   organizer: boolean;
@@ -206,6 +222,21 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const press = useRef<{ id: string; x: number; y: number; dx: number; dy: number; on: boolean; corner: boolean } | null>(null);
   const grow = useRef<{ id: string; x: number; y: number; w: number; h: number; big: boolean } | null>(null);
   const handle = useRef<'divider' | 'split' | null>(null);
+  /*
+   * The share you're pointing at, by whoever shares it: one at a time, while it's big, live and open to you. Its keys
+   * come first while you do (arrows move your pointer there rather than around the picture or to the next tile).
+   */
+  const [pointingAt, setPointingAt] = useState<string | null>(null);
+  const pointKeys = useRef(new Map<string, PointingKeys>());
+  const keySetters = useRef(new Map<string, (f: PointingKeys | null) => void>());
+  const keysOf = (k: string) => {
+    let set = keySetters.current.get(k);
+    if (!set) {
+      set = (f) => { if (f) pointKeys.current.set(k, f); else pointKeys.current.delete(k); };
+      keySetters.current.set(k, set);
+    }
+    return set;
+  };
 
   /** Puts `id` where `target` is in its group: your pins in a new order, or your order of everyone else. */
   const reorder = (g: string[], id: string, target: string) => {
@@ -230,6 +261,20 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
+  /** How you look at someone else's share you see big here (zoom, a picture held still): ShareSurface.tsx. */
+  const lookOf = (s: StageShare) => (L.shares.has(s.id) && !s.mine && popped !== s.id && 'room' in s.feed ? looks.look(s.id) : null);
+  /** A share you may point at now: open to you, shown big here (not in its own window), and live, not a picture held still. */
+  const pointable = (s: StageShare) => s.point !== null && s.point.closed === null && L.shares.has(s.id) && popped !== s.id && !lookOf(s)?.getSnapshot().held;
+  const pointingNow = pointingAt !== null && shares.some((s) => s.id === pointingAt && s.point !== null && s.point.closed === null && L.shares.has(s.id) && popped !== s.id) ? pointingAt : null;
+  // A share that stops, goes back to a tile or to its own window, or closes to you (its presenter, or the organizer, said so) ends your pointing.
+  useEffect(() => { if (pointingAt !== null && pointingNow === null) setPointingAt(null); }, [pointingAt, pointingNow]);
+  /** Starts or stops pointing at a share, once however often it's said: focus goes to its tile, where its keys work. */
+  const pointAt = (s: StageShare, on: boolean) => {
+    if (on && !pointable(s)) return;
+    setPointingAt((x) => (on ? s.id : x === s.id ? null : x));
+    focusTo(shareKey(s.id));
+  };
+  const togglePointing = (s: StageShare) => pointAt(s, pointingAt !== s.id);
   // A share you brought back from its own window: focus comes back to its tile, where its keys work.
   const backN = seenLooks.back?.n ?? 0;
   useEffect(() => {
@@ -352,10 +397,13 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
     const p = byId.get(k);
     const share = isShareKey(k) ? shares.find((s) => shareKey(s.id) === k) : undefined;
     const corner = cornered && k === cornered.id;
+    // Pointing at a share: its keys first (arrows move your pointer, Enter marks, Backspace takes a mark back, Escape stops).
+    if (share && pointingNow === share.id && onTile && pointKeys.current.get(k)?.(e)) { e.preventDefault(); e.stopPropagation(); return; }
     // Someone else's share you see big: + − 0 zoom, arrows move around while zoomed in, F freezes, comma and full stop step back and on.
     const closer = share && !share.mine && L.shares.has(share.id) && onTile && !(e.shiftKey && ARROWS.has(key));
     let done = true;
     if (closer && looks.look(share.id).key(key)) { /* done */ }
+    else if ((key === 'l' || key === 'L') && !e.shiftKey && share && onTile && pointable(share)) togglePointing(share);
     else if ((key === 'Enter' || key === ' ') && onTile) setMenu(k);
     else if (key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) setMenu(k);
     else if ((key === 'p' || key === 'P') && !e.shiftKey) {
@@ -409,21 +457,36 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         if (!r) return null;
         const away = popped === s.id;
         // Someone else's share you see big can be looked at closer: zoomed, frozen, stepped back through.
-        const look = big && !s.mine && !away && 'room' in s.feed ? looks.look(s.id) : null;
-        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', away ? 'in its own window, P brings it back' : big ? '' : 'a tile, P shows it big'];
+        const look = lookOf(s);
+        const surface = look && 'room' in s.feed ? { look, feed: s.feed } : null;
+        const canPoint = pointable(s);
+        const here = pointingNow === s.id;
+        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', away ? 'in its own window, P brings it back' : big ? '' : 'a tile, P shows it big',
+          here ? 'you’re pointing at it: arrow keys move your pointer, Enter marks, Backspace takes your last mark back, Escape stops' : canPoint ? 'L to point at it' : ''];
+        const shortcuts = `Enter P${canPoint ? ' L' : ''}${look ? ` ${LOOK_ARIA}` : ''}`;
         return (
-          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={look ? `Enter P ${LOOK_ARIA}` : 'Enter P'}
+          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={shortcuts}
             aria-describedby={look ? `sv-${s.id}` : undefined}
-            className={cn('ic-scr', !big && 'is-tile', away && 'is-away', fresh(s.id) && 'is-new')}
+            className={cn('ic-scr', !big && 'is-tile', away && 'is-away', fresh(s.id) && 'is-new', here && 'is-pointing')}
             onClick={big || away ? undefined : (e) => {
               // Not a click in the menu it opened (React passes those up through the portal), nor on any of its buttons.
               if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
               if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false);
             }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
-            {away ? <ShareAway onBack={() => looks.popIn(true)} />
-              : look && 'room' in s.feed ? <ShareSurface look={look} feed={s.feed} where="stage" label={s.name} describe={`sv-${s.id}`} popOut={canPop ? { open: false, toggle: () => popOut(s) } : null} />
-                : <FeedVideo feed={s.feed} className="screen" />}
+            {(() => {
+              if (away) return <ShareAway onBack={() => looks.popIn(true)} />;
+              // Pointers and marks go on the picture: in a share you look at closer, on the picture it frames.
+              const drawing = s.point && marks ? <ShareMarksDrawing marks={marks} share={s.point.sid} whoIs={whoIs} me={me} /> : null;
+              const pointing = s.point && marks ? (
+                <SharePointing marks={marks} share={s.point.sid} look={surface?.look ?? null} mine={s.mine} big={!!big} can={s.point.closed === null} active={here}
+                  onKeys={keysOf(k)} onActive={(on) => pointAt(s, on)}>{surface ? null : drawing}</SharePointing>
+              ) : null;
+              return surface ? (
+                <ShareSurface look={surface.look} feed={surface.feed} where="stage" label={s.name} describe={`sv-${s.id}`} popOut={canPop ? { open: false, toggle: () => popOut(s) } : null}
+                  overLive={drawing}>{pointing}</ShareSurface>
+              ) : <><FeedVideo feed={s.feed} className="screen" />{pointing}</>;
+            })()}
             <span className="ac-tile-name">
               <Avatar person={s.presenter} size={18} /><span className="tl">{s.label}</span>
               {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
@@ -431,7 +494,8 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
             {!big && !away && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
             <ShareMenuFor look={look} presenter={s.presenter} label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big}
               onToggle={() => toggleShare(s.id, !!big)} sound={s.sound}
-              own={s.mine ? undefined : { open: away, toggle: away ? () => looks.popIn(true) : canPop ? () => popOut(s) : null, why: canPop ? null : 'Phones and tablets show shares in the call only.' }} />
+              own={s.mine ? undefined : { open: away, toggle: away ? () => looks.popIn(true) : canPop ? () => popOut(s) : null, why: canPop ? null : 'Phones and tablets show shares in the call only.' }}
+              point={s.point && !away ? { on: here, can: canPoint, closed: s.point.closed, held: false, toggle: () => togglePointing(s) } : null} />
           </motion.div>
         );
       })}
@@ -521,7 +585,8 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
         const s = ordered.find((x) => x.id === popped);
         const win = seenLooks.popped;
         return s && 'room' in s.feed ? createPortal(
-          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn(true)} />, win.win.document.body
+          <ShareWindow look={looks.look(s.id)} feed={s.feed} presenter={s.presenter} name={s.name} kind={win.kind} onBack={() => looks.popIn(true)}
+            over={s.point && marks ? <ShareMarksDrawing marks={marks} share={s.point.sid} whoIs={whoIs} me={me} /> : null} />, win.win.document.body
         ) : null;
       })()}
     </div>
