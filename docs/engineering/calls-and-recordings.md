@@ -340,16 +340,23 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
 - **Watching devices.** From the first start, `LocalMedia` follows `devicechange`, each track's `ended`, the
   permissions' `change` events and, because Safari never sends those, the page coming back into view. A
   microphone or camera that's unplugged gives way to the chosen one or the system's, muted or not and on or off
-  as it was; with none left it turns off and says so. A chosen device that comes back is used again, and a
-  microphone left on the system's follows the system when its default moves (Chrome's `default` entry changes
-  group). Before the call, a device that becomes usable (plugged in, or allowed again) starts the way the person
+  as it was; with none left it turns off and says so. A chosen device that comes back after it was gone is used
+  again (one that's listed but won't start isn't tried at every look), and a microphone left on the system's
+  follows the system when its default moves (Chrome's `default` entry changes group). A choice is remembered only
+  once it has opened, and a remembered device that's listed but won't start (busy in another app, say) gives way to
+  the system's. Device work happens one step at a time; each step carries the moment it was asked for, so a stop
+  (leaving the screen) or a later press wins over work still waiting, and a device opens the way the latest press
+  says. Before the call, a device that becomes usable (plugged in, or allowed again) starts the way the person
   wanted it; in the call nothing turns a microphone or camera on by itself: it says the device is ready and
   waits for its button. Each change nobody pressed for is said once (`MediaSnapshot.changes`): under the
   preview before the call, as a toast in it.
 - **Switching tracks safely.** A new microphone or camera is swapped into its existing LiveKit publication
   (`replaceTrack`): nobody sees it stop and start, it stays muted or not, and the organizer's mute still finds
-  it. LiveKit mutes a publication whose device was unplugged; the room tells that apart from the organizer's
-  mute, and unmutes it again only if the person's microphone (or camera) was on.
+  it. The room always reads LiveKit's current publication rather than keeping its own, and publishes nothing while
+  LiveKit reconnects (a full reconnect republishes every track under a new publication); it catches up once
+  reconnected, so nothing is ever sent twice. LiveKit mutes a publication whose device was unplugged; the room
+  tells that apart from the organizer's mute by whether the track's `ended` event really fired, and unmutes it
+  again only if the person's microphone (or camera) is on by then.
 - **Speakers.** Where a page can choose one (`setSinkId` on media elements: Chrome, Edge and Firefox; LiveKit
   doesn't on Safari), the chosen speaker goes through LiveKit's own output switching, so every element plays
   there, now and as people arrive, and LiveKit's device handling knows it. Firefox lists speakers only once the
@@ -365,7 +372,8 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
   this call in this tab's `sessionStorage` (`alcove.callVolumes`, `CallVolumesSchema`), by the random identity
   each connection has in the call, never a name or address: a reload keeps them, leaving the call or closing the
   tab forgets them, and someone with an account who comes back on a new connection keeps theirs (matched in
-  memory only). Browsers that lock an element's volume (iPhones) don't offer it. There's no going above 100%:
+  memory only), as does the level to go back to after a quick mute. Browsers that lock an element's volume
+  (iPhones) don't offer it. There's no going above 100%:
   that needs Web Audio on the way to the speaker, which LiveKit turned off by default because echo cancellation
   doesn't cover it everywhere.
 - The microphone test (`apps/web/src/features/call/devices.ts`) records three seconds in memory and plays
@@ -374,8 +382,9 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
 - `getDisplayMedia` for screen sharing; ending it from the browser's own control updates the call.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
   in its menu), the speaking ring and the recorder waveform.
-- Sound the browser won't play until the page is clicked (Safari, when nothing is being captured) is asked for
-  with a toast, and the first click or key press starts it (`CallRoom.startAudio`).
+- Sound the browser won't play until the page is clicked (Safari, when nothing is being captured) is said in the
+  status bar for as long as it lasts, with **Play sound**, and every click, tap or key tries again
+  (`CallRoom.startAudio`) until it plays.
 - `NotesRecorder` picks the first supported codec (Opus in WebM, then MP4, then Ogg) at 32 kbps. It records
   through a Web Audio graph (a `MediaStreamAudioDestinationNode`), so switching microphones mid-recording
   carries on in the same recording instead of going silent; MediaRecorder can't change its input track.
