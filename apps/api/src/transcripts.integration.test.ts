@@ -95,13 +95,18 @@ describe('a transcript that says what it isn’t sure of', () => {
     await host.transcribe(speech('I will send the contract to legal today.', 0, 5300), host.ticket.identity);
     await host.transcribe(speech('Sounds good to me.', 0, 9000), host.ticket.identity);
     await host.transcribe(speech('Sounds good.', 0, 9400), kofi.ticket.identity);
+    // A reply that says the question's words again comes straight after it, not over it: nobody is in doubt.
+    await host.transcribe(speech('Can we ship the release on Friday?', 0, 12_000), host.ticket.identity);
+    await host.transcribe(speech('Yes, we can ship the release on Friday.', 0, 14_000), kofi.ticket.identity);
     const heard = [
       [me, 'We agreed the budget is final.', null],
       [me, 'the vendor wants eighty something', { words: true }],
       [them, 'I will send the contract to legal today.', { speaker: true }],
       [me, 'I will send the contract to legal today.', { speaker: true }],
       [me, 'Sounds good to me.', null],
-      [them, 'Sounds good.', null]
+      [them, 'Sounds good.', null],
+      [me, 'Can we ship the release on Friday?', null],
+      [them, 'Yes, we can ship the release on Friday.', null]
     ];
     expect(marked(host.getSnapshot().transcript)).toEqual(heard);
     // Everyone in the call sees the same.
