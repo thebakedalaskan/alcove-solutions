@@ -7,6 +7,7 @@ import { Button, EASE, Field, ProviderButton, useToast } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useState } from 'react';
+import { returnToCall } from '~/lib/afterSignIn';
 import { isEmail } from '~/lib/parse';
 import { googleSignInUrl, useSignIn } from '~/lib/queries';
 
@@ -15,8 +16,11 @@ export interface Auth { busy: Busy; leaving: boolean; google: () => void; go: (p
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** One sign-in for the whole page, so every set of buttons shows the same busy state. */
-export function useAuth(): Auth {
+/**
+ * One sign-in for the whole page, so every set of buttons shows the same busy state. `call`: signing in from that
+ * call's join page, which carries on there (Google comes back to it) instead of going to Home.
+ */
+export function useAuth(o: { call?: string | undefined } = {}): Auth {
   const signIn = useSignIn();
   const navigate = useNavigate();
   const toast = useToast();
@@ -32,11 +36,13 @@ export function useAuth(): Auth {
 
   return {
     busy, leaving,
-    google: () => { setBusy('google'); location.assign(googleSignInUrl()); },
+    google: () => { setBusy('google'); if (o.call) returnToCall(o.call); location.assign(googleSignInUrl()); },
     go: async (provider, email) => {
       setBusy(provider);
       try {
         const r = await signIn.mutateAsync({ provider, email: provider === 'sso' ? email?.trim() : undefined });
+        // From a join page: it shows the account now, and joining goes on from there.
+        if (o.call) { setBusy(null); return; }
         setLeaving(true);
         await sleep(300);
         await navigate({ to: r.isNew ? '/ready' : '/home', replace: true });

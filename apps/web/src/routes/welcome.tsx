@@ -1,8 +1,9 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { useToast } from '@alcove/ui';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Landing } from '~/features/welcome/Landing';
 import { useAuth } from '~/features/welcome/WaysIn';
+import { takeReturn } from '~/lib/afterSignIn';
 import { q } from '~/lib/queries';
 
 /** Why a sign-in with Google came back without signing in, as the API reports it. */
@@ -32,11 +33,15 @@ function Welcome() {
   const toast = useToast();
   const { signin } = Route.useSearch();
 
-  /* Back from Google without a session: say why once, then tidy the address. */
+  /* Back from Google without a session: say why once, then tidy the address, or go back to the call it started from. */
+  const handled = useRef<Refused | null>(null);
   useEffect(() => {
-    if (!signin) return;
+    // Once per refusal, however often the effect runs: the call to go back to can be taken only once.
+    if (!signin || handled.current === signin) return;
+    handled.current = signin;
     toast(REFUSED[signin], { icon: 'x', ms: 5200 });
-    void navigate({ to: '/welcome', search: {}, replace: true });
+    const call = takeReturn();
+    void navigate(call ? { to: '/join/$code', params: { code: call }, replace: true } : { to: '/welcome', search: {}, replace: true });
   }, [signin, toast, navigate]);
 
   return <Landing auth={auth} />;

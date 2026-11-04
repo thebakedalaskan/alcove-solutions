@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { ActionPatch, DecisionPatch, DemoProvider, InstantCallInput, MeetingInput, NoteKind, NotesSetting, Patch, Preferences, QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type InstantCallInput, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { weekOn } from './time';
@@ -44,8 +44,17 @@ export const q = {
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
-  /** A call link's title and organizer, for anyone (no account needed). */
-  card: (code: string) => queryOptions({ queryKey: qk.card(code), queryFn: () => api.calls.card(code), retry: false }),
+  /**
+   * A call link's title and organizer, whether notes are on and whether it can be joined yet, for anyone (no account
+   * needed), and for someone signed in whether they're invited (signing in starts the cache over, so it's read
+   * again). Read again every 3 seconds while waiting for the organizer, so joining opens soon after they arrive, and
+   * now and then after that (notes going on, a lock). A code that leads nowhere is told at once and not asked again.
+   */
+  card: (code: string) => queryOptions({
+    queryKey: qk.card(code), queryFn: () => api.calls.card(code),
+    retry: (count, e) => errorCode(e) !== 'not-found' && count < 2,
+    refetchInterval: (query) => (errorCode(query.state.error) === 'not-found' ? false : query.state.data?.ended ? 15_000 : query.state.data?.hostHere ? 10_000 : 3_000)
+  }),
   /** Someone's other calendar events; refreshed every few minutes, since they change outside Alcove. */
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
