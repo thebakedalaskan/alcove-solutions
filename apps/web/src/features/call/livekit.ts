@@ -169,6 +169,9 @@ const CAMERA: Record<VideoSend, TrackPublishOptions> = {
   saver: { videoEncoding: VideoPresets.h360.encoding, videoSimulcastLayers: [VideoPresets.h180] }
 };
 
+/** How long to wait before the next try of a camera that failed to publish: longer each time it's tried. */
+const CAMERA_RETRY_MS = [1_000, 3_000, 10_000, 30_000];
+
 class LiveKitRoom implements CallRoom {
   private keys: CallKeys;
   private room: Room;
@@ -190,6 +193,14 @@ class LiveKitRoom implements CallRoom {
   private stopVolumes: () => void = () => undefined;
   /** The size the camera was last published at (see cameraSends), so a change of size sends it again. */
   private camSentAs: VideoSend | null = null;
+  /**
+   * Camera tracks whose publish failed. LiveKit's server keeps the first request under the track's ID and ignores
+   * another with the same one, so such a track is never offered again: LocalMedia opens the camera as a new track.
+   */
+  private failedCams = new WeakSet<MediaStreamTrack>();
+  /** Times the camera was opened again since its last publish that worked (how long the next wait is), and that timer. */
+  private camTries = 0;
+  private camRetry: ReturnType<typeof setTimeout> | null = null;
   /** The speaker everyone else's audio plays on now, and one the browser just refused (said once). */
   private speaker: string | null = null;
   private speakerRefused: string | null = null;
@@ -284,6 +295,7 @@ class LiveKitRoom implements CallRoom {
     // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia.
     r.on(RoomEvent.Reconnected, () => { this.set({ connection: 'connected' }); refetch(); this.follow(); });
     r.on(RoomEvent.Disconnected, (why) => {
+      this.stopCameraRetry();
       this.stopFollowing();
       this.stopKeys();
       this.stopVolumes();
@@ -462,6 +474,14 @@ class LiveKitRoom implements CallRoom {
   /** Makes LiveKit's publication of one kind carry `track`, or none: the one it has published now, never a copy kept here. */
   private async publish(kind: Kind, track: MediaStreamTrack | null, send: VideoSend) {
     const me = this.room.localParticipant;
+    // A camera track that failed to publish is never offered again. Once the wait after the failure is over (the timer
+    // follows again), LocalMedia opens the camera anew if it's still on, and its new track comes to the next sync;
+    // until then the camera is left alone, so a failure that keeps happening can't become a loop. The next, longer wait
+    // starts too, in case the camera doesn't open again.
+    if (kind === 'cam' && track && this.failedCams.has(track)) {
+      if (!this.camRetry) { this.camTries++; void this.media.renewCamera(track); this.retryCameraLater(); }
+      return;
+    }
     // After a full reconnect this is the publication LiveKit republished, not the one this browser made.
     const have = me.getTrackPublication(SOURCE[kind]);
     // A camera sent at another size than it's sent at now is sent again: a publication's layers are set when it's
@@ -475,8 +495,42 @@ class LiveKitRoom implements CallRoom {
     if (have?.track && track && !resend) { await have.track.replaceTrack(track, true); return; }
     // LocalMedia owns these tracks: unpublishing must never stop them.
     if (have?.track) await me.unpublishTrack(have.track, false);
-    if (track) await me.publishTrack(track, { source: SOURCE[kind], ...(sendAs ? CAMERA[sendAs] : {}) });
-    if (kind === 'cam') this.camSentAs = sendAs;
+    if (track) {
+      try {
+        await me.publishTrack(track, { source: SOURCE[kind], ...(sendAs ? CAMERA[sendAs] : {}) });
+      } catch (e) {
+        if (kind === 'cam') await this.cameraFailed(track);
+        throw e;
+      }
+    }
+    if (kind === 'cam') { this.camSentAs = sendAs; this.camTries = 0; this.stopCameraRetry(); }
+  }
+  /**
+   * After a camera publish failed: what LiveKit made for it is taken out (a sender a failed negotiation can leave in the
+   * connection, which the next offer would still announce, and the request still waiting for the server's answer), its
+   * track is never offered again, and the camera is tried again under a new track after a wait that grows with each
+   * try: 1 s, 3 s, 10 s, then every 30 s.
+   */
+  private async cameraFailed(track: MediaStreamTrack) {
+    this.failedCams.add(track);
+    const engine = this.room.engine;
+    const senders = engine.pcManager?.publisher.getTransceivers().flatMap((t) => (t.sender.track === track ? [t.sender] : [])) ?? [];
+    if (senders.map((sender) => engine.removeTrack(sender)).some(Boolean)) {
+      await engine.negotiate().catch((e: unknown) => rlog.debug('could not renegotiate after a failed camera publish', { err: e }));
+    }
+    const wait = this.retryCameraLater();
+    rlog.info('camera not published; trying again with a new track', { retries: this.camTries, waitMs: wait, senders: senders.length });
+  }
+  /** Follows again once the wait for the camera's next try is over (longer the more it was tried); returns the wait. */
+  private retryCameraLater(): number {
+    const wait = CAMERA_RETRY_MS[Math.min(this.camTries, CAMERA_RETRY_MS.length - 1)] ?? 30_000;
+    this.stopCameraRetry();
+    this.camRetry = setTimeout(() => { this.camRetry = null; this.follow(); }, wait);
+    return wait;
+  }
+  private stopCameraRetry() {
+    if (this.camRetry) clearTimeout(this.camRetry);
+    this.camRetry = null;
   }
 
   /**

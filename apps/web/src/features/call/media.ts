@@ -418,6 +418,20 @@ export class LocalMedia {
       return ok;
     });
   }
+  /**
+   * The call couldn't send this camera track, and never can (LiveKit's server keeps a failed request under the track's
+   * ID): the same camera is opened again as a new track, at the size and blur in use, if the camera is still on and
+   * still this one. It never turns a camera on, and says nothing, since nobody pressed anything. The room tries again
+   * later if this doesn't work.
+   */
+  renewCamera(failed: MediaStreamTrack): Promise<void> {
+    const gen = this.gen;
+    return this.serial(async () => {
+      if (gen !== this.gen || this.video !== failed || !this.want.cam) return;
+      const id = this.snap.camId;
+      if (await this.switchCam(gen, id ? { exact: id } : undefined, null, true)) mlog.info('camera opened again to be sent');
+    }).catch((e: unknown) => mlog.warn('could not open the camera again to send it', { err: e }));
+  }
   /** Switches to another camera. With the camera off it's used when it's turned on, and remembered once it opens. */
   chooseCam(deviceId: string): Promise<boolean> {
     if (deviceId === this.snap.camId && this.video?.readyState === 'live') { rememberDevice('cam', deviceId); return Promise.resolve(true); }
@@ -460,7 +474,7 @@ export class LocalMedia {
     return true;
   }
   /** Moves to another camera (`undefined`: the front one), kept on unless it's been turned off meanwhile. */
-  private async switchCam(gen: number, deviceId: ConstrainDOMString | undefined, say: ((now: string) => string) | null): Promise<boolean> {
+  private async switchCam(gen: number, deviceId: ConstrainDOMString | undefined, say: ((now: string) => string) | null, quiet = false): Promise<boolean> {
     if (gen !== this.gen) return false;
     let next: MediaStreamTrack | undefined;
     try {
@@ -469,7 +483,7 @@ export class LocalMedia {
       mlog.warn('could not switch cameras', { err: e, automatic: Boolean(say) });
       if (gen !== this.gen) return false;
       const perms = await permissions();
-      if (this.video?.readyState === 'live') this.set({ changes: this.changed('cam', `That camera didn’t start. Still using ${plainName(this.video.label) || 'the one before'}.`) });
+      if (this.video?.readyState === 'live') { if (!quiet) this.set({ changes: this.changed('cam', `That camera didn’t start. Still using ${plainName(this.video.label) || 'the one before'}.`) }); }
       else {
         this.useVideo(null);
         this.rebuild();
