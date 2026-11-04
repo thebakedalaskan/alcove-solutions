@@ -12,3 +12,7 @@ export type {
   ShapeKind, ShapeObject, ShotObject, StickyColour, TableLine, TableObject, TextObject
 } from './shape';
 export { objectText, observeBoard, readBoard } from './read';
+export { bounds, centre, colourIn, contains, fit, frameAt, hit, inside } from './geometry';
+export type { Camera, Pad } from './geometry';
+export { freeRoute, route, shapePath, sides } from './routes';
+export type { Route } from './routes';
