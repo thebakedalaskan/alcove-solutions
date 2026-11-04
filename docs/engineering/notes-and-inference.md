@@ -505,8 +505,9 @@ the note ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can
 breakout rooms' sections too. It needs a `ready` note with transcript lines, the call's or a room's
 (`409 conflict` otherwise), and allows 20 questions a minute per account. The answer is one `text` part followed by up to four `cite` parts, each the note's ID and seconds
 into its recording the app can play from, and up to two `screen` parts, the note's shared screens it was read
-on (a `ScreenMoment`'s ID and second). Questions and answers are not stored, keep no operation receipt, and
-cost no credits. Writing an answer can take up to a minute, so once it's written the asker's access is checked
+on (a `ScreenMoment`'s ID and second). Questions and answers go to the person asking alone. They aren't stored
+unless that person keeps one in [their own notes](#your-own-notes), keep no operation receipt, and cost no
+credits. Writing an answer can take up to a minute, so once it's written the asker's access is checked
 again: if the note was deleted or removed from their notes meanwhile, the answer, which may quote it, isn't
 sent (`409 conflict`).
 
@@ -676,8 +677,99 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   paused (`409 conflict`), and nothing is sent to NEAR AI. They need a live call that has had notes on
   (`409 conflict` otherwise).
 - **Not broadcast, not kept.** Nothing about catching up goes into the call's state or nudges anyone else's
-  browser. Questions and answers aren't stored anywhere, and no operation receipt is kept. Catching up and
+  browser. Questions, answers and catch-ups aren't stored anywhere, and no operation receipt is kept, unless
+  the person asking keeps an answer in [their own notes](#your-own-notes). Catching up and
   asking are limited like asking about notes, 20 a minute, counted per connection to the call.
+
+## Your own notes
+
+Everyone with an account in a call, and everyone who has its notes afterwards, keeps their own notes on it: what they
+write for themselves, the moments they bookmark and the answers they keep (`apps/api/src/modules/personal.ts`). They're
+for their author alone. The organizer doesn't read them, and nor does anyone else who has the note. Keeping shared
+notes and your own side by side, with the audience said before you write, is the point of the feature: **Yours** in
+the call's panel and **Your notes** beside a note say **Only you**, while the note itself says **Everyone with the
+notes**.
+
+- **One record for each person and note.** All of someone's notes on one note are a single sealed record in
+  `personal_notes`, so the rows show that they have some, not how many bookmarks they made. It's sealed under the
+  author's own keys, never the organizer's, with a header that binds the author and the note: opening the organizer's
+  account doesn't open it, and a record moved to another person's row or another note doesn't open
+  ([Privacy › Records and envelopes](privacy-keys-and-sessions.md#records-and-envelopes)). Each change replaces the
+  record, so there are no revisions: what you delete is gone. The last entry takes the row with it. There's room for
+  200 entries on a call. `GET`, `POST`, `PATCH` and `DELETE` on `/v1/notes/:id/personal` work on your own, for anyone who
+  has the note; there's no route that names anyone else's, and an entry that isn't yours is `404 not-found`, as for one
+  that never was.
+- **In a call.** `/v1/live/calls/:id/personal` takes the same requests, with the call's pass and the session of the
+  account that joined with it: the pass alone isn't enough (`403 forbidden` for another account's session,
+  `401 unauthenticated` for none). They go with the call's note, so they start when notes first come on, and they
+  carry on while notes are paused or off: they're your own words, nothing goes to the AI, and a mark made then says
+  nothing was captured. Someone with only the link has no account to keep anything under and doesn't get the note, so
+  they're refused (`403 forbidden`) and the app doesn't offer it. Nothing goes into the call's state or nudges
+  anyone's browser. Once the call has ended the same notes are read by the note (`409 conflict` here).
+- **Bookmarks** are pointers, never copies: a line by its ID (line IDs stay the same from the live transcript into the
+  note), a shared screen by its frame, or a moment. "Mark this" (**B**, the dock, **More** on a phone, or **Mark this**
+  in Yours) keeps when it was pressed, where that falls in the recording, and the breakout room if any, and opens at the
+  line just said, up to two minutes back. A mark made while nothing was captured there keeps no place in the recording.
+  You can only bookmark what you may read: anything else is `404 not-found`, whether or not it exists.
+- **Access is read again every time.** What a bookmark points at is resolved on each read and never stored. During a
+  call that's the call's one rule ([Catching up › Who reads what](#catching-up-during-a-call)), so a bookmark of the main
+  room says nothing of what it points at from a breakout room (`reach: later`), and a room's line can't be opened from
+  the main room; opening a moment checks again. The app reads them again when you move. After the call it's the note,
+  where everyone who has it reads every room's section (`reach: open`), or `reach: none` if nothing was captured there.
+  Without the note, nothing opens.
+- **Answers are kept only when you say so.** Asking keeps nothing, in a call or on a note, as ever. **Keep in your
+  notes** under an answer keeps the question, the answer and its moments. The browser sends them, since nothing
+  stored them; the moments are checked, and any the asker may not read are dropped. It's their own record, so what it
+  claims matters only if it's shared, which needs moments behind it (below). Catch-ups aren't kept. We keep only on
+  request because #78's promise was that asking keeps nothing: that stays true unless someone acts.
+- **No model reads them.** Asking about a note, across notes or across a series, writing the notes, and catching up
+  never read anyone's own notes. Nor does a series carry them: only what's been added to the shared notes is part of
+  the note.
+
+### Adding to the shared notes
+
+This is the only way anything leaves someone's own notes (`apps/api/src/modules/additions.ts`), one entry at a time,
+once the notes are written. During a call the people who'll get the notes aren't settled (someone let in from the link
+joins the invite), so a preview couldn't say who reads it.
+
+- **Preview.** `POST /v1/notes/:id/personal/:entryId/preview` sends nothing. It says the words that would go, the moments
+  with them, where (**Added by people** on that note) and everyone who has the notes now, and it gives a seal: a keyed
+  hash, under the author's keys, of the entry, its moments and those people.
+- **Add.** `POST /v1/notes/:id/personal/:entryId/add` takes the words as they stand in the preview, cut down or changed by
+  the person, and the seal. Everything is read again holding the note's lock, and the seal has to match: if anyone
+  got the notes since, or the moments changed, it's `409 conflict` and the app shows the preview again, so nothing
+  reaches more people than the person saw.
+- **What goes.** Only that entry, and only the words left in the box: never the rest of their notes. An answer's
+  question doesn't go, nor does the fact that there was one: an addition says who added it, not where it came from. An
+  answer goes only if it has moments and every one of them is in this note, so everyone reading it can check it against
+  what was said; otherwise it stays yours (`409 conflict`), and you can say it in your own words. A bookmark
+  goes as its label and the line or screen it points at.
+- **Each reader's moments.** An addition keeps pointers. They're resolved for each reader, each time they read the
+  note, and one they can't open isn't shown. Everyone who has a note reads all of it today, so they all see the same;
+  the check is there so that stays true if that ever changes.
+- **Lineage.** The copy is sealed under the note's organizer's keys, like the note, in `note_additions`, under the
+  author's name as it was. Their own entry keeps which addition came from it, and shows **In the shared notes** for as
+  long as that exists. Editing or deleting the entry doesn't reach the copy. An addition isn't a decision or a follow-up,
+  and nothing makes it one: that's a seam for confirming decisions, which can offer to propose one from an addition.
+- **Taking back.** `DELETE /v1/notes/:id/additions/:id` removes it for everyone, for good. Whoever added it can, and so
+  can the organizer, whose notes they are; anyone else who has the notes is `403 forbidden`. It's kept in its own table
+  and not in the note's manifest because a note's revisions stay until the note is deleted: a new revision would leave
+  the words in an old one. The entry stays in its author's notes, and can be added again.
+- **What stays.** An addition stays when its author removes the note or deletes their account, as a note they shared on
+  does: they chose to share it, and it's the organizer's note. It goes with the note. They can't take it back
+  after removing the note, so the app says so before they do.
+
+### What happens to your own notes
+
+- **The note is deleted**: everyone's own notes on it and everything added to it go, in the same transaction.
+- **You remove someone else's note from yours**: your own notes on it are deleted in the same transaction, for good.
+  They can quote it (a kept answer, a bookmark's label), and you no longer have it, so they aren't kept for later;
+  being given the note again starts over. The app says so first. Nothing else takes a note from someone today.
+- **You're removed from a call and taken off the invite**: you never get the note, so whatever you wrote during it is
+  deleted in the transaction that gives everyone else the note.
+- **You delete your account**: everything of yours goes with it.
+- **Your sign-in's address changes**: you no longer have notes given to the old address, and your own notes on them
+  wait, sealed, until you do again or the note goes.
 
 ## Captions in another language
 
@@ -1071,6 +1163,17 @@ for someone still asking, the same organizer's other call and another account's 
 there), a pass for another call and a malformed moment; and nothing reaching the call's state (its version
 doesn't move, others see the same call) or any row, object, receipt or log line, with the question sealed on the
 wire to NEAR AI.
+`apps/api/src/personal.integration.test.ts` covers your own notes: nobody else reaching them, in a call or by the note
+(the organizer, other invitees, a guest, a stranger, another account's session with someone's pass, no session, and
+another person's entry IDs); bookmarks reading their source again as someone moves between the main room and a breakout
+room, refused for what they can't read, and all of it opening once the note is written; lines and screens of another
+note refused; answers kept only when asked, with only moments the asker may read; the preview sending nothing and
+giving exactly what goes; only the words in the box reaching the notes; a seal refused when it's made up, another entry's,
+another person's, or when who has the notes changed; waiting for the notes to be written; an answer's question never
+going, and an answer with nothing behind it staying yours; taking back, physically and with no new revision, by whoever may;
+what happens when someone removes a note, the note is deleted, an account is deleted or someone's taken off the invite;
+that a record won't open in another person's row; and nothing reaching a row of any table, an object, a log line, a
+receipt, or a model, sealed or not.
 `apps/api/src/series.integration.test.ts` covers series: scheduling the next call (and the times it
 refuses), what carries over for the organizer and for everyone invited, staleness, decisions that no longer
 hold and questions answered, someone invited to only the second call (who sees only that one, can't open the
@@ -1092,7 +1195,9 @@ One fixed behaviour, with no settings (Alcove has no retention rules to choose):
 | Shared-screen frames (sealed images in the object store) and what was read on them | With the note, which shows them beside the lines said then | Deleted with the note |
 | The note: transcript, notes, decisions and follow-ups with who changed them, corrections with what they were before | Until the organizer deletes it (for everyone); anyone else removing it removes only their own access | Deleted with every revision |
 | Earlier revisions of a note | With the note: a correction or a change writes a new revision, and the old ones stay, so nothing is quietly rewritten | Deleted with the note |
-| Questions, answers and catch-ups | Never stored | |
+| Questions, answers and catch-ups | Never stored, unless someone keeps an answer in their own notes | |
+| Someone's own notes: what they wrote, bookmarks, answers they kept | While they have the note, under their own keys, with no earlier versions | Deleted with the note, when they remove it from theirs, with their account, or at the end of the call if they were taken off the invite |
+| What someone added to the shared notes | With the note, under its organizer's keys, in its own row | Deleted when it's taken back, and with the note. It stays if its author removes the note or deletes their account |
 | A call's MLS log (`call_mls`) | While the call runs | Deleted when it ends |
 
 Deleting is physical: rows, revisions, receipts and audio objects (a failed object delete is queued in
