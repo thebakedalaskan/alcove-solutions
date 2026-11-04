@@ -187,8 +187,11 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
 }
 
 interface Shown { n: number; at: number; title: string; parts: number }
-/** A line of what was said, and the shared screen up when it was (the last one above it in the transcript). */
-interface Heard { at: number; who: string; text: string; screen: Shown | undefined }
+/**
+ * A line of what was said, the shared screen up when it was (the last one above it in the transcript), and its number
+ * when the lines are numbered ("L12 [mm:ss] …"; 0 when they aren't).
+ */
+interface Heard { at: number; who: string; text: string; screen: Shown | undefined; ref: number }
 /** Reads back the "[mm:ss] [screen N from Name, legible] Title. Reads: … Parts: (1) …" lines, in order. */
 function screensIn(prompt: string): Shown[] {
   return prompt.split('\n').flatMap((l) => {
@@ -196,14 +199,14 @@ function screensIn(prompt: string): Shown[] {
     return m ? [{ at: Number(m[1]) * 60 + Number(m[2]), n: Number(m[3]), title: m[4] ?? '', parts: (l.match(/ \(\d+\) /g) ?? []).length }] : [];
   });
 }
-/** Reads back "[mm:ss] Name: words" lines from a prompt, each with the screen above it, as a reader takes them in. */
+/** Reads back "[mm:ss] Name: words" lines from a prompt, numbered or not, each with the screen above it, as a reader takes them in. */
 function heardIn(prompt: string): Heard[] {
   let screen: Shown | undefined;
   return prompt.split('\n').flatMap((l) => {
     const shown = screensIn(l)[0];
     if (shown) { screen = shown; return []; }
-    const m = /^\[(\d+):(\d\d)\] (?:([^:]+): )?(.*)$/.exec(l);
-    return m ? [{ at: Number(m[1]) * 60 + Number(m[2]), who: m[3] ?? '', text: m[4] ?? '', screen }] : [];
+    const m = /^(?:L(\d+) )?\[(\d+):(\d\d)\] (?:([^:]+): )?(.*)$/.exec(l);
+    return m ? [{ ref: Number(m[1] ?? 0), at: Number(m[2]) * 60 + Number(m[3]), who: m[4] ?? '', text: m[5] ?? '', screen }] : [];
   });
 }
 /** What was said about something shown points at the screen up then: plainly ("this chart", "the slide"), or maybe ("that"). */
@@ -225,12 +228,16 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
   const onScreen = (h: Heard) => { const x = shownAt(h); return x ? { screen: x.n, part: x.parts ? 1 : null, sure: PLAINLY.test(h.text) } : { screen: null, part: null, sure: false }; };
   const item = (h: Heard) => ({ text: h.text, at: h.at, ...onScreen(h) });
   if (system.startsWith('You help someone catch up')) {
+    // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
+    // can't back with any line it was sent: what Alcove shows must come only from lines that were read.
+    const nowhere = heard.length + 7;
+    const cited = (h: Heard) => ({ text: h.text, lines: [h.ref, `L${nowhere}`, 0] });
     return {
       summary: `Catching up on ${heard.length} lines.`,
-      decided: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(item),
-      proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(item),
-      open: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
-      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...item(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
+      decided: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(cited), { text: 'Everyone agreed to double the budget.', lines: [nowhere] }],
+      proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(cited),
+      open: heard.filter((h) => h.text.trim().endsWith('?')).map(cited),
+      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...cited(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
     };
   }
   if (system.startsWith('You translate')) {
@@ -267,6 +274,10 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
     return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, at: found.h.at }] : [] };
   }
   const hit = heard.find((h) => words.some((w) => h.text.toLowerCase().includes(w)));
+  // A call still going on is asked about with its lines numbered: the answer points at them (and at one that isn't there).
+  if (system.startsWith('You answer a question about a meeting that is still going on')) {
+    return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', lines: hit ? [hit.ref, heard.length + 3] : [] };
+  }
   const shown = hit && /chart|slide|screen/i.test(question) ? hit.screen : undefined;
   return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', moments: hit ? [hit.at] : [], screens: shown ? [shown.n] : [] };
 }

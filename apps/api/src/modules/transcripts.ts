@@ -33,11 +33,12 @@ export interface Target { recordingId: string; noteId: string }
 
 /**
  * A line as kept. In a call, `speaker` is the participant ID of whoever said it (named from the call when it's
- * shown), `room` the breakout room it was said in, if any, and `readers` (said while rooms were open) who may read
- * it: the people in that part of the call when it was said, by their call seat's person. A room recording names
- * nobody, and anyone with the recording reads it.
+ * shown), `room` the breakout room it was said in, if any, `readers` (said while rooms were open) who may read
+ * it: the people in that part of the call when it was said, by their call seat's person, and `when` when it was said
+ * (ms, on the server's clock), which catching up reads by. A room recording names nobody, and anyone with the
+ * recording reads it.
  */
-const Line = z.object({ id: z.string(), at: z.number(), text: z.string(), speaker: z.string().optional(), room: z.string().optional(), readers: z.array(z.string()).optional() });
+const Line = z.object({ id: z.string(), at: z.number(), when: z.number().optional(), text: z.string(), speaker: z.string().optional(), room: z.string().optional(), readers: z.array(z.string()).optional() });
 export type Line = z.infer<typeof Line>;
 /** A line, and the segment of the recording its clip was part of. */
 export type HeardLine = Line & { segment: number };
@@ -78,8 +79,11 @@ const key = (o: Owner, noteId: string) => stateKey(o.root, o.ownerId, `transcrip
 const tagOf = (o: Owner, noteId: string, segment: number, startMs: number, speaker: string) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}:${speaker}`));
 const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, kind: 'transcript-clip', ownerId: o.ownerId, noteId, tag: b64u(tag) });
 
-/** Whose speech a call's clip is (a participant ID), the breakout room it was said in, if any, and who may read it, if not everyone in the call. */
-export interface Heard { speaker: string; room?: string | undefined; readers?: string[] | undefined }
+/**
+ * Whose speech a call's clip is (a participant ID), the breakout room it was said in, if any, who may read it, if not
+ * everyone in the call, and when its speech began (ms, on this server's clock), so each line knows when it was said.
+ */
+export interface Heard { speaker: string; room?: string | undefined; readers?: string[] | undefined; began: number }
 /**
  * Asked inside the transaction that keeps a clip or a translation, holding the call's row: whether what it belongs
  * to is still there. False drops it (its room closed while it was being transcribed, and that room's lines are gone).
@@ -107,7 +111,7 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
   const { heard, language, evidence } = await transcribe(o.cfg, clip.wav, clip.durationMs, context);
   const lines: Line[] = heard.map((x) => ({
     id: id128(), at: Math.round((at + x.start) * 10) / 10, text: x.text,
-    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}) } : {})
+    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}), when: Math.round(by.began + x.start * 1000) } : {})
   }));
   const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}) };
   const kept = await tx(o.pool, async (c) => {
