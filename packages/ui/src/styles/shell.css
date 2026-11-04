@@ -1,0 +1,170 @@
+/*
+ * The frame every screen sits in: the side panel on the ground (272px, sticky, its middle scrolling when it's
+ * long) and the page beside it; at 860px and narrower a top bar that scrolls with the page and a tab bar fixed
+ * at the bottom instead. The palette, which finds notes and asks them, drops from the top like the composer.
+ */
+.world-in { animation: ac-fade var(--duration-3) var(--ease-out) both; }
+
+/* ----------------------------------------------------------------- shell */
+.shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; transition: grid-template-columns var(--duration-3) var(--ease-out); }
+.shell.is-bare { grid-template-columns: 0px minmax(0, 1fr); }
+.main { min-width: 0; padding: 34px clamp(20px, 3.4vw, 56px) 80px; }
+.main-in { max-width: 1480px; margin: 0 auto; }
+.main-in.enter > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
+/* With the side panel hidden, its button waits in the top-left corner, clear of the page, and its offline notice tops the page. */
+.shell.is-bare .main { padding-left: max(72px, clamp(20px, 3.4vw, 56px)); }
+.sb-show { position: fixed; z-index: 20; top: 24px; left: 16px; background: var(--ground); }
+.main-offline { max-width: 1480px; margin: 0 auto; }
+.main-offline .sb-status { width: fit-content; max-width: 100%; margin: 0 0 24px; }
+
+/* ------------------------------------------------------------ side panel */
+/* Clipped, never scrolled: focus moving through the panel scrolls only its middle. */
+.sb { position: sticky; top: 0; z-index: 10; height: 100vh; height: 100dvh; min-width: 0; overflow: hidden; overflow: clip; background: var(--ground); color: var(--ink); box-shadow: inset -1px 0 0 var(--line); }
+.sb-in { width: 272px; height: 100%; display: flex; flex-direction: column; gap: 4px; padding: 20px 14px 16px; transition: opacity var(--duration-2) var(--ease-out), transform var(--duration-3) var(--ease-out); }
+.shell.is-bare .sb { box-shadow: none; }
+.shell.is-bare .sb-in { opacity: 0; transform: translateX(-16px); }
+.sb-top { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 0 16px 10px; }
+.sb-home { margin-right: auto; border-radius: var(--radius-sm); }
+/* The offline notice. Its status region is always there; empty, it takes no room in the panel. */
+.sb-offline:empty { margin-top: -4px; }
+.sb-status { flex: none; display: flex; align-items: flex-start; gap: 9px; margin: -4px 0 10px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--horizon-soft); color: var(--horizon); font: 500 12.5px/1.4 var(--font-sans); }
+.sb-status .ac-i { margin-top: 1px; }
+.sb-status b { display: block; font-weight: 600; }
+.sb-new { flex: none; width: 100%; justify-content: flex-start; gap: 10px; padding: 0 12px 0 14px; }
+.sb-new .ac-kbd { margin-left: auto; background: color-mix(in srgb, var(--on-sun) 16%, transparent); color: var(--on-sun); box-shadow: none; opacity: .8; }
+/* Looks like the search field it opens. */
+.sb-search { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; margin: 8px 0 12px; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: var(--surface); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); font: 400 14px/1 var(--font-sans); text-align: left; cursor: text; transition: box-shadow var(--duration-1); }
+.sb-search:hover { box-shadow: inset 0 0 0 1px var(--line-control); }
+.sb-search > span { flex: 1; min-width: 0; }
+.sb .ac-nav { flex: none; }
+/*
+ * Up next, pinned and groups scroll between the places and the foot. A hairline shows at an edge with more
+ * beyond it: the ground-coloured covers travel with the list and hide each line while its edge is reached.
+ */
+.sb-mid {
+  position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  margin: 0 -14px; padding: 0 14px 4px;
+  background:
+    linear-gradient(var(--ground), var(--ground)) top / 100% 1px no-repeat local,
+    linear-gradient(var(--ground), var(--ground)) bottom / 100% 1px no-repeat local,
+    linear-gradient(var(--line), var(--line)) top / 100% 1px no-repeat scroll,
+    linear-gradient(var(--line), var(--line)) bottom / 100% 1px no-repeat scroll;
+}
+/* One column that never grows past the panel: long titles end in … instead. */
+.sb-sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin-top: 20px; }
+.sb-sec-h { display: flex; align-items: center; justify-content: space-between; min-height: 24px; padding: 0 4px 0 12px; margin-bottom: 4px; }
+.sb-sec-h .ac-eyebrow { font-size: 11px; letter-spacing: .1em; }
+.sb-sec-h .ac-icon-btn { width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); }
+.sb-sec-h .ac-icon-btn:hover { color: var(--ink); }
+.sb-hint { padding: 4px 12px 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.sb-next { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 0 2px; padding: 12px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
+.sb-next-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; }
+.sb-next-top .ac-arch-thumb { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
+.sb-next b { display: block; font: 600 14px/1.25 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-next small { display: block; margin-top: 4px; font: 500 12px/1 var(--font-mono); color: var(--sun-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-next-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; }
+.sb-next-foot .ac-btn { margin-left: auto; }
+.sb-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
+.sb-link { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 10px; color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.sb-link > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.sb-link:hover, a.sb-link[aria-current="page"] { background: var(--sunk); color: var(--ink); }
+.sb-link .ac-arch-thumb { box-shadow: none; }
+.sb-link > .ac-i { color: var(--ink-3); }
+.sb-link .n { flex: none; margin-left: auto; padding-left: 6px; font: 500 12px/1 var(--font-mono); color: var(--ink-3); }
+.sb-foot { flex: none; display: grid; gap: 4px; padding-top: 20px; }
+.sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
+.sb-seal .ac-i { color: var(--sun-text); }
+.sb-credits { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-md); color: var(--ink-2); font-size: 13px; line-height: 1.3; transition: background-color var(--duration-1); }
+.sb-credits b { color: var(--ink); font-weight: 600; }
+.sb-credits:hover { background: var(--sunk); }
+.sb-me { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); text-align: left; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.sb-me:hover, .sb-me[aria-expanded="true"] { background: var(--sunk); }
+.sb-me .who { flex: 1; min-width: 0; }
+.sb-me b { display: block; font: 600 14px/1.2 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-me small { display: block; margin-top: 2px; font-size: 12px; line-height: 1.2; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-me > .ac-i { color: var(--ink-3); }
+/* The menu under your name (AccountMenu.tsx), from the side panel or the phone's top bar. */
+.me-menu { width: 288px; }
+/* A short window: the whole panel scrolls instead of squeezing its middle to nothing. */
+@media (max-height: 640px) {
+  .sb-in { overflow-y: auto; }
+  .sb-mid { flex: none; min-height: auto; overflow: visible; background: none; }
+}
+
+/* ----------------------------------------------------------------- phone */
+.ph-head, .tabbar { display: none; }
+@media (max-width: 860px) {
+  .shell, .shell.is-bare { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .sb, .sb-show, .main-offline { display: none; }
+  .main, .shell.is-bare .main { padding: 18px 18px calc(110px + env(safe-area-inset-bottom, 0px)); }
+  .ph-head { display: block; padding: 22px 18px 0; }
+  .ph-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .ph-top .ac-brand { gap: 8px; font-size: 19px; }
+  .ph-home { border-radius: var(--radius-sm); }
+  .ph-end { display: flex; align-items: center; gap: 6px; }
+  .ph-end .ac-icon-btn { width: 44px; height: 44px; border-radius: var(--radius-md); }
+  .ph-me { display: inline-flex; border-radius: var(--radius-sm); }
+  .ph-me[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--sunk); }
+  .ph-offline .sb-status { margin: 14px 0 0; }
+  .tabbar { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: end; padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px)); background: var(--surface); box-shadow: inset 0 1px 0 var(--line); }
+  /* Toasts rise above the tab bar and Record's raised button. */
+  body:has(.tabbar) .ac-toasts:not(.on-stage) { bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+}
+.tab { display: grid; justify-items: center; align-content: end; gap: 5px; min-height: 52px; padding-top: 6px; border-radius: var(--radius-sm); font: 600 11px/1 var(--font-sans); color: var(--ink-3); -webkit-tap-highlight-color: transparent; transition: color var(--duration-1); }
+.tab:hover { color: var(--ink-2); }
+.tab[aria-current="page"] { color: var(--ink); }
+.tab[aria-current="page"] .ac-i { color: var(--sun-text); }
+.tab:focus-visible { outline-offset: -2px; }
+/* Record stands up out of the bar: a piece of the night recorder, its light in the night's rec (the dot is scoped .dark). */
+.tab-rec { display: grid; place-items: center; width: 56px; height: 56px; margin: -24px auto 2px; border-radius: 50%; background: var(--stage-tile); box-shadow: var(--shadow-2), inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-1) var(--ease-out); }
+.tab-rec i { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--rec) 60%, var(--stage-ink)), var(--rec) 60%, color-mix(in srgb, var(--rec) 76%, var(--stage))); box-shadow: 0 0 14px 2px color-mix(in srgb, var(--rec) 45%, transparent); }
+.tab.is-raised:active .tab-rec { transform: scale(.96); }
+
+/* --------------------------------------------------------------- palette */
+.ac-sheet.pal { display: flex; flex-direction: column; width: min(680px, calc(100vw - 28px)); max-height: calc(100dvh - 13vh - 24px); }
+.pal-line { flex: none; margin: 14px 14px 0; box-shadow: inset 0 0 0 1px var(--line); }
+.pal-line .ac-kbd { margin-right: 10px; }
+.pal-body { flex: 1 1 auto; min-height: 0; max-height: 440px; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px 10px; }
+.pal-grp { padding: 12px 12px 6px; font: 500 11.5px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.pal-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; color: var(--ink); cursor: pointer; transition: background-color var(--duration-1); }
+.pal-row.is-active { background: var(--sunk); }
+.pal-row.is-off { cursor: default; }
+.pal-row.is-off .t { opacity: .55; }
+.pal-row .t, .pal-cite .t { min-width: 0; }
+.pal-row b, .pal-cite b { display: block; font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-row small, .pal-cite small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-row mark { background: var(--sun-soft); color: var(--sun-text); border-radius: 4px; padding: 0 2px; }
+.pal-row .go { color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), transform var(--duration-1); }
+.pal-row.is-active .go { opacity: 1; transform: translateX(2px); }
+/* Pinned notes carry the pin in sun-text, as chosen things do; the row you're on says what Enter does. */
+.pal-pin { display: inline-flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-3); white-space: nowrap; }
+.pal-pin > .ac-i { color: var(--sun-text); }
+.pal-act { opacity: 0; transition: opacity var(--duration-1); }
+.pal-row.is-active .pal-act { opacity: 1; }
+[role="listbox"].is-stale { opacity: .6; transition: opacity var(--duration-2); }
+.pal-none { display: grid; justify-items: center; gap: 4px; padding: 26px 18px 22px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); text-align: center; text-wrap: balance; }
+.pal-none b { font: 600 14.5px/1.4 var(--font-sans); color: var(--ink-2); }
+.pal-none .ac-dots { color: var(--ink-3); }
+/* The answer: the line above already holds the question. */
+.pal .answer { margin: 0; padding: 12px 12px 4px; animation: none; }
+.pal .answer .q { display: none; }
+.pal .answer > p { font-size: 15.5px; line-height: 1.6; color: var(--ink); text-wrap: pretty; }
+.answer .wait { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-3); }
+.pal-src { margin: 12px -12px 0; }
+.pal-src ul { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
+.pal-cite { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; }
+.pal-cite .t { border-radius: 6px; }
+.pal-cite .t:hover b { color: var(--sun-text); }
+.pal-cite .at { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 220px; }
+.pal-foot { flex: none; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 18px; border-top: 1px solid var(--line); }
+.pal-foot .hint { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 1.35; color: var(--ink-3); }
+.pal-foot .hint .ac-i { color: var(--ink-3); }
+.pal-foot .hint.is-sealed .ac-i { color: var(--sun-text); }
+@media (max-width: 600px) {
+  .ac-sheet.pal { top: 12px; max-height: calc(100dvh - 24px); }
+  .pal-body { max-height: none; }
+  .pal-esc, .pal-foot .kb { display: none; }
+  .pal-foot { padding: 12px 12px 12px 16px; }
+  .pal-cite { grid-template-columns: auto minmax(0, 1fr); }
+  .pal-cite .at { grid-column: 2; justify-content: flex-start; max-width: none; }
+}

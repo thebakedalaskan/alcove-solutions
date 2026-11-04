@@ -95,7 +95,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 | Purpose | Value | Stored in | Used for |
 | --- | --- | --- | --- |
 | `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
-| `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team directory); who else may read a note |
+| `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team and who on it uses Alcove); who else may read a note |
 | `call-code` | The call's code from its link | `call_codes.code_hash` | Finding a call for anyone with the link, guests included |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
@@ -144,7 +144,8 @@ The hash is deterministic, so equal values show the same person across rows and 
   minute. An ended session is deleted when its cookie is next presented, and maintenance sweeps the rest every
   5 minutes.
 - **Several per account.** Each browser has its own session; signing out (`POST /v1/session/sign-out`)
-  deletes only that one. Sessions live in Postgres, so they survive restarts and work on any API instance.
+  deletes only that one, and deleting the account deletes them all ([Deletion](#deletion)). Sessions live in
+  Postgres, so they survive restarts and work on any API instance.
 - **Refusals.** No cookie, or an unknown or ended one: `401 unauthenticated` (a stale cookie is also
   cleared), and the app goes back to the welcome screen.
 - **Never logged.** Session IDs are bearer secrets; logs identify a session by its `ownerId`.
@@ -162,8 +163,16 @@ The hash is deterministic, so equal values show the same person across rows and 
   so when the calendar is granted but no refresh token has ever arrived, the callback signs the person in
   and sends them back to Google once more with `prompt=consent` to get one. The Connect button
   (`GET /v1/auth/google?consent=1`) asks again for the account already signed in.
+- **Disconnecting.** `DELETE /v1/calendar` deletes the `connection` item and its revisions from the database
+  (no flag, no tombstone), drops the cached access token, and asks Google to revoke the refresh token (best effort:
+  a failure is logged as a warning with Google's error code, or the timeout or network error, and the disconnect
+  still stands). A Google account with no connection then reads as
+  `needsAccess`, and Connect asks again. Calls scheduled earlier keep their event ids, but with no connection
+  nothing is sent to Google when they change or are cancelled.
+- **Keeping calls off the calendar.** The `addToCalendar` preference (default on) is read from the sealed
+  profile when a call is scheduled. Off, the call is never placed on Google, so it has no event to update or cancel.
 - **Access tokens** live only in the API process's memory, per account, until a minute before they expire,
-  and are renewed from the refresh token. A Calendar call that gets `401` drops the cached token and tries
+  and are renewed from the refresh token; a renewal that finishes after its account was deleted isn't kept. A Calendar call that gets `401` drops the cached token and tries
   once more. When Google answers a renewal with `invalid_grant` (access withdrawn at Google), the refresh
   token and the calendar scope are removed from the connection, and the app offers to connect again.
 - **What goes to Google.** Scheduling, changing or cancelling a call while the calendar is connected
@@ -181,7 +190,8 @@ The hash is deterministic, so equal values show the same person across rows and 
   occurrence of a recurring event carries Google's ID for the whole recurring event (`recurringEventId`):
   adopting one keeps that ID inside the call's sealed manifest, so every occurrence held in Alcove is in one
   series, and the calendar view marks later occurrences with it
-  ([Notes and inference › Series](notes-and-inference.md#series)).
+  ([Notes and inference › Series](notes-and-inference.md#series)). The meeting also records that its event
+  was adopted, so deleting the account leaves the event where it is ([Deletion](#deletion)).
 - **Never logged:** ID tokens, refresh and access tokens, Google's error descriptions, and Google's event IDs
   (an occurrence's ID begins with its recurring event's, so logged paths, the server's and the browser's,
   show `/v1/calendar/events/:id`, and a refused adopt's error names no event). Only Google's error code
@@ -192,8 +202,8 @@ The hash is deterministic, so equal values show the same person across rows and 
 A note lives in its organizer's vault, sealed under their keys. `note_access` lists who else may read it,
 one row per person: `(owner_id, note_item_id, email_index, role)`.
 
-- **Invited.** When a call with notes ends, every address invited to the call gets a row with role `invited`.
-  Until then nobody invited can find the note.
+- **Invited.** When a call with notes ends, every address invited to the call gets a row with role `invited`,
+  and the note records, sealed, when the call ended. Until then nobody invited can find the note.
 - **Let in from the link.** Someone signed in whom the organizer lets in during the call is added to the
   invite then, so they get an `invited` row too. Letting them in is the organizer's grant: only someone who
   asked counts, and the organizer sees their address before deciding (their toast opens People rather than
@@ -205,13 +215,18 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   added: joining a call, or having been in it, opens no note and no transcript
   ([Calls and recordings › Group calls](calls-and-recordings.md#group-calls)).
 - **Shared.** Anyone who can read a note can share it on by email once the call has ended or the room
-  recording has stopped (`POST /v1/notes/:id/share`). Each new address gets a row with role `shared` and joins
-  the note's sealed `shared` list; addresses that already have the note are skipped.
+  recording has stopped (`POST /v1/notes/:id/share`), up to 50 addresses at a time, with the name of one of
+  their groups when they picked one. Each new address gets a row with role `shared` and joins the note's sealed
+  `shared` list with who shared it, the group's name and when; addresses that have the note are skipped. A
+  group itself (its name and addresses) is sealed in its owner's profile: the app sends its addresses and name,
+  and the server never looks a group up. Everyone who has the note sees how each person got it, and each reader
+  is told their own way: invited to the organizer's call, or shared by whom and with which group.
 - **The check.** `locate` in `apps/api/src/modules/notes.ts` looks in the caller's own vault first. Otherwise it
   needs a `note_access` row for that note and the caller's email index, taken from their profile email; only
   then does it open the organizer's keys and read the note. The note, its audio, its progress stream, its
   follow-ups, asking about it and sharing all go through this check. Anyone else gets `404 not-found`, the
-  same answer as for a note that doesn't exist.
+  same answer as for a note that doesn't exist. A note whose organizer deletes their account while it's being
+  read is not found either, and drops out of lists and the inbox: it's never a signed-out answer for the reader.
 - **The live transcript** is only in the organizer's own call or room recording; nobody else sees it until
   the note is finished and given to them.
 - **Decisions, open questions and follow-ups** are one list for everyone who has the note, and every
@@ -220,8 +235,11 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   `proposed` until someone who has the note confirms it (and a confirmed one can later be said to no longer
   hold), a question stays open until someone says it was answered, and a follow-up's owner is a suggestion
   until that person takes it on. Only the person a follow-up is for can take it on (`403 forbidden` for
-  anyone else; giving it to yourself is taking it on), and it can only go to someone who has the note.
-  Refusals name nobody, so no name reaches a log line.
+  anyone else; giving it to yourself is taking it on), and it can only go to someone who has the note now
+  (read under the note's lock, so someone who removed it isn't given one). The inbox, and a question across
+  your notes (`POST /v1/notes/ask`), are read per request from the notes you have, your own and ones reached
+  through your `note_access` rows; neither keeps anything, and a question names no note, so it can't reach
+  anyone else's. Refusals name nobody, so no name reaches a log line.
 - **The transcript** of a written note can be corrected: by the organizer, any line, its words and who said it;
   by anyone else who has the note, the words of their own lines (`403 forbidden` otherwise). Each correction is
   a new revision with who made it and when, and only the organizer has the notes written again from it
@@ -231,12 +249,13 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   ([Notes and inference › Series](notes-and-inference.md#series)). Being in a series opens nothing: someone
   invited to one call sees that call's notes in it and no other, a note deleted or removed is gone from it at
   once, and asking across a series sends the notes model only the calls the asker has. An answer takes a
-  while to write, so the check runs again once it's written, for every note it read (and for the one note
-  when asking about a note): if any went meanwhile, the answer isn't sent (`409 conflict`). A series ID that
-  comes from a request is treated like a note ID: anyone with no notes from it gets `404 not-found`, and
-  only the organizer sees its next call.
+  while to write, so the check runs again once it's written, for every note it read (the calls of a series,
+  the one note when asking about a note, the notes sent when asking across all your notes): if any went
+  meanwhile, the answer isn't sent (`409 conflict`). A series ID that comes from a request is treated like a
+  note ID: anyone with no notes from it gets `404 not-found`, and only the organizer sees its next call.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
-  else's note deletes only your own `note_access` row.
+  else's note deletes only your own `note_access` row, which also takes you off the list of who has it;
+  sharing with you again gives it back. Deleting your account does both, for every note you have.
 
 Access follows the email address, so it is only as strong as sign-in: whoever signs in with an address can
 read every note given to it. That's why the demo SSO sign-in takes only example addresses (see above).
@@ -251,19 +270,22 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may
   hold copies of responses, so they are purged after 24 hours and whenever the owner deletes a note or cancels
-  a meeting. Note search, asking (about a note, a call so far or a series), catching up, caption
-  translations, audio pieces and transcript clips keep no receipt: searching, asking and translating only
-  read, pieces and clips are already idempotent by their place in the recording, and their answers carry the
-  live transcript, which shouldn't be copied into receipts. Nor do changes to a note's decisions, open
+  a meeting. Note search, asking (about a note, across your notes, a call so far or a series), catching up,
+  caption translations, audio pieces and transcript clips keep no receipt: searching, asking and translating
+  only read, pieces and clips are already idempotent by their place in the recording, and their answers carry
+  the live transcript, which shouldn't be copied into receipts. Nor do changes to a note's decisions, open
   questions, follow-ups and transcript lines, having it written again, or sharing it: anyone who has the note can make them, and each answers with the
   whole note, so a receipt kept under someone it was given to would outlive the organizer deleting it. Each
   sets an explicit state (confirmed, answered, done, these addresses added), so a retry changes nothing anyway.
+  Deleting the account keeps none either: its receipts go with it, and a retry finds the session gone
+  (`401 unauthenticated`).
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the last
   `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
-  waits); joining by link: 120. Transcript clips: 240 a minute per account, calls and room recordings together, and 40 for each voice in a call.
+  waits); joining by link: 120. Transcript clips: 240 a minute per account, calls and room recordings together,
+  and 40 a minute for each voice in a call.
   Shared-screen frames: 24 a minute per person in a call, and
-  30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
+  30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about a note, across your notes, a call so far or a
   series): 20 a minute per account, together (during a call, per connection to it). Opening a moment of a call's
   live transcript from a catch-up: 60 a minute per connection to the call. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
@@ -326,7 +348,7 @@ third-party loads.
 
 | Where | Visible |
 | --- | --- |
-| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
+| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times (a room recording uploaded later shows when it really started); per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
@@ -357,10 +379,40 @@ third-party loads.
   receipts. With a connected calendar, its Google event is cancelled too, which tells the guests. Its notes
   stay. A live call can't be cancelled.
 - **Discarding a room recording** deletes its note in the same way as deleting your own note.
+- **Deleting your account** (`DELETE /v1/account`) removes, in one transaction: its meetings, with their calls
+  (chat, call links and MLS logs included), live ones too; every note it organized, each the way deleting your
+  own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every
+  note other people gave it, unless another account still signs in with that address; and its `owners` row,
+  from which everything else keyed by the account cascades: its identity (subject and email indexes), every
+  session in every browser, its profile (pins and groups with it), its Google connection (the refresh token),
+  its receipts, notes jobs and billing account. Then the API drops the Google access token it held in memory,
+  closes the LiveKit rooms of its calls still going (which takes everyone out of them, as ending a call does),
+  and deletes the audio and shared-screen objects; failures are queued in `object_gc`, which keeps only the object's ID and
+  the deleted account's ID until maintenance deletes it. Only then is Google asked to revoke the refresh token,
+  best effort, with 3 seconds of its own, so a slow Google never holds up the objects.
+  Before the transaction, every call Upcoming lists that is on Google Calendar is cancelled there, as Cancel
+  call does, so its guests are told: one still to come, one whose time has come but hasn't begun, and one
+  under way. A meeting the account made in Google Calendar and then moved to Alcove (adopted) is left alone:
+  the event is the person's own, so it stays on the calendar as it was, Alcove link and all, and that link
+  stops working. The cancelling is best effort too, and Google has 10 seconds for it in all: it stops at the
+  first timeout or network failure, or when the 10 seconds are up, and a warning counts the calls not
+  cancelled and carries the error (no tokens, addresses or content). Then the deletion goes ahead. The shared
+  demo account (Art Vandelay) can't be deleted: it answers `forbidden`. Locks are taken calls first, then
+  recordings, then the account, the order ending a call or a recording takes them in, so one ending at the same
+  moment finishes first or waits; a second deletion at the same moment finds nothing left and ends there,
+  even one that reads the account only after the first has committed. That ordering does not cover every overlap: a
+  single-note delete, a room recording discard, or cancelling an ended meeting in another tab at the same
+  instant as a deletion can still deadlock. Postgres aborts one of the two transactions, and retrying works.
+  Nothing is half-deleted, but when the aborted one is the deletion, the guests of its calls may already have
+  been told those calls are cancelled, because that happens before the transaction. Treat this whole class as
+  rare. Notes it shared on stay with their organizers and whoever has them, and those notes still say it
+  shared them: the sharer's name sits sealed in the organizer's note, and deleting an account writes into no
+  other vault. Signing in again with the same account starts a new one, empty, with the welcome credits.
 - **Series** have no record of their own: a series is the ID its calls share inside their sealed manifests
   (with Google's ID for a recurring event), so it goes when its calls do. What carries over is never stored,
   so a deleted or removed note leaves every series at once, with nothing derived from it left behind.
-- **Google access** stays in the account's `connection` item until the account is deleted (not built yet).
+- **Google access** stays in the account's `connection` item until it's disconnected or the account is deleted.
+  Either way Alcove asks Google to revoke the grant, best effort, so the refresh token stops working there too.
   Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
   `object_gc`, and removes objects older than 24 hours that no recording piece or shared-screen frame
@@ -472,5 +524,6 @@ Moving, in order:
 5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
    the subjects and emails the indexes hide), `Kowner` on suspected compromise, and `Kservice`; use
    `keyVersion`.
-6. **Deletion guarantees:** account deletion (not built yet) and expiry windows across backups.
+6. **Deletion guarantees:** expiry windows across backups. Deleting a note, a meeting or an account removes it
+   from the live database and object store only.
 7. **Hygiene:** strict parsing, logs without content, rate limits at the edge.

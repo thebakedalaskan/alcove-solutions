@@ -63,9 +63,53 @@ export const SignInResultSchema = z.object({
 });
 export type SignInResult = z.infer<typeof SignInResultSchema>;
 
+/** Languages notes can be written in. `call` writes them in the language the call was spoken in. */
+export const NOTES_LANGUAGES = ['call', 'en', 'es', 'fr', 'de', 'pt', 'it', 'nl', 'ja', 'zh', 'ko', 'hi', 'ar'] as const;
+export const NotesLanguageSchema = z.enum(NOTES_LANGUAGES);
+export type NotesLanguage = z.infer<typeof NotesLanguageSchema>;
+
+export const SummaryLengthSchema = z.enum(['short', 'detailed']);
+export type SummaryLength = z.infer<typeof SummaryLengthSchema>;
+
+export const NotificationPrefsSchema = z.object({
+  /** Minutes before a call to remind: 0 is off. */
+  beforeCall: z.union([z.literal(0), z.literal(1), z.literal(5)]),
+  notesReady: z.boolean(),
+  sharedWithYou: z.boolean(),
+  notesRequested: z.boolean(),
+  followUpDue: z.boolean()
+});
+export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
+
+const allUnique = (items: string[]): boolean => new Set(items).size === items.length;
+
+/** A named set of email addresses to share notes with in one step. */
+export const GroupSchema = z.object({
+  id: IDSchema,
+  name: z.string().trim().min(1).max(40),
+  emails: z.array(z.string().trim().toLowerCase().email().max(254)).min(1).max(50)
+    .refine(allUnique, 'Addresses must be unique')
+});
+export type Group = z.infer<typeof GroupSchema>;
+
+/** The most notes someone can pin. */
+export const MAX_PINS = 8;
+
 export const PreferencesSchema = z.object({
   /** Whether new calls start with notes on. Each call can still be set when it's scheduled. */
-  notesDefault: NotesSettingSchema
+  notesDefault: NotesSettingSchema,
+  notesLanguage: NotesLanguageSchema,
+  summaryLength: SummaryLengthSchema,
+  /** Put the notes link on the calendar event of calls you schedule. */
+  addToCalendar: z.boolean(),
+  /** Show calendar events that aren't Alcove calls. */
+  showOtherMeetings: z.boolean(),
+  /** Keep recording on this device when the connection drops, and upload afterwards. */
+  recordOffline: z.boolean(),
+  notifications: NotificationPrefsSchema,
+  /** Pinned note IDs, in the order they were pinned. */
+  pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
+  groups: z.array(GroupSchema).max(30).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique')
 });
 export type Preferences = z.infer<typeof PreferencesSchema>;
 
@@ -80,11 +124,11 @@ export const PersonSuggestionSchema = z.object({
 });
 export type PersonSuggestion = z.infer<typeof PersonSuggestionSchema>;
 
-/** Your company, from signing in with a work account. */
+/** Your company: the directory where there is one, otherwise the colleagues you have met. Titles come from a directory only. */
 export const TeamSchema = z.object({
   name: z.string(),
   domain: z.string(),
-  members: z.array(z.object({ person: PersonSchema, onAlcove: z.boolean(), invited: z.boolean() }))
+  members: z.array(z.object({ person: PersonSchema, title: z.string().optional(), onAlcove: z.boolean(), invited: z.boolean() }))
 });
 export type Team = z.infer<typeof TeamSchema>;
 
@@ -342,8 +386,28 @@ export type AudioSegment = z.infer<typeof AudioSegmentSchema>;
 /** How someone came to have a note: they ran the call, were invited to it, or it was shared with them after. */
 export const RecipientRoleSchema = z.enum(['organizer', 'invited', 'shared']);
 export type RecipientRole = z.infer<typeof RecipientRoleSchema>;
-export const RecipientSchema = z.object({ person: PersonSchema, role: RecipientRoleSchema });
+export const RecipientSchema = z.object({
+  person: PersonSchema, role: RecipientRoleSchema,
+  /** Who shared the notes with them. Only on people they were shared with. */
+  by: PersonSchema.optional(),
+  /** The name of the sharer's group they were shared with, when it was a group. */
+  group: z.string().optional(),
+  /** When they got the notes: when the call ended for people invited to it, or when the notes were shared with them. */
+  at: ISODateSchema.optional()
+});
 export type Recipient = z.infer<typeof RecipientSchema>;
+
+/** How you got someone else's note: invited to its call, or shared with you afterwards ("Priya shared it with Product"). */
+export const ReceivedSchema = z.object({
+  role: z.enum(['invited', 'shared']),
+  /** The organizer, for a call you were invited to; otherwise whoever shared the notes with you. */
+  by: PersonSchema,
+  /** The name of their group they shared the notes with, when it was a group. */
+  group: z.string().optional(),
+  /** When you got the notes. */
+  at: ISODateSchema
+});
+export type Received = z.infer<typeof ReceivedSchema>;
 
 /**
  * What Alcove checked about a NEAR AI model before sending it anything for a note: an Intel TDX VM booted
@@ -378,8 +442,8 @@ export const NoteSummarySchema = z.object({
   people: z.array(PersonSchema),
   /** The start of the summary; empty until the notes are written. */
   excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
-  /** Present when the note is someone else's and they shared it, or invited you to its call. */
-  from: PersonSchema.optional()
+  /** How you got the note, when it's someone else's. Absent on your own. */
+  received: ReceivedSchema.optional()
 });
 export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
@@ -417,16 +481,38 @@ export const NoteSchema = NoteSummarySchema.extend({
 });
 export type Note = z.infer<typeof NoteSchema>;
 
-export const OpenActionSchema = ActionItemSchema.extend({ noteId: IDSchema, noteTitle: z.string() });
+export const OpenActionSchema = ActionItemSchema.extend({ noteId: IDSchema, noteTitle: z.string(), noteStartedAt: z.string() });
 export type OpenAction = z.infer<typeof OpenActionSchema>;
 
-/** An answer about a call: its text, the moments it comes from, and the shared screens it read them on (a note's `ScreenMoment`, and the part of it when one). */
+/** A decision nobody has confirmed yet, with the note it came from. */
+export const PendingDecisionSchema = DecisionSchema.extend({ noteId: IDSchema, noteTitle: z.string(), noteStartedAt: z.string() });
+export type PendingDecision = z.infer<typeof PendingDecisionSchema>;
+
+/**
+ * What waits on you across every note you have, newest note first: follow-ups for you that aren't
+ * done, and decisions in written notes that nobody has confirmed or rejected.
+ */
+export const InboxSchema = z.object({ followUps: z.array(OpenActionSchema), decisions: z.array(PendingDecisionSchema) });
+export type Inbox = z.infer<typeof InboxSchema>;
+
+/**
+ * An answer to a question about notes: its text, then where it comes from. A cite is a note and a
+ * moment in it, in seconds into its recording; asking about one note cites only that note. A screen is
+ * one of that note's shared screens it read the answer on (its `ScreenMoment`, and the part of it when
+ * one): only asking about one written note cites screens.
+ */
 export const AnswerPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('cite'), at: z.number() }),
+  z.object({ type: z.literal('cite'), noteId: IDSchema, at: z.number() }),
   z.object({ type: z.literal('screen'), id: IDSchema, at: z.number(), region: z.number().optional() })
 ]);
 export type AnswerPart = z.infer<typeof AnswerPartSchema>;
+
+/**
+ * A moment in a note's recording, in seconds from its start: where a link such as an answer's cite opens
+ * the note (`/notes/<id>?at=245`). It comes from the address bar, so the app parses it with this.
+ */
+export const NoteMomentSchema = z.number().min(0);
 
 /* ---------- series: what carries over from one call to the next ---------- */
 
@@ -442,8 +528,8 @@ export const SeriesNoteSchema = z.object({
   id: IDSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(), status: NoteStatusSchema,
   /** For the organizer: the call the note is from, to schedule the next one after it. */
   meetingId: IDSchema.optional(),
-  /** Present when the note is someone else's: the organizer, who gave it to you. */
-  from: PersonSchema.optional()
+  /** How you got the note, when it's someone else's. Absent on your own. */
+  received: ReceivedSchema.optional()
 });
 export type SeriesNote = z.infer<typeof SeriesNoteSchema>;
 
@@ -609,6 +695,8 @@ export const CreditBalanceSchema = z.object({
   balance: z.number(),
   /** Every credit added to the account so far, so the app can show how much is left. */
   granted: z.number(),
+  /** Credits charged since this month began (00:00 UTC on the 1st), from the account's credit history. */
+  usedThisMonth: z.number(),
   /** Credits charged per minute of notes or room recording. Calls without notes are free. */
   perMinute: z.number()
 });

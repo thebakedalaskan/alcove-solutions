@@ -1,7 +1,14 @@
-import { LIVE_TRANSCRIPT_LINES, type RecordingAction, type RecordingStopResult, type RoomRecordingState } from '@alcove/api';
+/*
+ * Recording in the room: a private note and its recording. The browser sends 5-second pieces of
+ * audio and clips of speech, each saying where it falls in the recording, so a recording made without
+ * a connection can be uploaded later and keep its own times: its start, its length (the pieces'
+ * total) and when each line was said (docs: calls-and-recordings › Room recordings).
+ */
+import { LIVE_TRANSCRIPT_LINES, MAX_RECORDING_AGE_DAYS, type RecordingAction, type RecordingStopResult, type RoomRecordingInput, type RoomRecordingState } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
-import { maybeOne, timestamp, tx } from '../db';
+import { unb64u } from '../crypto';
+import { exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { getItem } from '../vault';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
@@ -30,12 +37,48 @@ export async function view(o: Owner, recordingId: string): Promise<RoomRecording
   };
 }
 
-export async function start(o: Owner, title: string): Promise<RoomRecordingState> {
-  const { recordingId } = await tx(o.pool, (c) => createNoteWithRecording(o, c,
-    (rid) => blankNote({ kind: 'room', title: title.trim() || 'Untitled recording', recordingId: rid, invited: [] }),
-    (nid) => createRecording(o, c, nid)));
-  rlog.info('room recording started', { recordingId });
+/** How far ahead of this server's clock a recording's own start may be: a device's clock can run a little fast. */
+const CLOCK_SKEW_SECONDS = 5 * 60;
+/** The first key of the lock that makes starts from the same moment wait for each other, per account. */
+const START_LOCK = 0x52454301;
+
+/**
+ * Starts a room recording: now, or at `startedAt` for one recorded without a connection and uploaded
+ * later, which may be up to MAX_RECORDING_AGE_DAYS back but not in the future. Starting again from a
+ * moment this account already has a room recording from carries on with that recording, as it is and
+ * however old it is by now, so an upload that was cut off (a closed tab, an answer that never arrived)
+ * resumes instead of making a second note.
+ */
+export async function start(o: Owner, input: RoomRecordingInput): Promise<RoomRecordingState> {
+  const own = input.startedAt === undefined ? undefined : new Date(input.startedAt);
+  const secondsAgo = own ? Math.round((Date.now() - own.getTime()) / 1000) : 0;
+  if (Number.isNaN(secondsAgo)) throw new ValidationError('That recording’s start isn’t a real time.');
+  const { recordingId, again } = await tx(o.pool, async (c) => {
+    if (own) {
+      await exec(c, 'SELECT pg_advisory_xact_lock($1, $2)', [START_LOCK, Buffer.from(unb64u(o.ownerId, 32)).readInt32BE(0)]);
+      const same = await roomRecordingFrom(o, c, own);
+      if (same) return { recordingId: same, again: true };
+      if (secondsAgo > MAX_RECORDING_AGE_DAYS * 86_400) throw new ValidationError(`Recordings can be uploaded for up to ${MAX_RECORDING_AGE_DAYS} days after they start. This one started earlier.`, { context: { secondsAgo } });
+      if (secondsAgo < -CLOCK_SKEW_SECONDS) throw new ValidationError('This recording starts in the future. Check the clock on this device.', { context: { secondsAgo } });
+    }
+    const at = own ?? new Date();
+    const made = await createNoteWithRecording(o, c,
+      (rid) => blankNote({ kind: 'room', title: input.title || 'Untitled recording', startedAt: at, recordingId: rid, invited: [] }),
+      (nid) => createRecording(o, c, nid, at));
+    return { recordingId: made.recordingId, again: false };
+  });
+  rlog.info(again ? 'room recording started again; carrying on with it' : 'room recording started', { recordingId, secondsAgo });
   return view(o, recordingId);
+}
+
+/** The room recording this account started at exactly `at`, if there is one. */
+async function roomRecordingFrom(o: Owner, db: Db, at: Date): Promise<string | undefined> {
+  const found = await rows(db, z.object({ recording_id: z.string(), note_item_id: z.string() }), 'SELECT recording_id, note_item_id FROM recordings WHERE owner_id = $1 AND started_at = $2', [o.ownerId, at]);
+  for (const r of found) {
+    // A call's notes keep their recording here too; only a recording in the room carries on.
+    if ((await getItem(o, db, 'note', r.note_item_id, NoteManifest, 'That recording')).manifest.kind === 'room') return r.recording_id;
+  }
+  return undefined;
 }
 
 export async function act(o: Owner, recordingId: string, a: RecordingAction): Promise<RoomRecordingState> {
@@ -59,7 +102,7 @@ export async function audio(o: Owner, recordingId: string, piece: Piece): Promis
 /** Transcribes a few seconds of speech into the live transcript, while recording. */
 export async function transcribe(o: Owner, recordingId: string, clip: transcripts.Clip): Promise<RoomRecordingState> {
   const r = await row(o, recordingId);
-  const ctx = { recordingId, segment: clip.segment, startMs: clip.startMs, state: r.state };
+  const ctx = { recordingId, segment: clip.segment, atMs: clip.atMs, state: r.state };
   if (clip.segment !== 0) throw new ValidationError('Room recordings have one segment.', { context: ctx });
   if (r.state !== 'recording') throw new ConflictError(r.state === 'paused' ? 'Recording is paused.' : 'This recording has stopped.', { context: ctx });
   await transcripts.hear(o, { recordingId, noteId: r.note_item_id }, clip);

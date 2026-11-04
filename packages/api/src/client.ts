@@ -1,7 +1,7 @@
-import type { CallCard, CallSession, NoteProgress, RoomRecording } from './live';
+import type { CallCard, CallSession, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
-  AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
+  AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
   Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
@@ -27,6 +27,12 @@ export interface AlcoveApi {
   account: {
     preferences(): Promise<Preferences>;
     updatePreferences(patch: Patch<Preferences>): Promise<Preferences>;
+    /**
+     * Deletes the account for good, with everything it owns: the notes it organized (for everyone, audio
+     * included), its recordings, meetings, groups and pins, its Google connection and every session. It's
+     * taken off the notes other people gave it. Signing in again starts a new account.
+     */
+    delete(): Promise<void>;
   };
   people: {
     /** Colleagues, people you've had calls with, and any email address typed in full. */
@@ -61,6 +67,8 @@ export interface AlcoveApi {
     get(): Promise<Calendar>;
     /** Where the browser goes to give Alcove access to the Google Calendar of the account it's signed in with. */
     connectUrl(): string;
+    /** Forgets the Google connection: Alcove's stored access is deleted and scheduling no longer touches Google. Connect again from `connectUrl()`. */
+    disconnect(): Promise<Calendar>;
     /** Makes one of your own calendar events an Alcove call: the event gets the Alcove link, and everyone invited is told. */
     adopt(eventId: ID, notes?: NotesSetting | undefined): Promise<Meeting>;
   };
@@ -77,7 +85,12 @@ export interface AlcoveApi {
     join(code: string, opts: { mic: boolean; cam: boolean; name?: string | undefined; previous?: string | undefined }): Promise<CallSession>;
   };
   recordings: {
-    start(title?: string): Promise<RoomRecording>;
+    /**
+     * Starts recording in the room: now, or at `startedAt` for a recording made without a connection
+     * and uploaded later. Its pieces and clips say where they fall, so the note keeps the recording's
+     * own times. Starting again from the same `startedAt` carries on with that recording.
+     */
+    start(input?: RoomRecordingInput): Promise<RoomRecording>;
   };
   notes: {
     list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]>;
@@ -93,6 +106,8 @@ export interface AlcoveApi {
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
     updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
+    /** Follow-ups for you that aren't done, and decisions nobody has confirmed, from every note you have. */
+    inbox(): Promise<Inbox>;
     /**
      * Corrects a line of a written note's transcript: its words, who said it, or that it's right as heard. The
      * organizer can correct any line; anyone else who has the notes, the words of their own lines.
@@ -103,10 +118,19 @@ export interface AlcoveApi {
      * decisions, open questions and follow-ups someone has already confirmed or changed stay as they are.
      */
     rewrite(noteId: ID): Promise<Note>;
-    openActions(): Promise<OpenAction[]>;
+    /** Answers a question about one written note from its transcript, citing moments in it and the shared screens it read. */
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
-    /** Shares the notes with more people, by email. They find them in Alcove when they sign in. */
-    share(id: ID, emails: string[]): Promise<Note>;
+    /**
+     * Answers a question from every note you have, your own and ones shared with you, citing the notes
+     * and moments it comes from. With no written notes to go on, it says so and asks no model.
+     */
+    askAll(question: string): AsyncIterable<AnswerPart>;
+    /**
+     * Shares the notes with more people, by email. For one of your groups, send its addresses and its
+     * name: everyone it reaches sees who shared the notes and with which group. They find them in
+     * Alcove when they sign in.
+     */
+    share(id: ID, to: { emails: string[]; group?: string | undefined }): Promise<Note>;
     /** Deletes your own notes for everyone, or removes someone else's from your notes. */
     delete(id: ID): Promise<void>;
   };

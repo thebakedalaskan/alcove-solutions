@@ -1,14 +1,16 @@
 /* The pieces of a note page, shared by real notes and the example. */
 import {
-  errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
+  firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
   type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, UnsureKey, Words, buttonClass, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
+import { ariaShortcut, shortcut, withMod } from '~/lib/keys';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
+import { AnswerView, useAnswer, type Cite } from './answer';
 import { LineRow, type Correcting } from './lines';
 import { PROMISE_MANY } from './NoteCard';
 import { ROLE } from './meta';
@@ -353,9 +355,8 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
   );
 }
 
-/** Where an answer comes from: a moment in this call, a shared screen, or (asking across a series) one of its calls, at a moment when it can tell. */
-type Cite = Exclude<AnswerPart | SeriesAnswerPart, { type: 'text' }>;
-const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}@${c.at ?? ''}`);
+/** A cite's key among an answer's: a moment, a shared screen, or one of a series' calls (at a moment when it can tell). */
+const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}@${c.at ?? ''}`);
 
 /** One of a series' calls an answer comes from: its day, and the moment when the answer could tell. */
 function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
@@ -369,45 +370,32 @@ function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
 
 /**
  * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
- * moments in this call to play, or the calls (and moments) to open.
+ * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
  */
 export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call' }: {
   suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
   /** Shows a shared screen an answer comes from. */
   shown?: ScreenRefShown | undefined; label?: string | undefined;
 }) {
-  const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [focus, setFocus] = useState(false);
   const [text, setText] = useState('');
-  const [answer, setAnswer] = useState<{ q: string; text: string; cites: Cite[]; done: boolean } | null>(null);
+  const { answer, ask: start } = useAnswer(ask);
   useEffect(() => {
-    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
+    const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
   }, []);
-  const run = async (question: string) => {
-    const qn = question.trim();
-    if (!qn) return;
+  const run = (question: string) => {
+    if (!question.trim()) return;
     setText('');
     input.current?.blur();
-    setAnswer({ q: qn, text: '', cites: [], done: false });
-    try {
-      for await (const part of ask(qn)) {
-        setAnswer((a) => a && (part.type === 'text' ? { ...a, text: a.text + part.text } : { ...a, cites: [...a.cites, part] }));
-      }
-      setAnswer((a) => a && { ...a, done: true });
-    } catch (e) {
-      setAnswer(null);
-      toast(errorMessage(e), { icon: 'x' });
-    }
+    void start(question);
   };
   return (
     <div className="ask">
       {answer && (
-        <div className="ac-card answer">
-          <div className="q"><Icon name="ask" size={15} />{answer.q}</div>
-          <p>{answer.done ? <Words text={answer.text} /> : answer.text || '…'}</p>
+        <AnswerView answer={answer} className="ac-card">
           {answer.cites.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
               {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} />
@@ -415,17 +403,17 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
                   : <SourceLink key={citeKey(c)} c={c} />))}
             </div>
           )}
-        </div>
+        </AnswerView>
       )}
       {focus && suggestions.length > 0 && (
-        <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" className={buttonClass({ size: 'sm' })} onMouseDown={(e) => e.preventDefault()} onClick={() => void run(s)}>{s}</button>)}</div>
+        <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" className={buttonClass({ size: 'sm' })} onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}</div>
       )}
       <div className="ask-bar">
         <Icon name="ask" size={19} />
         <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void run(text); }} placeholder={label} autoComplete="off" aria-label={label} />
-        <Kbd>⌘J</Kbd>
-        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'w-11 px-0')} aria-label="Ask" onClick={() => void run(text)}><Icon name="send" size={18} /></button>
+          onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={label} aria-keyshortcuts={ariaShortcut('J')} />
+        <Kbd>{shortcut('J')}</Kbd>
+        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'w-11 px-0')} aria-label="Ask" onClick={() => run(text)}><Icon name="send" size={18} /></button>
       </div>
     </div>
   );

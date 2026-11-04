@@ -83,7 +83,7 @@ export function PrepCard({ seriesId, me }: { seriesId: string; me: string | unde
 export function SeriesCard({ note }: { note: Note }) {
   if (note.kind !== 'call' || note.status === 'recording') return null;
   if (note.seriesId) return <InSeries seriesId={note.seriesId} />;
-  return !note.from && note.meetingId ? <MeetAgain meetingId={note.meetingId} /> : null;
+  return !note.received && note.meetingId ? <MeetAgain meetingId={note.meetingId} /> : null;
 }
 
 function MeetAgain({ meetingId }: { meetingId: string }) {

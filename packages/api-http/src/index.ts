@@ -5,8 +5,8 @@
  */
 import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
-  NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
-SeriesAnswerPartSchema, SeriesSchema,
+  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
+  SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
@@ -103,12 +103,15 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     }
   }
+  /** Where a piece or clip starts in its segment, in the milliseconds the headers carry. */
+  const atMs = (at: number) => String(Math.round(at * 1000));
   const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
-    ...extra, 'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
+    ...extra, 'content-type': piece.mimeType, [AUDIO_HEADERS.segment]: String(piece.segment), [AUDIO_HEADERS.seq]: String(piece.seq),
+    [AUDIO_HEADERS.at]: atMs(piece.at), [AUDIO_HEADERS.duration]: String(Math.round(piece.durationMs))
   }).then((r) => r.json());
   /** Speech for the live transcript: WAV bytes, placed by where the clip starts in its segment. */
   const clip = (path: string, c: TranscriptClip, extra: Record<string, string> = {}) => send('POST', path, c.data, {
-    ...extra, 'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
+    ...extra, 'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.at]: atMs(c.at), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
   }).then((r) => r.json());
   /**
    * How long ago a call's clip of speech began, as it's sent (it may have waited behind others): the server places it
@@ -125,7 +128,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     },
     account: {
       preferences: () => req(PreferencesSchema, 'GET', '/account/preferences'),
-      updatePreferences: (p) => req(PreferencesSchema, 'PATCH', '/account/preferences', p)
+      updatePreferences: (p) => req(PreferencesSchema, 'PATCH', '/account/preferences', p),
+      delete: async () => { await req(z.unknown(), 'DELETE', '/account'); }
     },
     people: {
       // The query goes in the body so it never appears in URLs or access logs.
@@ -146,6 +150,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     calendar: {
       get: () => req(CalendarSchema, 'GET', '/calendar'),
       connectUrl: () => `${base}/auth/google?consent=1`,
+      disconnect: () => req(CalendarSchema, 'DELETE', '/calendar'),
       adopt: (eventId, notes) => req(MeetingSchema, 'POST', `/calendar/events/${encodeURIComponent(eventId)}/adopt`, notes ? { notes } : {})
     },
     calls: {
@@ -187,7 +192,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     },
     recordings: {
-      start: async (title) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', { title }), {
+      start: async (input) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', input ?? {}), {
         act: (id, a) => req(RoomRecordingStateSchema, 'POST', `/recordings/${id}/actions`, a),
         audio: async (id, p) => parse(RoomRecordingStateSchema, await audio(`/recordings/${id}/audio`, p), 'recording state'),
         transcribe: async (id, c) => parse(RoomRecordingStateSchema, await clip(`/recordings/${id}/transcribe`, c), 'recording state'),
@@ -205,14 +210,19 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),
       updateAction: (noteId, actionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/actions/${encodeURIComponent(actionId)}`, patch),
       updateQuestion: (noteId, questionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/questions/${encodeURIComponent(questionId)}`, patch),
+      inbox: () => req(InboxSchema, 'GET', '/notes/inbox'),
       correctLine: (noteId, lineId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/lines/${encodeURIComponent(lineId)}`, patch),
       rewrite: (noteId) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/rewrite`, {}),
-      openActions: () => req(z.array(OpenActionSchema), 'GET', '/notes/actions'),
       ask: async function* (noteId, question) {
         const parts = await req(z.array(AnswerPartSchema), 'POST', `/notes/${encodeURIComponent(noteId)}/ask`, { question });
         yield* parts;
       },
-      share: (id, emails) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails }),
+      // The question goes in the body, as every question does, so it never appears in URLs or access logs.
+      askAll: async function* (question) {
+        const parts = await req(z.array(AnswerPartSchema), 'POST', '/notes/ask', { question });
+        yield* parts;
+      },
+      share: (id, to) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails: to.emails, ...(to.group !== undefined ? { group: to.group } : {}) }),
       delete: async (id) => { await req(z.unknown(), 'DELETE', `/notes/${encodeURIComponent(id)}`); }
     },
     series: {

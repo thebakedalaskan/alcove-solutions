@@ -25,8 +25,11 @@ export const MeetingManifest = z.object({
   guests: z.array(z.string()),
   notes: NotesSettingSchema, code: z.string(), status: MeetingStatusSchema,
   duration: z.number().optional(), noteId: z.string().optional(),
-  /** The Google Calendar event that carries this call, and its link. */
-  calendarEventId: z.string().optional(), calendarUrl: z.string().optional(),
+  /**
+   * The Google Calendar event that carries this call, and its link. `adopted`: the organizer made the event in
+   * Google Calendar and then moved it to Alcove (adopt), so it's theirs, and deleting the account leaves it there.
+   */
+  calendarEvent: z.object({ id: z.string(), url: z.string().optional(), adopted: z.boolean() }).optional(),
   /** The series the call is in: a random ID its calls share. */
   seriesId: z.string().optional(),
   /** The recurring Google Calendar event this call is an occurrence of (Google's ID for the whole series). */
@@ -61,17 +64,21 @@ function cleanGuests(emails: string[], organizerEmail: string): string[] {
 }
 
 export async function toMeeting(o: Owner, m: Loaded<MeetingManifest>): Promise<Meeting> {
-  const { guests, duration, noteId, calendarEventId: _event, calendarUrl, seriesId, recurringEventId: _recurring, addedFromLink: _added, ...rest } = m.manifest;
+  const { guests, duration, noteId, calendarEvent, seriesId, recurringEventId: _recurring, addedFromLink: _added, ...rest } = m.manifest;
   return {
     id: m.itemId, ...rest, organizer: await me(o), isOrganizer: true, guests: guests.map((e) => personOf(e)),
-    ...(duration !== undefined ? { duration } : {}), ...(noteId !== undefined ? { noteId } : {}), ...(calendarUrl ? { calendarUrl } : {}), ...(seriesId ? { seriesId } : {})
+    ...(duration !== undefined ? { duration } : {}), ...(noteId !== undefined ? { noteId } : {}), ...(calendarEvent?.url ? { calendarUrl: calendarEvent.url } : {}), ...(seriesId ? { seriesId } : {})
   };
 }
 export const all = (o: Owner, db: Db = o.pool) => listItems(o, db, 'meeting', MeetingManifest);
 
-export async function upcoming(o: Owner): Promise<Meeting[]> {
+/** The meetings Upcoming lists, as stored: every one that hasn't ended (begun or not), until an hour after its time is up. */
+export async function findUpcoming(o: Owner): Promise<Loaded<MeetingManifest>[]> {
   const cutoff = Date.now() - 60 * 60_000;
-  const ms = (await all(o)).filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
+  return (await all(o)).filter((m) => m.manifest.status !== 'ended' && new Date(m.manifest.endsAt).getTime() > cutoff);
+}
+export async function upcoming(o: Owner): Promise<Meeting[]> {
+  const ms = await findUpcoming(o);
   ms.sort((a, b) => a.manifest.startsAt.localeCompare(b.manifest.startsAt));
   return Promise.all(ms.map((m) => toMeeting(o, m)));
 }
@@ -111,7 +118,7 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
 async function placeOnCalendar(o: Owner, id: string, manifest: MeetingManifest): Promise<void> {
   try {
     const placed = await calendar.place(o, id, manifest);
-    if (placed) await tx(o.pool, (c) => updateManifest(o, c, id, (m) => ({ ...m, calendarEventId: placed.eventId, ...(placed.url ? { calendarUrl: placed.url } : {}) })));
+    if (placed) await tx(o.pool, (c) => updateManifest(o, c, id, (m) => ({ ...m, calendarEvent: { id: placed.eventId, ...(placed.url ? { url: placed.url } : {}), adopted: false } })));
   } catch (e) {
     mlog.warn('call not placed on calendar', { meetingId: id, err: e });
   }
@@ -134,8 +141,8 @@ export async function update(o: Owner, id: string, patch: Patch<MeetingInput>): 
     return { ...m, ...times, title: patch.title?.trim() || m.title, notes: patch.notes ?? m.notes, guests: patch.guests ? cleanGuests(patch.guests, organizer.email) : m.guests };
   }));
   mlog.info('meeting updated', { meetingId: id, fields: Object.keys(patch).length });
-  if (next.calendarEventId) {
-    try { await calendar.change(o, next.calendarEventId, id, next); } catch (e) { mlog.warn('calendar event not updated', { meetingId: id, err: e }); }
+  if (next.calendarEvent) {
+    try { await calendar.change(o, next.calendarEvent.id, id, next); } catch (e) { mlog.warn('calendar event not updated', { meetingId: id, err: e }); }
   } else await placeOnCalendar(o, id, next);
   return get(o, id);
 }
@@ -148,7 +155,7 @@ export async function cancel(o: Owner, id: string): Promise<void> {
     if (m.manifest.status === 'live') throw new ConflictError('That call is happening now. Leave it first.', { context: { meetingId: id } });
     await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
     await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
-    return m.manifest.calendarEventId;
+    return m.manifest.calendarEvent?.id;
   });
   mlog.info('meeting cancelled', { meetingId: id });
   if (eventId) {
@@ -162,7 +169,7 @@ export async function cancel(o: Owner, id: string): Promise<void> {
  * Every occurrence of one recurring event made an Alcove call is in the same series.
  */
 export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | undefined): Promise<Meeting> {
-  const held = (await all(o)).find((m) => m.manifest.calendarEventId === eventId);
+  const held = (await all(o)).find((m) => m.manifest.calendarEvent?.id === eventId);
   if (held) return toMeeting(o, held);
   const organizer = await me(o);
   const e = await calendar.ownEvent(o, eventId);
@@ -172,13 +179,13 @@ export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | un
     // of one recurring event's occurrences share a series, and one event adopted twice is one call.
     await lockOwner(o, c);
     const mine = await all(o, c);
-    const again = mine.find((m) => m.manifest.calendarEventId === eventId);
+    const again = mine.find((m) => m.manifest.calendarEvent?.id === eventId);
     if (again) return { itemId: again.itemId, manifest: again.manifest, created: false };
     const recurring = e.recurringEventId;
     const series = recurring ? { seriesId: mine.find((m) => m.manifest.recurringEventId === recurring)?.manifest.seriesId ?? id128(), recurringEventId: recurring } : {};
     const manifest: MeetingManifest = {
       title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
-      notes: setting, code: makeCode(), status: 'scheduled', calendarEventId: eventId, ...(e.url ? { calendarUrl: e.url } : {}), ...series
+      notes: setting, code: makeCode(), status: 'scheduled', calendarEvent: { id: eventId, ...(e.url ? { url: e.url } : {}), adopted: true }, ...series
     };
     const { itemId } = await createItem(o, c, 'meeting', manifest);
     // Anyone with the link finds the call by its code.

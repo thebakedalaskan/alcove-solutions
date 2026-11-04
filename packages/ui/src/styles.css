@@ -4,11 +4,13 @@
  * (`stage`). Every colour, shadow, font, radius and easing comes from here. Light values live on
  * :root, dark values on .dark (set on <html> by ThemeProvider); .light and .dark on any element
  * scope one theme to that part of the page. Components are styled in
- * styles/kit.css with the `ac-` prefix; screens in styles/{app,call,welcome}.css.
+ * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
+ * styles/shell.css; screens in styles/{app,call,welcome}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
 @import "./styles/welcome.css";
+@import "./styles/shell.css";
 @import "./styles/app.css";
 @import "./styles/call.css";
 @import "./styles/capture.css";

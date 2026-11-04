@@ -30,7 +30,7 @@ function Record() {
     void media.start({ mic: true, cam: false });
     if (sessions.recording) return () => media.stop();
     let cancelled = false;
-    api.recordings.start('Notes from the room').then((r) => {
+    api.recordings.start({ title: 'Notes from the room' }).then((r) => {
       if (cancelled) { void r.discard(); return; }
       sessions.recording = r;
       setRec(r);

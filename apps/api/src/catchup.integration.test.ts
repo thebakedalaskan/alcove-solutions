@@ -34,10 +34,10 @@ async function account(email = unique()) {
 }
 const guestBrowser = () => h.browser().api;
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
-const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
 /** A clip of speech: said just now, unless `heardAt` (by performance.now(), as the organizer's browser counts it) says when it began. */
-const speech = (words: string, segment: number, startMs: number, ms = 4000, heardAt?: number): TranscriptClip =>
-  ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms, ...(heardAt === undefined ? {} : { heardAt }) });
+const speech = (words: string, segment: number, atMs: number, ms = 4000, heardAt?: number): TranscriptClip =>
+  ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms, ...(heardAt === undefined ? {} : { heardAt }) });
 /** Milliseconds into a segment that started with the call: a line said `s` seconds in. */
 const at = (s: number) => Math.max(0, Math.round(s * 1000));
 /**

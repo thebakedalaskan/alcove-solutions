@@ -29,8 +29,9 @@ async function account(email = unique()) {
   return { ...b, session: r.session };
 }
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
-const piece = (marker: string, segment: number, s: number): AudioPiece => ({ data: new Blob([audioBytes(marker)]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+const piece = (marker: string, segment: number, s: number): AudioPiece => ({ data: new Blob([audioBytes(marker)]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+/** A clip of speech, starting `atMs` milliseconds into its segment. */
+const speech = (words: string, segment: number, atMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
   const until = Date.now() + ms;

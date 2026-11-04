@@ -61,7 +61,8 @@ async function letIn(host: CallSession, who: CallSession) {
   await host.admit(who.ticket.identity);
   await inGroup(who);
 }
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** A clip of speech, starting `atMs` milliseconds into its segment. */
+const speech = (words: string, segment: number, atMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms });
 /** Every progress step of a note until it's written. */
 async function written(api: AlcoveApi, noteId: string) { for await (const p of api.notes.progress(noteId)) if (p.ready) return; }
 /** The log lines written while handling one request. */

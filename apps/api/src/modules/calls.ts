@@ -332,9 +332,10 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
     const segment = s.notes.segment + 1;
     return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment, history: [...s.notes.history, { at, status: 'on', by, segment }], asks, unavailable: [] } };
   }
+  const startedAt = new Date();
   const { noteId, recordingId } = await createNoteWithRecording(o, db,
-    (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests }),
-    (nid) => createRecording(o, db, nid));
+    (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, startedAt, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests }),
+    (nid) => createRecording(o, db, nid, startedAt));
   return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks, unavailable: [] } };
 }
 /**
@@ -737,7 +738,7 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   const { row, state } = await load(o, o.pool, callId);
   const nowMs = Date.now();
   const s = settle(state, row, nowMs);
-  const ctx = { callId, segment: clip.segment, startMs: clip.startMs, currentSegment: state.notes.segment, agoMs: nowMs - began };
+  const ctx = { callId, segment: clip.segment, atMs: clip.atMs, currentSegment: state.notes.segment, agoMs: nowMs - began };
   const into = capture.mayCapture(capturing(row, state), 'speech', ctx);
   if (clip.segment !== state.notes.segment) throw new ConflictError('That speech belongs to an earlier part of the recording.', { context: ctx });
   const who = s.people.find((j) => j.identity === speaker);

@@ -33,7 +33,16 @@ export async function charge(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, c: {
   const next = { balance: s.balance - c.amount, history: [...s.history, { id: id128(), at: new Date().toISOString(), label: c.label, amount: -c.amount }] };
   await exec(db, 'UPDATE billing_accounts SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealJson(key(d), header(ownerId), toJson(next))]);
 }
+/** When `now`'s month began: 00:00 UTC on the 1st. */
+const monthOf = (now: Date) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
 export async function balance(d: Service, ownerId: string): Promise<CreditBalance> {
   const s = await read(d, ownerId);
-  return { balance: s.balance, granted: s.history.reduce((sum, e) => sum + Math.max(0, e.amount), 0), perMinute: PER_MINUTE };
+  const since = monthOf(new Date());
+  return {
+    balance: s.balance,
+    granted: s.history.reduce((sum, e) => sum + Math.max(0, e.amount), 0),
+    // Charges are the history's negative entries, each dated when it was made.
+    usedThisMonth: s.history.reduce((sum, e) => sum + (e.amount < 0 && Date.parse(e.at) >= since ? -e.amount : 0), 0),
+    perMinute: PER_MINUTE
+  };
 }

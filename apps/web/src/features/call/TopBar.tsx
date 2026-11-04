@@ -8,7 +8,7 @@ import { Dots, Faces, Icon, Popover, Tooltip, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRef, useState, type ReactNode } from 'react';
-import { q } from '~/lib/queries';
+import { q, trustLine } from '~/lib/queries';
 import { hm } from '~/lib/time';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
@@ -83,7 +83,7 @@ function Shield({ screens }: { screens: boolean }) {
         </button>
       )}>
       <div onPointerEnter={show} onPointerLeave={hide}>
-        <div className="hd"><Icon name="sealed" size={17} />{verified ? 'Confidential compute · verified' : trust?.tee === 'dstack' ? 'Confidential compute · not verified' : 'Confidential compute'}</div>
+        <div className="hd"><Icon name="sealed" size={17} />{trustLine(trust)}</div>
         <div className="rows">
           <div><span>Hardware checked</span>{verified && trust ? <b className="ac-time">{hm(new Date(trust.at))}</b> : <b>{trust ? 'Not on this server' : checked.isError ? 'Couldn’t check' : 'Checking…'}</b>}</div>
           <div><span>Sealed</span>{screens ? 'Audio, transcript, shared screens, notes' : 'Audio, transcript, notes'}</div>

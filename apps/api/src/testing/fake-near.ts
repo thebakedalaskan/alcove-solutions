@@ -14,8 +14,11 @@
  * silence. Each transcription's language and prompt are kept, so tests can see what a clip was sent with. A
  * shared screen is "read" the same way, from a marker in its JPEG's comment segment (see `screenJpeg`); a frame
  * without one can't be made out. The notes model writes from the transcript it was sent, screens included, so
- * tests can see the transcript arrived intact and the reply was checked before use. Every request body is kept as it arrived, so tests can show that nothing
- * readable crossed the wire, and the evidence can be made to lie, so tests can show what Alcove refuses.
+ * tests can see the transcript arrived intact and the reply was checked before use; asked across notes, it
+ * answers from the lines of each note it was sent and cites them by note, plus a note it wasn't sent, as a model
+ * can make one up. Every request body is kept as it arrived, so tests can show that nothing readable crossed the
+ * wire; each request with content records the attested key it was sealed to; and the evidence can be made to lie,
+ * so tests can show what Alcove refuses.
  */
 import { gcm } from '@noble/ciphers/aes.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
@@ -52,12 +55,17 @@ export interface FakeNear {
     NEAR_AI_BASE_URL: string; NEAR_AI_API_KEY: string; NEAR_AI_STT_URL: string; NEAR_AI_NOTES_URL: string;
     INTEL_PCS_URL: string; INTEL_ROOT_CA: string; NVIDIA_NRAS_URL: string; NVIDIA_ROOT_CA: string;
   };
-  /** Every request with content, oldest first: which endpoint, which model, how many bytes, and how it was protected. */
-  calls: { path: string; model: string; bytes: number; encryption: 'ohttp' | 'none' }[];
+  /**
+   * Every request with content, oldest first: which endpoint, which model, how many bytes, how it was
+   * protected, and, when it was sealed, the attested signing key (hex) of the model whose OHTTP key opened it.
+   */
+  calls: { path: string; model: string; bytes: number; encryption: 'ohttp' | 'none'; key: string | null }[];
   /** Every request body exactly as it arrived, before anything was opened. */
   received: { path: string; body: Buffer }[];
   /** What the notes model was sent (the user message's text, once opened), oldest first. */
   prompts: string[];
+  /** The system messages the notes model was sent, in the same order as `prompts`. */
+  instructions: string[];
   /** Every image the notes model was sent, once opened: its size, what a test put on it (null for nothing legible) and the salt that tells it apart. */
   images: { bytes: number; marker: string | null; salt: string }[];
   /** What each clip was transcribed with besides its audio, once opened, oldest first: the language it named and its prompt, or null. */
@@ -166,13 +174,13 @@ function speechIn(wav: Buffer): { words: string; language: string; sure: boolean
 }
 
 /** Whisper's answer to a multipart transcription request. */
-async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none'): Promise<{ status: number; body: unknown }> {
+async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null): Promise<{ status: number; body: unknown }> {
   const form = await new Request('http://fake', { method: 'POST', headers: { 'content-type': contentType }, body: new Uint8Array(body) }).formData();
   const file = form.get('file');
   const model = str(form.get('model'));
   if (!(file instanceof Blob) || !model) return { status: 400, body: { error: { message: 'file and model are required' } } };
   const wav = Buffer.from(await file.arrayBuffer());
-  calls.push({ path, model, bytes: wav.length, encryption });
+  calls.push({ path, model, bytes: wav.length, encryption, key });
   const asked = { language: str(form.get('language')) || null, prompt: str(form.get('prompt')) || null };
   heard.push(asked);
   if (wav.subarray(0, 4).toString('ascii') !== 'RIFF') return { status: 400, body: { error: { message: 'Unsupported audio format' } } };
@@ -217,6 +225,19 @@ function heardIn(prompt: string): Heard[] {
 const POINTS = /\b(this|that|chart|slide|screen)\b/i;
 const PLAINLY = /\b(this|chart|slide)\b/i;
 
+/** Reads back the "[Note n]" sections of a question across notes, each with the "[mm:ss]" transcript lines under it. */
+function notesIn(prompt: string): { n: number; heard: Heard[] }[] {
+  const notes: { n: number; heard: Heard[] }[] = [];
+  for (const l of prompt.split('\n')) {
+    const head = /^\[Note (\d+)\]$/.exec(l);
+    if (head) notes.push({ n: Number(head[1]), heard: [] });
+    else notes.at(-1)?.heard.push(...heardIn(l));
+  }
+  return notes;
+}
+/** The words of a question worth looking for in what was said. */
+const wordsAsked = (user: string) => (/\nQuestion: (.*)$/s.exec(user)?.[1] ?? '').toLowerCase().split(/\W+/).filter((w) => w.length > 3);
+
 /** What the notes model writes for a system prompt, a user message and the images sent with it. */
 function notesReply(system: string, user: string, images: Buffer[]): unknown {
   if (system.startsWith('You read one frame')) {
@@ -231,6 +252,17 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
   const shownAt = (h: Heard) => (POINTS.test(h.text) ? h.screen : undefined);
   const onScreen = (h: Heard) => { const x = shownAt(h); return x ? { screen: x.n, part: x.parts ? 1 : null, sure: PLAINLY.test(h.text) } : { screen: null, part: null, sure: false }; };
   const item = (h: Heard) => ({ text: h.text, at: h.at, ...onScreen(h) });
+  if (system.startsWith('You answer a question from')) {
+    // Answers from every line, in any note, that has a word of the question in it, and cites each by note and
+    // second; then a note it wasn't sent, as a model can make one up, which Alcove must drop.
+    const words = wordsAsked(user);
+    const notes = notesIn(user);
+    const hits = notes.flatMap((note) => note.heard.filter((h) => words.some((w) => h.text.toLowerCase().includes(w))).map((h) => ({ note: note.n, h })));
+    return {
+      answer: hits.length ? `From your notes: ${hits.map((x) => x.h.text).join(' ')}` : 'That isn’t in your notes.',
+      cites: [...hits.map((x) => ({ note: x.note, at: x.h.at })), { note: notes.length + 1, at: 0 }]
+    };
+  }
   if (system.startsWith('You help someone catch up')) {
     // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
     // can't back with any line it was sent: what Alcove shows must come only from lines that were read.
@@ -273,7 +305,7 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
     };
   }
   const question = /\nQuestion: (.*)$/s.exec(user)?.[1] ?? '';
-  const words = question.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
+  const words = wordsAsked(user);
   if (system.startsWith('You answer a question about a series')) {
     // Answers from the first transcript line, newest meeting first, that shares a word with the question.
     const found = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => heardIn(block).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), h })))
@@ -394,6 +426,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const calls: FakeNear['calls'] = [];
   const received: FakeNear['received'] = [];
   const prompts: string[] = [];
+  const instructions: string[] = [];
   const images: FakeNear['images'] = [];
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
@@ -468,7 +501,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   }
 
   /** What the notes model answers a chat request, as JSON. */
-  async function chat(body: Uint8Array, path: string, encryption: 'ohttp' | 'none'): Promise<{ status: number; body: unknown }> {
+  async function chat(body: Uint8Array, path: string, encryption: 'ohttp' | 'none', key: string | null): Promise<{ status: number; body: unknown }> {
     const parsed: unknown = JSON.parse(Buffer.from(body).toString('utf8'));
     const o = typeof parsed === 'object' && parsed !== null ? parsed : {};
     const model = 'model' in o ? str(o.model) : '';
@@ -486,8 +519,9 @@ export async function startFakeNear(): Promise<FakeNear> {
     });
     const system = text('system');
     const user = text('user');
-    calls.push({ path, model, bytes: body.length, encryption });
+    calls.push({ path, model, bytes: body.length, encryption, key });
     prompts.push(user);
+    instructions.push(system);
     for (const img of sent) {
       const comment = commentOf(img);
       images.push({ bytes: img.length, marker: /^SCREEN:(\{.*\})\|/s.exec(comment)?.[1] ?? null, salt: comment.slice(comment.lastIndexOf('|') + 1) });
@@ -522,14 +556,15 @@ export async function startFakeNear(): Promise<FakeNear> {
       const fromNvidia = await N.answer(url.pathname, req.method ?? 'GET', body);
       if (fromNvidia) return answer(res, fromNvidia);
 
-      // The models' own endpoints: Oblivious HTTP, with the API key inside the seal.
+      // The models' own endpoints: Oblivious HTTP, with the API key inside the seal. Only the OHTTP key the
+      // model's attested key signed opens a request, so what opens was sealed to that attested key.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
         return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
-          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp') : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key)) : { status: 404, body: { error: { message: 'Not found' } } }));
       }
       if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
         return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
-          ? chat(inner.body, inner.path, 'ohttp') : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? chat(inner.body, inner.path, 'ohttp', hex(models.notes.key)) : { status: 404, body: { error: { message: 'Not found' } } }));
       }
 
       if (req.headers.authorization !== `Bearer ${apiKey}`) return send(res, 401, { error: { message: 'Invalid API key' } });
@@ -554,11 +589,11 @@ export async function startFakeNear(): Promise<FakeNear> {
 
       // What real NEAR AI's gateway also takes, in plaintext. Alcove must never send these.
       if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
-        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none');
+        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null);
         return send(res, t.status, t.body);
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
-        const c = await chat(body, url.pathname, 'none');
+        const c = await chat(body, url.pathname, 'none', null);
         return send(res, c.status, c.body);
       }
       send(res, 404, { error: { message: 'Not found' } });
@@ -576,7 +611,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       NEAR_AI_BASE_URL: `${origin}/v1`, NEAR_AI_API_KEY: apiKey, NEAR_AI_STT_URL: `${origin}/direct/whisper`, NEAR_AI_NOTES_URL: `${origin}/direct/glm`,
       INTEL_PCS_URL: i.pcsUrl, INTEL_ROOT_CA: i.rootPem, NVIDIA_NRAS_URL: n.nrasUrl, NVIDIA_ROOT_CA: n.rootPem
     },
-    calls, received, prompts, images, transcriptions,
+    calls, received, prompts, instructions, images, transcriptions,
     keys: () => ({ transcript: hex(models.transcript.key), notes: hex(models.notes.key) }),
     composes: () => ({ transcript: hex(sha256(utf8(models.transcript.compose))), notes: hex(sha256(utf8(models.notes.compose))), gateway: hex(sha256(utf8(gateway.compose))) }),
     tamper(how, of = 'model') {

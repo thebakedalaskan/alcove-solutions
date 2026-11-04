@@ -1,6 +1,11 @@
 import { Dialog as RDialog, Popover as RPopover, Tooltip as RTooltip } from 'radix-ui';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
+import { Icon, type IconName } from './icon';
+
+/* Where popovers sit: 8px from what opened them, and at least 12px inside the window's edges. */
+const OFFSET = 8;
+const EDGE = 12;
 
 /**
  * A panel anchored to what opened it. `stage` is for the always-night call stage. `takeFocus={false}` for one that
@@ -15,7 +20,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
     <RPopover.Root open={open} onOpenChange={onOpenChange}>
       <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={8} collisionPadding={12} aria-label={label} className={cn('ac-pop', stage && 'is-stage', className)}
+        <RPopover.Content side={side} align={align} sideOffset={OFFSET} collisionPadding={EDGE} aria-label={label} className={cn('ac-pop', stage && 'is-stage', className)}
           onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()} onCloseAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}>
           {children}
         </RPopover.Content>
@@ -25,13 +30,162 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 }
 export const PopoverClose = RPopover.Close;
 
-/** A single sheet that drops from the top: one input, never a stack of forms. */
+export interface SelectOption<T extends string> { value: T; label: string }
+
+/**
+ * Picks one of a list: a button showing the current choice opens a listbox, placed like a Popover (it
+ * turns upward near the bottom of the window, scrolls when it's long, and follows its button when a
+ * page or panel scrolls). Arrow keys, Home and End move; Enter or Space picks; Escape or Tab closes
+ * without changing anything; typing jumps to the option whose name starts with what was typed. Focus
+ * goes back to the button. `label` names the choice for screen readers ("Language"). `stage` is for
+ * the night recorder and the call.
+ */
+export function Select<T extends string>({ value, onChange, options, label, icon, placeholder, align = 'start', stage = false, disabled = false, className }: {
+  value: T | undefined; onChange: (value: T) => void; options: SelectOption<T>[]; label: string;
+  /** Drawn before the value, e.g. `mic` for the microphone. */
+  icon?: IconName | undefined;
+  /** Shown when `value` isn't one of the options. */
+  placeholder?: string | undefined;
+  align?: 'start' | 'center' | 'end' | undefined; stage?: boolean | undefined; disabled?: boolean | undefined; className?: string | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const list = useRef<HTMLDivElement>(null);
+  /** The option to focus when the list opens, when it isn't the chosen one. */
+  const start = useRef<number | null>(null);
+  const typed = useRef({ text: '', timer: 0 });
+  useEffect(() => { const t = typed.current; return () => window.clearTimeout(t.timer); }, []);
+
+  const chosen = options.findIndex((o) => o.value === value);
+  const shown = options[chosen]?.label ?? placeholder ?? '';
+  const items = () => Array.from(list.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+  const focused = () => items().findIndex((el) => el === document.activeElement);
+
+  /** Focuses option `i` and scrolls the list, never the page, so it shows: to the middle when the list opens. */
+  const focusAt = (i: number, middle = false) => {
+    const box = list.current;
+    const all = items();
+    const el = all[Math.max(0, Math.min(all.length - 1, i))];
+    if (!box || !el) return;
+    el.focus({ preventScroll: true });
+    if (middle) box.scrollTop = el.offsetTop - (box.clientHeight - el.offsetHeight) / 2;
+    else if (el.offsetTop < box.scrollTop) box.scrollTop = el.offsetTop - 6;
+    else if (el.offsetTop + el.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = el.offsetTop + el.offsetHeight - box.clientHeight + 6;
+  };
+
+  /**
+   * The option whose name starts with what's been typed in the last 0.7 s, looking on from `from`. A
+   * single letter, or the same letter again, moves on to the next option that starts with it.
+   */
+  const match = (key: string, from: number): number | undefined => {
+    const t = typed.current;
+    window.clearTimeout(t.timer);
+    t.text += key.toLowerCase();
+    t.timer = window.setTimeout(() => { t.text = ''; }, 700);
+    const first = t.text.charAt(0);
+    const want = [...t.text].every((c) => c === first) ? first : t.text;
+    const base = from < 0 ? 0 : from + (want.length === 1 ? 1 : 0);
+    for (let k = 0; k < options.length; k++) {
+      const i = (base + k) % options.length;
+      if (options[i]?.label.toLowerCase().startsWith(want)) return i;
+    }
+    return undefined;
+  };
+  const printable = (e: KeyboardEvent) => e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+
+  const choose = (i: number) => {
+    const o = options[i];
+    if (o && o.value !== value) onChange(o.value);
+    setOpen(false);
+  };
+
+  const onButtonKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      start.current = chosen;
+      setOpen(true);
+    } else if (printable(e) && e.key !== ' ') {
+      /* Typing on the button opens the list at the match; keys typed before it takes focus still count. */
+      e.preventDefault();
+      e.stopPropagation();
+      const hit = match(e.key, open ? focused() : chosen);
+      if (open) { if (hit !== undefined) focusAt(hit); return; }
+      start.current = hit ?? chosen;
+      setOpen(true);
+    }
+  };
+
+  const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = focused();
+    const last = options.length - 1;
+    let to: number | undefined;
+    if (e.key === 'ArrowDown') to = i < 0 ? 0 : Math.min(last, i + 1);
+    else if (e.key === 'ArrowUp') to = i < 0 ? last : Math.max(0, i - 1);
+    else if (e.key === 'Home') to = 0;
+    else if (e.key === 'End') to = last;
+    else if (e.key === 'Enter' || (e.key === ' ' && !typed.current.text)) { if (i >= 0) choose(i); }
+    else if (e.key === 'Tab') setOpen(false);
+    else if (printable(e)) to = match(e.key, i);
+    else return;
+    /* Handled here: the page's own shortcuts (N for a new call) mustn't see it. Escape is left to the popover. */
+    e.preventDefault();
+    e.stopPropagation();
+    if (to !== undefined) focusAt(to);
+  };
+
+  return (
+    <RPopover.Root open={open} onOpenChange={setOpen}>
+      <RPopover.Trigger aria-haspopup="listbox" aria-label={shown ? `${label}: ${shown}` : label} disabled={disabled} onKeyDown={onButtonKey}
+        className={cn('ac-select', stage && 'is-stage', className)}>
+        {icon && <Icon name={icon} size={15} />}
+        <span className="v ac-clamp-1">{shown}</span>
+        <Icon name={stage ? 'down' : 'chevronsUpDown'} size={15} />
+      </RPopover.Trigger>
+      <RPopover.Portal>
+        <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
+          className={cn('ac-pop ac-select-list', stage && 'is-stage')} onKeyDown={onListKey}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            const at = start.current ?? chosen;
+            start.current = null;
+            focusAt(at, true);
+            /* Once it's placed (and maybe shortened to fit), keep that option in view. */
+            requestAnimationFrame(() => focusAt(at, true));
+          }}>
+          {options.map((o, i) => (
+            <div key={o.value} role="option" tabIndex={-1} aria-selected={i === chosen} className="ac-option"
+              onClick={() => choose(i)}
+              onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
+              <span>{o.label}</span>
+              {i === chosen && <Icon name="check" size={15} />}
+            </div>
+          ))}
+        </RPopover.Content>
+      </RPopover.Portal>
+    </RPopover.Root>
+  );
+}
+
+/** The element that has focus, unless that's nothing in particular (the page itself). */
+const focusedElement = (): HTMLElement | null =>
+  typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+
+/**
+ * A single sheet that drops from the top: one input, never a stack of forms. Closing it puts focus back
+ * where it was when it opened, since a shortcut can open it from anywhere, with no button to go back to.
+ */
 export function Sheet({ open, onOpenChange, label, children, className }: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string }) {
+  const [shown, setShown] = useState(open);
+  const [back, setBack] = useState<HTMLElement | null>(null);
+  if (open !== shown) {
+    setShown(open);
+    if (open) setBack(focusedElement());
+  }
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)}>
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)}
+          onCloseAutoFocus={(e) => { if (back?.isConnected) { e.preventDefault(); back.focus({ preventScroll: true }); } }}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>

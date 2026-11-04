@@ -25,7 +25,14 @@ export type SignInBody = z.infer<typeof SignInBodySchema>;
 /** Search terms travel in a POST body so they never appear in URLs or access logs. */
 export const PeopleSearchBodySchema = z.object({ query: z.string().max(200) });
 export const TeamInviteBodySchema = z.object({ emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50) });
-export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50) });
+/**
+ * Sharing notes: up to 50 addresses, and the group's name when they're one of the sharer's groups
+ * (the app sends the group's addresses; the group itself stays in the sharer's preferences).
+ */
+export const ShareInputSchema = z.object({
+  emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(50),
+  group: z.string().trim().min(1).max(40).optional()
+});
 
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 export const CallActionSchema = z.discriminatedUnion('type', [
@@ -110,11 +117,12 @@ export const RecordingActionSchema = z.discriminatedUnion('type', [
 export type RecordingAction = z.infer<typeof RecordingActionSchema>;
 
 /**
- * Where audio goes in the recording: its segment, its place in the segment (`start`, pauses not counted, or `seq`
- * for recorded pieces) and its length. A call's speech also says whose it is (`speaker`: a participant ID) and how
- * long before the request it began (`ago`, in ms), so the server can place it where its speaker was when it was said.
+ * Where audio goes in the recording, in these headers: its segment, a piece's sequence number, where each
+ * piece or clip starts in its segment (`at`, in milliseconds with pauses not counted) and its length. A call's
+ * speech also says whose it is (`speaker`: a participant ID) and how long before the request it began (`ago`,
+ * in ms), so the server can place it where its speaker was when it was said.
  */
-export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', start: 'x-alcove-start-ms', duration: 'x-alcove-duration-ms', speaker: 'x-alcove-speaker', ago: 'x-alcove-ago-ms' } as const;
+export const AUDIO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', at: 'x-alcove-at-ms', duration: 'x-alcove-duration-ms', speaker: 'x-alcove-speaker', ago: 'x-alcove-ago-ms' } as const;
 /** Mutations carry an operation ID so a retried request never applies twice (docs: Network and API contract). */
 export const OPERATION_HEADER = 'x-alcove-operation';
 export const MAX_AUDIO_PIECE_BYTES = 2 * 1024 * 1024;
