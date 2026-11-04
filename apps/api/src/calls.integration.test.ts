@@ -364,7 +364,7 @@ describe('end-to-end encryption', () => {
     // Sam's browser rejoins the phone's group by itself: no asking again.
     await waitFor(() => phone.crypto.getSnapshot().members.includes(sam.ticket.identity) && keyOf(sam) === keyOf(phone), 'Sam in the new group');
     expect(keyOf(sam)).not.toBe(oldKey);
-    // The laptop's tab holds no host powers now: the call went on from the phone.
+    // The laptop hosted before: what it still sends as host is out of date, so its browser drops it quietly.
     expect(code(await laptop.lock(true).catch((e: unknown) => e))).toBe('conflict');
     await phone.leave();
   });
@@ -1368,8 +1368,7 @@ describe('joining by link', () => {
     expect(second.ticket.identity).not.toBe(first.ticket.identity);
     expect(await firstRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
     expect(second.getSnapshot().notes.recording.segment).toBe(1);
-    // The replaced connection is no longer the organizer's: its late audio is refused as moved past (409), so that
-    // tab drops it quietly instead of trying again.
+    // The replaced connection doesn't host any more: its late audio is refused as out of date, which its browser drops quietly.
     expect(code(await first.appendAudio(piece(audioBytes('late'), 0, 1)).catch((e: unknown) => e))).toBe('conflict');
     await second.appendAudio(piece(audioBytes('second-device'), 1, 0));
     await second.leave();
