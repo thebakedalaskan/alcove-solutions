@@ -156,9 +156,9 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   connection's keys stay with it, everyone already in rejoins the new group with fresh keys without asking,
   and anyone still waiting keeps waiting (key packages aren't tied to a group, so theirs carry over).
 - **Who vouches for whom.** The API says who each identity is, who's invited and what their names are; it
-  can't read media or chat, and it runs attested (privacy › Moving to confidential computing). There are
-  no safety codes. An API running other code than the attested build could have the organizer's browser add
-  someone as an invitee, but never silently: everyone in the call sees every member of the group in People
+  can't read media or chat. It's built to run attested, but it runs on Cloud Run today, so whoever operates
+  it could run other code (privacy › Moving to confidential computing). There are no safety codes. An API
+  running other code could have the organizer's browser add someone as an invitee, but never silently: everyone in the call sees every member of the group in People
   (as "Someone" if the API doesn't name them), and their tile if they connect.
 - **What it doesn't cover.** While notes are on, the organizer's microphone also goes to the API for the
   transcript and notes, outside the media encryption, as the notes sign says. LiveKit still sees addresses,
