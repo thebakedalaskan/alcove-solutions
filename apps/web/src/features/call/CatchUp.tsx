@@ -243,7 +243,7 @@ function ReadNote({ read, room, times: t }: { read: CatchUpRead; room: string | 
       <p className="cu-when">{t.stretch(read.from, read.to)} · {read.lines} {read.lines === 1 ? 'line' : 'lines'} read · as of {t.minute(read.asOf)}</p>
       {skipped && <p className="cu-note"><Icon name="more" size={13} />This stretch was too long to read whole: {skipped.lines} {skipped.lines === 1 ? 'line' : 'lines'} said {t.stretch(skipped.from, skipped.to)} were left out.</p>}
       {read.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />{read.gaps.slice(0, 3).map(gapLabel).join(' · ')}{read.gaps.length > 3 ? ` and ${read.gaps.length - 3} more` : ''}. Nothing said then is in this.</p>}
-      {read.missed.length > 0 && <p className="cu-note"><Icon name="wifiOff" size={13} />Nothing was transcribed {span(read.missed)}, while the organizer’s connection was away.</p>}
+      {read.missed.length > 0 && <p className="cu-note"><Icon name="wifiOff" size={13} />Nothing was transcribed {span(read.missed)}, while the host’s connection was away.</p>}
       {room && <p className="cu-note"><Icon name="door" size={13} />Only what was said in {room} while you were in it.</p>}
       {read.whileHere && <p className="cu-note"><Icon name="lock" size={13} />Only what was said while you were here.</p>}
     </div>

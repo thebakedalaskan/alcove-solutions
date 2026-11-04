@@ -11,7 +11,8 @@ import { useCaptions } from '~/features/call/captions';
 import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
 import { useDevices } from '~/features/call/devices';
 import { ScreenFrames } from '~/features/call/frames';
-import { LeaveSheet, type Ended } from '~/features/call/LeaveSheet';
+import { HostSpill, organizerFirst } from '~/features/call/Hosting';
+import { LeaveSheet, type Ended, type NextHost } from '~/features/call/LeaveSheet';
 import { useCopyLink } from '~/features/call/links';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { AskView, MomentView } from '~/features/call/CatchUp';
@@ -69,6 +70,8 @@ const NO_ROOM: CallRoom = {
  * and it's left only once no screen uses it.
  */
 const connections = new WeakMap<CallSession, { room: Promise<CallRoom>; users: number }>();
+/** Takes away the toast that said why this tab left the call: it isn't true any more once the tab joins again. */
+let leftToast: (() => void) | null = null;
 
 function Call() {
   const { code } = Route.useParams();
@@ -121,13 +124,16 @@ function InCall({ session }: { session: CallSession }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
+  useEffect(() => { leftToast?.(); leftToast = null; }, []);
   const copy = useCopyLink();
   const reduce = useReducedMotion();
   useRaisedToasts();
   const me = selfIn(state);
   const meId = me?.id ?? self;
   const organizer = state.isOrganizer;
-  // What the call captures now, the same for everyone: notes on (unavailable while the organizer's browser can't
+  // Whoever hosts (the organizer, or someone standing in while they're away) lets people in and takes the notes.
+  const hosting = state.isHost;
+  // What the call captures now, the same for everyone: notes on (unavailable while the host's browser can't
   // capture anything), paused by the organizer, or off. The recording follows it.
   const mode = state.capture.mode;
   const on = notesAreOn(mode);
@@ -151,7 +157,7 @@ function InCall({ session }: { session: CallSession }) {
   const [lang, setLang] = useState<CaptionLanguage | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
-  // The organizer's browser: a recorder that couldn't start or failed, no way to listen, and its own pause on its way.
+  // The host's browser: a recorder that couldn't start or failed, no way to listen, and its own pause on its way.
   const [cantRecord, setCantRecord] = useState(false);
   const [cantListen, setCantListen] = useState(() => !canListen());
   const [pausing, setPausing] = useState(false);
@@ -224,12 +230,12 @@ function InCall({ session }: { session: CallSession }) {
   }, [room, self]);
 
   /*
-   * The call's notes, in the organizer's browser, from what it hears: its own microphone and the people in its part of
-   * the call, as their tracks arrived (nobody's volume here, nor the speaker, changes that). The recorder mixes them into
-   * one recording, so playing the notes back sounds like the call; the live transcript hears each on its own, under their
-   * own name. While the organizer visits a breakout room the recording is silent (hush, below), and the room's lines
-   * are live only: the call's notes have the main room's talk. Both run while notes are on; paused or off, they stop
-   * and drop whatever wasn't sent: the server refuses it anyway.
+   * The call's notes, in the host's browser (the organizer's, or a stand-in's), from what it hears: its own microphone
+   * and the people in its part of the call, as their tracks arrived (nobody's volume here, nor the speaker, changes
+   * that). The recorder mixes them into one recording, so playing the notes back sounds like the call; the live
+   * transcript hears each on its own, under their own name. While the organizer visits a breakout room the recording is
+   * silent (hush, below), and the room's lines are live only: the call's notes have the main room's talk. Both run
+   * while notes are on; paused or off, they stop and drop whatever wasn't sent: the server refuses it anyway.
    */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError, setCantRecord);
@@ -240,16 +246,16 @@ function InCall({ session }: { session: CallSession }) {
   const live = state.phase === 'in-call';
   // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
   const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
-  // Once the organizer is ending the call or turning notes off, the last audio and speech are on their way: nothing
-  // starts recording or listening again meanwhile, as people drop out of the room or anyone mutes.
-  const capturing = organizer && on && live && !leaving && !ended && !turningOff;
+  // Once this browser is ending the call, handing it on or turning notes off, the last audio and speech are on their
+  // way: nothing starts recording or listening again meanwhile, as people drop out of the room or anyone mutes.
+  const capturing = hosting && on && live && !leaving && !ended && !turningOff;
   useEffect(() => {
     const r = recorder.current;
     if (!r) return;
     // In a breakout room it records silence (hush, below): the call's recording has the main room's talk.
     if (capturing) r.start([...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
-    else if (!on || !organizer) r.discard();
-  }, [capturing, organizer, on, segment, micTrack, room, self, heardKey]);
+    else if (!on || !hosting) r.discard();
+  }, [capturing, hosting, on, segment, micTrack, room, self, heardKey]);
   // Nothing is heard while this browser is between two parts of the call: it holds neither part's keys.
   const settledHere = crypto.status === 'in';
   // Nobody is heard in a breakout room the organizer paused: what was held is dropped, and the segment carries on.
@@ -259,9 +265,9 @@ function InCall({ session }: { session: CallSession }) {
     const e = ears.current;
     if (!e) return;
     if (capturing && !roomHeld) e.follow(segment, settledHere ? [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))] : []);
-    else if (!on || !organizer) e.stop();
+    else if (!on || !hosting) e.stop();
     else if (roomHeld) e.quiet();
-  }, [capturing, organizer, on, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
+  }, [capturing, hosting, on, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
   useEffect(() => () => ears.current?.stop(), []);
   /*
    * What this browser can't capture while notes are on, which everyone is told: the recording when the recorder
@@ -273,10 +279,11 @@ function InCall({ session }: { session: CallSession }) {
   const cantKey = cant.join(' ');
   const toldKey = (['recording', 'transcript'] as const).filter((p) => state.capture[p].mode === 'unavailable').join(' ');
   useEffect(() => {
-    if (!organizer || !live || !on || cantKey === toldKey) return;
+    // A tab that's out of the call (someone else hosts now) has nothing to say: it's letting go of its microphone.
+    if (!hosting || !live || !on || cantKey === toldKey || crypto.status === 'away' || crypto.status === 'removed') return;
     clog.info('saying what this browser can’t capture', { parts: cantKey || 'none' });
     session.setUnavailable(cant).catch((e: unknown) => clog.warn('could not say what this browser can’t capture', { err: e, parts: cantKey || 'none' }));
-  }, [organizer, live, on, cantKey, toldKey, session]);
+  }, [hosting, live, on, cantKey, toldKey, session, crypto.status]);
   /*
    * The organizer moving to another part of the call ends every clip in progress (the server places each where its
    * speaker was when it began, so none may span two parts), and the recording that goes into the notes hears nothing
@@ -337,7 +344,7 @@ function InCall({ session }: { session: CallSession }) {
   const asked = useRef(new Set<string>());
   const askToasts = useRef(new Map<string, () => void>());
   useEffect(() => {
-    if (!organizer) return;
+    if (!hosting) return;
     const asking = new Set(state.waiting.map((w) => w.id));
     for (const [id, close] of askToasts.current) if (!asking.has(id)) { close(); askToasts.current.delete(id); }
     for (const w of state.waiting) {
@@ -351,7 +358,7 @@ function InCall({ session }: { session: CallSession }) {
       const action = w.person.email ? { label: 'Review', onClick: () => setPanel('people') } : { label: 'Let in', onClick: letIn };
       askToasts.current.set(w.id, toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action }));
     }
-  }, [state.waiting, organizer, session, toast]);
+  }, [state.waiting, hosting, session, toast]);
   useEffect(() => {
     const open = askToasts.current;
     return () => { for (const close of open.values()) close(); };
@@ -396,22 +403,27 @@ function InCall({ session }: { session: CallSession }) {
   }, [roomView.audioBlocked, room]);
 
   /*
-   * The organizer ended the call, or removed you, or the call went on from another tab or device: you're told,
-   * and go back to the call's page. The organizer is only ever removed by joining from another device; this
-   * screen then lets go of the call. A connection that dropped for good asks for a reload.
+   * The call ended, or the host removed you, or the call went on from another tab or device: you're told, and go back
+   * to the call's page. The organizer is removed only by joining from another device; this screen then lets go of the
+   * call. An organizer's tab that was away long enough for someone else to host goes back to the join page, where
+   * joining takes the call back. A connection that dropped for good asks for a reload.
    */
-  const hosting = session.ticket.role === 'host';
-  const outOfGroup = crypto.status === 'removed';
+  const organizerTab = session.ticket.role === 'host';
+  const outOfGroup = crypto.status === 'removed' || crypto.status === 'away';
   const over = useRef(false);
+  /* The connection dropped for good: its toast offers a reload, until the call says this tab is out of it (someone else hosts now). */
+  const dropped = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (leaving || ended || over.current) return;
-    if (roomView.connection === 'ended' && roomView.endReason === 'error') {
+    if (leaving || ended || (over.current && !(dropped.current && outOfGroup))) return;
+    if (roomView.connection === 'ended' && roomView.endReason === 'error' && !outOfGroup) {
       over.current = true;
-      toast('The call’s connection dropped. Reload to join again.', { icon: 'x', ms: 120_000, action: { label: 'Reload', onClick: () => { guardRef.current.release(); location.reload(); } } });
+      dropped.current = toast('The call’s connection dropped. Reload to join again.', { icon: 'x', ms: 120_000, action: { label: 'Reload', onClick: () => { guardRef.current.release(); location.reload(); } } });
       return;
     }
-    const gone = roomView.connection === 'ended' && (roomView.endReason === 'removed' || (!hosting && roomView.endReason === 'ended-by-host'));
+    const gone = roomView.connection === 'ended' && (roomView.endReason === 'removed' || (!organizerTab && roomView.endReason === 'ended-by-host'));
     if (!gone && !outOfGroup) return;
+    dropped.current?.();
+    dropped.current = null;
     over.current = true;
     // The call went on without this tab (for the organizer, on their other tab or device, which records from now): what
     // the recorder and the voices hadn't sent is dropped rather than sent where it's refused.
@@ -427,12 +439,14 @@ function InCall({ session }: { session: CallSession }) {
     volumes.clear();
     sessions.media = null;
     void qc.invalidateQueries();
-    toast(hosting ? 'You joined this call from another device.'
-      : roomView.endReason === 'ended-by-host' ? 'The organizer ended the call.'
-        : roomView.endReason === 'removed' ? 'The organizer removed you from the call.'
-          : 'You’re no longer in this call here. You can join again.', { icon: 'leave' });
-    void navigate(hosting ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
-  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, forgetLayout, media, volumes, navigate, toast, session, room, qc]);
+    const away = crypto.status === 'away';
+    leftToast = toast(away ? 'Your connection dropped, so someone else is hosting. Join again to take the call back.'
+      : organizerTab ? 'You joined this call from another device.'
+        : roomView.endReason === 'ended-by-host' ? 'The call has ended.'
+          : roomView.endReason === 'removed' ? 'The host removed you from the call.'
+            : 'You’re no longer in this call here. You can join again.', { icon: 'leave', ...(away ? { ms: 8000 } : {}) });
+    void navigate(organizerTab && !away ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
+  }, [roomView.connection, roomView.endReason, outOfGroup, crypto.status, leaving, ended, organizerTab, state.code, forgetLayout, media, volumes, navigate, toast, session, room, qc]);
 
   /*
    * Moving to another device. Letting go here comes first: what the notes heard so far is sent, then the microphone
@@ -440,7 +454,7 @@ function InCall({ session }: { session: CallSession }) {
    */
   const moving = useMoveOut(session, () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam }), async () => {
     over.current = true;
-    if (organizer) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
+    if (hosting) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
     recorder.current?.stop();
     ears.current?.stop();
     session.close();
@@ -524,8 +538,8 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => {
     if (!open) { warned.current = false; closing.current = false; return; }
     if (left <= 30 && !warned.current) { warned.current = true; toast('Rooms close in 30 seconds', { icon: 'timer' }); }
-    if (left <= 0 && !closing.current && organizer) { closing.current = true; session.closeRooms(); }
-  }, [open, left, organizer, session, toast]);
+    if (left <= 0 && !closing.current && hosting) { closing.current = true; session.closeRooms(); }
+  }, [open, left, hosting, session, toast]);
   const wasOpen = useRef(!!open);
   useEffect(() => {
     if (wasOpen.current && !open) {
@@ -867,7 +881,7 @@ function InCall({ session }: { session: CallSession }) {
       original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
   ) : (
     <Caption who={<><Icon name="captions" size={15} /><span className="name">Captions</span>{capButton}</>}>
-      <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : notesAreOn(capHere.mode) ? 'Nothing is transcribed for captions right now: the organizer’s browser can’t listen.' : capHere.mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
+      <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : notesAreOn(capHere.mode) ? 'Nothing is transcribed for captions right now: the host’s browser can’t listen.' : capHere.mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
     </Caption>
   );
 
@@ -902,17 +916,17 @@ function InCall({ session }: { session: CallSession }) {
     return () => removeEventListener('keydown', onKey);
   }, []);
 
-  /* ---------- leaving: the organizer ends the call for everyone; anyone else just leaves ---------- */
+  /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
   /*
-   * The organizer's last audio and speech go before the call ends: the server refuses them after. The recorder is paused,
+   * The host's last audio and speech go before the call ends: the server refuses them after. The recorder is paused,
    * not stopped, until it has: if ending fails, the same recorder carries on, so its pieces stay in order in the same
    * segment (a new one would number its pieces from the start again, and the server keeps the first of each).
    */
   const end = async () => {
     setLeaving(true);
-    const rec = organizer ? recorder.current : null;
+    const rec = hosting ? recorder.current : null;
     try {
-      if (organizer) await Promise.all([rec?.pause(), ears.current?.flush()]);
+      if (hosting) await Promise.all([rec?.pause(), ears.current?.flush()]);
       const r = await session.leave();
       rec?.discard();
       over.current = true;
@@ -933,6 +947,40 @@ function InCall({ session }: { session: CallSession }) {
     } catch (e) {
       rec?.release();
       clog.error('leaving the call failed', { err: e });
+      toast(errorMessage(e), { icon: 'x' });
+    } finally {
+      setLeaving(false);
+    }
+  };
+  /*
+   * Leaving with someone else hosting: the last audio and speech go first, then the call is theirs. You go back to the
+   * call's page, where the organizer's joining again takes it back. If they can't host after all, you stay, and the
+   * paused recorder carries on in the same segment, as when ending fails.
+   */
+  const handOff = async (to: string) => {
+    setLeaving(true);
+    const who = state.participants.find((p) => p.id === to)?.person;
+    const rec = recorder.current;
+    try {
+      await Promise.all([rec?.pause(), ears.current?.flush()]);
+      await session.handOff(to);
+      rec?.discard();
+      over.current = true;
+      guard.release();
+      forgetLayout();
+      ears.current?.stop();
+      void room.leave();
+      media.stop();
+      volumes.clear();
+      sessions.media = null;
+      sessions.call = null;
+      void qc.invalidateQueries();
+      await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
+      leftToast = toast(`You left the call. ${who ? callName(who) : 'Someone else'} is hosting${organizer ? ' until you’re back' : ''}.`, { icon: 'leave' });
+    } catch (e) {
+      rec?.release();
+      clog.warn('handing the call on failed', { err: e });
+      setLeaveOpen(true);
       toast(errorMessage(e), { icon: 'x' });
     } finally {
       setLeaving(false);
@@ -959,10 +1007,13 @@ function InCall({ session }: { session: CallSession }) {
     return {
       id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false, volume: sp?.volume ?? null,
       detail: detail.filter(Boolean).join(' · '),
-      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.layout.pins.includes(p.seat) ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : '', volumeTag(sp?.volume ?? 1) ?? '', askedTag(state, p.id)].filter(Boolean)
+      tags: [state.host.standIn && state.host.id === p.id ? `Hosting while ${organizerFirst(state)} is away` : '', !open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.layout.pins.includes(p.seat) ? 'Pinned for you' : '',
+        p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : '', volumeTag(sp?.volume ?? 1) ?? '', askedTag(state, p.id)].filter(Boolean)
     };
   });
-  const host: HostControls | undefined = organizer ? {
+  /* Who could host after you, best first, as the call names them: for the leave sheet. */
+  const nextHosts: NextHost[] = state.host.next.flatMap((id) => { const p = state.participants.find((x) => x.id === id); return p ? [{ id, person: p.person }] : []; });
+  const host: HostControls | undefined = hosting ? {
     admit: (id) => session.admit(id),
     deny: (id) => session.deny(id),
     mute: (id) => { const sid = roomView.people[id]?.micSid; return sid ? session.mute(id, sid) : Promise.resolve(); },
@@ -1056,18 +1107,21 @@ function InCall({ session }: { session: CallSession }) {
       <button type="button" className="sp-btn is-strong" onClick={() => media.setReceiveVideo('auto')}>Show cameras</button>
     </div>
   );
+  /* While someone stands in for the organizer, everyone sees who; whoever it is can bring everyone back from the rooms. */
+  const hostPill = state.host.standIn && live && <HostSpill state={state} onBringBack={open && hosting ? () => { session.closeRooms(); toast('Everyone is coming back to the main room', { icon: 'door' }); } : undefined} />;
   const bar = open
-    ? (organizer ? (soundPill || camsPill ? <>{soundPill}{camsPill}</> : null) : <>{soundPill}{camsPill}{roomBar}{sharePill}</>)
-    : (m.screen || spotlight || alone || soundPill || movingBar || camsPill) ? (
+    ? (organizer ? (soundPill || camsPill ? <>{soundPill}{camsPill}</> : null) : <>{soundPill}{camsPill}{hostPill}{roomBar}{sharePill}</>)
+    : (m.screen || spotlight || alone || soundPill || movingBar || camsPill || hostPill) ? (
       <>
         {soundPill}
         {movingBar}
         {camsPill}
+        {hostPill}
         {alone}
         {sharePill}
         {spotlight && (
           <div className="ic-spill"><Icon name="spotlight" size={15} /><span className="tx2">{spotName ? <><b>{spotName}</b> is spotlighted for everyone</> : <><b>You’re</b> spotlighted for everyone</>}</span>
-            {organizer && <button type="button" className="sp-btn is-strong" onClick={() => setSpot(null)}>Stop spotlight</button>}
+            {hosting && <button type="button" className="sp-btn is-strong" onClick={() => setSpot(null)}>Stop spotlight</button>}
           </div>
         )}
       </>
@@ -1102,7 +1156,7 @@ function InCall({ session }: { session: CallSession }) {
       <div className={cn('ic-call', ended && 'is-ended')}>
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
-          asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={shownPanel === 'people'} screens={state.capture.screen.mode !== 'off'}
+          asking={hosting ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={shownPanel === 'people'} screens={state.capture.screen.mode !== 'off'}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom}
               onMode={(m) => { if (!roomsHold()) layout.setMode(m); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset} />
@@ -1110,7 +1164,7 @@ function InCall({ session }: { session: CallSession }) {
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
-            <Stage people={onStage} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={organizer}
+            <Stage people={onStage} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
               bar={bar} caption={capNode} rooms={stageRooms} place={crypto.place} paused={mode === 'paused'} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
               onShareStarted={shareStarted} onShareStopped={shareStopped} />
           </motion.div>
@@ -1128,7 +1182,7 @@ function InCall({ session }: { session: CallSession }) {
                     catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
                     here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
-                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} volumes={volumes}
+                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} host={host} foot={privacyLine} volumes={volumes}
                     notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
@@ -1198,8 +1252,9 @@ function InCall({ session }: { session: CallSession }) {
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
         sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
       <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
-        organizer={organizer} notes={state.notes.everOn} locked={state.locked} others={others.length}
-        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
+        hosting={hosting} organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
+        notes={state.notes.everOn} locked={state.locked} others={others.length}
+        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
     </div>
   );
 }

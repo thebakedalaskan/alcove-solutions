@@ -229,7 +229,7 @@ export type ShareEnd = z.infer<typeof ShareEnd>;
 export interface Timeline {
   /** Notes on, off and paused, with the segment each started or ended. */
   history: CaptureChange[];
-  /** The organizer's browser out of the call while notes were on, until another of their connections took over. */
+  /** The host's browser out of the call while notes were on, until another connection hosted. */
   offline: OfflineStretch[];
   /** Shared screens read, and stopped. */
   screens: ScreenChange[];
@@ -259,7 +259,7 @@ export function moments(frames: Frame[], t: Timeline): ScreenMoment[] {
   const place = (at: number, segment: number): number => {
     const seconds = length(segment);
     if (!seconds) return Math.round(recorded(t.history, t.offline, at, t.duration) * 10) / 10;
-    // A segment starts when notes came on with it, or when another of the organizer's connections took over after one went.
+    // A segment starts when notes came on with it, or when another connection hosted after one went.
     const start = t.history.find((h) => h.status === 'on' && h.segment === segment)?.at ?? t.offline.find((g) => g.segment + 1 === segment)?.to;
     const into = start === undefined ? recorded(t.history, t.offline, at, t.duration) : before(segment) + Math.max(0, at - start);
     return Math.round(Math.min(Math.max(into, before(segment)), before(segment) + Math.max(0, seconds - 0.1)) * 10) / 10;

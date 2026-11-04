@@ -5,9 +5,10 @@
  * every epoch: whenever someone is added or removed, and every few minutes besides.
  *
  * A call has one group for each part of it: the main room, and while breakout rooms are open, one per room. So a
- * room's media keys and chat belong to the people in that room alone. Only the organizer's browser commits: it
- * creates every group, so its leaf is 0 in each, and every other browser takes commits from leaf 0 alone. It's
- * therefore in every group; anyone else is in one at a time. Each group's operations run one at a time, in order,
+ * room's media keys and chat belong to the people in that room alone. Only the host's browser commits (the
+ * organizer's, or a stand-in's: the connection the API names): it creates every group of its generation, so its leaf
+ * is 0 in each, and every other browser takes commits from leaf 0 alone. It's therefore in every group; anyone else
+ * is in one at a time. Each group's operations run one at a time, in order,
  * so nothing reads its state while something else is moving it on. Nothing a message carries can stop a group:
  * anything unreadable is reported as such and the next message is read as usual.
  */
@@ -19,8 +20,8 @@ const SUITE = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519' as const;
 const MEDIA_LABEL = 'alcove/call-media/v1';
 export const IDENTITY = /^p_[A-Za-z0-9_-]{22}$/;
 /**
- * The leaf whose commits a group takes: the committer's. The organizer's browser creates every group, so that's
- * leaf 0. Kept in one place (MlsGroup.committerLeaf) so another connection could take over committing.
+ * The leaf whose commits a group takes: the committer's. The host's browser creates every group of its generation,
+ * so that's leaf 0; another host starts a new generation rather than taking over a group.
  */
 const COMMITTER_LEAF = 0;
 /** At most this many people go into one commit: a crowd arriving at once is let in over a few. */
@@ -45,8 +46,8 @@ export const unb64u = (s: string): Uint8Array => {
 /** A new random identity for a call connection: what LiveKit and the call's MLS groups know someone by. */
 export const newIdentity = (): string => `p_${b64u(crypto.getRandomValues(new Uint8Array(16)))}`;
 /**
- * The name of one part of a call's MLS group for one generation (a new set of groups whenever the organizer's
- * connection changes): `main`, or a breakout room's ID.
+ * The name of one part of a call's MLS group for one generation (a new set of groups whenever the connection that
+ * hosts changes): `main`, or a breakout room's ID.
  */
 export const groupName = (callId: string, generation: number, place: string): string => `alcove/call/${callId}/${generation}/${place}`;
 
@@ -107,7 +108,7 @@ interface KeyPair { publicPackage: KeyPackage; privatePackage: PrivateKeyPackage
 
 /**
  * A connection's way into groups: key packages made here (each joins one group at most, and its private init key
- * goes once it has), and new groups for the organizer's browser to start.
+ * goes once it has), and new groups for the host's browser to start.
  */
 export class MlsKeys {
   private unused: KeyPair[] = [];
@@ -135,7 +136,7 @@ export class MlsKeys {
     return k.body;
   }
 
-  /** The organizer's browser starts one part of the call's group (`name`, from groupName), with a key package of its own that nobody else ever sees. */
+  /** The host's browser starts one part of the call's group (`name`, from groupName), with a key package of its own that nobody else ever sees. */
   async create(name: string): Promise<MlsGroup> {
     const k = await this.pair();
     const st = await this.l.m.createGroup(enc.encode(name), k.publicPackage, k.privatePackage, [], this.l.cs, config(this.l));
@@ -144,7 +145,7 @@ export class MlsKeys {
   }
 
   /**
-   * Joins from the welcome the organizer's browser made for one of this connection's key packages: only into the
+   * Joins from the welcome the host's browser made for one of this connection's key packages: only into the
    * group named, with this browser in it, and the committer the API names at the committer's leaf. That key
    * package is used up.
    */
@@ -165,11 +166,11 @@ export class MlsKeys {
     const ids = leaves(st.ratchetTree);
     if (![...ids.values()].includes(this.identity)) throw new MlsError('That welcome isn’t for this browser.');
     const committer = ids.get(COMMITTER_LEAF);
-    if (!committer || (expect.committer !== null && committer !== expect.committer)) throw new MlsError('That group’s committer isn’t this call’s organizer.');
+    if (!committer || (expect.committer !== null && committer !== expect.committer)) throw new MlsError('That group’s committer isn’t whoever hosts this call.');
     return new MlsGroup(this.l, st, Number(st.groupContext.epoch));
   }
 
-  /** The organizer's browser checks each key package before adding anyone with it: well formed, this suite, signed by its own key, naming the identity it came with. */
+  /** The host's browser checks each key package before adding anyone with it: well formed, this suite, signed by its own key, naming the identity it came with. */
   async checked(a: { identity: string; keyPackage: string }): Promise<KeyPackage | null> {
     let m: MLSMessage;
     try { m = decode(this.l, a.keyPackage); } catch { return null; }
@@ -227,7 +228,7 @@ export class MlsGroup {
   }
 
   /**
-   * The organizer's browser: one commit adding these checked key packages (up to MAX_ADDS) and removing these
+   * The host's browser: one commit adding these checked key packages (up to MAX_ADDS) and removing these
    * identities, or only moving the keys on (`rekey`). It takes effect once the API has taken it (`settle`);
    * until then the same commit is sent again. Key packages that can't be used come back in `refused`.
    */

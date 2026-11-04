@@ -857,7 +857,7 @@ const FADE_S = 0.03;
  * no-op, so retries never duplicate audio. The server refuses audio once notes are off, so stopping waits for the last
  * piece before anyone switches notes off.
  *
- * What it records is a mix of voices (a room recording: the microphone; a call: everyone the organizer's browser
+ * What it records is a mix of voices (a room recording: the microphone; a call: everyone the host's browser
  * hears), through one small audio graph: each voice's own track, as it arrived, faded in when it's heard and out when
  * it isn't, into a limiter so voices over each other don't clip. A voice on a new track (another microphone) carries
  * on in the same recording, and voices come and go mid-segment without the recording stopping: MediaRecorder can't

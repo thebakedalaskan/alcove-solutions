@@ -189,14 +189,18 @@ Everyone sees what the call captures before they join and while they wait: wheth
 the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
 confidential compute, and who gets them. Never anyone's name or anything said.
 
-- **The organizer** sees the time and who is invited, **Join now** and **Copy link**.
+- **The organizer** sees the time and who is invited, **Join now** and **Copy link**. While someone is hosting in
+  their place (their connection dropped, or they left the call to someone), it says who, and **Join and host**
+  makes them the host again.
 - **Someone invited**, signed in, is told they get the notes, sees **Join now**, and is in as soon as the
   organizer is there.
 - **Anyone else with the link** sees who's hosting, and asks to join. Without an account they type a name; one
   line says guests don't get the notes, and **Sign in to get them** offers Google in place (and Microsoft and
   single sign-on when the organizer signed in with one of those). Signed in that way, they ask under their
   account, and once the organizer lets them in they're added to the invite and get the notes. While they wait
-  the page says so, with **Stop asking**; if the organizer turns them away, it says that too.
+  the page says so, with **Stop asking**; if they're turned away, it says that too. While someone stands in for the
+  organizer, they wait for "the host", and that person lets them in; everyone new then comes in as a guest, without
+  the notes, which the page says before they ask ("While Art is away, you join as a guest, without the notes").
 - **Before the organizer arrives** the page says it's waiting for them and opens joining when they're there. A
   locked call says nobody new can join. A call that's over says so, and opens again if the organizer starts
   it. A link that leads nowhere says to check it. The camera and microphone start as soon as there's a call
@@ -209,7 +213,7 @@ The call opens full screen: the stage with everyone's tiles, a side panel that s
 dock at the bottom.
 
 - **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
-  unavailable** when the organizer's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested** while
+  unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested** while
   someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
   the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared
@@ -319,7 +323,7 @@ dock at the bottom.
   captions included, until the organizer resumes. Nothing resumes it by itself. The transcript, a catch-up and
   the notes everyone gets say where it was paused ("Paused 10:02–10:05"), where notes were off, and where the
   organizer's browser was out of the call.
-- **When the organizer's browser can't capture.** Without a microphone that works (none, refused, or busy in
+- **When the host's browser can't capture.** Without a microphone that works (none, refused, or busy in
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
   join page, until it can again.
@@ -334,10 +338,21 @@ dock at the bottom.
   account, it lets go by itself. The laptop turns off its microphone and camera and leaves, then the phone comes
   in as you, with your place, raised hand and breakout room, and its microphone and camera as they were. The
   laptop says where the call went, with **Join again here**. While you share your screen the code stays hidden.
+  Whoever hosts keeps hosting on the new device, and nobody takes over while it can still arrive.
 - If your connection drops, the top bar says **Reconnecting** and you're back by yourself when it returns, as the
-  same person. While the organizer's browser is out of the call, the notes sign says **Notes unavailable**, for
-  everyone and on the join page; if they come back on another device, the notes mark the time between
-  ("Organizer offline 10:20–10:21"). A pause stays a pause through all of it.
+  same person. While the host's browser is out of the call, the notes sign says **Notes unavailable**, for
+  everyone and on the join page; when another browser takes over (theirs on another device, or someone standing in),
+  the notes mark the time between ("Host offline 10:20–10:21"). A pause stays a pause through all of it.
+- **When the organizer's connection drops.** The call goes on. About ten seconds after the call loses them,
+  someone invited who's in the call hosts in their place (never a guest; someone in the main room first, then
+  whoever came first), and everyone is told: "Art's connection dropped, so Priya is hosting until Art is back".
+  While Priya hosts, the status bar says so for everyone and People marks her. She lets people in, mutes, removes
+  and locks, can bring everyone back from breakout rooms, and can end the call or leave it to someone else; what
+  the notes capture stays as Art left it, and only Art changes it (she can ask, like anyone). Only Art adds people
+  to the invite, so whoever Priya lets in is a guest, without the notes. The notes carry on
+  from her browser. When Art joins again, he hosts again at once: "You're hosting again. Priya hosted while you
+  were away". If nobody in the call can host, it ends as it always has. A tab of Art's that was still open says
+  someone else is hosting, and goes to the join page to take the call back.
 
 Calls are for groups: invited people join with their accounts, anyone else with the link asks and the
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
@@ -346,7 +361,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 ## 7. End the call and get the notes
 
 1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
-   speech and ends the call. **Stay in the call** goes back.
+   speech and ends the call. **Stay in the call** goes back. With someone invited in the call, whoever hosts can
+   also **Leave and keep it going**: the person who'll host is chosen already ("Priya will host until you're back"),
+   and **Change** picks someone else. The call goes on, the notes with it, and the organizer takes it back by
+   joining again. Someone standing in sees the same sheet, with leaving it going first.
 2. The sheet becomes **Call ended**: who gets the notes, and how they're coming along until "Notes are
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who

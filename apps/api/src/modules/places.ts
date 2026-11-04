@@ -18,10 +18,14 @@ import { HeldRooms } from './notes';
  * - `person`: the same for every connection one browser makes to the call, so removing someone removes all of them.
  * - `status`: waiting to be let in, in, left, or turned away. An ask taken back is kept as turned away, so nothing,
  *   its pass or its identity, can be used again.
- * - `admit`: whether the organizer's browser adds them without asking (invited people, and people let in before who came back).
+ * - `admit`: whether the host's browser adds them without asking (invited people, and people let in before who came back).
  * - `keysFor`: the generation of their latest key package while it's unused; -1 once a commit has added them with it.
  * - `group`: the part of the call whose MLS group they're in, in this generation (`main`, or a breakout room's ID; null for
- *   none): a commit added them and none has taken them out. The organizer is in every group, and counts as `main`.
+ *   none): a commit added them and none has taken them out. Whoever hosts is in every group, and counts as `main`.
+ * - `hosting`: when this connection hosted the call (ms; `to` null while it still does). The organizer's host from when
+ *   they join. Once someone else hosts, what a connection that hosted still sends as host is turned down as out of date
+ *   (409) rather than as never allowed (403); and catching up says when no hosting browser was in the call to send
+ *   what was said.
  * - `from`: where in the log their group starts for them (their welcome into it).
  * - `placedAt`, `placedSeq`: when (ms) and where in the log they came into the part of the call they're in now; `wasIn`,
  *   the part they were in before it, and when they came into it and left it. Where someone was when they said something,
@@ -35,13 +39,24 @@ import { HeldRooms } from './notes';
  * - `left`: when this connection stopped being in the call (left, removed, or another took its place), in ms; null
  *   while it's in. With `since`, it's each person's time in the call, which catching up reads.
  */
-export const Joined = z.object({
+/**
+ * Call state written before hand-off has no `hosting`: then the organizer's connections hosted from when they joined
+ * until they left, as they always did, and nobody else hosted. Anything else is left for the schema to judge.
+ */
+const BeforeHandOff = z.object({ role: z.string(), status: z.string(), since: z.number(), left: z.number().nullable() });
+const withHosting = (v: unknown): unknown => {
+  if (typeof v !== 'object' || v === null || 'hosting' in v) return v;
+  const j = BeforeHandOff.safeParse(v);
+  return j.success ? { ...v, hosting: j.data.role === 'host' ? [{ from: j.data.since, to: j.data.status === 'in' ? null : j.data.left ?? j.data.since }] : [] } : v;
+};
+export const Joined = z.preprocess(withHosting, z.object({
   identity: z.string(), person: z.string(), role: z.enum(['host', 'invited', 'guest']), name: z.string(), email: z.string().optional(), photoUrl: z.string().optional(),
   status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), group: z.string().nullable(), from: z.number(),
   placedAt: z.number(), placedSeq: z.number(), wasIn: z.object({ place: z.string(), since: z.number(), until: z.number() }).nullable(),
   leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), left: z.number().nullable(),
-  earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]), hand: z.boolean()
-});
+  earlier: z.array(z.object({ since: z.number(), left: z.number() })).default([]), hand: z.boolean(),
+  hosting: z.array(z.object({ from: z.number(), to: z.number().nullable() })).default([])
+}));
 export type Joined = z.infer<typeof Joined>;
 
 /** A breakout room as kept: invited people by email, shown with their names when the call is read. */
@@ -57,8 +72,11 @@ export const BreakoutState = z.object({
   }).nullable(),
   held: z.array(HeldRooms)
 });
-/** What the rules here read of a call's state. */
-export interface Placing { people: Joined[]; breakouts: z.infer<typeof BreakoutState>; chatAt: Record<string, number> }
+/**
+ * What the rules here read of a call's state. `host` is the connection that hosts now (the organizer's, or someone's
+ * standing in for them), which commits for every part of the call's group (see committerOf).
+ */
+export interface Placing { people: Joined[]; breakouts: z.infer<typeof BreakoutState>; chatAt: Record<string, number>; host: string | null }
 
 /** The parts of the call open now: the main room, and each breakout room while rooms are open. */
 export const placesOf = (s: Placing): string[] => [MAIN_PLACE, ...(s.breakouts.open?.rooms.map((r) => r.id) ?? [])];
@@ -72,39 +90,46 @@ export function placeOf(s: Placing, j: Joined): string {
   return (email ? open.rooms.find((r) => r.emails.includes(email))?.id : undefined) ?? MAIN_PLACE;
 }
 
-/** The group someone is in, if its part of the call is still open (a closed room's group is nobody's any more). The organizer is in every group. */
-export const groupOf = (s: Placing, j: Joined): string | null => (j.role === 'host' ? MAIN_PLACE : j.group !== null && placesOf(s).includes(j.group) ? j.group : null);
+/** The group someone is in, if its part of the call is still open (a closed room's group is nobody's any more). Whoever hosts is in every group. */
+export const groupOf = (s: Placing, j: Joined): string | null => (j.identity === s.host ? MAIN_PLACE : j.group !== null && placesOf(s).includes(j.group) ? j.group : null);
 
 /**
- * Someone the organizer's browser may add to `place`'s group now: asking (or invited, on their way in), or let in and
- * on their way into this part of the call, in no group, with a key package for this generation. Nobody but the
- * organizer is ever in two groups at once.
+ * Someone the host's browser may add to `place`'s group now: asking (or invited, on their way in), or let in and on
+ * their way into this part of the call, in no group, with a key package for this generation. Nobody but whoever hosts
+ * is ever in two groups at once.
  */
 export const pendingFor = (s: Placing, generation: number, place: string) => (j: Joined): boolean =>
-  j.role !== 'host' && (j.status === 'waiting' || j.status === 'in') && groupOf(s, j) === null && j.keysFor === generation && placeOf(s, j) === place;
+  j.identity !== s.host && (j.status === 'waiting' || j.status === 'in') && groupOf(s, j) === null && j.keysFor === generation && placeOf(s, j) === place;
 
-/** In `place`'s group and no longer to be: gone, removed, or sent to another part of the call. The organizer's browser takes them out. */
+/** In `place`'s group and no longer to be: gone, removed, or sent to another part of the call. The host's browser takes them out. */
 export const departedFrom = (s: Placing, place: string) => (j: Joined): boolean =>
-  j.role !== 'host' && groupOf(s, j) === place && (j.status !== 'in' || placeOf(s, j) !== place);
+  j.identity !== s.host && groupOf(s, j) === place && (j.status !== 'in' || placeOf(s, j) !== place);
 
 /** Let in, on their way into a part of the call's group (a new generation, or a move), and without an unused key package. */
 export const needsKeys = (s: Placing, generation: number, j: Joined): boolean =>
-  j.role !== 'host' && j.status === 'in' && j.keysFor !== generation && groupOf(s, j) !== placeOf(s, j);
+  j.identity !== s.host && j.status === 'in' && j.keysFor !== generation && groupOf(s, j) !== placeOf(s, j);
 
 /** The epoch of a part of the call's group: the main room's is the call's own (`mainEpoch`), each open room's is its own. */
 export const epochIn = (mainEpoch: number, s: Placing, place: string): number | undefined =>
   place === MAIN_PLACE ? mainEpoch : s.breakouts.open?.rooms.find((r) => r.id === place)?.epoch;
 
 /**
- * Who commits for every part of the call's group: the organizer's current connection. Its browser creates every group,
- * so it's leaf 0 in each. Host hand-off (#30) changes who that is; every place that assumes it's the organizer's
- * connection: this, which names the committer to every browser (`CallMls.committer`); `app.ts`, which takes commits
- * only from the organizer (`organizerOnly` on `/mls/commits`); the calls module's `mlsSync`, which gives the organizer's
- * connection the committer's view, and `join`, which starts a new generation when that connection changes; and in the
- * browser, `HttpCall`'s `organizer` (opens and commits for every group) and `COMMITTER_LEAF` in `mls.ts` (the one leaf
- * whose commits a group takes).
+ * Who commits for every part of the call's group: the connection that hosts (the organizer's, or while the organizer is
+ * away, someone's standing in for them). Its browser creates every group in its generation, so it's leaf 0 in each, and
+ * every change of host starts a new generation (the calls module's `newGeneration`), so a generation's committer never
+ * changes. Every place that relies on it: this, which names the committer to every browser (`CallMls.committer`);
+ * `app.ts`, which takes commits only from whoever hosts (`hostOnly` on `/mls/commits`), and `mlsCommit`, which checks
+ * it again with the generation under the call's row lock; `mlsSync`, which gives that connection the committer's view;
+ * and in the browser, `HttpCall`'s `hosting` (opens and commits for every group) and `COMMITTER_LEAF` in `mls.ts` (the
+ * one leaf whose commits a group takes, which a joining browser checks is the connection named here).
  */
-export const committerOf = (hostIdentity: string | null): string | null => hostIdentity;
+export const committerOf = (s: Placing): string | null => s.host;
+/**
+ * The connection whose browser transcribes the main room now (and the room the organizer visits, while they're
+ * there), and records the call's notes: whoever hosts, the organizer's connection or a stand-in's. The same connection
+ * as the committer today, but its own question: a breakout room's own scribe is never this, and never the committer.
+ */
+export const mainScribeOf = (s: Placing): string | null => s.host;
 
 /** Whether there was chat in `place` while this person wasn't in it (they never were, or left before it). */
 export const chatSince = (s: Placing, j: Joined, place: string): boolean => {
@@ -114,7 +139,8 @@ export const chatSince = (s: Placing, j: Joined, place: string): boolean => {
 
 /**
  * Everyone whose part of the call changed between `before` and `after` gets it recorded: when and where in the log they
- * came into the new part, and the part they left. The organizer also learns whether there was chat where it's going.
+ * came into the new part, and the part they left. Whoever hosts, being in every group, also learns whether there was
+ * chat where it's going.
  */
 export function relocate<S extends Placing>(before: Placing, after: S, atMs: number, seq: number): S {
   const was = new Map(before.people.map((j) => [j.identity, j]));
@@ -128,7 +154,7 @@ export function relocate<S extends Placing>(before: Placing, after: S, atMs: num
       if (from === to) return j;
       const leftAt = { ...j.leftAt, [from]: seq };
       const moved: Joined = { ...j, placedAt: atMs, placedSeq: seq, wasIn: { place: from, since: j.placedAt, until: atMs }, leftAt };
-      return j.role === 'host' ? { ...moved, chatBefore: chatSince(after, moved, to) } : moved;
+      return j.identity === after.host ? { ...moved, chatBefore: chatSince(after, moved, to) } : moved;
     })
   };
 }

@@ -193,7 +193,7 @@ export async function current(v: calls.Viewer, callId: string): Promise<MoveOut 
  * The device being left has let go: it stopped its microphone and camera and left the room. From now it's out of the
  * call (LiveKit is told too, in case it didn't get there), and the new device may come in.
  */
-export async function confirm(v: calls.Viewer, callId: string, media: MoveMedia): Promise<void> {
+export async function confirm(d: Deps, v: calls.Viewer, callId: string, media: MoveMedia): Promise<void> {
   const o = v.organizer;
   const ctx = { callId, role: v.pass.role };
   const x = await mine(v, callId);
@@ -201,12 +201,13 @@ export async function confirm(v: calls.Viewer, callId: string, media: MoveMedia)
   const { call, mover } = await stillHere(o, callId, x.move);
   if (!mover) throw new ConflictError('You’re not in this call here any more.', { context: ctx });
   // Released first, and only if the move is still ready (not called off meanwhile): then this connection lets go.
-  if (!(await change(o, o.pool, x.row, { ...x.move, stage: 'released', media }, { expires: inSeconds(RELEASED_SECONDS) }))) {
+  const expires = inSeconds(RELEASED_SECONDS);
+  if (!(await change(o, o.pool, x.row, { ...x.move, stage: 'released', media }, { expires }))) {
     throw new ConflictError('There’s no device ready to take over. Make a new code and try again.', { context: { ...ctx, stage: 'changed' } });
   }
   // In the room no more, whatever the browser managed: its microphone reaches nobody from here on.
   if (call.roomName) await o.livekit.removeParticipant(call.roomName, mover.identity).catch((e: unknown) => mlog.debug('the connection that let go had already left the room', { ...ctx, err: e }));
-  await calls.letGo(o, callId, mover);
+  await calls.letGo(d, o, callId, mover, expires.getTime());
   mlog.info('move let go', { ...ctx, moveId: x.row.move_id, host: call.hostIdentity === mover.identity, mic: media.mic, cam: media.cam });
 }
 

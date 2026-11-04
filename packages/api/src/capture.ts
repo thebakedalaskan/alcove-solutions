@@ -2,7 +2,7 @@
  * What Alcove captures in a call (docs: Calls and recordings › What's captured). One state for the whole call, the
  * same for everyone in it and, without names, for anyone asking to join: what each kind of capture is doing, who
  * changed it and when, the stretches with nothing captured, and who asked for notes. While notes are on, what
- * everyone says goes to the notes, through the organizer's browser. The organizer turns notes on and off, and
+ * everyone says goes to the notes, through the host's browser (the organizer's, or a stand-in's). The organizer turns notes on and off, and
  * pauses and resumes all of it; the server refuses whatever arrives while it isn't on. Each breakout room has its
  * own state too, for the people in it: a room captures at most what the call does, and the organizer can pause one
  * room on its own.
@@ -12,14 +12,14 @@ import { CaptureGapSchema, IDSchema, ISODateSchema } from './types';
 
 /**
  * on: being captured. paused: the organizer is holding it until they resume. off: not captured. unavailable: notes
- * are on, but the organizer's browser can't capture it now (a recorder that can't start, or a browser that can't listen).
+ * are on, but the host's browser can't capture it now (a recorder that can't start, or a browser that can't listen).
  */
 export const CaptureModeSchema = z.enum(['on', 'paused', 'off', 'unavailable']);
 export type CaptureMode = z.infer<typeof CaptureModeSchema>;
-/** Notes are on, whether or not the organizer's browser can capture right now: asks and the organizer's controls follow it. */
+/** Notes are on, whether or not the host's browser can capture right now: asks and the organizer's controls follow it. */
 export const notesAreOn = (mode: CaptureMode): boolean => mode === 'on' || mode === 'unavailable';
 
-/** The kinds of capture the organizer's browser does itself, and so can say it can't do. */
+/** The kinds of capture the host's browser does itself, and so can say it can't do. */
 export const CaptureDevicePartSchema = z.enum(['recording', 'transcript']);
 export type CaptureDevicePart = z.infer<typeof CaptureDevicePartSchema>;
 
@@ -59,15 +59,15 @@ export type RoomCapture = z.infer<typeof RoomCaptureSchema>;
 export const CaptureStateSchema = z.object({
   /**
    * All of it at once: on while notes are on, paused while the organizer holds them, off otherwise, and unavailable
-   * when notes are on but the organizer's browser can neither record nor listen, or is out of the call (`away`).
+   * when notes are on but the host's browser can neither record nor listen, or is out of the call (`away`).
    */
   mode: CaptureModeSchema,
   /**
-   * What the organizer's browser hears, mixed into one recording: their microphone and everyone in their part of the
+   * What the host's browser hears, mixed into one recording: their microphone and everyone in their part of the
    * call, encrypted and kept with the notes. Silent while the organizer visits a breakout room.
    */
   recording: CapturePartSchema,
-  /** What everyone the organizer's browser hears says, turned into text as the call goes by a private speech model. */
+  /** What everyone the host's browser hears says, turned into text as the call goes by a private speech model. */
   transcript: CapturePartSchema,
   /**
    * The private notes model reading the transcript: the notes when the call ends, and catch-up, questions and captions
@@ -91,7 +91,7 @@ export const CaptureStateSchema = z.object({
   /** What's captured in the breakout room you're in, or null in the main room (and for people asking to join). */
   room: RoomCaptureSchema.nullable(),
   /**
-   * The organizer's browser is out of the call right now: its connection dropped, or it's reloading or moving to
+   * The host's browser is out of the call right now: its connection dropped, or it's reloading or moving to
    * another device. While notes are on, recording and the transcript are unavailable until it's back, in every part.
    */
   away: z.boolean()

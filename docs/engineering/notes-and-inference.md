@@ -5,7 +5,7 @@
 ## Status
 
 Notes are written end to end with NEAR AI Cloud (`I01`). While notes are on, the browser sends short clips
-of speech (in a call, the organizer's browser, for everyone it hears); Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
+of speech (in a call, the host's browser, for everyone it hears: the organizer's, or a stand-in's while the organizer is away); Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
 recorder show a live transcript. When the recording stops, the transcript moves into the note, and a
 worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
 chapters and suggested questions. When the organizer had shared screens read, the notes model reads each frame
@@ -188,7 +188,7 @@ sequenceDiagram
 ```
 
 1. **In the browser.** Beside the encrypted MediaRecorder pieces, `apps/web/src/features/call/speech.ts`
-   runs the microphone (in a call, the organizer's browser runs each voice it plays, the organizer's own and
+   runs the microphone (in a call, the host's browser runs each voice it plays, its own and
    each other microphone in its part of the call, on its own: `CallEars`) through an AudioWorklet (`apps/web/public/pcm-capture.js`) that mixes it to mono,
    filters out everything above the speech band and resamples it to 16 kHz. The samples are cut into clips
    at natural pauses (the first pause of 350 ms after 2.5 seconds, never past 10 seconds), clips with no
@@ -570,7 +570,7 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   for choosing a range: now, when they first came in, their latest time away, for a guest the stretches they were
   here, and the stretches with nothing captured.
 - **How exact that is.** The server knows these times as well as it hears of them. Someone's time in starts when
-  the organizer's browser adds them to the call's group, which is when they get the keys to hear anything. It ends
+  the host's browser adds them to the call's group, which is when they get the keys to hear anything. It ends
   within a second when their page leaves, they're removed or another of their connections takes over. A browser
   that drops without a word is heard of only when LiveKit gives up on it, after its departure timeout of about 20
   seconds, so for a guest the lines said in those seconds count as said while they were here. The time kept is
@@ -591,8 +591,11 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   - `gaps`: the stretches with nothing captured that touch it, before notes first came on and while they were off
     or paused. They're the call's own `CaptureGap`s (`capture.gapsOf`), the same the transcript marks, and the
     notes model reads each as a `--` line among the lines.
-  - `missed`: stretches of two seconds or more with notes on and nothing transcribed, because the organizer's
-    browser, which sends what's said, wasn't in the call (from the organizer's connections). A pause is a gap,
+  - `missed`: stretches of two seconds or more with notes on and nothing transcribed, because no hosting browser,
+    which sends what's said, was in the call: from when each connection hosted (the organizer's, or someone's
+    standing in for them). A host whose connection dropped stopped sending when LiveKit said so, though it hosts
+    until someone else does, so a hand-off leaves only the stretch from the drop until the new host's browser
+    took over ([Calls and recordings › Host hand-off](calls-and-recordings.md#host-hand-off)). A pause is a gap,
     never this.
   - `whileHere`: being a guest left part of the stretch out.
   - `skipped`: the middle of a stretch too long to read at once. Over 120,000 characters of transcript the model
@@ -717,7 +720,7 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   address before the @ when Alcove has no name for them (never full addresses); the length in minutes;
   and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room), with a line such as
   `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured
-  (`the organizer's browser was out of the call for 3 min` for an `offline` gap).
+  (`the host's browser was out of the call for 3 min` for an `offline` gap).
   Every prompt that reads a transcript tells the model never to say or guess what happened in one. A line whose
   words Whisper was unsure of ends `(unclear)`, and a speaker in doubt reads `Name (not sure who)`, and every such
   prompt, the series' and the one across notes included, tells the model never to rest a name, number or
@@ -1000,7 +1003,7 @@ joined and while you were away (a page that goes away and comes back), the last 
 said before them, both ends of a stretch in it, a stretch with nothing said answered without asking the model,
 ranges refused (one that hasn't happened, one that ends before it starts, time away for someone who hasn't been
 away, an unknown kind); what a stretch is missing (before notes came on, while they were off or paused, while the
-organizer's connection was away) and what a stretch too long to read at once skipped; a guest with the link
+host's connection was away) and what a stretch too long to read at once skipped; a guest with the link
 reading only what was said while they were here, in the live transcript, catching up, asking, moments and
 captions, and nothing from while they were away, while someone invited before the call, or added to the invite
 once let in from the link, reads it all; answers withheld from someone removed, gone or past the end of the call while they were written; refusals
@@ -1067,12 +1070,13 @@ has one behaviour, the same for everyone, and says it here.
 - **New images need measuring.** When NEAR AI moves to another dstack release or another machine size,
   verification refuses it (`os-image`) and notes wait until its measurements are added to
   `dstack-images.ts`, computed the same way.
-- **Who said what.** A call line is said by whoever's voice it was, as the organizer's browser heard each
-  voice on its own; someone in a breakout room the organizer isn't in isn't heard. The notes recording mixes
-  what the organizer's browser hears in the main room, the organizer's microphone with everyone else's, and is
-  silent while the organizer visits a breakout room ([Calls and recordings › The call
-  screen](calls-and-recordings.md#the-call-screen)). Guests name themselves, so the notes model reads them marked
-  as guests. Several people on one device are one voice. Room recordings have no speaker diarization.
+- **Who said what.** A call line is said by whoever's voice it was, as the host's browser heard each voice
+  on its own; someone in a breakout room the host isn't in isn't heard. The notes recording mixes what the host's
+  browser hears in the main room (the organizer's, or a stand-in's while the organizer is away, each in its own
+  segments), its own microphone with everyone else's, and is silent while the organizer visits a breakout room
+  ([Calls and recordings › The call screen](calls-and-recordings.md#the-call-screen)). Guests name themselves, so
+  the notes model reads them marked as guests. Several people on one device are one voice. Room recordings have no
+  speaker diarization.
 - **How sure, per line.** NEAR AI's Whisper gives confidence per segment, not per word, so a whole line is
   marked unsure, never single words. The −0.4 line was measured on synthetic speech; real microphones may need
   it moved.
@@ -1081,7 +1085,7 @@ has one behaviour, the same for everyone, and says it here.
 - **Written again, kept by words.** A new decision, question or follow-up that shares most of a settled one's
   words, near the same moment, is dropped as the same one, even when it says the opposite (a new "Drop the old
   logo" beside a rejected "Keep the old logo"). Telling the notes model what's settled is the main guard.
-- **An attested notes participant.** What the notes are made from leaves the call through the organizer's
+- **An attested notes participant.** What the notes are made from leaves the call through the host's
   browser: it sends what it hears to the API, everyone's speech as clips to transcribe and the recording's
   pieces, over TLS but outside the media's end-to-end encryption. The API seals both at rest and sends speech on
   only sealed to NEAR AI's verified Whisper, but the API itself runs on Cloud Run and isn't attested, so whoever
@@ -1126,7 +1130,7 @@ has one behaviour, the same for everyone, and says it here.
   that dies without a word is noticed when LiveKit says so (about 20 seconds later), which the 30-second lead-in
   of a catch-up on time away covers.
 - **When a line was said** is when its clip's speech began on the server's clock: the time the request arrived,
-  less how long ago the organizer's browser says the speech began. The time the request took to arrive is counted
+  less how long ago the host's browser says the speech began. The time the request took to arrive is counted
   too, so a line is placed a little late (usually well under a second). For a guest, a line said in that moment
   before they came in can count as said once they were in.
 - **No rewind.** Nothing keeps a rolling recording of a call: audio is kept only while notes are on, for the notes,

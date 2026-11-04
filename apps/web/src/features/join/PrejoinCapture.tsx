@@ -19,6 +19,7 @@ function whoGets(a: NotesAudience, organizer: string): string | undefined {
   return undefined;
 }
 
-export function PrejoinCapture({ notes, capture, audience, organizerName }: { notes: NotesSetting; capture: CaptureState | null; audience: NotesAudience; organizerName: string }) {
-  return <CaptureSummary notes={notes} capture={capture} who={whoGets(audience, firstName(organizerName))} />;
+/** `taker`: whose browser takes the notes, "the host" while someone stands in for the organizer. */
+export function PrejoinCapture({ notes, capture, audience, organizerName, taker }: { notes: NotesSetting; capture: CaptureState | null; audience: NotesAudience; organizerName: string; taker?: string | undefined }) {
+  return <CaptureSummary notes={notes} capture={capture} who={whoGets(audience, firstName(organizerName))} taker={taker} />;
 }
