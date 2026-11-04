@@ -9,7 +9,7 @@ import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
 import { Avatar, Faces, type AvatarPerson } from './people';
-import { ArchThumb, Chip, type Cover } from './primitives';
+import { ArchThumb, Chip, Meter, type Cover } from './primitives';
 import type { ThemeChoice } from './theme';
 
 /**
@@ -202,6 +202,28 @@ export function TimelineItem({ when, whenNote, title, people, meta, state, link,
 /** The line across the timeline at the time it is now, between the calls before and after. */
 export function TimelineNow({ time, className }: { time: ReactNode; className?: string | undefined }) {
   return <li className={cn('ac-tl-now', className)}><span className="time"><span className="sr-only">Now, </span>{time}</span><i aria-hidden="true" /></li>;
+}
+
+/* ---------- Minutes ---------- */
+
+/**
+ * The minutes of notes left, as a card: the time left in the display face, a meter of how much of everything granted is
+ * left, and what was used this month (`used`), then `children` (a row, a link). Team and Settings both show it; `id` is
+ * where a link to it lands.
+ */
+export function MinutesCard({ id, title, left, share, used, children, className }: {
+  id?: string | undefined; title: ReactNode; left: string; share: number; used: ReactNode; children?: ReactNode; className?: string | undefined;
+}) {
+  const h = useId();
+  return (
+    <section id={id} className={cn('ac-card ac-minutes', className)} aria-labelledby={h}>
+      <h3 id={h}>{title}</h3>
+      <p className="big">{left}<small>of notes left</small></p>
+      <Meter value={share} />
+      <p className="used">{used}</p>
+      {children}
+    </section>
+  );
 }
 
 /* ---------- Settings ---------- */

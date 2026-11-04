@@ -49,6 +49,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
+| Device key | 256-bit AES-GCM, made in the browser the first time a room recording is kept there (`crypto.subtle.generateKey`, not extractable) | That browser's IndexedDB (`alcove-offline`), never sent anywhere; seals what [this device keeps](#on-this-device) and is deleted with the last of it |
 | Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the organizer's every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 | Call data keys | `HKDF(media key, "alcove/call-data/v1")` for each sender and epoch: seal what browsers send each other through LiveKit (pointers and marks on shared screens) | Only in the browsers in the call, in memory ([Calls and recordings › Pointing at shared screens](calls-and-recordings.md#how-it-travels)) |
 
@@ -143,7 +144,8 @@ The hash is deterministic, so equal values show the same person across rows and 
 - **Stored as a hash.** The `sessions` table keeps the ID's SHA-256, the owner, the provider, and when the
   session was created, last seen and expires. A copy of the database can't be turned into a working cookie.
 - **Limits.** A session ends after 14 days unused or 30 days in all. Last seen is refreshed at most once a
-  minute. An ended session is deleted when its cookie is next presented, and maintenance sweeps the rest every
+  minute. The tab that notifies reads Alcove every minute, hidden or not, and that counts as use: left open in a
+  browser that allows notifications, a session isn't unused, and it ends at the 30 days. An ended session is deleted when its cookie is next presented, and maintenance sweeps the rest every
   5 minutes.
 - **Never from a QR code.** Moving a call to another device makes no session: the organizer and invited people
   move only to a device already signed in to their account (signed in the usual way, there and then if need be),
@@ -336,6 +338,17 @@ third-party loads.
   step back through, live only in the page's memory: at most 30 pictures and 16 MiB a share, taken from what the
   browser already decrypts and shows, never written to any storage, sent or logged, and gone when the share stops,
   your part of the call changes or you leave ([Looking closer at a share](calls-and-recordings.md#looking-closer-at-a-share)).
+- **Browser notifications** (Settings › Notifications) are made in the tab from what it has already loaded and shown
+  by the browser on this device only: no push service, nothing new sent to Alcove. The tab hands them to the app's
+  service worker (`public/sw.js`) to put up, which also handles a click; it holds nothing of them but the
+  notification itself, which carries where it leads (a call's code or a note's ID). A development build has no
+  worker, and the page shows them itself. They can say a call's or note's title, a follow-up and who shared or
+  asked, and the device's notification centre keeps them until they're dismissed or someone signs out here. Which ones
+  have been shown is [kept on this device](#on-this-device) for the account (`alcove.notified.<ownerId>`,
+  `NotifiedStoredSchema`), and anything over a day old goes the next time one shows: for each, a key made of its kind and the IDs it's about (a call's ID and start time, a
+  note's ID, a follow-up's note ID, its own ID and its due day, an ask's ID) and when it showed. No titles, names
+  or text. The Web Locks that pick the one tab that notifies (`alcove.notify`) and mark a
+  note's page as on screen (`alcove.onScreen.<noteId>`) stay inside this browser.
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
 - **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),
@@ -355,6 +368,37 @@ third-party loads.
   for the project in Cloudflare (Workers & Pages › alcove-web › Metrics).
 - **Diagnostics** go to Alcove's own API only (`POST /v1/telemetry`): warnings and errors with codes,
   request IDs, statuses and timings, scrubbed like every other log line ([Logging](logging-and-errors.md)).
+
+## On this device
+
+What the browser keeps so Alcove works without a connection ([Calls and recordings › Recording without a
+connection](calls-and-recordings.md#recording-without-a-connection)), and so each notification shows once:
+
+- **That it's signed in** (`localStorage` `alcove.signedIn`, `SignedInHereSchema`): the account's opaque ID, when
+  its session ends at the latest, and whether it records without a connection. Never a name, an address or the
+  session cookie (which stays `HttpOnly`). It follows the session as the app reads it and goes when the session
+  does: signing out, a 401, deleting the account. Offline, it's what lets someone signed in here open Record and
+  record; nothing else opens offline. It isn't a credential: every request still needs the session cookie.
+- **Room recordings waiting to upload** (IndexedDB `alcove-offline`, `KeptRecordingSchema`, `KeptPieceSchema`,
+  `KeptClipSchema`): the name, every audio piece and every speech clip are sealed with AES-GCM under the [device
+  key](#key-inventory), a fresh 12-byte IV each, with the item's place (kind, recording, segment and `seq` or start)
+  bound in as additional data, so nothing can be read, or moved to another recording, without the key. In the
+  clear: random IDs, the account's ID, when it started, lengths, sizes, the codec, whether Alcove has a copy (its
+  recording ID), and Alcove's refusal message if it gave one. The key can't be exported, but it sits in the same
+  browser profile as what it seals: this protects against reading the files, not against someone using that
+  browser profile signed in as the account.
+- **Which notifications have shown** (`localStorage` `alcove.notified.<ownerId>`, `NotifiedStoredSchema`): a key of
+  each one's kind and IDs and when it showed, for a day, with no titles, names or text. Signing out, or deleting the
+  account, on this browser deletes all of them, and closes the notifications still showing, so no title stays in
+  the device's notification centre.
+- Each recording belongs to the account it was made under: only that account lists or uploads it. Before any
+  upload the app asks Alcove who's signed in, and names the recording's account when it starts it there, so the
+  server refuses (`403`) a session of any other account and makes nothing: a browser that changed hands never
+  uploads one person's recording into another's account, or deletes it.
+- **Deleted** after the recording has stopped on Alcove (never before, so an upload cut off part way loses
+  nothing), when it's discarded, and when its account signs out or is deleted on this browser (`forgetAccount`):
+  only that account's go, and the key goes with the last recording here. Another account's stay, sealed, as do
+  recordings of an account whose session simply ended, until that account signs in again here, and upload then.
 
 ## What is still visible
 
@@ -390,7 +434,13 @@ third-party loads.
 - **Cancelling a meeting** deletes it with every revision and its calls (including chat), and the owner's
   receipts. With a connected calendar, its Google event is cancelled too, which tells the guests. Its notes
   stay. A live call can't be cancelled.
-- **Discarding a room recording** deletes its note in the same way as deleting your own note.
+- **Discarding a room recording** deletes its note in the same way as deleting your own note. What this browser
+  kept of it is deleted at once; a copy on Alcove it couldn't reach is deleted once there's a connection.
+- **Signing out, or deleting the account, in a browser** deletes everything that browser [kept](#on-this-device)
+  for the account, recordings waiting to upload among it, and the device key if no other account has any there. It
+  also forgets which notifications have shown there, and closes the ones still showing.
+  Settings' **Sign out** says first how many of the account's recordings here haven't uploaded, and signs out only
+  once that's chosen.
 - **Deleting your account** (`DELETE /v1/account`) removes, in one transaction: its meetings, with their calls
   (chat, call links, MLS logs and moves to another device included), live ones too; every note it organized, each the way deleting your
   own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every

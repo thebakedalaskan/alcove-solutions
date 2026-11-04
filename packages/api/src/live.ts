@@ -1,7 +1,7 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
-import { IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
+import { CallCodeSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
 import type { CallMoveOut, MoveMedia } from './moves';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
@@ -71,7 +71,7 @@ export const CallPassStoredSchema = z.string().min(20).max(2000).regex(/^[A-Za-z
  * The call a browser goes back to after signing in with Google from its join page (sessionStorage, in that tab only):
  * its code, as a link has it, and until when (ms).
  */
-export const CallReturnStoredSchema = z.object({ code: z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/), until: z.number() });
+export const CallReturnStoredSchema = z.object({ code: CallCodeSchema, until: z.number() });
 
 /** A LiveKit join token, for someone who's been let in. It only lasts until the browser connects; it carries no name. */
 export const CallRoomTokenSchema = z.object({ token: z.string() });
@@ -530,11 +530,14 @@ export const MAX_RECORDING_AGE_DAYS = 14;
  * Starting a recording in the room. `startedAt` is when it really started, for one recorded without
  * a connection and uploaded later: up to MAX_RECORDING_AGE_DAYS back, and not in the future. Starting
  * again from the same `startedAt` carries on with that recording, as it is, so an upload that was cut
- * off resumes instead of making a second note.
+ * off resumes instead of making a second note. `owner` is the account it was recorded under (its
+ * opaque ID): a session of any other account is refused (`forbidden`) and nothing is made, so a
+ * recording kept on a shared device never lands in whoever is signed in there now.
  */
 export const RoomRecordingInputSchema = z.object({
   title: z.string().trim().max(160).optional(),
-  startedAt: z.iso.datetime({ offset: true }).optional()
+  startedAt: z.iso.datetime({ offset: true }).optional(),
+  owner: z.string().min(1).max(100).optional()
 });
 export type RoomRecordingInput = z.infer<typeof RoomRecordingInputSchema>;
 
@@ -558,9 +561,12 @@ export const RecordingStopResultSchema = z.object({ pendingNoteId: IDSchema, dur
 export type RecordingStopResult = z.infer<typeof RecordingStopResultSchema>;
 
 export interface RoomRecording extends LiveStore<RoomRecordingState> {
-  rename(title: string): void;
-  pause(): void;
-  resume(): void;
+  /** Renames: the snapshot says so at once. Resolves once the server has the new name, and fails if it couldn't. */
+  rename(title: string): Promise<void>;
+  /** Pauses: the snapshot says so at once. Resolves once the server has paused it, and fails if it couldn't. */
+  pause(): Promise<void>;
+  /** Resumes: the snapshot says so at once. Resolves once the server is recording again, and fails if it couldn't. */
+  resume(): Promise<void>;
   appendAudio(piece: AudioPiece): Promise<void>;
   /** Transcribes a few seconds of speech into the live transcript. Only while recording. */
   transcribe(clip: TranscriptClip): Promise<void>;

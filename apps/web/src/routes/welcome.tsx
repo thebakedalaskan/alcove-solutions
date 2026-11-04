@@ -4,7 +4,8 @@ import { useEffect, useRef } from 'react';
 import { Landing } from '~/features/welcome/Landing';
 import { useAuth } from '~/features/welcome/WaysIn';
 import { takeReturn } from '~/lib/afterSignIn';
-import { q } from '~/lib/queries';
+import { signedInHere } from '~/lib/device';
+import { sessionOrOffline } from '~/lib/guards';
 
 /** Why a sign-in with Google came back without signing in, as the API reports it. */
 const REFUSED = {
@@ -21,7 +22,10 @@ const isRefused = (v: unknown): v is Refused => typeof v === 'string' && Object.
 export const Route = createFileRoute('/welcome')({
   validateSearch: (s: Record<string, unknown>): { signin?: Refused | undefined } => ({ signin: isRefused(s['signin']) ? s['signin'] : undefined }),
   beforeLoad: async ({ context }) => {
-    if (await context.queryClient.ensureQueryData(q.session())) throw redirect({ to: '/home', replace: true });
+    const s = await sessionOrOffline(context.queryClient);
+    // Offline, someone signed in here can still record; anyone else sees this page, and signs in once they're back.
+    if (s === 'offline') { if (signedInHere()) throw redirect({ to: '/record', replace: true }); return; }
+    if (s) throw redirect({ to: '/home', replace: true });
   },
   component: Welcome
 });

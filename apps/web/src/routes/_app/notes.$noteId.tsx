@@ -15,6 +15,7 @@ import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients,
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, ScreensCard, useScreenViewer } from '~/features/notes/screens';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { SeriesCard, SeriesChip } from '~/features/series/cards';
+import { useNoteOnScreen } from '~/features/shell/notify';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { sameEmail } from '~/lib/people';
@@ -53,6 +54,7 @@ function Stored({ id, me, at }: { id: string; me: string | undefined; at: number
   const [gone, setGone] = useState<GoneInfo | null>(null);
   const note = useQuery({ ...q.note(id), enabled: !gone }).data;
   useEffect(() => { if (gone) qc.removeQueries({ queryKey: qk.note(id), exact: true }); }, [gone, qc, id]);
+  useNoteOnScreen(id);
   if (gone) return <Gone {...gone} />;
   if (!note) return null;
   return <NoteView note={note} me={me} at={at} onGone={setGone} />;

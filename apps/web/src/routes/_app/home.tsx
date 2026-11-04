@@ -18,6 +18,7 @@ import { Today } from '~/features/home/Today';
 import { StartCall, UpNext } from '~/features/home/UpNext';
 import { Waiting, waitingOf } from '~/features/home/Waiting';
 import { PrepCard } from '~/features/series/cards';
+import { overlayOpen, typing } from '~/lib/keys';
 import { useNow } from '~/lib/live';
 import { q } from '~/lib/queries';
 import { greeting, hm, longDay } from '~/lib/time';
@@ -36,7 +37,6 @@ export const Route = createFileRoute('/_app/home')({
   component: Home
 });
 
-const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable="true"]');
 const NOTHING: Inbox = { followUps: [], decisions: [] };
 
 function Home() {
@@ -66,7 +66,7 @@ function Home() {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       const n = upNext.current;
-      if (e.key !== 'j' || e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || !n || document.querySelector('[role="dialog"], [role="listbox"]')) return;
+      if (e.key !== 'j' || e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || !n || overlayOpen()) return;
       if (n.kind === 'call') { e.preventDefault(); void navigate({ to: '/join/$code', params: { code: n.call.code } }); }
       else if (n.event.join) { e.preventDefault(); window.open(n.event.join.url, '_blank', 'noopener'); }
     };

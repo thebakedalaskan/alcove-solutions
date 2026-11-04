@@ -12,8 +12,7 @@ import { forgetView } from '~/features/call/view';
 import { forgetTour } from '~/features/onboarding/store';
 import { q, trustLine, useDeleteAccount } from '~/lib/queries';
 import { hm, hoursAndMinutes } from '~/lib/time';
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+import { plural } from '~/lib/words';
 
 export function PrivacyCard() {
   const trust = useQuery(q.trust()).data;

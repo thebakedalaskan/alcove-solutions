@@ -8,6 +8,7 @@ import { Avatar, Button, Icon, IconButton, Popover, TranscriptLine as SpokenLine
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { sameEmail, spokenName } from '~/lib/people';
 import { hm, shortDay } from '~/lib/time';
+import { capital } from '~/lib/words';
 
 /** Who may correct what in a note's transcript, and how: the same rule the server keeps. */
 export interface Correcting {
@@ -40,12 +41,11 @@ export function speakersOf(note: Note): Speaker[] {
 const nameOf = (p: Person) => (p.name && p.name !== p.email ? p.name
   : (p.email.split('@')[0] ?? p.email).split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || p.email);
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const byName = (by: Change['by'], me: string | undefined) => (me && sameEmail(by, { email: me }) ? 'you' : firstName(by.name));
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 /** One correction to a line, as a sentence. */
 function changeLine(c: Change, me: string | undefined): string {
-  const who = cap(byName(c.by, me));
+  const who = capital(byName(c.by, me));
   const when = `${shortDay(new Date(c.at))}, ${hm(new Date(c.at))}`;
   switch (c.what) {
     case 'reworded': return `${who} corrected it from “${clip(c.before ?? '', 60)}”, ${when}`;

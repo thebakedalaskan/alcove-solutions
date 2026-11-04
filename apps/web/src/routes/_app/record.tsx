@@ -4,20 +4,30 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { useId, type ReactNode } from 'react';
 import { NightRecorder } from '~/features/record/NightRecorder';
+import { OnThisDevice } from '~/features/record/OnThisDevice';
+import { uploads } from '~/features/record/uploads';
+import { recordOfflineHere } from '~/lib/device';
+import { useLive } from '~/lib/live';
 import { q } from '~/lib/queries';
 import { hoursAndMinutes, noteDay } from '~/lib/time';
 
 /*
- * Record, in the side panel: the night recorder (a name, the microphone, Start recording), then the recordings made
- * before, and beside them how recording works. Before the first recording, a card says where they'll show.
+ * Record, in the side panel: the night recorder (a name, the microphone, Start recording), the recordings on this
+ * device waiting to upload, then the recordings made before, and beside them how recording works. Before the first
+ * recording, a card says where they'll show. It works offline: the recorder, and what's on this device.
  */
 export const Route = createFileRoute('/_app/record')({ component: RecordPage });
 
 /** How many earlier recordings show here, newest first; Notes has them all. */
 const SHOWN = 4;
 
+/** Whether recording carries on without a connection: the setting, or offline, what this browser remembers of it. */
+const useRecordsOffline = () => useQuery(q.prefs()).data?.recordOffline ?? recordOfflineHere();
+
 function RecordPage() {
   const room = useQuery(q.notes('room')).data;
+  const kept = useLive(uploads).list;
+  const offline = useRecordsOffline();
   /* Recordings you made: someone else's room notes, shared with you, weren't recorded here. */
   const mine = room?.filter((n) => !n.received);
   return (
@@ -25,17 +35,18 @@ function RecordPage() {
       <div className="rec-head" style={{ '--d': 0 }}>
         <div>
           <h1>Record</h1>
-          <p className="lede">For conversations in the room: an interview, a site visit, a meeting around a table.</p>
+          <p className="lede">For conversations in the room: an interview, a site visit, a meeting around a table. {offline ? 'It works without a connection.' : 'If the connection drops, recording pauses.'}</p>
         </div>
       </div>
       <div className="rec" style={{ '--d': 1 }}>
         <div className="rec-grid">
           <div className="rec-main">
             <NightRecorder />
-            {mine && (mine.length ? <RecordedBefore notes={mine} /> : <FirstRecording />)}
+            <OnThisDevice />
+            {mine && (mine.length ? <RecordedBefore notes={mine} /> : !kept.length && <FirstRecording offline={offline} />)}
           </div>
           <div className="rec-side">
-            <HowItWorks />
+            <HowItWorks offline={offline} />
           </div>
         </div>
       </div>
@@ -76,12 +87,12 @@ function RecordedBefore({ notes }: { notes: NoteSummary[] }) {
 }
 
 /** Before anything is recorded: where recordings will show, and what people record. */
-function FirstRecording() {
+function FirstRecording({ offline }: { offline: boolean }) {
   return (
     <Card title="Your recordings">
       <EmptyState className="rec-empty" title="Nothing recorded yet"
         action={<><Chip icon="people">Interviews</Chip><Chip icon="mapPin">Site visits</Chip><Chip icon="room">Meetings around a table</Chip></>}>
-        Recordings you make here show up with their notes.
+        Recordings you make here show up with their notes.{offline && ' Offline, they wait on this device until they can upload.'}
       </EmptyState>
     </Card>
   );
@@ -96,12 +107,14 @@ function Fact({ icon, title, children }: { icon: IconName; title: string; childr
   );
 }
 
-function HowItWorks() {
+function HowItWorks({ offline }: { offline: boolean }) {
   return (
     <Card title="How it works">
       <ul className="rec-facts">
         <Fact icon="lock" title="Encrypted on this device">Audio is encrypted as it’s recorded, in five-second pieces.</Fact>
-        <Fact icon="wifi" title="Saved as you go">Each piece uploads as it’s recorded, so starting needs a connection. Notes follow when you finish.</Fact>
+        {offline
+          ? <Fact icon="wifiOff" title="No connection needed">Offline, it saves here and uploads when you’re back. Notes follow.</Fact>
+          : <Fact icon="wifi" title="Needs a connection">If it drops, recording pauses. Resume once you’re back online.</Fact>}
         <Fact icon="people" title="Yours until you share">Notes from the room go to nobody else unless you share them.</Fact>
       </ul>
       <div className="rec-foot"><SealedBadge inline title="Written in confidential compute. Alcove can’t read it." /></div>

@@ -22,6 +22,7 @@ import { fold } from '~/lib/parse';
 import { byEmail, callName, sameEmail, spokenName } from '~/lib/people';
 import { q, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, noteGroup, shortDay } from '~/lib/time';
+import { capital, plural } from '~/lib/words';
 
 export const Route = createFileRoute('/_app/notes/')({
   loader: ({ context }) => context.queryClient.ensureQueryData(q.notes()),
@@ -55,8 +56,6 @@ const onWide = (changed: () => void) => {
 const useWide = () => useSyncExternalStore(onWide, () => matchMedia(WIDE).matches, () => true);
 
 const minutes = (seconds: number) => hoursAndMinutes(Math.max(1, Math.round(seconds / 60)));
-const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function Notes() {
   const all = useQuery(q.notes()).data ?? [];

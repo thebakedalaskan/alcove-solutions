@@ -1,6 +1,8 @@
 import { AlcoveApiError, errorCode } from '@alcove/api';
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { createRouter } from '@tanstack/react-router';
+import { RouteError } from './features/shell/OfflinePage';
+import { watchDevice } from './lib/device';
 import { log } from './lib/log';
 import { qk } from './lib/queries';
 import { routeTree } from './routeTree.gen';
@@ -17,8 +19,10 @@ export function getRouter() {
   const queryClient: QueryClient = new QueryClient({
     queryCache: new QueryCache({ onError }),
     mutationCache: new MutationCache({ onError }),
-    defaultOptions: { queries: { staleTime: 20_000, retry: (n, e) => n < 2 && errorCode(e) === 'network', refetchOnWindowFocus: false } }
+    // A request that didn't get through is tried twice more, unless there's no connection at all: then the screen says so at once.
+    defaultOptions: { queries: { staleTime: 20_000, retry: (n, e) => n < 2 && errorCode(e) === 'network' && navigator.onLine, refetchOnWindowFocus: false } }
   });
+  watchDevice(queryClient);
   const router = createRouter({
     routeTree,
     context: { queryClient },
@@ -26,6 +30,7 @@ export function getRouter() {
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
     defaultPendingMinMs: 0,
+    defaultErrorComponent: RouteError,
     defaultOnCatch: (err) => log.error('screen crashed', { err })
   });
   return router;

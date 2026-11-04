@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { troubles } from '~/features/call/access';
 import { plainName, readPrefs, rememberDevice, useDevices, type Device } from '~/features/call/devices';
 import { LocalMedia } from '~/features/call/media';
+import { recordOfflineHere } from '~/lib/device';
 import { overlayOpen, typing } from '~/lib/keys';
 import { sessions, useLive, useOnline } from '~/lib/live';
 
@@ -41,7 +42,7 @@ export function NightRecorder() {
           <span className="rec-k"><Icon name="room" size={15} />In the room</span>
           {online
             ? <span className="rec-pill"><Icon name="transcript" size={14} />Transcribed as you talk</span>
-            : <span className="rec-pill"><Icon name="wifiOff" size={14} />Offline · needs a connection to start</span>}
+            : <span className="rec-pill"><Icon name="wifiOff" size={14} />{recordOfflineHere() ? 'Offline · saves to this device' : 'Offline · needs a connection'}</span>}
         </div>
         <input className="rec-name" type="text" value={name} placeholder="Name this recording" aria-label="Name this recording" maxLength={160}
           autoComplete="off" spellCheck={false} enterKeyHint="go" onChange={(e) => setName(e.target.value)}

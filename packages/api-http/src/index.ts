@@ -953,11 +953,12 @@ interface RecordingTransport {
 }
 class HttpRecording extends Live<RoomRecordingState> implements RoomRecording {
   constructor(initial: RoomRecordingState, private readonly t: RecordingTransport) { super(initial, (s) => s.status === 'recording'); }
-  private act(a: RecordingAction, optimistic: (s: RoomRecordingState) => RoomRecordingState) {
+  /** Shows the change at once, and resolves once the server has made it. */
+  private act(a: RecordingAction, optimistic: (s: RoomRecordingState) => RoomRecordingState): Promise<void> {
     this.set(optimistic(this.state));
-    void this.t.act(this.state.id, a).then((s) => this.apply(s), () => undefined);
+    return this.t.act(this.state.id, a).then((s) => this.apply(s));
   }
-  rename = (title: string) => { if (title.trim()) this.act({ type: 'rename', title }, (s) => ({ ...s, title })); };
+  rename = (title: string) => (title.trim() ? this.act({ type: 'rename', title }, (s) => ({ ...s, title })) : Promise.resolve());
   pause = () => this.act({ type: 'pause' }, (s) => ({ ...s, status: 'paused' }));
   resume = () => this.act({ type: 'resume' }, (s) => ({ ...s, status: 'recording' }));
   appendAudio = async (p: AudioPiece) => { const s = await this.t.audio(this.state.id, p); this.set({ ...this.state, recording: s.recording }); };

@@ -13,7 +13,8 @@ import { freshCalls, useOpenComposer } from '~/features/shell/context';
 import { sameEmail } from '~/lib/people';
 import { q, useCancelCall } from '~/lib/queries';
 import { dayChoice, daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel, weekday } from '~/lib/time';
-import { capital, everyWeek, peopleOn, seriesIdOf, started, whoOn, type Ahead } from './day';
+import { capital } from '~/lib/words';
+import { everyWeek, peopleOn, seriesIdOf, started, whoOn, type Ahead } from './day';
 import { useMoveToAlcove } from './parts';
 
 export function Today({ past, going, coming, soon, me, calendar, composing, now }: {

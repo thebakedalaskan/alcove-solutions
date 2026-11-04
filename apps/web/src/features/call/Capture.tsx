@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { captureHere, changedLine } from '~/lib/capture';
 import { callName, listNames } from '~/lib/people';
 import { hm } from '~/lib/time';
+import { capital } from '~/lib/words';
 
 /** What the screen does when someone changes what's captured: the organizer's controls, and anyone else's ask. */
 export interface CaptureControls {
@@ -100,7 +101,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
         <div className="cap-ask"><Icon name="hand" size={16} /><span className="t">You asked {name} for notes.</span><Button size="sm" variant="quiet" onClick={run(() => controls.ask(false))}>Take it back</Button></div>
       )}
       {mine?.state === 'declined' && !on && (
-        <div className="cap-ask"><Icon name="clock" size={16} /><span className="t">{sentence(name)} said not now at {hm(mine.at)}.</span></div>
+        <div className="cap-ask"><Icon name="clock" size={16} /><span className="t">{capital(name)} said not now at {hm(mine.at)}.</span></div>
       )}
       {(host || (!on && mine?.state !== 'asking')) && (
         <div className="cap-acts">
@@ -149,7 +150,7 @@ function saidFor(state: CallState, c: CallState['capture'], name: string): strin
 const roomNameOf = (state: CallState): string => state.breakouts.open?.rooms.find((r) => r.id === state.capture.room?.id)?.name ?? 'this room';
 
 /** Whoever asked, as the call shows them. */
-function askerOf(state: CallState, r: NotesRequest): Person {
+export function askerOf(state: CallState, r: NotesRequest): Person {
   return state.participants.find((p) => p.id === r.participantId)?.person ?? { id: r.participantId, name: 'Someone', email: '' };
 }
 
@@ -181,7 +182,7 @@ export function useCaptureAlerts(state: CallState, controls: CaptureControls) {
     const a = c.asked;
     if (state.isOrganizer || a?.state !== 'declined' || told.current === a.at) return;
     told.current = a.at;
-    toast(`${sentence(name)} said not now to notes`, { icon: 'notesPen', ms: 5000 });
+    toast(`${capital(name)} said not now to notes`, { icon: 'notesPen', ms: 5000 });
   }, [c.asked, name, state.isOrganizer, toast]);
 }
 
@@ -229,7 +230,5 @@ export function organizerName(state: CallState): string {
   const p = state.participants.find((x) => x.isOrganizer)?.person;
   return p ? callName(p) : 'the organizer';
 }
-/** A name that starts a sentence. */
-const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Where the call is captured, to start a sentence: "Your browser" for the organizer, "Art’s browser" for everyone else. */
-export const organizerBrowser = (state: CallState): string => (state.isOrganizer ? 'Your browser' : `${sentence(organizerName(state))}’s browser`);
+export const organizerBrowser = (state: CallState): string => (state.isOrganizer ? 'Your browser' : `${capital(organizerName(state))}’s browser`);

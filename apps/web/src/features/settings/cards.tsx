@@ -5,13 +5,18 @@
  */
 import { errorMessage, type CreditBalance, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SignInProvider, type SummaryLength } from '@alcove/api';
 import {
-  Avatar, Button, Chip, Icon, Meter, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
+  Avatar, Button, Chip, Icon, MinutesCard, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
   type SelectOption, type ThemeChoice
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
+import { uploads } from '~/features/record/uploads';
+import { askToNotify, useNotifyPermission, type NotifyPermission } from '~/features/shell/notify';
+import { useLive } from '~/lib/live';
 import { calendarConnectUrl, q, useDisconnectCalendar } from '~/lib/queries';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
+import { plural, sizeLabel } from '~/lib/words';
 import { Named, useSave } from './save';
 
 export const PROVIDER: Record<SignInProvider, string> = { google: 'Google', microsoft: 'Microsoft', sso: 'single sign-on' };
@@ -80,10 +85,17 @@ export function NotesCard({ prefs }: { prefs: Preferences }) {
 
 export function RecordingCard({ prefs }: { prefs: Preferences }) {
   const save = useSave();
+  const kept = useLive(uploads);
+  const n = kept.list.length;
+  const bytes = kept.list.reduce((all, k) => all + k.bytes, 0);
   return (
     <SettingsCard id="recording" title="Recording in the room">
       <SettingRow label={<Named>Record without a connection</Named>} help="Recordings save on your device, encrypted, and upload when you’re back online."
         control={<Switch label="Record without a connection" checked={prefs.recordOffline} onChange={(on) => save('Record without a connection', { recordOffline: on })} />} />
+      {/* What waits on this device to upload (Record lists each, with how it stands). */}
+      <SettingRow label="On this device"
+        help={!kept.read ? 'Looking on this device…' : n ? `${plural(n, 'recording')}, ${sizeLabel(bytes)}, ${n === 1 ? 'hasn’t' : 'haven’t'} uploaded yet.` : 'Nothing is waiting to upload.'}
+        control={n ? <Link to="/record" className={buttonClass({ variant: 'quiet', size: 'sm' })}>See {n === 1 ? 'it' : 'them'}<Icon name="right" size={16} /></Link> : null} />
     </SettingsCard>
   );
 }
@@ -149,23 +161,58 @@ const withAlert = (n: NotificationPrefs, a: Alert, on: boolean): NotificationPre
   followUpDue: a === 'followUpDue' ? on : n.followUpDue
 });
 
+/** Whether this browser shows Alcove's notifications, and the way to let it. The browser is asked only on a press. */
+function BrowserNotifications({ permission }: { permission: NotifyPermission }) {
+  const row = useRef<HTMLDivElement>(null);
+  const asked = useRef(false);
+  // Once the browser answers, the button goes: focus stays on this row rather than falling back to the page.
+  useEffect(() => {
+    if (!asked.current || permission === 'default') return;
+    asked.current = false;
+    row.current?.focus();
+  }, [permission]);
+  const ask = () => { asked.current = true; void askToNotify(); };
+  const blocked = permission === 'denied' || permission === 'unsupported';
+  return (
+    <div ref={row} className="set-conn" tabIndex={-1}>
+      <span className="mark"><Icon name={blocked ? 'bellOff' : 'bell'} size={20} /></span>
+      <span className="txt" aria-live="polite">
+        <b>{permission === 'denied' ? 'Browser notifications are blocked' : 'Browser notifications'}</b>
+        <small>
+          {permission === 'granted' ? 'On in this browser. They show on this device while Alcove is open in a tab.'
+            : permission === 'denied' ? 'Your browser blocks them for Alcove. Allow notifications for this site in your browser’s settings.'
+              : permission === 'unsupported' ? 'This browser can’t show notifications from a website. Chrome, Edge, Firefox and Safari on a computer can.'
+                : 'They show on this device while Alcove is open in a tab. Your browser asks you first.'}
+        </small>
+      </span>
+      {permission === 'granted' ? <Chip tone="sun" icon="check">Allowed</Chip>
+        : permission === 'default' ? <Button variant="secondary" size="sm" icon="bell" onClick={ask}>Turn on browser notifications</Button>
+          : <Chip tone="outline">{permission === 'denied' ? 'Blocked' : 'Not available'}</Chip>}
+    </div>
+  );
+}
+
 export function NotificationsCard({ prefs }: { prefs: Preferences }) {
   const save = useSave();
+  const permission = useNotifyPermission();
+  // The choices stay as they're saved, greyed out until the browser shows notifications.
+  const off = permission !== 'granted';
   const n = prefs.notifications;
   const row = (a: Alert, name: string, help?: string | undefined) => (
     <SettingRow label={<Named>{name}</Named>} help={help}
-      control={<Switch label={name} checked={n[a]} onChange={(on) => save(name, (now) => ({ notifications: withAlert(now.notifications, a, on) }))} />} />
+      control={<Switch label={name} checked={n[a]} disabled={off} onChange={(on) => save(name, (now) => ({ notifications: withAlert(now.notifications, a, on) }))} />} />
   );
   return (
     <SettingsCard id="notifications" title="Notifications">
-      <SettingRow label={<Named>Before a call starts</Named>}
-        control={<Segmented<Remind> label="Remind me before a call" value={remindOf(n.beforeCall)}
+      <BrowserNotifications permission={permission} />
+      <SettingRow label={<Named>Before a call starts</Named>} help="For calls you organize."
+        control={<Segmented<Remind> label="Remind me before a call" value={remindOf(n.beforeCall)} disabled={off}
           onChange={(r) => save('Before a call starts', (now) => ({ notifications: { ...now.notifications, beforeCall: minutesOf(r) } }))}
           options={[{ value: '1', label: '1 min' }, { value: '5', label: '5 min' }, { value: 'off', label: 'Off' }]} />} />
       {row('notesReady', 'When notes are ready')}
       {row('sharedWithYou', 'When someone shares notes with you')}
-      {row('notesRequested', 'When someone asks for notes', 'Only in calls you organize, where only you can turn them on.')}
-      {row('followUpDue', 'A follow-up is due', 'On the morning it’s due.')}
+      {row('notesRequested', 'When someone asks for notes', 'In calls you organize, where only you can turn them on, while you’re in another tab or app.')}
+      {row('followUpDue', 'A follow-up is due', 'On the due day of a follow-up you’ve taken on, at 9:00.')}
     </SettingsCard>
   );
 }
@@ -183,11 +230,10 @@ export function AppearanceCard() {
 
 export function PlanCard({ credits }: { credits: CreditBalance }) {
   return (
-    <SettingsCard id="plan" title="Plan and credits">
-      <div className="set-big">{hoursAndMinutes(credits.balance / credits.perMinute)}<small>of notes left</small></div>
-      <Meter className="set-meter" value={credits.balance / Math.max(1, credits.granted)} />
-      <p className="set-usage">{credits.usedThisMonth > 0 ? `${hoursAndMinutes(credits.usedThisMonth / credits.perMinute)} used this month` : 'None used this month yet'}</p>
+    <MinutesCard id="plan" title="Plan and credits" className="ac-set-card" left={hoursAndMinutes(credits.balance / credits.perMinute)}
+      share={credits.balance / Math.max(1, credits.granted)}
+      used={credits.usedThisMonth > 0 ? `${hoursAndMinutes(credits.usedThisMonth / credits.perMinute)} used this month` : 'None used this month yet'}>
       <SettingRow label="Calls without notes" help="Never use minutes." control={fact('check', 'Free')} />
-    </SettingsCard>
+    </MinutesCard>
   );
 }

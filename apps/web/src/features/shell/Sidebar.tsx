@@ -10,6 +10,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ariaShortcut, shortcut } from '~/lib/keys';
+import { recordOfflineHere } from '~/lib/device';
+import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q, trustLine } from '~/lib/queries';
@@ -17,7 +19,10 @@ import { daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/
 import { NAV, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
-const hiddenBefore = () => { try { return localStorage.getItem(KEY) === 'hidden'; } catch { return false; } };
+const slog = log.child({ component: 'shell' });
+const hiddenBefore = () => {
+  try { return localStorage.getItem(KEY) === 'hidden'; } catch (e) { slog.warn('side panel choice not read: no storage here', { err: e }); return false; }
+};
 
 /**
  * Whether the side panel is hidden, remembered in this browser. Hiding or showing it moves focus to the
@@ -36,13 +41,14 @@ export function useSidePanel() {
   const set = (h: boolean) => {
     moved.current = true;
     setHidden(h);
-    try { localStorage.setItem(KEY, h ? 'hidden' : 'shown'); } catch { /* storage unavailable: it's remembered until the tab closes */ }
+    // Without storage it's remembered until the tab closes.
+    try { localStorage.setItem(KEY, h ? 'hidden' : 'shown'); } catch (e) { slog.warn('side panel choice not kept: no storage here', { err: e }); }
   };
   return { hidden, hide: () => set(true), show: () => set(false), showRef, hideRef };
 }
 
 /**
- * Says the connection is gone, and what needs it: in the side panel, at the top of the page while the
+ * Says the connection is gone, and what still works: in the side panel, at the top of the page while the
  * panel is hidden (`show`), and under the phone's top bar. The status region stays in place and fills
  * when the connection drops, so screen readers announce it.
  */
@@ -53,7 +59,9 @@ export function Offline({ show = true, className }: { show?: boolean | undefined
       {!online && show && (
         <div className="sb-status">
           <Icon name="wifiOff" size={16} />
-          <span><b>You’re offline</b>Recording and calls need a connection. Pages update when you’re back.</span>
+          <span><b>You’re offline</b>{recordOfflineHere()
+            ? 'Recording still works. Everything else catches up when you’re back.'
+            : 'Everything catches up when you’re back. Recording without a connection is off in Settings.'}</span>
         </div>
       )}
     </div>

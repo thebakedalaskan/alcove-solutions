@@ -50,9 +50,9 @@ Beside every page:
 
 - **New call** (or **N**) opens the one line of flow 4. **Search or ask** (**⌘K** on a Mac, **Ctrl+K**
   elsewhere) opens the palette, below.
-- **Home**; **Notes**, with how many notes you have; **Record**, where recording in the room starts (flow 9);
-  and **Team** (flow 10), with how many people at your company use Alcove, you among them, once anyone besides
-  you does.
+- **Home**; **Notes**, with how many notes you have; **Record**, where recording in the room starts (flow 9),
+  with how many recordings on this device are waiting to upload; and **Team** (flow 10), with how many people at
+  your company use Alcove, you among them, once anyone besides you does.
 - **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
@@ -66,8 +66,10 @@ Beside every page:
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
   hardware answer is bound to this browser's request), the time of notes left, which opens Settings at your
   minutes, and you, with your company or your address and a cog, which opens Settings (flow 11).
-- Offline, a notice at the top says recording and calls need a connection, and pages update when you're back.
-  Up next and the check wait until the connection returns.
+- Offline, a notice at the top says recording still works and everything else catches up when you're back
+  (with **Record without a connection** off, that recording waits for the connection too). Up next and the
+  check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
+  Record works, and every other page says it's offline, with **Record**.
 - **Hide the side panel** gives the page the room; the button left in the top-left corner brings the panel
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
 
@@ -452,12 +454,33 @@ room**, opens the Record page:
   microphone straight away, in 5-second encrypted pieces with a live waveform, and transcribes what's said as
   it goes, without naming who spoke. Rename by editing the title, pause and resume, then **Finish and write
   notes** (opens the note) or **Home › Discard recording** (nothing is kept).
+- **Without a connection** it keeps recording: **Offline** shows at the top, and "Saved on this device. It
+  uploads when you're back online." under the waveform. What's said is transcribed once the connection is back;
+  if it comes back while recording, the rest goes up as it's recorded. With a connection that isn't getting
+  through, it says Alcove isn't answering and that it's sent when it does. **Finish and save** keeps it on this
+  device and goes to Record; with a connection, a recording with a short gap still ends on its note. Started
+  offline, it works the same way. A full device pauses it and says so; signed out meanwhile, or with someone
+  else signed in, it keeps it here and says so; signed out on this browser, it pauses and says nothing more can
+  be kept.
+- **On this device**: recordings kept here until they upload, encrypted, each with its name, length and start,
+  and how it stands: **Waiting for a connection**, **Waiting to upload**, **Uploading**, **Recording now** (in
+  another tab), **Can't upload yet** with Alcove's reason, or, for good, **Can't upload** (more than 14 days old)
+  or **Can't be read here** (this device can't open it any more). They upload by themselves when the connection
+  is back, the oldest first, and their notes are written; a toast says when each one has, or that one's note was
+  deleted on Alcove so it's gone from here too. Its menu has **Upload now** and **Delete from this device**, which
+  asks first. A tab closed mid-recording leaves what it recorded here, and it's finished and uploaded as it was.
+  Only the account that recorded them sees or uploads them: if someone else signs in on the browser, they stay
+  here until their own account signs in again. That account signing out deletes them, and Settings' **Sign out**
+  says so first; anyone else's stay.
+- **Record without a connection** (on by default) off: nothing is kept on this device, starting needs a
+  connection, and losing it pauses the recording. The page says so instead of saying it works without one.
 - **Recorded before**: your four newest recordings as tiles (when, how long, the start of the summary, who has
   it, follow-ups still open), with **In Notes** for the rest. Room notes others shared with you aren't listed.
-  Before the first recording, **Your recordings** says they'll show up here with their notes.
-- **How it works** says the audio is encrypted as it's recorded and each piece uploads as it's recorded, so
-  starting needs a connection, and that room notes go to nobody unless you share them. Offline, the recorder
-  says it needs a connection to start; starting anyway ends at "Couldn't start recording".
+  Before the first recording (and with none waiting on this device), **Your recordings** says they'll show up
+  here with their notes.
+- **How it works** says the audio is encrypted as it's recorded, recording needs no connection (or, with **Record
+  without a connection** off, that a dropped connection pauses it), and room notes go to nobody unless you share
+  them.
 
 Room notes are yours alone until you share them.
 
@@ -498,10 +521,17 @@ people you meet most, **Invite people** and **Copy invite link**, then those peo
 personal account shows "Just you, for now", with **Invite people** (an email from your own mail app, with the
 link) and **Copy invite link**, then your groups and the notes shared with groups.
 
+If the team itself doesn't load, the page says why (or that you're offline), with **Try again**. Your groups and
+notes load beside it: if your groups don't, their card says so, with **Try again**, and the rest of the page works.
+
 ## 11. Settings
 
 **Settings** opens from you at the foot of the side panel, the phone's avatar or its **Settings** tab. It says who
-you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. On a wide
+you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. With
+recordings on this device that haven't uploaded, **Sign out** first says so in place, under it ("2 recordings on
+this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by themselves, or,
+too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
+**Sign out and delete them**. It counts only this account's recordings, and only those go. On a wide
 screen a nav beside the cards jumps to each part and marks the one in view. Every control saves as it changes: the
 setting says **Saved** for a moment once it's kept, and one the server refuses goes back, with a toast saying why.
 
@@ -511,7 +541,8 @@ setting says **Saved** for a moment once it's kept, and one the server refuses g
 - **Notes**: notes on or off for new calls (each call can still be set when it's scheduled), that everyone invited
   always gets them, the language they're written in ("Same as the call", or one of twelve), and how much the
   summary says (**Short** or **Detailed**). Language and summary apply to notes written from then on.
-- **Recording in the room**: **Record without a connection** (on by default).
+- **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
+  recordings, and how much room, wait here to upload, with **See them** (Record's list), or that nothing is waiting.
 - **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
   access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
   instead. Then **Put calls I schedule on my calendar** and **Show my other meetings on Home** (both on by default).
@@ -521,9 +552,21 @@ setting says **Saved** for a moment once it's kept, and one the server refuses g
   sooner when pressed again or when this part leaves the screen. **Play test sound** plays through the chosen
   speaker; the camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
-- **Notifications**: before a call starts (1 min, 5 min or off), notes ready, notes shared with you, someone asking
-  for notes in a call you organize, and a follow-up due (off by default). They're saved with your preferences;
-  Alcove doesn't show browser notifications yet.
+- **Notifications**: browser notifications, shown on this device while Alcove is open in a tab (any page, a call or a
+  recording included; nothing is pushed when no tab is open). Until the browser allows them the choices are greyed
+  out and **Turn on browser notifications** asks it (only when pressed; focus stays on the row once it answers);
+  when the browser blocks them, the card says to allow them for the site in the browser's settings. Then: before a
+  call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
+  screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
+  someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
+  so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
+  as a day, so not "next week" or "ASAP"; not when the due day was set after 9:00 that day). One tab in the browser shows them, and the next takes over when it closes. Each shows
+  once, in any tab and across reloads, and several at once (after the computer wakes, or the connection comes back)
+  arrive as one: "3 notes are ready", "2 follow-ups are due today". Clicking one brings Alcove forward: on the
+  call's join page, the note, Notes, Home, or the call you're in, in the tab already there or else the one used
+  last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
+  deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
+  preferences, and one changed in another tab or on another device takes effect within a minute.
 - **Appearance**: match the system, light or dark, each shown as a small window in its own colours, kept in this
   browser.
 - **Plan and credits**: the time of notes left, a meter, and the minutes of notes used this month (since 00:00 UTC

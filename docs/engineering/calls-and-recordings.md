@@ -52,7 +52,8 @@ sequenceDiagram
 - **Ordering and retries.** The browser uploads pieces in order. While the connection is down, or the server
   is busy, it keeps trying each one for up to two minutes, so a short drop loses nothing; a refusal that trying
   again won't change gives up at once (a `409` quietly), and stopping waits at most 10 seconds for the last
-  pieces. Each piece says where it starts in its segment, pauses not counted (`x-alcove-at-ms`). The server
+  pieces (a room recording that keeps what it can't send waits for all of them, since it stops only after they've
+  gone or been kept). Each piece says where it starts in its segment, pauses not counted (`x-alcove-at-ms`). The server
   treats a repeated `(segment, seq)` as a no-op (a different piece sent to a place already stored is
   `409 conflict`) and rejects audio for a paused or stopped recording, for an earlier segment, or from one of
   the organizer's connections that another tab or device has taken over (`409`: that tab drops what it hadn't
@@ -1070,8 +1071,8 @@ the coordinates). Your own share has none of this: you have the original.
 `POST /v1/recordings` creates a private note (`kind: room`, nobody invited) and a recording. In the app, Record
 (`/record`) takes the name and opens the stage recorder (`/record/live`), which starts it. The name is handed over
 in memory (`sessions.roomTitle` in `apps/web/src/lib/live.ts`), never in the address; the stage recorder opened
-any other way (a reload, a link) starts with "Notes from the room". Without a connection, starting currently ends
-at "Couldn't start recording". The browser records the microphone in 5-second pieces to
+any other way (a reload, a link) starts with "Notes from the room". It records with or without a connection
+([Recording without a connection](#recording-without-a-connection)). The browser records the microphone in 5-second pieces to
 `POST /v1/recordings/:id/audio` and sends clips of speech to `POST /v1/recordings/:id/transcribe` (both through
 `RoomCapture`, `apps/web/src/features/record/capture.ts`); a room recording has one segment, and clips are
 refused while it's paused. `RoomRecordingState.transcript` carries the latest 200 lines, with no speaker. Rename, pause and
@@ -1085,10 +1086,12 @@ pauses not counted (`x-alcove-at-ms` on the wire). Pieces play in the order of t
 sent again must start and last as the stored one does; transcript lines are placed by their clip's `at`.
 Nothing is timed by when it arrives, so a recording keeps its own times however late it's uploaded.
 
-- **Starting.** `POST /v1/recordings {title?, startedAt?}`. Without `startedAt` the recording starts now.
+- **Starting.** `POST /v1/recordings {title?, startedAt?, owner?}`. Without `startedAt` the recording starts now.
   With it, the recording and its note start then. `startedAt` may be up to 14 days back
   (`MAX_RECORDING_AGE_DAYS`) and up to 5 minutes ahead of the server's clock, since a device's clock can
-  run a little fast; anything else is `400 invalid`.
+  run a little fast; anything else is `400 invalid`. `owner` is the account it was recorded under: a session
+  of any other account gets `403 forbidden` before anything is looked up or made, so a recording kept on a
+  shared browser never starts (or carries on) in whoever is signed in there now.
 - **Starting again.** Starting from the same `startedAt` as one of the account's room recordings returns
   that recording as it is (recording, paused or stopped), however old it is by now, instead of making a
   second one. Starts from the same moment wait for each other (a transaction-scoped advisory lock per
@@ -1110,6 +1113,80 @@ Nothing is timed by when it arrives, so a recording keeps its own times however 
 `startedAt`, send its pieces and clips, then stop. An upload cut off part way (a closed tab, an answer
 that never arrived) starts again from the same `startedAt` and sends everything again: what's there
 already is skipped, and stopping finishes the note once.
+
+### Recording without a connection
+
+The stage recorder (`StageRecording`, `apps/web/src/features/record/stage.ts`) keeps going when the connection
+drops. Started with a connection, it starts on Alcove at once, at the server's time (no `startedAt`, so a device
+clock that runs fast can't stop it), and that start is what's kept. Started without one, its start is the
+device's, to the millisecond, and it starts on Alcove from then (`recordings.start({ title, startedAt, owner })`).
+Either way the kept start is the one to carry on from later. Before anything starts on Alcove (here or in the
+uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account that recorded it goes on, and
+`owner` makes the server refuse any other.
+
+- **Kept on this device** (`apps/web/src/features/record/offline.ts`). From the start, the recording's name and
+  start are kept in this browser's IndexedDB (`alcove-offline`), and its lock is held (Web Locks,
+  `alcove-kept:<id>`) until it's finished or discarded. A piece or clip that can't be sent (no connection, a
+  failed try, more than 15 s for a piece or 20 s for a clip, or a 409 because Alcove's copy is out of step) is
+  kept there at once, exactly as it would have been sent: its segment, `seq`, `at`, duration, codec and bytes, so
+  nothing waits in memory through more tries. Once one is kept because sending failed, the next go straight there
+  for a while (15 s for pieces, 20 s for clips). A piece or clip that reached Alcove after all is stored once when
+  it's sent again. `NotesRecorder` and `SpeechClips` take the place to keep them as `keep`; calls don't give one.
+- **Sealed.** The name, the audio and the speech are sealed with AES-GCM under a non-extractable 256-bit key made
+  in the browser and kept in the same database, with a fresh 12-byte IV per item and the item's place
+  (`alcove/kept/v1`, kind, recording, segment and `seq` or start) as additional data. In the clear: IDs, the
+  account's ID, times, lengths, sizes, the codec, and Alcove's refusal message if it gave one
+  ([Privacy › On this device](privacy-keys-and-sessions.md#on-this-device)). The browser is asked once to keep the
+  site's storage (`navigator.storage.persist()`) when the first item is kept. A full device pauses the recording
+  and says so.
+- **On Alcove when it can be.** Started offline, it starts on Alcove as soon as the connection is back (and every
+  30 s while it isn't there), so new pieces and the live transcript go up from then on; renaming, pausing and
+  resuming done meanwhile catch up (`pause`, `resume` and `rename` resolve once the server has them; every call
+  to Alcove gives up after 20 s). What was kept stays kept until it's finished. Signed out meanwhile, or with
+  someone else signed in on the browser, it keeps recording here and says so; signed out on this browser (which
+  deletes what it kept for the account), it pauses and says nothing more of it can be kept.
+- **Finishing.** It never records again once finishing has begun, even if finishing has to be tried again. The
+  last clips are sent, or kept when they take more than 5 s, never dropped, and any pause, resume or name still on
+  its way reaches Alcove first. With nothing kept and a connection, it stops on Alcove and opens the note, as
+  before. Otherwise it's marked finished, its lock let go, and handed to the uploads, waiting up to 10 s so a short
+  gap still ends on the note; past that, Record shows it under **On this device** and it finishes by itself.
+  **Discard** deletes it here at once; whatever reached Alcove of it is deleted there now or, offline, when
+  the connection is back.
+- **Uploads** (`apps/web/src/features/record/uploads.ts`), the oldest first, when the app opens, when the
+  connection comes back, when the page is looked at again, after a failed try (15 s, doubling to 5 minutes)
+  and as the stage recorder finishes one. Each runs under the recording's lock, so two tabs never upload the
+  same one and none is uploaded while a recorder has it; one whose tab closed mid-recording (nobody holds its
+  lock) is finished as it is. In order: ask Alcove who's signed in (nobody, or another account: uploading stops,
+  the recordings stay here and aren't listed, and the app goes to sign-in or catches up with who's signed in,
+  asking again until it can; a 401 later does the same); start from its `startedAt` with its `owner` (carrying on with Alcove's copy if it
+  got there); rename and resume it there if needed; every kept piece in `seq` order, every kept clip in order,
+  and again for anything kept meanwhile; stop, only with everything sent; and only after the stop succeeds,
+  delete it here. Cut off anywhere, the next try does it all again and still makes one note: pieces resent are
+  stored once, clips heard before aren't transcribed again, stopping finishes once.
+  - **What's left out**, and only this: a piece or clip Alcove says it can't take (400), one refused because the
+    recording had already stopped there, and one Alcove refuses (409) in three runs while one after it got through
+    each time, which shows the refusal is its own. A 5xx never counts: what the server fails (500, or a gateway's
+    502, 503 or 504) stays here, isn't tried again in that run, and goes in a later one. A 409 from a recording
+    still paused there (a pause on its way when the upload started) resumes it once and sends again. Any other
+    failure, or three in a row, waits for the next try, and the recordings behind it still go, so one that keeps
+    failing holds nothing up. A recording never stops with something unsent.
+  - **What's never uploaded:** a recording whose start Alcove refuses says why on Record and is tried again later
+    (a start in the future by this device's clock passes in time); one more than 14 days old that never reached
+    Alcove is refused for good and can only be deleted. One that won't open on this device is never stopped or
+    deleted by the uploads: Record says it can't be read here, and it can only be deleted. With its key gone nothing
+    of it is sent. With one piece or clip damaged (it fails its schema, or won't open), what came before that item
+    has already gone to Alcove, on a recording that stays unfinished with no note until this copy is deleted, which
+    deletes it there too. A recording Alcove no longer has (its note was deleted, so starting again made a new one)
+    isn't brought back: the new one is discarded, the copy here deleted, and a toast says so.
+  - **Deleting from Record** asks first. What reached Alcove (or may have: a start whose answer never came) is
+    deleted there too, through the same tombstone as **Discard**. When Alcove refuses that start (more than 14 days
+    old, with nothing from that moment there), there's nothing to delete, and the tombstone goes.
+- **One segment.** A recording on Alcove is never continued by a new recorder: after a reload, the old
+  recording's kept pieces are sent unchanged, and new audio goes to a new recording.
+- **"Record without a connection"** (`recordOffline`, on by default; this browser remembers it for offline use)
+  off, or a browser without IndexedDB, Web Crypto or Web Locks: nothing is kept. Starting needs a connection
+  ("You're offline, and recording without a connection is off in Settings."), and losing it pauses the
+  recording, which can be resumed once it's back.
 
 ## Media in the browser
 
@@ -1237,7 +1314,8 @@ already is skipped, and stopping finishes the note once.
   microphone in a room recording, everyone the organizer's browser hears in a call. Switching microphones, and
   voices coming and going, carries on in the same recording instead of going silent or starting again;
   MediaRecorder can't change its input track. It keeps recording through a dropped connection and sends what it
-  held once it's back (above).
+  held once it's back (above); on the stage it keeps what it can't send on this device instead
+  ([Recording without a connection](#recording-without-a-connection)).
 
 Beside it, `SpeechClips` (`apps/web/src/features/call/speech.ts`) feeds the live transcript: an
 AudioWorklet (`apps/web/public/pcm-capture.js`) mixes the microphone to mono, filters and resamples it to

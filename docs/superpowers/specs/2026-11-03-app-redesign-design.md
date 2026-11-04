@@ -60,7 +60,7 @@ Each is its own PR, merged and deployed before the next starts.
   Disconnect deletes the stored Google tokens.
 - **Notifications** are browser notifications while Alcove is open in a tab: before a call (1 min, 5 min or off;
   default 5 min), notes ready, notes shared with you, someone asks for notes in your call, a follow-up is due (off by
-  default; due text that names a weekday, "today" or "tomorrow").
+  default; every due Home shows as a day).
 - **Offline recording.** The recorder keeps going without a connection. Audio pieces and speech clips stay in the
   browser's IndexedDB, encrypted with a non-extractable AES-GCM key made on this device, and upload when the
   connection returns; the notes are written then. A service worker caches the app so Alcove opens offline. "Record

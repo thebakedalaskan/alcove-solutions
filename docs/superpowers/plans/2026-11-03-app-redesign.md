@@ -335,8 +335,8 @@ count, Record page "On this device" list, Settings row.
 **Files:** new `apps/web/src/features/shell/notify.ts`, Settings notifications section (permission prompt).
 
 - [ ] While a tab is open: before-call reminders (1/5 min), notes ready (a note you have turns ready), shared with
-  you (a new `received.role === 'shared'`), notes requested (organizer, in calls), follow-up due (weekday/today/
-  tomorrow due text, at 09:00). Each obeys its preference and the browser permission; commit
+  you (a new `received.role === 'shared'`), notes requested (organizer, in calls), follow-up due (every due Home
+  shows as a day, at 09:00). Each obeys its preference and the browser permission; commit
   `feat(web): notifications`.
 
 ### Task C4: Ship PR C
