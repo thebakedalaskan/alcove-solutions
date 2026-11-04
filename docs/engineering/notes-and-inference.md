@@ -458,9 +458,10 @@ in `packages/api`, `correctLine` in `apps/api/src/modules/notes.ts`):
 - **Writing the notes again.** `POST /v1/notes/:id/rewrite`, the organizer's alone (`403` for anyone else who
   has the note), for a written note with transcript lines (`409` otherwise): the note goes back to `pending`
   and the same notes job is queued ([The notes worker](#the-notes-worker)). Asking again while it's being
-  written changes nothing. It isn't charged, so it shares the 20-a-minute limit with questions. It's never automatic: other people may be confirming decisions meanwhile, and Otter,
-  Fireflies and Zoom all leave regenerating to a person. The app offers it as "Write the notes again" once lines
-  were corrected since, and as "Try writing them again" when the notes couldn't be written.
+  written changes nothing. It isn't charged, so it shares the 20-a-minute limit with questions. It's never
+  automatic: other people may be confirming decisions meanwhile, and Otter and Fireflies both leave regenerating
+  the summary to a person. The app offers it as "Write the notes again" once lines were corrected since, and as
+  "Try writing them again" when the notes couldn't be written.
 
 ## Catching up during a call
 
@@ -817,8 +818,9 @@ One fixed behaviour, with no settings (Alcove has no retention rules to choose):
 Deleting is physical: rows, revisions, receipts and audio objects (a failed object delete is queued in
 `object_gc` and retried) ([Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A notes-only behaviour,
 dropping the audio once the notes are written (Granola keeps no audio at all), was considered and not built: the
-transcript and notes cite moments to play, and a correction is checked by listening. Teams, Otter and Fireflies
-offer retention periods as settings; Alcove has one behaviour, the same for everyone, and says it here.
+transcript and notes cite moments to play, and a correction is checked by listening. Teams expires recordings
+and transcripts after 120 days by default, and Otter and Fireflies sell retention periods to companies; Alcove
+has one behaviour, the same for everyone, and says it here.
 
 ## What's left
 
