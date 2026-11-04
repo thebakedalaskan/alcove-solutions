@@ -38,6 +38,10 @@
   and chat; moving someone between rooms moves their keys; what's said in a room shows only there (transcript,
   captions, catching up) and is deleted when it closes; and each room has its own capture state, which the
   organizer can pause ([Calls and recordings › End-to-end encryption](../engineering/calls-and-recordings.md#end-to-end-encryption)).
+- Pointing at shared screens: a pointer with your name and marks that fade, aligned on the shared picture at any
+  size, sent from browser to browser end-to-end encrypted and kept to your part of the call; the presenter decides
+  whether others can point, and the organizer can turn it off
+  ([Calls and recordings › Pointing at shared screens](../engineering/calls-and-recordings.md#pointing-at-shared-screens)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
