@@ -20,6 +20,7 @@ import { MeetingManifest, updateManifest } from './meetings';
 import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { HeldRooms, blankNote, createNoteWithRecording, finishRecording } from './notes';
+import { addToInvite, takeOffInvite } from './invites';
 import * as transcripts from './transcripts';
 import * as writer from './writer';
 import { log } from '../log';
@@ -29,9 +30,11 @@ const clog = log.child({ component: 'calls' });
 /**
  * Who is asking about a call: anyone who joined it, by their call pass. The organizer's keys are opened for
  * the request (KMASTER), so guests' catch-up and ask work without an account. `inCall`: let in (the
- * organizer always is); someone still waiting only learns whether they've been let in.
+ * organizer always is); someone still waiting only learns whether they've been let in. `role`: theirs as the
+ * call stands, which can be more than their pass says (someone signed in whom the organizer let in from the link
+ * is invited now).
  */
-export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean; inCall: boolean }
+export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean; inCall: boolean; role: CallRole }
 
 const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']) });
 /** A breakout room as kept: invited people by email, shown with their names when the call is read. */
@@ -39,6 +42,8 @@ const Room = HeldRooms.shape.rooms.element;
 /**
  * Everyone who has joined, by LiveKit identity, so the call can show account names and photos. Sealed: LiveKit
  * never gets names, emails or photos.
+ * - `role`: a guest is anyone who isn't invited; one who is signed in keeps their address and photo here, so the
+ *   organizer sees who's asking, and becomes invited once let in.
  * - `person`: the same for every connection one browser makes to the call, so removing someone removes all of them.
  * - `status`: waiting to be let in, in, left, or turned away.
  * - `admit`: whether the organizer's browser adds them without asking (invited people, and people let in before who came back).
@@ -73,6 +78,11 @@ const Stored = z.object({
   }),
   /** People (by `person`) the organizer removed: every pass of theirs stops working. */
   removed: z.array(z.string()),
+  /**
+   * Addresses added to the invite in this call: people signed in whom the organizer let in from the link. They get
+   * the notes like everyone invited, and removing them from the call takes them off the invite again.
+   */
+  addedToInvite: z.array(z.string()),
   /** Whether anyone has chatted yet, so people let in later know there was chat they can't read. */
   chatEver: z.boolean(),
   notices: z.array(Notice)
@@ -144,7 +154,7 @@ async function nudge(o: Owner, roomName: string | null, callId: string, what: { 
     .catch((e: unknown) => clog.warn('room not told about a change', { callId, err: e }));
 }
 
-/** Someone as the call shows them: the organizer and invited people by their account, guests by the name they typed. */
+/** Someone as the call shows them: the organizer, invited people and anyone signed in by their account, guests by the name they typed. */
 function personFor(j: Joined | undefined, identity: string, fallbackName: string, organizer: Person): Person {
   if (j?.role === 'host') return organizer;
   if (j?.email) return { ...personOf(j.email, j.name), ...(j.photoUrl ? { photoUrl: j.photoUrl } : {}) };
@@ -164,7 +174,10 @@ export async function viewerOf(d: Deps, pass: CallPass, sessionOwnerId: string |
   if (s.removed.includes(pass.person)) throw new ForbiddenError('The host removed you from this call.', { context: ctx });
   if (row.state !== 'live' && !theOrganizer) throw new ConflictError('This call has ended.', { context: ctx });
   const isOrganizer = theOrganizer && pass.identity === row.host_identity;
-  return { pass, organizer, isOrganizer, inCall: isOrganizer || s.people.some((j) => j.identity === pass.identity && j.status === 'in') };
+  const mine = s.people.find((j) => j.identity === pass.identity);
+  // Never more than the pass says, except a guest the organizer let in and so added to the invite.
+  const role: CallRole = pass.role === 'guest' && mine?.role === 'invited' ? 'invited' : pass.role;
+  return { pass, organizer, isOrganizer, inCall: isOrganizer || mine?.status === 'in', role };
 }
 /** Everything about a call but whether you're let in needs you to be in it. */
 export function requireIn(v: Viewer, what: string): void {
@@ -177,7 +190,7 @@ export function requireIn(v: Viewer, what: string): void {
  * for signed-in browsers anyway.
  */
 function forViewer(v: Viewer, p: Person, identity: string): Person {
-  if (v.pass.role !== 'guest') return p;
+  if (v.role !== 'guest') return p;
   return { id: identity, name: p.name, email: '', ...(p.portrait ? { portrait: p.portrait } : {}) };
 }
 
@@ -190,7 +203,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const base = {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
-    locked: row.locked, generation: row.mls_generation, isOrganizer: v.isOrganizer
+    locked: row.locked, generation: row.mls_generation, isOrganizer: v.isOrganizer, role: v.role
   };
   // Someone still waiting to be let in learns only whether notes are on: nobody's name, nothing that was said.
   if (!v.inCall) return { ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, notes: { status: s.notes.status, everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
@@ -235,36 +248,48 @@ async function meetingFor(d: Deps, code: string) {
 const liveCall = (o: Owner, db: Db, meetingId: string, lock = false) => maybeOne(db, Row,
   `SELECT ${COLUMNS} FROM calls WHERE owner_id = $1 AND meeting_item_id = $2 AND state = 'live' ORDER BY started_at DESC LIMIT 1${lock ? ' FOR UPDATE' : ''}`, [o.ownerId, meetingId]);
 
-/** What anyone with the link sees before joining. */
-export async function card(d: Deps, code: string): Promise<CallCard> {
+/** Who someone is to a call: its organizer, invited by email (signed in with an invited address), or a guest. */
+const roleOf = (owner: Owner | undefined, asker: Person | undefined, organizer: Owner, m: MeetingManifest): CallRole =>
+  owner?.ownerId === organizer.ownerId ? 'host' : asker && m.guests.some((g) => g.toLowerCase() === asker.email.toLowerCase()) ? 'invited' : 'guest';
+
+/**
+ * What anyone with the link sees before joining: the title and organizer, whether they can come in yet, and whether
+ * notes are on (nobody's name, nothing that's been said). Someone signed in also learns whether they're invited.
+ */
+export async function card(d: Deps, code: string, owner?: Owner | undefined): Promise<CallCard> {
   const { organizer, meeting } = await meetingFor(d, code);
   const live = await liveCall(organizer, d.pool, meeting.itemId);
-  return { title: meeting.manifest.title, organizerName: (await me(organizer)).name, hostHere: live ? hostHere(live) : false, locked: live?.locked ?? false };
+  const notes = live ? (await load(organizer, d.pool, live.call_id)).state.notes.status : meeting.manifest.notes;
+  const asker = owner ? await me(owner) : undefined;
+  return {
+    title: meeting.manifest.title, organizerName: (await me(organizer)).name, hostHere: live ? hostHere(live) : false, locked: live?.locked ?? false,
+    ended: !live && meeting.manifest.status === 'ended', notes, invited: roleOf(owner, asker, organizer, meeting.manifest) !== 'guest'
+  };
 }
 
 const GuestName = z.string().transform((n) => n.trim()).pipe(z.string().min(1).max(60));
 
 /**
  * Lets someone into a call by its link. The organizer hosts (one organizer connection at a time: a new one
- * takes over the recording on a new segment); invited people join with their accounts; anyone else needs a
- * name. Everyone but the organizer waits until the organizer is there, and is kept out while it's locked.
+ * takes over the recording on a new segment); invited people join with their accounts; anyone else asks, by their
+ * account when signed in (the organizer sees who it is, and letting them in adds them to the invite) or with a name.
+ * Everyone but the organizer waits until the organizer is there, and is kept out while it's locked.
  */
 export async function join(d: Deps, code: string, who: { owner?: Owner | undefined; name?: string | undefined; mic: boolean; cam: boolean; identity: string; keyPackage: string; previous?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
   const { organizer: o, meeting } = await meetingFor(d, code);
   const asker = who.owner ? await me(who.owner) : undefined;
-  const role: CallRole = who.owner?.ownerId === o.ownerId ? 'host'
-    : asker && meeting.manifest.guests.some((g) => g.toLowerCase() === asker.email.toLowerCase()) ? 'invited' : 'guest';
+  const role = roleOf(who.owner, asker, o, meeting.manifest);
   let name: string;
-  if (asker && role !== 'guest') name = asker.name;
+  if (asker) name = asker.name;
   else {
-    const parsed = GuestName.safeParse(who.name ?? asker?.name ?? '');
+    const parsed = GuestName.safeParse(who.name ?? '');
     if (!parsed.success) throw new ValidationError('Enter your name to join.', { context: { role } });
     name = parsed.data;
   }
   // Chosen by the browser (its key package names it): random, and new for every connection.
   const identity = who.identity;
   const joined: Joined = {
-    identity, person: id128(), role, name, ...(asker && role !== 'guest' ? { email: asker.email, ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
+    identity, person: id128(), role, name, ...(asker ? { email: asker.email.toLowerCase(), ...(asker.photoUrl ? { photoUrl: asker.photoUrl } : {}) } : {}),
     status: role === 'host' ? 'in' : 'waiting', admit: role === 'guest' ? 'ask' : 'auto', keysFor: 0, inGroup: role === 'host', replaced: false, chatBefore: false, since: Date.now(), hand: false
   };
   // A pass from this browser's earlier connection to the same call: someone let in before is let in again without asking.
@@ -280,7 +305,7 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation });
   const pass = issuePass(d.cfg, { callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person });
   const ticket: CallTicket = { callId: j.callId, serverUrl: d.cfg.LIVEKIT_URL, roomName: j.roomName, identity, role, pass };
-  const viewer: Viewer = { pass: { v: 1, callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person, exp: 0 }, organizer: o, isOrganizer: role === 'host', inCall: role === 'host' };
+  const viewer: Viewer = { pass: { v: 1, callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person, exp: 0 }, organizer: o, isOrganizer: role === 'host', inCall: role === 'host', role };
   return { ticket, state: await view(viewer, d.pool, j.callId) };
 }
 
@@ -292,7 +317,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     if (!live) {
       const callId = id128();
       const roomName = `r_${id128()}`;
-      let s: Stored = { people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatEver: false, notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
+      let s: Stored = { people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], addedToInvite: [], chatEver: false, notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [] } };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
       if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting, 0), 'Notes are on. Everyone here can see that.');
@@ -334,6 +359,8 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
 async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: CallPass | undefined): Promise<Joining> {
   return tx(o.pool, async (c) => {
     const live = await liveCall(o, c, meeting.itemId, true);
+    // Over and not started again: only the organizer can start it.
+    if (!live && meeting.manifest.status === 'ended') throw new ConflictError('This call has ended.', { context: { meetingId: meeting.itemId, role: joined.role } });
     if (!live || !hostHere(live) || !live.room_name) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
     if (live.locked) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
     const { state } = await load(o, c, live.call_id, true);
@@ -414,6 +441,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
         ...s, removed: [...s.removed, target.person],
         people: s.people.map((j) => (j.person === target.person ? { ...j, status: j.status === 'in' ? 'left' : j.status === 'waiting' ? 'denied' : j.status } : j))
       };
+      // Added to the invite by being let in from the link: removing them takes that back, so they don't get the notes.
+      const added = target.email && s.addedToInvite.includes(target.email) ? target.email : null;
+      if (added) {
+        await takeOffInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, added);
+        s = { ...s, addedToInvite: s.addedToInvite.filter((e) => e !== added) };
+        clog.info('taken off the invite', { callId, noteId: s.notes.noteId });
+      }
     } else if (a.type === 'lock') {
       locked = a.on;
       await exec(c, 'UPDATE calls SET locked = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, locked]);
@@ -550,6 +584,15 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     // Newly let in: in the group from now, and told whether there was chat before. Rejoining: as they were.
     for (const id of b.added) s = withPerson(s, id, (j) => ({ ...j, status: 'in', inGroup: true, ...(j.status === 'in' ? {} : { since: now, chatBefore: state.chatEver }) }));
     for (const id of b.removed) s = withPerson(s, id, (j) => ({ ...j, inGroup: false, status: j.status === 'in' ? 'left' : j.status }));
+    // Signed in and let in from the link: added to the invite, so they get the notes like everyone invited.
+    const signedIn = b.added.flatMap((id) => { const j = people.get(id); return j?.status === 'waiting' && j.role === 'guest' && j.email ? [{ id, email: j.email }] : []; });
+    if (signedIn.length) {
+      const emails = [...new Set(signedIn.map((x) => x.email))];
+      await addToInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, emails);
+      for (const x of signedIn) s = withPerson(s, x.id, (j) => ({ ...j, role: 'invited' }));
+      s = { ...s, addedToInvite: [...new Set([...s.addedToInvite, ...emails])] };
+      clog.info('added to the invite', { callId, people: emails.length, noteId: s.notes.noteId });
+    }
     await save(o, c, callId, s);
     return row.room_name;
   });

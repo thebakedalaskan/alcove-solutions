@@ -93,8 +93,13 @@ export function createApp(d: Deps) {
   /* Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks. */
   const speechLimiter = rateLimit(120, 60_000);
   const askLimiter = rateLimit(20, 60_000);
-  /** Reading call cards and joining by link: public, so limited per client address. */
+  /** Joining by link: public, so limited per client address. */
   const callLimiter = rateLimit(120, 60_000);
+  /**
+   * Reading a call's card: public too, and every pre-join keeps reading it while it waits, so the allowance leaves
+   * room for an office of people behind one address.
+   */
+  const cardLimiter = rateLimit(300, 60_000);
   /** Encrypted chat in a call, per person in it. */
   const chatLimiter = rateLimit(120, 60_000);
   /** Fresh key packages to rejoin a call's new group, per person in it (one each time the organizer's connection changes). */
@@ -245,7 +250,7 @@ export function createApp(d: Deps) {
     const s = await findSession(d, getCookie(c, COOKIE));
     return s ? openOwner(d, s.ownerId, s) : undefined;
   };
-  app.get('/v1/calls/:code/card', async (c) => { callLimiter(clientAddress(c), 'call card'); return c.json(await calls.card(d, c.req.param('code'))); });
+  app.get('/v1/calls/:code/card', async (c) => { cardLimiter(clientAddress(c), 'call card'); return c.json(await calls.card(d, c.req.param('code'), await optionalOwner(c))); });
   app.post('/v1/calls/:code/join', async (c) => {
     callLimiter(clientAddress(c), 'call join');
     const b = await body(c, CallJoinBodySchema);
