@@ -299,7 +299,8 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
   kept, which a moving cursor doesn't. A frame is kept once the change has settled (two looks agree), at most
   one every 4 seconds, and every 15 seconds while a screen never settles (a video playing). A share's first
   frame waits until it has been up 10 seconds, so a window picked by mistake is gone before anything of it is
-  kept (as Google Meet and Teams do). Frames go up as JPEG (quality 0.72, at most 1600 pixels across), one at a
+  kept (as Google Meet and Teams do); something else shared in its place with **Change** (the same share, a new
+  picture) waits its own 10 seconds. Frames go up as JPEG (quality 0.72, at most 1600 pixels across), one at a
   time, three tries each, the newest three waiting. Pausing, screen notes going off or a breakout room stops
   it at once and drops what wasn't sent. When a share ends (stopped, or swapped for another), the browser says
   so (`POST /v1/live/calls/:id/frames/ended {share}`), so its last frame's stretch ends there, and the API takes
