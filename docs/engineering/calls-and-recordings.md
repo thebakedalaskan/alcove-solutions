@@ -445,7 +445,11 @@ device pickers.
 - **Asking to join.** The organizer gets a toast, a count on the People button, and an Asking to join section in
   People to let people in or turn them away: someone signed in with their address and "Gets the notes once let
   in", a guest as "Guest, by name only" and "Doesn't get the notes". A guest's toast has Let in; letting in
-  someone with an address gives them the notes, so their toast has Review, which opens People. Their call
+  someone with an address gives them the notes, so their toast has Review, which opens People. The toast goes as
+  soon as the ask is answered, wherever that happens (let in or turned away in People, or on another device), when
+  the asker takes it back or leaves, and when the organizer leaves the call. A Let in pressed too late lets nobody
+  in: it checks the call first and says the person is already in, or isn't asking any more (the organizer's
+  browser adds only people still asking anyway, so a late admit changes nothing). Their call
   re-reads the meeting when someone with an account is in it and not on the invite yet, and after they remove
   someone with an account, so who's invited (who gets the notes, who can go to a breakout room) includes whoever
   they let in and not whoever they removed.
