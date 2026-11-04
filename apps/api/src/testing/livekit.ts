@@ -28,6 +28,10 @@ export interface TestParticipant {
    * encrypted like everything this participant sends. Returns their track sids.
    */
   publishScreen(withSound: boolean): Promise<{ screen: string; sound: string | null }>;
+  /** Publishes a small grey picture as this participant's shared screen, or their camera. Returns the track sid. */
+  publishVideo(as: 'screen' | 'camera'): Promise<string>;
+  /** Stops publishing one of this participant's tracks, as a browser does when a share ends. */
+  unpublish(sid: string): Promise<void>;
   /** Mean absolute sample of `identity`'s audio over `ms` (a tone at our amplitude is about 7600; silence is 0). */
   meanLevelFrom(identity: string, ms?: number): Promise<number>;
   waitFor(pred: () => boolean, what: string, ms?: number): Promise<void>;
@@ -147,6 +151,21 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
       const sound = await local.publishTrack(LocalAudioTrack.createAudioTrack('screen-sound', source), soundOpts);
       pumps.push(setInterval(() => { void source.captureFrame(new AudioFrame(new Int16Array(FRAME).fill(2_000), RATE, 1, FRAME)); }, 10));
       return { screen: screen.sid ?? '', sound: sound.sid ?? null };
+    },
+    async publishVideo(as) {
+      const source = new VideoSource(64, 64);
+      const track = LocalVideoTrack.createVideoTrack(as, source);
+      const opts = new TrackPublishOptions();
+      opts.source = as === 'screen' ? TrackSource.SOURCE_SCREENSHARE : TrackSource.SOURCE_CAMERA;
+      const local = room.localParticipant;
+      if (!local) throw new Error('not connected');
+      const pub = await local.publishTrack(track, opts);
+      const frame = new VideoFrame(new Uint8Array(64 * 64 * 4).fill(128), 64, 64, VideoBufferType.RGBA);
+      pumps.push(setInterval(() => source.captureFrame(frame), 200));
+      return pub.sid ?? '';
+    },
+    async unpublish(sid) {
+      await room.localParticipant?.unpublishTrack(sid);
     },
     async meanLevelFrom(identity, ms = 2000) {
       await waitFor(() => audioFrom(identity) !== undefined, `audio from ${identity}`);

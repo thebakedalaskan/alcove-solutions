@@ -52,7 +52,11 @@ export const CaptureStateSchema = z.object({
    * pause stops it.
    */
   ai: CapturePartSchema,
-  /** Shared screens read for the notes. Nothing reads them yet, so it's always off. */
+  /**
+   * Shared screens read for the notes: each presenter's own browser sends frames of their share when it changes, and
+   * the private notes model reads them. Off until the organizer turns it on; it runs only while notes are on, pauses
+   * with them, and stops when they're turned off. Cameras are never read.
+   */
   screen: CapturePartSchema,
   /** The stretches with nothing captured, oldest first; the last may still be going. Empty for people asking to join. */
   gaps: z.array(CaptureGapSchema),

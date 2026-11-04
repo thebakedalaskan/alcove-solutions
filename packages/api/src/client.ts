@@ -85,6 +85,8 @@ export interface AlcoveApi {
     progress(id: ID): AsyncIterable<NoteProgress>;
     /** URL that streams one decrypted audio segment to a signed-in browser. */
     audioUrl(id: ID, segment: number): string;
+    /** URL of one shared-screen frame of a note (a `ScreenMoment`'s image), for a signed-in browser that has the note. */
+    screenUrl(id: ID, frameId: ID): string;
     /** Confirms a decision, says it wasn't decided, reopens or rewords it. Anyone who has the notes can. */
     updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
     /** Takes on (owner only), gives, rewords, dates or ticks a follow-up. */

@@ -1,7 +1,7 @@
 import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, type AnswerPart, type Breakouts, type CallAction, type CallCard,
   type CallEndResult, type CallMls, type CallMlsItem, type CallNudge, type CallRole, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap,
-  type CatchUp, type Person, type Speaker
+  type CatchUp, type Person, type ScreenFrameReceipt, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
@@ -9,7 +9,7 @@ import type { Deps, Owner } from '../context';
 import type { LiveKitEvent } from '../livekit';
 import { b64u, id128, mac, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
+import { ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
 import { me, profile } from './account';
 import * as drafting from './drafting';
@@ -22,6 +22,7 @@ import type { Loaded } from '../vault';
 import { getItem } from '../vault';
 import { HeldRooms, blankNote, createNoteWithRecording, finishRecording } from './notes';
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
+import * as screens from './screens';
 import * as transcripts from './transcripts';
 import * as writer from './writer';
 import { log } from '../log';
@@ -71,7 +72,12 @@ const Stored = z.object({
     /** Asks for notes, the latest of each person. */
     asks: z.array(capture.NotesAsk),
     /** What the organizer's current connection says it can't capture now (no microphone, or a browser that can't record or listen). */
-    unavailable: z.array(capture.CapturePartName)
+    unavailable: z.array(capture.CapturePartName),
+    /**
+     * Shared screens read for the notes (modules/screens.ts): whether the organizer has them read now, every time they
+     * turned it on or off, and the shares whose presenters said they ended, so what a share showed last stops there.
+     */
+    screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(z.object({ share: z.string(), presenter: z.string(), at: z.number() })) })
   }),
   people: z.array(Joined),
   /** Who the organizer put on everyone's main stage, by identity. */
@@ -285,7 +291,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     breakouts: breakoutsOf(rooms, v, organizer),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     capture: capture.stateFor({
-      status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable,
+      status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, screens: s.notes.screens,
       gaps: capture.gapsOf(s.notes.history, row.started_at, segs, row.ended_at ? secondsIn(row.started_at, row.ended_at.getTime()) : undefined),
       // Open asks, from whoever is in the call now: everyone sees them, like raised hands.
       requests: s.notes.asks.flatMap((a) => {
@@ -303,7 +309,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
 
 /** What's captured, for someone who isn't in the call (asking to join, or reading the call's card): no names, no gaps, no asks. */
 function anonymousCapture(s: Stored, row: Pick<Row, 'started_at'>) {
-  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, gaps: [], requests: [], asked: null });
+  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, screens: s.notes.screens, gaps: [], requests: [], asked: null });
 }
 
 /**
@@ -325,11 +331,14 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
 /**
  * Notes paused or off, `at` seconds into the call: the recording stops taking audio until notes are on again. What
  * the organizer's browser couldn't capture is forgotten with every change: it says again once notes are back on, so
- * nobody is told something isn't captured when it is.
+ * nobody is told something isn't captured when it is. Turning notes off stops shared screens being read too; pausing
+ * holds them with everything else.
  */
 async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'paused' | 'off'): Promise<Stored> {
   if (s.notes.recordingId && s.notes.status === 'on') await setRecordingState(o, db, s.notes.recordingId, 'paused');
-  return { ...s, notes: { ...s.notes, status, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
+  const sc = s.notes.screens;
+  const screensNow = status === 'off' && sc.on ? { ...sc, on: false, history: [...sc.history, { at, on: false }] } : sc;
+  return { ...s, notes: { ...s.notes, status, screens: screensNow, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
 }
 
 /* ---------- joining by link: for anyone; the organizer's keys are opened with KMASTER ---------- */
@@ -429,7 +438,10 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     if (!live) {
       const callId = id128();
       const roomName = `r_${id128()}`;
-      let s: Stored = { people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatEver: false, notices: [], notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [], asks: [], unavailable: [] } };
+      let s: Stored = {
+        people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatEver: false, notices: [],
+        notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [], asks: [], unavailable: [], screens: { on: false, history: [], ended: [] } }
+      };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
       if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting, 0, 'schedule'), 'Notes are on. Everyone here can see that.');
@@ -575,7 +587,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     }
     await save(o, c, callId, s);
     clog.info('call action', {
-      callId, action: a.type, notes: s.notes.status, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
+      callId, action: a.type, notes: s.notes.status, screens: s.notes.screens.on, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
       connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length
     });
     return { room: row.room_name, gone };
@@ -586,12 +598,12 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   return view(v, o.pool, callId);
 }
 
-type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' }>;
+type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'screens' }>;
 /**
  * What the call captures, changed (modules/capture.ts). Only the organizer turns notes on or off, pauses and resumes
- * them, says not now to an ask, and says what their browser can't capture (app.ts lets nobody else through). Anyone
- * else in the call asks for notes while they're off or paused, or takes the ask back. Turning notes on, or resuming,
- * says yes to every ask.
+ * them, has shared screens read or stops it, says not now to an ask, and says what their browser can't capture (app.ts
+ * lets nobody else through). Anyone else in the call asks for notes while they're off or paused, or takes the ask
+ * back. Turning notes on, or resuming, says yes to every ask.
  */
 async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAction, at: number): Promise<Stored> {
   const o = v.organizer;
@@ -618,6 +630,14 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
     if (s.notes.status !== 'on') return s;
     return { ...s, notes: { ...s.notes, unavailable: [...new Set(a.parts)] } };
   }
+  if (a.type === 'screens') {
+    const sc = s.notes.screens;
+    if (a.on === sc.on) return s;
+    // Frames go into the notes, beside what was said, so they're read only while there are notes to read them into.
+    if (a.on && s.notes.status === 'off') throw new ConflictError('Turn on notes first: shared screens are read for the notes.', { context: ctx });
+    const next: Stored = { ...s, notes: { ...s.notes, screens: { ...sc, on: a.on, history: [...sc.history, { at, on: a.on }] } } };
+    return notice(next, a.on ? 'The organizer turned on shared screens in the notes. What anyone shares is read for them.' : 'The organizer turned off shared screens in the notes. What was shared before is kept.');
+  }
   if (a.type === 'request-notes') {
     if (v.isOrganizer) throw new ValidationError('You can turn notes on yourself.', { context: ctx });
     // One ask each: asking again while asking changes nothing, and taking it back forgets it.
@@ -633,7 +653,7 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
 }
 
 /** What the capture gate needs to know about this call. */
-const capturing = (row: Pick<Row, 'state'>, s: Stored): capture.Capturing => ({ live: row.state === 'live', status: s.notes.status, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
+const capturing = (row: Pick<Row, 'state'>, s: Stored): capture.Capturing => ({ live: row.state === 'live', status: s.notes.status, noteId: s.notes.noteId, recordingId: s.notes.recordingId, screens: s.notes.screens.on });
 
 export async function audio(v: Viewer, callId: string, piece: Piece): Promise<CallState> {
   const o = v.organizer;
@@ -663,6 +683,78 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   await transcripts.hear(o, into, clip, { speaker, ...(room ? { room } : {}) });
   await nudge(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
+}
+
+/* ---------- shared screens: frames from each presenter's own browser, while screen notes are on ---------- */
+
+/** A frame as its presenter's browser sent it: which share, how long ago it was taken, the JPEG and its size. */
+export interface FrameUpload { share: string; ageMs: number; jpeg: Uint8Array; width: number; height: number }
+
+/** Whether someone is in a breakout room now: the organizer while visiting one, anyone else when they were sent to one. */
+function inBreakout(s: Stored, identity: string): boolean {
+  const open = s.breakouts.open;
+  const j = s.people.find((p) => p.identity === identity);
+  if (!open || !j) return false;
+  if (j.role === 'host') return open.visiting !== null;
+  const email = j.email?.toLowerCase();
+  return Boolean(email && open.rooms.some((r) => r.emails.includes(email)));
+}
+
+/** Shares LiveKit said someone has up, by room, identity and track, for a few seconds: frames come every few seconds. */
+const sharing = new Map<string, number>();
+const SHARE_SEEN_MS = 10_000;
+/** Whether `identity` is sharing the screen `share` in the call's room now, as LiveKit sees its tracks. Never a camera. */
+async function ownShare(o: Owner, roomName: string, identity: string, share: string): Promise<boolean> {
+  const id = `${roomName}|${identity}|${share}`;
+  if ((sharing.get(id) ?? 0) > Date.now()) return true;
+  const shares = await o.livekit.screenShares(roomName).catch((e: unknown) => {
+    throw new UnavailableError('We couldn’t check the shared screen with the call’s media server. Try again in a moment.', { cause: e });
+  });
+  const yes = shares.some((x) => x.identity === identity && x.sid === share);
+  if (yes) {
+    if (sharing.size > 10_000) sharing.clear();
+    sharing.set(id, Date.now() + SHARE_SEEN_MS);
+  }
+  return yes;
+}
+
+/**
+ * A frame of someone's own shared screen, into the call's notes, while screen notes are on (the capture gate decides,
+ * as for audio and speech). Only the presenter's own share: LiveKit must list it as a screen this person is sharing in
+ * this call, so another person's share, a camera or a share that's over is refused. Nothing is taken from a breakout
+ * room, or that was taken before screen notes came on or were resumed. It's placed where it was on screen: when it
+ * was taken, by the server's clock.
+ */
+export async function shareFrame(v: Viewer, callId: string, f: FrameUpload): Promise<ScreenFrameReceipt> {
+  requireIn(v, 'screen');
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  const s = settleRooms(state, secondsIn(row.started_at));
+  const at = Math.round((Date.now() - f.ageMs - row.started_at.getTime()) / 100) / 10;
+  const ctx = { callId, segment: s.notes.segment, bytes: f.jpeg.length, ageMs: f.ageMs, role: v.pass.role };
+  const into = capture.mayCapture({ ...capturing(row, s), inRoom: inBreakout(s, v.pass.identity) }, 'screen', ctx);
+  // Taken before notes came on, were resumed, or screens were turned on: from a stretch that wasn't captured.
+  const since = Math.max(s.notes.history.filter((h) => h.status === 'on').at(-1)?.at ?? 0, s.notes.screens.history.filter((h) => h.on).at(-1)?.at ?? 0);
+  if (at < since) throw new ConflictError('That frame was taken before screen notes were on, so it isn’t kept.', { context: { ...ctx, early: Math.round((since - at) * 10) / 10 } });
+  if (!row.room_name || !(await ownShare(o, row.room_name, v.pass.identity, f.share))) throw new ForbiddenError('That isn’t a screen you’re sharing in this call.', { context: ctx });
+  return screens.keep(o, into, { presenter: v.pass.identity, share: f.share, at: Math.max(0, at), segment: s.notes.segment, jpeg: f.jpeg, width: f.width, height: f.height });
+}
+
+/** At most this many ended shares are remembered in a call (its sealed state stays small). */
+const MAX_ENDED = 500;
+/** The presenter's browser says one of its shares ended: what it showed last stops there in the notes. Only their own shares. */
+export async function shareEnded(v: Viewer, callId: string, share: string): Promise<void> {
+  requireIn(v, 'share-ended');
+  const o = v.organizer;
+  await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId } });
+    const sc = state.notes.screens;
+    if (sc.ended.length >= MAX_ENDED || sc.ended.some((e) => e.share === share && e.presenter === v.pass.identity)) return;
+    const at = Math.round((Date.now() - row.started_at.getTime()) / 100) / 10;
+    await save(o, c, callId, { ...state, notes: { ...state.notes, screens: { ...sc, ended: [...sc.ended, { share, presenter: v.pass.identity, at }] } } });
+  });
+  clog.debug('share ended', { callId, role: v.pass.role });
 }
 
 /* ---------- end-to-end encryption: the API orders and relays the call's MLS messages, and never reads them ---------- */
@@ -924,9 +1016,15 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       if (s.notes.noteId) {
         const recorded = (at: number) => capture.recorded(s.notes.history, at, duration);
         const held = s.breakouts.held.map((h) => ({ ...h, from: recorded(h.from), to: recorded(h.to) }));
+        const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
         // The stretches nothing was captured in go into the note, so it says so where they fall.
-        const gaps = capture.gapsOf(s.notes.history, row.started_at, s.notes.recordingId ? await segments(o, s.notes.recordingId) : [], duration);
-        await finishRecording(o, c, s.notes.noteId, duration, held, speakersIn(s, await me(o)), roomsIn(s), gaps);
+        const gaps = capture.gapsOf(s.notes.history, row.started_at, segs, duration);
+        // And what was on shared screens, each frame where it was shown and for how long, its presenter named as the call names speakers.
+        const speakerOf = speakersIn(s, await me(o));
+        const shown = screens.moments(await screens.framesOf(o, c, s.notes.noteId), {
+          history: s.notes.history, screens: s.notes.screens.history, ended: s.notes.screens.ended, gaps, segments: segs, duration, presenterOf: speakerOf
+        });
+        await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, roomsIn(s), gaps, shown);
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }

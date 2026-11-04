@@ -2,7 +2,7 @@
  * LiveKit (group calls). The only module that holds the LiveKit API key and secret, as inference.ts is for
  * NEAR AI. LiveKit carries media, presence and nudges; the API decides who may join and keeps the call.
  */
-import { AccessToken, DataPacket_Kind, RoomServiceClient, WebhookReceiver } from 'livekit-server-sdk';
+import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
 import { AuthError } from './errors';
 import type { Config } from './config';
 import { log } from './log';
@@ -16,6 +16,11 @@ export interface LiveKit {
   ensureRoom(roomName: string): Promise<void>;
   /** Who is connected to the room now; empty when the room doesn't exist. */
   participants(roomName: string): Promise<{ identity: string; name: string }[]>;
+  /**
+   * The screens being shared in the room now: who shares each (identity) and its track ID. LiveKit sees which tracks
+   * are screens, never what's on them (frames are end-to-end encrypted). Cameras aren't listed.
+   */
+  screenShares(roomName: string): Promise<{ identity: string; sid: string }[]>;
   /** A join token for one identity in one room. No admin rights: host powers stay in the API. */
   token(t: { roomName: string; identity: string }): Promise<string>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
@@ -61,6 +66,10 @@ export function createLiveKit(cfg: Config): LiveKit {
     async participants(roomName) {
       if (!(await rooms.listRooms([roomName])).length) return [];
       return (await rooms.listParticipants(roomName)).map((p) => ({ identity: p.identity, name: p.name }));
+    },
+    async screenShares(roomName) {
+      if (!(await rooms.listRooms([roomName])).length) return [];
+      return (await rooms.listParticipants(roomName)).flatMap((p) => p.tracks.filter((t) => t.source === TrackSource.SCREEN_SHARE).map((t) => ({ identity: p.identity, sid: t.sid })));
     },
     async token({ roomName, identity }) {
       const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { identity, ttl: TOKEN_TTL_SECONDS });

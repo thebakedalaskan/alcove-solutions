@@ -9,7 +9,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Provenance } from '~/features/notes/Evidence';
 import { Player, usePlayer } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
-import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines } from '~/features/notes/parts';
+import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
+import { ScreenMomentRow, ScreenRefChip, ScreenViewer, ScreensCard, useScreenViewer } from '~/features/notes/screens';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
 import { SeriesCard } from '~/features/series/cards';
 import { api } from '~/lib/api';
@@ -39,7 +40,7 @@ function NotePage() {
   return <Stored key={noteId} id={noteId} me={me?.email} at={at} />;
 }
 
-interface GoneInfo { kind: 'deleted' | 'removed'; audio: string; organizer: string }
+interface GoneInfo { kind: 'deleted' | 'removed'; audio: string; screens: number; organizer: string }
 
 function Stored({ id, me, at }: { id: string; me: string | undefined; at: number | undefined }) {
   const qc = useQueryClient();
@@ -132,6 +133,11 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const open = note.actions.filter((a) => !a.done).length;
   const lines = note.transcript ?? [];
   const written = note.summary.trim() !== '';
+  // What was on shared screens: among the transcript lines, beside the note, and wherever the notes point at it.
+  const viewer = useScreenViewer();
+  const screens: ScreensShown | undefined = note.screens.length
+    ? { moments: note.screens, row: (m) => <ScreenMomentRow noteId={note.id} m={m} me={me} written={ready} onOpen={viewer.show} /> } : undefined;
+  const onScreen: ScreenRefShown = (ref) => <ScreenRefChip screen={ref} screens={note.screens} onOpen={viewer.show} />;
 
   const remove = async () => {
     try {
@@ -139,7 +145,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
       setConfirm(false);
       setGoing(true);
       await sleep(900);
-      onGone({ kind: mine ? 'deleted' : 'removed', audio: minutesLabel(note.duration), organizer: organizer ? firstName(organizer.name) : 'The organizer' });
+      onGone({ kind: mine ? 'deleted' : 'removed', audio: minutesLabel(note.duration), screens: note.screens.length, organizer: organizer ? firstName(organizer.name) : 'The organizer' });
     } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
@@ -191,7 +197,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
               <span className="ic"><Icon name="trash" size={19} /></span>
               <div>
                 <b>{mine ? 'Delete these notes for everyone?' : 'Remove these notes from yours?'}</b>
-                <p>{mine ? `Removes the summary, the transcript and ${minutesLabel(note.duration)} of audio from Alcove. It can’t be undone.` : `${organizer ? firstName(organizer.name) : 'The organizer'} and everyone else who has them keep them.`}</p>
+                <p>{mine ? `Removes the summary, the transcript, ${minutesLabel(note.duration)} of audio${note.screens.length ? ` and ${note.screens.length} shared ${note.screens.length === 1 ? 'screen' : 'screens'}` : ''} from Alcove. It can’t be undone.` : `${organizer ? firstName(organizer.name) : 'The organizer'} and everyone else who has them keep them.`}</p>
               </div>
               <div className="btns"><Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button><Button variant="primary" loading={del.isPending} onClick={() => void remove()}>{mine ? 'Delete' : 'Remove'}</Button></div>
             </div>
@@ -201,20 +207,20 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
               <Section title="Summary" {...part(0)}><p className="summary">{note.summary}</p></Section>
               {note.decisions.length > 0 && (
                 <Section title="Decided" count={toConfirm ? `${toConfirm} to confirm` : note.decisions.length} {...part(1)}>
-                  <Decisions items={note.decisions} me={me} onChange={changeDecision} onSeek={seek} />
+                  <Decisions items={note.decisions} me={me} onChange={changeDecision} onSeek={seek} shown={onScreen} />
                 </Section>
               )}
               {note.questions.length > 0 && (
                 <Section title="Still open" count={stillOpen ? `${stillOpen} open` : 'All answered'} {...part(2)}>
-                  <Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} />
+                  <Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} shown={onScreen} />
                 </Section>
               )}
               {note.actions.length > 0 && (
                 <Section title="Follow-ups" count={`${open} open`} {...part(3)}>
-                  <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} />
+                  <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} shown={onScreen} />
                 </Section>
               )}
-              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}><Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} /></section>}
+              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}><Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} /></section>}
             </>
           ) : ready && lines.length ? (
             <>
@@ -223,7 +229,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   <b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
                 </Notice>
               </section>
-              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} /></Section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} /></Section>
             </>
           ) : ready ? (
             <section className={cn('sec', going && 'going')}>
@@ -243,24 +249,26 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   </ul>
                 )}
               </section>
-              {lines.length > 0 && <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} /></Section>}
+              {lines.length > 0 && <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} screens={screens} /></Section>}
             </>
           )}
-          {ready && lines.length > 0 && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} />}
+          {ready && lines.length > 0 && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} />}
         </article>
         <aside className="rail">
           {player.total > 0 && <div className={cn(going && 'going')} style={{ '--d': 4 }}><Player noteId={note.id} player={player} chapters={note.chapters} room={note.kind === 'room'} /></div>}
           {note.chapters.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><Chapters chapters={note.chapters} gaps={note.gaps} pos={player.pos} onSeek={seek} /></div>}
+          {note.screens.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><ScreensCard noteId={note.id} screens={note.screens} onOpen={viewer.show} /></div>}
           <div className={cn(going && 'going')} style={{ '--d': 6 }}><Recipients recipients={note.recipients} me={me} fresh={fresh} /></div>
           {!going && <div style={{ '--d': 7 }}><SeriesCard note={note} /></div>}
         </aside>
       </div>
+      <ScreenViewer noteId={note.id} screens={note.screens} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onSeek={seek} />
     </>
   );
 }
 
 /* Delete is physical: say exactly what went. */
-function Gone({ kind, audio, organizer }: GoneInfo) {
+function Gone({ kind, audio, screens, organizer }: GoneInfo) {
   return (
     <div className="gone">
       <GoneArch />
@@ -272,6 +280,7 @@ function Gone({ kind, audio, organizer }: GoneInfo) {
             <li><Icon name="check" size={18} />Summary, decisions and follow-ups</li>
             <li><Icon name="check" size={18} />The transcript</li>
             <li><Icon name="check" size={18} />{audio} of audio</li>
+            {screens > 0 && <li><Icon name="check" size={18} />{screens} shared {screens === 1 ? 'screen' : 'screens'}, and what was read on {screens === 1 ? 'it' : 'them'}</li>}
           </ul>
         </>
       ) : <p className="mb-4 text-ink-2">They’re out of your notes. {organizer} still has them.</p>}

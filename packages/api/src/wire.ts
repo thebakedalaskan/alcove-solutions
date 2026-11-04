@@ -38,6 +38,8 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decline-notes'), requestId: z.string().min(1).max(64) }),
   /** The organizer's browser says what it can't capture now (none, when it can again): everyone sees it, so nobody is told they're captured when they aren't. */
   z.object({ type: z.literal('unavailable'), parts: z.array(CaptureDevicePartSchema).max(2) }),
+  /** The organizer has shared screens read for the notes, or stops it. Only while notes are on or paused; turning notes off stops it too. */
+  z.object({ type: z.literal('screens'), on: z.boolean() }),
   /** Anyone in the call: a raised hand, which everyone sees. */
   z.object({ type: z.literal('hand'), up: z.boolean() }),
   /** Turns away someone asking to join. Letting someone in is the organizer's browser adding them to the call's MLS group. */
@@ -115,6 +117,21 @@ export const LIVE_TRANSCRIPT_LINES = 200;
 /** A transcript clip: at most 30 seconds of 16 kHz mono 16-bit WAV. */
 export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
 export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
+/*
+ * Shared screens (docs: Calls and recordings › Shared screens). The presenter's own browser sends a frame of its own
+ * share, as JPEG bytes, when the screen has changed: which share it is (`share`, the share's LiveKit track ID) and how
+ * long ago it was taken (`age`, in ms), so it's placed where it was on screen even if sending it took a moment.
+ */
+export const FRAME_HEADERS = { share: 'x-alcove-share', age: 'x-alcove-age-ms' } as const;
+/** A frame's JPEG, at most this big. Browsers send them at most 1600 pixels across, which is far smaller. */
+export const MAX_FRAME_BYTES = 1024 * 1024;
+/** How old a frame can say it is when it arrives: older ones are placed as if taken this long ago. */
+export const MAX_FRAME_AGE_MS = 30_000;
+/** A share: the LiveKit track ID of someone's shared screen, as LiveKit names tracks. */
+export const ShareIdSchema = z.string().regex(/^TR_[A-Za-z0-9]{2,64}$/);
+/** The presenter's browser says one of its shares ended, so the last frame's stretch ends there too. */
+export const ShareEndedBodySchema = z.object({ share: ShareIdSchema });
+
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
 

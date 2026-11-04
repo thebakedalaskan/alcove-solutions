@@ -1,7 +1,7 @@
 /* The pieces of a note page, shared by real notes and the example. */
 import {
   errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
-  type Question, type QuestionPatch, type Recipient, type SeriesAnswerPart, type Speaker, type TranscriptLine
+  type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, TranscriptLine as SpokenLine, Words, buttonClass, cn, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
@@ -41,6 +41,8 @@ const byName = (by: Change['by'], me: string | undefined) => (me && sameEmail(by
 /** A name as kept in a change; someone known only by their address goes by the part before the @. */
 const named = (s: string | undefined) => (s ? (s.includes('@') ? s.slice(0, s.indexOf('@')) : firstName(s)) : 'nobody');
 const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)}, ${hm(d)}`; };
+/** Shows where something was on a shared screen ("On screen" with the moment), on the note page. */
+export type ScreenRefShown = (screen: ScreenRef) => ReactNode;
 
 /** One change, as a sentence. */
 function changeLine(c: Change, me: string | undefined): string {
@@ -71,7 +73,7 @@ export function decisionLine(d: Decision, me: string | undefined): string {
 /** Every change to something, one per line, for its tooltip. */
 const history = (changes: Change[], me: string | undefined) => (changes.length ? changes.map((c) => `${changeLine(c, me)}, ${when(c.at)}`).join('\n') : undefined);
 
-function DecisionRow({ d, n, me, onChange, onSeek }: { d: Decision; n: number; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined }) {
+function DecisionRow({ d, n, me, onChange, onSeek, shown }: { d: Decision; n: number; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(d.text);
   useEffect(() => { if (!editing) setText(d.text); }, [d.text, editing]);
@@ -87,6 +89,7 @@ function DecisionRow({ d, n, me, onChange, onSeek }: { d: Decision; n: number; m
         <div className="dec-s" title={history(d.changes, me)}>
           {d.state === 'confirmed' && <Icon name="check" size={14} />}
           <span>{decisionLine(d, me)}</span>
+          {d.screen && shown?.(d.screen)}
           {onChange && (
             <>
               {(d.state === 'proposed' || d.state === 'rejected') && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>Confirm</button>}
@@ -105,10 +108,10 @@ function DecisionRow({ d, n, me, onChange, onSeek }: { d: Decision; n: number; m
 }
 
 /** What the call settled. Each stays proposed until someone who has the notes confirms it. */
-export function Decisions({ items, me, onChange, onSeek }: {
-  items: Decision[]; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined;
+export function Decisions({ items, me, onChange, onSeek, shown }: {
+  items: Decision[]; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
 }) {
-  return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} />)}</>;
+  return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
 }
 
 /** Where an open question stands, in a sentence: still open, reopened by someone, or answered. */
@@ -118,7 +121,7 @@ export function questionLine(x: Question, me: string | undefined): string {
   return last?.what === 'reopened' ? `Reopened by ${byName(last.by, me)}` : 'Not answered yet';
 }
 
-function QuestionRow({ x, n, me, onChange, onSeek }: { x: Question; n: number; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined }) {
+function QuestionRow({ x, n, me, onChange, onSeek, shown }: { x: Question; n: number; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(x.text);
   useEffect(() => { if (!editing) setText(x.text); }, [x.text, editing]);
@@ -134,6 +137,7 @@ function QuestionRow({ x, n, me, onChange, onSeek }: { x: Question; n: number; m
         <div className="dec-s" title={history(x.changes, me)}>
           {x.state === 'answered' && <Icon name="check" size={14} />}
           <span>{questionLine(x, me)}</span>
+          {x.screen && shown?.(x.screen)}
           {onChange && (
             <>
               <button type="button" className="lk" onClick={() => onChange(x, { state: x.state === 'open' ? 'answered' : 'open' })}>{x.state === 'open' ? 'It was answered' : 'Reopen'}</button>
@@ -148,10 +152,10 @@ function QuestionRow({ x, n, me, onChange, onSeek }: { x: Question; n: number; m
 }
 
 /** What the call asked and didn't settle. Each stays open until someone who has the notes says it was answered. */
-export function Questions({ items, me, onChange, onSeek }: {
-  items: Question[]; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined;
+export function Questions({ items, me, onChange, onSeek, shown }: {
+  items: Question[]; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
 }) {
-  return <>{items.map((x, i) => <QuestionRow key={x.id} x={x} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} />)}</>;
+  return <>{items.map((x, i) => <QuestionRow key={x.id} x={x} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
 }
 
 /** Who a follow-up is for, in a sentence: suggested by the notes, given by someone, or taken on. */
@@ -212,9 +216,9 @@ function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | u
  * What people said they'd do. The notes only suggest who: the person it's for takes it on, and
  * anyone who has the notes can give it to someone else, date it, reword it or tick it.
  */
-export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
+export function FollowUps({ actions, me, people = [], onToggle, onChange, shown }: {
   actions: ActionItem[]; me: string | undefined; people?: Person[] | undefined;
-  onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined;
+  onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined; shown?: ScreenRefShown | undefined;
 }) {
   return (
     <>
@@ -223,7 +227,7 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
         return (
           <div key={a.id} className={cn('act', a.done && 'done')}>
             <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
-            <div className="act-b"><span className="t">{a.text}</span><span className="act-s">{actionLine(a, me)}</span></div>
+            <div className="act-b"><span className="t">{a.text}</span><span className="act-s">{actionLine(a, me)}{a.screen && shown?.(a.screen)}</span></div>
             <span className="act-who">
               {a.owner && (
                 <span className={cn('ac-owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
@@ -242,13 +246,15 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
 }
 
 /** The transcript of a written note, folded away under its summary; open at `focus` when a link brought someone to a moment in it. */
-export function Transcript({ lines, gaps, seconds, me, onSeek, focus }: { lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined }) {
+export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens }: {
+  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; screens?: ScreensShown | undefined;
+}) {
   const [open, setOpen] = useState(focus !== undefined);
   useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
   return (
     <>
       <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
-      {open && <TranscriptLines lines={lines} gaps={gaps} me={me} onSeek={onSeek} focus={focus} className="mt-3" />}
+      {open && <TranscriptLines lines={lines} gaps={gaps} me={me} onSeek={onSeek} focus={focus} screens={screens} className="mt-3" />}
     </>
   );
 }
@@ -262,34 +268,43 @@ const CENTER: ScrollIntoViewOptions = { block: 'center' };
 /** The parts of a link to a note that open it at a moment. */
 const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT, hashScrollIntoView: CENTER });
 
+/** A note's shared screens among its transcript lines: the moments, and how each is drawn (it opens the frame). */
+export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) => ReactNode }
+
 /**
- * What was said, line by line, with the stretches nothing was captured in marked where they fall. A speaker's
- * lines in a row share one name; a room recording names nobody. With `focus`, the line said at that moment is
- * marked, and is where a moment's link lands.
+ * What was said, line by line, with the stretches nothing was captured in marked where they fall, and what was on a
+ * shared screen just before the lines said while it was up. A speaker's lines in a row share one name; a room
+ * recording names nobody. With `focus`, the line said at that moment is marked, and is where a moment's link lands.
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, className }: {
-  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; className?: string | undefined;
+export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, className }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
+  screens?: ScreensShown | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
   const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} />;
+  const moments = screens?.moments ?? [];
+  const shown = (m: ScreenMoment) => <Fragment key={m.id}>{screens?.row(m)}</Fragment>;
   return (
     <div className={cn('tr', className)}>
       {lines.map((l, i) => {
         const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
         const mark = i === here ? { id: MOMENT, className: 'here' } : {};
         const before = gapsBefore(gaps, lines, i);
-        if (!l.speaker) return <Fragment key={l.id}>{before.map(gap)}<SpokenLine {...mark} time={time}>{l.text}</SpokenLine></Fragment>;
-        // After a gap the speaker is named again: it's a new part of the call.
-        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length;
+        const up = gapsBefore(moments, lines, i);
+        if (!l.speaker) return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<SpokenLine {...mark} time={time}>{l.text}</SpokenLine></Fragment>;
+        // After a gap, or a screen, the speaker is named again: it's a new part of the call.
+        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length && !up.length;
         return (
           <Fragment key={l.id}>
             {before.map(gap)}
+            {up.map(shown)}
             <SpokenLine id={mark.id} className={cn(more && 'more', mark.className)} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
               name={more ? undefined : spokenName(l.speaker, me)} time={time}>{l.text}</SpokenLine>
           </Fragment>
         );
       })}
       {gapsAfter(gaps, lines).map(gap)}
+      {gapsAfter(moments, lines).map(shown)}
     </div>
   );
 }
@@ -341,9 +356,9 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
   );
 }
 
-/** Where an answer comes from: a moment in this call, or (asking across a series) one of its calls, at a moment when it can tell. */
+/** Where an answer comes from: a moment in this call, a shared screen, or (asking across a series) one of its calls, at a moment when it can tell. */
 type Cite = Exclude<AnswerPart | SeriesAnswerPart, { type: 'text' }>;
-const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.at}` : `${c.noteId}@${c.at ?? ''}`);
+const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}@${c.at ?? ''}`);
 
 /** One of a series' calls an answer comes from: its day, and the moment when the answer could tell. */
 function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
@@ -359,8 +374,10 @@ function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
  * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
  * moments in this call to play, or the calls (and moments) to open.
  */
-export function AskBar({ suggestions, ask, onSeek, label = 'Ask about this call' }: {
-  suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined; label?: string | undefined;
+export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call' }: {
+  suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
+  /** Shows a shared screen an answer comes from. */
+  shown?: ScreenRefShown | undefined; label?: string | undefined;
 }) {
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
@@ -396,7 +413,9 @@ export function AskBar({ suggestions, ask, onSeek, label = 'Ask about this call'
           <p>{answer.done ? <Words text={answer.text} /> : answer.text || '…'}</p>
           {answer.cites.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} /> : <SourceLink key={citeKey(c)} c={c} />))}
+              {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} />
+                : c.type === 'screen' ? <Fragment key={citeKey(c)}>{shown?.({ id: c.id, sure: true, ...(c.region === undefined ? {} : { region: c.region }) })}</Fragment>
+                  : <SourceLink key={citeKey(c)} c={c} />))}
             </div>
           )}
         </div>

@@ -24,6 +24,7 @@ import * as billing from './billing';
 import { briefOf, draft, type Written } from './drafting';
 import { NoteManifest, roomChapters, updateNote } from './notes';
 import { personOf } from './portraits';
+import * as screens from './screens';
 
 const wlog = log.child({ component: 'writer' });
 const ATTEMPTS = 3;
@@ -103,9 +104,14 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     try {
       const t0 = performance.now();
       const organizer = await me(o);
-      const notes = await draft(o.cfg, briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))));
+      // What was on shared screens is read first, frame by frame, so the notes can say what was shown while it was said.
+      const shown = screens.withReadings(note.manifest.screens, note.manifest.screens.length ? await screens.readAll(o, noteId, recordingId) : []);
+      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown });
       await settle(o, job.job_id, noteId, recordingId, notes);
-      wlog.info('notes written', { ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, ms: Math.round(performance.now() - t0) });
+      wlog.info('notes written', {
+        ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
+        screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length, ms: Math.round(performance.now() - t0)
+      });
     } catch (e) {
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
       if (e instanceof UnverifiedError || e instanceof UnansweredError) {
