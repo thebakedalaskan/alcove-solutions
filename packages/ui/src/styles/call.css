@@ -536,7 +536,7 @@
 .ic-share .pk-kind p.sub { font-size: 13px; color: var(--ink-3); }
 .ic-share .pk-f { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 20px 18px 24px; border-top: 1px solid var(--line); }
 .ic-share .pk-f .ic-srow { padding: 0; flex-basis: 100%; }
-.ic-share .pk-note { margin-right: auto; font-size: 12.5px; color: var(--ink-3); }
+.ic-share .pk-note { flex: 1 1 220px; min-width: 0; margin-right: auto; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 
 /* leaving */
 .ic-leave .in { padding: 28px 28px 24px; }
