@@ -83,19 +83,30 @@ your name has **Account**, **Take the tour**, the light or dark theme, and **Sig
    off the calendar and tells everyone invited.
 
 Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
-started now don't go on the calendar. People invited can't join the call either: calls have one participant,
-the organizer, for now. Everyone invited still gets the notes (flow 6).
+started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 6).
 
 ## 4. Join
 
-Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title and time, who
-is invited, and whether the call has notes and who gets them. Under the preview you pick a microphone,
-camera and speaker (where the browser allows choosing one), and **Test microphone** records three seconds
-and plays them back, without uploading or keeping anything. Alcove remembers the choices in this browser and
-says when one isn't plugged in. In the call, the arrow beside the microphone and camera buttons switches
-devices without leaving the call or interrupting the notes. **Join now** opens the call; **Copy link**
-copies the join link. A link to a call that isn't on your calendar says so: only the person who set it up can
-join it.
+Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title, and whether
+the call has notes and who gets them. Under the preview you pick a microphone, camera and speaker (where the
+browser allows choosing one), and **Test microphone** records three seconds and plays them back, without
+uploading or keeping anything. Alcove remembers the choices in this browser and says when one isn't plugged
+in. In the call, the arrow beside the microphone and camera buttons switches devices without leaving the call
+or interrupting the notes.
+
+- **The organizer** sees the time and who is invited, **Join now** and **Copy link**.
+- **Someone invited**, signed in, sees "You're invited, so you get them afterwards" and **Join now**, and is
+  in as soon as the organizer is there.
+- **Anyone else with the link** sees who's hosting, and asks to join. Without an account they type a name; one
+  line says guests don't get the notes, and **Sign in to get them** offers Google, Microsoft and single sign-on
+  in place. Signed in, they ask under their account; once the organizer lets them in they're added to the
+  invite and get the notes. While they wait the page says so, with **Stop asking**; if the organizer turns them
+  away, it says that too.
+- **Before the organizer arrives** the page says it's waiting for them and opens joining when they're there. A
+  locked call says nobody new can join. A call that's over says so, and opens again if the organizer starts
+  it. A link that leads nowhere says to check it.
+- **Camera and microphone** start straight away, and joining works with either or both off.
+- A join that fails says why under the button, with a reference (Ref) to quote if it keeps happening.
 
 ## 5. In the call
 
@@ -147,8 +158,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
    has it. Without notes, the sheet says there's nothing to send.
-3. Everyone invited gets the notes as the call ends. They find them under Notes when they sign in with the
-   invited address, marked as from the organizer.
+3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
+   from the link (letting them in added them to the invite; removing them took them off it). They find them
+   under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
+   a name don't get them.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no
    summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
    While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it

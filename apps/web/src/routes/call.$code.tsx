@@ -25,7 +25,7 @@ import { isCustom, useCallView } from '~/features/call/view';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { q, qk } from '~/lib/queries';
 
 /* Guests have no account: being in the call (its pass) is what lets them in. */
 export const Route = createFileRoute('/call/$code')({ component: Call });
@@ -204,6 +204,9 @@ function InCall({ session }: { session: CallSession }) {
       toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action: { label: 'Let in', onClick: () => { void session.admit(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); } } });
     }
   }, [state.waiting, organizer, session, toast]);
+  /* Letting someone signed in in from the link adds them to the invite, so the organizer reads who's invited again as people with an account arrive. */
+  const withAccounts = told.participants.flatMap((p) => (p.person.email ? [p.person.email] : [])).sort().join(' ');
+  useEffect(() => { if (organizer) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) }); }, [withAccounts, organizer, state.code, qc]);
 
   /* This device's keys fell out of step: joining again (a reload) puts it back in, without anyone letting it in. */
   useEffect(() => {
@@ -265,7 +268,8 @@ function InCall({ session }: { session: CallSession }) {
   const byId = new Map(stagePeople.map((p) => [p.id, p.person]));
   const others = stagePeople.filter((p) => !p.isMe);
   const invited = meeting?.guests ?? [];
-  const viewerGuest = session.ticket.role === 'guest';
+  // As the call stands: someone signed in whom the organizer let in from the link is invited now.
+  const viewerGuest = state.role === 'guest';
   /* Who gets the notes, as far as you can tell: the organizer knows everyone invited; a guest isn't told. */
   const getting: Person[] = organizer
     ? [...(me ? [me.person] : []), ...invited.filter((g) => !me || !sameEmail(g, me.person))]
@@ -535,7 +539,7 @@ function InCall({ session }: { session: CallSession }) {
     const r = roomView.people[p.id];
     const where = roomOf(p.id);
     const detail = p.isMe
-      ? [organizer ? 'Organizer' : session.ticket.role === 'invited' ? 'Invited' : 'Guest', where ? `in ${where}` : '', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : '']
+      ? [organizer ? 'Organizer' : state.role === 'invited' ? 'Invited' : 'Guest', where ? `in ${where}` : '', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : '']
       : [roleOf(p), where ? `in ${where}` : '', r?.screenSid ? 'sharing' : ''];
     return {
       id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false,

@@ -220,6 +220,11 @@
 .ac-notice b { font-weight: 600; }
 .ac-notice.is-caution { background: var(--caution-soft); color: var(--caution); }
 .ac-notice.is-info { background: var(--horizon-soft); color: var(--horizon); }
+/* A failed request's reference: quiet and monospace, copied on press. */
+.ac-ref { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 7px; border-radius: var(--radius-xs); color: var(--ink-3); font: 500 12px/1.3 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-ref code { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 500 12px/1.3 var(--font-mono); color: var(--ink-2); }
+.ac-ref:hover { background: var(--sunk); color: var(--ink-2); }
+.ac-ref:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 /* ---- Dialog / tour card and coachmark ---- */
 .ac-scrim { position: fixed; inset: 0; z-index: 50; background: color-mix(in srgb, var(--stage) 42%, transparent); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); animation: ac-fade var(--duration-2) var(--ease-out) both; }

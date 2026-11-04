@@ -12,9 +12,15 @@ export interface LiveStore<S> {
 
 /* ---------- group calls: who's in the call comes from the API; mic, camera and screen are LiveKit's tracks ---------- */
 
-/** The organizer hosts. Invited people join with their accounts; anyone else with the link joins by name. */
+/**
+ * The organizer hosts. Invited people join with their accounts; anyone else with the link joins by name. Someone
+ * signed in whom the organizer lets in from the link is added to the invite, and is invited from then on.
+ */
 export const CallRoleSchema = z.enum(['host', 'invited', 'guest']);
 export type CallRole = z.infer<typeof CallRoleSchema>;
+
+export const CallNotesStatusSchema = z.enum(['off', 'on']);
+export type CallNotesStatus = z.infer<typeof CallNotesStatusSchema>;
 
 /** What anyone with a call's link sees before joining. No account needed. */
 export const CallCardSchema = z.object({
@@ -22,7 +28,16 @@ export const CallCardSchema = z.object({
   organizerName: z.string(),
   /** Everyone but the organizer waits until this is true. */
   hostHere: z.boolean(),
-  locked: z.boolean()
+  locked: z.boolean(),
+  /** The call is over and nobody has started it again. */
+  ended: z.boolean(),
+  /** Whether notes are on: in the call now, or as it was scheduled. Nothing else about what's said. */
+  notes: CallNotesStatusSchema,
+  /**
+   * Whether the signed-in person asking is invited (or is the organizer), so they're let in without asking and get
+   * the notes. Always false without an account: guests ask, and don't get the notes.
+   */
+  invited: z.boolean()
 });
 export type CallCard = z.infer<typeof CallCardSchema>;
 
@@ -42,6 +57,12 @@ export const CALL_PASS_HEADER = 'x-alcove-call' as const;
 
 /** A call pass as a browser keeps it (sessionStorage) for coming back after a reload: parsed before it's sent anywhere. */
 export const CallPassStoredSchema = z.string().min(20).max(2000).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+
+/**
+ * The call a browser goes back to after signing in with Google from its join page (sessionStorage, in that tab only):
+ * its code, as a link has it, and until when (ms).
+ */
+export const CallReturnStoredSchema = z.object({ code: z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/), until: z.number() });
 
 /** A LiveKit join token, for someone who's been let in. It only lasts until the browser connects; it carries no name. */
 export const CallRoomTokenSchema = z.object({ token: z.string() });
@@ -100,12 +121,12 @@ export const CallParticipantSchema = z.object({
 });
 export type CallParticipant = z.infer<typeof CallParticipantSchema>;
 
-/** Someone asking to be let in. Only the organizer sees them. */
+/**
+ * Someone asking to be let in. Only the organizer sees them: by their account when they're signed in (letting them
+ * in adds them to the invite), otherwise by the name they typed.
+ */
 export const CallAskerSchema = z.object({ id: z.string(), person: PersonSchema });
 export type CallAsker = z.infer<typeof CallAskerSchema>;
-
-export const CallNotesStatusSchema = z.enum(['off', 'on']);
-export type CallNotesStatus = z.infer<typeof CallNotesStatusSchema>;
 
 export const CallNoticeSchema = z.object({
   id: IDSchema,
@@ -178,7 +199,12 @@ export const CallStateSchema = z.object({
   transcript: z.array(TranscriptLineSchema),
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off. */
-  isOrganizer: z.boolean()
+  isOrganizer: z.boolean(),
+  /**
+   * Your role in the call as it stands. It can differ from the ticket's: someone signed in whom the organizer let in
+   * from the link joined as a guest and is invited now. A guest sees people by name only.
+   */
+  role: CallRoleSchema
 });
 export type CallState = z.infer<typeof CallStateSchema>;
 

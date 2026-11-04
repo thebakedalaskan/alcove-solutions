@@ -277,6 +277,11 @@ const KEEP_EPOCHS = 4;
  * themselves, it's the full wait, so nobody still on the old keys misses a beat.
  */
 const ADDED_SWITCH_MS = 500;
+/**
+ * The first wait between checks after asking to join; each wait doubles up to the usual pace. An invited person is
+ * let in by the organizer's browser within moments, so they're in after one or two quick checks instead of a full one.
+ */
+const WAIT_FIRST_MS = 150;
 type MediaEpoch = CallMediaKeys['epochs'][number];
 
 class HttpCall extends Live<CallState> implements CallSession {
@@ -313,6 +318,8 @@ class HttpCall extends Live<CallState> implements CallSession {
   private fetching: Promise<void> | null = null;
   private fetchAgain = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Checks in a row while not in the call's group, so the first come quickly and the rest settle to the usual pace. */
+  private waits = 0;
   private closed = false;
 
   constructor(initial: CallState, readonly ticket: CallTicket, private readonly mls: MlsClient, private readonly timing: CallTiming, private readonly t: CallTransport,
@@ -374,7 +381,9 @@ class HttpCall extends Live<CallState> implements CallSession {
     const st = this.crypto.getSnapshot().status;
     if (st === 'denied' || st === 'removed' || st === 'failed') return;
     // While waiting there's no room to be nudged through, so this is how the welcome arrives; after that it's a backstop.
-    this.timer = setTimeout(() => { void this.sync(); }, st === 'in' ? this.timing.pollMs * 4 : this.timing.pollMs);
+    // Soon after asking it checks often: the organizer's browser lets invited people in within moments.
+    this.waits = st === 'in' ? 0 : this.waits + 1;
+    this.timer = setTimeout(() => { void this.sync(); }, st === 'in' ? this.timing.pollMs * 4 : Math.min(this.timing.pollMs, WAIT_FIRST_MS * 2 ** (this.waits - 1)));
     unref(this.timer);
   }
   /** Out of the call (turned away, removed, or this call went on elsewhere) or out of step: stop keeping up. */

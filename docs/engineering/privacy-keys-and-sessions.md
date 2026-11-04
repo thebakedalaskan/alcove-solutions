@@ -190,6 +190,11 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
 
 - **Invited.** When a call with notes ends, every address invited to the call gets a row with role `invited`.
   Until then nobody invited can find the note.
+- **Let in from the link.** Someone signed in whom the organizer lets in during the call is added to the
+  invite then, so they get an `invited` row too; removing them from the call takes them off the invite again.
+  Letting them in is the organizer's grant, and the organizer sees their address before deciding. A guest with
+  only a typed name is never added: joining a call, or having been in it, opens no note and no transcript
+  ([Calls and recordings › Group calls](calls-and-recordings.md#group-calls)).
 - **Shared.** Anyone who can read a note can share it on by email once the call has ended or the room
   recording has stopped (`POST /v1/notes/:id/share`). Each new address gets a row with role `shared` and joins
   the note's sealed `shared` list; addresses that already have the note are skipped.
@@ -240,8 +245,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   questions and follow-ups, or sharing it: anyone who has the note can make them, and each answers with the
   whole note, so a receipt kept under someone it was given to would outlive the organizer deleting it. Each
   sets an explicit state (confirmed, answered, done, these addresses added), so a retry changes nothing anyway.
-- **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
-  `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute
+- **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the last
+  `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client address. A call's card: 300 a minute per
+  client address (every pre-join keeps reading it while it waits); joining by link: 120. Transcript clips: 120 a minute
   per account, calls and room recordings together. Questions and catch-ups (about notes, a call so far or a
   series): 20 a minute per account, together. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
@@ -249,6 +255,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **Sizes.** An audio piece over 2 MiB or a transcript clip over 30 seconds of WAV is refused from its
   `content-length` (`400 invalid`) before the body is read.
 - **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies.
+  A call's code appears only in its own link (`/join/<code>`): signing in with Google from a join page keeps
+  the call to come back to in the tab's sessionStorage, not in the sign-in URL. Call passes go in a header.
   Logs hold IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs, call
   codes, Google event IDs or the Google callback's query. The privacy test checks the debug-level log for canaries, session and
   sign-in attempt cookies, and Google refresh tokens ([Logging and errors](logging-and-errors.md)).
@@ -299,7 +307,7 @@ third-party loads.
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on |
 | The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size. Deleted when the call ends |
-| The API (calls) | Who's in each call, asking or turned away, and their names (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
+| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of those signed in (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion
