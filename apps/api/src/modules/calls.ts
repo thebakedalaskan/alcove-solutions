@@ -299,7 +299,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     breakouts: breakoutsOf(rooms, v, organizer),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && j.inGroup && j.role !== 'host').map((j) => ({
-      id: j.identity, person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
+      id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
       now: s.people.find((x) => x.person === j.person && x.status === 'in')?.identity ?? null
     })) : [],
     capture: capture.stateFor({

@@ -673,3 +673,76 @@
 
 /* Asking to join: the join page while the organizer decides. */
 .pj-ask { display: flex; align-items: center; gap: 10px; color: var(--stage-ink-2); }
+
+/* ---- moving to another device: the sheet on the device the call is on ---- */
+.ic-move { width: min(600px, calc(100vw - 32px)); }
+.ic-move .pk-h { display: flex; align-items: center; gap: 12px; padding: 20px 20px 4px 24px; }
+.ic-move .pk-h h2 { flex: 1; margin: 0; }
+.ic-move .mv-body { padding: 18px 24px 24px; min-height: 236px; display: grid; align-content: center; }
+.ic-move .pk-f { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 20px 18px 24px; border-top: 1px solid var(--line); }
+.ic-move .pk-note { margin-right: auto; font-size: 12.5px; color: var(--ink-3); }
+.mv-code { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px; align-items: center; }
+.mv-how { display: grid; gap: 10px; align-content: start; }
+.mv-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.mv-how p:first-child { font: 600 15.5px/1.4 var(--font-sans); color: var(--ink); }
+.mv-link { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 4px 4px 12px; border-radius: var(--radius-md); background: var(--sunk); }
+.mv-link .ac-mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-2); }
+.mv-carry { color: var(--ink-3) !important; font-size: 13px !important; }
+.mv-left { justify-self: start; font-size: 12px; letter-spacing: .02em; color: var(--ink-3); }
+.mv-hidden { display: grid; justify-items: center; align-content: center; gap: 10px; width: 196px; height: 196px; padding: 18px; border-radius: var(--radius-md); background: var(--sunk); text-align: center; color: var(--ink-2); }
+.mv-hidden p { font-size: 13px; line-height: 1.4; }
+.mv-there { display: flex; gap: 18px; align-items: flex-start; }
+.mv-there b { display: block; font: 600 16px/1.35 var(--font-sans); color: var(--ink); }
+.mv-there p { margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.mv-ic { display: grid; place-items: center; flex: none; width: 60px; height: 60px; border-radius: var(--radius-md); background: var(--sun-soft); color: var(--sun-text); }
+.mv-ic.is-quiet { background: var(--sunk); color: var(--ink-3); }
+.mv-ic.is-caution { background: var(--caution-soft); color: var(--caution); }
+.mv-wait { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); }
+.mv-wait-note { display: inline-flex; align-items: center; gap: 8px; }
+.mv-ref { margin-top: 6px; font-size: 12px; color: var(--ink-3); word-break: break-all; }
+@media (max-width: 560px) {
+  .ic-move .mv-body { padding: 14px 18px 20px; min-height: 180px; }
+  .ic-move .pk-f { justify-content: flex-end; }
+  .mv-code { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 18px; }
+  .mv-how { width: 100%; }
+  .ic-move .pk-note:empty { display: none; }
+}
+
+/* ---- moving to another device: the new device's page, and the device that was left ---- */
+.mv-page { flex: 1; display: grid; place-items: center; padding: 8px 16px 64px; }
+.mv-card { display: grid; gap: 16px; width: min(440px, 100%); }
+.mv-card .ac-eyebrow { color: var(--stage-ink-2); }
+.mv-card h1, .mv-plain h1, .mv-done h1 { font: 420 38px/1.08 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 48; color: var(--stage-ink); }
+.mv-card .pj-time { margin-top: -6px; }
+.mv-you { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--radius-lg); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }
+.mv-you .ac-avatar { background: var(--stage-raised); }
+.mv-you b { display: block; font: 600 15px/1.3 var(--font-sans); color: var(--stage-ink); }
+.mv-you span { font-size: 13px; color: var(--stage-ink-2); }
+.mv-media { display: flex; flex-wrap: wrap; gap: 8px; }
+.stage .mv-media .ac-chip { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); }
+.stage .mv-media .ac-chip.is-outline { background: transparent; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16); color: var(--stage-ink-2); }
+.mv-step { display: grid; gap: 12px; }
+.mv-step > p { font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
+.mv-step .ways { display: grid; gap: 10px; }
+.mv-step .lp-sso { display: grid; gap: 14px; margin-top: 0; }
+.mv-step .lp-sso .acts { display: flex; flex-wrap: wrap; gap: 10px; }
+.mv-go { width: 100%; }
+.stage .mv-wait { color: var(--stage-ink-2); }
+.mv-said { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
+.mv-said .ac-i { flex: none; margin-top: 2px; color: var(--stage-ink); }
+.stage .mv-ref { color: var(--stage-ink-2); }
+.mv-card.is-plain { justify-items: center; text-align: center; }
+.mv-plain { display: grid; justify-items: center; gap: 12px; max-width: 34ch; }
+.mv-plain p { font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
+.stage .mv-ic { background: rgb(255 122 69 / 0.14); color: var(--sun-glow); }
+.stage .mv-ic.is-quiet { background: rgb(255 255 255 / 0.07); color: var(--stage-ink-2); }
+.stage .mv-ic.is-caution { background: rgb(243 184 90 / 0.14); color: #F3B85A; }
+.mv-done { flex: 1; display: grid; place-content: center; justify-items: center; gap: 14px; max-width: 440px; margin: 0 auto; padding: 8px 16px 72px; text-align: center; }
+.mv-done p { font-size: 15px; line-height: 1.5; color: var(--stage-ink-2); }
+.mv-done .acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
+/* On the night stage, a quiet button reads the same in either theme. */
+.mv-page .ac-btn.is-quiet, .mv-done .ac-btn.is-quiet { color: var(--stage-ink-2); }
+.mv-page .ac-btn.is-quiet:hover, .mv-done .ac-btn.is-quiet:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
+@media (max-width: 560px) {
+  .mv-card h1, .mv-plain h1, .mv-done h1 { font-size: 30px; }
+}

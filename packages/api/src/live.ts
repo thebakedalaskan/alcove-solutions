@@ -221,7 +221,7 @@ export const CallStateSchema = z.object({
    * out: whose they were, and that person's connection now (`now`) when they're still in the call, back from a reload
    * or moved to another device. Shown as who they are, never as a stranger, and never twice.
    */
-  leaving: z.array(z.object({ id: z.string(), person: PersonSchema, now: z.string().nullable() })),
+  leaving: z.array(z.object({ id: z.string(), seat: z.string(), person: PersonSchema, now: z.string().nullable() })),
   /** The call's MLS group generation; browsers already in the call rejoin when it changes. */
   generation: z.number(),
   /** What's been said while notes were on, transcribed as the call goes: the latest lines, oldest first. */
