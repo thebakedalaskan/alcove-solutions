@@ -12,11 +12,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as Reac
 import { callName } from '~/lib/people';
 import { FeedVideo, type Feed } from './Video';
 import { fitGrid, layout, ordered, type CallView, type Rect } from './view';
+import { VolumeControl, volumeTag } from './VolumeControl';
 
 export interface StageParticipant {
   id: string; person: Person; isMe: boolean; mic: boolean; hand: boolean; speaking: boolean;
   /** Their camera, when it's on and this browser plays their media. */
   video: Feed | null;
+  /** How loud they are for you (0 to 1), or null for yourself and where the browser can't set it. */
+  volume: number | null;
 }
 /** Open rooms, as the organizer oversees them: who's in each, and who in a room raised a hand for help. */
 export interface StageRooms {
@@ -50,7 +53,7 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, spotlight, view, organizer, screen, bar, caption, rooms, onSpotlight, onCustom }: {
+export function Stage({ people, spotlight, view, organizer, screen, bar, caption, rooms, onSpotlight, onCustom, onVolume }: {
   people: StageParticipant[];
   spotlight: string | null;
   view: CallView;
@@ -64,6 +67,8 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
   onSpotlight: (id: string | null) => void;
   /** The first time you arrange your own view. */
   onCustom: () => void;
+  /** How loud someone is for you: your own playback only. */
+  onVolume: (id: string, level: number) => void;
 }) {
   const { ref, w, h } = useSize<HTMLDivElement>();
   const reduce = useReducedMotion();
@@ -216,11 +221,16 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
                         <button type="button" className="tx" aria-label={`Unpin ${callName(p.person)} (Esc)`} onClick={() => view.setPinned(null)}><Icon name="x" size={12} /></button>
                       </span>
                     )}
+                    {p.volume !== null && p.volume < 1 && (
+                      <span className="ic-tch"><Icon name={p.volume === 0 ? 'speakerOff' : 'speakerLow'} size={13} />{volumeTag(p.volume)}
+                        <button type="button" className="tx" aria-label={`${callName(p.person)} back to full volume for you`} onClick={() => onVolume(p.id, 1)}><Icon name="x" size={12} /></button>
+                      </span>
+                    )}
                   </div>
                   <TileMenu p={p} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} pinned={pinned} spot={spot} organizer={organizer}
                     big={v.big.includes(p.id)} canSize={resizable}
                     onPin={() => view.setPinned(pinned ? null : p.id)} onSpot={() => onSpotlight(spot ? null : p.id)}
-                    onSize={() => { view.setBig(p.id, !v.big.includes(p.id)); onCustom(); }} />
+                    onSize={() => { view.setBig(p.id, !v.big.includes(p.id)); onCustom(); }} onVolume={(level) => onVolume(p.id, level)} />
                   {resizable && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p.id)}><Icon name="resize" size={14} /></span>}
                 </>
               )}>
@@ -237,9 +247,9 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
 }
 
 /** One person's menu: what each choice changes, said on the choice. */
-function TileMenu({ p, open, onOpenChange, pinned, spot, organizer, big, canSize, onPin, onSpot, onSize }: {
+function TileMenu({ p, open, onOpenChange, pinned, spot, organizer, big, canSize, onPin, onSpot, onSize, onVolume }: {
   p: StageParticipant; open: boolean; onOpenChange: (o: boolean) => void; pinned: boolean; spot: boolean; organizer: boolean; big: boolean; canSize: boolean;
-  onPin: () => void; onSpot: () => void; onSize: () => void;
+  onPin: () => void; onSpot: () => void; onSize: () => void; onVolume: (level: number) => void;
 }) {
   const first = callName(p.person);
   const pick = (f: () => void) => () => { onOpenChange(false); f(); };
@@ -250,6 +260,7 @@ function TileMenu({ p, open, onOpenChange, pinned, spot, organizer, big, canSize
       <button type="button" className="mi" onClick={pick(onPin)}><Icon name={pinned ? 'pinOff' : 'pin'} size={17} /><span className="t">{pinned ? 'Unpin for me' : 'Pin for me'}</span><Scope>Only you</Scope></button>
       {organizer && <button type="button" className="mi" onClick={pick(onSpot)}><Icon name="spotlight" size={17} /><span className="t">{spot ? 'Stop spotlight' : 'Spotlight for everyone'}</span><Scope everyone>Everyone</Scope></button>}
       {canSize && <button type="button" className="mi" onClick={pick(onSize)}><Icon name={big ? 'shrink' : 'grow'} size={17} /><span className="t">{big ? 'Make smaller' : 'Make bigger'}</span><Scope>Only you</Scope></button>}
+      {p.volume !== null && <><div className="ic-msep" /><VolumeControl name={first} level={p.volume} onChange={onVolume} /></>}
       <p className="hint">{organizer ? 'Only the organizer can spotlight. You’re the organizer.' : 'Only the organizer can spotlight.'}</p>
     </Popover>
   );

@@ -420,6 +420,17 @@ export const DevicePrefsSchema = z.object({
 });
 export type DevicePrefs = z.infer<typeof DevicePrefsSchema>;
 
+/**
+ * How loud each person in a call is for one listener: their own playback only, never what the person sends, what's
+ * recorded or transcribed, or anyone else's. Kept in that browser tab for that call only, by the random identity
+ * each connection has in the call (never a name or an address), as a gain from 0 (muted for you) to 2.
+ */
+export const CallVolumesSchema = z.object({
+  callId: z.string().max(200),
+  levels: z.record(z.string().max(200), z.number().min(0).max(2)).refine((l) => Object.keys(l).length <= 200, 'too many people')
+});
+export type CallVolumes = z.infer<typeof CallVolumesSchema>;
+
 /** How someone arranges a call on their own screen. Kept in their browser only: nobody else's view changes. */
 export const CallViewModeSchema = z.enum(['auto', 'speaker', 'grid']);
 export type CallViewMode = z.infer<typeof CallViewModeSchema>;

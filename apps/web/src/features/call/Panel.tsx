@@ -5,12 +5,13 @@
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
 import { CALL_CHAT_MAX, clock, errorMessage, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Switch, TimeChip, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Scope, Switch, TimeChip, cn, useToast } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
+import { VolumeControl } from './VolumeControl';
 
 export type PanelView = 'notes' | 'transcript' | 'ask' | 'chat' | 'people' | 'rooms';
 const TABS: { v: PanelView; label: string }[] = [
@@ -23,8 +24,8 @@ export type Asked =
   | { id: number; kind: 'question'; q: string; parts: AnswerPart[] | null; error: string | null }
   | { id: number; kind: 'catch-up'; c: CatchUp | null; error: string | null };
 
-/** Someone shown in the panel: in the call (and how), or invited and not here. */
-export interface PanelPerson { id: string; person: Person; isMe: boolean; organizer: boolean; mic: boolean; hand: boolean; speaking: boolean; detail: string; tags: string[] }
+/** Someone shown in the panel: in the call (and how), or invited and not here. `volume`: how loud they are for you, null for yourself. */
+export interface PanelPerson { id: string; person: Person; isMe: boolean; organizer: boolean; mic: boolean; hand: boolean; speaking: boolean; volume: number | null; detail: string; tags: string[] }
 
 /** The organizer's controls in People. Mute has no remote unmute; removing only disconnects; a locked call keeps everyone new out. */
 export interface HostControls {
@@ -294,8 +295,11 @@ export function ChatView({ chat, missed, ready, who, onSend }: {
 
 /* ---------- people ---------- */
 
-/** One person's host controls: mute (they unmute themselves) and remove (they can come back unless the call is locked). */
-function HostMenu({ p, host }: { p: PanelPerson; host: HostControls }) {
+/**
+ * One person's menu: how loud they are for you (your playback only), and the organizer's controls: mute (they
+ * unmute themselves) and remove (they can come back unless the call is locked).
+ */
+function PersonMenu({ p, host, onVolume }: { p: PanelPerson; host: HostControls | undefined; onVolume: ((level: number) => void) | undefined }) {
   const [open, setOpen] = useState(false);
   const toast = useToast();
   const name = callName(p.person);
@@ -303,18 +307,25 @@ function HostMenu({ p, host }: { p: PanelPerson; host: HostControls }) {
     setOpen(false);
     f().then(() => toast(done, { icon: 'check' }), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
   };
+  const volume = p.volume !== null && onVolume ? <VolumeControl name={name} level={p.volume} onChange={onVolume} /> : null;
   return (
     <Popover open={open} onOpenChange={setOpen} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu"
       anchor={<button type="button" className="ac-icon-btn ic-pmore" aria-label={`Options for ${name}`} title={`Options for ${name}`}><Icon name="more" size={18} /></button>}>
       <div className="mh"><Avatar person={p.person} size={22} /><b>{p.person.name}</b></div>
-      {p.mic && <button type="button" className="mi" onClick={run(() => host.mute(p.id), `${name} is muted. Only they can unmute.`)}><Icon name="micOff" size={17} /><span className="t">Mute their microphone</span></button>}
-      <button type="button" className="mi" onClick={run(() => host.remove(p.id), host.locked ? `${name} is out of the call.` : `${name} is out of the call. They can join again with the link unless you lock it.`)}><Icon name="leave" size={17} /><span className="t">Remove from the call</span></button>
-      <p className="hint">{p.mic ? 'Only they can unmute themselves.' : 'Their microphone is off.'}</p>
+      {volume}
+      {host && (
+        <>
+          {volume && <div className="ic-msep" />}
+          {p.mic && <button type="button" className="mi" onClick={run(() => host.mute(p.id), `${name} is muted. Only they can unmute.`)}><Icon name="micOff" size={17} /><span className="t">Mute their microphone</span><Scope everyone>Everyone</Scope></button>}
+          <button type="button" className="mi" onClick={run(() => host.remove(p.id), host.locked ? `${name} is out of the call.` : `${name} is out of the call. They can join again with the link unless you lock it.`)}><Icon name="leave" size={17} /><span className="t">Remove from the call</span></button>
+          <p className="hint">{p.mic ? 'Only they can unmute themselves.' : 'Their microphone is off.'}</p>
+        </>
+      )}
     </Popover>
   );
 }
 
-export function PeopleView({ here, invited, asking, host, foot }: {
+export function PeopleView({ here, invited, asking, host, foot, onVolume }: {
   here: PanelPerson[]; invited: Person[];
   /** People asking to join: only the organizer sees them. */
   asking: CallAsker[];
@@ -322,6 +333,8 @@ export function PeopleView({ here, invited, asking, host, foot }: {
   host?: HostControls | undefined;
   /** What the footer says: how the call is kept private. */
   foot: ReactNode;
+  /** How loud someone is for you: your own playback only. */
+  onVolume?: ((id: string, level: number) => void) | undefined;
 }) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)));
   const toast = useToast();
@@ -357,7 +370,8 @@ export function PeopleView({ here, invited, asking, host, foot }: {
               {p.hand && <Icon name="hand" size={16} />}
               {p.speaking && p.mic && <span className="ac-level" aria-label="Speaking"><i /><i /><i /></span>}
               {!p.mic && <Icon name="micOff" size={16} aria-label="Microphone off" />}
-              {host && !p.isMe && <HostMenu p={p} host={host} />}
+              {p.volume === 0 && <Icon name="speakerOff" size={16} aria-label="Muted for you" />}
+              {!p.isMe && (host || (p.volume !== null && onVolume)) && <PersonMenu p={p} host={host} onVolume={onVolume ? (v) => onVolume(p.id, v) : undefined} />}
             </div>
           </div>
         ))}
