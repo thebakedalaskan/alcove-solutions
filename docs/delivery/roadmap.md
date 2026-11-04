@@ -35,6 +35,10 @@
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
   deletion with object GC, session sweeping, origin and content-type checks, rate limits.
 - Structured logging, an error hierarchy and request IDs from the browser to the server log.
+- Joining by link without an account: the pre-join says who you're joining, whether notes are on and who gets
+  them; guests ask with a name, people signed in are added to the invite when the organizer lets them in, and
+  every failure has its own screen with a request reference
+  ([Calls and recordings › The join page](../engineering/calls-and-recordings.md#the-join-page)).
 - Ready for confidential compute: nothing third-party loads in the browser, logs are scrubbed so they can
   leave a VM, and with `TEE=dstack` the API takes its keys from dstack's key service and attests to its
   build with a nonce ([Privacy › Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing)).

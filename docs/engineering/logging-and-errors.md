@@ -91,6 +91,9 @@ The same four levels. `lib/api.ts` connects it to the API client's `onEvent` hoo
 request is logged with method, path, status, code, duration and request ID. A `401 unauthenticated` is
 logged at debug: being signed out is an ordinary state.
 
+- Screens can show a failed request's ID to the person it happened to, as a reference to quote (`RequestRef`
+  from `@alcove/ui`, which copies it on press): the join page does for every refusal and for a card it can't
+  read. It's random, so it finds the request's log lines and says nothing about anyone.
 - Console shows `debug`+ in development and `warn`+ in production. Set `localStorage["alcove:log"] =
   "debug"` to see everything in a deployed app. `recentLogs()` holds the last 200 entries.
 - `warn` and `error` are batched to `POST /v1/telemetry` (at most 20 per request, 30 per minute, sent on
