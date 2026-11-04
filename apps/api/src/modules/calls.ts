@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
 import type { Deps, Owner } from '../context';
 import type { LiveKitEvent } from '../livekit';
-import { b64u, id128, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u } from '../crypto';
+import { H, b64u, id128, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
@@ -224,6 +224,13 @@ function readableBy(v: Viewer, s: Stored): (l: transcripts.Line) => boolean {
   return (l) => !l.room || mine.has(l.room);
 }
 
+/**
+ * Someone's seat in the call, which each viewer's own layout keys them by: the same across their connections (a
+ * reload's pass carries their `person`; the organizer has one seat whichever device they're on), made from the call and
+ * their random `person`, so it says nothing about who they are and differs in every call. Never stored.
+ */
+const seatOf = (callId: string, j: Joined) => b64u(H('alcove/call-seat/v1', utf8(`${callId}\n${j.role === 'host' ? 'organizer' : j.person}`))).slice(0, 22);
+
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const o = v.organizer;
   const { row, state: s } = await load(o, db, callId);
@@ -243,7 +250,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in') : [];
   return {
     ...base,
-    participants: here.map((j) => ({ id: j.identity, person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.identity === row.host_identity, hand: j.hand })),
+    participants: here.map((j) => ({ id: j.identity, seat: seatOf(callId, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.identity === row.host_identity, hand: j.hand })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
