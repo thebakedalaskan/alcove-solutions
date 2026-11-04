@@ -1,14 +1,15 @@
 /*
- * The side panel: notes as the call goes, the transcript, asking about the call, chat and people,
- * one view at a time. It slides in beside the stage and the stage makes room. Notes, the transcript
+ * The side panel: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
+ * people, one view at a time. It slides in beside the stage and the stage makes room. Notes, the transcript
  * and answers come from what was really said while notes were on; nothing here is invented. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Switch, TimeChip, cn, useToast } from '@alcove/ui';
+import { CALL_CHAT_MAX, clock, errorMessage, type CallAsker, type CallChatMessage, type CallState, type CatchUpItem, type Person, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Switch, cn, useToast } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName, listNames, sameEmail } from '~/lib/people';
+import { Moments } from './CatchUp';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
 
@@ -17,11 +18,6 @@ const TABS: { v: PanelView; label: string }[] = [
   { v: 'notes', label: 'Notes' }, { v: 'transcript', label: 'Transcript' }, { v: 'ask', label: 'Ask' }, { v: 'chat', label: 'Chat' }, { v: 'people', label: 'People' }
 ];
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
-
-/** A question or catch-up asked in the Ask view, and its answer once it's back. */
-export type Asked =
-  | { id: number; kind: 'question'; q: string; parts: AnswerPart[] | null; error: string | null }
-  | { id: number; kind: 'catch-up'; c: CatchUp | null; error: string | null };
 
 /** Someone shown in the panel: in the call (and how), or invited and not here. */
 export interface PanelPerson { id: string; person: Person; isMe: boolean; organizer: boolean; mic: boolean; hand: boolean; speaking: boolean; detail: string; tags: string[] }
@@ -67,11 +63,11 @@ const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed
 
 /* ---------- notes ---------- */
 
-function NoteRows({ items, kind, onSeek }: { items: CatchUpItem[]; kind: 'decided' | 'next'; onSeek: (at: number) => void }) {
+function NoteRows({ items, kind, onSeek }: { items: CatchUpItem[]; kind: 'decided' | 'next'; onSeek: (e: TranscriptMoment) => void }) {
   return (
     <>
       {items.map((it) => (
-        <motion.div key={`${it.at ?? 'x'}-${it.text}`} className="ic-nr" layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+        <motion.div key={`${it.evidence[0]?.lineId ?? 'x'}-${it.text}`} className="ic-nr" layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
           {kind === 'next' && it.owner ? <span className="mk av"><Avatar person={{ name: it.owner }} size={18} /></span> : <span className="mk"><Icon name="check" size={12} /></span>}
           <div>
             {it.text}
@@ -79,7 +75,7 @@ function NoteRows({ items, kind, onSeek }: { items: CatchUpItem[]; kind: 'decide
               <div className="meta">{it.owner}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
             )}
           </div>
-          {it.at !== undefined ? <TimeChip seconds={it.at} onSeek={onSeek} /> : <span />}
+          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} onOpen={onSeek} /> : <span />}
         </motion.div>
       ))}
     </>
@@ -103,7 +99,7 @@ export function NotesView({ state, live, getting, problems, onNotes, onSeek, onT
   state: CallState; live: LiveNotes;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
-  problems: string[]; onNotes: (on: boolean) => void; onSeek: (at: number) => void; onTranscript: () => void;
+  problems: string[]; onNotes: (on: boolean) => void; onSeek: (e: TranscriptMoment) => void; onTranscript: () => void;
 }) {
   const on = state.notes.status === 'on';
   const [menu, setMenu] = useState(false);
@@ -150,7 +146,7 @@ export function NotesView({ state, live, getting, problems, onNotes, onSeek, onT
               </div>
             )}
             <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
-            {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.lines} {n.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+            {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
           </div>
         )}
         {(problems.length > 0 || live.error) && (
@@ -164,76 +160,17 @@ export function NotesView({ state, live, getting, problems, onNotes, onSeek, onT
 
 /* ---------- transcript ---------- */
 
-export function TranscriptView({ state, me, hit }: { state: CallState; me: string | undefined; hit: { at: number } | null }) {
+export function TranscriptView({ state, me }: { state: CallState; me: string | undefined }) {
   const on = state.notes.status === 'on';
   return (
     <>
       <div className="ic-tr">
         {!on && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} me={me} hit={hit} /> : on && (
+        {state.transcript.length ? <CallLines lines={state.transcript} me={me} /> : on && (
           <EmptyState title="Nothing said yet" className="ic-empty">What’s said appears here a few seconds later.</EmptyState>
         )}
       </div>
       <Foot>Confidential compute · everyone invited gets it</Foot>
-    </>
-  );
-}
-
-/* ---------- ask ---------- */
-
-const SUGGESTED = ['Catch me up', 'What did we decide?', 'Who’s doing what?'];
-
-function CatchCard({ c, onSeek }: { c: CatchUp; onSeek: (at: number) => void }) {
-  const list = (title: string, xs: CatchUpItem[]) => xs.length > 0 && (
-    <div className="cu-grp"><b>{title}</b><ul>{xs.map((x) => <li key={`${x.at ?? 'x'}-${x.text}`}>{x.text}{x.at !== undefined && <> <TimeChip seconds={x.at} onSeek={onSeek} /></>}</li>)}</ul></div>
-  );
-  if (!c.lines) return <div className="txt">Nothing was said in the last few minutes.</div>;
-  return (
-    <>
-      {c.summary && <div className="txt">{c.summary}</div>}
-      {list('Decided', c.decided)}{list('Suggested, not agreed', c.proposed)}{list('Still open', c.open)}{list('Next', c.next)}
-      {c.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />Notes were off for part of this, so that part isn’t here.</p>}
-    </>
-  );
-}
-
-export function AskView({ asks, ready, onAsk, onCatchUp, onSeek }: { asks: Asked[]; ready: boolean; onAsk: (q: string) => void; onCatchUp: () => void; onSeek: (at: number) => void }) {
-  const [text, setText] = useState('');
-  const end = useRef<HTMLDivElement>(null);
-  const busy = asks.some((a) => (a.kind === 'question' ? a.parts === null && !a.error : a.c === null && !a.error));
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [asks]);
-  const ask = (q: string) => { if (q === 'Catch me up') onCatchUp(); else onAsk(q); };
-  return (
-    <>
-      <div className="ic-scroll ic-pad">
-        <Notice icon="lock"><b>Only you see this.</b> Answers come from what’s been said in this call, nothing else.</Notice>
-        <div className="ic-qa">
-          {!asks.length && !ready && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}
-          {asks.map((a) => (
-            <div key={a.id} className="ic-qa-item">
-              {a.kind === 'question' && <div className="q">{a.q}</div>}
-              <motion.div className={cn('a', a.kind === 'catch-up' && 'is-catch')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-                <div className="by"><Icon name={a.kind === 'catch-up' ? 'history' : 'sealed'} size={14} />{a.kind === 'catch-up' ? 'Catch up · only you can see this' : 'From this call · only you'}</div>
-                {a.error ? <div className="txt bad">{a.error}</div>
-                  : a.kind === 'question' ? (a.parts === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : (
-                    <>
-                      <div className="txt">{a.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')}</div>
-                      {a.parts.some((p) => p.type === 'cite') && <div className="cites">{a.parts.flatMap((p) => (p.type === 'cite' ? [<TimeChip key={p.at} seconds={p.at} onSeek={onSeek} />] : []))}</div>}
-                    </>
-                  )) : a.c === null ? <div className="txt ic-writing"><Dots />Reading the last few minutes</div> : <CatchCard c={a.c} onSeek={onSeek} />}
-              </motion.div>
-            </div>
-          ))}
-          <div ref={end} />
-        </div>
-      </div>
-      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const q = text.trim(); if (q && !busy) { ask(q); setText(''); } }}>
-        <div className="chips">{SUGGESTED.map((s) => <button key={s} type="button" className="ac-chip" disabled={busy || !ready} onClick={() => ask(s)}>{s}</button>)}</div>
-        <div className="inrow">
-          <input className="ac-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask about this call" aria-label="Ask about this call" />
-          <button type="submit" className="ac-btn is-primary" aria-label="Ask" disabled={!text.trim() || busy || !ready}><Icon name="sendLine" size={18} /></button>
-        </div>
-      </form>
     </>
   );
 }
