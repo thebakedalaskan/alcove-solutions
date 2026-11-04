@@ -43,6 +43,10 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('screens'), on: z.boolean() }),
   /** Anyone in the call: a raised hand, which everyone sees. */
   z.object({ type: z.literal('hand'), up: z.boolean() }),
+  /** Anyone in the call: whether others may point at and mark what they share. On until they turn it off. */
+  z.object({ type: z.literal('others-point'), on: z.boolean() }),
+  /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
+  z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /** Turns away someone asking to join. Letting someone in is the organizer's browser adding them to the call's MLS group. */
   z.object({ type: z.literal('deny'), identity: z.string().min(1).max(64) }),
   /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */

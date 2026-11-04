@@ -1,6 +1,7 @@
 /*
  * LiveKit (group calls). The only module that holds the LiveKit API key and secret, as inference.ts is for
- * NEAR AI. LiveKit carries media, presence and nudges; the API decides who may join and keeps the call.
+ * NEAR AI. LiveKit carries media, presence, the server's nudges and what browsers send each other (pointers and marks on
+ * shared screens, encrypted end to end like media); the API decides who may join and keeps the call.
  */
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
 import { AuthError } from './errors';
@@ -21,7 +22,11 @@ export interface LiveKit {
    * are screens, never what's on them (frames are end-to-end encrypted). Cameras aren't listed.
    */
   screenShares(roomName: string): Promise<{ identity: string; sid: string }[]>;
-  /** A join token for one identity in one room. No admin rights: host powers stay in the API. */
+  /**
+   * A join token for one identity in one room. No admin rights: host powers stay in the API. It may send data: browsers
+   * send each other pointers and marks on shared screens, encrypted end to end with their own media keys. The API is
+   * never in the room, so it never receives them, and browsers take the call's nudges only from the server.
+   */
   token(t: { roomName: string; identity: string }): Promise<string>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
   /** Mutes one published track. Never unmutes: remote unmute stays off. */
@@ -73,7 +78,7 @@ export function createLiveKit(cfg: Config): LiveKit {
     },
     async token({ roomName, identity }) {
       const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { identity, ttl: TOKEN_TTL_SECONDS });
-      t.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: false });
+      t.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true });
       return t.toJwt();
     },
     async removeParticipant(roomName, identity) {

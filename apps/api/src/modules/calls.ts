@@ -68,6 +68,13 @@ const Stored = z.object({
   breakouts: BreakoutState,
   /** People (by `person`) the organizer removed: every pass of theirs stops working. */
   removed: z.array(z.string()),
+  /**
+   * Pointing at shared screens: whether anyone may (the organizer's switch, on until they turn it off), and the people
+   * (by `person`, so it holds across their reconnections) who don't let others point at what they share. The pointers
+   * and marks themselves go from browser to browser, encrypted end to end, and never come here.
+   */
+  pointing: z.boolean(),
+  othersPointOff: z.array(z.string()),
   /** Where in this generation's log each part of the call last had chat, so people who come in later know there was chat they can't read. */
   chatAt: z.record(z.string(), z.number()),
   notices: z.array(Notice)
@@ -267,7 +274,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const base = {
     callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
-    locked: row.locked, generation: row.mls_generation, isOrganizer: v.isOrganizer, role: v.role
+    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, role: v.role
   };
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) return { ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
@@ -285,7 +292,10 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const mine = s.notes.asks.find((a) => a.person === v.pass.person);
   return {
     ...base,
-    participants: here.map((j) => ({ id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity, isOrganizer: j.identity === row.host_identity, hand: j.hand })),
+    participants: here.map((j) => ({
+      id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity,
+      isOrganizer: j.identity === row.host_identity, hand: j.hand, othersPoint: !s.othersPointOff.includes(j.person)
+    })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms, v, organizer),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
@@ -447,7 +457,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const callId = id128();
       const roomName = `r_${id128()}`;
       let s: Stored = {
-        people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatAt: {}, notices: [],
+        people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, notices: [],
         notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [], asks: [], unavailable: [], screens: { on: false, history: [], ended: [] } }
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
@@ -548,6 +558,14 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     const ctx = { callId, action: a.type };
     if (a.type === 'hand') {
       s = withPerson(s, v.pass.identity, (j) => ({ ...j, hand: a.up }));
+    } else if (a.type === 'others-point') {
+      // Someone's own choice about what they share, by person, so it holds when they come back on another connection.
+      const off = s.othersPointOff.filter((p) => p !== v.pass.person);
+      s = { ...s, othersPointOff: a.on ? off : [...off, v.pass.person] };
+    } else if (a.type === 'pointing') {
+      if (a.on !== s.pointing) {
+        s = notice({ ...s, pointing: a.on }, a.on ? 'The organizer turned on pointing at shared screens.' : 'The organizer turned off pointing at shared screens.', 'info');
+      }
     } else if (a.type === 'spotlight') {
       // Only someone in the call can be spotlighted.
       if (a.participantId !== null && !s.people.some((j) => j.identity === a.participantId && j.status === 'in')) throw new ValidationError('That person isn’t in this call.', { context: ctx });
@@ -636,7 +654,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     // Anyone sent to another part of the call (or back) moves group: their browser and the organizer's read the log again.
     clog.info('call action', {
       callId, action: a.type, notes: s.notes.status, screens: s.notes.screens.on, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
-      connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved
+      connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved,
+      pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });
     return { room: row.room_name, gone, moved };
   }).then(async ({ room, gone, moved }) => {
