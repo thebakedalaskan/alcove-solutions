@@ -280,16 +280,18 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
 
 ## Shared screens
 
-Call media is end-to-end encrypted, so neither LiveKit nor the API ever sees a shared screen. When the
-organizer has shared screens read for the notes, each presenter's own browser sends frames of its own share
-to the API, and the private notes model reads them after the call (`apps/web/src/features/call/frames.ts`,
-`apps/api/src/modules/screens.ts`).
+Call media is end-to-end encrypted, so LiveKit never sees a shared screen, and the API sees only the frames a
+presenter's browser sends for the notes. When the organizer has shared screens read for the notes, each
+presenter's own browser sends frames of its own share to the API, which holds each one in memory only to seal it
+(and later to open it for the notes model and the note's people), and the private notes model reads them after the
+call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`).
 
 - **Turning it on.** Only the organizer (`POST /v1/live/calls/:id/actions` with `{type: "screens", on}`), and
   only while notes are on or paused (`409 conflict` otherwise: "Turn on notes first"). Pausing holds it with
   everything else and resuming brings it back; turning notes off turns it off too, and turning them on again
   doesn't bring it back: that's the organizer's choice each time. Every change is a notice for everyone, and
-  the card, the join page and someone waiting see `capture.screen` like the other parts, without a name.
+  the card, the join page and someone waiting see `capture.screen` like the other parts, without a name. Its
+  changes are kept to a tenth of a second, with the recording's segment, like the notes' own.
 - **In the presenter's browser.** While screen notes are on and not paused, the call is live and the presenter
   isn't in a breakout room, the browser looks at its own share once a second (`ImageCapture.grabFrame` where the
   browser has it, which reads the track itself rather than a video on the page, or a hidden video element). It compares each look on
@@ -300,19 +302,25 @@ to the API, and the private notes model reads them after the call (`apps/web/src
   kept (as Google Meet and Teams do). Frames go up as JPEG (quality 0.72, at most 1600 pixels across), one at a
   time, three tries each, the newest three waiting. Pausing, screen notes going off or a breakout room stops
   it at once and drops what wasn't sent. When a share ends (stopped, or swapped for another), the browser says
-  so (`POST /v1/live/calls/:id/frames/ended {share}`), so its last frame's stretch ends there. The share bar
-  says **Read for the notes**, and the share picker says so before anyone chooses.
+  so (`POST /v1/live/calls/:id/frames/ended {share}`), so its last frame's stretch ends there, and the API takes
+  no frame of it taken after that. A presenter's connection leaving the call (they leave, are removed, or a new
+  connection of theirs takes over) ends every share of theirs on the server, so a share whose browser couldn't
+  say so still stops where they left. The share bar says **Read for the notes**, and the share picker says so
+  before anyone chooses (during a pause: that it's read once notes resume).
 - **The request.** `POST /v1/live/calls/:id/frames` with the JPEG as the body (`content-type: image/jpeg`), the
   share's LiveKit track ID in `x-alcove-share` and how long ago it was taken in `x-alcove-age-ms` (at most 30
   seconds counts). A body over 1 MiB (`MAX_FRAME_BYTES`) is refused from its `content-length` before it's read;
   then the JPEG's frame header must give a size between 64 and 4096 pixels a side. 24 frames a minute per
   person (`503` past that). Then, in order: the sender must be let in (`403`); the capture gate's `screen` path
   must allow it: the call live, notes on and not paused, screens on, and the sender not in a breakout room
-  (`409`); the frame mustn't be from before notes came on, were resumed, or screens were turned on (`409`); and
-  LiveKit must list the share as a screen this person is sharing in this call's room now (`403` for someone
-  else's share, a camera or a share that's over; a yes is remembered for 10 seconds; `503` when LiveKit can't
-  be asked). The presenter is always the sender's own participant ID, so nobody can add frames to someone
-  else's share.
+  (`409`); the frame mustn't be from before notes came on, were resumed, or screens were turned on (`409`); the
+  presenter's browser mustn't have said the share ended (`403`); and LiveKit must list the share as a screen
+  this person is sharing in this call's room now (`403` for someone else's share, a camera or a share that's
+  over; a yes is remembered for 10 seconds, forgotten when the browser says the share ended; `503` when LiveKit
+  can't be asked). The presenter is always the sender's own participant ID, so nobody can add frames to someone
+  else's share. What this proves is that the sender has a screen share up in this call's room: the API can't
+  see what's on it, so which picture is sent is the presenter's browser's word. A modified browser could send
+  any image under its own share, which is no more than it could show everyone on that share.
 - **Kept once, sealed.** A frame is found by a keyed hash of its share and its bytes' SHA-256 (`frame_tag`), so
   a retried frame is kept once and answers with the ID it has (`{id, duplicate: true}`). The JPEG is sealed
   under the recording's key, like audio (record kind `screen-frame`, binding the recording, the frame and the
@@ -320,11 +328,19 @@ to the API, and the private notes model reads them after the call (`apps/web/src
   with whose share it was, when (seconds since the call started, by the server's clock less the age), the
   segment, its size and, later, what was read on it, sealed under the note's screen key (`screen-frame-info`,
   binding the note and the frame). The row is written under a share lock on the recording, so a frame either
-  lands before a pause or stop, or stays out and its object is deleted. A call keeps at most 240 frames.
+  lands before a pause or stop, or stays out and its object is deleted.
+- **As many as the notes keep.** A call's notes keep at most 240 frames (`SCREEN_FRAMES_MAX`): about one a
+  minute for four hours, or an hour of a screen that keeps changing. The frame after that is refused (`409`:
+  "The notes have kept as many shared screens as they can for this call"), and screen notes turn off for
+  everyone, as if the organizer had turned them off, with a notice saying why; the presenters' browsers stop
+  looking, and the share bar stops saying **Read for the notes**. The organizer can't turn them on again for
+  that call (`409`); what was kept stays.
 - **Into the note.** When the call ends, its frames become the note's screen moments (`Note.screens`): each
-  placed in the recording as transcript lines are (in its segment, counted from when that segment started), on
-  screen until its share's next frame, its share ending, screen notes stopping, a gap, or the end. Presenters
-  are named as the call named them. The image is at `GET /v1/notes/:id/screens/:frameId`, for anyone who has
+  placed in the recording as transcript lines are (in its segment, counted from when that segment started, kept
+  inside its audio), on screen until its share's next frame, its share ending or its presenter leaving, screen
+  notes stopping, notes pausing or going off, a gap, or the end. A segment with no audio (an organizer without a
+  microphone) places its frames by the call's clock, less the stretches notes were paused or off, so frames after
+  a pause still come after the ones before it. Presenters are named as the call named them. The image is at `GET /v1/notes/:id/screens/:frameId`, for anyone who has
   the note and only for frames the note shows, decrypted per request with `cache-control: no-store`.
 - **Read and referred to.** The notes worker has the notes model read each frame before the notes are written
   ([Notes and inference › Shared screens](notes-and-inference.md#shared-screens)), and the notes point at the

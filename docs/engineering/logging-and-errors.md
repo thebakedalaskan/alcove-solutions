@@ -78,6 +78,11 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   goes back to the welcome screen with `signin=busy` instead.
 - An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES` or a shared-screen frame over
   `MAX_FRAME_BYTES` is refused as `400 invalid` from its `content-length`, before the body is read.
+- A frame past a call's `SCREEN_FRAMES_MAX` is refused as `409 conflict` and logged at info (`frame refused: the
+  notes have kept as many as they can`, with the limit), with one more info line when screen notes turn off for
+  it (`screen notes turned off: the notes are full`). A frame whose image still can't be fetched on a second try
+  while the notes are written is a warn (`a frame’s image couldn’t be fetched; kept as unread`), with the note's
+  and the frame's IDs only.
 - NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
   `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
   `5xx`), with the operation, status and timing as context. Evidence that doesn't check out is an

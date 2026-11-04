@@ -302,15 +302,18 @@ nothing on a screen goes to the AI during the call, paused or not.
   other way for a frame to leave.
 - **Reading a frame** (`readScreen` in `drafting.ts`). One request per frame, four at a time, each kept in the
   frame's sealed row as soon as it's made, so a job tried again carries on where it was. The model returns the
-  frame's `title`, the `text` it can read (only that: never guessed or filled in), how `legible` it was (`clear`,
+  frame's `title`, the `text` it can read (only that: never guessed or filled in, at most 700 characters), how `legible` it was (`clear`,
   `partly`, `unreadable`; saying nothing counts as `partly`), and up to four `regions` worth pointing at, as
   boxes in fractions of the frame (clamped to it, at least 2% a side, labels at most 60 characters). A reply
   that can't be used twice keeps the frame as `unread`, and so does a frame whose object fails its integrity
-  check; a frame is never described from anything but its image. Evidence that doesn't check out, or a model
-  that doesn't answer, makes the notes wait, as for writing them.
+  check, or still can't be fetched on a second try two seconds later (the object store failing, or the object
+  gone): one image never costs the notes. A frame is never described from anything but its image. Evidence that
+  doesn't check out, or a model that doesn't answer, makes the notes wait, as for writing them. When the notes
+  can't be written in the end and the note is finished without them, it still shows what was read on each
+  screen so far.
 - **In the notes.** The notes model reads each screen among the transcript lines where it appeared, as a line
-  `[mm:ss] [screen N from Name, clear] Title. Reads: … Parts: (1) … (2) …` (at most 700 characters of its text;
-  the whole reading stays with the note). It describes each screen in a sentence or two, tied to what was said
+  `[mm:ss] [screen N from Name, clear] Title. Reads: … Parts: (1) … (2) …` (its text as read, at most 700
+  characters; a guest is marked as one). It describes each screen in a sentence or two, tied to what was said
   while it was up, and gives any decision, open question, follow-up or chapter that was about something on a
   screen its `screen` (the screen, the part when one part was meant, and `sure`: whether what was said plainly
   refers to it, like "this chart", or only seems to). Only screens it was sent, and parts they have, are kept.
@@ -319,9 +322,10 @@ nothing on a screen goes to the AI during the call, paused or not.
 - **In answers.** Asking about a note sends the screens the same way; an answer can name up to two screens it
   comes from, which come back as `{type: "screen", id, at}` parts.
 - **What's kept.** Each `ScreenMoment` in the note: the frame's ID, where it falls in the recording (`at` to
-  `until`), whose screen and which share, its size, how legible it was, its title, text, regions and the notes'
-  description. The images stay in the object store under the recording's key. All of it goes when the note is
-  deleted.
+  `until`), whose screen and which share, its size, how legible it was, its title, text (at most 700 characters),
+  regions and the notes' description (at most 400). The note carries every moment and each edit copies the note,
+  so a moment stays under about 1.7 KB: 240 of them add at most about 0.4 MB. The images stay in the object store
+  under the recording's key. All of it goes when the note is deleted.
 
 ## Progress
 
