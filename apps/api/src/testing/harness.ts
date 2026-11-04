@@ -4,9 +4,10 @@
  * NVIDIA services that vouch for it, under test roots), and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
-import type { AlcoveApi } from '@alcove/api';
+import type { AlcoveApi, CallSession } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { serve, type ServerType } from '@hono/node-server';
+import { Server } from 'node:http';
 import pg from 'pg';
 import { createApp } from '../app';
 import type { Deps } from '../context';
@@ -63,6 +64,8 @@ export interface Harness {
   near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callRekeyMs?: number | undefined }): Browser;
+  /** Stops every call session this harness's browsers joined from keeping up with its call (nobody leaves). */
+  closeCalls(): void;
   /** Another API process on the same database and bucket, as after a restart, on a second instance, or with other settings. */
   secondServer(cfg?: Partial<Config>): Promise<{ baseUrl: string; close(): Promise<void> }>;
   close(): Promise<void>;
@@ -75,7 +78,14 @@ async function listen(deps: Deps): Promise<{ server: ServerType; baseUrl: string
   const port = typeof addr === 'object' && addr ? addr.port : 0;
   return { server, baseUrl: `http://127.0.0.1:${port}` };
 }
-const stop = (server: ServerType) => new Promise<void>((r) => server.close(() => r()));
+/**
+ * Stops a server at once. `close()` alone waits out every connection busy at that moment, and a call session
+ * still polling keeps reusing its keep-alive connection, so the wait can last forever.
+ */
+const stop = (server: ServerType) => new Promise<void>((r) => {
+  server.close(() => r());
+  if (server instanceof Server) server.closeAllConnections();
+});
 
 export async function startHarness(): Promise<Harness> {
   const url = process.env['TEST_DATABASE_URL'];
@@ -112,18 +122,25 @@ export async function startHarness(): Promise<Harness> {
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
   google.register(`${baseUrl}/v1/auth/google/callback`);
+  // Every call session a browser joins, so a test's sessions can be stopped once it's done instead of polling on.
+  const calls: CallSession[] = [];
+  const closeCalls = () => { for (const s of calls.splice(0)) s.close(); };
   return {
     baseUrl, pool, objects, deps, logs, google, near,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
       // Calls keep up with their keys quickly here; browsers wait 1.5 s between checks while nothing nudges them.
-      return { api: createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) }), fetch: f };
+      const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
+      const join: AlcoveApi['calls']['join'] = async (code, opts) => { const s = await api.calls.join(code, opts); calls.push(s); return s; };
+      return { api: { ...api, calls: { ...api.calls, join } }, fetch: f };
     },
+    closeCalls,
     async secondServer(more = {}) {
       const second = await listen({ ...deps, cfg: { ...deps.cfg, ...more } });
       return { baseUrl: second.baseUrl, close: () => stop(second.server) };
     },
     async close() {
+      closeCalls();
       await stop(server);
       await google.close();
       await near.close();

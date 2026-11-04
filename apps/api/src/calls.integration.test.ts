@@ -89,7 +89,7 @@ async function joinRoom(call: CallSession, hearing?: CallSession): Promise<TestP
   open.push(p);
   return p;
 }
-afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); });
+afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
 
 describe('calls on LiveKit', () => {
   it('reports LiveKit reachable in the health check', async () => {
