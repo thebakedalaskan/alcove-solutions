@@ -28,6 +28,8 @@ export interface ArrangeInput {
   shares: string[];
   /** Your own share while you share: it starts as a tile, since you see what you share on your own screen already. */
   own: string | null;
+  /** Shares you opened in their own window: tiles here, whatever else you chose, and the next share takes their place. */
+  away: string[];
   /** How many shares fit big side by side: MAX_FEATURED, or one on a narrow stage. */
   fit: number;
   /** The organizer's spotlight, for everyone: a participant ID. */
@@ -75,8 +77,8 @@ export function arrange(i: ArrangeInput): Plan {
   // you see, and never undoes what you chose.
   const live = new Set(i.shares);
   const chose = layout.shares.filter((s) => live.has(s.id));
-  const pick = chose.length ? chose.filter((s) => s.show === 'big').map((s) => s.id).slice(-i.fit)
-    : prefs.mode === 'grid' ? [] : i.shares.filter((s) => s !== i.own).slice(0, i.fit);
+  const pick = chose.length ? chose.filter((s) => s.show === 'big' && !i.away.includes(s.id)).map((s) => s.id).slice(-i.fit)
+    : prefs.mode === 'grid' ? [] : i.shares.filter((s) => s !== i.own && !i.away.includes(s)).slice(0, i.fit);
   const featured = i.shares.filter((s) => pick.includes(s));
   const tiles = i.shares.filter((s) => !featured.includes(s)).map(shareKey);
   // Nobody chosen and nothing shared: Speaker follows whoever talks; Auto follows someone doing most of the talking,

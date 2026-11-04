@@ -436,6 +436,8 @@ function InCall({ session }: { session: CallSession }) {
   const mainIds = open ? state.participants.filter((p) => !inARoom(p.id)).map((p) => p.id) : [];
   const unit = open ? (myRoom >= 0 ? open.rooms[myRoom]?.members ?? [] : mainIds) : null;
   const unitKey = unit ? [...unit].sort().join(' ') : null;
+  // Your part of the call, for what the stage keeps of each share (zoom, earlier pictures, its own window): a new part starts afresh.
+  const sharePlace = open ? (myRoom >= 0 ? `room:${open.rooms[myRoom]?.id ?? ''}` : 'main') : 'call';
   useEffect(() => {
     if (unitKey === null) { room.playOnly(null); return; }
     const here = new Set(unitKey.split(' '));
@@ -1002,7 +1004,7 @@ function InCall({ session }: { session: CallSession }) {
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
             <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
-              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
+              bar={bar} caption={capNode} rooms={stageRooms} place={sharePlace} paused={mode === 'paused'} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
               onShareStarted={shareStarted} onShareStopped={shareStopped} />
           </motion.div>
           <AnimatePresence>
