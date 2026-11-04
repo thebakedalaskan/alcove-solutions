@@ -103,14 +103,17 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     if (o.panel === null) setBefore(null);
   }, [o.panel]);
 
-  /* Coming back after time away, or joining late: offered once, as a toast. Guests can't read what was said then. */
+  /*
+   * Coming back after time away, or joining late: offered once, as a toast, decided by the first window read when the
+   * screen opens, and not at all when notes have never been on. Guests can't read what was said then.
+   */
   const latest = useRef(catchUp);
   latest.current = catchUp;
   const offered = useRef(false);
   useEffect(() => {
-    if (offered.current || !win || !o.everOn) return;
+    if (offered.current || !win) return;
     offered.current = true;
-    if (win.here !== null) return;
+    if (!o.everOn || win.here !== null) return;
     if (win.away && win.now - win.away.to < 60 && win.away.to - win.away.from >= 20) {
       toast(`You were away for ${howLong(win.away.to - win.away.from)}`, { icon: 'history', ms: 12_000, action: { label: 'Catch up', onClick: () => latest.current({ kind: 'away' }) } });
     } else if (win.joined >= 120 && win.now - win.joined < 60) {
