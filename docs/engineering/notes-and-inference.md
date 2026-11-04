@@ -720,7 +720,7 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   address before the @ when Alcove has no name for them (never full addresses); the length in minutes;
   and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room), with a line such as
   `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured
-  (`the organizer's browser was out of the call for 3 min` for an `offline` gap).
+  (`the host's browser was out of the call for 3 min` for an `offline` gap).
   Every prompt that reads a transcript tells the model never to say or guess what happened in one. A line whose
   words Whisper was unsure of ends `(unclear)`, and a speaker in doubt reads `Name (not sure who)`, and every such
   prompt, the series' and the one across notes included, tells the model never to rest a name, number or
@@ -1003,7 +1003,7 @@ joined and while you were away (a page that goes away and comes back), the last 
 said before them, both ends of a stretch in it, a stretch with nothing said answered without asking the model,
 ranges refused (one that hasn't happened, one that ends before it starts, time away for someone who hasn't been
 away, an unknown kind); what a stretch is missing (before notes came on, while they were off or paused, while the
-organizer's connection was away) and what a stretch too long to read at once skipped; a guest with the link
+host's connection was away) and what a stretch too long to read at once skipped; a guest with the link
 reading only what was said while they were here, in the live transcript, catching up, asking, moments and
 captions, and nothing from while they were away, while someone invited before the call, or added to the invite
 once let in from the link, reads it all; answers withheld from someone removed, gone or past the end of the call while they were written; refusals
