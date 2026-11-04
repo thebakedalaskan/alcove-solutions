@@ -5,6 +5,10 @@
  * in the grid, in a corner or not at all. Every tile can be focused, then pinned, moved and sized from the keyboard
  * (its ⋯ menu says how). All of that changes your view only. With rooms open, the organizer's stage shows every
  * room; everyone else's shows the people in their own room.
+ *
+ * Several people can share at once. Each share names whoever shares it, in the arch; two fit side by side with a line
+ * between them, and the rest wait as tiles: a click (or P) shows one big, in place of the one that's been big longest.
+ * A share that starts later glows for a moment where the layout puts it and never takes the place of what you see.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type Person, type SelfView, type StageCorner } from '@alcove/api';
 import { Avatar, Button, CallTile, EmptyState, Icon, NotesSign, Tooltip, cn } from '@alcove/ui';
@@ -12,7 +16,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
 import { useSettledSpeakers } from './speakers';
-import { arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
+import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
 import { ShareMenu, TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
@@ -29,8 +33,21 @@ export interface StageParticipant {
   /** How loud they are for you (0 to 1), or null for yourself and where the browser can't set it. */
   volume: number | null;
 }
-/** Something shared: whose it is (their participant ID), its feed, the line on it, and what menus call it. */
-export interface StageShare { id: string; feed: Feed; label: string; name: string }
+/** Something shared: whose it is (their participant ID), its feed, and what it's called. */
+export interface StageShare {
+  id: string;
+  feed: Feed;
+  /** Who shares it, shown in the arch beside the line on it: a share is never told apart by colour alone. */
+  presenter: Person;
+  mine: boolean;
+  /** The line on it ("Ana is sharing"), and what menus call it ("Ana’s screen"). */
+  label: string;
+  name: string;
+  /** The sound it carries, if any: muted for you or not, and the switch. Never for your own, which doesn't play here. */
+  sound: { muted: boolean; toggle: () => void } | null;
+}
+/** How long a share that just started glows. */
+const NEW_MS = 3000;
 /** Open rooms, as the organizer oversees them: who's in each, and who in a room raised a hand for help. */
 export interface StageRooms {
   rooms: { name: string; ids: string[]; help: string | null }[];
@@ -78,9 +95,9 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes }: {
+export function Stage({ people, shares, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
   people: StageParticipant[];
-  /** What's shared now, oldest first. */
+  /** What's shared now, in any order: the stage keeps them in the order they started. */
   shares: StageShare[];
   spotlight: string | null;
   view: CallView;
@@ -98,19 +115,35 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
   onCustom: () => void;
   /** How loud someone is for you: your own playback only. */
   volumes: VolumeActions;
+  /** Someone else's share started, and whether the layout shows it big for you; `show` shows it big. */
+  onShareStarted: (s: StageShare, big: boolean, show: () => void) => void;
+  /** Someone else's share stopped, and whether it was big for you. */
+  onShareStopped: (s: StageShare, wasBig: boolean) => void;
 }) {
   const { ref, w, h } = useSize<HTMLDivElement>();
   const reduce = useReducedMotion();
   const narrow = w > 0 && w < 760;
   const { prefs, layout: lay } = view;
   const talk = useSettledSpeakers(people);
+  // Shares in the order they started here, so one that starts later never goes ahead of what's already shared.
+  const seen = useRef(new Map<string, { n: number; at: number }>());
+  const started = useRef(0);
+  const live = new Set(shares.map((s) => s.id));
+  for (const id of [...seen.current.keys()]) if (!live.has(id)) seen.current.delete(id);
+  for (const s of shares) if (!seen.current.has(s.id)) seen.current.set(s.id, { n: ++started.current, at: performance.now() });
+  const ordered = [...shares].sort((a, b) => (seen.current.get(a.id)?.n ?? 0) - (seen.current.get(b.id)?.n ?? 0));
+  const now = performance.now();
+  const fresh = (id: string) => now - (seen.current.get(id)?.at ?? 0) < NEW_MS;
+  // Two shares side by side; one on a narrow stage, where two would each be too small to read.
+  const fit = narrow ? 1 : MAX_FEATURED;
+  const own = ordered.find((s) => s.mine)?.id ?? null;
   // The layout is worked out again only when something it depends on changes, not on every render (who's
   // speaking right now, a drag's pointer): in a big call it isn't free.
   const peopleKey = people.map((p) => `${p.id} ${p.seat} ${p.isMe ? 1 : 0}`).join(',');
-  const shareIds = shares.map((s) => s.id).join(' ');
+  const shareIds = ordered.map((s) => s.id).join(' ');
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
-  const raw = useMemo(() => arrange({ people, shares: shareIds ? shareIds.split(' ') : [], spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay }),
-    [peopleKey, shareIds, spotlight, talk.speaker, talk.dominant, prefs, lay]);
+  const raw = useMemo(() => arrange({ people, shares: shareIds ? shareIds.split(' ') : [], own, fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay }),
+    [peopleKey, shareIds, own, fit, spotlight, talk.speaker, talk.dominant, prefs, lay]);
   // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
   const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
   const orderKey = lay.order.join(' ');
@@ -167,12 +200,31 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
     const target = g?.[g.indexOf(id) + d];
     if (g && target !== undefined) reorder(g, id, target);
   };
-  const toggleShare = (id: string, big: boolean) => { view.setShare(id, big ? 'tile' : 'big'); onCustom(); };
+  /** Shows a share big (in place of the one that's been big longest, when they don't all fit), or as a tile. */
+  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured, fit); onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
 
-  const latest = useRef({ L, view, onCustom, reorder, groupOf, w, h });
-  latest.current = { L, view, onCustom, reorder, groupOf, w, h };
+  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, w, h, fit, live });
+  latest.current = { L, plan, view, onCustom, reorder, groupOf, w, h, fit, live };
+  /** Shows a share big from a toast, later, beside whatever is big by then (unless it has stopped since). */
+  const showLater = (id: string) => () => {
+    const c = latest.current;
+    if (!c.live.has(id)) return;
+    c.view.showShare(id, c.plan.featured, c.fit);
+    c.onCustom();
+  };
+
+  /* Someone else's share starting or stopping is told to the call screen, which says so when it isn't plain to see. */
+  const told = useRef<{ key: string; big: Map<string, { s: StageShare; big: boolean }> } | null>(null);
+  useEffect(() => {
+    const big = new Map(ordered.map((s) => [s.id, { s, big: plan.featured.includes(s.id) }]));
+    const was = told.current;
+    told.current = { key: shareIds, big };
+    if (!was || was.key === shareIds || rooms) return;
+    for (const [id, x] of big) if (!was.big.has(id) && !x.s.mine) onShareStarted(x.s, x.big, showLater(id));
+    for (const x of was.big.values()) if (!big.has(x.s.id) && !x.s.mine) onShareStopped(x.s, x.big);
+  });
 
   /* Dragging a tile, its corner, a line beside a shared screen, or your own picture: the pointer moves anywhere on the page. */
   useEffect(() => {
@@ -301,17 +353,25 @@ export function Stage({ people, shares, spotlight, view, organizer, bar, caption
       <AnimatePresence>
         {bar && <motion.div key="bar" className="ic-sbar" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={UI}>{bar}</motion.div>}
       </AnimatePresence>
-      {shares.map((s) => {
+      {ordered.map((s) => {
         const k = shareKey(s.id);
         const big = L.shares.get(s.id);
         const r = big ?? L.slots.get(k);
         if (!r) return null;
+        const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', big ? '' : 'a tile, P shows it big'];
         return (
-          <motion.div key={k} {...tileProps(k, s.label)} aria-roledescription="shared screen" aria-keyshortcuts="Enter P" className={cn('ic-scr', !big && 'is-tile')}
+          <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts="Enter P"
+            className={cn('ic-scr', !big && 'is-tile', fresh(s.id) && 'is-new')}
+            onClick={big ? undefined : (e) => { if (!(e.target instanceof Element && e.target.closest('button'))) toggleShare(s.id, false); }}
             initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce || handle.current ? { duration: 0 } : GLIDE}>
             <FeedVideo feed={s.feed} className="screen" />
-            <span className="ac-tile-name"><Icon name="screen" size={14} />{s.label}</span>
-            <ShareMenu label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big} onToggle={() => toggleShare(s.id, !!big)} />
+            <span className="ac-tile-name">
+              <Avatar person={s.presenter} size={18} /><span className="tl">{s.label}</span>
+              {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
+            </span>
+            {!big && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
+            <ShareMenu presenter={s.presenter} label={s.name} open={menu === k} onOpenChange={(o) => setMenu(o ? k : null)} big={!!big}
+              onToggle={() => toggleShare(s.id, !!big)} sound={s.sound} />
           </motion.div>
         );
       })}

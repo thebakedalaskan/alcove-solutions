@@ -1,12 +1,16 @@
 /*
  * Choosing what to share: a tab, a window or a whole screen. Alcove only says which kind; the
  * browser's own picker then shows the real tabs, windows and screens to choose from, so nothing here
- * pretends to know what's open on someone's computer.
+ * pretends to know what's open on someone's computer. When a try didn't start, it opens again and says
+ * why and what to do. Sharing while others share adds yours beside theirs; nobody's share is replaced.
  */
-import { Button, Icon, IconButton, Modal, Switch, type IconName } from '@alcove/ui';
+import type { Person } from '@alcove/api';
+import { Button, Icon, IconButton, Modal, Notice, Switch, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useState } from 'react';
+import { listNames } from '~/lib/people';
 import type { ShareChoice, ShareSurface } from './media';
+import { SHARE_PROBLEMS, type ShareProblem } from './share';
 
 const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: string; body: string; go: string; audio: string | null }[] = [
   { surface: 'browser', label: 'Tab', icon: 'tab', title: 'One browser tab', body: 'Good for a page, a doc or a design. You can switch tabs while you share.', go: 'Choose a tab', audio: 'Share tab audio' },
@@ -15,15 +19,25 @@ const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: stri
 ];
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function SharePicker({ open, onOpenChange, sharing, onShare }: { open: boolean; onOpenChange: (o: boolean) => void; sharing: boolean; onShare: (c: ShareChoice) => void }) {
+export function SharePicker({ open, onOpenChange, sharing, others, trouble, onShare }: {
+  open: boolean; onOpenChange: (o: boolean) => void; sharing: boolean;
+  /** Everyone else sharing now: yours goes beside theirs. */
+  others: Person[];
+  /** Why the last try didn't start. A computer that won't let the browser capture a window or screen still lets it share a tab, so Tab is offered then. */
+  trouble: Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null;
+  onShare: (c: ShareChoice) => void;
+}) {
   const [surface, setSurface] = useState<ShareSurface>('browser');
   const [audio, setAudio] = useState(true);
+  const [troubleWas, setTroubleWas] = useState(trouble);
+  if (trouble !== troubleWas) { setTroubleWas(trouble); if (trouble === 'system') setSurface('browser'); }
   const reduce = useReducedMotion();
   const kind = KINDS.find((k) => k.surface === surface) ?? KINDS[0];
   if (!kind) return null;
   return (
     <Modal open={open} onOpenChange={onOpenChange} label="Choose what to share" className="ic-share">
-      <div className="pk-h"><h2 className="ac-title">{sharing ? 'Share something else' : 'Choose what to share'}</h2><IconButton icon="x" label="Close" onClick={() => onOpenChange(false)} /></div>
+      <div className="pk-h"><h2 className="ac-title">{trouble ? 'Sharing didn’t start' : sharing ? 'Share something else' : 'Choose what to share'}</h2><IconButton icon="x" label="Close" onClick={() => onOpenChange(false)} /></div>
+      {trouble && <Notice tone="caution" icon="stopShare" className="pk-trouble">{SHARE_PROBLEMS[trouble]}</Notice>}
       <div className="ac-tabs" role="tablist" aria-label="What to share">
         {KINDS.map((k) => <button key={k.surface} type="button" role="tab" className="ac-tab" aria-selected={k.surface === surface} onClick={() => setSurface(k.surface)}>{k.label}</button>)}
       </div>
@@ -31,7 +45,10 @@ export function SharePicker({ open, onOpenChange, sharing, onShare }: { open: bo
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={kind.surface} className="pk-kind" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : UI}>
             <span className="pk-ic"><Icon name={kind.icon} size={28} /></span>
-            <div><b>{kind.title}</b><p>{kind.body}</p><p className="sub">Your browser asks which one next, and shows what it will share.</p></div>
+            <div>
+              <b>{kind.title}</b><p>{kind.body}</p><p className="sub">Your browser asks which one next, and shows what it will share.</p>
+              {others.length > 0 && !sharing && <p className="sub">{listNames(others)} {others.length === 1 ? 'keeps' : 'keep'} sharing too. Everyone picks which to see big.</p>}
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>

@@ -484,7 +484,10 @@ export const CallLayoutSchema = z.object({
   arrived: z.array(z.string().max(200)).max(CALL_LAYOUT_MAX.arrived),
   /** Seats you made bigger. */
   big: z.array(z.string().max(200)).max(CALL_LAYOUT_MAX.big),
-  /** Shares you chose to see big, or as a tile. Any other share follows the layout. */
+  /**
+   * Shares you chose to see big or as a tile, in the order you chose. While any of them is shared, the latest you made
+   * big are big (as many as fit) and every other share is a tile; with none, shares follow the layout.
+   */
   shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(CALL_LAYOUT_MAX.shares),
   /** How the space splits between two shares side by side (CALL_SHARE_SPLIT). */
   split: z.number().min(CALL_SHARE_SPLIT.min).max(CALL_SHARE_SPLIT.max)
