@@ -287,7 +287,8 @@ third-party loads.
   can't read. It sees each person's address, when they're in which room (by random identity, never a name),
   packet sizes and timing, and who has a camera or screen on ([Calls and recordings › End-to-end
   encryption](calls-and-recordings.md#end-to-end-encryption)). What people share (a screen and its sound) reaches only
-  the people in the call: nothing records or transcribes it, and the API never sees it.
+  the people in the call: nothing records or transcribes it, and the API sees only the frames a presenter's own browser
+  sends while the organizer has shared screens read for the notes ([Shared screens](calls-and-recordings.md#shared-screens)).
 
 - **Your view of a call** never leaves the browser. Layout preferences stay in `localStorage` for the account and
   the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
