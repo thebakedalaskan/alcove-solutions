@@ -188,7 +188,7 @@ const Transcription = z.object({ text: z.string().default(''), language: z.strin
 /**
  * What Whisper is known to "hear" in silence and noise: closing lines from the videos it was trained on,
  * in the languages it most often hears them in. A clip that is nothing but one of these is dropped, and so
- * is any line that credits subtitlers or is only music marks or bracketed sound descriptions.
+ * is any line that credits subtitlers (see CREDITS) or is only music marks or bracketed sound descriptions.
  */
 const SILENCE = new Set([
   'you', 'thank you', 'thank you very much', 'thank you so much', 'thanks for watching', 'thank you for watching', 'thank you so much for watching', 'please subscribe', 'to be continued', 'bye', 'bye bye',
@@ -197,7 +197,12 @@ const SILENCE = new Set([
   'grazie', 'grazie mille', 'grazie per la visione', 'bedankt', 'bedankt voor het kijken', 'спасибо', 'спасибо за просмотр', 'продолжение следует',
   'ご視聴ありがとうございました', 'ありがとうございました', '谢谢观看', '感谢观看', '감사합니다', '시청해주셔서 감사합니다'
 ]);
-const NOT_SPEECH = /amara\.org|subtitles? by|transcri(?:bed|ption) by|captions? by|untertitel(?:ung)? (?:im auftrag|der|des|von)\b|sous-titr(?:es|age)\b|subt[ií]tulos (?:realizados|por|hechos)\b|sottotitoli (?:creati|a cura)\b|legendas? (?:pela|por)\b|субтитр|字幕|자막/iu;
+/**
+ * The subtitle credits Whisper invents, in the languages it invents them in. They open the line ("Subtitles by the
+ * Amara.org community", "Sous-titrage ST' 501", "Untertitel im Auftrag des ZDF", "Субтитры сделал DimaTorzok",
+ * "字幕by索兰娅", "자막 제공"), so a sentence that only talks about subtitles or captions is kept.
+ */
+const CREDITS = /amara\.org|^[\s\p{P}]*(?:(?:(?:subtitles?|captions?|captioning|transcription|transcribed)(?: made)? by(?! default)|sous-titrage|sous-titres? réalisés? par|untertitel(?:ung)? (?:im auftrag|des|von)|subt[ií]tulos (?:(?:realizados|hechos|creados) )?por|sottotitoli (?:creati|a cura)|legendas? (?:pela|por)|ondertitel(?:d|ing) door|субтитры (?:сделал|создавал|подготовил)|редактор субтитров)(?!\p{L})|字幕\s*(?:by|志愿者|制作)|한글\s*자막|자막\s*(?:제공|제작))/iu;
 const MARKS_ONLY = /^[\s\p{P}\p{S}]*$|^\s*[[(][^\])]*[\])]\s*$/u;
 const plain = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
@@ -205,12 +210,14 @@ const plain = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').
 const trigrams = (s: string): string[] => { const w = plain(s).split(' ').filter(Boolean); return w.slice(2).map((x, i) => `${w[i] ?? ''} ${w[i + 1] ?? ''} ${x}`); };
 /**
  * Whisper sometimes says back what it was told came before instead of what it heard, in noise and quiet
- * above all, word for word or with a word changed: a line of three words or more, four in five of whose
- * runs of three words the prompt has. (Someone picking up a phrase from before shares fewer.)
+ * above all, word for word or with a word changed: a line of ECHO_WORDS words or more, four in five of whose
+ * runs of three words the prompt has. Shorter lines are kept, because people say back what was just said to
+ * agree to it ("Forty thousand dollars.", "Ship it on Friday."); someone picking up a phrase shares fewer runs.
  */
+const ECHO_WORDS = 6;
 function echoes(told: ReadonlySet<string>, text: string): boolean {
   const own = trigrams(text);
-  return own.length > 0 && own.filter((t) => told.has(t)).length >= 0.8 * own.length;
+  return own.length >= ECHO_WORDS - 2 && own.filter((t) => told.has(t)).length >= 0.8 * own.length;
 }
 /**
  * Whisper looping, too rarely to cross the compression ratio: a run of sentences, three words or more in
@@ -235,7 +242,7 @@ function keepSpeech(segments: z.infer<typeof Segment>[], prompt: string | undefi
   const kept = segments
     .filter((s) => (s.avg_logprob ?? 0) >= -1 && (s.compression_ratio ?? 0) <= 2.4 && !((s.no_speech_prob ?? 0) > 0.6 && (s.avg_logprob ?? 0) < -0.5))
     .map((s) => ({ start: Math.max(0, s.start), end: Math.max(s.start, s.end), text: unlooped(s.text.replace(/\s+/g, ' ').trim()) }))
-    .filter((s) => s.text && !NOT_SPEECH.test(s.text) && !MARKS_ONLY.test(s.text) && !echoes(told, s.text))
+    .filter((s) => s.text && !CREDITS.test(s.text) && !MARKS_ONLY.test(s.text) && !echoes(told, s.text))
     // A line that only says the one before it again is the same loop, across Whisper's segments.
     .filter((s) => { const p = plain(s.text); const again = p === previous && p.split(' ').length >= 3; previous = p; return !again; });
   if (SILENCE.has(plain(kept.map((s) => s.text).join(' ')))) return [];

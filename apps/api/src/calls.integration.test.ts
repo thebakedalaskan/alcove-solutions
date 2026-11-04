@@ -35,7 +35,7 @@ async function account(email = unique(), o: Parameters<Harness['browser']>[0] = 
 const guestBrowser = () => h.browser().api;
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, s: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+const speech = (words: string, segment: number, startMs: number, ms = 4000, language = 'en', sure = true): TranscriptClip => ({ data: new Blob([speechWav(words, ms, language, sure)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
   const until = Date.now() + ms;
   while (!pred()) {
@@ -1015,11 +1015,19 @@ describe('joining by link', () => {
     host.visitRoom(null);
     await settle(host, (x) => !(x.breakouts.open?.rooms.some((r) => r.members.includes(host.ticket.identity)) ?? true));
     await host.transcribe(speech('And green for links.', 0, 8000), kofi.ticket.identity);
+    // Whisper is told the words said before a clip only in the same part of the call: none of Design's go with a
+    // main-room clip, and none of the main room's with Design's, so it can't say them back into the other.
+    const told = () => h.near.transcriptions.at(-1) ?? { language: null, prompt: null };
     await host.transcribe(speech('Sam, how is support going?', 0, 8000), host.ticket.identity);
+    expect(told().language).toBe('en');
+    expect(told().prompt).not.toMatch(/colours|buttons|green/);
+    await host.transcribe(speech('Grey for the borders.', 0, 10_000), kofi.ticket.identity);
+    expect(told().prompt).toContain('And green for links.');
+    expect(told().prompt).not.toContain('support');
     const where = (ls: TranscriptLine[]) => ls.map((l) => `${l.text} @ ${l.room?.name ?? 'main'}`).sort();
-    const all = ['And green for links. @ Design', 'Blue for the buttons. @ Design', 'Design starts with the colours. @ Design', 'Sam, how is support going? @ main'];
-    expect(where((await settle(host, (x) => x.transcript.length === 4)).transcript)).toEqual(all);
-    expect(where((await settle(kofi, (x) => x.transcript.length === 4)).transcript)).toEqual(all);
+    const all = ['And green for links. @ Design', 'Blue for the buttons. @ Design', 'Design starts with the colours. @ Design', 'Grey for the borders. @ Design', 'Sam, how is support going? @ main'];
+    expect(where((await settle(host, (x) => x.transcript.length === 5)).transcript)).toEqual(all);
+    expect(where((await settle(kofi, (x) => x.transcript.length === 5)).transcript)).toEqual(all);
     // Sam reads only the main room: not in the live transcript, catching up, or captions in another language.
     expect(where((await settle(sam, (x) => x.transcript.length === 1)).transcript)).toEqual(['Sam, how is support going? @ main']);
     expect(await sam.catchUp()).toMatchObject({ lines: 1 });
@@ -1028,12 +1036,45 @@ describe('joining by link', () => {
     // Rooms that have run out are closed, whatever is stored: what's said after is the main room's.
     await h.pool.query(`UPDATE calls SET started_at = started_at - interval '6 minutes' WHERE call_id = $1`, [host.ticket.callId]);
     await host.transcribe(speech('Back together now.', 0, 12_000), kofi.ticket.identity);
+    expect(told().prompt?.endsWith('Sam, how is support going?')).toBe(true);
+    expect(told().prompt).not.toMatch(/colours|buttons|green|borders/);
     expect(where((await settle(sam, (x) => x.transcript.length === 2)).transcript)).toEqual(['Back together now. @ main', 'Sam, how is support going? @ main']);
 
     // The notes keep each line's room, by name.
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     expect(where((await org.api.notes.get(noteId)).transcript ?? [])).toEqual([...all, 'Back together now. @ main'].sort());
+  });
+
+  it('asks Whisper what each person speaks before sending their clips in the call’s language', async () => {
+    const org = await account();
+    const [anaEmail, kofiEmail] = [unique('ana'), unique('kofi')];
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [anaEmail, kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    await settle(host, (x) => x.capture.mode === 'on');
+    const from = h.near.transcriptions.length;
+    const sent = () => h.near.transcriptions.slice(from).map((t) => t.language);
+    // The organizer's clips settle the call on English, and theirs go in it.
+    const english = ['We should look at the launch plan first.', 'The beta went out to forty customers.', 'Most of them finished onboarding within a day.', 'Kofi sends the new screens on Wednesday.'];
+    for (const [i, words] of english.entries()) await host.transcribe(speech(words, 0, i * 4000), host.ticket.identity);
+    expect(sent()).toEqual([null, null, null, 'en']);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    const ana = await (await account(anaEmail)).api.calls.join(c, { mic: true, cam: false });
+    await Promise.all([inGroup(kofi), inGroup(ana)]);
+    // Kofi's English is heavily accented: his first clip goes without English, and Whisper, at length, isn't sure what
+    // it is. That's how it hears accented speech, so his next clips go in English like everyone's.
+    await host.transcribe(speech('We could ship the new cards on Monday.', 0, 16_000, 4000, 'de', false), kofi.ticket.identity);
+    await host.transcribe(speech('Then the design review can wait.', 0, 20_000), kofi.ticket.identity);
+    expect(sent().slice(4)).toEqual([null, 'en']);
+    // Ana speaks Spanish. A short hello says too little, so her next clip goes without English too, and is heard as
+    // Spanish; while it's among the newest clips, nobody's clip goes in one language.
+    await host.transcribe(speech('Hola a todos.', 0, 24_000, 2000, 'es'), ana.ticket.identity);
+    await host.transcribe(speech('Perdón, llego tarde. ¿Ya empezamos con el presupuesto?', 0, 26_000, 4000, 'es'), ana.ticket.identity);
+    await host.transcribe(speech('Yes, we just started on the budget.', 0, 30_000), host.ticket.identity);
+    await host.transcribe(speech('El presupuesto de marketing sube un diez por ciento.', 0, 34_000, 4000, 'es'), ana.ticket.identity);
+    expect(sent().slice(6)).toEqual([null, null, null, null]);
+    await host.leave();
   });
 
   it('validates guest names and keeps them and passes out of rows and logs', async () => {

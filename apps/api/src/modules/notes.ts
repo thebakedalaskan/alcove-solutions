@@ -14,7 +14,6 @@ import { blindIndex, id128, sealJson, stateKey, toJson } from '../crypto';
 import { exec, maybeOne, rows, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import { inference } from '../inference';
-import { nameFrom } from '../identity';
 import { log } from '../log';
 import { masterKey, openOwner } from '../owners';
 import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
@@ -22,7 +21,7 @@ import { me, profile } from './account';
 import { queueDelete, recordingObjects, segments } from './audio';
 import { answer, briefOf } from './drafting';
 import { MeetingManifest } from './meetings';
-import { personOf } from './portraits';
+import { nameOf, personOf } from './portraits';
 import * as screens from './screens';
 import * as transcripts from './transcripts';
 
@@ -39,7 +38,7 @@ export type HeldRooms = z.infer<typeof HeldRooms>;
 export function roomChapters(held: HeldRooms[]): Chapter[] {
   return held.map((h) => {
     const minutes = Math.max(1, Math.round((h.to - h.from) / 60));
-    const who = h.rooms.map((r) => `${r.name}: ${r.emails.length ? r.emails.map((e) => { const p = personOf(e); return p.name === p.email ? nameFrom(e) : p.name; }).join(', ') : 'nobody invited'}`).join('. ');
+    const who = h.rooms.map((r) => `${r.name}: ${r.emails.length ? r.emails.map((e) => nameOf(personOf(e))).join(', ') : 'nobody invited'}`).join('. ');
     const summary = `${who}. ${minutes} min.`;
     return { at: Math.max(0, Math.round(h.from)), title: `${h.rooms.length} breakout rooms`, summary: summary.length > 160 ? `${summary.slice(0, 159).trimEnd()}…` : summary };
   });
@@ -364,8 +363,7 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
       // Follow-ups go to people who have the notes, so whoever it's for can see it.
       if (![organizer.email, ...n.invited, ...n.shared].some((e) => same(e, email))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context: { noteId, actionId } });
       const person = same(email, organizer.email) ? organizer : personOf(email);
-      // Someone Alcove knows only by their address goes by the name in it: "kofi@…" is Kofi.
-      const name = person.name === person.email ? nameFrom(person.email) : person.name;
+      const name = nameOf(person);
       // Giving it to yourself is taking it on; anyone else has to say yes themselves.
       const self = same(email, by.email);
       changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: name });

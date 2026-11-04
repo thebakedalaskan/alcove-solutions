@@ -5,6 +5,7 @@
  */
 import type { Person, PortraitStyle } from '@alcove/api';
 import { H, utf8 } from '../crypto';
+import { nameFrom } from '../identity';
 import { MET, TEAM } from '../demo';
 
 const SKINS = ['#F1D3B8', '#E8C2A0', '#D9AA86', '#C7926C', '#B47A55', '#7B4F35', '#F3D8C1'];
@@ -36,3 +37,6 @@ export function personOf(email: string, name?: string | undefined): Person {
   const c = known(e);
   return { id: e, name: name ?? c?.name ?? e, email: e, portrait: c?.portrait ?? portraitFor(e) };
 }
+
+/** What someone is called: their name, or one made from their address when that's all Alcove knows ("kofi@…" is Kofi). */
+export const nameOf = (p: Person): string => (p.name === p.email ? nameFrom(p.email) : p.name);

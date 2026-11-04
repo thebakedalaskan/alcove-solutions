@@ -729,17 +729,35 @@ describe('live transcript and written notes', () => {
     // Each note has its own: another account's room recording starts from nothing, with its own people and words.
     const other = await account(unique('other'));
     const rec = await other.api.recordings.start('Design crit');
-    const room = ['Sam will tidy the spacing by Friday.', 'The header stays dark for now.', 'Jo checks the icons on Monday.', 'We ship the new cards next week.'];
+    const room = ['Sam will tidy the spacing by Friday.', 'The header stays dark for now.', 'Jo checks the icons on Monday.', 'Can we ship it on Friday?'];
     for (const [i, words] of room.entries()) await rec.transcribe(speech(words, 0, i * 4000));
     expect(h.near.transcriptions.at(-1)).toEqual({ language: 'en', prompt: `${other.session.user.name}. ${room.slice(0, 3).join(' ')}` });
+    // A short reply that says back what was just said is kept: people agree to things that way.
+    await rec.transcribe(speech('Ship it on Friday.', 0, 16_000));
+    expect(h.near.transcriptions.at(-1)?.prompt?.endsWith('Can we ship it on Friday?')).toBe(true);
     // What Whisper says back from its prompt instead of what it heard is dropped, and so is a sentence it says twice over.
-    await rec.transcribe(speech('The header stays dark for now.', 0, 16_000));
-    await rec.transcribe(speech('We should test it on phones. // We should test it on phones.', 0, 20_000));
-    await rec.transcribe(speech('Okay, that works. Can you share the link? Okay, that works. Can you share the link?', 0, 24_000));
-    expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual([...room, 'We should test it on phones.', 'Okay, that works. Can you share the link?']);
+    await rec.transcribe(speech('The header stays dark for now. Jo checks the icons on Monday.', 0, 20_000));
+    await rec.transcribe(speech('We should test it on phones. // We should test it on phones.', 0, 24_000));
+    await rec.transcribe(speech('Okay, that works. Can you share the link? Okay, that works. Can you share the link?', 0, 28_000));
+    expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual([...room, 'Ship it on Friday.', 'We should test it on phones.', 'Okay, that works. Can you share the link?']);
     await rec.discard();
     // What a clip was sent with is sealed with it, and only whether a language was sent or found, and the prompt's size, are logged.
     expect(h.logs.join('')).not.toContain('Siobhan owns the migration plan');
+  });
+
+  it('drops the subtitle credits and closing lines Whisper invents in quiet, in its languages, and keeps sentences about the same things', async () => {
+    const rec = await (await account(unique('captions'))).api.recordings.start('Captions review');
+    const invented = [
+      ["Sous-titrage ST' 501", 'fr'], ['Untertitel im Auftrag des ZDF, 2017', 'de'], ['Субтитры сделал DimaTorzok', 'ru'], ['字幕by索兰娅', 'zh'],
+      ['자막 제공 및 광고를 포함하고 있습니다', 'ko'], ['Danke.', 'de'], ['Merci beaucoup.', 'fr'], ['감사합니다.', 'ko']
+    ] as const;
+    const real = [
+      ['Les sous-titres en direct marchent bien maintenant.', 'fr'], ['Die Untertitel der Präsentation fehlen noch.', 'de'], ['Нам нужно добавить субтитры к видео.', 'ru'],
+      ['我们需要给视频加字幕。', 'zh'], ['자막이 안 나와요.', 'ko'], ['Captions by default are off for guests.', 'en'], ['Danke, das hilft uns sehr.', 'de']
+    ] as const;
+    for (const [i, [words, language]] of [...invented, ...real].entries()) await rec.transcribe(speech(words, 0, i * 4000, 4000, language));
+    expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(real.map(([words]) => words));
+    await rec.discard();
   });
 
   it('sends no answer about notes that were deleted or removed while it was being written', async () => {
