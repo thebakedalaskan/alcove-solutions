@@ -13,23 +13,32 @@ export function keepClaim(claim: string): void {
   try { sessionStorage.setItem(KEY, claim); } catch (e) { slog.debug('move claim not kept', { err: e }); }
 }
 
-/** The claim this tab kept, once: reading it removes it. */
+/* What this page took, so reading again (React may call a state initializer twice) gives the same answer. */
+let claimTaken: string | null = null;
+let codeTaken: string | null = null;
+
+/** The claim this tab kept: reading it takes it out of storage. */
 export function takeClaim(): string | null {
   try {
     const raw = sessionStorage.getItem(KEY);
-    sessionStorage.removeItem(KEY);
-    const r = MoveSecretSchema.safeParse(raw);
-    return r.success ? r.data : null;
+    if (raw !== null) {
+      sessionStorage.removeItem(KEY);
+      const r = MoveSecretSchema.safeParse(raw);
+      claimTaken = r.success ? r.data : null;
+    }
   } catch (e) {
     slog.debug('move claim not readable', { err: e });
-    return null;
   }
+  return claimTaken;
 }
 
-/** The code from the link's fragment, once: it's taken out of the address bar (and so out of history) straight away. */
+/** The code from the link's fragment: it's taken out of the address bar (and so out of history) straight away. */
 export function takeCode(): string | null {
   const raw = location.hash.slice(1);
-  if (raw) history.replaceState(history.state, '', location.pathname);
-  const r = MoveSecretSchema.safeParse(raw);
-  return r.success ? r.data : null;
+  if (raw) {
+    history.replaceState(history.state, '', location.pathname);
+    const r = MoveSecretSchema.safeParse(raw);
+    codeTaken = r.success ? r.data : null;
+  }
+  return codeTaken;
 }
