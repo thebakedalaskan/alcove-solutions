@@ -47,6 +47,7 @@ flowchart TB
 | `apps/api` | The API (`@alcove/server`): Hono on Node, raw SQL via `pg` with zod-parsed rows, crypto via `@noble/ciphers` and `@noble/hashes`, objects via the S3 client, Google ID tokens via `jose`, logs via pino. |
 | `packages/api` | The contract: domain types as zod schemas, the `AlcoveApi` interface, live-session interfaces, wire shapes. |
 | `packages/api-http` | The browser client: REST, NDJSON streams, raw audio and speech uploads, live call and recording sessions. |
+| `packages/board` | A whiteboard's Y.Doc and the logic the app and the API share: its shape, reading and writing it, connector routes, templates, its text, and landing rooms' boards. Pure TypeScript on plain `Y.Doc`s. Nothing imports it yet. |
 | `packages/ui` | The design system. |
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
