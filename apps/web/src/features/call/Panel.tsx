@@ -11,7 +11,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { captureHere } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
-import { organizerBrowser, organizerName, type CaptureControls } from './Capture';
+import { notesBrowser, organizerName, type CaptureControls } from './Capture';
 import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
@@ -148,8 +148,8 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
       <div className="ic-scroll">
         {c.mode === 'unavailable' && n && (
           <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{c.away
-            ? `${organizerBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
-            : `${organizerBrowser(state)} can’t record or listen right now, so nothing new is captured.${host ? ' Everyone can see that.' : ''}`}</Notice></div>
+            ? `${notesBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
+            : `${notesBrowser(state)} can’t record or listen right now, so nothing new is captured.${state.isHost ? ' Everyone can see that.' : ''}`}</Notice></div>
         )}
         {paused && n && (
           <div className="ic-problems is-top"><Notice icon="pause">Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</Notice></div>
@@ -166,8 +166,8 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
           </EmptyState>
         ) : c.mode === 'unavailable' && !n ? (
           <EmptyState title="Nothing is being captured" className="ic-empty">
-            {c.away ? `${organizerBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
-              : `${organizerBrowser(state)} can’t record or listen right now.${host ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
+            {c.away ? `${notesBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
+              : `${notesBrowser(state)} can’t record or listen right now.${state.isHost ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
           </EmptyState>
         ) : !n ? (
           <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="ic-empty">
@@ -213,7 +213,7 @@ export function TranscriptView({ state, me }: { state: CallState; me: string | u
   return (
     <>
       <div className="ic-tr">
-        {c.transcript.mode === 'unavailable' && <Notice tone="caution" icon="alert">{organizerBrowser(state)} can’t listen right now, so nothing new is transcribed.</Notice>}
+        {c.transcript.mode === 'unavailable' && <Notice tone="caution" icon="alert">{notesBrowser(state)} can’t listen right now, so nothing new is transcribed.</Notice>}
         {mode === 'paused' && <Notice icon="pause">{roomHeld ? 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.' : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
         {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} /> : on && (
@@ -330,10 +330,12 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, notesAsks, host, foot, volumes }: {
+export function PeopleView({ here, invited, asking, invites = false, notesAsks, host, foot, volumes }: {
   here: PanelPerson[]; invited: Person[];
-  /** People asking to join: only the organizer sees them. */
+  /** People asking to join: only whoever hosts sees them. */
   asking: CallAsker[];
+  /** Letting someone signed in in adds them to the invite: only when the organizer does it. */
+  invites?: boolean;
   /** People asking for notes, for the organizer to answer; shown under those asking to join. */
   notesAsks?: ReactNode;
   /** The organizer's controls; absent for everyone else. */
@@ -359,8 +361,8 @@ export function PeopleView({ here, invited, asking, notesAsks, host, foot, volum
             {asking.map((w) => (
               <div key={w.id} className="ic-prow is-asking">
                 <Avatar person={w.person} size={36} />
-                {/* Signed in: who it is, and that letting them in adds them to the invite. A guest is only a typed name. */}
-                <div className="min-w-0"><b>{w.person.name}</b><small>{w.person.email || 'Guest, by name only'}</small><small>{w.person.email ? 'Gets the notes once let in' : 'Doesn’t get the notes'}</small></div>
+                {/* Signed in: who it is, and whether letting them in adds them to the invite. A guest is only a typed name. */}
+                <div className="min-w-0"><b>{w.person.name}</b><small>{w.person.email || 'Guest, by name only'}</small><small>{w.person.email && invites ? 'Gets the notes once let in' : 'Doesn’t get the notes'}</small></div>
                 <div className="st">
                   <IconButton icon="x" label={`Turn ${callName(w.person)} away`} disabled={busy === w.id} onClick={() => decide(w.id, host.deny)} />
                   <Button size="sm" variant="secondary" loading={busy === w.id} onClick={() => decide(w.id, host.admit)}>Let in</Button>
