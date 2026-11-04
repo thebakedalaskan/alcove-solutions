@@ -40,8 +40,16 @@ const speech = (words: string, segment: number, startMs: number, ms = 4000, hear
   ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms, ...(heardAt === undefined ? {} : { heardAt }) });
 /** Milliseconds into a segment that started with the call: a line said `s` seconds in. */
 const at = (s: number) => Math.max(0, Math.round(s * 1000));
-/** When speech said `s` seconds into the call began, as a browser counts it: the server places each clip by when its speech began. */
-const saidAt = (call: CallSession, s: number) => performance.now() - (Date.now() - (Date.parse(call.getSnapshot().startedAt) + s * 1000));
+/**
+ * When speech said `s` seconds into the call began, as a browser counts it (performance.now()): the server places each
+ * clip by when its speech began. It waits until then has passed, since a browser never says speech began in the
+ * future (it would be sent as said just now, and land wherever now is).
+ */
+async function saidAt(call: CallSession, s: number): Promise<number> {
+  const due = Date.parse(call.getSnapshot().startedAt) + s * 1000;
+  if (Date.now() < due + 50) await sleep(due + 50 - Date.now());
+  return performance.now() - (Date.now() - due);
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
   const until = Date.now() + ms;
@@ -91,7 +99,8 @@ describe('catching up during a call', () => {
     await inGroup(host);
     await host.appendAudio(piece(audioBytes('ranges'), 0, 0));
     const A = 'We agreed to start with the budget.';
-    await host.transcribe(speech(A, 0, 0), host.ticket.identity);
+    // Said as the call starts, however long getting into its group took here.
+    await host.transcribe(speech(A, 0, 0, 4000, await saidAt(host, 0)), host.ticket.identity);
     // Kofi, invited, comes in a little later.
     await sleep(1200);
     const kofiApi = (await account(kofiEmail)).api;
@@ -101,8 +110,7 @@ describe('catching up during a call', () => {
     expect(joined).toBeGreaterThanOrEqual(1);
     const B = 'Kofi will check the budget by Friday.';
     // Said half a second after Kofi came in.
-    await sleep(600);
-    await host.transcribe(speech(B, 0, at(joined + 0.5), 4000, saidAt(host, joined + 0.5)), host.ticket.identity);
+    await host.transcribe(speech(B, 0, at(joined + 0.5), 4000, await saidAt(host, joined + 0.5)), host.ticket.identity);
 
     // Before you joined: what was said until you came in, and nothing after.
     const before = await kofi.catchUp({ kind: 'before-joined' });
@@ -126,8 +134,9 @@ describe('catching up during a call', () => {
     expect(win).toMatchObject({ joined, here: null });
     const C = 'Should we cut the travel line?';
     const D = 'We decided to keep the travel line.';
-    await host.transcribe(speech(C, 0, at((away.from + away.to) / 2), 4000, saidAt(host, (away.from + away.to) / 2)), host.ticket.identity);
-    await host.transcribe(speech(D, 0, at(away.to + 0.2), 4000, saidAt(host, away.to + 0.2)), host.ticket.identity);
+    // C halfway through the time away, D half a second after Kofi was back: well inside and well outside it.
+    await host.transcribe(speech(C, 0, at((away.from + away.to) / 2), 4000, await saidAt(host, (away.from + away.to) / 2)), host.ticket.identity);
+    await host.transcribe(speech(D, 0, at(away.to + 0.5), 4000, await saidAt(host, away.to + 0.5)), host.ticket.identity);
     ids = await lineIds(host, 4);
     // While you were away: from a little before you dropped out until you were back, and nothing after.
     const missed = await back.catchUp({ kind: 'away' });
@@ -226,10 +235,9 @@ describe('catching up during a call', () => {
     const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, sam);
     const joined = (await sam.catchUpWindow()).joined;
-    // Said once Sam was in (and before Sam's page goes away below).
-    await sleep(800);
+    // Said half a second after Sam was in (and before Sam's page goes away below).
     const B = 'Sam will review the plan by Monday.';
-    await host.transcribe(speech(B, 0, at(joined + 0.5), 4000, saidAt(host, joined + 0.5)), host.ticket.identity);
+    await host.transcribe(speech(B, 0, at(joined + 0.5), 4000, await saidAt(host, joined + 0.5)), host.ticket.identity);
     let ids = await lineIds(host, 2);
 
     // Sam sees only what was said once they were in: in the live transcript, catching up, asking and moments.
@@ -257,7 +265,7 @@ describe('catching up during a call', () => {
     const away = win.away ?? { from: 0, to: 0 };
     expect(win.here).toHaveLength(2);
     const C = 'We decided to drop the old vendor.';
-    await host.transcribe(speech(C, 0, at((away.from + away.to) / 2), 4000, saidAt(host, (away.from + away.to) / 2)), host.ticket.identity);
+    await host.transcribe(speech(C, 0, at((away.from + away.to) / 2), 4000, await saidAt(host, (away.from + away.to) / 2)), host.ticket.identity);
     ids = await lineIds(host, 3);
     expect((await settle(back, (x) => x.transcript.length === 1)).transcript.map((l) => l.text)).toEqual([B]);
     const meanwhile = await back.catchUp({ kind: 'away' });
