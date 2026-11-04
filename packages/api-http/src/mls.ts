@@ -46,8 +46,8 @@ export const unb64u = (s: string): Uint8Array => {
 /** A new random identity for a call connection: what LiveKit and the call's MLS groups know someone by. */
 export const newIdentity = (): string => `p_${b64u(crypto.getRandomValues(new Uint8Array(16)))}`;
 /**
- * The name of one part of a call's MLS group for one generation (a new set of groups whenever the organizer's
- * connection changes): `main`, or a breakout room's ID.
+ * The name of one part of a call's MLS group for one generation (a new set of groups whenever the connection that
+ * hosts changes): `main`, or a breakout room's ID.
  */
 export const groupName = (callId: string, generation: number, place: string): string => `alcove/call/${callId}/${generation}/${place}`;
 
@@ -166,7 +166,7 @@ export class MlsKeys {
     const ids = leaves(st.ratchetTree);
     if (![...ids.values()].includes(this.identity)) throw new MlsError('That welcome isn’t for this browser.');
     const committer = ids.get(COMMITTER_LEAF);
-    if (!committer || (expect.committer !== null && committer !== expect.committer)) throw new MlsError('That group’s committer isn’t this call’s organizer.');
+    if (!committer || (expect.committer !== null && committer !== expect.committer)) throw new MlsError('That group’s committer isn’t whoever hosts this call.');
     return new MlsGroup(this.l, st, Number(st.groupContext.epoch));
   }
 

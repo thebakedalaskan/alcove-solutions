@@ -72,7 +72,8 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
       : !keep ? `${back ? `You’re hosting while ${back} is away.` : 'You organized this call.'} Nobody else here can host: guests can’t. Leaving ends it for everyone${notes ? ', and the notes go to everyone invited' : ''}.`
         : back ? `You’re hosting while ${back} is away. Someone else can host, or you can end the call for everyone${notes ? ', and the notes go to everyone invited' : ''}.`
           : `You organized this call. End it for everyone${notes ? ', and the notes go to everyone invited' : ''}, or leave it with someone else hosting until you’re back.`;
-  const endLabel = leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call';
+  // Anyone who doesn't host only leaves: the call goes on without them.
+  const endLabel = !hosting ? (leaving ? 'Leaving…' : 'Leave the call') : leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call';
   const endButton = <Button key="end" variant={keep && back ? 'secondary' : 'primary'} loading={leaving && !keep} disabled={leaving} onClick={onEnd} autoFocus={!(keep && back)}>{endLabel}</Button>;
   const keepButton = keep && pick
     ? <Button key="keep" variant={back ? 'primary' : 'secondary'} disabled={leaving} onClick={() => onHandOff(pick.id)} autoFocus={Boolean(back)}>Leave and keep it going</Button>
@@ -92,7 +93,7 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
                     <Avatar person={pick.person} size={26} />
                     <span><b>{callName(pick.person)}</b> {back ? `will host until ${back} is back` : 'will host until you’re back'}</span>
                     {next.length > 1 && (
-                      <button type="button" className="change" aria-expanded={choosing} onClick={() => setChoosing((c) => !c)}>{choosing ? 'Done' : 'Change'}</button>
+                      <Button variant="quiet" size="sm" className="change" aria-expanded={choosing} disabled={leaving} onClick={() => setChoosing((c) => !c)}>{choosing ? 'Done' : 'Change'}</Button>
                     )}
                   </div>
                   <AnimatePresence initial={false}>
