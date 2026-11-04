@@ -700,12 +700,15 @@ change, and the server is never involved (`ShareSurface.tsx`, with `shareLook.ts
 the coordinates). Your own share has none of this: you have the original.
 
 - **Zoom and pan.** 100% is the whole picture, as big as it fits; + and − step through 125, 150, 200, 300, 400, 600 and
-  800%, and pinching, or Ctrl/⌘ with the wheel, zooms anywhere between, where the pointer is. A drag, or the wheel, moves
-  around once zoomed in; a double-click goes to 200% or back to the whole picture; 0 (or the label, "200%") shows the
-  whole picture again. While zoomed in, the bar stays up with the label and a minimap of where you are, which you can
-  press or drag. The bar's buttons are for pointers and touch (on a phone a tap shows it); from the keyboard the keys on
-  the focused share do the same, and its ⋯ menu lists them, so the stage stays one tab stop. A change from a key or a
-  button glides (instantly under reduced motion); a drag or a pinch follows the pointer.
+  800%, and pinching (a trackpad's, Safari's own pinch gesture, or two fingers), or Ctrl/⌘ with the wheel, zooms
+  anywhere between, where the pointer is. A drag, or the wheel, moves around once zoomed in; a double-click goes to 200%
+  or back to the whole picture; 0 (or the label, "200%") shows the whole picture again. While zoomed in, the bar stays up
+  with the label and a minimap of where you are, which you can press or drag. The bar's buttons are for pointers and
+  touch (on a phone a tap shows it); from the keyboard the keys on the focused share do the same, and its ⋯ menu lists
+  them (Later picture while one is held, and the arrows while zoomed in), so the stage stays one tab stop. The keys are
+  one table (`LOOK_KEYS`) that the share, its menu, its bar and `aria-keyshortcuts` all read. A new framing from a key, a
+  button or the menu glides (instantly under reduced motion); a drag or a pinch follows the pointer, and the view
+  changing size (a divider dragged, the layout moving) moves the picture with its tile at once.
 - **Sharp when zoomed.** LiveKit sends a screen in two layers (full and half size) and its adaptive stream picks one by
   the size of the element showing it. Zooming makes the video element itself bigger, inside a box that clips it, so a
   zoomed-in share asks for the full layer and stays sharp; at 100% it may get the half one.
@@ -724,9 +727,11 @@ the coordinates). Your own share has none of this: you have the original.
   same 48 × 27 grey grid the notes' frames use (`screenGrid.ts`) but more finely: 0.6% of it moving, or all of it
   shifting a little (a new slide, a scroll or a window moved counts; a cursor moving doesn't). They're taken at most once
   a second from the video this browser already decodes to show the share, and only while you see that share big or in
-  its own window. They're compressed (WebP, or JPEG where the browser can't write WebP, at most 4K) into ArrayBuffers in the
-  page: never written to storage, a file or a Blob that's kept, never sent, never logged. A frozen picture is shown
-  from a bitmap of the frame on screen. The one line under the share's menu says it: up to 30 earlier pictures stay in
+  its own window. They're compressed (WebP, or JPEG from the first picture on where the browser can't write WebP, at
+  most 4K) into ArrayBuffers in the page: never written to storage, a file or a Blob that's kept, never sent, never
+  logged. A frozen picture is shown from a bitmap of the frame on screen, also at most 4K, so holding a 6K screen still
+  costs no more than a 4K one: one such picture per share, apart from the 16 MiB, gone when you go back to live. The one
+  line under the share's menu says it: up to 30 earlier pictures stay in
   this browser's memory until the share stops, and nothing is saved or sent. Presenters are told in the share picker
   that everyone can zoom in and look back at its last 30 pictures, each on their own screen, until they stop.
 - **Apart from screen notes.** [Shared screens](#shared-screens) are frames a presenter's own browser sends to the API
@@ -734,11 +739,13 @@ the coordinates). Your own share has none of this: you have the original.
   whatever the notes do; nothing of them reaches the API.
 - **Never before you could see it.** Pictures come only from what this browser decrypts and shows, so none predates the
   moment you could see the share: after you were let in (the media keys move on as you join, so earlier frames can't be
-  read), and only while you're in the same part of the call as its sharer (other rooms' media is never attached).
+  read), and only while you're in the same part of the call as its sharer (each part has its own keys, and another
+  part's media is never attached).
 - **When it goes.** Everything about a share goes the moment it leaves your stage: its sharer stops, leaves, is removed
   (LiveKit takes the share out of every room at once, and their pass can't get them back in) or drops out of the call's
-  group (the MLS check stops showing it). All of it goes when your part of the call changes (breakout rooms opening,
-  closing or moving you, the organizer's visits included) and when you leave or are removed. Showing a share as a tile
+  group (the MLS check stops showing it). All of it goes when this browser moves to another part of the call
+  (`CallCrypto.place`: sent to a breakout room, back from one, or the organizer visiting one, each move a change of
+  keys) and when you leave or are removed. Showing a share as a tile
   goes back to live and lets its earlier pictures go. A share's own window closes at the same moments. A presenter's
   Change swaps the track inside the same publication, so viewers can't tell a new surface from new content: pictures
   from before a change stay until the share stops.
@@ -753,16 +760,20 @@ the coordinates). Your own share has none of this: you have the original.
   go full screen on another display; LiveKit pauses its picture while the call's tab is hidden, as it pauses every
   video then, and the window says so. Phones and tablets show shares in the call only, and the menu says that. One share
   at a time: the stage keeps it as a tile ("In its own window", Bring it back, or P), and the next share takes its
-  place. The window has the share's own bar and keys, carries the app's stylesheets, uses its own timers (so it keeps
+  place. The window has the share's own bar and keys, with the share focused as soon as it opens (and again when you
+  come back to the window), so its keys work at once; bringing it back (Back to the call, Bring it back, or closing the
+  window) puts focus back on its tile. It's a blank page that carries the call's own CSP, whose `base-uri 'none'`
+  refuses a `<base>`, so the app's stylesheets are linked by their full address. It uses its own timers (so it keeps
   going while the call's tab is in the background), and nothing in it relies on the call tab's animation frames.
 - **Comparing shares.** Two shares sit side by side ([The call screen](#the-call-screen)); each is zoomed, frozen and
   stepped back through on its own, so you can hold one still beside the other live, or open one in its own window on
   another screen beside the call.
 - **Checked by hand,** with three people and two shares at once (Chromium, fake devices, the presenters sharing slide
   decks drawn on a canvas): zoom by keys, Ctrl and the wheel and dragging; freezing, stepping back and forward and back
-  to live; Document Picture-in-Picture and the popup window, each closing as its share stopped; phone and wide stages,
-  keyboard only and reduced motion; and memory over ten minutes of a share that changed every frame, which stayed flat
-  once 30 pictures were kept.
+  to live; Document Picture-in-Picture and the popup window, each closing as its share stopped, both also on the
+  production build under production's CSP (no violation, styled, the share focused, focus back on the tile); a move
+  into a breakout room; a 6K share held still at 4K; phone and wide stages, keyboard only and reduced motion; and memory
+  over ten minutes of a share that changed every frame, which stayed flat once 30 pictures were kept.
 
 ## Room recordings
 

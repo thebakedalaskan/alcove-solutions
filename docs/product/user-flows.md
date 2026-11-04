@@ -178,7 +178,7 @@ dock at the bottom.
   label says how far in and a minimap where. **Freeze** (**F**) holds the picture still while the share goes on, and
   **Earlier picture** (**,**) steps back through the last 30 times it changed; a bar says how far behind live you are,
   with **Back to live**. They're kept in your browser's memory only, never saved or sent, and go when the share stops,
-  you show it as a tile, rooms change or you leave; none are kept while notes are paused (zoom and freeze still work).
+  you show it as a tile, you move to or from a breakout room, or you leave; none are kept while notes are paused (zoom and freeze still work).
   **Open in its own window** puts a share in a window of its own (Picture-in-Picture in Chrome, Edge and Firefox, a
   popup in Safari) to keep in view or put on another screen; its tile says **In its own window**, with **Bring it
   back**. Two shares side by side are each zoomed and frozen on their own, to compare. Only your screen changes.
