@@ -7,7 +7,10 @@ import {
   Minimize2, Monitor, MonitorOff, MoveDiagonal2, NotebookPen, RotateCcw, SendHorizontal, Shuffle, Timer, Hash, ChevronsUpDown, PanelLeft, WifiOff,
   CircleDot, Settings, BadgeCheck, UserCheck, CircleCheck, Compass, EyeOff, Keyboard, PictureInPicture2, Presentation, RotateCw, Volume1,
   VolumeX, TriangleAlert, SlidersHorizontal, SkipForward, PictureInPicture, Scan, StepBack, StepForward, ZoomIn, ZoomOut, Bell, BellOff, CircleUserRound,
-  Coins, Palette, MapPin, MousePointer2, MousePointer2Off, Undo2, Eraser, HardDrive, CloudOff, Upload
+  Coins, Palette, MapPin, MousePointer2, MousePointer2Off, Undo2, Eraser, HardDrive, CloudOff, Upload, AtSign, Bold, BuildingComplex, CloudUpload, CodeXml,
+  CornerDownRight, Download, FilePlus, Film, Folder, FolderInput, FolderOpen, FolderPlus, Folders, Heading1, Heading2, Heading3, Highlighter, Image,
+  ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
+  Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -28,7 +31,13 @@ const ICONS = {
   keyboard: Keyboard, pip: PictureInPicture2, presenter: Presentation, speakerLow: Volume1, speakerOff: VolumeX, retry: RotateCw, alert: TriangleAlert,
   sliders: SlidersHorizontal, live: SkipForward, popIn: PictureInPicture, zoomIn: ZoomIn, zoomOut: ZoomOut, whole: Scan, stepBack: StepBack,
   stepForward: StepForward, user: CircleUserRound, bell: Bell, bellOff: BellOff, palette: Palette, coins: Coins, mapPin: MapPin, pointer: MousePointer2,
-  pointerOff: MousePointer2Off, undo: Undo2, eraser: Eraser, hardDrive: HardDrive, cloudOff: CloudOff, upload: Upload
+  pointerOff: MousePointer2Off, undo: Undo2, eraser: Eraser, hardDrive: HardDrive, cloudOff: CloudOff, upload: Upload, at: AtSign, bold: Bold,
+  building: BuildingComplex, bulb: Lightbulb, clip: Paperclip, cloudUpload: CloudUpload, code: CodeXml, comment: MessageSquareText, cornerRight: CornerDownRight, download: Download,
+  filePlus: FilePlus, fileText: FileText, film: Film, folder: Folder, folderInput: FolderInput, folderOpen: FolderOpen, folderPlus: FolderPlus, folders: Folders,
+  gripVertical: GripVertical, h1: Heading1, h2: Heading2, h3: Heading3, highlighter: Highlighter, image: Image, imagePlus: ImagePlus, info: Info, italic: Italic,
+  link2: Link2, list: List, listChecks: ListChecks, listOrdered: ListOrdered, locate: LocateFixed, megaphone: Megaphone, message: MessageSquareText, minus: Minus,
+  moon: Moon, navigate: Navigation, panelRight: PanelRight, para: Pilcrow, presentation: Presentation, quote: Quote, strike: Strikethrough, sun: Sun, table: Table,
+  textLines: TextAlignStart, textQuote: TextQuote, todo: SquareCheckBig, todos: ListTodo, toggle: ListCollapse, type: Type
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

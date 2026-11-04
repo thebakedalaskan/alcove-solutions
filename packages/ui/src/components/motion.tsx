@@ -13,6 +13,9 @@ export const EASE = {
   in: [0.4, 0, 1, 1]
 } as const;
 
+/** The `--duration-*` tokens in seconds, for motion/react. */
+export const DURATION = { 1: 0.14, 2: 0.24, 3: 0.42 } as const;
+
 const VIEW = { once: true, margin: '0px 0px -12% 0px' } as const;
 const rise: Variants = { hidden: { opacity: 0, y: 36 }, shown: { opacity: 1, y: 0, transition: { duration: 1.1, ease: EASE.expo } } };
 const lift: Variants = { hidden: { opacity: 0, y: 70, scale: 0.97 }, shown: { opacity: 1, y: 0, scale: 1, transition: { duration: 1.4, ease: EASE.expo } } };

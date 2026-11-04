@@ -7,7 +7,8 @@
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
  * styles/shell.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes and a note in
  * styles/library.css (`lib-`, `pv-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
- * (`rec-`); the other screens in styles/{app,call,welcome}.css.
+ * (`rec-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`, `wd-`, `wm-`, `wv-`, `wp-`, `wh-`,
+ * `wl-`); the other screens in styles/{app,call,welcome}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -24,6 +25,7 @@
 @import "./styles/catchup.css";
 @import "./styles/onboarding.css";
 @import "./styles/settings.css";
+@import "./styles/workspace.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
@@ -56,6 +58,8 @@
   --caution: #8A5300;
   --caution-soft: #FFF0D6;
   --gold: #FFB547;
+  /* What's highlighted or commented on in a document */
+  --hl: rgb(255 181 71 / .28);
   /* The call stage: night in both themes */
   --stage: #0B0A18;
   --stage-tile: #1A1732;
@@ -145,6 +149,7 @@
   --caution: #F3B85A;
   --caution-soft: #3A2A0E;
   --gold: #FFC774;
+  --hl: rgb(255 199 116 / .2);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
   --shadow-3: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
