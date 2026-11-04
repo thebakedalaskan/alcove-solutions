@@ -176,7 +176,7 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
                 {held.map((h) => (
                   <div key={h.from} className="ic-rgrp">
                     {h.rooms.map((r) => <div key={r.id} className="rn">{r.name}<span>{r.people.length}</span><Faces people={r.people} size={16} /></div>)}
-                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. The notes say who was in which room, not what was said there.</p>
+                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. Each room’s talk goes into the call’s notes as its own section.</p>
                   </div>
                 ))}
               </div>
@@ -212,7 +212,7 @@ export function TranscriptView({ state, me }: { state: CallState; me: string | u
           <EmptyState title="Nothing said yet" className="ic-empty">{state.capture.room ? 'What’s said here appears a few seconds later, while the organizer is in this room.' : 'What’s said appears here a few seconds later.'}</EmptyState>
         )}
       </div>
-      <Foot>{state.capture.room ? 'Confidential compute · for the people here, until the room closes' : 'Confidential compute · everyone invited gets it'}</Foot>
+      <Foot>{state.capture.room ? 'Confidential compute · this room’s section of the notes' : 'Confidential compute · everyone invited gets it'}</Foot>
     </>
   );
 }

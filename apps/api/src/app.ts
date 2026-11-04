@@ -329,8 +329,15 @@ export function createApp(d: Deps) {
   });
   app.get('/v1/live/calls/:id/room', async (c) => c.json(await calls.roomToken(c.get('viewer'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(organizerOnly(c), c.req.param('id'), await piece(c))));
+  /*
+   * Speech for a call's transcript: from the organizer's browser for the main room, or from a breakout room's scribe for
+   * its room, someone invited who was sent there. A guest with the link is never either; the call takes the rest only
+   * from whoever hears the part of the call it was said in.
+   */
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
-    const v = organizerOnly(c);
+    const v = c.get('viewer');
+    calls.requireIn(v, 'transcribe');
+    if (v.role === 'guest') throw new ForbiddenError('Only the organizer’s browser, or a breakout room’s scribe, sends what’s said.', { context: { callId: v.pass.callId, role: v.role } });
     const speaker = speakerOf(c);
     voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
     speechLimiter(v.organizer.ownerId, 'transcribe');

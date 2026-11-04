@@ -187,7 +187,7 @@ const roomSteps = (history: CaptureChange[], pauses: RoomPause[]): RoomStep[] =>
  * or paused, or the room paused. A room's own pause doesn't end a segment, so each is placed in the recording where
  * the recording was when it began. `now` is the call's seconds so far; `end`, if given, closes one still going.
  */
-function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
+export function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
   const when = (s: number) => new Date(startedAt.getTime() + s * 1000).toISOString();
   const out: CaptureGap[] = [];
   type Open = { kind: 'off' | 'paused'; from: number };
@@ -216,14 +216,15 @@ function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, s
 }
 
 /**
- * What's captured in a breakout room, for the people in it and the organizer visiting it. It's never recorded, and
- * stays out of the notes; the transcript and the notes model follow the call's notes, held while the organizer has
- * paused the room (and unavailable while the organizer's browser can't listen). Each part says when it last changed
- * and who changed it, from the call's changes and the room's together.
+ * What's captured in a breakout room, for the people in it and the organizer visiting it. It's never recorded; what's
+ * said there goes into the call's notes as the room's own section. The transcript and the notes model follow the
+ * call's notes, held while the organizer has paused the room, and the transcript is unavailable while the room has no
+ * scribe to hear it. Each part says when it last changed and who changed it, from the call's changes and the room's
+ * together.
  */
 export function roomStateFor(c: {
-  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
-  room: { id: string; from: number; pauses: RoomPause[] }; now: number; end?: number | undefined;
+  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null;
+  room: { id: string; from: number; pauses: RoomPause[]; scribe: string | null }; now: number; end?: number | undefined;
 }): RoomCapture {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
   const changed = new Map<'transcript' | 'ai', RoomStep>();
@@ -241,7 +242,7 @@ export function roomStateFor(c: {
   }
   const status = roomStatus(c.status, c.room.pauses);
   const current = modes(status, everOn);
-  const deaf = status === 'on' && c.unavailable.includes('transcript');
+  const deaf = status === 'on' && c.room.scribe === null;
   const part = (k: 'transcript' | 'ai'): CapturePart => {
     const h = changed.get(k);
     return { mode: k === 'transcript' && deaf ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actorOf(h.by, c.organizer) : null };
@@ -249,7 +250,7 @@ export function roomStateFor(c: {
   const never: CapturePart = { mode: 'off', since: null, by: null };
   return {
     id: c.room.id, mode: deaf ? 'unavailable' : status, recording: never, transcript: part('transcript'), ai: part('ai'), screen: never,
-    gaps: roomGaps(c.history, c.room.pauses, c.room.from, c.startedAt, c.now, c.end)
+    gaps: roomGaps(c.history, c.room.pauses, c.room.from, c.startedAt, c.now, c.end), scribe: c.room.scribe
   };
 }
 

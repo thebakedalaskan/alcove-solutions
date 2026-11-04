@@ -314,8 +314,9 @@ export class SpeechClips {
         this.say(null);
         return;
       } catch (e) {
-        // Expected around changes: notes went off, the recording paused, a new segment began, or the room it was heard in closed.
-        if (errorCode(e) === 'conflict') { slog.debug('transcript clip refused: notes are off, paused or moved on', { ...where, err: e }); return; }
+        // Expected around changes: notes went off, the recording paused, a new segment began, or another browser hears
+        // that part of the call now (a room's scribe changed, or this browser moved).
+        if (errorCode(e) === 'conflict' || errorCode(e) === 'forbidden') { slog.debug('transcript clip refused: notes are off, paused or moved on', { ...where, err: e }); return; }
         if (attempt < TRIES) {
           slog.debug('transcript clip failed; trying again', { ...where, attempt, err: e });
           await sleep(600 * attempt);

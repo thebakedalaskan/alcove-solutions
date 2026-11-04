@@ -6,6 +6,20 @@ import { Tooltip } from './overlay';
 import { Avatar, Faces, type AvatarPerson } from './people';
 
 /**
+ * A part of a page that opens and closes in place, closed until someone opens it: its heading row (`summary`, the
+ * whole row is what you press) and what's under it. Built on the browser's own details element, so the keyboard and
+ * screen readers work as they expect. Folds stacked one after another sit close together.
+ */
+export function Fold({ summary, children, open = false, className }: { summary: ReactNode; children: ReactNode; open?: boolean | undefined; className?: string | undefined }) {
+  return (
+    <details className={cn('ac-fold', className)} open={open}>
+      <summary className="ac-fold-h">{summary}<Icon name="down" size={16} className="ac-fold-i" /></summary>
+      <div className="ac-fold-b">{children}</div>
+    </details>
+  );
+}
+
+/**
  * The container for one thing on a page: surface, a line edge, shadow-2. A `title` heading with an
  * optional `aside` on the right (a count, a link). Don't nest cards; use rows inside.
  */

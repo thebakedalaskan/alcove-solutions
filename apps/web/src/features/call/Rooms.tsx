@@ -116,6 +116,7 @@ export function RoomsSetup({ people, guests, onOpen }: {
           ))}
         </div>
         <div className="ic-rnote"><Icon name="swap" size={15} /><span>Drag people between rooms. Click a name to rename a room. You stay in the main room and can join any room.{guests > 0 ? ` ${guests === 1 ? 'The guest who joined with the link stays' : `The ${guests} guests who joined with the link stay`} in the main room with you.` : ''}</span></div>
+        <div className="ic-rnote"><Icon name="notesPen" size={15} /><span>While notes are on, what’s said in each room is transcribed by one browser there, never recorded, and goes into the call’s notes as that room’s own section.</span></div>
       </div>
       <div className="ic-foot">
         <Button variant="primary" icon="door" className="w-full" disabled={!people.length}
@@ -237,7 +238,7 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
           </div>
           {sent && <motion.div className="sent" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={UI}><Icon name="check" size={15} /><span>Sent to {open.rooms.length} rooms: “{sent}”</span></motion.div>}
         </form>
-        <p className="ic-rnote"><Avatar person={me} size={18} /><span>{activity.joined === null ? 'You’re in the main room.' : `You’re in ${open.rooms[activity.joined]?.name ?? 'a room'}.`} Each room has its own encryption keys and chat. What’s said in a room stays out of the call’s notes.</span></p>
+        <p className="ic-rnote"><Avatar person={me} size={18} /><span>{activity.joined === null ? 'You’re in the main room.' : `You’re in ${open.rooms[activity.joined]?.name ?? 'a room'}.`} Each room has its own encryption keys and chat. While notes are on, what’s said in each room goes into the call’s notes as its own section.</span></p>
       </div>
       <div className="ic-foot"><Button variant="secondary" className="w-full" onClick={onClose}>Bring everyone back now</Button></div>
     </>

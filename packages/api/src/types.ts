@@ -383,6 +383,28 @@ export const NoteSummarySchema = z.object({
 });
 export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
+/**
+ * A breakout room's section of a call's notes: its name, who was in it (the organizer too, if it came in), when it was
+ * open (seconds into the recording), what was said in it while notes were on, and its own notes, written from that
+ * alone. Everyone with the call's notes reads every room's section.
+ */
+export const RoomNoteSchema = z.object({
+  id: IDSchema,
+  name: z.string(),
+  people: z.array(SpeakerSchema),
+  from: z.number(),
+  to: z.number(),
+  summary: z.string(),
+  decisions: z.array(DecisionSchema),
+  questions: z.array(QuestionSchema),
+  actions: z.array(ActionItemSchema),
+  chapters: z.array(ChapterSchema),
+  /** The stretches the room had nothing captured in: notes off or paused for the call, or the room paused. */
+  gaps: z.array(CaptureGapSchema),
+  transcript: z.array(TranscriptLineSchema)
+});
+export type RoomNote = z.infer<typeof RoomNoteSchema>;
+
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
@@ -397,6 +419,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   screens: z.array(ScreenMomentSchema),
   /** What was said while notes were on. Null while the recording is still going. */
   transcript: z.array(TranscriptLineSchema).nullable(),
+  /** Each breakout room's own section, in the order the rooms closed. Empty for a call without rooms and for room recordings. */
+  rooms: z.array(RoomNoteSchema),
   /**
    * When the notes were last written from the transcript; null until they have been. Corrections to the transcript
    * after it reach the notes when the organizer has them written again (notes.rewrite).

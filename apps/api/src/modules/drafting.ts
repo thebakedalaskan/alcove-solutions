@@ -7,7 +7,7 @@
  */
 import {
   firstName, type ActionItem, type AnswerPart, type CaptureGap, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type Person, type Question,
-  type ScreenMoment, type ScreenRef, type Speaker, type TranscriptLine
+  type RoomNote, type ScreenMoment, type ScreenRef, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
@@ -39,10 +39,17 @@ export interface Brief {
   live?: boolean | undefined;
   /** For notes written again: what people already settled, which the model is told not to list again (settledOf). */
   settled?: string[] | undefined;
+  /** The breakout room these lines were said in, by name, when the notes are that room's own. */
+  room?: string | undefined;
+  /** Each breakout room's section of a finished note, for questions about it. */
+  rooms?: RoomNote[] | undefined;
 }
-/** A finished note, as the model reads it. */
+/** A finished note, as the model reads it: the main room's transcript, and each breakout room's section. */
 export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief =>
-  ({ title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary, settled: m.writtenAt === null ? [] : settledOf(m) });
+  ({
+    title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary,
+    settled: m.writtenAt === null ? [] : settledOf(m), rooms: m.rooms
+  });
 
 /** What people settle in written notes: a part's decisions, open questions and follow-ups. */
 export type Settled = Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>;
@@ -63,6 +70,20 @@ export function settledOf(m: Settled): string[] {
     })
   ];
 }
+
+/**
+ * A breakout room's section, as the model reads it to write that room's notes: the call's title and organizer, the
+ * people who were in the room, how long it was open, what was said there alone, and when they're written again, what
+ * was settled in the room's notes before.
+ */
+export const roomBriefOf = (m: NoteManifest, room: RoomNote, organizer: Person): Brief => ({
+  title: m.title, kind: m.kind, organizer, people: room.people.flatMap((x) => (x.person && x.person.id !== organizer.id ? [x.person] : [])),
+  seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: m.writtenAt === null ? [] : settledOf(room)
+});
+
+/** Each breakout room's section, after the main room's, for a question about the whole note. */
+const roomsText = (rooms: RoomNote[]): string => rooms.filter((r) => r.transcript.length).map((r) =>
+  `\n\nBreakout room “${oneLine(r.name)}” (${r.people.map((x) => oneLine(x.name)).join(', ') || 'nobody named'}):\nSummary: ${r.summary || '(none)'}\nTranscript:\n${fenced(transcriptText(r.transcript, r.gaps))}`).join('');
 
 /** About 30,000 tokens of transcript; longer calls keep their beginning and end. */
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -188,6 +209,7 @@ function about(b: Brief): string {
   return [
     `Meeting: ${b.title}`,
     `Kind: ${b.kind === 'room' ? 'an in-person meeting, recorded on one device in the room' : 'a video call'}`,
+    ...(b.room ? [`Part: the breakout room “${oneLine(b.room)}”, where some of the call talked on their own. Write the notes of this room alone, from what was said in it.`] : []),
     `Organizer: ${b.organizer.name}`,
     `Invited: ${invited}`,
     b.live ? `Going on for: ${Math.max(1, Math.round(b.seconds / 60))} minutes so far` : `Length: ${Math.max(1, Math.round(b.seconds / 60))} minutes`
@@ -313,7 +335,7 @@ export async function answer(cfg: Config, b: Brief, asker: Person, question: str
   const shown = b.screens ?? [];
   const reply = Answer.safeParse(await completeJson(cfg, [
     { role: 'system', content: ASK_PROMPT },
-    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${fenced(transcriptText(b.lines, b.gaps, shown))}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
+    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${fenced(transcriptText(b.lines, b.gaps, shown))}${roomsText(b.rooms ?? [])}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: issues(reply.error) } });
   const at = moment(b);

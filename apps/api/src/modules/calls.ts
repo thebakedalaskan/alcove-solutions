@@ -22,12 +22,13 @@ import { lookupCode } from './codes';
 import { MeetingManifest, updateManifest } from './meetings';
 import type { Loaded } from '../vault';
 import { getItem } from '../vault';
-import { blankNote, createNoteWithRecording, finishRecording } from './notes';
+import { blankNote, createNoteWithRecording, finishRecording, type HeldRoom } from './notes';
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
 import {
   BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readersAt, relocate,
   type Room
 } from './places';
+import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
 import * as transcripts from './transcripts';
 import * as writer from './writer';
@@ -91,8 +92,10 @@ async function load(o: Owner, db: Db, callId: string, lock: boolean | 'share' = 
   if (!r) throw notFound('That call');
   return { row: r, state: openJson(key(o, callId), header(o, callId), r.state_ciphertext, Stored) };
 }
+/** Saves the call's sealed state, with each open breakout room's record brought up to date: who was in it, and its scribe. */
 async function save(o: Owner, db: Db, callId: string, s: Stored) {
-  await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(s))]);
+  const kept = keepRooms(s, Date.now());
+  await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);
 }
 const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes', place?: string | undefined): Stored =>
   ({ ...s, notices: [...s.notices.slice(-2), { id: id128(), text, kind, ...(place ? { place } : {}) }] });
@@ -104,14 +107,23 @@ const tenthsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((a
 /* ---------- breakout rooms: who is where is worked out in modules/places.ts; changing it is here ---------- */
 
 /** Rooms, closing: everyone in one goes back to the main room (their browsers rejoin its group), and the rooms go to the notes. */
-function closeRooms(s: Stored, to: number): Stored {
+function closeRooms(s: Stored, to: number, startedMs: number): Stored {
   const open = s.breakouts.open;
   if (!open) return s;
   const closed = new Set(open.rooms.map((r) => r.id));
+  const at = startedMs + to * 1000;
   return {
     ...s,
     people: s.people.map((j) => (j.group !== null && closed.has(j.group) ? { ...j, group: null } : j)),
-    breakouts: { open: null, held: [...s.breakouts.held, { rooms: open.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails })), from: open.from, to }] }
+    breakouts: {
+      open: null,
+      held: [...s.breakouts.held, {
+        // Each room's record goes with it, for its section of the notes. Its scribe's last term ends now: speech said
+        // before then that's still on its way is taken, and nothing said after.
+        rooms: open.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails, pauses: r.pauses, seen: r.seen, scribes: r.scribes.map((x) => (x.until === null ? { ...x, until: Math.max(x.from, at) } : x)) })),
+        from: open.from, to
+      }]
+    }
   };
 }
 /**
@@ -121,7 +133,7 @@ function closeRooms(s: Stored, to: number): Stored {
 function settle(s: Stored, row: Pick<Row, 'started_at' | 'mls_seq'>, nowMs = Date.now()): Stored {
   const open = s.breakouts.open;
   if (!open || secondsIn(row.started_at, nowMs) < open.until) return s;
-  return relocate(s, closeRooms(s, open.until), row.started_at.getTime() + open.until * 1000, row.mls_seq);
+  return relocate(s, closeRooms(s, open.until, row.started_at.getTime()), row.started_at.getTime() + open.until * 1000, row.mls_seq);
 }
 /** Whether breakout rooms were open at `t` (ms): then a line said in any part of the call is for the people there at the time. */
 function roomsOpenAt(s: Stored, row: Pick<Row, 'started_at'>, t: number): boolean {
@@ -130,15 +142,15 @@ function roomsOpenAt(s: Stored, row: Pick<Row, 'started_at'>, t: number): boolea
   return Boolean(open && open.from <= at) || s.breakouts.held.some((h) => h.from <= at && at < h.to);
 }
 /**
- * What rooms closing takes with them, in the transaction that saves it: their entries in the call's MLS log (so their
- * chat) and what was heard in them. Nothing a room said outlives it.
+ * What rooms closing takes with them, in the transaction that saves it: their entries in the call's MLS log, so their
+ * chat, which is live only. What was heard in them stays, sealed, until the call ends and it goes into each room's
+ * section of the notes.
  */
 async function roomsChanged(o: Owner, db: Db, callId: string, before: Stored, after: Stored): Promise<Stored> {
   const open = new Set(placesOf(after));
   const closed = placesOf(before).filter((p) => !open.has(p));
   if (closed.length) {
     await exec(db, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND grp = ANY($3::text[])', [o.ownerId, callId, closed]);
-    if (after.notes.noteId) await transcripts.dropRooms(o, db, after.notes.noteId, closed);
     clog.info('breakout rooms closed', { callId, rooms: closed.length });
   }
   return after;
@@ -304,8 +316,8 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
       }),
       // In a breakout room, what's captured there as well: the call's capture, held while the organizer has paused the room.
       room: open && roomHere ? capture.roomStateFor({
-        status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable,
-        room: { id: roomHere.id, from: open.from, pauses: roomHere.pauses }, now: secondsIn(row.started_at, end.getTime())
+        status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name,
+        room: { id: roomHere.id, from: open.from, pauses: roomHere.pauses, scribe: scribeOf(rooms, roomHere.id) }, now: secondsIn(row.started_at, end.getTime())
       }) : null
     },
     notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
@@ -564,9 +576,9 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (placed.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: { ...ctx, rooms: a.rooms.length } });
       if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: { ...ctx, rooms: a.rooms.length } });
       // Each room gets its own MLS group: everyone sent to one leaves the main room's group and joins the room's.
-      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [] })), from: exact, until: exact + a.minutes * 60, message: null, visiting: null } } };
+      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [], scribes: [], seen: [] })), from: exact, until: exact + a.minutes * 60, message: null, visiting: null } } };
     } else if (a.type === 'rooms-close') {
-      s = closeRooms(s, exact);
+      s = closeRooms(s, exact, row.started_at.getTime());
     } else if (a.type === 'rooms-rename') {
       const open = s.breakouts.open;
       if (!open) throw new ConflictError('No rooms are open.', { context: ctx });
@@ -726,11 +738,12 @@ export async function audio(v: Viewer, callId: string, piece: Piece): Promise<Ca
 }
 
 /**
- * Speech the organizer's browser heard, into the live transcript under whoever said it while notes are on: the
- * organizer, or anyone else it plays (someone in the call, or just gone, for a clip still on its way). It's placed in
- * the part of the call its speaker was in when they began (`began`, ms on this server's clock): a clip still on its way
- * when someone moves stays where it was said. Said while rooms were open, it's kept for the people there then; a room's
- * lines go when it closes, so speech for a room that has closed is refused, even once transcribed.
+ * Speech heard in the call, into the live transcript under whoever said it while notes are on: by the organizer's
+ * browser in the main room, by a breakout room's scribe in the room (someone in the call, or just gone, for a clip still
+ * on its way). It's placed in the part of the call its speaker was in when they began (`began`, ms on this server's
+ * clock): a clip still on its way when someone moves stays where it was said. Said while rooms were open, it's kept for
+ * the people there then; a room's lines stay until the call ends, a room that has closed since included, and go into
+ * its section of the notes.
  */
 export async function transcribe(v: Viewer, callId: string, clip: transcripts.Clip, speaker: string, began: number): Promise<CallState> {
   const o = v.organizer;
@@ -746,13 +759,18 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   const t0 = Math.max(began, who.since);
   const place = placeAt(s, who, t0);
   if (place === undefined) throw new ConflictError('Where that speech was said can’t be told any more.', { context: { ...ctx, why: 'moved since' } });
-  if (!placesOf(s).includes(place)) throw new ConflictError('That room has closed.', { context: { ...ctx, why: 'room closed' } });
+  // One browser hears each part of the call, and only it sends what's said there: the main room the organizer's
+  // current connection, a breakout room its scribe when the speech began (scribes.ts), even if that's changed since.
+  const term = place === MAIN_PLACE ? undefined : scribeAt(s, place, t0);
+  const hears = place === MAIN_PLACE ? v.isOrganizer && row.host_identity === v.pass.identity : term?.identity === v.pass.identity;
+  if (!hears) {
+    throw new ForbiddenError(place === MAIN_PLACE ? 'Only the organizer’s browser sends what’s said in the main room.' : 'Only the room’s scribe sends what’s said in a breakout room.',
+      { context: { ...ctx, room: place !== MAIN_PLACE ? 1 : 0, term: term?.term ?? null } });
+  }
   // The gate again, for the part of the call it was said in: a room the organizer paused takes nothing.
   capture.mayCapture(capturing(row, s, place), 'speech', { ...ctx, why: 'room paused' });
   const readers = roomsOpenAt(s, row, t0) ? readersAt(s, place, t0) : undefined;
-  // Checked again where the clip is kept, after the seconds transcribing takes: its room may have closed meanwhile.
-  const still: transcripts.Still = async (c) => { const now = await load(o, c, callId, 'share'); return now.row.state === 'live' && placesOf(settle(now.state, now.row)).includes(place); };
-  await transcripts.hear(o, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0 }, still);
+  await transcripts.hear(o, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0 });
   await nudge(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
@@ -1099,10 +1117,7 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
   if (missing.length) {
     const t0 = performance.now();
     const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language);
-    // Kept only while the lines' part of the call is open: a room's lines and their translations go when it closes.
-    const place = mine ? placeOf(s, mine) : MAIN_PLACE;
-    const still: transcripts.Still = async (c) => { const now = await load(o, c, callId, 'share'); return now.row.state === 'live' && placesOf(settle(now.state, now.row)).includes(place); };
-    await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })), still);
+    await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
   } else clog.debug('captions translated from cache', { ...ctx, found: wanted.length });
@@ -1146,10 +1161,7 @@ function gapsFor(row: Row, s: Stored, place: string, segs: Parameters<typeof cap
   const open = s.breakouts.open;
   const room = place === MAIN_PLACE ? undefined : open?.rooms.find((r) => r.id === place);
   if (!open || !room) return capture.gapsOf(s.notes.history, row.started_at, segs);
-  return capture.roomStateFor({
-    status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable,
-    room: { id: room.id, from: open.from, pauses: room.pauses }, now: secondsIn(row.started_at)
-  }).gaps;
+  return capture.roomGaps(s.notes.history, room.pauses, open.from, row.started_at, secondsIn(row.started_at));
 }
 /** What a viewer can catch up on: their time in the call, their latest time away, what they may read, and the gaps. */
 function windowFor(v: Viewer, row: Row, s: Stored, mine: Joined | undefined, invited: Set<string>, gaps: CaptureGap[]): catchup.Window {
@@ -1158,8 +1170,12 @@ function windowFor(v: Viewer, row: Row, s: Stored, mine: Joined | undefined, inv
   const time = mine ? catchup.presence(s.people, mine, row.started_at.getTime()) : [];
   return catchup.windowOf(now, row.started_at.getTime(), time, onlyHere(v, s, mine, row.started_at, invited) === null, gaps);
 }
-/** Stretches with notes on (not off or paused) and nothing transcribed: the organizer's browser, which sends what's said, wasn't in the call. */
-function missedIn(row: Row, s: Stored, w: catchup.Window): catchup.Open[] {
+/**
+ * Stretches with notes on (not off or paused) and nothing transcribed where someone is: in the main room, while the
+ * organizer's browser, which sends what's said there, wasn't in the call; in a breakout room, while it had no scribe.
+ */
+function missedIn(row: Row, s: Stored, w: catchup.Window, place: string): catchup.Open[] {
+  if (place !== MAIN_PLACE) return catchup.missedOf(scribedIn(s, place).map((x) => ({ from: tenthsIn(row.started_at, x.from), to: x.until === null ? null : tenthsIn(row.started_at, x.until) })), w);
   const host = s.people.find((j) => j.role === 'host');
   return host ? catchup.missedOf(catchup.presence(s.people, host, row.started_at.getTime()), w) : [];
 }
@@ -1189,7 +1205,7 @@ async function sofar(v: Viewer, callId: string, what: 'catch-up' | 'ask') {
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
     seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
   });
-  return { all, window, missed: missedIn(row, s, window), person, brief };
+  return { all, window, missed: missedIn(row, s, window, place), person, brief };
 }
 
 /**
@@ -1285,9 +1301,9 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     if (unless?.(row)) return null;
     room = row.room_name;
     const duration = Math.max(1, secondsIn(row.started_at));
-    // Rooms still open come back when the call ends, and go into the notes with the rest (who was in which, not what they said).
+    // Rooms still open come back when the call ends, and go into the notes with the rest: each room's own section.
     const open = state.breakouts.open;
-    const closed = open ? closeRooms(state, Math.min(open.until, duration)) : state;
+    const closed = open ? closeRooms(state, Math.min(open.until, duration), row.started_at.getTime()) : state;
     if (row.state === 'live') {
       await exec(c, `UPDATE calls SET state = 'ended', ended_at = now(), version = version + 1 WHERE owner_id = $1 AND call_id = $2`, [o.ownerId, callId]);
     }
@@ -1299,16 +1315,27 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
       if (s.notes.noteId) {
         const recorded = (at: number) => capture.recorded(s.notes.history, at, duration);
-        const held = s.breakouts.held.map((h) => ({ ...h, from: recorded(h.from), to: recorded(h.to) }));
+        const held = s.breakouts.held.map((h) => ({ rooms: h.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails })), from: recorded(h.from), to: recorded(h.to) }));
         const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
         // The stretches nothing was captured in go into the note, so it says so where they fall.
         const gaps = capture.gapsOf(s.notes.history, row.started_at, segs, duration);
         // And what was on shared screens, each frame where it was shown and for how long, its presenter named as the call names speakers.
-        const speakerOf = speakersIn(s, await me(o));
+        const organizer = await me(o);
+        const speakerOf = speakersIn(s, organizer);
         const shown = screens.moments(await screens.framesOf(o, c, s.notes.noteId), {
           history: s.notes.history, screens: s.notes.screens.history, ended: s.notes.screens.ended, gaps, segments: segs, duration, presenterOf: speakerOf
         });
-        await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown);
+        // Each breakout room's section: everyone who was in it (the organizer if it came in), when, and its own gaps.
+        const peopleOf = (seen: string[]): Speaker[] => seen.flatMap((key) => {
+          const j = key === 'organizer' ? undefined : s.people.findLast((x) => x.person === key);
+          const p = key === 'organizer' ? organizer : j ? personFor(j, j.identity, j.name, organizer) : undefined;
+          return p ? [{ name: p.name, person: p }] : [];
+        });
+        const rooms: HeldRoom[] = s.breakouts.held.flatMap((h) => h.rooms.map((r) => ({
+          id: r.id, name: r.name, people: peopleOf(r.seen), from: recorded(h.from), to: recorded(h.to),
+          gaps: capture.roomGaps(s.notes.history, r.pauses, h.from, row.started_at, h.to, h.to)
+        })));
+        await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms);
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }

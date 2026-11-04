@@ -44,15 +44,25 @@ export type Joined = z.infer<typeof Joined>;
 /** A breakout room as kept: invited people by email, shown with their names when the call is read. */
 export const Room = HeldRooms.shape.rooms.element;
 /**
+ * One stretch of a breakout room's scribe (modules/scribes.ts): the connection that transcribes the room, its turn
+ * (from 1), and when it started and ended (ms; null while it lasts).
+ */
+export const ScribeTerm = z.object({ identity: z.string(), term: z.number(), from: z.number(), until: z.number().nullable() });
+/**
+ * What a call keeps of each breakout room for its notes, until the call ends: the organizer's pauses of it, who its
+ * scribe was when, and everyone who was in it (by `readerOf`).
+ */
+const RoomRecord = { pauses: z.array(RoomPause), scribes: z.array(ScribeTerm), seen: z.array(z.string()) };
+/**
  * Breakout rooms: those open now (each with its MLS group's epoch in this generation, and the room the organizer is
- * visiting, or null for the main room), and those that have closed, which go into the notes.
+ * visiting, or null for the main room), and those that have closed, which go into the notes as each room's section.
  */
 export const BreakoutState = z.object({
   open: z.object({
-    rooms: z.array(Room.extend({ epoch: z.number(), pauses: z.array(RoomPause) })), from: z.number(), until: z.number(),
+    rooms: z.array(Room.extend({ epoch: z.number(), ...RoomRecord })), from: z.number(), until: z.number(),
     message: z.object({ text: z.string(), at: z.number() }).nullable(), visiting: z.string().nullable()
   }).nullable(),
-  held: z.array(HeldRooms)
+  held: z.array(z.object({ rooms: z.array(Room.extend(RoomRecord)), from: z.number(), to: z.number() }))
 });
 /** What the rules here read of a call's state. */
 export interface Placing { people: Joined[]; breakouts: z.infer<typeof BreakoutState>; chatAt: Record<string, number> }

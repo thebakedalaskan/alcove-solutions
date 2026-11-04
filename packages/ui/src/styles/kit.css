@@ -162,6 +162,16 @@
 
 /* ---- Card, CalendarRow, SidebarNav ---- */
 .ac-card { border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); padding: 20px 24px; }
+/* A part of a page that opens in place (Fold): a quiet card whose heading row is what you press. */
+.ac-fold { border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.ac-fold + .ac-fold { margin-top: 10px; }
+.ac-fold-h { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 16px 10px 18px; border-radius: var(--radius-lg); cursor: pointer; list-style: none; }
+.ac-fold-h::-webkit-details-marker { display: none; }
+.ac-fold-h:hover { background: var(--sunk); }
+.ac-fold-h:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-fold-i { flex: none; margin-left: auto; color: var(--ink-3); transition: transform var(--duration-2) var(--ease-out); }
+.ac-fold[open] > .ac-fold-h .ac-fold-i { transform: rotate(180deg); }
+.ac-fold-b { padding: 4px 18px 18px; }
 .ac-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .ac-card-head h3 { margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
 .ac-card-head > span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
