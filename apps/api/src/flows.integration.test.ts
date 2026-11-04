@@ -7,7 +7,7 @@ import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type Al
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from './config';
 import { cookieName } from './sessions';
 import { startFakeDstack } from './testing/fake-dstack';
@@ -18,6 +18,7 @@ import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '.
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); });
+afterEach(() => h.closeCalls());
 
 function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
   const src = Buffer.concat([Buffer.from(marker), randomBytes(4096)]);
