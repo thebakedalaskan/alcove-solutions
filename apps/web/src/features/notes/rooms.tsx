@@ -8,7 +8,7 @@ import { minutesLabel, type ActionItem, type ActionPatch, type Decision, type De
 import { Faces, Fold, Notice } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { listNames } from '~/lib/people';
-import type { Correcting } from './lines';
+import type { Correcting, LineMarks } from './lines';
 import { Decisions, FollowUps, Questions, Section, TranscriptLines } from './parts';
 
 /** What someone who has the notes does with a room's decisions, questions and follow-ups, as with the call's. */
@@ -24,21 +24,22 @@ export interface Settling {
 /**
  * The breakout rooms' sections, one fold each. `writing` while the notes are being written; `correct` and `settle` let
  * the reader correct a room's lines and settle what its notes say, as they do the call's. `tryAgain` is under a room
- * whose notes couldn't be written, for someone who can have them written again.
+ * whose notes couldn't be written, for someone who can have them written again. `marks` bookmarks a room's lines for
+ * the reader, as with the call's.
  */
-export function RoomSections({ rooms, me, writing, correct, settle, tryAgain }: {
-  rooms: RoomNote[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
+export function RoomSections({ rooms, me, writing, correct, settle, tryAgain, marks }: {
+  rooms: RoomNote[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
 }) {
   return (
     <Section title="Breakout rooms" count={`${rooms.length} ${rooms.length === 1 ? 'room' : 'rooms'}`} className="rooms-sec">
       <p className="rooms-lead">Each room’s notes come from what was said in it alone.</p>
-      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} settle={settle} tryAgain={tryAgain} />)}
+      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} settle={settle} tryAgain={tryAgain} marks={marks} />)}
     </Section>
   );
 }
 
-function RoomFold({ room, me, writing, correct, settle, tryAgain }: {
-  room: RoomNote; me: string | undefined; writing: boolean; correct?: Correcting | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
+function RoomFold({ room, me, writing, correct, settle, tryAgain, marks }: {
+  room: RoomNote; me: string | undefined; writing: boolean; correct?: Correcting | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
 }) {
   const people = room.people.flatMap((x): Person[] => (x.person ? [x.person] : []));
   const said = room.transcript.length > 0;
@@ -66,7 +67,7 @@ function RoomFold({ room, me, writing, correct, settle, tryAgain }: {
             </Part>
           )}
           <Fold className="room-said" summary={<span className="room-h"><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></span>}>
-            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} correct={correct} />
+            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} correct={correct} marks={marks} />
           </Fold>
         </>
       )}

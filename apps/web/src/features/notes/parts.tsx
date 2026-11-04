@@ -3,15 +3,16 @@ import {
   firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
   type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
+import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, Scope, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
 import { sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
-import { AnswerView, useAnswer, type Cite } from './answer';
-import { LineRow, type Correcting } from './lines';
+import { AnswerView, useAnswer, type Answer, type Cite } from './answer';
+import { LineRow, type Correcting, type LineMarks } from './lines';
 import { peopleLine, roleLine } from './meta';
 import { capital } from '~/lib/words';
 
@@ -256,11 +257,11 @@ const FIRST_LINES = 3;
 /**
  * The transcript of a written note: its first lines under the summary, and all of it on request; all of it at
  * `focus` when a link brought someone to a moment in it. Pauses and shared screens after the lines shown wait too.
- * With `correct`, whoever may corrects lines in place (lines.tsx).
+ * With `correct`, whoever may corrects lines in place (lines.tsx); with `marks`, they bookmark lines for themselves.
  */
-export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct }: {
+export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct, marks }: {
   lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined; marks?: LineMarks | undefined;
 }) {
   const [open, setOpen] = useState(focus !== undefined);
   useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
@@ -270,7 +271,7 @@ export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, c
   const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
   return (
     <>
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} />
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} marks={marks} />
       {lines.length > FIRST_LINES && (
         <div className="tr-more">
           <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -299,11 +300,11 @@ export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) 
  * shared screen just before the lines said while it was up, and what the transcript isn't sure of dotted and explained
  * at the top. A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line said at
  * that moment is marked, and is where a moment's link lands. With `correct`, whoever may corrects lines in place
- * (lines.tsx).
+ * (lines.tsx). With `marks`, they bookmark lines for themselves.
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, correct, className }: {
+export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, correct, marks, className }: {
   lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined; className?: string | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined; marks?: LineMarks | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
   const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} />;
@@ -319,7 +320,7 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, 
         const up = gapsBefore(moments, lines, i);
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
         const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length && !up.length;
-        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} mark={mark} time={time} me={me} correct={correct} /></Fragment>;
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} mark={mark} time={time} me={me} correct={correct} marks={marks} /></Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
       {gapsAfter(moments, lines).map(shown)}
@@ -400,17 +401,21 @@ function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
 /**
  * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
  * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
+ * Only the person asking sees a question or its answer, and neither is kept unless they keep it (`onKeep`).
  */
-export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call' }: {
+export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', onKeep }: {
   suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
   /** Shows a shared screen an answer comes from. */
   shown?: ScreenRefShown | undefined; label?: string | undefined;
+  /** Keeps an answer in your own notes. */
+  onKeep?: ((a: Answer) => Promise<unknown>) | undefined;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
   const [atEnd, setAtEnd] = useState(false);
   const [text, setText] = useState('');
+  const [keptFor, setKeptFor] = useState<string | null>(null);
   const { answer, ask: start } = useAnswer(ask);
   /*
    * The bar stays in view while the note is read; its suggestions show at the end of the note, or while asking. The
@@ -447,6 +452,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
                     : <SourceLink key={citeKey(c)} c={c} />))}
               </div>
             )}
+            {onKeep && answer.done && answer.text && <KeepAnswer kept={keptFor === `${answer.q}\n${answer.text}`} onKeep={() => onKeep(answer).then(() => setKeptFor(`${answer.q}\n${answer.text}`))} />}
           </AnswerView>
         )}
         {(atEnd || focus) && suggestions.length > 0 && (
@@ -455,7 +461,8 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
         <div className="ask-bar">
           <Icon name="ask" size={20} />
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={label} aria-keyshortcuts={ariaShortcut('J')} />
+            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={`${label}, for you alone`} aria-keyshortcuts={ariaShortcut('J')} />
+          <Scope>Only you</Scope>
           <Button variant="primary" size="sm" icon="send" onClick={() => run(text)}>Ask</Button>
         </div>
       </div>

@@ -7,7 +7,7 @@ import {
   Minimize2, Monitor, MonitorOff, MoveDiagonal2, NotebookPen, RotateCcw, SendHorizontal, Shuffle, Timer, Hash, ChevronsUpDown, PanelLeft, WifiOff,
   CircleDot, Settings, BadgeCheck, UserCheck, CircleCheck, Compass, EyeOff, Keyboard, PictureInPicture2, Presentation, RotateCw, Volume1,
   VolumeX, TriangleAlert, SlidersHorizontal, SkipForward, PictureInPicture, Scan, StepBack, StepForward, ZoomIn, ZoomOut, Bell, BellOff, CircleUserRound,
-  Coins, Palette, MapPin, MousePointer2, MousePointer2Off, Undo2, Eraser, HardDrive, CloudOff, Upload
+  Coins, Palette, MapPin, MousePointer2, MousePointer2Off, Undo2, Eraser, HardDrive, CloudOff, Upload, Bookmark, BookmarkCheck
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -28,7 +28,8 @@ const ICONS = {
   keyboard: Keyboard, pip: PictureInPicture2, presenter: Presentation, speakerLow: Volume1, speakerOff: VolumeX, retry: RotateCw, alert: TriangleAlert,
   sliders: SlidersHorizontal, live: SkipForward, popIn: PictureInPicture, zoomIn: ZoomIn, zoomOut: ZoomOut, whole: Scan, stepBack: StepBack,
   stepForward: StepForward, user: CircleUserRound, bell: Bell, bellOff: BellOff, palette: Palette, coins: Coins, mapPin: MapPin, pointer: MousePointer2,
-  pointerOff: MousePointer2Off, undo: Undo2, eraser: Eraser, hardDrive: HardDrive, cloudOff: CloudOff, upload: Upload
+  pointerOff: MousePointer2Off, undo: Undo2, eraser: Eraser, hardDrive: HardDrive, cloudOff: CloudOff, upload: Upload,
+  bookmark: Bookmark, bookmarked: BookmarkCheck
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

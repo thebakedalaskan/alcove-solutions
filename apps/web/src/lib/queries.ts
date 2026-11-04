@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
@@ -20,6 +20,9 @@ export const qk = {
   notes: ['notes'] as const,
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
+  /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
+  personal: (id: string) => ['notes', 'personal', id] as const,
+  addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
@@ -77,6 +80,9 @@ export const q = {
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
+  personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
+  /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
+  addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: () => api.notes.inbox() }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
@@ -292,6 +298,35 @@ export function useCorrectLine() {
   return useMutation({
     mutationFn: (v: { noteId: string; lineId: string; patch: LinePatch }) => api.notes.correctLine(v.noteId, v.lineId, v.patch),
     onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Changes your own notes on a note; the answer is all of them as they are now. */
+export function useOwnNotes(noteId: string) {
+  const qc = useQueryClient();
+  const own = api.notes.personal(noteId);
+  const done = { onSuccess: (p: PersonalNotes) => { qc.setQueryData(qk.personal(noteId), p); }, onError: (e: unknown) => gone(qc, e) };
+  return {
+    add: useMutation({ mutationFn: (input: PersonalInput) => own.add(input), ...done }),
+    edit: useMutation({ mutationFn: (v: { entryId: string; text: string }) => own.edit(v.entryId, v.text), ...done }),
+    remove: useMutation({ mutationFn: (entryId: string) => own.remove(entryId), ...done })
+  };
+}
+/** Adds one of your own entries to the shared notes, as previewed. The answer is the note, for everyone; your own notes say where the copy is. */
+export function useAddToShared(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { entryId: string; body: PromoteBody }) => api.notes.addToShared(noteId, v.entryId, v.body),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Takes something out of the shared notes, for everyone. */
+export function useTakeBack(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (additionId: string) => api.notes.takeBack(noteId, additionId),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onError: (e) => gone(qc, e)
   });
 }
 /** The organizer has the notes written again from the transcript as it is now; the note answers pending until they are. */

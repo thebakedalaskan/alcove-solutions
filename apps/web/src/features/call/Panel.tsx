@@ -18,9 +18,9 @@ import type { LiveNotes } from './liveNotes';
 import type { VolumeActions } from './volume';
 import { VolumeControl } from './VolumeControl';
 
-export type PanelView = 'notes' | 'transcript' | 'ask' | 'chat' | 'people' | 'rooms';
+export type PanelView = 'notes' | 'yours' | 'transcript' | 'ask' | 'chat' | 'people' | 'rooms';
 const TABS: { v: PanelView; label: string }[] = [
-  { v: 'notes', label: 'Notes' }, { v: 'transcript', label: 'Transcript' }, { v: 'ask', label: 'Ask' }, { v: 'chat', label: 'Chat' }, { v: 'people', label: 'People' }
+  { v: 'notes', label: 'Notes' }, { v: 'yours', label: 'Yours' }, { v: 'transcript', label: 'Transcript' }, { v: 'ask', label: 'Ask' }, { v: 'chat', label: 'Chat' }, { v: 'people', label: 'People' }
 ];
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
@@ -42,7 +42,11 @@ export interface HostControls {
   setPointing: (on: boolean) => Promise<void>;
 }
 
-export function SidePanel({ view, onView, onClose, children, roomsTitle }: { view: PanelView; onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string }) {
+export function SidePanel({ view, onView, onClose, children, roomsTitle, own }: {
+  view: PanelView; onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string;
+  /** You have an account in this call, so you can keep your own notes on it. */
+  own: boolean;
+}) {
   const reduce = useReducedMotion();
   return (
     <>
@@ -51,7 +55,7 @@ export function SidePanel({ view, onView, onClose, children, roomsTitle }: { vie
       ) : (
         <div className="ic-side-head">
           <div className="ac-tabs" role="tablist" aria-label="Call panel">
-            {TABS.map((t) => <button key={t.v} type="button" role="tab" className="ac-tab" aria-selected={view === t.v} onClick={() => onView(t.v)}>{t.label}</button>)}
+            {TABS.filter((t) => own || t.v !== 'yours').map((t) => <button key={t.v} type="button" role="tab" className="ac-tab" aria-selected={view === t.v} onClick={() => onView(t.v)}>{t.label}</button>)}
           </div>
           <IconButton icon="x" label="Close the panel" onClick={onClose} />
         </div>
@@ -212,14 +216,14 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
           <div className="ic-problems">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
         )}
       </div>
-      <Foot end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={5} /></span> : undefined}>Confidential compute</Foot>
+      <Foot end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>Confidential compute · everyone with the notes</Foot>
     </>
   );
 }
 
 /* ---------- transcript ---------- */
 
-export function TranscriptView({ state, me }: { state: CallState; me: string | undefined }) {
+export function TranscriptView({ state, me, onMark }: { state: CallState; me: string | undefined; onMark?: ((lineId: string) => void) | undefined }) {
   // What's said where you are: in a breakout room, the room's lines, under the room's capture.
   const c = captureHere(state.capture);
   const mode = c.mode;
@@ -235,7 +239,7 @@ export function TranscriptView({ state, me }: { state: CallState; me: string | u
         )}
         {mode === 'paused' && <Notice icon="pause">{roomHeld ? ROOM_PAUSED : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} /> : on && (
+        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} onMark={onMark} /> : on && (
           <EmptyState title="Nothing said yet" className="ic-empty">
             {!state.capture.room ? 'What’s said appears here a few seconds later.'
               : state.capture.room.scribe ? `What’s said here appears a few seconds later, transcribed by ${roomScribe(state)} for this room’s section of the notes.`
