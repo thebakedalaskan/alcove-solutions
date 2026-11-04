@@ -30,6 +30,13 @@ export type NotesAsk = z.infer<typeof NotesAsk>;
 
 /** What the organizer's browser can say it can't capture now, kept in the call's sealed state. */
 export const CapturePartName = CaptureDevicePartSchema;
+/**
+ * A stretch with notes on but the organizer's browser out of the call (its connection dropped, or it reloaded or moved
+ * to another device), until another of the organizer's connections took over or the call ended: nothing was recorded
+ * or heard. In seconds since the call started, with the segment that ended as it went.
+ */
+export const OfflineStretch = z.object({ from: z.number(), to: z.number(), segment: z.number() });
+export type OfflineStretch = z.infer<typeof OfflineStretch>;
 
 /**
  * Shared screens read for the notes, or stopped, `at` seconds into the call (to a tenth), while the recording was in
@@ -79,7 +86,7 @@ export function mayCapture(call: Capturing, path: CapturePath, context: Record<s
 }
 
 /** A stretch of the call with nothing captured, in seconds since it started, and the segment it follows (null before anything was recorded). */
-interface Stretch { kind: 'off' | 'paused'; from: number; to: number | null; after: number | null }
+interface Stretch { kind: CaptureGap['kind']; from: number; to: number | null; after: number | null }
 /** The stretches with nothing captured, oldest first: from the start until notes first came on, and every time they were off or paused. */
 function stretches(history: CaptureChange[]): Stretch[] {
   const out: Stretch[] = [];
@@ -101,27 +108,34 @@ function stretches(history: CaptureChange[]): Stretch[] {
 /**
  * The gaps as people see them: when each started and ended, and where it falls in the recording, at the end of the
  * segment it follows (the segments' recorded seconds, as transcript lines are placed). `end`, seconds since the call
- * started, closes one still going: the call ended then.
+ * started, closes one still going: the call ended then. The organizer's browser being out of the call is a gap of its
+ * own, between the segment that ended as it went and the next.
  */
-export function gapsOf(history: CaptureChange[], startedAt: Date, segments: AudioSegment[], end?: number | undefined): CaptureGap[] {
+export function gapsOf(history: CaptureChange[], offline: OfflineStretch[], startedAt: Date, segments: AudioSegment[], end?: number | undefined): CaptureGap[] {
   const when = (s: number) => new Date(startedAt.getTime() + s * 1000).toISOString();
   const through = (segment: number) => segments.filter((g) => g.index <= segment).reduce((n, g) => n + g.seconds, 0);
-  return stretches(history).flatMap((g) => {
+  const away = offline.map((g): Stretch => ({ kind: 'offline', from: g.from, to: g.to, after: g.segment }));
+  return [...stretches(history), ...away].sort((a, b) => a.from - b.from).flatMap((g) => {
     const to = g.to ?? end ?? null;
     if (to !== null && to <= g.from) return [];
     return [{ kind: g.kind, from: when(g.from), to: to === null ? null : when(to), at: g.after === null ? 0 : through(g.after) }];
   });
 }
 
-/** A moment of the call (seconds since it started) as seconds into its recording, which runs only while notes are on. */
-export function recorded(history: CaptureChange[], at: number, end: number): number {
+/**
+ * A moment of the call (seconds since it started) as seconds into its recording, which runs only while notes are on
+ * and the organizer's browser is in the call.
+ */
+export function recorded(history: CaptureChange[], offline: OfflineStretch[], at: number, end: number): number {
   let total = 0;
   let onSince: number | null = null;
   for (const h of [...history, { at: end, status: 'off' as const }]) {
     if (h.status === 'on' && onSince === null) onSince = h.at;
     else if (h.status !== 'on' && onSince !== null) { total += Math.max(0, Math.min(at, h.at) - onSince); onSince = null; }
   }
-  return total;
+  // Offline stretches only ever fall while notes are on.
+  for (const g of offline) total -= Math.max(0, Math.min(at, g.to) - g.from);
+  return Math.max(0, total);
 }
 
 /** Asks for notes said yes to: notes came on, or were resumed. */
@@ -141,11 +155,12 @@ function modes(status: CaptureStatus, everOn: boolean): Record<Part, CaptureMode
 /**
  * The capture state for one person. Each part says when it last changed and who changed it: `organizer` names them,
  * for people in the call; people asking to join get no name, no gaps and no asks. A part the organizer's browser says
- * it can't do is unavailable while notes are on, and so is everything when it can do neither. Shared screens are read
+ * it can't do is unavailable while notes are on, and so is everything when it can do neither, or while that
+ * browser is out of the call (`away`). Shared screens are read
  * only once the organizer says so (`screens`), and then follow notes: on, paused with them, or off.
  */
 export function stateFor(c: {
-  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
+  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[]; away: boolean;
   screens: { on: boolean; history: ScreenChange[] };
   gaps: CaptureGap[]; requests: NotesRequest[]; asked: CaptureState['asked'];
 }): CaptureState {
@@ -161,7 +176,7 @@ export function stateFor(c: {
     before = now;
   }
   const current = modes(c.status, everOn);
-  const cant = new Set(c.status === 'on' ? c.unavailable : []);
+  const cant = new Set<CaptureDevicePart>(c.status !== 'on' ? [] : c.away ? ['recording', 'transcript'] : c.unavailable);
   const part = (k: Part): CapturePart => {
     const h = changed.get(k);
     return { mode: k !== 'ai' && cant.has(k) ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actor(h.by) : null };
@@ -169,7 +184,7 @@ export function stateFor(c: {
   return {
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
     recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
-    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null
+    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away
   };
 }
 
@@ -184,14 +199,16 @@ const roomSteps = (history: CaptureChange[], pauses: RoomPause[]): RoomStep[] =>
 
 /**
  * The stretches since a breakout room opened (`from`) with nothing captured in it, oldest first: the call's notes off
- * or paused, or the room paused. A room's own pause doesn't end a segment, so each is placed in the recording where
- * the recording was when it began. `now` is the call's seconds so far; `end`, if given, closes one still going.
+ * or paused, the room paused, or the organizer's browser out of the call (`offline`, for the part of it while the room
+ * was open). A room's own pause doesn't end a segment, so each is placed in the recording where the recording was when
+ * it began. `now` is the call's seconds so far; `end`, if given, closes one still going.
  */
-function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
+function roomGaps(history: CaptureChange[], offline: OfflineStretch[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
   const when = (s: number) => new Date(startedAt.getTime() + s * 1000).toISOString();
   const out: CaptureGap[] = [];
   type Open = { kind: 'off' | 'paused'; from: number };
-  const gap = (g: Open, to: number | null): CaptureGap => ({ kind: g.kind, from: when(g.from), to: to === null ? null : when(to), at: recorded(history, g.from, Math.max(g.from, now)) });
+  const at = (t: number) => recorded(history, offline, t, Math.max(t, now));
+  const gap = (g: Open, to: number | null): CaptureGap => ({ kind: g.kind, from: when(g.from), to: to === null ? null : when(to), at: at(g.from) });
   // What the room captures after a step, and the stretch it leaves open: a change of kind closes one and may open another.
   const next = (open: Open | null, call: CaptureStatus, paused: boolean, t: number): Open | null => {
     const status = call === 'on' && paused ? 'paused' : call;
@@ -212,7 +229,12 @@ function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, s
   }
   if (!started) open = next(open, call, paused, from);
   if (open && (end === undefined || end > open.from)) out.push(gap(open, end ?? null));
-  return out;
+  for (const o of offline) {
+    const f = Math.max(o.from, from);
+    const t = end === undefined ? o.to : Math.min(o.to, end);
+    if (t > f) out.push({ kind: 'offline', from: when(f), to: when(t), at: at(f) });
+  }
+  return out.sort((a, b) => Date.parse(a.from) - Date.parse(b.from));
 }
 
 /**
@@ -223,6 +245,8 @@ function roomGaps(history: CaptureChange[], pauses: RoomPause[], from: number, s
  */
 export function roomStateFor(c: {
   status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
+  /** The organizer's browser is out of the call (nothing is heard in any part of it), and the stretches it was. */
+  away: boolean; offline: OfflineStretch[];
   room: { id: string; from: number; pauses: RoomPause[] }; now: number; end?: number | undefined;
 }): RoomCapture {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
@@ -241,7 +265,7 @@ export function roomStateFor(c: {
   }
   const status = roomStatus(c.status, c.room.pauses);
   const current = modes(status, everOn);
-  const deaf = status === 'on' && c.unavailable.includes('transcript');
+  const deaf = status === 'on' && (c.away || c.unavailable.includes('transcript'));
   const part = (k: 'transcript' | 'ai'): CapturePart => {
     const h = changed.get(k);
     return { mode: k === 'transcript' && deaf ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actorOf(h.by, c.organizer) : null };
@@ -249,7 +273,7 @@ export function roomStateFor(c: {
   const never: CapturePart = { mode: 'off', since: null, by: null };
   return {
     id: c.room.id, mode: deaf ? 'unavailable' : status, recording: never, transcript: part('transcript'), ai: part('ai'), screen: never,
-    gaps: roomGaps(c.history, c.room.pauses, c.room.from, c.startedAt, c.now, c.end)
+    gaps: roomGaps(c.history, c.offline, c.room.pauses, c.room.from, c.startedAt, c.now, c.end)
   };
 }
 

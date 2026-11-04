@@ -121,7 +121,7 @@ The call opens full screen: the stage with everyone's tiles, a side panel that s
 dock at the bottom.
 
 - **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
-  unavailable** when the organizer's browser can't record or listen, **Notes off**, or **Notes requested** while
+  unavailable** when the organizer's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested** while
   someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
   the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared
@@ -215,7 +215,8 @@ dock at the bottom.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - **Pausing** stops everything at once: nothing is recorded, transcribed or sent to the AI, catch-up and
   captions included, until the organizer resumes. Nothing resumes it by itself. The transcript, a catch-up and
-  the notes everyone gets say where it was paused ("Paused 10:02–10:05"), and where notes were off.
+  the notes everyone gets say where it was paused ("Paused 10:02–10:05"), where notes were off, and where the
+  organizer's browser was out of the call.
 - **When the organizer's browser can't capture.** Without a microphone that works (none, refused, or busy in
   another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
   When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
@@ -232,8 +233,9 @@ dock at the bottom.
   in as you, with your place, raised hand and breakout room, and its microphone and camera as they were. The
   laptop says where the call went, with **Join again here**. While you share your screen the code stays hidden.
 - If your connection drops, the top bar says **Reconnecting** and you're back by yourself when it returns, as the
-  same person. While the organizer's connection is gone, everyone else's notes sign says **Notes paused**, and
-  catching up says what wasn't captured.
+  same person. While the organizer's browser is out of the call, the notes sign says **Notes unavailable**, for
+  everyone and on the join page; if they come back on another device, the notes mark the time between
+  ("Organizer offline 10:20–10:21"). A pause stays a pause through all of it.
 
 Calls are for groups: invited people join with their accounts, anyone else with the link asks and the
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call

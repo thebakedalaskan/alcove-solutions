@@ -673,7 +673,8 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   recorded on one device; the organizer's name; the invited people by name, or by the part of their
   address before the @ when Alcove has no name for them (never full addresses); the length in minutes;
   and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room), with a line such as
-  `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured.
+  `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured
+  (`the organizer's browser was out of the call for 3 min` for an `offline` gap).
   Every prompt that reads a transcript tells the model never to say or guess what happened in one. A line whose
   words Whisper was unsure of ends `(unclear)`, and a speaker in doubt reads `Name (not sure who)`, and every such
   prompt, the series' included, tells the model never to rest a name, number or decision on an unclear line
