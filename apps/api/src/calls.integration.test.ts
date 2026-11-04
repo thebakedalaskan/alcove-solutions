@@ -966,6 +966,16 @@ describe('breakout rooms, each with its own keys', () => {
     // And they're settled like the call's, by anyone who has the notes.
     const blue = d?.decisions[0]?.id ?? '';
     expect((await kofi.browser.api.notes.updateDecision(noteId, blue, { state: 'confirmed' })).rooms[0]?.decisions[0]?.state).toBe('confirmed');
+    // What backs a room's entry comes from that room's lines, and someone with the notes adds to that room's section alone.
+    expect(d?.decisions[0]?.evidence).toMatchObject({ flags: [], moments: [{ kind: 'line', text: 'We agreed on blue buttons.', speaker: { person: { email: kofi.email } } }] });
+    const said = d?.transcript.find((l) => l.text === 'We agreed on blue buttons.')?.id ?? '';
+    const added = await ade.browser.api.notes.proposeDecision(noteId, { text: 'The buttons stay blue in dark mode.', room: d?.id, lines: [said] });
+    expect(added.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed'], ['The buttons stay blue in dark mode.', 'proposed']]);
+    expect(added.rooms[0]?.decisions[1]?.evidence.flags).toEqual([]);
+    expect(added.decisions.map((x) => x.text)).not.toContain('The buttons stay blue in dark mode.');
+    // Only that room's lines back what goes in it: not another room's, nor the main room's.
+    expect(code(await ade.browser.api.notes.proposeDecision(noteId, { text: 'From the other room.', room: sp?.id, lines: [said] }).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await ade.browser.api.notes.proposeDecision(noteId, { text: 'From a room, to the main room.', lines: [said] }).catch((e: unknown) => e))).toBe('invalid');
     // A room's line is corrected like the call's: its words by whoever said them (or the organizer), nobody else.
     const balance = (await org.api.credits.balance()).balance;
     const icons = d?.transcript.find((l) => l.text === 'Mia will draw the icons by Friday.')?.id ?? '';
@@ -985,7 +995,7 @@ describe('breakout rooms, each with its own keys', () => {
     expect(again.rooms[1]?.transcript.find((l) => l.id === bank)?.text).toBe('Ade will call the bank on Tuesday.');
     expect(again.writingAgain).toBe(false);
     // What was settled in the room stays as it was, and the room's notes model was told so; the rest is written again.
-    expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed']]);
+    expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed'], ['The buttons stay blue in dark mode.', 'proposed']]);
     expect(again.rooms[0]?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
     const rewritten = h.near.prompts.slice(sentAgain).find((x) => x.includes('the breakout room “Design”')) ?? '';
     expect(rewritten).toContain('Mia will draw the icons by Thursday.');

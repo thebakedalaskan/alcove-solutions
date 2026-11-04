@@ -90,7 +90,7 @@ describe('memory across a series', () => {
 
     // The open question is in the note, open until someone says it was answered.
     const note = await org.api.notes.get(one.noteId);
-    expect(note.questions).toEqual([{ id: expect.any(String), text: 'Can we afford a second designer?', at: 2, state: 'open', changes: [] }]);
+    expect(note.questions).toMatchObject([{ id: expect.any(String), text: 'Can we afford a second designer?', at: 2, state: 'open', changes: [] }]);
 
     // Scheduling the next one starts the series: the same title, people and notes, when the app says (a week on).
     const first = await org.api.meetings.get(one.meetingId);

@@ -287,16 +287,28 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
   if (system.startsWith('You write the notes')) {
     // Written again, told what people already settled: like a model can, it lists the decisions again anyway, in other words.
     const again = user.includes('Already settled');
-    const decided = (h: Heard) => ({ ...item(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text });
+    /*
+     * Each entry points at the line it came from and, as a model can, at lines that aren't there. A line that disagrees
+     * ("No, ...") is pointed at as cutting against whatever came just before it. And like a model told what to do by
+     * something said in the call, it says what only people can: that things are confirmed, and that someone took them on.
+     */
+    const nowhere = heard.length + 7;
+    const refs = (h: Heard) => {
+      const next = heard[heard.indexOf(h) + 1];
+      return { lines: [h.ref, `L${nowhere}`, 0], against: next && /^no\b/i.test(next.text) ? [next.ref, nowhere] : [] };
+    };
+    const decided = (h: Heard) => ({ ...item(h), ...refs(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text, state: 'confirmed', disputes: [{ by: 'the model' }], changes: [{ what: 'confirmed' }] });
+    /** A sentence nothing said backs: the model's word alone, which the notes must keep marked as that. */
+    const unbacked = /\bunbacked\b/i.test(user) ? [{ text: 'Everyone agreed to double the budget.', at: null, lines: [nowhere], against: [] }] : [];
     return {
       summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
-      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided),
-      questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
+      decisions: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided), ...unbacked],
+      questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         if (!m) return [];
         const rest = m[2] ?? '';
-        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h) }];
+        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }];
       }),
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],

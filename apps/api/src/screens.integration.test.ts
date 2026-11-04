@@ -456,6 +456,8 @@ describe('shared screens in the notes', () => {
     expect(b.until).toBeLessThanOrEqual(u.at + 0.1);
     // What was said about a screen points at it: plainly ("this chart", and the part meant) or only maybe ("that").
     expect(note.decisions.map((d) => [d.text, d.screen])).toEqual([['We agreed this chart is right about the W3 dip.', { id: a.id, region: 0, sure: true }]]);
+    // What backs it is the line it was said in and the moment of the screen it was about, with the part meant.
+    expect(note.decisions[0]?.evidence).toMatchObject({ flags: [], moments: [{ kind: 'line', text: 'We agreed this chart is right about the W3 dip.' }, { kind: 'screen', id: a.id, at: a.at, title: a.title, region: 0, part: a.regions[0]?.label, sure: true }] });
     expect(note.actions.map((x) => [x.text, x.screen])).toEqual([['Fix that bug by Friday', { id: b.id, sure: false }]]);
     expect(note.questions.map((x) => [x.text, x.screen])).toEqual([['Is the target still 12,000?', undefined]]);
     // The notes model read the screens among the lines, where they were shown.
