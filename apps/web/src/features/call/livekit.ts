@@ -24,10 +24,11 @@
  * Load it with `await import('~/features/call/livekit')` from the call routes only: livekit-client is large and
  * stays out of the first page load.
  */
-import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallMediaKeys, type CallSession, type LiveStore } from '@alcove/api';
+import { CALL_KEYRING, CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallMediaKeys, type CallSession, type LiveStore, type VideoSend } from '@alcove/api';
 import {
-  BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, createKeyMaterialFromBuffer, getLogger,
-  isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication
+  BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
+  createKeyMaterialFromBuffer, getLogger, isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication,
+  type TrackPublishOptions
 } from 'livekit-client';
 import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 import { log } from '~/lib/log';
@@ -138,6 +139,23 @@ class CallKeys extends BaseKeyProvider {
 
 type Kind = 'mic' | 'cam' | 'screen' | 'screenAudio';
 const SOURCE: Record<Kind, Track.Source> = { mic: Track.Source.Microphone, cam: Track.Source.Camera, screen: Track.Source.ScreenShare, screenAudio: Track.Source.ScreenShareAudio };
+/**
+ * How the camera is sent, by the most someone chose to send: its top layer, and the smaller copies (simulcast)
+ * LiveKit hands anyone whose tile is small or whose network is slow, so nobody downloads more than they show.
+ */
+const CAMERA: Record<VideoSend, TrackPublishOptions> = {
+  standard: { videoEncoding: VideoPresets.h720.encoding, videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360] },
+  hd: { videoEncoding: VideoPresets.h1080.encoding, videoSimulcastLayers: [VideoPresets.h360, VideoPresets.h720] },
+  saver: { videoEncoding: VideoPresets.h360.encoding, videoSimulcastLayers: [VideoPresets.h180] }
+};
+/**
+ * The size a camera is sent at: the one chosen, or 720p's for a camera that can't give 1080p. Its 1080p layers on a
+ * 720p picture would send two full-size copies.
+ */
+const camAs = (send: VideoSend, track: MediaStreamTrack): VideoSend => {
+  const { width = 0, height = 0 } = track.getSettings();
+  return send === 'hd' && Math.min(width, height) < 1080 ? 'standard' : send;
+};
 
 class LiveKitRoom implements CallRoom {
   private keys: CallKeys;
@@ -158,6 +176,8 @@ class LiveKitRoom implements CallRoom {
   /** How loud each person plays here, for this listener only (see volume.ts). */
   private volumes: CallVolumes;
   private stopVolumes: () => void = () => undefined;
+  /** The size the camera was last published at (see camAs), so a change of size sends it again. */
+  private camSentAs: VideoSend | null = null;
   /** The speaker everyone else's audio plays on now, and one the browser just refused (said once). */
   private speaker: string | null = null;
   private speakerRefused: string | null = null;
@@ -170,7 +190,9 @@ class LiveKitRoom implements CallRoom {
   constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
     this.keys = new CallKeys(session.ticket.identity);
     this.volumes = volumesFor(session);
-    this.room = new Room({ adaptiveStream: true, dynacast: true, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
+    // Each video as sharp as its tile on this screen (its own pixels, so a high-density screen gets more), and no
+    // copy anyone isn't watching is sent at all.
+    this.room = new Room({ adaptiveStream: { pixelDensity: 'screen' }, dynacast: true, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
     const r = this.room;
     const changed = () => this.emit();
     const refetch = (what?: { call: boolean; log: boolean }) => { this.emit(); void session.refresh(what).catch((e: unknown) => rlog.warn('call refresh failed', { err: e })); };
@@ -209,7 +231,7 @@ class LiveKitRoom implements CallRoom {
     // The server nudges when someone leaves too. Waiting a moment lets a room that's closing (the call ended) close
     // first, instead of asking about a call that's over.
     r.on(RoomEvent.ParticipantDisconnected, () => { setTimeout(() => { if (r.state === ConnectionState.Connected) refetch(); }, 400); });
-    r.on(RoomEvent.TrackSubscribed, (track, pub, who) => { this.consider(track, pub, who); this.emit(); });
+    r.on(RoomEvent.TrackSubscribed, (track, pub, who) => { this.consider(track, pub, who); if (pub.source === Track.Source.Camera) this.receiveCams(); this.emit(); });
     r.on(RoomEvent.TrackUnsubscribed, (track) => { if (track.sid) this.held.delete(track.sid); this.silence(track); this.emit(); });
     // The server's nudge says what changed. LiveKit could send one too: all it can do is make this browser look again.
     r.on(RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
@@ -342,7 +364,7 @@ class LiveKitRoom implements CallRoom {
       out[p.identity] = {
         mic: Boolean(mic && !mic.isMuted),
         micSid: mic?.trackSid ?? null,
-        camSid: cam && !cam.isMuted ? cam.trackSid : null,
+        camSid: cam && !cam.isMuted && (p === this.room.localParticipant || this.media.getSnapshot().receiveVideo !== 'off') ? cam.trackSid : null,
         screenSid: screen ? screen.trackSid : null,
         screenSound: screen && sound ? (this.quiet.has(screen.trackSid) ? 'muted' : 'on') : null,
         speaking: p.isSpeaking
@@ -376,7 +398,7 @@ class LiveKitRoom implements CallRoom {
     for (const kind of ['mic', 'cam', 'screen', 'screenAudio'] as const) {
       const track = want[kind];
       try {
-        await this.publish(kind, track);
+        await this.publish(kind, track, m.sendVideo);
       } catch (e) {
         rlog.warn('publishing to the room failed', { err: e, kind });
         if (kind === 'screen' && track) this.set({ screenFailed: track.id });
@@ -390,22 +412,42 @@ class LiveKitRoom implements CallRoom {
     const cam = me.getTrackPublication(Track.Source.Camera);
     if (cam?.isMuted && now.cam) await cam.unmute();
     await this.useSpeaker(now.speakerId);
+    this.receiveCams();
     this.emit();
   }
 
   /** Makes LiveKit's publication of one kind carry `track`, or none: the one it has published now, never a copy kept here. */
-  private async publish(kind: Kind, track: MediaStreamTrack | null) {
+  private async publish(kind: Kind, track: MediaStreamTrack | null, send: VideoSend) {
     const me = this.room.localParticipant;
     // After a full reconnect this is the publication LiveKit republished, not the one this browser made.
     const have = me.getTrackPublication(SOURCE[kind]);
-    if (have?.track?.mediaStreamTrack === track && have) return;
+    // A camera sent at another size than it's sent at now is sent again: a publication's layers are set when it's
+    // published.
+    const sendAs = kind === 'cam' && track ? camAs(send, track) : null;
+    const resend = sendAs !== null && Boolean(have?.track) && this.camSentAs !== sendAs;
+    if (have?.track?.mediaStreamTrack === track && have && !resend) return;
     // Another microphone or camera, or something else shared: the same publication carries it, so nobody sees it stop
     // and start, a microphone stays muted or not and the organizer's mute still finds it, and everyone keeps their
     // choices about a share.
-    if (have?.track && track) { await have.track.replaceTrack(track, true); return; }
+    if (have?.track && track && !resend) { await have.track.replaceTrack(track, true); return; }
     // LocalMedia owns these tracks: unpublishing must never stop them.
     if (have?.track) await me.unpublishTrack(have.track, false);
-    if (track) await me.publishTrack(track, { source: SOURCE[kind] });
+    if (track) await me.publishTrack(track, { source: SOURCE[kind], ...(sendAs ? CAMERA[sendAs] : {}) });
+    if (kind === 'cam') this.camSentAs = sendAs;
+  }
+
+  /**
+   * Everyone else's cameras as chosen here: as sharp as each tile needs (LiveKit's adaptive stream), capped at the
+   * smallest copy to save data, or not received at all. Screens are never capped: text has to stay readable.
+   */
+  private receiveCams() {
+    const receive = this.media.getSnapshot().receiveVideo;
+    for (const who of this.room.remoteParticipants.values()) {
+      const pub = who.getTrackPublication(Track.Source.Camera);
+      if (!pub?.isSubscribed) continue;
+      pub.setEnabled(receive !== 'off');
+      if (receive !== 'off') pub.setVideoQuality(receive === 'saver' ? VideoQuality.LOW : VideoQuality.HIGH);
+    }
   }
 
   /** Everyone else's audio plays through hidden elements, on the chosen speaker, each person as loud as set here. */

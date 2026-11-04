@@ -22,6 +22,7 @@ import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, type ShareProblem } from '~/features/call/share';
 import { SharePicker } from '~/features/call/SharePicker';
+import { VideoQuality } from '~/features/call/VideoQuality';
 import { CallEars, canListen } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
 import { TopBar } from '~/features/call/TopBar';
@@ -40,7 +41,7 @@ export const Route = createFileRoute('/call/$code')({ component: Call });
 
 const clog = log.child({ component: 'call' });
 const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable]');
-type Pop = 'mic' | 'cam' | 'cc' | 'cap' | 'more' | 'devices' | null;
+type Pop = 'mic' | 'cam' | 'cc' | 'cap' | 'more' | 'devices' | 'quality' | null;
 const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
@@ -947,12 +948,19 @@ function InCall({ session }: { session: CallSession }) {
       <button type="button" className="sp-btn is-strong" onClick={playSound}>Play sound</button>
     </div>
   );
+  // Hidden by this person's own choice, remembered in this browser: say so, or everyone just seems to have their camera off.
+  const camsPill = m.receiveVideo === 'off' && (
+    <div className="ic-spill"><Icon name="videoOff" size={15} /><span className="tx2">Cameras are hidden for you</span>
+      <button type="button" className="sp-btn is-strong" onClick={() => media.setReceiveVideo('auto')}>Show cameras</button>
+    </div>
+  );
   const bar = open
-    ? (organizer ? soundPill || null : <>{soundPill}{roomBar}{sharePill}</>)
-    : (m.screen || spotlight || alone || soundPill || movingBar) ? (
+    ? (organizer ? (soundPill || camsPill ? <>{soundPill}{camsPill}</> : null) : <>{soundPill}{camsPill}{roomBar}{sharePill}</>)
+    : (m.screen || spotlight || alone || soundPill || movingBar || camsPill) ? (
       <>
         {soundPill}
         {movingBar}
+        {camsPill}
         {alone}
         {sharePill}
         {spotlight && (
@@ -1046,18 +1054,22 @@ function InCall({ session }: { session: CallSession }) {
             {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={shownPanel === 'rooms' || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
             <DockButton icon="notesPen" label="Notes" tip="Notes" on={shownPanel === 'notes' || shownPanel === 'transcript' || shownPanel === 'ask'} onClick={() => setPanel((x) => (x === 'notes' || x === 'transcript' || x === 'ask' ? null : 'notes'))} />
             <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={shownPanel === 'chat'} badge={unread} onClick={() => flip('chat')} />
-            <Popover open={pop === 'more' || pop === 'devices'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More" className={pop === 'devices' ? 'ic-dmenu ic-devices' : 'ic-menu'}
-              anchor={<DockButton icon="more" label="More: catch up, settings" on={pop === 'more' || pop === 'devices'} />}>
+            <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
+              className={pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : 'ic-menu'}
+              anchor={<DockButton icon="more" label="More: catch up, settings" on={pop === 'more' || pop === 'devices' || pop === 'quality'} />}>
               {pop === 'devices' ? (
                 <>
                   <MicOptions media={media} m={m} devices={devices} live onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
                   <div className="ic-msep" />
                   <CamOptions media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} preview={false} onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
                 </>
+              ) : pop === 'quality' ? (
+                <VideoQuality media={media} m={m} />
               ) : (
                 <>
                   <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on the last few minutes</span></button>
                   <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
+                  <button type="button" className="mi" onClick={() => setPop('quality')}><Icon name="sliders" size={17} /><span className="t">Video quality</span></button>
                   {roomsHere && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
                 </>
               )}

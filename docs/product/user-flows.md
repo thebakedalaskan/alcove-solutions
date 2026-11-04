@@ -138,7 +138,10 @@ dock at the bottom.
   microphone or camera on by itself during a call. Then **Share** (a tab, a window or a screen; the browser's own
   picker asks which one), **Raise hand**, **Captions** (with an arrow to pick the caption language), breakout
   rooms (once someone else is in the call), **Notes**, **Chat** (**C**), **More** (Catch up, Audio and video
-  settings) and **Leave**.
+  settings, Video quality) and **Leave**. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
+  where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
+  screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
+  are remembered in this browser, and shared screens are never made smaller.
 - **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
   screen. A tile's **⋯** menu says what each choice changes and the key for it: **Pin for me** (up to six people,
   who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for

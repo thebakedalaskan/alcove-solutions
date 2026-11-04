@@ -9,7 +9,7 @@
  * wanted it; in the call, nothing turns a microphone or camera on by itself: after a gap with none, it waits for
  * its button.
  */
-import { errorCode, type AudioPiece } from '@alcove/api';
+import { errorCode, type AudioPiece, type VideoReceive, type VideoSend } from '@alcove/api';
 import { log } from '~/lib/log';
 import { canChooseSpeaker, enumerate, permissions, plainName, readPrefs, rememberDevice, watchPermissions, type Capture, type Permission } from './devices';
 import { canShareScreen, shareProblem, type ShareProblem } from './share';
@@ -52,6 +52,9 @@ export interface MediaSnapshot {
   /** What's being shared: the browser's name for it, and whether it's a tab, a window or a screen. */
   screenLabel: string | null;
   screenSurface: ShareSurface | null;
+  /** The most camera video this browser sends, and how it receives everyone else's (see VideoQuality). */
+  sendVideo: VideoSend;
+  receiveVideo: VideoReceive;
 }
 
 /** What someone chooses to share. The browser's own picker then asks which one. */
@@ -66,7 +69,15 @@ export type ShareStart = { ok: true; surface: ShareSurface; sound: 'shared' | 'l
 interface ShareSound extends MediaTrackConstraints { restrictOwnAudio?: boolean }
 const SHARE_SOUND: ShareSound = { restrictOwnAudio: true };
 
-const VIDEO = { width: { ideal: 1280 }, height: { ideal: 720 } } as const;
+/**
+ * What the camera is asked for, by the most someone sends. The browser picks the nearest its camera has; LiveKit
+ * then sends that and smaller copies, so people with small tiles or slow networks get a smaller one.
+ */
+const VIDEO: Record<VideoSend, MediaTrackConstraints> = {
+  standard: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+  hd: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+  saver: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 } }
+};
 const audioFor = (noiseSuppression: boolean): MediaTrackConstraints => ({ echoCancellation: true, noiseSuppression });
 const deviceOf = (t: MediaStreamTrack | null) => t?.getSettings().deviceId ?? null;
 /** Blur that the browser can switch both ways: a camera that only reports the system's setting can't be changed from here. */
@@ -115,7 +126,8 @@ export class LocalMedia {
   private snap: MediaSnapshot = {
     camera: null, screen: null, mic: true, cam: true, micId: null, camId: null, speakerId: null,
     access: { mic: { permission: 'unknown', problem: null }, cam: { permission: 'unknown', problem: null } }, changes: [],
-    noiseReduction: readPrefs().noiseReduction ?? true, canBlur: false, blur: false, screenLabel: null, screenSurface: null
+    noiseReduction: readPrefs().noiseReduction ?? true, canBlur: false, blur: false, screenLabel: null, screenSurface: null,
+    sendVideo: readPrefs().sendVideo ?? 'standard', receiveVideo: readPrefs().receiveVideo ?? 'auto'
   };
   private listeners = new Set<() => void>();
   private audio: MediaStreamTrack | null = null;
@@ -231,9 +243,9 @@ export class LocalMedia {
     const micPick = prefs.mic;
     const camPick = this.camChoice ?? prefs.cam;
     const anyMic = audioFor(this.snap.noiseReduction);
-    const anyCam: MediaTrackConstraints = { ...VIDEO, facingMode: 'user' };
+    const anyCam: MediaTrackConstraints = { ...VIDEO[this.snap.sendVideo], facingMode: 'user' };
     const audio: MediaTrackConstraints | false = ask.audio ? (micPick ? { ...anyMic, deviceId: { ideal: micPick } } : anyMic) : false;
-    const video: MediaTrackConstraints | false = ask.video ? (camPick ? { ...VIDEO, deviceId: { ideal: camPick } } : anyCam) : false;
+    const video: MediaTrackConstraints | false = ask.video ? (camPick ? { ...VIDEO[this.snap.sendVideo], deviceId: { ideal: camPick } } : anyCam) : false;
     if (!audio && !video) return { quick: false };
     const gum = async (a: MediaTrackConstraints | false, v: MediaTrackConstraints | false): Promise<MediaStream> => {
       try {
@@ -441,7 +453,7 @@ export class LocalMedia {
     if (gen !== this.gen) return false;
     let next: MediaStreamTrack | undefined;
     try {
-      next = (await navigator.mediaDevices.getUserMedia({ video: { ...VIDEO, ...(deviceId ? { deviceId } : { facingMode: 'user' }) } })).getVideoTracks()[0];
+      next = (await navigator.mediaDevices.getUserMedia({ video: { ...VIDEO[this.snap.sendVideo], ...(deviceId ? { deviceId } : { facingMode: 'user' }) } })).getVideoTracks()[0];
     } catch (e) {
       mlog.warn('could not switch cameras', { err: e, automatic: Boolean(say) });
       if (gen !== this.gen) return false;
@@ -614,6 +626,32 @@ export class LocalMedia {
     rememberDevice('noiseReduction', on);
     this.set({ noiseReduction: on });
     try { await this.audio?.applyConstraints({ ...audioFor(on), ...(this.snap.micId ? { deviceId: { exact: this.snap.micId } } : {}) }); } catch (e) { mlog.warn('could not change noise reduction', { err: e, on }); }
+  }
+  /**
+   * The most camera video to send, changed on the camera in use: smaller is the browser scaling it, larger asks the
+   * camera for at least that size (a running camera grows only when it must), else for the nearest it has. Only then
+   * is the choice made, so the call sends the camera again with that size's layers. Remembered in this browser.
+   */
+  async setSendVideo(send: VideoSend): Promise<void> {
+    rememberDevice('sendVideo', send);
+    const t = this.video;
+    if (t?.readyState === 'live') {
+      const want = VIDEO[send];
+      const atLeast: MediaTrackConstraints = { ...want, width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } };
+      try { await t.applyConstraints(send === 'hd' ? atLeast : want); } catch {
+        try { await t.applyConstraints(want); } catch (e) { mlog.warn('could not change the camera’s size', { err: e, send }); }
+      }
+      if (this.snap.blur) await this.applyBlur(true);
+    }
+    this.set({ sendVideo: send });
+    const { width, height } = t?.getSettings() ?? {};
+    mlog.info('video sent changed', { send, width: width ?? null, height: height ?? null });
+  }
+  /** How everyone else's cameras come in: as sharp as each tile needs, capped low to save data, or not at all. Remembered in this browser. */
+  setReceiveVideo(receive: VideoReceive): void {
+    rememberDevice('receiveVideo', receive);
+    this.set({ receiveVideo: receive });
+    mlog.info('video received changed', { receive });
   }
   /** Background blur, where the browser can switch it (Chrome with the system's camera effects). */
   async setBlur(on: boolean): Promise<void> {
