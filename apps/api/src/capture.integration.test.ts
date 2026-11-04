@@ -253,7 +253,7 @@ describe('what a call captures', () => {
     await host.setUnavailable(['recording', 'transcript']);
     const host2 = await (await account(orgEmail)).api.calls.join(c, { mic: true, cam: false });
     expect(host2.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'on' }, transcript: { mode: 'on' } });
-    expect(code(await host.setUnavailable(['recording']).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await host.setUnavailable(['recording']).catch((e: unknown) => e))).toBe('conflict');
     await host2.leave();
   });
 

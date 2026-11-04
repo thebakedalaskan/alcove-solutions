@@ -199,7 +199,7 @@ describe('shared screens in the notes', () => {
     expect(await fails(guest.shareFrame(frameOf('TR_notarealshare1', CHART)))).toEqual(['forbidden', NOT_YOURS]);
     // Nor from someone still asking to join, who isn't in the call.
     const asking = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });
-    expect(await fails(asking.shareFrame(frameOf(share, CHART)))).toEqual(['forbidden', 'Wait until the organizer lets you in.']);
+    expect(await fails(asking.shareFrame(frameOf(share, CHART)))).toEqual(['forbidden', 'Wait until the host lets you in.']);
     // Only JPEGs of a sensible size, with the share named, refused before anything is kept.
     const jpeg = screenJpeg(CHART);
     expect((await sendFrame(guest, jpeg, { 'x-alcove-share': 'not-a-share' })).status).toBe(400);

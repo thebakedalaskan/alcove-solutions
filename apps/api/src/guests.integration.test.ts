@@ -78,7 +78,7 @@ describe('the call’s link, before joining', () => {
     const invited = await account(invitedEmail);
     const stranger = await account();
     expect(await anyone.calls.card(c)).toEqual({
-      title: expect.any(String), organizerName: org.session.user.name, hostHere: false, locked: false, notes: 'off', capture: null, ended: false,
+      title: expect.any(String), organizerName: org.session.user.name, hostHere: false, standIn: null, locked: false, notes: 'off', capture: null, ended: false,
       you: 'guest', signInForNotes: ['google', 'microsoft', 'sso']
     });
     expect((await invited.api.calls.card(c)).you).toBe('invited');
