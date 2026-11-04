@@ -15,3 +15,4 @@ export * from './components/call';
 export * from './components/capture';
 export * from './components/app';
 export * from './components/guidance';
+export * from './components/qr';
