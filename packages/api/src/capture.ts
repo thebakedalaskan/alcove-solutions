@@ -2,10 +2,10 @@
  * What Alcove captures in a call (docs: Calls and recordings › What's captured). One state for the whole call, the
  * same for everyone in it and, without names, for anyone asking to join: what each kind of capture is doing, who
  * changed it and when, the stretches with nothing captured, and who asked for notes. While notes are on, what
- * everyone says goes to the notes, through the host's browser (the organizer's, or a stand-in's). The organizer turns notes on and off, and
- * pauses and resumes all of it; the server refuses whatever arrives while it isn't on. Each breakout room has its
- * own state too, for the people in it: a room captures at most what the call does, and the organizer can pause one
- * room on its own.
+ * everyone says goes to the notes: in the main room through the host's browser (the organizer's, or a stand-in's), in
+ * each breakout room through its scribe's. The organizer turns notes on and off, and pauses and resumes all of it; the
+ * server refuses whatever arrives while it isn't on. Each breakout room has its own state too, for the people in it: a
+ * room captures at most what the call does, and the organizer can pause one room on its own.
  */
 import { z } from './zod';
 import { CaptureGapSchema, IDSchema, ISODateSchema } from './types';
@@ -39,11 +39,11 @@ export const NotesRequestSchema = z.object({ id: IDSchema, participantId: z.stri
 export type NotesRequest = z.infer<typeof NotesRequestSchema>;
 
 /**
- * What's captured in the breakout room you're in (for the organizer, the one it's visiting). A room is never recorded
- * and nothing said in it goes into the notes: what's said there is transcribed while the organizer is in it, shown
- * only to the people there and deleted when it closes. It captures while the call's notes are on and the organizer
- * hasn't paused the room. Each part says when it last changed and who changed it, the call's changes and the room's
- * together; `gaps` are the stretches since the room opened with nothing captured in it.
+ * What's captured in the breakout room you're in (for the organizer, the one it's visiting). A room is never recorded.
+ * What's said there is transcribed by its scribe's browser, shown live only to the people there, and goes into the
+ * call's notes as the room's own section when the call ends. It captures while the call's notes are on and the
+ * organizer hasn't paused the room. Each part says when it last changed and who changed it, the call's changes and the
+ * room's together; `gaps` are the stretches since the room opened with nothing captured in it.
  */
 export const RoomCaptureSchema = z.object({
   id: IDSchema,
@@ -52,7 +52,12 @@ export const RoomCaptureSchema = z.object({
   transcript: CapturePartSchema,
   ai: CapturePartSchema,
   screen: CapturePartSchema,
-  gaps: z.array(CaptureGapSchema)
+  gaps: z.array(CaptureGapSchema),
+  /**
+   * The participant ID of the room's scribe: the one browser in the room that hears it and sends what's said for the
+   * room's section of the call's notes (an invited person's). Null while nobody in the room can.
+   */
+  scribe: z.string().nullable().default(null)
 });
 export type RoomCapture = z.infer<typeof RoomCaptureSchema>;
 

@@ -422,14 +422,20 @@ export function createApp(d: Deps) {
   app.get('/v1/live/calls/:id/room', async (c) => c.json(await calls.roomToken(c.get('viewer'), c.req.param('id'))));
   /* The notes, from the browser of whoever hosts: the recording and the speech it hears. */
   app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(hostOnly(c), c.req.param('id'), await piece(c))));
+  /*
+   * Speech for a call's transcript: from the browser of whoever hosts for the main room, or from a breakout room's scribe
+   * for its room, someone invited who was sent there. A guest with the link is never either; the call takes the rest only
+   * from whoever hears the part of the call it was said in.
+   */
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
-    const v = hostOnly(c);
+    const v = c.get('viewer');
+    if (!v.inCall || v.role === 'guest') throw refused(v, 'host');
     const speaker = speakerOf(c);
-    voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
-    speechLimiter(v.organizer.ownerId, 'transcribe');
     // When the speech began, on this server's clock: measured as the request arrives, before its audio is read.
     const began = Date.now() - agoOf(c);
-    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker, began));
+    // Counted once the call has said it's this browser's to send: speech it refuses can't use up the organizer's allowance.
+    const count = () => { voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe'); speechLimiter(v.organizer.ownerId, 'transcribe'); };
+    return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker, began, count));
   });
   /*
    * Shared screens: a frame of someone's own share, from their own browser, while screen notes are on. Anyone let in

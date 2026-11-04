@@ -152,7 +152,7 @@ Read `docs/engineering/logging-and-errors.md`.
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `Toast`,
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
-  `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `NoteTile`, `PersonCard`, `Timeline` with
+  `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Timeline` with
   `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
   `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.

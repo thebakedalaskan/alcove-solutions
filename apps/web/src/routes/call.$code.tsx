@@ -230,12 +230,13 @@ function InCall({ session }: { session: CallSession }) {
   }, [room, self]);
 
   /*
-   * The call's notes, in the host's browser (the organizer's, or a stand-in's), from what it hears: its own microphone
+   * The call's notes. In the host's browser (the organizer's, or a stand-in's), from what it hears: its own microphone
    * and the people in its part of the call, as their tracks arrived (nobody's volume here, nor the speaker, changes
-   * that). The recorder mixes them into one recording, so playing the notes back sounds like the call; the live
-   * transcript hears each on its own, under their own name. While the organizer visits a breakout room the recording is
-   * silent (hush, below), and the room's lines are live only: the call's notes have the main room's talk. Both run
-   * while notes are on; paused or off, they stop and drop whatever wasn't sent: the server refuses it anyway.
+   * that). The recorder mixes them into one recording, so playing the notes back sounds like the call; while the host is
+   * in a breakout room the recording is silent (hush, below). The live transcript hears each voice on its own, under
+   * their own name: the host's browser in the main room, and in each breakout room its scribe's, a browser the call picks
+   * among the people sent there, whose lines go into the call's notes as the room's own section. Both run while notes are
+   * on; paused or off, they stop and drop whatever wasn't sent: the server refuses it anyway.
    */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError, setCantRecord);
@@ -260,22 +261,44 @@ function InCall({ session }: { session: CallSession }) {
   const settledHere = crypto.status === 'in';
   // Nobody is heard in a breakout room the organizer paused: what was held is dropped, and the segment carries on.
   const roomHeld = state.capture.room?.mode === 'paused';
-  // Everyone else is heard whether or not the organizer has a microphone of their own.
+  // This browser hears the part of the call it's in for the transcript: the host's the main room, a room's scribe its room.
+  const scribe = !hosting && state.capture.room !== null && state.capture.room.scribe === self;
+  const hearsHere = scribe || (hosting && crypto.place === MAIN_PLACE);
+  // A stand-in hosting from inside a breakout room (everyone invited was in one): nothing can hear the main room until
+  // rooms close, and whoever hosts is never a room's scribe. The organizer visiting a room goes back when they choose.
+  const hostingFromRoom = hosting && !organizer && crypto.place !== MAIN_PLACE;
+  // Everyone else is heard whether or not this browser has a microphone of its own. A browser that stops hearing its
+  // part of the call (the host going into a room, a scribe moved or replaced) sends what it heard there first.
+  // Once this browser is leaving, or the host is ending the call or the organizer turning notes off, the last speech is
+  // on its way: nothing starts listening again meanwhile, as people drop out of the room or anyone mutes.
+  const winding = leaving || ended !== null || turningOff;
   useEffect(() => {
     const e = ears.current;
     if (!e) return;
-    if (capturing && !roomHeld) e.follow(segment, settledHere ? [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))] : []);
-    else if (!on || !hosting) e.stop();
-    else if (roomHeld) e.quiet();
-  }, [capturing, hosting, on, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
+    if (!on) { e.stop(); return; }
+    if (winding) return;
+    if (roomHeld) e.quiet();
+    else e.follow(segment, live && hearsHere && settledHere ? [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))] : []);
+  }, [on, winding, live, segment, micTrack, room, self, heardKey, settledHere, roomHeld, hearsHere]);
+  // A scribe is told: their browser sends what's said in their room, for its section of the call's notes.
+  const wasScribe = useRef(false);
+  useEffect(() => {
+    if (scribe && !wasScribe.current && on) toast('Your browser now hears this room for the notes: what’s said here goes into the call’s notes as this room’s section', { icon: 'notesPen', ms: 6000 });
+    wasScribe.current = scribe;
+  }, [scribe, on, toast]);
+  const wasFromRoom = useRef(false);
+  useEffect(() => {
+    if (hostingFromRoom && !wasFromRoom.current && on) toast('You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back', { icon: 'notesPen', ms: 6000 });
+    wasFromRoom.current = hostingFromRoom;
+  }, [hostingFromRoom, on, toast]);
   useEffect(() => () => ears.current?.stop(), []);
   /*
    * What this browser can't capture while notes are on, which everyone is told: the recording when the recorder
    * couldn't start or failed (without a microphone of the organizer's own it still records everyone else), the
-   * transcript without a way to listen. It's said again whenever it changes, and after every change to notes, which
-   * forgets it.
+   * transcript without a way to listen, and both while a stand-in hosts from a breakout room. It's said again whenever
+   * it changes, and after every change to notes, which forgets it.
    */
-  const cant = (['recording', 'transcript'] as const).filter((p) => (p === 'recording' ? cantRecord : cantListen));
+  const cant = (['recording', 'transcript'] as const).filter((p) => hostingFromRoom || (p === 'recording' ? cantRecord : cantListen));
   const cantKey = cant.join(' ');
   const toldKey = (['recording', 'transcript'] as const).filter((p) => state.capture[p].mode === 'unavailable').join(' ');
   useEffect(() => {
@@ -285,9 +308,9 @@ function InCall({ session }: { session: CallSession }) {
     session.setUnavailable(cant).catch((e: unknown) => clog.warn('could not say what this browser can’t capture', { err: e, parts: cantKey || 'none' }));
   }, [hosting, live, on, cantKey, toldKey, session, crypto.status]);
   /*
-   * The organizer moving to another part of the call ends every clip in progress (the server places each where its
-   * speaker was when it began, so none may span two parts), and the recording that goes into the notes hears nothing
-   * while it's in a breakout room: the call's notes have the main room's talk.
+   * Moving to another part of the call ends every clip in progress (the server places each where its speaker was when
+   * it began, so none may span two parts), and the recording that goes into the notes hears nothing while the host is
+   * in a breakout room: a room's talk reaches the notes only through its own transcript.
    */
   useEffect(() => {
     ears.current?.mark();
@@ -454,7 +477,7 @@ function InCall({ session }: { session: CallSession }) {
    */
   const moving = useMoveOut(session, () => ({ mic: media.getSnapshot().mic, cam: media.getSnapshot().cam }), async () => {
     over.current = true;
-    if (hosting) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
+    await Promise.all([hosting ? recorder.current?.flush() : undefined, ears.current?.flush()]);
     recorder.current?.stop();
     ears.current?.stop();
     session.close();
@@ -543,11 +566,13 @@ function InCall({ session }: { session: CallSession }) {
   const wasOpen = useRef(!!open);
   useEffect(() => {
     if (wasOpen.current && !open) {
-      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast('Everyone is back in the main room, where notes are on. The notes say who was in which room, not what was said there.', { icon: 'notesPen' }); }
+      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast('Everyone is back in the main room, where notes are on. Each room’s talk goes into the call’s notes as its own section.', { icon: 'notesPen' }); }
       else toast('Everyone is back from the rooms', { icon: 'door' });
     } else if (!wasOpen.current && open && !organizer) {
       const minutes = Math.max(1, Math.round((open.until - open.from) / 60));
-      toast(roomName ? `You’re in ${roomName} for ${minutes} min` : `Rooms are open for ${minutes} min. You’re in the main room.`, { icon: 'door', ms: 5000 });
+      // Said plainly when notes are on: a room's talk is transcribed, and goes into the call's notes as its section.
+      const noted = on ? ' What’s said there is transcribed for the call’s notes, as the room’s own section.' : '';
+      toast(roomName ? `You’re in ${roomName} for ${minutes} min.${noted}` : `Rooms are open for ${minutes} min. You’re in the main room.`, { icon: 'door', ms: 6000 });
     }
     wasOpen.current = !!open;
   }, [open, on, organizer, roomName, toast]);
@@ -570,8 +595,7 @@ function InCall({ session }: { session: CallSession }) {
     if (organizer || was === null || organizerRoom === null || was === organizerRoom) return;
     const who = organizerPerson ? callName(organizerPerson) : 'The organizer';
     // Coming into a room whose notes are on starts what's said there being transcribed: they're told so.
-    const heardHere = myRoom >= 0 && notesAreOn(capHere.mode) ? '. What’s said here is transcribed while they’re here' : '';
-    if (organizerRoom === myRoom) toast(myRoom >= 0 ? `${who} joined your room${heardHere}` : `${who} is back in the main room`, { icon: 'door' });
+    if (organizerRoom === myRoom) toast(myRoom >= 0 ? `${who} joined your room` : `${who} is back in the main room`, { icon: 'door' });
     else if (was === myRoom) toast(myRoom >= 0 ? `${who} left your room` : `${who} went to ${state.breakouts.open?.rooms[organizerRoom]?.name ?? 'a room'}`, { icon: 'door' });
   }, [organizerRoom, myRoom, organizer, organizerPerson, state.breakouts.open, capHere.mode, toast]);
   /* The organizer hears once when a room asks for help, and can go straight there. */
@@ -918,15 +942,16 @@ function InCall({ session }: { session: CallSession }) {
 
   /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
   /*
-   * The host's last audio and speech go before the call ends: the server refuses them after. The recorder is paused,
-   * not stopped, until it has: if ending fails, the same recorder carries on, so its pieces stay in order in the same
-   * segment (a new one would number its pieces from the start again, and the server keeps the first of each).
+   * The last audio and speech go before the call ends or this browser leaves it: the server refuses them after. That's
+   * the host's, and a breakout room scribe's for its room. The recorder is paused, not stopped, until it has: if ending
+   * fails, the same recorder carries on, so its pieces stay in order in the same segment (a new one would number its
+   * pieces from the start again, and the server keeps the first of each).
    */
   const end = async () => {
     setLeaving(true);
     const rec = hosting ? recorder.current : null;
     try {
-      if (hosting) await Promise.all([rec?.pause(), ears.current?.flush()]);
+      await Promise.all([rec?.pause(), ears.current?.flush()]);
       const r = await session.leave();
       rec?.discard();
       over.current = true;
@@ -1034,7 +1059,7 @@ function InCall({ session }: { session: CallSession }) {
   const privacyLine = [
     open ? 'Each room has its own encryption keys, so video, audio and chat reach only the people in the same room.'
       : on || mode === 'paused' ? 'Video, audio and chat are encrypted end to end.' : 'Video, audio and chat are encrypted end to end between the people here.',
-    on ? `While notes are on, ${state.capture.screen.mode === 'on' ? 'what everyone says and what anyone shares on screen go' : 'what everyone says also goes'} to the notes, written in confidential compute.${open ? ' What’s said or shared in a room stays out of them.' : ''}`
+    on ? `While notes are on, ${state.capture.screen.mode === 'on' ? 'what everyone says and what anyone shares on screen go' : 'what everyone says also goes'} to the notes, written in confidential compute.${open ? ' What’s said in each breakout room goes into them as that room’s own section; what’s shared there doesn’t.' : ''}`
       : mode === 'paused' ? 'Notes are paused, so nothing goes to the notes.' : ''
   ].filter(Boolean).join(' ');
 

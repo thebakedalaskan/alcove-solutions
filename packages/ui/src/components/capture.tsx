@@ -57,13 +57,14 @@ const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName
 /**
  * What a kind of capture does now: what the browser taking the notes can't capture says so, the notes model keeps reading
  * what was transcribed while notes are off, and shared screens say when they're read. In a breakout room nothing is
- * recorded or read from shared screens, what's said is heard only while the organizer is there, and nothing goes into
- * the notes.
+ * recorded or read from shared screens; what's said is heard by one browser there, its scribe, for the room's own
+ * section of the notes.
  */
 function detailOf(p: (typeof PARTS)[number], c: CaptureState, taker: string): string {
   if (c.room && p.key === 'recording') return 'Never in a breakout room';
-  if (c.room && p.key === 'transcript' && c.transcript.mode !== 'unavailable') return 'Only while the organizer is here';
-  if (c.room && p.key === 'ai') return 'Catching up here, never the notes';
+  if (c.room && p.key === 'transcript' && c.transcript.mode !== 'unavailable') return 'By one browser here, for this room’s notes';
+  if (c.room && p.key === 'transcript') return 'Nobody here can transcribe right now';
+  if (c.room && p.key === 'ai') return 'Catching up here, and this room’s notes';
   if (c.room && p.key === 'screen') return 'Never read in a breakout room';
   if (p.key === 'ai' && c.ai.mode === 'on' && c.transcript.mode === 'off') return 'Reads what was transcribed earlier';
   if (p.key === 'recording' && c.recording.mode === 'unavailable') return 'Can’t record right now';

@@ -4,8 +4,9 @@
  * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording
  * and whose speech it is, so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
  * model the clip was sent to. In a call each line says who said it, the breakout room it was said in (if any), and, while
- * rooms are open, who may read it: the people who were in that part of the call when it was said. A room's lines go when
- * the room closes. When the recording stops, the main room's lines and that evidence move into the note and the rows go.
+ * rooms are open, who may read it: the people who were in that part of the call when it was said. A room's lines stay,
+ * sealed and read live only by the people who were there, until the call ends. When the recording stops, the main
+ * room's lines move into the note, each room's into its own section, with that evidence, and the rows go.
  *
  * Once the clips Whisper heard surely agree on the call's language, the clips of everyone it has been asked about
  * go in it, so short and accented clips aren't taken for another, with a prompt of who's in the call and the words
@@ -92,27 +93,27 @@ const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, 
  * Whose speech a call's clip is (a participant ID), the breakout room it was said in, if any, who may read it, if not
  * everyone in the call, and when its speech began (ms, on this server's clock), so each line knows when it was said.
  */
-export interface Heard { speaker: string; room?: string | undefined; readers?: string[] | undefined; began: number }
 /**
- * Asked inside the transaction that keeps a clip or a translation, holding the call's row: whether what it belongs
- * to is still there. False drops it (its room closed while it was being transcribed, and that room's lines are gone).
+ * Who said a clip and where: `began` is when the speech began (ms, on this server's clock), and `atMs`, when given,
+ * where the clip starts in its segment by that clock, for a browser whose own count isn't the recording's (a breakout
+ * room's scribe). A clip is still known by the start its browser gave it, so a retry is kept once.
  */
-export type Still = (db: Db) => Promise<boolean>;
-
+export interface Heard { speaker: string; room?: string | undefined; readers?: string[] | undefined; began: number; atMs?: number | undefined }
 /**
  * Transcribes one clip into a note's live transcript. A clip heard before is skipped; one that comes back after the
- * recording stopped, or after the room it was said in closed, is dropped: its note is finished, or its room's lines
- * are gone.
+ * recording stopped is dropped: its note is finished. A breakout room's clip that comes back after the room closed is
+ * kept: it was said while the room was open, and goes into the room's section of the notes.
  */
-export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefined, still?: Still | undefined): Promise<void> {
+export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefined): Promise<void> {
   const tag = tagOf(o, t.noteId, clip.segment, clip.atMs, by?.speaker ?? '');
   const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, atMs: clip.atMs, durationMs: clip.durationMs, bytes: clip.wav.length, room: Boolean(by?.room) };
   const seen = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = $3', [o.ownerId, t.noteId, tag]);
   if (seen) { tlog.debug('clip already transcribed', ctx); return; }
   const [segs, recent] = await Promise.all([segments(o, t.recordingId), newest(o, o.pool, t.noteId, RECENT)]);
   // Lines are placed in the whole recording the way the note's player counts it: earlier segments first, then where
-  // the clip says it starts in its own, so they keep their time however late they arrive.
-  const at = segs.filter((s) => s.index < clip.segment).reduce((n, s) => n + s.seconds, 0) + clip.atMs / 1000;
+  // the clip starts in its own (by the server's clock for a breakout room's, see Heard), so they keep their time however
+  // late they arrive.
+  const at = segs.filter((s) => s.index < clip.segment).reduce((n, s) => n + s.seconds, 0) + (by?.atMs ?? clip.atMs) / 1000;
   const callIn = languageFor(recent, by?.speaker, clip.durationMs);
   // With the call's language only, a prompt of who's in the call and the words said before (see languageFor), in
   // the same part of the call, as the server placed this clip: a breakout room's words go to Whisper only with that
@@ -126,9 +127,6 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
   }));
   const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}) };
   const kept = await tx(o.pool, async (c) => {
-    // Whatever the clip belongs to is checked again now, after the seconds transcribing took: the call's row first
-    // (closing a room holds it), then the recording, the order stopping takes them in.
-    if (still && !(await still(c))) return 'gone' as const;
     // Stopping takes this row's lock to move the transcript into the note. Sharing it here means
     // a clip either lands before the move, or sees the recording stopped and stays out.
     const r = await maybeOne(c, z.object({ state: z.string() }), 'SELECT state FROM recordings WHERE owner_id = $1 AND recording_id = $2 FOR SHARE', [o.ownerId, t.recordingId]);
@@ -139,7 +137,7 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
     return 'kept' as const;
   });
   if (kept === 'kept') tlog.debug('clip transcribed into the live transcript', { ...ctx, lines: lines.length });
-  else tlog.info(kept === 'gone' ? 'clip arrived after its room closed; dropped' : 'clip arrived after the recording stopped; dropped', { ...ctx, lines: lines.length });
+  else tlog.info('clip arrived after the recording stopped; dropped', { ...ctx, lines: lines.length });
 }
 
 /**
@@ -259,24 +257,6 @@ export async function latest(o: Owner, db: Db, noteId: string, n: number, keep: 
 }
 
 /**
- * Deletes what was heard in breakout rooms that have closed, and those lines in other languages: a room's lines
- * live only as long as the room. Returns how many clips went.
- */
-export async function dropRooms(o: Owner, db: Db, noteId: string, rooms: string[]): Promise<number> {
-  if (!rooms.length) return 0;
-  const gone = (await clips(o, db, noteId)).filter((c) => c.lines.some((l) => l.room !== undefined && rooms.includes(l.room)));
-  if (!gone.length) return 0;
-  const lineIds = new Set(gone.flatMap((c) => c.lines.map((l) => l.id)));
-  await exec(db, 'DELETE FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = ANY($3::bytea[])', [o.ownerId, noteId, gone.map((c) => Buffer.from(c.tag))]);
-  const found = await rows(db, z.object({ line_tag: bytea, translation_ciphertext: bytea }), 'SELECT line_tag, translation_ciphertext FROM transcript_translations WHERE owner_id = $1 AND note_item_id = $2', [o.ownerId, noteId]);
-  const k = key(o, noteId);
-  const stale = found.filter((r) => lineIds.has(openJson(k, translationHeader(o, noteId, r.line_tag), r.translation_ciphertext, Translated).lineId)).map((r) => Buffer.from(r.line_tag));
-  if (stale.length) await exec(db, 'DELETE FROM transcript_translations WHERE owner_id = $1 AND note_item_id = $2 AND line_tag = ANY($3::bytea[])', [o.ownerId, noteId, stale]);
-  tlog.info('a closed room’s lines deleted', { noteId, clips: gone.length, translations: stale.length });
-  return gone.length;
-}
-
-/**
  * Lines as the app shows them: each said by whoever `speakerOf` names (nobody, in a room recording), in the room
  * `roomOf` names, with what the transcript can't vouch for: words Whisper was unsure of, and a speaker in doubt.
  */
@@ -370,13 +350,12 @@ export async function translations(o: Owner, noteId: string, lineIds: string[], 
 }
 
 /**
- * Keeps lines translated into `language`, sealed, while the note is being recorded. Once the recording has stopped,
- * or the lines' room has closed (`still`), they aren't kept: the live transcript they belong to is gone.
+ * Keeps lines translated into `language`, sealed, while the note is being recorded. Once the recording has stopped
+ * they aren't kept: the live transcript they belong to is gone.
  */
-export async function keepTranslations(o: Owner, t: Target, language: string, lines: { lineId: string; text: string }[], still?: Still | undefined): Promise<void> {
+export async function keepTranslations(o: Owner, t: Target, language: string, lines: { lineId: string; text: string }[]): Promise<void> {
   if (!lines.length) return;
   await tx(o.pool, async (c) => {
-    if (still && !(await still(c))) return;
     const r = await maybeOne(c, z.object({ state: z.string() }), 'SELECT state FROM recordings WHERE owner_id = $1 AND recording_id = $2 FOR SHARE', [o.ownerId, t.recordingId]);
     if (!r || r.state === 'stopped') return;
     for (const l of lines) {

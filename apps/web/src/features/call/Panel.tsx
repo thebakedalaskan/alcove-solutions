@@ -11,7 +11,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { captureHere } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
-import { notesBrowser, organizerName, type CaptureControls } from './Capture';
+import { notesBrowser, organizerName, roomScribe, type CaptureControls } from './Capture';
 import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
@@ -105,6 +105,10 @@ function Summary({ text }: { text: string }) {
   );
 }
 
+/** What's said in a breakout room nobody's browser can hear, and one the organizer paused on its own. */
+const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right now, so nothing new is transcribed.';
+const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
+
 export function NotesView({ state, live, getting, problems, controls, onSeek, onTranscript }: {
   state: CallState; live: LiveNotes;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
@@ -114,9 +118,15 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
   controls: CaptureControls;
   onSeek: (e: TranscriptMoment) => void; onTranscript: () => void;
 }) {
+  // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
+  // sign says: in a breakout room, the room can be heard while the main room can't, and the other way round.
   const c = state.capture;
+  const here = captureHere(c);
   const on = notesAreOn(c.mode);
   const paused = c.mode === 'paused';
+  const unavailable = here.mode === 'unavailable';
+  const pausedHere = here.mode === 'paused';
+  const roomHeld = pausedHere && !paused;
   const host = state.isOrganizer;
   const asking = !host && c.asked?.state === 'asking';
   const organizer = organizerName(state);
@@ -132,8 +142,8 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
   return (
     <>
       <div className="ic-nh">
-        <CaptureSign mode={c.mode} requested={!on && c.requests.length > 0} />
-        <span className="m">{c.mode === 'unavailable' ? 'Nothing is being captured' : on ? 'Written as people talk' : paused ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+        <CaptureSign mode={here.mode} requested={!on && c.requests.length > 0} />
+        <span className="m">{unavailable ? 'Nothing is being captured' : notesAreOn(here.mode) ? 'Written as people talk' : pausedHere ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
         <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
           anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options"><Icon name="more" size={18} /></button>}>
           {host && on && item('pause', 'Pause notes', controls.pause)}
@@ -146,15 +156,20 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
         </Popover>
       </div>
       <div className="ic-scroll">
-        {c.mode === 'unavailable' && n && (
-          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{c.away
+        {on && state.isHost && !host && c.room && (
+          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back.</Notice></div>
+        )}
+        {unavailable && n && (
+          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{c.room ? ROOM_UNHEARD : c.away
             ? `${notesBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
             : `${notesBrowser(state)} can’t record or listen right now, so nothing new is captured.${state.isHost ? ' Everyone can see that.' : ''}`}</Notice></div>
         )}
-        {paused && n && (
-          <div className="ic-problems is-top"><Notice icon="pause">Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</Notice></div>
+        {pausedHere && n && (
+          <div className="ic-problems is-top"><Notice icon="pause">{roomHeld ? ROOM_PAUSED : <>Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</>}</Notice></div>
         )}
-        {paused && !n ? (
+        {roomHeld && !n ? (
+          <EmptyState title="Notes are paused in this room" className="ic-empty">Nothing said here is transcribed until the organizer resumes.</EmptyState>
+        ) : paused && !n ? (
           <EmptyState title="Notes are paused" className="ic-empty"
             action={host ? <Button variant="primary" size="sm" icon="play" onClick={controls.resume}>Resume notes</Button> : ask}>
             {host ? 'Nothing is recorded, transcribed or sent to the AI until you resume.' : asking ? `You asked ${organizer} to resume them.` : `Nothing is recorded, transcribed or sent to the AI until ${organizer} resumes.`}
@@ -164,9 +179,9 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
             action={host ? <Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn notes on</Button> : ask}>
             {host ? 'Nothing from this call is being written down. Notes pick up from the moment you turn them on.' : asking ? `You asked ${organizer} for notes.` : `Only ${organizer} can turn them on. You can ask them to.`}
           </EmptyState>
-        ) : c.mode === 'unavailable' && !n ? (
+        ) : unavailable && !n ? (
           <EmptyState title="Nothing is being captured" className="ic-empty">
-            {c.away ? `${notesBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
+            {c.room ? 'Nobody’s browser in this room can transcribe it right now. Notes pick up as soon as one can.' : c.away ? `${notesBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
               : `${notesBrowser(state)} can’t record or listen right now.${state.isHost ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
           </EmptyState>
         ) : !n ? (
@@ -184,7 +199,7 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
                 {held.map((h) => (
                   <div key={h.from} className="ic-rgrp">
                     {h.rooms.map((r) => <div key={r.id} className="rn">{r.name}<span>{r.people.length}</span><Faces people={r.people} size={16} /></div>)}
-                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. The notes say who was in which room, not what was said there.</p>
+                    <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. Each room’s talk goes into the call’s notes as its own section.</p>
                   </div>
                 ))}
               </div>
@@ -213,14 +228,22 @@ export function TranscriptView({ state, me }: { state: CallState; me: string | u
   return (
     <>
       <div className="ic-tr">
-        {c.transcript.mode === 'unavailable' && <Notice tone="caution" icon="alert">{notesBrowser(state)} can’t listen right now, so nothing new is transcribed.</Notice>}
-        {mode === 'paused' && <Notice icon="pause">{roomHeld ? 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.' : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
+        {c.transcript.mode === 'unavailable' && (
+          <Notice tone="caution" icon="alert">
+            {state.capture.room ? ROOM_UNHEARD : `${notesBrowser(state)} can’t listen right now, so nothing new is transcribed.`}
+          </Notice>
+        )}
+        {mode === 'paused' && <Notice icon="pause">{roomHeld ? ROOM_PAUSED : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
         {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} /> : on && (
-          <EmptyState title="Nothing said yet" className="ic-empty">{state.capture.room ? 'What’s said here appears a few seconds later, while the organizer is in this room.' : 'What’s said appears here a few seconds later.'}</EmptyState>
+          <EmptyState title="Nothing said yet" className="ic-empty">
+            {!state.capture.room ? 'What’s said appears here a few seconds later.'
+              : state.capture.room.scribe ? `What’s said here appears a few seconds later, transcribed by ${roomScribe(state)} for this room’s section of the notes.`
+                : 'What’s said here appears once a browser in this room can transcribe it.'}
+          </EmptyState>
         )}
       </div>
-      <Foot>{state.capture.room ? 'Confidential compute · for the people here, until the room closes' : 'Confidential compute · everyone invited gets it'}</Foot>
+      <Foot>{state.capture.room ? 'Confidential compute · this room’s section of the notes' : 'Confidential compute · everyone invited gets it'}</Foot>
     </>
   );
 }

@@ -31,7 +31,7 @@ export function exampleNote(me: Person): Note {
       { at: 210, title: 'The launch date', summary: 'Moves to the 18th.' },
       { at: 300, title: 'New screens', summary: 'Kofi, by Wednesday.' }
     ],
-    screens: [], transcript: [], writtenAt: started.toISOString(), writingAgain: false, audio: [], inference: [],
+    screens: [], transcript: [], rooms: [], writtenAt: started.toISOString(), writingAgain: false, audio: [], inference: [],
     suggestedQuestions: ['What did we decide?', 'What do I need to do?', 'Draft a follow-up']
   };
 }

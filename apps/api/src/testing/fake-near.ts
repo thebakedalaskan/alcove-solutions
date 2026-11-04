@@ -80,8 +80,8 @@ export interface FakeNear {
   rotate(task: Task): void;
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
-  /** The next `n` chat replies fail: the service is down, or the model answers in prose instead of JSON. */
-  failNext(n: number, how: 'down' | 'prose'): void;
+  /** The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape and nothing in it. */
+  failNext(n: number, how: 'down' | 'prose' | 'stub'): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number): void;
   close(): Promise<void>;
@@ -430,7 +430,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const images: FakeNear['images'] = [];
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
-  let failure: 'down' | 'prose' = 'down';
+  let failure: 'down' | 'prose' | 'stub' = 'down';
   let slow = 0;
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
@@ -531,7 +531,9 @@ export async function startFakeNear(): Promise<FakeNear> {
     if (failing > 0) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
-      content = 'Here are your notes! The team talked about a few things.';
+      content = failure === 'stub'
+        ? JSON.stringify({ summary: '...', decisions: [], questions: [], actions: [], chapters: [], suggestedQuestions: [], screens: [] })
+        : 'Here are your notes! The team talked about a few things.';
     } else content = JSON.stringify(notesReply(system, user, sent));
     return {
       status: 200,
