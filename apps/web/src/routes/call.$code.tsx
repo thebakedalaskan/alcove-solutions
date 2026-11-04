@@ -337,6 +337,15 @@ function InCall({ session }: { session: CallSession }) {
     }
     wasOpen.current = !!open;
   }, [open, on, organizer, roomName, toast]);
+  /* Sent to another room (or back) while the rooms are open: you're told where you are now. Your keys move with you. */
+  const myRoomId = open && myRoom >= 0 ? open.rooms[myRoom]?.id ?? null : null;
+  const lastRoomId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const was = lastRoomId.current;
+    lastRoomId.current = open ? myRoomId : undefined;
+    if (organizer || !open || was === undefined || was === myRoomId) return;
+    toast(roomName ? `The organizer moved you to ${roomName}` : 'The organizer moved you back to the main room', { icon: 'door' });
+  }, [open, myRoomId, roomName, organizer, toast]);
   /* Everyone else hears when the organizer comes into their part of the call, or goes: who can hear them changes. */
   const organizerId = state.participants.find((p) => p.isOrganizer)?.id ?? null;
   const organizerRoom = open && organizerId ? open.rooms.findIndex((r) => r.members.includes(organizerId)) : null;
