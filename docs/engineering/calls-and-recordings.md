@@ -616,14 +616,18 @@ the coordinates). Your own share has none of this: you have the original.
   ("0:42 behind live", counted from when that picture was last on the share) and which it is ("3 of 12"), with
   Back to live.
 - **What's kept, and where.** Earlier pictures are a bounded buffer in this page's memory: at most 30 for each share and
-  16 MiB, the oldest going first (never the one you're looking at). Each is a moment the picture changed, judged by a
-  48 × 27 grey copy (a new slide, a scroll or a window moved counts; a cursor moving doesn't), taken at most once a
-  second from the video this browser already decodes to show the share, and only while you see that share big or in its
-  own window. They're compressed (WebP, or JPEG where the browser can't write WebP, at most 4K) into ArrayBuffers in the
+  16 MiB, the oldest going first (never the one you're looking at). Each is a moment the picture changed, judged on the
+  same 48 × 27 grey grid the notes' frames use (`screenGrid.ts`) but more finely: 0.6% of it moving, or all of it
+  shifting a little (a new slide, a scroll or a window moved counts; a cursor moving doesn't). They're taken at most once
+  a second from the video this browser already decodes to show the share, and only while you see that share big or in
+  its own window. They're compressed (WebP, or JPEG where the browser can't write WebP, at most 4K) into ArrayBuffers in the
   page: never written to storage, a file or a Blob that's kept, never sent, never logged. A frozen picture is shown
   from a bitmap of the frame on screen. The one line under the share's menu says it: up to 30 earlier pictures stay in
   this browser's memory until the share stops, and nothing is saved or sent. Presenters are told in the share picker
   that everyone can zoom in and look back at its last 30 pictures, each on their own screen, until they stop.
+- **Apart from screen notes.** [Shared screens](#shared-screens) are frames a presenter's own browser sends to the API
+  while the organizer has them read for the notes. These are pictures a viewer's browser keeps for that viewer alone,
+  whatever the notes do; nothing of them reaches the API.
 - **Never before you could see it.** Pictures come only from what this browser decrypts and shows, so none predates the
   moment you could see the share: after you were let in (the media keys move on as you join, so earlier frames can't be
   read), and only while you're in the same part of the call as its sharer (other rooms' media is never attached).
