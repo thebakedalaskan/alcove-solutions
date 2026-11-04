@@ -30,6 +30,11 @@
   off with who changed it and when, in the call and before joining; one pause that stops every kind of capture
   on the server; asking the organizer for notes; and the gaps marked in the transcript, catch-up and notes
   ([Calls and recordings › What's captured](../engineering/calls-and-recordings.md#whats-captured)).
+- Catching up during a call, for the person asking alone: what they missed while away or before they joined,
+  or any stretch of the call, sorted into decided, proposed, open and next, each point with the transcript moments
+  it came from (only real lines), saying what it couldn't have heard and as of when, with Back to live. Guests
+  with the link read only what was said while they were there. Nothing is kept
+  ([Notes and inference › Catching up during a call](../engineering/notes-and-inference.md#catching-up-during-a-call)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
@@ -58,5 +63,5 @@
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
-| 10 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference |
+| 10 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference. Their moments then join a catch-up's evidence |
 | 11 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |

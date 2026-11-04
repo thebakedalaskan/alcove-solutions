@@ -255,7 +255,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
   waits); joining by link: 120. Transcript clips: 120 a minute per account, calls and room recordings together.
   Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
-  series): 20 a minute per account, together. Over a
+  series): 20 a minute per account, together (during a call, per connection to it). Opening a moment of a call's
+  live transcript from a catch-up: 60 a minute per connection to the call. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB or a transcript clip over 30 seconds of WAV is refused from its
