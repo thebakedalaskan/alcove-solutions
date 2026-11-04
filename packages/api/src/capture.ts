@@ -91,7 +91,7 @@ export const CaptureStateSchema = z.object({
   /** What's captured in the breakout room you're in, or null in the main room (and for people asking to join). */
   room: RoomCaptureSchema.nullable(),
   /**
-   * The organizer's browser is out of the call right now: its connection dropped, or it's reloading or moving to
+   * The host's browser is out of the call right now: its connection dropped, or it's reloading or moving to
    * another device. While notes are on, recording and the transcript are unavailable until it's back, in every part.
    */
   away: z.boolean()

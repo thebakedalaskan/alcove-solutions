@@ -31,8 +31,8 @@ export type NotesAsk = z.infer<typeof NotesAsk>;
 /** What the host's browser can say it can't capture now, kept in the call's sealed state. */
 export const CapturePartName = CaptureDevicePartSchema;
 /**
- * A stretch with notes on but the organizer's browser out of the call (its connection dropped, or it reloaded or moved
- * to another device), until another of the organizer's connections took over or the call ended: nothing was recorded
+ * A stretch with notes on but the host's browser out of the call (its connection dropped, or it reloaded or moved
+ * to another device), until another connection hosted (the organizer's, or a stand-in's) or the call ended: nothing was recorded
  * or heard. In seconds since the call started, with the segment that ended as it went.
  */
 export const OfflineStretch = z.object({ from: z.number(), to: z.number(), segment: z.number() });
@@ -108,7 +108,7 @@ function stretches(history: CaptureChange[]): Stretch[] {
 /**
  * The gaps as people see them: when each started and ended, and where it falls in the recording, at the end of the
  * segment it follows (the segments' recorded seconds, as transcript lines are placed). `end`, seconds since the call
- * started, closes one still going: the call ended then. The organizer's browser being out of the call is a gap of its
+ * started, closes one still going: the call ended then. The host's browser being out of the call is a gap of its
  * own, between the segment that ended as it went and the next.
  */
 export function gapsOf(history: CaptureChange[], offline: OfflineStretch[], startedAt: Date, segments: AudioSegment[], end?: number | undefined): CaptureGap[] {
@@ -124,7 +124,7 @@ export function gapsOf(history: CaptureChange[], offline: OfflineStretch[], star
 
 /**
  * A moment of the call (seconds since it started) as seconds into its recording, which runs only while notes are on
- * and the organizer's browser is in the call.
+ * and the host's browser is in the call.
  */
 export function recorded(history: CaptureChange[], offline: OfflineStretch[], at: number, end: number): number {
   let total = 0;
@@ -199,7 +199,7 @@ const roomSteps = (history: CaptureChange[], pauses: RoomPause[]): RoomStep[] =>
 
 /**
  * The stretches since a breakout room opened (`from`) with nothing captured in it, oldest first: the call's notes off
- * or paused, the room paused, or the organizer's browser out of the call (`offline`, for the part of it while the room
+ * or paused, the room paused, or the host's browser out of the call (`offline`, for the part of it while the room
  * was open). A room's own pause doesn't end a segment, so each is placed in the recording where the recording was when
  * it began. `now` is the call's seconds so far; `end`, if given, closes one still going.
  */
@@ -245,7 +245,7 @@ function roomGaps(history: CaptureChange[], offline: OfflineStretch[], pauses: R
  */
 export function roomStateFor(c: {
   status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
-  /** The organizer's browser is out of the call (nothing is heard in any part of it), and the stretches it was. */
+  /** The host's browser is out of the call (nothing is heard in any part of it), and the stretches it was. */
   away: boolean; offline: OfflineStretch[];
   room: { id: string; from: number; pauses: RoomPause[] }; now: number; end?: number | undefined;
 }): RoomCapture {

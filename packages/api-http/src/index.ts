@@ -336,7 +336,7 @@ const RING_HALF = Math.floor(CALL_VOID_KEY_INDEX / 2);
 const BACK_WAIT_MS = 3000;
 /**
  * Where an epoch's keys sit in LiveKit's key ring. Consecutive generations use different halves, so the keys
- * of a group being left (when the organizer's connection changes) stay put while people still send with them.
+ * of a group being left (when the connection that hosts changes) stay put while people still send with them.
  * Each part of the call has its own group, but a browser only ever holds one part's keys for any sender, so the
  * parts can share the indices.
  */

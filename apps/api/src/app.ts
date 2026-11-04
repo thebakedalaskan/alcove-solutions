@@ -114,7 +114,7 @@ export function createApp(d: Deps) {
   const cardLimiter = rateLimit(600, 60_000);
   /** Encrypted chat in a call, per person in it. */
   const chatLimiter = rateLimit(120, 60_000);
-  /** Fresh key packages to rejoin a call's new group, per person in it (one each time the organizer's connection changes). */
+  /** Fresh key packages to rejoin a call's new group, per person in it (one each time the connection that hosts changes). */
   const rejoinLimiter = rateLimit(20, 60_000);
   /** Asking for notes (and taking it back), per person in a call. */
   const askNotesLimiter = rateLimit(10, 60_000);
