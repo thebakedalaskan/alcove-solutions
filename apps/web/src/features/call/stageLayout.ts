@@ -38,7 +38,7 @@ export interface Plan {
   shape: Shape;
   /** Shares big on the stage, side by side, by share ID. */
   featured: string[];
-  /** On the main stage in focus; first and bigger in grid and side. Keys: participant IDs, or shareKey(id). */
+  /** People on the main stage in focus; first and bigger in grid and side. By participant ID. */
   leads: string[];
   /** Everything else, in your order: shares shown as tiles first, then people. */
   rest: string[];
@@ -112,6 +112,15 @@ export function steady(prev: string[], next: string[]): string[] {
 
 /* ---------- rectangles ---------- */
 
+/**
+ * No more columns can beat a tile of `area`: with `c + 1` columns or more, a tile is at most a column wide and at most
+ * 1.18 times that over `asp` high, and columns only get narrower. Stops the search a column or two past the best.
+ */
+const beaten = (w: number, c: number, gap: number, asp: number, area: number) => {
+  const next = (w - c * gap) / (c + 1);
+  return (next * next * 1.18) / asp < area;
+};
+
 /** The biggest tiles of `asp` that fit `n` in the box, rows centred. */
 export function fitGrid(n: number, x: number, y: number, w: number, h: number, asp: number, gap = 12): Rect[] {
   let best: { c: number; r: number; tw: number; th: number; a: number } | null = null;
@@ -124,6 +133,7 @@ export function fitGrid(n: number, x: number, y: number, w: number, h: number, a
     const th = Math.min(ch, (tw0 / asp) * 1.18);
     const tw = Math.min(cw, tw0 * 1.06);
     if (!best || tw * th > best.a + 1) best = { c, r, tw, th, a: tw * th };
+    if (best && beaten(w, c, gap, asp, best.a)) break;
   }
   if (!best) return Array.from({ length: n }, (): Rect => [x, y, Math.max(0, w), Math.max(0, h)]);
   const b = best;
@@ -196,6 +206,7 @@ export function packGrid(spans: number[], x: number, y: number, w: number, h: nu
     const th = Math.min(ch, (tw / asp) * 1.18);
     tw = Math.min(cw, tw * 1.06);
     if (!best || tw * th > best.a + 1) best = { C, R, tw, th, pos, a: tw * th };
+    if (best && beaten(w, C, gap, asp, best.a)) break;
   }
   if (!best) return fitGrid(spans.length, x, y, w, h, asp, gap);
   const b = best;
@@ -307,8 +318,9 @@ export function place(plan: Plan, i: PlaceInput): Placed {
   const beside: Box = { x: left ? b.x + sw + GAP : b.x, y: b.y, w: b.w - sw - GAP, h: b.h };
   const above: Box = { x: b.x, y: top ? b.y + sh + GAP : b.y, w: b.w, h: b.h - sh - GAP };
   const whole = inBox(plan, b, i.ratio, i.split);
-  const fits = ![...whole.slots.values(), ...whole.shares.values()].some((t) => overlaps(t, r));
-  const options = [...(fits ? [whole] : []), inBox(plan, beside, i.ratio, i.split), inBox(plan, above, i.ratio, i.split)];
-  const best = options.reduce((x, y) => (areaOf(y) > areaOf(x) + 1 ? y : x));
-  return { ...best, self: r };
+  // Nothing under your picture as it is: that's the most room anything can have.
+  if (![...whole.slots.values(), ...whole.shares.values()].some((t) => overlaps(t, r))) return { ...whole, self: r };
+  const side = inBox(plan, beside, i.ratio, i.split);
+  const band = inBox(plan, above, i.ratio, i.split);
+  return { ...(areaOf(band) > areaOf(side) + 1 ? band : side), self: r };
 }

@@ -9,16 +9,17 @@
  *
  * Neither holds a name or anything said or shared. The layout engine (stageLayout.ts) turns both into the stage.
  */
-import { CallLayoutSchema, CallViewPrefsSchema, type CallLayout, type CallViewMode, type CallViewPrefs, type SelfView, type StageCorner } from '@alcove/api';
-import { useCallback, useState } from 'react';
+import {
+  CALL_LAYOUT_MAX, CALL_SHARE_ROOM, CALL_SHARE_SPLIT, CallLayoutSchema, CallViewPrefsSchema, type CallLayout, type CallViewMode, type CallViewPrefs, type SelfView, type StageCorner
+} from '@alcove/api';
+import { useCallback, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 
 const vlog = log.child({ component: 'call-view' });
 
-export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', ratio: 0.66, self: 'grid', corner: 'bottom-right' };
-export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], shares: [], split: 0.5 };
-/** Pin up to this many people. */
-export const MAX_PINS = 6;
+export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', ratio: CALL_SHARE_ROOM.start, self: 'grid', corner: 'bottom-right' };
+export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], shares: [], split: CALL_SHARE_SPLIT.start };
+const clamp = (v: number, r: { min: number; max: number }) => Math.max(r.min, Math.min(r.max, v));
 
 /* Preferences by account (its opaque owner ID); a browser without an account has one set of its own. */
 const prefsKey = (account: string | null) => (account ? `alcove.callView.${account}` : 'alcove.callView');
@@ -46,10 +47,6 @@ function readLayout(callId: string): CallLayout {
 }
 function keep(store: 'local' | 'session', key: string, value: unknown) {
   try { (store === 'local' ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch (e) { vlog.debug('view not remembered', { store, err: e }); }
-}
-/** Leaving the call forgets how you arranged it. */
-export function forgetCallLayout(callId: string) {
-  try { sessionStorage.removeItem(layoutKey(callId)); } catch (e) { vlog.debug('call layout not forgotten', { err: e }); }
 }
 
 /** You changed the layout from what Auto gives: the top bar offers a way back. Where you see yourself is a standing choice, not part of it. */
@@ -94,36 +91,51 @@ export function useCallView(callId: string, account: string | null | undefined) 
   const updatePrefs = useCallback((fn: (p: CallViewPrefs) => CallViewPrefs) => {
     setPrefs((p) => { const next = fn(p); if (account !== undefined) keep('local', prefsKey(account), next); return next; });
   }, [account]);
+  // Once you've left the call, nothing writes its arrangement back.
+  const forgotten = useRef(false);
   const updateLayout = useCallback((fn: (l: CallLayout) => CallLayout) => {
-    setLayout((l) => { const next = fn(l); if (next !== l) keep('session', layoutKey(callId), next); return next; });
+    setLayout((l) => { const next = fn(l); if (next !== l && !forgotten.current) keep('session', layoutKey(callId), next); return next; });
+  }, [callId]);
+  /** Leaving the call forgets how you arranged it, for good: later changes on the way out aren't kept either. */
+  const forget = useCallback(() => {
+    forgotten.current = true;
+    try { sessionStorage.removeItem(layoutKey(callId)); } catch (e) { vlog.debug('call layout not forgotten', { err: e }); }
   }, [callId]);
   /** Remembers the order people first came in, by seat, so someone coming back keeps their place. */
   const arrive = useCallback((seats: string[]) => updateLayout((l) => {
     const fresh = seats.filter((s) => !l.arrived.includes(s));
-    return fresh.length ? { ...l, arrived: [...l.arrived, ...fresh].slice(-400) } : l;
+    return fresh.length ? { ...l, arrived: [...l.arrived, ...fresh].slice(-CALL_LAYOUT_MAX.arrived) } : l;
   }), [updateLayout]);
-  /** Shares that have stopped aren't anyone's choice any more. */
-  const dropShares = useCallback((live: string[]) => updateLayout((l) => (l.shares.every((s) => live.includes(s.id)) ? l : { ...l, shares: l.shares.filter((s) => live.includes(s.id)) })), [updateLayout]);
+  /** Shares that stopped aren't anyone's choice any more. */
+  const endShares = useCallback((ended: string[]) => updateLayout((l) => (l.shares.some((s) => ended.includes(s.id)) ? { ...l, shares: l.shares.filter((s) => !ended.includes(s.id)) } : l)), [updateLayout]);
 
   return {
-    arrive, dropShares,
+    arrive, endShares, forget,
     prefs, layout,
     setMode: (mode: CallViewMode) => updatePrefs((p) => ({ ...p, mode })),
-    setRatio: (ratio: number) => updatePrefs((p) => ({ ...p, ratio: Math.max(0.42, Math.min(0.8, ratio)) })),
+    setRatio: (ratio: number) => updatePrefs((p) => ({ ...p, ratio: clamp(ratio, CALL_SHARE_ROOM) })),
     setSelf: (self: SelfView) => updatePrefs((p) => ({ ...p, self })),
     setCorner: (corner: StageCorner) => updatePrefs((p) => ({ ...p, corner })),
-    /** Pins someone (by seat), or unpins them. False when MAX_PINS are pinned already. */
-    togglePin: (seat: string): boolean => {
-      if (!layout.pins.includes(seat) && layout.pins.length >= MAX_PINS) return false;
-      updateLayout((l) => ({ ...l, pins: l.pins.includes(seat) ? l.pins.filter((s) => s !== seat) : [...l.pins, seat] }));
+    /**
+     * Pins someone (by seat), or unpins them. With every pin taken, the oldest pin of someone who isn't in the call
+     * (`here`: the seats in the call now) makes room. False when all of them are here.
+     */
+    togglePin: (seat: string, here: ReadonlySet<string>): boolean => {
+      const pins = layout.pins;
+      if (pins.includes(seat)) { updateLayout((l) => ({ ...l, pins: l.pins.filter((s) => s !== seat) })); return true; }
+      const gone = pins.length >= CALL_LAYOUT_MAX.pins ? pins.find((s) => !here.has(s)) : undefined;
+      if (pins.length >= CALL_LAYOUT_MAX.pins && gone === undefined) return false;
+      updateLayout((l) => ({ ...l, pins: [...l.pins.filter((s) => s !== gone), seat].slice(-CALL_LAYOUT_MAX.pins) }));
       return true;
     },
-    setPins: (pins: string[]) => updateLayout((l) => ({ ...l, pins: pins.slice(0, MAX_PINS) })),
-    setOrder: (order: string[]) => updateLayout((l) => ({ ...l, order: order.slice(0, 200) })),
-    setBig: (seat: string, big: boolean) => updateLayout((l) => ({ ...l, big: big ? [...new Set([...l.big, seat])] : l.big.filter((s) => s !== seat) })),
+    setPins: (pins: string[]) => updateLayout((l) => ({ ...l, pins: pins.slice(0, CALL_LAYOUT_MAX.pins) })),
+    setOrder: (order: string[]) => updateLayout((l) => ({ ...l, order: order.slice(0, CALL_LAYOUT_MAX.order) })),
+    setBig: (seat: string, big: boolean) => updateLayout((l) => ({ ...l, big: big ? [...new Set([...l.big, seat])].slice(-CALL_LAYOUT_MAX.big) : l.big.filter((s) => s !== seat) })),
     /** How you see one share: big, as a tile, or (null) as the layout puts it. */
-    setShare: (id: string, show: 'big' | 'tile' | null) => updateLayout((l) => ({ ...l, shares: [...l.shares.filter((s) => s.id !== id), ...(show ? [{ id, show }] : [])] })),
-    setSplit: (split: number) => updateLayout((l) => ({ ...l, split: Math.max(0.25, Math.min(0.75, split)) })),
+    setShare: (id: string, show: 'big' | 'tile' | null) => updateLayout((l) => ({
+      ...l, shares: [...l.shares.filter((s) => s.id !== id), ...(show ? [{ id, show }] : [])].slice(-CALL_LAYOUT_MAX.shares)
+    })),
+    setSplit: (split: number) => updateLayout((l) => ({ ...l, split: clamp(split, CALL_SHARE_SPLIT) })),
     /** Back to Auto: nobody pinned, the call's order and sizes. Where you see yourself stays as it is. */
     reset: (): ViewSnapshot => {
       const was = { prefs, layout };

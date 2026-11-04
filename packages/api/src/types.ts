@@ -433,11 +433,17 @@ export const SelfViewSchema = z.enum(['grid', 'corner', 'hidden']);
 export type SelfView = z.infer<typeof SelfViewSchema>;
 export const StageCornerSchema = z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
 export type StageCorner = z.infer<typeof StageCornerSchema>;
+/** How much of the stage shared screens can take beside the people, and how much they start with. */
+export const CALL_SHARE_ROOM = { min: 0.42, max: 0.8, start: 0.66 } as const;
+/** How two shares side by side can split their space (the first one's part), and where they start. */
+export const CALL_SHARE_SPLIT = { min: 0.25, max: 0.75, start: 0.5 } as const;
+/** The most a call's arrangement holds: pins, and the lists kept for the call. The app keeps to them as it writes. */
+export const CALL_LAYOUT_MAX = { pins: 6, order: 200, arrived: 400, big: 200, shares: 20 } as const;
 /** How someone likes to see every call: remembered for their account in this browser. */
 export const CallViewPrefsSchema = z.object({
   mode: CallViewModeSchema,
-  /** How much of the stage shared screens take beside the people, 0.42 to 0.8. */
-  ratio: z.number().min(0.3).max(0.85),
+  /** How much of the stage shared screens take beside the people (CALL_SHARE_ROOM). */
+  ratio: z.number().min(CALL_SHARE_ROOM.min).max(CALL_SHARE_ROOM.max),
   self: SelfViewSchema,
   /** The corner your own picture sits in. */
   corner: StageCornerSchema
@@ -449,17 +455,17 @@ export type CallViewPrefs = z.infer<typeof CallViewPrefsSchema>;
  */
 export const CallLayoutSchema = z.object({
   /** Seats pinned, in the order they were pinned. Someone pinned who leaves stays pinned for when they come back. */
-  pins: z.array(z.string().max(200)).max(6),
+  pins: z.array(z.string().max(200)).max(CALL_LAYOUT_MAX.pins),
   /** Seats in the order you arranged them. Anyone else follows in the order they first came in. */
-  order: z.array(z.string().max(200)).max(200),
+  order: z.array(z.string().max(200)).max(CALL_LAYOUT_MAX.order),
   /** Seats in the order they first came into the call, so someone coming back keeps their place. */
-  arrived: z.array(z.string().max(200)).max(400),
+  arrived: z.array(z.string().max(200)).max(CALL_LAYOUT_MAX.arrived),
   /** Seats you made bigger. */
-  big: z.array(z.string().max(200)).max(200),
+  big: z.array(z.string().max(200)).max(CALL_LAYOUT_MAX.big),
   /** Shares you chose to see big, or as a tile. Any other share follows the layout. */
-  shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(20),
-  /** How the space splits between two shares side by side: the first one's part, 0.25 to 0.75. */
-  split: z.number().min(0.2).max(0.8)
+  shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(CALL_LAYOUT_MAX.shares),
+  /** How the space splits between two shares side by side (CALL_SHARE_SPLIT). */
+  split: z.number().min(CALL_SHARE_SPLIT.min).max(CALL_SHARE_SPLIT.max)
 });
 export type CallLayout = z.infer<typeof CallLayoutSchema>;
 

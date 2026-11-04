@@ -93,7 +93,7 @@
 /* ---- in a call ----
  * Top bar, the stage with the side panel beside it, and the dock. The stage is night in both themes;
  * the panel, menus and sheets follow the app's theme. Tiles are placed in stage pixels by the layout
- * engine (apps/web features/call/view.ts) and glide there with motion.
+ * engine (apps/web features/call/stageLayout.ts) and glide there with motion.
  */
 .ic-call { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); overflow: hidden; animation: ac-fade var(--duration-3) var(--ease-out) both; }
 .ic-call.is-ended .ic-main, .ic-call.is-ended .ic-dockbar { opacity: .35; transition: opacity var(--duration-3) var(--ease-out); }

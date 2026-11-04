@@ -1,4 +1,4 @@
-import { CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
+import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
 import {
   Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Icon, Popover, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
@@ -21,7 +21,7 @@ import { CallEars } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
-import { MAX_PINS, forgetCallLayout, isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
+import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
@@ -122,6 +122,7 @@ function InCall({ session }: { session: CallSession }) {
   // arranged this one, kept in this tab until you leave it.
   const account = useQuery(q.session());
   const layout = useCallView(state.callId, account.data ? account.data.ownerId : account.isPending ? undefined : null);
+  const forgetLayout = layout.forget;
   const devices = useDevices(m.camera);
   const speaking = useSpeaking(media, m.mic);
   const guard = useLeaveGuard(() => setLeaveOpen(true));
@@ -257,7 +258,7 @@ function InCall({ session }: { session: CallSession }) {
     void room.leave();
     guardRef.current.release();
     sessions.call = null;
-    forgetCallLayout(state.callId);
+    forgetLayout();
     media.stop();
     sessions.media = null;
     void qc.invalidateQueries();
@@ -266,7 +267,7 @@ function InCall({ session }: { session: CallSession }) {
         : roomView.endReason === 'removed' ? 'The organizer removed you from the call.'
           : 'You’re no longer in this call here. You can join again.', { icon: 'leave' });
     void navigate(hosting ? { to: '/home', replace: true } : { to: '/join/$code', params: { code: state.code }, replace: true });
-  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, state.callId, media, navigate, toast, session, room, qc]);
+  }, [roomView.connection, roomView.endReason, outOfGroup, leaving, ended, hosting, state.code, forgetLayout, media, navigate, toast, session, room, qc]);
 
   /* ---------- who is on the stage: everyone in the call, with their media from the room ---------- */
   const stagePeople: StageParticipant[] = state.participants.map((p) => {
@@ -398,9 +399,20 @@ function InCall({ session }: { session: CallSession }) {
       return sid ? [{ id: p.id, feed: { room, sid }, label: `${callName(p.person)} is sharing`, name: `${callName(p.person)}’s screen` }] : [];
     })
   ];
+  // A share's big-or-tile choice goes when the share stops: one seen on this connection that's gone. Before the room
+  // connects (a reload) or just after it reconnects, a share may not be visible yet, and its choice stays.
   const shareKey = shares.map((s) => s.id).join(' ');
-  const dropShares = layout.dropShares;
-  useEffect(() => { dropShares(shareKey ? shareKey.split(' ') : []); }, [shareKey, dropShares]);
+  const endShares = layout.endShares;
+  const seenShares = useRef<Set<string> | null>(null);
+  const connected = roomView.connection === 'connected';
+  useEffect(() => {
+    if (!connected) { seenShares.current = null; return; }
+    const live = shareKey ? shareKey.split(' ') : [];
+    const seen = seenShares.current;
+    seenShares.current = new Set(live);
+    const ended = seen ? [...seen].filter((id) => !live.includes(id)) : [];
+    if (ended.length) endShares(ended);
+  }, [shareKey, connected, endShares]);
   const otherSharer = !m.screen && presenter ? callName(presenter.person) : null;
 
   /* ---------- actions ---------- */
@@ -430,7 +442,7 @@ function InCall({ session }: { session: CallSession }) {
   const seatName = (seat: string) => callName(seated.current.get(seat) ?? SOMEONE);
   const setPin = (p: { seat: string; person: Person }) => {
     const was = layout.layout.pins.includes(p.seat);
-    if (!layout.togglePin(p.seat)) { toast(`You can pin up to ${MAX_PINS} people. Unpin someone first.`, { icon: 'pin' }); return; }
+    if (!layout.togglePin(p.seat, new Set(seatKey.split(' ')))) { toast(`You can pin up to ${CALL_LAYOUT_MAX.pins} people. Unpin someone first.`, { icon: 'pin' }); return; }
     toast(was ? `${callName(p.person)} is unpinned` : `${callName(p.person)} is pinned for you. Only your view changes.`, { icon: was ? 'pinOff' : 'pin' });
   };
   const unpinAll = () => {
@@ -533,8 +545,10 @@ function InCall({ session }: { session: CallSession }) {
   );
 
   /* ---------- keys ---------- */
-  const keys = useRef({ panel, pinned: layout.layout.pins.length > 0, unpinAll, setPanel });
-  keys.current = { panel, pinned: layout.layout.pins.length > 0, unpinAll, setPanel };
+  // Escape unpins only when you can see a pin: someone pinned who's here.
+  const pinnedHere = layout.layout.pins.some((seat) => seatKey.split(' ').includes(seat));
+  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel });
+  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -566,7 +580,7 @@ function InCall({ session }: { session: CallSession }) {
       const r = await session.leave();
       over.current = true;
       guard.release();
-      forgetCallLayout(state.callId);
+      forgetLayout();
       // Ending the call deletes its room, which disconnects everyone at once; anyone else leaves the room now.
       if (!r) void room.leave();
       media.stop();
@@ -613,7 +627,12 @@ function InCall({ session }: { session: CallSession }) {
     admit: (id) => session.admit(id),
     deny: (id) => session.deny(id),
     mute: (id) => { const sid = roomView.people[id]?.micSid; return sid ? session.mute(id, sid) : Promise.resolve(); },
-    remove: (id) => session.remove(id),
+    remove: (id) => {
+      // Someone removed can't come back, so their pin goes with them (and nobody is told it waits for them).
+      const seat = state.participants.find((p) => p.id === id)?.seat;
+      if (seat && layout.layout.pins.includes(seat)) layout.setPins(layout.layout.pins.filter((s) => s !== seat));
+      return session.remove(id);
+    },
     locked: state.locked,
     lock: (v) => session.lock(v)
   } : undefined;
