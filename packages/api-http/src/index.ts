@@ -7,11 +7,12 @@ import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_KEYRING, CALL_PASS_HEADER, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, FRAME_HEADERS, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
 SeriesAnswerPartSchema, SeriesSchema,
-  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
-  type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CatchUp, type RecordingAction, type RoomRecording,
+  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
+  type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type CatchUp, type MoveMedia, type MoveOut, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
 } from '@alcove/api';
 import { MlsClient, MlsError, groupName, newIdentity } from './mls';
+import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
 import { z } from 'zod';
 
 export interface HttpOptions {
@@ -110,10 +111,53 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     ...extra, 'content-type': 'audio/wav', [AUDIO_HEADERS.segment]: String(c.segment), [AUDIO_HEADERS.start]: String(Math.round(c.startMs)), [AUDIO_HEADERS.duration]: String(Math.round(c.durationMs))
   }).then((r) => r.json());
 
+  /** How often a move to another device is checked on while it's open, in ms. */
+  const movePollMs = Math.min(1000, o.callPollMs ?? 1000);
+  /** The new device's side of a move: everything by its claim, in the body. */
+  const moving: MoveInTransport = {
+    status: (claim) => req(MoveInSchema, 'POST', '/moves/status', { claim }),
+    ready: (b) => req(MoveInSchema, 'POST', '/moves/ready', b),
+    arrive: (claim) => req(MoveInSchema, 'POST', '/moves/arrive', { claim }),
+    cancel: async (claim) => { await req(z.object({ cancelled: z.literal(true) }), 'POST', '/moves/cancel', { claim }); }
+  };
+  /** A call session for a ticket, with the MLS keys made in this browser for it: by joining, or by moving here. */
+  const connect = async (joined: { ticket: CallTicket; state: CallState }, mls: MlsClient): Promise<CallSession> => {
+    // Every request about the call carries its pass; guests have no session, so this is all they have.
+    const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
+    const live = (id: string) => `/live/calls/${id}`;
+    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
+      get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
+      act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
+      audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
+      transcribe: async (id, c, speaker) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, { ...p, [AUDIO_HEADERS.speaker]: speaker }), 'call state'),
+      // A frame of this browser's own share: JPEG bytes, which share, and how long ago it was taken.
+      frame: async (id, f) => parse(ScreenFrameReceiptSchema, await (await send('POST', `${live(id)}/frames`, f.data, {
+        ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
+      })).json(), 'frame receipt'),
+      shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
+      catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
+      askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `${live(id)}/ask`, { question }, p),
+      translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
+      leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, {}, p, o?.keepalive ?? false)).ended,
+      mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
+      commit: (id, c) => req(z.object({ epoch: z.number() }), 'POST', `${live(id)}/mls/commits`, c, p),
+      message: async (id, m) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/messages`, m, p); },
+      keyPackage: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/keypackages`, k, p); },
+      back: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/back`, k, p); },
+      room: (id) => req(CallRoomTokenSchema, 'GET', `${live(id)}/room`, undefined, p),
+      moveStart: (id, media) => req(MoveCodeSchema, 'POST', `${live(id)}/moves`, { media }, p),
+      moveCurrent: async (id) => (await req(z.object({ move: MoveOutSchema.nullable() }), 'GET', `${live(id)}/moves`, undefined, p)).move,
+      moveConfirm: async (id, media) => { await req(z.object({ released: z.literal(true) }), 'POST', `${live(id)}/moves/confirm`, { media }, p); },
+      moveCancel: async (id) => { await req(z.object({ cancelled: z.literal(true) }), 'DELETE', `${live(id)}/moves`, undefined, p); }
+    }, (level, msg, context) => emit(level, msg, context));
+    await call.start();
+    return call;
+  };
+
   return {
     auth: {
       getSession: () => req(SessionSchema.nullable(), 'GET', '/session'),
-      signInUrl: (provider) => `${base}/auth/${provider}`,
+      signInUrl: (provider, opts) => `${base}/auth/${provider}${opts?.next ? `?next=${encodeURIComponent(opts.next)}` : ''}`,
       signIn: (provider, opts) => req(SignInResultSchema, 'POST', '/auth/sign-in', { provider, ...(opts?.email ? { email: opts.email } : {}) }),
       signOut: async () => { await req(z.unknown(), 'POST', '/session/sign-out', {}); }
     },
@@ -150,33 +194,14 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         const identity = newIdentity();
         const mls = await MlsClient.make(identity);
         const body = { mic: opts.mic, cam: opts.cam, identity, keyPackage: mls.keyPackage(), ...(opts.name ? { name: opts.name } : {}), ...(opts.previous ? { previous: opts.previous } : {}) };
-        const joined = await req(z.object({ ticket: CallTicketSchema, state: CallStateSchema }), 'POST', `/calls/${encodeURIComponent(code)}/join`, body);
-        // Every request about the call carries its pass; guests have no session, so this is all they have.
-        const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
-        const live = (id: string) => `/live/calls/${id}`;
-        const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000 }, {
-          get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
-          act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
-          audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
-          transcribe: async (id, c, speaker) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, { ...p, [AUDIO_HEADERS.speaker]: speaker }), 'call state'),
-          // A frame of this browser's own share: JPEG bytes, which share, and how long ago it was taken.
-          frame: async (id, f) => parse(ScreenFrameReceiptSchema, await (await send('POST', `${live(id)}/frames`, f.data, {
-            ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
-          })).json(), 'frame receipt'),
-          shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
-          catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
-          askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `${live(id)}/ask`, { question }, p),
-          translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
-          leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, {}, p, o?.keepalive ?? false)).ended,
-          mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
-          commit: (id, c) => req(z.object({ epoch: z.number() }), 'POST', `${live(id)}/mls/commits`, c, p),
-          message: async (id, m) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/messages`, m, p); },
-          keyPackage: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/keypackages`, k, p); },
-          room: (id) => req(CallRoomTokenSchema, 'GET', `${live(id)}/room`, undefined, p)
-        }, (level, msg, context) => emit(level, msg, context));
-        await call.start();
-        return call;
-      }
+        return connect(await req(z.object({ ticket: CallTicketSchema, state: CallStateSchema }), 'POST', `/calls/${encodeURIComponent(code)}/join`, body), mls);
+      },
+      openMove: async (code) => {
+        // The code goes in the body, once: from here on this device holds the claim that replaced it.
+        const opened = await req(MoveClaimSchema, 'POST', '/moves/claim', { code });
+        return new HttpMoveIn(opened.claim, opened.move, moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context));
+      },
+      resumeMove: async (claim) => new HttpMoveIn(claim, await moving.status(claim), moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context))
     },
     recordings: {
       start: async (title) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', { title }), {
@@ -244,7 +269,12 @@ interface CallTransport {
   commit(id: string, c: { generation: number; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
   message(id: string, m: { generation: number; epoch: number; message: string }): Promise<void>;
   keyPackage(id: string, k: { generation: number; keyPackage: string }): Promise<void>;
+  back(id: string, k: { generation: number; keyPackage: string }): Promise<void>;
   room(id: string): Promise<{ token: string }>;
+  moveStart(id: string, media: MoveMedia): Promise<{ code: string; expiresAt: string }>;
+  moveCurrent(id: string): Promise<MoveOut | null>;
+  moveConfirm(id: string, media: MoveMedia): Promise<void>;
+  moveCancel(id: string): Promise<void>;
 }
 /** A small store for something a screen reads with useLive(). */
 class Box<T> implements LiveStore<T> {
@@ -270,8 +300,13 @@ class Live<S extends { elapsed: number }> {
   protected stopTicking() { if (this.ticker) clearInterval(this.ticker); this.ticker = null; }
 }
 
-/** How a call keeps up: how often it checks while nothing nudges it, how long a new send key waits, how often the keys move on anyway. */
-interface CallTiming { pollMs: number; switchMs: number; rekeyMs: number }
+/**
+ * How a call keeps up: how often it checks while nothing nudges it, how long a new send key waits, how often the keys
+ * move on anyway, and how often a move to another device is checked on.
+ */
+interface CallTiming { pollMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
+/** Asking to come back in after being taken out waits at least this long between tries (the keys move on first). */
+const BACK_WAIT_MS = 3000;
 /**
  * Where an epoch's keys sit in LiveKit's key ring. Consecutive generations use different halves, so the keys
  * of a group being left (when the organizer's connection changes) stay put while people still send with them.
@@ -329,6 +364,8 @@ class HttpCall extends Live<CallState> implements CallSession {
   /** Checks in a row while not in the call's group, so the first come quickly and the rest settle to the usual pace. */
   private waits = 0;
   private closed = false;
+  /** When this connection may next ask to come back in, after being taken out while it was away. */
+  private backAfter = 0;
 
   constructor(initial: CallState, readonly ticket: CallTicket, private readonly mls: MlsClient, private readonly timing: CallTiming, private readonly t: CallTransport,
     private readonly emit: (level: ClientEvent['level'], msg: string, context: ClientEvent['context']) => void) {
@@ -419,6 +456,7 @@ class HttpCall extends Live<CallState> implements CallSession {
     }
     const was = this.crypto.getSnapshot().status;
     if (log.admission === 'denied') { this.out(was === 'waiting' || was === 'joining' ? 'denied' : 'removed', 'admission'); return; }
+    if (log.admission === 'out') { await this.comeBack(log); return; }
     if (log.generation !== this.generation) {
       // The organizer's connection changed: its new group starts over, and everyone already let in rejoins it.
       this.generation = log.generation;
@@ -481,6 +519,26 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.patch({ status, members: this.inCurrentGroup ? this.mls.members() : this.crypto.getSnapshot().members, media: this.media });
     // Let in: the call (who's in it, what's been said) is this browser's to see now. Someone new asking: the organizer sees them.
     if ((status === 'in' && was !== 'in') || newAsk) await this.fetchState();
+  }
+
+  /**
+   * Taken out while this connection was away (it dropped for longer than LiveKit waits, or its tab slept), by nobody's
+   * choice: back in as it is, the same connection and person, with fresh keys, since the old ones are no use now. The
+   * organizer's browser takes it out of the group first, so until then the API says to wait.
+   */
+  private async comeBack(log: CallMls): Promise<void> {
+    const now = Date.now();
+    if (now < this.backAfter) return;
+    this.backAfter = now + BACK_WAIT_MS;
+    if (this.mls.inGroup) { await this.mls.renew(); this.inGen = -1; }
+    this.patch({ status: 'joining' });
+    try {
+      await this.t.back(this.state.callId, { generation: log.generation, keyPackage: this.mls.keyPackage() });
+      this.emit('info', 'back in the call after its connection dropped', { generation: log.generation });
+    } catch (e) {
+      if (errorCode(e) !== 'conflict') throw e;
+      this.emit('debug', 'not back in yet', { code: 'conflict' });
+    }
   }
 
   /** Chat from the log, in order. The sender's own message takes its place there, so everyone sees chat in the same order. */
@@ -668,6 +726,14 @@ class HttpCall extends Live<CallState> implements CallSession {
   visitRoom = (roomId: string | null) => this.act({ type: 'rooms-visit', roomId });
   translate = (lineIds: string[], language: CaptionLanguage) => this.t.translate(this.state.callId, lineIds, language);
   dismissNotice = (id: string) => { this.hidden.add(id); this.set({ ...this.state, notices: this.state.notices.filter((n) => n.id !== id) }); };
+  startMove = async (media: MoveMedia): Promise<CallMoveOut> => {
+    const id = this.state.callId;
+    const move = new HttpMoveOut({
+      start: (m) => this.t.moveStart(id, m), current: () => this.t.moveCurrent(id), confirm: (m) => this.t.moveConfirm(id, m), cancel: () => this.t.moveCancel(id)
+    }, { pollMs: this.timing.movePollMs }, this.emit, media);
+    await move.begin();
+    return move;
+  };
   appendAudio = async (p: AudioPiece) => { this.take(await this.t.audio(this.state.callId, p)); };
   /** Takes only the transcript from the answer, so a slow clip can't undo a newer mic or notes change. */
   /**

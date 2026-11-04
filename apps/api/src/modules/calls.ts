@@ -166,6 +166,11 @@ async function appendMls(o: Owner, db: Db, callId: string, at: { seq: number; ge
 const pendingIn = (generation: number) => (j: Joined) => j.role !== 'host' && !j.inGroup && j.keysFor === generation && (j.status === 'waiting' || j.status === 'in');
 /** Let in before the organizer's connection changed: they need to send a fresh key package for this generation's group. */
 const needsRejoin = (j: Joined, generation: number) => j.role !== 'host' && j.status === 'in' && !j.inGroup && j.keysFor < generation;
+/**
+ * Taken out while their connection was away (it dropped for longer than LiveKit waits, or their tab slept), and not
+ * because anyone wanted them out: the same connection can come back in as it is (`mlsBack`).
+ */
+const mayComeBack = (j: Joined) => j.role !== 'host' && j.status === 'left' && !j.replaced;
 const hostHere = (r: Pick<Row, 'state' | 'host_identity' | 'host_left_at'>) => r.state === 'live' && r.host_identity !== null && r.host_left_at === null;
 /** Tells everyone in the room what changed (the call itself, its MLS log, or both), so they fetch that again. Nothing else. */
 async function nudge(o: Owner, roomName: string | null, callId: string, what: { call: boolean; log: boolean }): Promise<void> {
@@ -279,7 +284,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     locked: row.locked, generation: row.mls_generation, isOrganizer: v.isOrganizer, role: v.role
   };
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
-  if (!v.inCall) return { ...base, participants: [], waiting: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
+  if (!v.inCall) return { ...base, participants: [], waiting: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } }, transcript: [], notices: [] };
   const rooms = settleRooms(s, secondsIn(row.started_at, end.getTime()));
   const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
   const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, LIVE_TRANSCRIPT_LINES) : [];
@@ -293,6 +298,10 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms, v, organizer),
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
+    leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && j.inGroup && j.role !== 'host').map((j) => ({
+      id: j.identity, person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
+      now: s.people.find((x) => x.person === j.person && x.status === 'in')?.identity ?? null
+    })) : [],
     capture: capture.stateFor({
       status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, screens: s.notes.screens,
       gaps: capture.gapsOf(s.notes.history, row.started_at, segs, row.ended_at ? secondsIn(row.started_at, row.ended_at.getTime()) : undefined),
@@ -418,24 +427,96 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   };
   // A pass from this browser's earlier connection to the same call: someone let in before is let in again without asking.
   const earlier = who.previous ? readPass(d.cfg, who.previous) : undefined;
+  return enter(d, o, meeting, joined, { mic: who.mic, cam: who.cam, keyPackage: who.keyPackage, earlier });
+}
 
-  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, earlier);
+/** A connection that came before, of someone coming back: from a reload's pass, or a move from another device. */
+type Earlier = Pick<CallPass, 'callId' | 'identity' | 'person'>;
+
+/**
+ * Lets a new connection into the call (joining, or coming back from a reload or another device), and hands back its
+ * ticket. The organizer's takes over from their previous connection; anyone else's asks, or comes back as `earlier`.
+ */
+async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, who: { mic: boolean; cam: boolean; keyPackage: string; earlier?: Earlier | undefined; host?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
+  const { identity, role, name } = joined;
+  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier);
   // If the organizer's browser never reaches the room, the call doesn't carry on without them.
   if (role === 'host') setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer joined failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous organizer connection already gone', { callId: j.callId, err: e }));
   await o.livekit.ensureRoom(j.roomName);
   // The organizer joining starts a new group (everyone fetches the call and its log); someone asking only concerns the organizer's browser.
   await nudge(o, j.roomName, j.callId, { call: role === 'host', log: true });
-  clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation });
-  const pass = issuePass(d.cfg, { callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person });
-  const ticket: CallTicket = { callId: j.callId, serverUrl: d.cfg.LIVEKIT_URL, roomName: j.roomName, identity, role, pass };
-  const viewer: Viewer = { pass: { v: 1, callId: j.callId, ownerId: o.ownerId, identity, role, name, person: j.person, exp: 0 }, organizer: o, isOrganizer: role === 'host', inCall: role === 'host', role };
-  return { ticket, state: await view(viewer, d.pool, j.callId) };
+  clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation, back: Boolean(who.earlier) });
+  return ticketFor(d, o, j.callId, { identity, role, name, person: j.person }, j.roomName);
+}
+
+/** A connection's ticket (a new pass), and the call as it sees it. */
+async function ticketFor(d: Deps, o: Owner, callId: string, who: Pick<Joined, 'identity' | 'role' | 'name' | 'person'> & { inCall?: boolean | undefined }, roomName: string): Promise<{ ticket: CallTicket; state: CallState }> {
+  const { identity, role, name, person } = who;
+  const pass = issuePass(d.cfg, { callId, ownerId: o.ownerId, identity, role, name, person });
+  const ticket: CallTicket = { callId, serverUrl: d.cfg.LIVEKIT_URL, roomName, identity, role, pass };
+  // The role the call has for them (an invited person's, a guest's), as #62's join gave it: what they may see follows it.
+  const viewer: Viewer = { pass: { v: 1, callId, ownerId: o.ownerId, identity, role, name, person, exp: 0 }, organizer: o, isOrganizer: role === 'host', inCall: role === 'host' || who.inCall === true, role };
+  return { ticket, state: await view(viewer, d.pool, callId) };
+}
+
+/* ---------- moving to another device (modules/moves.ts keeps the moves; the call lets the new device in) ---------- */
+
+/** Someone in a call, as a move needs them: who they are, and where they stand. */
+export interface Mover { identity: string; person: string; role: CallRole; name: string; email: string | null; status: Joined['status']; replaced: boolean; removed: boolean }
+/** A call and one connection in it, for a move: what the new device is told, and whether the move can go on. */
+export async function moverOf(o: Owner, callId: string, identity: string): Promise<{ live: boolean; roomName: string | null; hostIdentity: string | null; title: string; organizerName: string; mover: Mover | null }> {
+  const { row, state } = await load(o, o.pool, callId);
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const organizerName = (await me(o)).name;
+  const j = state.people.find((x) => x.identity === identity);
+  return {
+    live: row.state === 'live', roomName: row.room_name, hostIdentity: row.host_identity, title: meeting.manifest.title, organizerName,
+    mover: j ? { identity: j.identity, person: j.person, role: j.role, name: j.role === 'host' ? organizerName : j.name, email: j.email ?? null, status: j.status, replaced: j.replaced, removed: state.removed.includes(j.person) } : null
+  };
+}
+
+/**
+ * The new device of someone moving, let into the call in place of the connection that let go: the organizer's as
+ * the organizer's new connection (a new key generation, the recording on a new segment, as when they join from
+ * another device); anyone else's the way a reload comes back, as the same person with the same name, role, hand
+ * and spotlight, and so the same seat and breakout room. Hands back the new connection's ticket.
+ */
+export async function moveIn(d: Deps, o: Owner, callId: string, from: { identity: string; person: string }, to: { identity: string; keyPackage: string }, media: { mic: boolean; cam: boolean }): Promise<{ ticket: CallTicket; state: CallState }> {
+  const { row, state } = await load(o, o.pool, callId);
+  const was = state.people.find((j) => j.identity === from.identity && j.person === from.person);
+  if (row.state !== 'live' || !was || was.replaced || state.removed.includes(was.person) || (was.status !== 'in' && was.status !== 'left')) {
+    throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId, reason: 'moved-from', status: was?.status ?? 'none' } });
+  }
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const host = was.role === 'host';
+  const joined: Joined = { ...was, identity: to.identity, status: host ? 'in' : 'waiting', admit: 'auto', keysFor: 0, inGroup: host, replaced: false, chatBefore: false, since: Date.now() };
+  return enter(d, o, meeting, joined, { ...media, keyPackage: to.keyPackage, ...(host ? { host: from.identity } : { earlier: { callId, identity: from.identity, person: from.person } }) });
+}
+
+/** The ticket of a move's new connection again, if its answer was lost on the way: a new pass for the same connection. */
+export async function reissue(d: Deps, o: Owner, callId: string, identity: string): Promise<{ ticket: CallTicket; state: CallState }> {
+  const { row, state } = await load(o, o.pool, callId);
+  const j = state.people.find((x) => x.identity === identity);
+  if (row.state !== 'live' || !row.room_name || !j || state.removed.includes(j.person) || j.replaced || (j.status !== 'in' && j.status !== 'waiting')) {
+    throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId, reason: 'reissue', status: j?.status ?? 'none' } });
+  }
+  return ticketFor(d, o, callId, { ...j, inCall: j.status === 'in' }, row.room_name);
+}
+
+/**
+ * A connection let go to move to another device. Anyone else's is gone from the call now, so the organizer's browser
+ * takes it out of the group and the keys move on before the new device comes in. The organizer's is counted gone from
+ * now: the call ends if their new device never arrives, as when they leave.
+ */
+export async function letGo(o: Owner, callId: string, m: Pick<Mover, 'identity' | 'role'>): Promise<void> {
+  if (m.role === 'host') await exec(o.pool, 'UPDATE calls SET host_left_at = now() WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [o.ownerId, callId, m.identity]);
+  else await departed(o, callId, m.identity);
 }
 
 interface Joining { callId: string; roomName: string; replaced: string | null; row: Pick<Row, 'host_identity' | 'locked'>; state: Stored; admit: 'auto' | 'ask'; generation: number; person: string }
 
-async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, opts: { mic: boolean; cam: boolean }): Promise<Joining> {
+async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, opts: { mic: boolean; cam: boolean; host?: string | undefined }): Promise<Joining> {
   return tx(o.pool, async (c) => {
     const live = await liveCall(o, c, meeting.itemId, true);
     if (!live) {
@@ -455,6 +536,8 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     }
     const { state } = await load(o, c, live.call_id, true);
     if (state.people.some((j) => j.identity === joined.identity)) throw new ConflictError('Join the call again.', { context: { callId: live.call_id, reason: 'identity' } });
+    // Moving from one device to another: only from the organizer's connection as it is now.
+    if (opts.host !== undefined && opts.host !== live.host_identity) throw new ConflictError('The organizer’s connection changed while this was moving. Make a new code and try again.', { context: { callId: live.call_id, reason: 'host' } });
     // A new organizer connection starts a new MLS group (the old one's keys stay with the old browser): everyone
     // already let in rejoins it without asking, the old connection's place is over, and anyone waiting keeps
     // waiting. Key packages aren't tied to a group, so theirs carry over.
@@ -464,10 +547,13 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       [o.ownerId, live.call_id, live.mls_generation]);
     const carried = kps.flatMap((r) => (r.party && waiting.has(r.party) ? [{ party: r.party, body: b64u(openRecord(mlsKey(o, live.call_id), mlsHeader(o, live.call_id, r.seq, 'keypackage'), r.body_ciphertext)) }] : []));
     const kept = new Set(carried.map((k) => k.party));
+    const before = state.people.find((j) => j.identity === live.host_identity);
     let s: Stored = {
       ...state,
       people: [...state.people.map((j): Joined => ({ ...j, inGroup: false, ...(j.identity === live.host_identity ? { status: 'left' as const } : {}), ...(kept.has(j.identity) ? { keysFor: generation } : {}) })),
-        { ...joined, keysFor: generation, inGroup: true }]
+        { ...joined, keysFor: generation, inGroup: true, hand: before?.hand ?? false }],
+      // The organizer is still the one spotlighted, on their new connection.
+      spotlight: state.spotlight !== null && state.spotlight === live.host_identity ? joined.identity : state.spotlight
     };
     const oldHost = state.people.find((j) => j.identity === live.host_identity && j.status === 'in');
     if (oldHost) s = sharesEnd(s, [oldHost.identity], tenthsIn(live.started_at));
@@ -488,13 +574,12 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
   });
 }
 
-async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: CallPass | undefined): Promise<Joining> {
+async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: Earlier | undefined): Promise<Joining> {
   return tx(o.pool, async (c) => {
     const live = await liveCall(o, c, meeting.itemId, true);
     // Over and not started again: only the organizer can start it.
     if (!live && meeting.manifest.status === 'ended') throw new ConflictError('This call has ended.', { context: { meetingId: meeting.itemId, role: joined.role } });
     if (!live || !hostHere(live) || !live.room_name) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
-    if (live.locked) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
     const { state } = await load(o, c, live.call_id, true);
     if (state.people.some((j) => j.identity === joined.identity)) throw new ConflictError('Join the call again.', { context: { callId: live.call_id, reason: 'identity' } });
     // Back from a reload or another device: whoever was let in before (and not removed) needn't ask again, and is
@@ -503,8 +588,11 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     const before = earlier && earlier.callId === live.call_id && !state.removed.includes(earlier.person)
       ? state.people.find((j) => j.identity === earlier.identity && j.person === earlier.person && !j.replaced && j.role !== 'host' && (j.status === 'in' || j.status === 'left')
         && (j.email ?? '') === (joined.email ?? '')) : undefined;
-    const me: Joined = { ...joined, keysFor: live.mls_generation, ...(before ? { admit: 'auto' as const, person: before.person } : {}) };
-    let s: Stored = { ...state, people: [...state.people, me] };
+    // A lock keeps new people out, not someone coming back to the place they had.
+    if (live.locked && !before) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
+    // Coming back keeps their raised hand, and the spotlight if it was theirs.
+    const me: Joined = { ...joined, keysFor: live.mls_generation, ...(before ? { admit: 'auto' as const, person: before.person, hand: before.hand } : {}) };
+    let s: Stored = { ...state, people: [...state.people, me], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
     if (before) s = sharesEnd(withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
     const seq = live.mls_seq + 1;
     await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch }, 'keypackage', me.identity, keyPackage);
@@ -812,7 +900,7 @@ export async function mlsSync(v: Viewer, callId: string, after: number): Promise
   const mine = s.people.find((j) => j.identity === v.pass.identity);
   // Where they stand as of this read, not the pass check's: the organizer's browser may have let them in in between.
   const organizer = v.isOrganizer && row.host_identity === v.pass.identity;
-  const admission = organizer || mine?.status === 'in' ? 'in' : mine?.status === 'waiting' ? 'waiting' : 'denied';
+  const admission = organizer || mine?.status === 'in' ? 'in' : mine?.status === 'waiting' ? 'waiting' : mine && mayComeBack(mine) ? 'out' : 'denied';
   const quiet: CallMls = { generation: gen, epoch: row.mls_epoch, admission, organizer: row.host_identity, items: [], departed: [], pending: [], earlierChat: false, rejoin: false, latest: after, more: false };
   if (admission !== 'in' || row.state !== 'live') return quiet;
   let from = after;
@@ -950,6 +1038,32 @@ export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof
   await nudge(o, room, callId, { call: false, log: true });
 }
 
+/**
+ * Back in as they were, after being taken out while their connection was away: the same connection and person (seat,
+ * hand and all), with a fresh key package for the organizer's browser to add them by. Nobody removed, turned away,
+ * or whose place went to another tab or device comes back this way; they join again.
+ */
+export async function mlsBack(v: Viewer, callId: string, b: z.infer<typeof CallKeyPackageBodySchema>): Promise<void> {
+  const o = v.organizer;
+  const room = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    const mine = state.people.find((j) => j.identity === v.pass.identity && j.person === v.pass.person);
+    if (row.state !== 'live' || !mine || !mayComeBack(mine) || b.generation !== row.mls_generation) {
+      throw new ConflictError('There’s no way back in from here. Join the call again.', { context: { callId, generation: b.generation, current: row.mls_generation, status: mine?.status ?? 'none' }, level: 'info' });
+    }
+    // The organizer's browser takes them out of the group first, so the keys move on without the connection that went.
+    if (mine.inGroup) throw new ConflictError('Still moving the call’s keys on. Try again in a moment.', { context: { callId, reason: 'in-group' }, level: 'info' });
+    const seq = row.mls_seq + 1;
+    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: row.mls_epoch }, 'keypackage', mine.identity, b.keyPackage);
+    await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
+    // In again from now: a fresh ARRIVAL_MS to reach the room, if its connection to the room is still coming back.
+    await save(o, c, callId, withPerson(state, mine.identity, (j) => ({ ...j, status: 'in', admit: 'auto', keysFor: row.mls_generation, inGroup: false, since: Date.now() })));
+    return row.room_name;
+  });
+  clog.info('back in the call after its connection dropped', { callId, generation: b.generation });
+  await nudge(o, room, callId, { call: true, log: true });
+}
+
 /** A LiveKit token, only for someone the organizer's browser let in. It names nobody. */
 export async function roomToken(v: Viewer, callId: string): Promise<{ token: string }> {
   requireIn(v, 'room');
@@ -1070,6 +1184,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
   });
   if (!end) return null;
+  // Nor do moves to other devices. Deleted once the call has ended, so a move coming in at that moment never waits on it.
+  await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   // Deleting the room disconnects everyone in it, which is how their browsers learn the call ended: an ended call is the organizer's alone to read.
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
@@ -1096,10 +1212,10 @@ async function departed(o: Owner, callId: string, identity: string): Promise<voi
     const { row, state } = await load(o, c, callId, true);
     const j = state.people.find((x) => x.identity === identity && x.role !== 'host');
     if (row.state !== 'live' || !j || (j.status !== 'in' && j.status !== 'waiting')) return null;
-    // Someone who was in is kept, as having left (a reload's pass brings them back), and their shares end. Someone who
-    // only asked is kept as turned away: nothing of theirs, a pass included, brings them in without asking again, and
-    // their identity can't come back as someone else (to be let in by a toast still showing the first ask).
-    await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', hand: false })),
+    // Someone who was in is kept, as having left (a reload's pass brings them back, hand and all), and their shares
+    // end. Someone who only asked is kept as turned away: nothing of theirs, a pass included, brings them in without
+    // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
+    await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left' })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
     return { room: row.room_name, was: j.status };
   });
