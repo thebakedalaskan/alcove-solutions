@@ -429,6 +429,18 @@ describe('Google Calendar', () => {
     // Demo accounts have their sample day instead.
     expect((await (await account()).api.calendar.get()).source).toBe('sample');
   });
+
+  it('opens none of the calls to read a calendar until Google has answered with an event that repeats', async () => {
+    // A demo account has sample calls and no Google Calendar: reading its calendar opens its profile, and nothing else.
+    const demo = await account();
+    expect((await demo.api.meetings.upcoming()).length).toBeGreaterThan(1);
+    const requestId = `calendar-read-${Date.now().toString(36)}${(seq++).toString(36)}`;
+    const res = await demo.fetch(`${h.baseUrl}/v1/calendar`, { headers: { [REQUEST_ID_HEADER]: requestId } });
+    expect(await res.json()).toEqual({ source: 'sample', needsAccess: false, events: [] });
+    // Each sealed item the request read, by how many came back: the one profile.
+    const opened = linesFor(requestId).flatMap((l) => (typeof l['sql'] === 'string' && l['sql'].startsWith('SELECT i.item_id') ? [l['rows']] : []));
+    expect(opened).toEqual([1]);
+  });
 });
 
 describe('people and team', () => {
@@ -641,6 +653,32 @@ describe('live transcript and written notes', () => {
     const guest = await account(guestEmail);
     expect((await asked(guest.api, noteId, 'Who checks the numbers?'))[0]).toEqual({ type: 'text', text: 'From the call: Priya checks the numbers.' });
     expect(code(await asked((await account()).api, noteId, 'Anything?').catch((e: unknown) => e))).toBe('not-found');
+  });
+
+  it('sends no answer about notes that were deleted or removed while it was being written', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = unique('guest');
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
+    await call.transcribe(speech('We agreed to sell the old van. // The buyer pays on Monday.', 0, 0));
+    const noteId = (await call.leave()).pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const guest = await account(guestEmail);
+    /** Asks while the notes model takes its time, and does `meanwhile` once the question has reached it. */
+    const slowly = async (api: AlcoveApi, meanwhile: () => Promise<void>): Promise<unknown> => {
+      const sent = h.near.prompts.length;
+      h.near.slowNext(1500);
+      const answer = asked(api, noteId, 'When does the buyer pay?').catch((e: unknown) => e);
+      await until(async () => h.near.prompts.length > sent, 'the question to reach the notes model');
+      await meanwhile();
+      return answer;
+    };
+    const refusal = (e: unknown) => (e instanceof AlcoveApiError ? [e.code, e.message] : ['not-an-api-error', '']);
+    const gone = ['conflict', 'These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.'];
+    // Someone it was given to removes it from their notes while their answer is being written; then the organizer deletes it while theirs is.
+    expect(refusal(await slowly(guest.api, () => guest.api.notes.delete(noteId)))).toEqual(gone);
+    expect(code(await asked(guest.api, noteId, 'When does the buyer pay?').catch((e: unknown) => e))).toBe('not-found');
+    expect(refusal(await slowly(org.api, () => org.api.notes.delete(noteId)))).toEqual(gone);
+    expect(h.logs.join('')).not.toContain('buyer pays');
   });
 
   it('catches someone up during a call, for them alone, from what was said while notes were on', async () => {
@@ -905,6 +943,47 @@ describe('who has the notes', () => {
     expect(code(await guest.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
     expect((await h.pool.query('SELECT count(*)::int AS n FROM note_access WHERE note_item_id = $1', [noteId])).rows[0]?.n).toBe(0);
   });
+
+  it('keeps no receipt of a note for anyone, so a note deleted since can’t come back through a retried request', async () => {
+    const org = await account(unique('organizer'));
+    const guestEmail = unique('guest');
+    const call = await org.api.calls.join((await org.api.calls.startNow({ title: 'Receipt canary', notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
+    await call.transcribe(speech('We agreed to ship on Thursday. // Can we test it first? // Someone will write the release notes.', 0, 0));
+    const noteId = (await call.leave()).pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    const guest = await account(guestEmail);
+
+    // Everything someone given the notes can change, each with an operation ID, as the app sends it.
+    const edits: [string, string, unknown][] = [
+      ['PATCH', `decisions/${note.decisions[0]?.id ?? ''}`, { state: 'confirmed' }],
+      ['PATCH', `questions/${note.questions[0]?.id ?? ''}`, { state: 'answered' }],
+      ['PATCH', `actions/${note.actions[0]?.id ?? ''}`, { done: true }],
+      ['POST', 'share', { emails: [unique('later')] }]
+    ];
+    const ops = edits.map(() => Buffer.from(randomBytes(16)).toString('base64url'));
+    const send = (i: number) => {
+      const [method, path, body] = edits[i] ?? ['GET', '', null];
+      return guest.fetch(`${h.baseUrl}/v1/notes/${noteId}/${path}`, { method, headers: { 'content-type': 'application/json', [OPERATION_HEADER]: ops[i] ?? '' }, body: JSON.stringify(body) });
+    };
+    for (let i = 0; i < edits.length; i++) {
+      const r = await send(i);
+      expect(r.status).toBe(200);
+      expect(await r.text()).toContain('Receipt canary');
+    }
+    // They set what they say, so a retry changes nothing.
+    expect((await send(0)).status).toBe(200);
+    expect((await org.api.notes.get(noteId)).decisions[0]?.changes.map((c) => c.what)).toEqual(['confirmed']);
+
+    // Deleted: retrying any of them finds no note, rather than a copy of it, and no receipt kept the note anywhere.
+    await org.api.notes.delete(noteId);
+    for (let i = 0; i < edits.length; i++) {
+      const r = await send(i);
+      expect(r.status).toBe(404);
+      expect(await r.text()).not.toContain('Receipt canary');
+    }
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM operations WHERE owner_id = $1', [guest.session.ownerId])).rows[0]?.n).toBe(0);
+  });
 });
 
 describe('room recordings', () => {
@@ -995,11 +1074,19 @@ describe('privacy at rest', () => {
     const synced = await sync.leave();
     await written(c.api, synced?.pendingNoteId ?? '');
     expect((await c.api.notes.get(synced?.pendingNoteId ?? '')).questions.map((x) => x.text)).toEqual(['CANARY-QUESTION who signs the merger?']);
-    const following = await c.api.meetings.scheduleNext(sync.getSnapshot().meetingId);
-    for await (const part of c.api.series.ask(following.seriesId ?? '', 'CANARY-SERIES-ASK who signs it?')) expect(part.type).toMatch(/text|source/);
+    const following = await c.api.meetings.scheduleNext(sync.getSnapshot().meetingId, new Date(Date.now() + 7 * 86_400_000).toISOString());
+    for await (const part of c.api.series.ask(following.seriesId ?? '', 'CANARY-SERIES-ASK who signs it?', 'Europe/London')) expect(part.type).toMatch(/text|source/);
     const tomorrow = Date.now() + 86_400_000;
-    h.google.calendar('canary-google-sub-31337').push({ id: 'canary-recurring-id_1', recurringEventId: 'canary-recurring-id', summary: 'Standing call', start: { dateTime: new Date(tomorrow).toISOString() }, end: { dateTime: new Date(tomorrow + 1_800_000).toISOString() }, organizer: { email: 'canary.googler@canary.example', self: true } });
+    const when = { start: { dateTime: new Date(tomorrow).toISOString() }, end: { dateTime: new Date(tomorrow + 1_800_000).toISOString() } };
+    h.google.calendar('canary-google-sub-31337').push(
+      { id: 'canary-recurring-id_1', recurringEventId: 'canary-recurring-id', summary: 'Standing call', ...when, organizer: { email: 'canary.googler@canary.example', self: true } },
+      { id: 'canary-theirs-event', summary: 'Their call', ...when, organizer: { email: 'boss@canary.example' } },
+      { id: 'canary-allday-event', summary: 'Offsite', start: { date: new Date(tomorrow).toISOString().slice(0, 10) }, end: { date: new Date(tomorrow + 86_400_000).toISOString().slice(0, 10) }, organizer: { email: 'canary.googler@canary.example', self: true } }
+    );
     expect((await g.api.calendar.adopt('canary-recurring-id_1', 'off')).seriesId).toBeTruthy();
+    // Adopts that are refused (someone else's event, an all-day one, one that isn't there) keep the event's ID out of the logs too.
+    const refusals: [string, string][] = [['canary-theirs-event', 'forbidden'], ['canary-allday-event', 'not-found'], ['canary-missing-event', 'not-found']];
+    for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
       SELECT row_to_json(x)::text AS t FROM owners x UNION ALL SELECT row_to_json(x)::text FROM identities x UNION ALL
@@ -1016,7 +1103,7 @@ describe('privacy at rest', () => {
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo',
-      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'canary-recurring-id'
+      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
 

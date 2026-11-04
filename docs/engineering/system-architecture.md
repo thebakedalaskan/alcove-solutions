@@ -72,8 +72,9 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
    for this request (`openOwner`) and adds `ownerId` to the log context.
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
    commitment of method, path and body plus the encrypted response; a retry returns the same response,
-   and a different request under the same ID is `409 conflict`. Note search, asking, audio pieces and
-   transcript clips keep no receipt.
+   and a different request under the same ID is `409 conflict`. Note search, asking, audio pieces,
+   transcript clips, changes to a note's decisions, open questions and follow-ups, and sharing a note keep
+   no receipt.
 6. The handler reads and writes through the vault (encrypted manifests), the audio pipeline (encrypted
    objects), transcript rows, `note_access` (who else may read a note) or Kservice-sealed billing, and calls
    Google or NEAR AI where a feature needs them. Failures are `AppError` subclasses; `onError` logs each

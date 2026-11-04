@@ -163,10 +163,11 @@ function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>): CalendarE
 }
 
 /**
- * The coming week's other events (and the last hour's, for calls already going). `series` maps
- * Google's IDs for recurring events to the account's own series that follow them.
+ * The coming week's other events (and the last hour's, for calls already going). `series` reads
+ * which of the account's own series follow which recurring events, by Google's IDs for them: only
+ * once the calendar has answered with an occurrence of one, since it opens every call's manifest.
  */
-export async function view(o: Owner, series: ReadonlyMap<string, string>): Promise<Calendar> {
+export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, string>>): Promise<Calendar> {
   if ((await profile(o)).sample) return { source: 'sample', needsAccess: false, events: [] };
   const conn = await connection(o);
   if (!conn) return { source: 'none', needsAccess: false, events: [] };
@@ -182,7 +183,8 @@ export async function view(o: Owner, series: ReadonlyMap<string, string>): Promi
     if (!usable(await connection(o))) return { source: 'google', needsAccess: true, events: [] };
     throw e;
   }
-  const events = list.items.flatMap((e) => { const x = toEvent(e, series); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
+  const followed = list.items.some((e) => e.recurringEventId) ? await series() : new Map<string, string>();
+  const events = list.items.flatMap((e) => { const x = toEvent(e, followed); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
   clog.debug('calendar read', { ownerId: o.ownerId, events: events.length });
   return { source: 'google', needsAccess: false, events };
 }
@@ -229,9 +231,10 @@ export async function withdraw(o: Owner, eventId: string, meetingId: string): Pr
 export async function ownEvent(o: Owner, eventId: string): Promise<{
   title: string; startsAt: string; endsAt: string; guests: string[]; description?: string | undefined; url?: string | undefined; recurringEventId?: string | undefined;
 }> {
+  // Google's event IDs stay out of errors, which are logged with their context: an occurrence's ID names its recurring event.
   const e = await api(o, 'GET', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent);
-  if (!e.organizer?.self) throw new ForbiddenError('Only the organizer can move this call to Alcove.', { context: { eventId } });
-  if (!e.start?.dateTime || !e.end?.dateTime) throw new NotFoundError('That isn’t a call with a start and end time.', { context: { eventId } });
+  if (!e.organizer?.self) throw new ForbiddenError('Only the organizer can move this call to Alcove.');
+  if (!e.start?.dateTime || !e.end?.dateTime) throw new NotFoundError('That isn’t a call with a start and end time.', { context: { allDay: !!e.start?.date } });
   const organizer = (e.organizer.email ?? '').toLowerCase();
   const guests = (e.attendees ?? []).flatMap((a) => (!a.self && !a.resource && a.email && a.email.toLowerCase() !== organizer ? [a.email.toLowerCase()] : []));
   return {

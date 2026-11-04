@@ -10,7 +10,7 @@ import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { q } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
-import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, useScheduleNextCall } from './carried';
+import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from './carried';
 
 /** At most this many of each on Home; the series page has the rest. */
 const SHOWN = 3;
@@ -114,7 +114,7 @@ function InSeries({ seriesId }: { seriesId: string }) {
       {s.isOrganizer && (s.next
         ? <div className="ser-next"><Icon name="cal" size={15} /><span>Next call <b className="ac-mono">{shortDay(new Date(s.next.startsAt))}, {hm(s.next.startsAt)}</b></span></div>
         : s.recurring
-          ? <div className="ser-next"><Icon name="cal" size={15} /><span>The next one is on your Google Calendar.</span></div>
+          ? <NextOnCalendar><div className="ser-next"><Icon name="cal" size={15} /><span>The next one is on your Google Calendar.</span></div></NextOnCalendar>
           : latest && <Button icon="repeat" className="ser-btn" loading={next.pending} onClick={() => next.run(latest)}>Schedule next week’s call</Button>)}
       <Link to="/notes/series/$seriesId" params={{ seriesId }} className="ser-go">What carries over<Icon name="right" size={14} /></Link>
     </Card>

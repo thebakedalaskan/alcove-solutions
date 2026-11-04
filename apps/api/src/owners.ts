@@ -26,6 +26,14 @@ export function ownerFrom(d: Deps, ownerId: string, root: Uint8Array, session: S
   return { ...d, ownerId, session, root, wrapKey: ownerWrapKey(root, ownerId) };
 }
 
+/**
+ * Holds the account's row for the rest of the transaction, so work of the account's that must not
+ * interleave takes turns. NO KEY UPDATE: rows that refer to the account can still be written meanwhile.
+ */
+export async function lockOwner(o: Owner, db: Db): Promise<void> {
+  await exec(db, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR NO KEY UPDATE', [o.ownerId]);
+}
+
 const KeyRow = z.object({ root_envelope: bytea, root_check: bytea });
 /** Opens an account's keys for one request (or one piece of background work). */
 export async function openOwner(d: Deps, ownerId: string, session: Session | undefined, db: Db = d.pool): Promise<Owner> {

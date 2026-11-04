@@ -170,7 +170,8 @@ The hash is deterministic, so equal values show the same person across rows and 
   ([Notes and inference › Series](notes-and-inference.md#series)).
 - **Never logged:** ID tokens, refresh and access tokens, Google's error descriptions, and Google's event IDs
   (an occurrence's ID begins with its recurring event's, so logged paths, the server's and the browser's,
-  show `/v1/calendar/events/:id`). Only Google's error code (such as `invalid_grant`) is.
+  show `/v1/calendar/events/:id`, and a refused adopt's error names no event). Only Google's error code
+  (such as `invalid_grant`) is.
 
 ## Who can read a note
 
@@ -201,7 +202,9 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   the asker can read at that moment, through this same check, and kept nowhere
   ([Notes and inference › Series](notes-and-inference.md#series)). Being in a series opens nothing: someone
   invited to one call sees that call's notes in it and no other, a note deleted or removed is gone from it at
-  once, and asking across a series sends the notes model only the calls the asker has. A series ID that
+  once, and asking across a series sends the notes model only the calls the asker has. An answer takes a
+  while to write, so the check runs again once it's written, for every note it read (and for the one note
+  when asking about a note): if any went meanwhile, the answer isn't sent (`409 conflict`). A series ID that
   comes from a request is treated like a note ID: anyone with no notes from it gets `404 not-found`, and
   only the organizer sees its next call.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
@@ -223,7 +226,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   a meeting. Note search, asking (about a note, a call so far or a series), audio pieces and transcript
   clips keep no receipt: searching and asking only read, pieces and clips are already idempotent by their
   place in the recording, and their answers carry the live transcript, which shouldn't be copied into
-  receipts.
+  receipts. Nor do changes to a note's decisions, open questions and follow-ups, or sharing it: anyone who
+  has the note can make them, and each answers with the whole note, so a receipt kept under someone it was
+  given to would outlive the organizer deleting it. Each sets an explicit state (confirmed, answered, done,
+  these addresses added), so a retry changes nothing anyway.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
   `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute
   per account, calls and room recordings together. Questions and catch-ups (about notes, a call so far or a
@@ -277,8 +283,9 @@ Only requests to Alcove itself: the web app's own origin and the API. Nothing th
 
 - **Deleting your own note** removes, in one transaction: every revision, the recording and its pieces, any
   transcript clips still there, its notes job, every `note_access` row (so everyone loses it), the link from
-  its meeting, and the owner's operation receipts; stored bytes go down to match. Then the audio objects are
-  deleted; failures are queued in `object_gc` and retried.
+  its meeting, and the owner's operation receipts; stored bytes go down to match. Nobody else holds a receipt
+  with the note in it: what others can do to a note keeps none ([Requests](#requests)). Then the audio
+  objects are deleted; failures are queued in `object_gc` and retried.
 - **Removing someone else's note** deletes only your own `note_access` row. The organizer and everyone else
   keep it.
 - **Cancelling a meeting** deletes it with every revision and its calls (including chat), and the owner's

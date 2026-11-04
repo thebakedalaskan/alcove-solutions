@@ -4,13 +4,14 @@
  * Home shows them as they are; the series page adds what people can change.
  */
 import { errorMessage, type CarriedAction, type CarriedDecision, type CarriedQuestion, type SeriesNote } from '@alcove/api';
-import { Avatar, Chip, Icon, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, Chip, Icon, cn, useToast } from '@alcove/ui';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { MomentLink, decisionLine } from '~/features/notes/parts';
 import { freshCalls, useOpenComposer } from '~/features/shell/context';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
-import { useScheduleNext } from '~/lib/queries';
+import { calendarConnectUrl, q, useScheduleNext } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
 
 /** The call something came from, as a link to its notes. */
@@ -71,8 +72,24 @@ export function CarriedActionRow({ a, note, me, check, actions }: { a: CarriedAc
 }
 
 /**
- * Schedules the next call after `meetingId`, a week on, and says when: on the calendar, with who's
- * invited. "Change" opens it in the composer, for another day or time, or to cancel it.
+ * For the organizer of a series that follows a recurring Google Calendar event: its next call is the
+ * next occurrence there, which Home shows (`children` says so). Once the calendar isn't connected,
+ * Home can't show it, so this says what to do instead.
+ */
+export function NextOnCalendar({ children }: { children: ReactNode }) {
+  const calendar = useQuery(q.calendar()).data;
+  if (!calendar || (!calendar.needsAccess && calendar.source !== 'none')) return children;
+  return (
+    <>
+      <p className="ser-p">This series follows a repeating event on your Google Calendar, which isn’t connected now. Connect it again to see the next one on Home and make it an Alcove call.</p>
+      <Button icon="cal" className="ser-btn" onClick={() => location.assign(calendarConnectUrl())}>Connect Google Calendar</Button>
+    </>
+  );
+}
+
+/**
+ * Schedules the next call after `meetingId`, at the same clock time a week on, and says when: on the
+ * calendar, with who's invited. "Change" opens it in the composer, for another day or time, or to cancel it.
  */
 export function useScheduleNextCall() {
   const next = useScheduleNext();

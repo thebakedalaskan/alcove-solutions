@@ -127,7 +127,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       create: (input) => req(MeetingSchema, 'POST', '/meetings', input),
       update: (id, input) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, input),
       cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); },
-      scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, startsAt ? { startsAt } : {})
+      scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt })
     },
     calendar: {
       get: () => req(CalendarSchema, 'GET', '/calendar'),
@@ -173,8 +173,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     },
     series: {
       get: (id) => req(SeriesSchema, 'GET', `/series/${encodeURIComponent(id)}`),
-      ask: async function* (id, question) {
-        const parts = await req(z.array(SeriesAnswerPartSchema), 'POST', `/series/${encodeURIComponent(id)}/ask`, { question });
+      ask: async function* (id, question, timeZone) {
+        const parts = await req(z.array(SeriesAnswerPartSchema), 'POST', `/series/${encodeURIComponent(id)}/ask`, { question, timeZone });
         yield* parts;
       }
     },

@@ -6,9 +6,10 @@
  *
  * What carries over (confirmed decisions, open questions, follow-ups) is read from the notes the
  * person asking has, each time they ask: the organizer's own, or the ones given to them by
- * invitation or sharing, found by their email's index at that moment. Being invited to one call in a
- * series opens nothing from the others. Room recordings have no call, so they're never in one.
- * Nothing derived is kept, so a deleted note or a removed grant drops out at once.
+ * invitation or sharing, found by their email's index at that moment, from the newest 24 calls.
+ * Being invited to one call in a series opens nothing from the others. Room recordings have no call,
+ * so they're never in one. Nothing derived is kept, so a deleted note or a removed grant drops out at
+ * once, and an answer written while one went isn't sent.
  */
 import type { CarriedAction, CarriedDecision, CarriedQuestion, Person, Series, SeriesAnswerPart, SeriesNote, TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
@@ -16,37 +17,45 @@ import type { Owner } from '../context';
 import { ConflictError, UnavailableError, notFound } from '../errors';
 import { completeJson } from '../inference';
 import { log } from '../log';
-import { findItem, type Loaded } from '../vault';
+import { listItems, type Loaded } from '../vault';
 import { me } from './account';
-import { MeetingManifest, all as allMeetings, toMeeting } from './meetings';
-import { NoteManifest, sharedWithMe, type Located } from './notes';
+import { all as allMeetings, toMeeting, type MeetingManifest } from './meetings';
+import { NoteManifest, goneSince, seriesOf, sharedWithMe, type Located } from './notes';
 import { personOf } from './portraits';
 
 const slog = log.child({ component: 'series' });
 
 /** Open through this many later calls, a question or follow-up is stale. */
 const STALE_AFTER = 2;
+/** A series shows its newest calls, at most this many; it says how many older ones there are. */
+const MAX_SHOWN = 24;
 
 /** The calls of a series whose notes you can open now, newest first, and its calls if it's your series. */
 interface Found { sources: Located[]; own: Loaded<MeetingManifest>[] }
 
+/**
+ * Everyone finds a series' notes the same way: the notes they have whose call is in it, once the
+ * call has ended. A call reopened after it ended has a note for each time, and each counts.
+ */
 async function find(o: Owner, seriesId: string): Promise<Found> {
   const own = (await allMeetings(o)).filter((m) => m.manifest.seriesId === seriesId);
   const sources: Located[] = [];
   if (own.length) {
-    for (const m of own) {
-      const note = m.manifest.noteId ? await findItem(o, o.pool, 'note', m.manifest.noteId, NoteManifest) : undefined;
-      if (note) sources.push({ owner: o, note, mine: true });
+    const calls = new Set(own.map((m) => m.itemId));
+    for (const note of await listItems(o, o.pool, 'note', NoteManifest)) {
+      const { meetingId, status } = note.manifest;
+      if (meetingId && calls.has(meetingId) && status !== 'recording') sources.push({ owner: o, note, mine: true });
     }
   } else {
     // Someone else's series: only the notes given to you, and only those whose call is in it.
-    const seriesOf = new Map<string, string | undefined>();
+    const seriesOfCall = new Map<string, Promise<string | undefined>>();
     for (const l of await sharedWithMe(o)) {
       const meetingId = l.note.manifest.meetingId;
-      if (!meetingId) continue;
+      if (!meetingId || l.note.manifest.status === 'recording') continue;
       const key = `${l.owner.ownerId}/${meetingId}`;
-      if (!seriesOf.has(key)) seriesOf.set(key, (await findItem(l.owner, l.owner.pool, 'meeting', meetingId, MeetingManifest))?.manifest.seriesId);
-      if (seriesOf.get(key) === seriesId) sources.push(l);
+      const known = seriesOfCall.get(key) ?? seriesOf(l);
+      seriesOfCall.set(key, known);
+      if ((await known) === seriesId) sources.push(l);
     }
   }
   sources.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
@@ -56,9 +65,10 @@ async function find(o: Owner, seriesId: string): Promise<Found> {
 /** When a follow-up was last ticked, if it was. */
 const doneAt = (a: { changes: { what: string; at: string }[] }) => [...a.changes].reverse().find((c) => c.what === 'done')?.at;
 
-/** A series as the person asking sees it: what carries over from the calls whose notes they have. */
+/** A series as the person asking sees it: what carries over from the newest calls whose notes they have. */
 export async function get(o: Owner, seriesId: string): Promise<Series> {
-  const { sources, own } = await find(o, seriesId);
+  const { sources: found, own } = await find(o, seriesId);
+  const sources = found.slice(0, MAX_SHOWN);
   const first = sources[0];
   if (!own.length && !first) throw notFound('That series', { seriesId });
   const isOrganizer = own.length > 0;
@@ -91,11 +101,12 @@ export async function get(o: Owner, seriesId: string): Promise<Series> {
       ...(s.mine ? (m.meetingId ? { meetingId: m.meetingId } : {}) : { from: organizer })
     };
   });
-  slog.debug('series read', { seriesId, organizer: isOrganizer, notes: notes.length, decisions: decisions.length, questions: questions.length, actions: actions.length });
+  const older = found.length - sources.length;
+  slog.debug('series read', { seriesId, organizer: isOrganizer, notes: notes.length, older, decisions: decisions.length, questions: questions.length, actions: actions.length });
   return {
     id: seriesId, title: next?.manifest.title ?? first?.note.manifest.title ?? latest?.manifest.title ?? 'Untitled call',
     organizer, isOrganizer, ...(next ? { next: await toMeeting(o, next) } : {}),
-    recurring: own.some((m) => !!m.manifest.recurringEventId), notes, decisions, questions, actions
+    recurring: own.some((m) => !!m.manifest.recurringEventId), notes, older, decisions, questions, actions
   };
 }
 
@@ -115,15 +126,16 @@ const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${St
 const mark = (at: number | undefined) => (at === undefined ? '' : `[${mmss(at)}] `);
 /** A person as the model needs them: their name, or the name part of an address nobody named (never the address). */
 const called = (p: Person) => (p.name === p.email ? p.email.split('@')[0] ?? p.name : p.name);
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+/** The day a call was on where the asker is: "Tuesday 3 November 2026". `timeZone` was checked when the question came in. */
+const day = (iso: string, timeZone: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone });
 const STATE = { proposed: 'not confirmed yet', confirmed: 'confirmed', superseded: 'no longer holds', rejected: 'not decided' } as const;
 
 /** One call as the model reads it, before its transcript: when, who, and what its notes say. */
-function notesText(n: number, m: NoteManifest, organizer: Person): string {
+function notesText(n: number, m: NoteManifest, organizer: Person, timeZone: string): string {
   const invited = m.invited.map((e) => called(personOf(e)));
   const section = (title: string, lines: string[]) => (lines.length ? [`${title}:`, ...lines] : []);
   return [
-    `Meeting ${n}: ${m.title}, ${day(m.startedAt)}, ${Math.max(1, Math.round(m.duration / 60))} minutes`,
+    `Meeting ${n}: ${m.title}, ${day(m.startedAt, timeZone)}, ${Math.max(1, Math.round(m.duration / 60))} minutes`,
     `Organizer: ${organizer.name}`,
     `Invited: ${invited.length ? invited.join(', ') : 'nobody else'}`,
     `Summary: ${m.summary || '(none)'}`,
@@ -161,16 +173,18 @@ const Reply = z.object({
 
 /**
  * Answers a question across the calls in a series whose notes the person asking has, citing the
- * calls (and moments) it comes from. Only those calls are sent to the notes model; nothing is kept.
+ * calls (and moments) it comes from. Only those calls are sent to the notes model, with their dates
+ * read in the asker's `timeZone`; nothing is kept. The answer goes only if the asker still has every
+ * one of those notes once it's written: it may quote any of them.
  */
-export async function ask(o: Owner, seriesId: string, question: string): Promise<SeriesAnswerPart[]> {
+export async function ask(o: Owner, seriesId: string, question: string, timeZone: string): Promise<SeriesAnswerPart[]> {
   const { sources, own } = await find(o, seriesId);
   if (!own.length && !sources.length) throw notFound('That series', { seriesId });
   const read = sources.filter((s) => s.note.manifest.status === 'ready' && (s.note.manifest.summary || s.note.manifest.transcript?.length)).slice(0, MAX_CALLS);
   if (!read.length) throw new ConflictError('There are no written notes in this series to ask about yet.', { context: { seriesId } });
   const t0 = performance.now();
   const organizer = await me(read[0]?.owner ?? o);
-  const blocks = read.map((s, i) => notesText(i + 1, s.note.manifest, organizer));
+  const blocks = read.map((s, i) => notesText(i + 1, s.note.manifest, organizer, timeZone));
   // What each call's notes say always goes in; transcripts fill what's left, newest call first.
   let room = MAX_CHARS - blocks.reduce((n, b) => n + b.length + 2, 0);
   const calls = read.map((s, i) => {
@@ -184,6 +198,13 @@ export async function ask(o: Owner, seriesId: string, question: string): Promise
     { role: 'system', content: ASK_PROMPT },
     { role: 'user', content: `Series: ${read[0]?.note.manifest.title ?? ''}\nMeetings, newest first:\n\n${calls.join('\n\n')}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask-series', maxTokens: 1200, timeoutMs: 60_000 }));
+  // Writing it can take up to a minute. A note deleted or taken away meanwhile must not show through the answer.
+  const gone = await goneSince(o, read);
+  if (gone) {
+    throw new ConflictError('Notes from one of these calls were deleted or removed from yours while the answer was being written, so it isn’t shown. Ask again.', {
+      context: { seriesId, calls: read.length, gone, ms: Math.round(performance.now() - t0) }
+    });
+  }
   if (!reply.success) {
     throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask-series', issues: reply.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ') } });
   }

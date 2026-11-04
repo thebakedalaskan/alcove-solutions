@@ -126,13 +126,16 @@ panels for notes, chat (**C**) and people, and **End**.
   when.
 - A call's notes say when it's **In a series**, with how much is still open and, for the organizer, the next
   call. When it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people
-  and notes setting, a week on, on the calendar; **Change** in the confirmation moves it or cancels it.
+  and notes setting, at the same time of day a week on (still the same time when the clocks change in
+  between), on the calendar; **Change** in the confirmation moves it or cancels it.
 - The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
   confirmed yet, and no longer holding), questions still open, and follow-ups taken on, not taken on yet and
   done since the last call, each with the call and moment it came from. Things can be settled there, and
-  questions asked across the calls, with answers that cite the calls and moments they come from. Someone
-  invited to only some of the calls sees only those. The organizer also sees the next call, with **Join** and
-  **Change this call**, or **Schedule next week’s call**.
+  questions asked across the calls, with answers that cite the calls and moments they come from, by the
+  days you saw them on. Someone invited to only some of the calls sees only those. It shows the newest 24
+  calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
+  **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
+  and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
 
 ## 8. Record in the room
 

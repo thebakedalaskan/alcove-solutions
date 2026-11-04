@@ -1,7 +1,7 @@
 import {
   ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
-  SignInBodySchema, TeamInviteBodySchema
+  MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema,
+  ShareBodySchema, SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -42,13 +42,17 @@ const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls
 const QUIET = new Set(['/health', '/healthz']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /**
- * POSTs that keep no stored receipt: searching and asking only read, and audio pieces and
- * transcript clips are already idempotent by their place in the recording (and their answers carry
- * the live transcript, which shouldn't be copied into receipts).
+ * Mutations that keep no stored receipt. Searching and asking only read. Audio pieces and transcript
+ * clips are already idempotent by their place in the recording (and their answers carry the live
+ * transcript, which shouldn't be copied into receipts). Changing a note's decisions, open questions
+ * and follow-ups, and sharing it, each set an explicit state, so a retry changes nothing; and their
+ * answer is the whole note, which a receipt kept under someone it was given to would still hold
+ * after the organizer deleted it.
  */
 const NO_RECEIPT = [
   /^\/v1\/notes\/search$/, /^\/v1\/(?:notes|series)\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask)$/,
-  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/
+  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions)\/[^/]+|share)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -279,7 +283,7 @@ export function createApp(d: Deps) {
   app.post('/v1/meetings/:id/next', async (c) => c.json(await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt)));
 
   /* calendar: someone's other events, and making one of them an Alcove call */
-  app.get('/v1/calendar', async (c) => c.json(await calendar.view(c.get('owner'), await meetings.recurringSeries(c.get('owner')))));
+  app.get('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.view(o, () => meetings.recurringSeries(o))); });
   app.post('/v1/calendar/events/:id/adopt', async (c) => {
     const { notes } = await body(c, z.object({ notes: NotesSettingSchema.optional() }));
     return c.json(await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
@@ -366,7 +370,8 @@ export function createApp(d: Deps) {
   app.get('/v1/series/:id', async (c) => c.json(await series.get(c.get('owner'), c.req.param('id'))));
   app.post('/v1/series/:id/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask-series');
-    return c.json(await series.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
+    const { question, timeZone } = await body(c, SeriesAskBodySchema);
+    return c.json(await series.ask(c.get('owner'), c.req.param('id'), question, timeZone));
   });
 
   /* credits */

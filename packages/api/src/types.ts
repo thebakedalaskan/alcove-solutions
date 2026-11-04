@@ -341,8 +341,10 @@ export const SeriesSchema = z.object({
   next: MeetingSchema.optional(),
   /** For the organizer: the series follows a recurring Google Calendar event, so its next call is the next occurrence there. */
   recurring: z.boolean(),
-  /** The calls in the series whose notes you have, newest first. Everything below comes from these alone. */
+  /** The calls in the series whose notes you have, newest first: the newest 24 of them. Everything below comes from these alone. */
   notes: z.array(SeriesNoteSchema),
+  /** How many older calls in it you also have notes from. They aren't shown, and nothing carries over from them. */
+  older: z.number(),
   /** Confirmed decisions, ones that no longer hold, and ones nobody has confirmed yet, newest call first. Never ones people said weren't decided. */
   decisions: z.array(CarriedDecisionSchema),
   /** Questions nobody has said were answered yet. */

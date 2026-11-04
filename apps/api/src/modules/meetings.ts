@@ -10,6 +10,7 @@ import { id128, random } from '../crypto';
 import { exec, tx, type Db } from '../db';
 import { ConflictError, ValidationError } from '../errors';
 import { log } from '../log';
+import { lockOwner } from '../owners';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
 import * as calendar from './calendar';
@@ -151,22 +152,31 @@ export async function cancel(o: Owner, id: string): Promise<void> {
  * Every occurrence of one recurring event made an Alcove call is in the same series.
  */
 export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | undefined): Promise<Meeting> {
-  const mine = await all(o);
-  const existing = mine.find((m) => m.manifest.calendarEventId === eventId);
-  if (existing) return toMeeting(o, existing);
+  const held = (await all(o)).find((m) => m.manifest.calendarEventId === eventId);
+  if (held) return toMeeting(o, held);
   const organizer = await me(o);
   const e = await calendar.ownEvent(o, eventId);
-  const recurring = e.recurringEventId;
-  const series = recurring ? { seriesId: mine.find((m) => m.manifest.recurringEventId === recurring)?.manifest.seriesId ?? id128(), recurringEventId: recurring } : {};
-  const manifest: MeetingManifest = {
-    title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
-    notes: notes ?? (await preferences(o)).notesDefault, code: makeCode(), status: 'scheduled',
-    calendarEventId: eventId, ...(e.url ? { calendarUrl: e.url } : {}), ...series
-  };
-  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
-  await calendar.change(o, eventId, itemId, manifest, e.description);
-  mlog.info('calendar event moved to Alcove', { meetingId: itemId, guests: manifest.guests.length });
-  return get(o, itemId);
+  const setting = notes ?? (await preferences(o)).notesDefault;
+  const made = await tx(o.pool, async (c) => {
+    // One at a time per account, reading the calls only once it's this one's turn: two quick adopts
+    // of one recurring event's occurrences share a series, and one event adopted twice is one call.
+    await lockOwner(o, c);
+    const mine = await all(o, c);
+    const again = mine.find((m) => m.manifest.calendarEventId === eventId);
+    if (again) return { itemId: again.itemId, manifest: again.manifest, created: false };
+    const recurring = e.recurringEventId;
+    const series = recurring ? { seriesId: mine.find((m) => m.manifest.recurringEventId === recurring)?.manifest.seriesId ?? id128(), recurringEventId: recurring } : {};
+    const manifest: MeetingManifest = {
+      title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
+      notes: setting, code: makeCode(), status: 'scheduled', calendarEventId: eventId, ...(e.url ? { calendarUrl: e.url } : {}), ...series
+    };
+    return { itemId: (await createItem(o, c, 'meeting', manifest)).itemId, manifest, created: true };
+  });
+  if (made.created) {
+    await calendar.change(o, eventId, made.itemId, made.manifest, e.description);
+    mlog.info('calendar event moved to Alcove', { meetingId: made.itemId, guests: made.manifest.guests.length, recurring: !!made.manifest.recurringEventId });
+  }
+  return get(o, made.itemId);
 }
 
 /** A call that starts now: "<first name>'s call" unless it has a title, with the default notes setting unless set. */
@@ -185,32 +195,28 @@ export async function startNow(o: Owner, input: InstantCallInput): Promise<{ cod
 
 /* ---------- series: calls that follow on from each other ---------- */
 
-const WEEK_MS = 7 * 86_400_000;
-/** The same time a week after `iso`, a week further each time, until it's still to come. */
-function weekOn(iso: string): string {
-  let t = new Date(iso).getTime() + WEEK_MS;
-  while (t <= Date.now()) t += WEEK_MS;
-  return new Date(t).toISOString();
-}
-
 /**
  * Schedules the next call in a call's series, starting the series if the call isn't in one: the
- * same title, people, length and notes setting, at `startsAt` or else the same time a week on. It
- * goes on the calendar like any scheduled call. An occurrence of a recurring Google Calendar event
- * has its next one on the calendar already, so that one is made an Alcove call from there instead.
+ * same title, people, length and notes setting, at `startsAt`, which has to be still to come and
+ * after the call. The app sends the same clock time a week on, worked out where the organizer is,
+ * so a change of the clocks in between doesn't move it. It goes on the calendar like any scheduled
+ * call. An occurrence of a recurring Google Calendar event has its next one on the calendar already,
+ * so that one is made an Alcove call from there instead.
  */
-export async function scheduleNext(o: Owner, id: string, startsAt: string | undefined): Promise<Meeting> {
+export async function scheduleNext(o: Owner, id: string, startsAt: string): Promise<Meeting> {
   const made = await tx(o.pool, async (c) => {
     await lockItem(o, c, id);
     const cur = await getItem(o, c, 'meeting', id, MeetingManifest, 'That meeting');
     const from = cur.manifest;
     if (from.recurringEventId) throw new ConflictError('This call repeats on your Google Calendar, so its next one is there already. Use Alcove for it from Home.', { context: { meetingId: id } });
-    const start = startsAt ?? weekOn(from.startsAt);
-    if (!(new Date(start).getTime() > new Date(from.startsAt).getTime())) throw new ValidationError('The next call has to start after this one.', { context: { meetingId: id } });
+    const minutes = Math.round((new Date(from.endsAt).getTime() - new Date(from.startsAt).getTime()) / 60_000);
+    const times = validTimes(startsAt, minutes);
+    const start = new Date(times.startsAt).getTime();
+    if (start <= new Date(from.startsAt).getTime()) throw new ValidationError('The next call has to start after this one.', { context: { meetingId: id } });
+    if (start <= Date.now()) throw new ValidationError('The next call has to start in the future.', { context: { meetingId: id } });
     const seriesId = from.seriesId ?? id128();
     if (!from.seriesId) await saveRevision(o, c, id, cur.revisionId, { ...from, seriesId });
-    const minutes = Math.round((new Date(from.endsAt).getTime() - new Date(from.startsAt).getTime()) / 60_000);
-    const manifest: MeetingManifest = { title: from.title, ...validTimes(start, minutes), guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId };
+    const manifest: MeetingManifest = { title: from.title, ...times, guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId };
     return { itemId: (await createItem(o, c, 'meeting', manifest)).itemId, manifest, started: !from.seriesId };
   });
   mlog.info('next call in a series scheduled', { meetingId: made.itemId, after: id, seriesStarted: made.started, guests: made.manifest.guests.length, notes: made.manifest.notes });

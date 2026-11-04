@@ -2,6 +2,7 @@
 import type { ActionPatch, DecisionPatch, DemoProvider, InstantCallInput, MeetingInput, NoteKind, NotesSetting, Patch, Preferences, QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { weekOn } from './time';
 
 export const qk = {
   session: ['session'] as const,
@@ -92,11 +93,11 @@ export function useStartNow() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (input: InstantCallInput) => api.calls.startNow(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
 }
-/** Schedules the next call after a call (starting its series if it isn't in one), at `startsAt` or a week on. */
+/** Schedules the next call after a call (starting its series if it isn't in one): the same clock time here, a week on. */
 export function useScheduleNext() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { meetingId: string; startsAt?: string | undefined }) => api.meetings.scheduleNext(v.meetingId, v.startsAt),
+    mutationFn: async (v: { meetingId: string }) => api.meetings.scheduleNext(v.meetingId, weekOn((await api.meetings.get(v.meetingId)).startsAt)),
     // The call's notes say which series they're in now.
     onSuccess: () => { callsChanged(qc); void qc.invalidateQueries({ queryKey: qk.notes }); }
   });

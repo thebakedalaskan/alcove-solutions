@@ -4,12 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { AskBar, Section } from '~/features/notes/parts';
-import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, useScheduleNextCall } from '~/features/series/carried';
+import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from '~/features/series/carried';
 import { useOpenComposer } from '~/features/shell/context';
 import { api } from '~/lib/api';
 import { sameEmail } from '~/lib/people';
 import { q, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
-import { hm, longDay, noteDay, shortDay } from '~/lib/time';
+import { hm, longDay, noteDay, shortDay, timeZone } from '~/lib/time';
 
 /*
  * A series as the reader sees it: what the calls they have notes from decided, left open and handed
@@ -59,6 +59,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const done = s.actions.filter((a) => a.done);
   const empty = !s.decisions.length && !s.questions.length && !s.actions.length;
   const latest = s.notes[0];
+  const calls = s.notes.length + s.older;
   const who = s.isOrganizer ? 'Your series' : `${firstName(s.organizer.name)}’s series`;
   const row = (d: CarriedDecision, actions: ReactNode) => <CarriedDecisionRow key={d.id} d={d} note={from.get(d.noteId)} me={me} actions={actions} />;
   const followUp = (a: CarriedAction) => (
@@ -79,14 +80,14 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
             {s.next ? <span className="ac-mono">Next call {shortDay(new Date(s.next.startsAt))}, {hm(s.next.startsAt)}</span>
               : s.recurring ? <span>Repeats on your Google Calendar</span>
                 : latest ? <span className="ac-mono">Last call {noteDay(latest.startedAt)}</span> : null}
-            <span>{!s.notes.length ? 'No call in it has notes yet' : s.isOrganizer ? `${s.notes.length} ${s.notes.length === 1 ? 'call' : 'calls'} with notes` : `You have notes from ${s.notes.length} of its calls`}</span>
+            <span>{!calls ? 'No call in it has notes yet' : s.isOrganizer ? `${calls} ${calls === 1 ? 'call' : 'calls'} with notes` : `You have notes from ${calls} of its calls`}</span>
           </div>
           {empty ? (
             <section className="sec"><EmptyState className="note-empty" title={nothing(s).title}>{nothing(s).text}</EmptyState></section>
           ) : (
             <>
               {s.decisions.length > 0 && (
-                <Section title="Decided" count={proposed.length ? `${proposed.length} to confirm` : confirmed.length} style={{ '--d': 2 }}>
+                <Section title="Decided" count={proposed.length ? `${proposed.length} to confirm` : confirmed.length || undefined} style={{ '--d': 2 }}>
                   <div className="carry-list">
                     {confirmed.map((d) => row(d, <button type="button" className="lk on-hover" onClick={() => decide(d, 'superseded')}>It no longer holds</button>))}
                     {proposed.length > 0 && <div className="grp">Not confirmed yet</div>}
@@ -119,7 +120,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
               )}
             </>
           )}
-          {s.notes.some((n) => n.status === 'ready') && <AskBar label="Ask about these calls" suggestions={SUGGESTIONS} ask={(text) => api.series.ask(s.id, text)} />}
+          {s.notes.some((n) => n.status === 'ready') && <AskBar label="Ask about these calls" suggestions={SUGGESTIONS} ask={(text) => api.series.ask(s.id, text, timeZone())} />}
         </article>
         <aside className="rail">
           {s.isOrganizer && <div style={{ '--d': 4 }}><NextCall s={s} /></div>}
@@ -136,6 +137,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
                   ))}
                 </div>
               ) : <p className="ser-p">No call in this series has notes yet.</p>}
+              {s.older > 0 && <p className="ser-p ser-older">{s.older} older {s.older === 1 ? 'call isn’t' : 'calls aren’t'} shown, and nothing carries over from {s.older === 1 ? 'it' : 'them'}: only the newest {s.notes.length} count.</p>}
               <div className="seal"><SealedBadge inline title={s.isOrganizer ? 'Everyone invited sees only the calls they have notes from. Nothing here is kept.' : 'Only from the calls you have notes from. Nothing here is kept.'} /></div>
             </Card>
           </div>
@@ -165,7 +167,7 @@ function NextCall({ s }: { s: Series }) {
   return (
     <Card title="Next call">
       {s.recurring
-        ? <p className="ser-p">It’s on your Google Calendar. Make it an Alcove call from Home when it’s coming up.</p>
+        ? <NextOnCalendar><p className="ser-p">It’s on your Google Calendar. Make it an Alcove call from Home when it’s coming up.</p></NextOnCalendar>
         : (
           <>
             <p className="ser-p">Nothing is scheduled. The next call gets the same people and notes setting.</p>

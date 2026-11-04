@@ -100,15 +100,43 @@ const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
 
 async function myIndex(o: Owner): Promise<Uint8Array> { return emailIndex(o, (await profile(o)).email); }
 
-/** Every note someone else gave you, by invitation or by sharing it with you: each found by your email's index right now. */
+/**
+ * Every note someone else gave you, by invitation or by sharing it with you: each found by your
+ * email's index right now. Each organizer's keys are opened once, however many of their notes you have.
+ */
 export async function sharedWithMe(o: Owner): Promise<Located[]> {
   const access = await rows(o.pool, AccessRow, 'SELECT owner_id, note_item_id FROM note_access WHERE email_index = $1 AND owner_id <> $2', [await myIndex(o), o.ownerId]);
+  const owners = new Map<string, Owner>();
   const out: Located[] = [];
   for (const a of access) {
-    const owner = await openOwner(o, a.owner_id, undefined);
-    out.push({ owner, note: await getItem(owner, owner.pool, 'note', a.note_item_id, NoteManifest, 'Those notes'), mine: false });
+    const owner = owners.get(a.owner_id) ?? await openOwner(o, a.owner_id, undefined);
+    owners.set(a.owner_id, owner);
+    // Deleted since its access row was read: it's gone, not an error.
+    const note = await findItem(owner, owner.pool, 'note', a.note_item_id, NoteManifest);
+    if (note) out.push({ owner, note, mine: false });
   }
   return out;
+}
+
+/**
+ * How many of these notes, found earlier in this request, the asker can't read any more: deleted,
+ * or (someone else's) no longer given to them. An answer that took a while to write is checked with
+ * this before it's sent, since it may quote a note that went in the meantime.
+ */
+export async function goneSince(o: Owner, found: Located[]): Promise<number> {
+  const Count = z.object({ n: z.number() });
+  const mine = found.filter((l) => l.mine).map((l) => l.note.itemId);
+  const theirs = found.filter((l) => !l.mine);
+  const ownLeft = mine.length
+    ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM items WHERE owner_id = $1 AND kind = 'note' AND deleted_at IS NULL AND item_id = ANY($2::text[])`, [o.ownerId, mine]))?.n ?? 0
+    : 0;
+  const givenLeft = theirs.length
+    ? (await maybeOne(o.pool, Count, `SELECT count(*)::int AS n FROM note_access a
+        JOIN unnest($2::text[], $3::text[]) AS t(owner_id, note_item_id) ON a.owner_id = t.owner_id AND a.note_item_id = t.note_item_id
+        JOIN items i ON i.owner_id = a.owner_id AND i.item_id = a.note_item_id AND i.deleted_at IS NULL
+        WHERE a.email_index = $1`, [await myIndex(o), theirs.map((l) => l.owner.ownerId), theirs.map((l) => l.note.itemId)]))?.n ?? 0
+    : 0;
+  return found.length - ownLeft - givenLeft;
 }
 async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const own = await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId, id]);
@@ -195,15 +223,23 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
   };
 }
 
-/** Answers a question about written notes from their transcript, for anyone who has them. */
+/**
+ * Answers a question about written notes from their transcript, for anyone who has them. The answer
+ * goes only if they still have the notes once it's written: it may quote them.
+ */
 export async function ask(o: Owner, id: string, question: string): Promise<AnswerPart[]> {
-  const { owner, note } = await locate(o, id);
+  const l = await locate(o, id);
+  const { owner, note } = l;
   const m = note.manifest;
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
   if (!m.transcript?.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
   const t0 = performance.now();
   const parts = await answer(o.cfg, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
-  nlog.info('question answered', { noteId: id, mine: owner.ownerId === o.ownerId, cites: parts.length - 1, ms: Math.round(performance.now() - t0) });
+  const ms = Math.round(performance.now() - t0);
+  if (await goneSince(o, [l])) {
+    throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
+  }
+  nlog.info('question answered', { noteId: id, mine: l.mine, cites: parts.length - 1, ms });
   return parts;
 }
 export async function openActions(o: Owner): Promise<OpenAction[]> {

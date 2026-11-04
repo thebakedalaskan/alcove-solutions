@@ -159,6 +159,9 @@ the note ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can
 `ready` note with transcript lines (`409 conflict` otherwise) and allows 20 questions a minute per
 account. The answer is one `text` part followed by up to four `cite` parts: seconds into the recording the
 app can play from. Questions and answers are not stored, keep no operation receipt, and cost no credits.
+Writing an answer can take up to a minute, so once it's written the asker's access is checked again: if the
+note was deleted or removed from their notes meanwhile, the answer, which may quote it, isn't sent
+(`409 conflict`).
 
 ## Catching up during a call
 
@@ -184,42 +187,64 @@ into the next (`apps/api/src/modules/series.ts`).
 - **Joining one.** A series is a random ID (`seriesId`) in its calls' sealed meeting manifests; it has no
   record of its own. Every occurrence of one recurring Google Calendar event made an Alcove call shares one:
   adopting an occurrence also keeps Google's ID for the whole recurring event (`recurringEventId`) in its
-  manifest, so later occurrences find the series, and `GET /v1/calendar` marks them with it.
-  `POST /v1/meetings/:id/next` with `{startsAt?}` schedules the next call after one of the organizer's calls,
+  manifest, so later occurrences find the series, and `GET /v1/calendar` marks them with it. Adopts take
+  turns per account (a lock on the account's row), and each reads the account's calls only once it's its
+  turn, so occurrences adopted at the same moment still share one series, and one event adopted twice at
+  once is still one call. Google decides what counts as the same recurring event: editing "this and
+  following events" there ends the recurrence and starts a new recurring event with a new ID, so the
+  occurrences from then on start a new series in Alcove.
+  `POST /v1/meetings/:id/next` with `{startsAt}` schedules the next call after one of the organizer's calls,
   starting a series if the call isn't in one: the same title, people, length and notes setting, at
-  `startsAt` or else the same time a week on (the first such time still to come), placed on the calendar
-  like any scheduled call. It has to start after the call it follows (`400 invalid`). An occurrence of a
-  recurring Google event is refused (`409 conflict`): its next one is on the calendar already. Room
-  recordings have no call, so they're never in a series.
+  `startsAt`, placed on the calendar like any scheduled call. The app sends the same clock time a week on in
+  the browser's time zone (the first such time still to come), so a change of the clocks in between doesn't
+  move it an hour. It has to start after the call it follows and still be to come (`400 invalid`). An
+  occurrence of a recurring Google event is refused (`409 conflict`): its next one is on the calendar
+  already. Room recordings have no call, so they're never in a series.
 - **What carries over.** `GET /v1/series/:id` puts the series together for whoever asks, from the calls in
   it whose notes they can read at that moment: the organizer's own notes; for anyone else, the notes given
   to them by invitation or sharing, found through `note_access` by their email's index
-  ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). A call's notes join
-  its series when the call ends. From the written ones, newest call first, it takes decisions that are
+  ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). Everyone finds them
+  the same way: the notes they have whose call (`meetingId`) is in the series, once the call has ended. A
+  call whose link is opened again after it ended is held again, with notes of its own each time, and each
+  counts. Only the newest 24 calls are read; `older` says how many more the asker has notes from, which
+  aren't shown and carry nothing over. From the written ones, newest call first, it takes decisions that are
   confirmed, no longer hold (`superseded`) or are still `proposed` (never ones said not to be decided), open
   questions, and follow-ups not done yet or ticked since the latest call started. Each question and
   follow-up says how many later calls it stayed open through (`later`) and is `stale` from two. Each item
   names its note (`noteId`) and moment (`at`). Only the organizer gets the next call scheduled in Alcove
   (`next`), whether the series follows a recurring Google event (`recurring`), and the call each note is
   from (`meetingId`). Someone with no notes from a series gets `404 not-found`, as for one that doesn't exist.
+  Reading the notes others gave the asker opens each organizer's keys once a request, however many of their
+  notes it reads.
 - **Nothing derived is kept.** A series is read afresh on each request and stored nowhere, so a note that's
   deleted, removed from someone's notes or never given to them isn't in it. Being invited to one call opens
   nothing from the others.
 - **Settling things.** `PATCH /v1/notes/:id/questions/:id` with `{state?: "open" | "answered", text?}`
   says an open question was answered, reopens it or rewords it; like decisions and follow-ups, anyone who
   has the note can, and every change records who and when. A confirmed decision can be said to no longer
-  hold (`superseded`) when a later one replaces it; only a confirmed one (`409 conflict` otherwise).
-- **Asking across a series.** `POST /v1/series/:id/ask` with `{question}` reads the asker's written calls in
-  the series, newest first and at most 12: each one's notes, then as much of their transcripts as fits in
-  120,000 characters, the newest calls' first. The answer is one `text` part and up to four `source` parts:
-  a call's note, title and date, and the second it comes from when the model gives one inside the
-  recording. It needs a written note in the series (`409 conflict` otherwise), shares the 20-a-minute limit
-  with asking about notes, keeps no operation receipt, stores nothing and costs no credits.
+  hold (`superseded`) when a later one replaces it; only a confirmed one (`409 conflict` otherwise). These
+  changes and sharing keep no operation receipt
+  ([Privacy › Requests](privacy-keys-and-sessions.md#requests)).
+- **Asking across a series.** `POST /v1/series/:id/ask` with `{question, timeZone}` reads the asker's
+  written calls in the series, newest first and at most 12: each one's notes, then as much of their
+  transcripts as fits in 120,000 characters, the newest calls' first. `timeZone` is where the asker is, an
+  IANA name such as `Europe/London` (the app sends the browser's); each call's date is given to the model in
+  it, so "Tuesday's call" is the day the asker saw. Anything `Intl.DateTimeFormat` can't use as a time zone
+  is refused (`400 invalid`). The answer is one `text` part and up to four `source` parts: a call's note,
+  title and date, and the second it comes from when the model gives one inside the recording. Once the
+  answer is written, the asker's access to every call it read is checked again: if one of those notes was
+  deleted or removed from theirs meanwhile, the whole answer is dropped, since it may quote it, and the
+  asker is told to ask again (`409 conflict`). It needs a written note in the series (`409 conflict`
+  otherwise), shares the 20-a-minute limit with asking about notes, keeps no operation receipt, stores
+  nothing and costs no credits.
 - **In the app.** Home shows **From earlier calls** under the call that's up next when it's in a series:
   confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest. A note
   says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
-  (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls. The
-  call screen doesn't show any of it yet ([What's left](#whats-left)).
+  (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under
+  its calls it says how many older ones aren't shown. When a series follows a recurring Google event and
+  Google Calendar isn't connected any more, the series page and the note say so and offer **Connect Google
+  Calendar**, since Home can't show the next occurrence without it. The call screen doesn't show any of it
+  yet ([What's left](#whats-left)).
 
 ## Prompts
 
@@ -250,7 +275,8 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   and `next` steps, each item a short sentence with the second it was said. At most 8 items a list; times
   must fall within the recording.
 - **Answering across a series** (in `apps/api/src/modules/series.ts`). Each call the asker has, numbered
-  newest first: its title, date and length, the organizer's and invited people's names (never addresses),
+  newest first: its title, date (the day it was where the asker is) and length, the organizer's and invited
+  people's names (never addresses),
   the summary, the decisions with where they stand, the open questions, the follow-ups with who has them,
   their due dates and whether they're done, then the transcript; after them the asker's name and the
   question. One JSON object, `{answer, sources}`: plain, at most four sentences unless the question asks for
@@ -306,9 +332,12 @@ chapter counts), `question answered`, `series question answered`, `question chan
 scheduled`, `notes job dropped`, `nothing was transcribed; note finished without notes` and `clip arrived
 after the recording stopped; dropped` at info; `notes not written yet; trying again` at warn; a note
 finished without a summary after its last attempt at error. Speech, transcript lines, prompts, replies and
-questions are never logged, and neither are Google's event IDs: an occurrence's ID begins with its recurring
-event's, so logged paths show `/v1/calendar/events/:id`. The privacy test looks for spoken canaries in every table, object
-and debug log line ([Logging and errors](logging-and-errors.md)).
+questions are never logged, and neither are the asker's time zone or Google's event IDs: an occurrence's ID
+begins with its recurring event's, so logged paths show `/v1/calendar/events/:id`, and a refused adopt's
+error carries no ID in its context. An answer dropped because a note went while it was written is logged at
+info as a refused request with the series or note ID, the number of calls read and how many went. The
+privacy test looks for spoken canaries, and the IDs of events whose adopt was refused, in every table,
+object and debug log line ([Logging and errors](logging-and-errors.md)).
 
 ## Tests
 
@@ -317,12 +346,16 @@ a test writes into the WAV samples, answers a clip without them with Whisper's f
 writes notes from the transcript it was sent, and can fail its next replies (down, or prose instead of
 JSON). The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a
 call and a room recording, retried and silent clips, notes off and on again, the clip format and access
-checks, a server without a key, writing and charging, asking (also by someone invited), and retries up to
-the third failure. `apps/api/src/series.integration.test.ts` covers series: scheduling the next call, what
-carries over for the organizer and for everyone invited, staleness, decisions that no longer hold and
-questions answered, someone invited to only the second call (who sees only that one, can't open the first,
-and gets it once it's shared with them and loses it when they remove it), asking across only the calls the
-asker has, someone with no notes from it, room recordings, and recurring Google events.
+checks, a server without a key, writing and charging, asking (also by someone invited), an answer dropped
+because its note was deleted or removed while it was written (the fake's `slowNext`), and retries up to
+the third failure. `apps/api/src/series.integration.test.ts` covers series: scheduling the next call (and
+the times it refuses), what carries over for the organizer and for everyone invited, staleness, decisions
+that no longer hold and questions answered, someone invited to only the second call (who sees only that
+one, can't open the first, and gets it once it's shared with them and loses it when they remove it), asking
+across only the calls the asker has, someone with no notes from it, room recordings, recurring Google
+events (also adopted all at once), a call held again after it ended (every time counts, for everyone, and
+only the newest 24 are shown), dates in the asker's time zone, and answers dropped because a note they read
+went while they were written.
 
 ## What's left
 
@@ -343,3 +376,6 @@ asker has, someone with no notes from it, room recordings, and recurring Google 
   mark the organizer's next call as part of it, because Home lists only their own calls and calendar.
 - **Repeats.** Alcove schedules one next call at a time and has no recurrence rule of its own. Calls that
   already exist can't be put into one series afterwards.
+- **"This and following events".** Editing a recurring event that way in Google Calendar ends it and
+  creates a new recurring event with a new ID. The occurrences from then on start a new series in Alcove,
+  and what the earlier ones settled and left open doesn't carry into it.

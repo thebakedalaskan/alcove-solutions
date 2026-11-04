@@ -1,10 +1,9 @@
 import type { CallSession, NoteProgress, RoomRecording } from './live';
-import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider } from './wire';
+import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
   Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
-import type { QuestionPatch } from './wire';
 
 /** A partial update: any field may be missing or explicitly undefined. */
 export type Patch<T> = { [K in keyof T]?: T[K] | undefined };
@@ -50,11 +49,12 @@ export interface AlcoveApi {
     cancel(id: ID): Promise<void>;
     /**
      * Schedules the next call in a call's series, starting the series if it isn't in one: the same
-     * title, people, length and notes setting, at `startsAt`, or else at the same time a week on (the
-     * first such time still to come). Not for an occurrence of a recurring Google Calendar event, whose
-     * next one is on the calendar already.
+     * title, people, length and notes setting, at `startsAt`, which must be still to come and after the
+     * call. The app sends the same clock time a week on where the person is (the first such time still
+     * to come), so it doesn't move an hour when the clocks change. Not for an occurrence of a recurring
+     * Google Calendar event, whose next one is on the calendar already.
      */
-    scheduleNext(id: ID, startsAt?: ISODate | undefined): Promise<Meeting>;
+    scheduleNext(id: ID, startsAt: ISODate): Promise<Meeting>;
   };
   calendar: {
     /** The coming week's other calendar events, beside Alcove's own calls. */
@@ -93,10 +93,14 @@ export interface AlcoveApi {
     delete(id: ID): Promise<void>;
   };
   series: {
-    /** A series as you see it: what carries over from the calls in it whose notes you have, and only those. */
+    /** A series as you see it: what carries over from the newest 24 calls in it whose notes you have, and only those. */
     get(id: ID): Promise<Series>;
-    /** Asks across the calls in a series whose notes you have, with the calls and moments the answer comes from. */
-    ask(id: ID, question: string): AsyncIterable<SeriesAnswerPart>;
+    /**
+     * Asks across the calls in a series whose notes you have, with the calls and moments the answer
+     * comes from. `timeZone` is where the asker is, as an IANA name such as "Europe/London": the
+     * calls' dates are read in it, so they're the days the asker sees.
+     */
+    ask(id: ID, question: string, timeZone: string): AsyncIterable<SeriesAnswerPart>;
   };
   credits: {
     balance(): Promise<CreditBalance>;
