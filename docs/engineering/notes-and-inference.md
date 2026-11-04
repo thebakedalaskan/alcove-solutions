@@ -210,21 +210,32 @@ sequenceDiagram
    in a room recording), so two people starting at the same moment are both kept. If that tag is
    already stored, the clip is skipped without calling NEAR AI, so a retried upload is transcribed and
    kept once, whether or not anything in it survived the filter.
-5. **What a clip is sent with** (`hear` and `callLanguage` in `apps/api/src/modules/transcripts.ts`).
+5. **What a clip is sent with** (`hear` and `languageFor` in `apps/api/src/modules/transcripts.ts`).
    Whisper gets more than the audio, all of it read from what the API already keeps for the note:
-   - **The call's language.** Each row keeps the language Whisper picked for its clip itself, when it was
-     sure: the clip went without a language, at least 4 words survived the filter and its segments'
-     average `avg_logprob` was −0.25 or better. Once at least 3 of the note's newest 20 rows hold one, and
-     all of them the same, it is sent as `language`. Whisper picks the language per clip from the sound
-     alone, and on short clips and accented speech it often picks another one, then transcribes into
-     it or mixes languages; a sure pick is almost never wrong. A row with a sure pick of another language
-     (someone speaks it, or the call moves on to it) stops the language being sent until that row is no
-     longer among the newest 20. Rows sent with the language say nothing new, so after 6 of them in a row
-     the next clip of at least 3.5 seconds goes without it and Whisper picks again; shorter clips keep it.
+   - **The call's language.** Each row keeps whose clip it was (in a call), the language Whisper picked
+     for it itself when it was sure (the clip went without a language, at least 4 words survived the
+     filter and its segments' average `avg_logprob` was −0.25 or better), and whether it asked Whisper
+     what its speaker speaks (`asked`: it went without a language, and Whisper was sure or the clip was
+     at least 3.5 seconds long, enough to tell). Once at least 3 of the note's newest 20 rows hold a sure
+     pick, and all of them the same, it is sent as `language` with the clips of anyone a row among those
+     20 asked about. Whisper picks the language per clip from the sound alone, and on short clips and
+     accented speech it often picks another one, then transcribes into it or mixes languages; a sure
+     pick is almost never wrong. Someone not asked about among the newest 20 (who just joined, or has
+     been quiet a while) may speak another language, so their clips go without it until one asks: told
+     the call's language, Whisper writes a clip in it, often as a translation, under the speaker's name.
+     Someone it heard at length without being sure gets the call's language, as that's how it hears
+     accented speech. A row with a sure pick of another language (someone speaks it, or the call moves
+     on to it) stops the language being sent for everyone until that row is no longer among the newest
+     20. Rows sent with the language say nothing new, so after 6 of someone's since they were last asked
+     about, their next clip of at least 3.5 seconds goes without it and Whisper picks again; shorter clips
+     keep it.
    - **A prompt**, only with the call's language (`speechPrompt` in `apps/api/src/inference.ts`): the
      names of the organizer and everyone invited (from the note's manifest; an address with no name known
      is named from its local part, so `priya.raman@…` is "Priya Raman"), at most 120 bytes of them, then
-     the end of the words of the lines placed before the clip, at most 250 bytes. Whisper writes a clip in
+     the end of the words of the lines placed before the clip in the same part of the call (the main
+     room, or the breakout room its speaker is in), in recording order, at most 250 bytes. A room's words
+     go to Whisper only with that room's clips, so Whisper can't say them back into a line that people
+     outside the room read, or the main room's into a room's. Whisper writes a clip in
      its prompt's language, even names alone when they read as words ("Measure After"), so a prompt sent
      without the call's language translated other speakers' clips. NEAR AI refuses a prompt that fills
      Whisper's 448-token context, and 375 bytes or more of words before made it skip whole sentences.
@@ -232,11 +243,14 @@ sequenceDiagram
    Whisper is known to invent in silence and noise: segments with low confidence (`avg_logprob` below −1),
    looping text (`compression_ratio` above 2.4), likely non-speech (`no_speech_prob` above 0.6 with
    `avg_logprob` below −0.5; NEAR AI's Whisper doesn't report `no_speech_prob`, so this rarely applies),
-   subtitle credits in the languages Whisper invents them in ("amara.org", "subtitles by", "Untertitel
-   im Auftrag", "sous-titres", "subtítulos realizados", "субтитры", "字幕", ...), lines that are only
-   punctuation, symbols or one bracketed sound description, a line of three words or more four in five of
-   whose runs of three words the prompt has (Whisper saying back what it was told came before, word for
-   word or with a word changed), a run of sentences (three words or more in all) said again straight after
+   subtitle credits in the languages Whisper invents them in, which open the line ("Subtitles by",
+   "Sous-titrage", "Sous-titres réalisés par", "Untertitel im Auftrag", "Subtítulos realizados por",
+   "Субтитры сделал", "字幕by", "자막 제공", ...) or name amara.org, so a sentence about subtitles or
+   captions is kept, lines that are only punctuation, symbols or one bracketed sound description, a line
+   of six words or more four in five of whose runs of three words the prompt has (Whisper saying back
+   what it was told came before, word for word or with a word changed; shorter lines are kept, because
+   people say back what was just said to agree to it, as in "Ship it on Friday."), a run of sentences
+   (three words or more in all) said again straight after
    itself, and a line that only says the one before it again (Whisper looping, too rarely to cross the
    compression ratio), and a clip whose whole text is a stock closing line in any of a dozen languages, such as
    "Thank you.", "Thanks for watching", "To be continued", "¡Gracias!", "Obrigado." or "Продолжение
@@ -244,10 +258,10 @@ sequenceDiagram
 7. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
    clip, to a tenth of a second.
-8. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), its segment, the
-   evidence of the verification it was sent to, the language Whisper picked for it if it was sure
-   (`language`, a code such as `en`) and whether it was sent with the call's (`pinned`) are one
-   `transcript_clips` row, sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`;
+8. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), its segment, whose
+   speech it was (in a call), the evidence of the verification it was sent to, the language Whisper
+   picked for it if it was sure (`language`, a code such as `en`) and whether it asked Whisper what its
+   speaker speaks (`asked`) are one `transcript_clips` row, sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`;
    the header binds the owner, the note and the tag). The insert holds a share lock on the recording row.
    A clip that arrives after the recording stopped is dropped, because its note is already finished.
 9. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
@@ -647,11 +661,16 @@ The `live transcript and written notes` flows in `apps/api/src/flows.integration
 a room recording, retried and silent clips, notes off and on again, what each clip is sent with (nothing
 until three clips agree on a language; then the language, and a prompt of the people's names and as
 many of the words before as fit; kept by a short clip and dropped for a long one after six; a clip in
-another language stopping both; every note starting from nothing), lines that only repeat the prompt
-or themselves, the clip format and access checks, a
+another language stopping both; every note starting from nothing), a short reply that says back what was
+just said kept, lines that only repeat the prompt or themselves dropped, subtitle credits and closing
+lines in several languages dropped while sentences about subtitles are kept, the clip format and access checks, a
 server without a key, writing and charging, asking and catching up (also by someone invited), an answer
 dropped because its note was deleted or removed while it was written, retries up to the third failure, and
-the evidence the note keeps. `in the call: hands, spotlight, breakout rooms and captions` covers translating
+the evidence the note keeps. In `apps/api/src/calls.integration.test.ts`, `asks Whisper what each person
+speaks before sending their clips in the call’s language` covers someone heavily accented (sent it after one
+long clip) and someone speaking Spanish (a short hello and a sentence without it, then nobody's in one
+language), and the breakout-room test checks that no room's words go to Whisper with another part of the
+call's clips. `in the call: hands, spotlight, breakout rooms and captions` covers translating
 captions (once per line and language, sealed to the verified notes model, cross-account, gone when the call
 ends) and breakout rooms ending up in the notes' chapters. `verified private inference` covers:
 
@@ -739,9 +758,12 @@ answers dropped because a note they read went while they were written.
   language (German, French) on most clips, and is less sure when it does, so a call where nobody else
   speaks never settles on its language, and those clips stay as Whisper hears them. With anyone in the
   call it hears surely, the language is found and sent for everyone. Nobody can choose the language yet.
-- **One language per call.** The call's language is the note's, not each speaker's: in a call where
-  people speak different languages it isn't sent at all, and neither is a prompt, so names and the
-  words before don't help there.
+- **One language at a time.** The call's language is the note's, not each speaker's. In a call where
+  people speak different languages, it's sent only while the newest 20 clips hold sure picks of one
+  of them, so names and the words before help less there. Someone who joins speaking another language
+  has their clips sent without it until one is at least 3.5 seconds long or Whisper is sure of one; if
+  Whisper heard them at length without being sure, as in a noisy room, they're sent the call's language
+  like an accented speaker, and Whisper may write their words in it.
 - **Names of people who weren't invited.** The prompt names the organizer and everyone invited, not
   people who joined by link.
 - **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the

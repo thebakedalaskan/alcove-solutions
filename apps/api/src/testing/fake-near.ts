@@ -82,10 +82,11 @@ export interface FakeNear {
 /**
  * A clip of "speech" for the fake: 16 kHz mono 16-bit WAV of `ms` milliseconds whose samples carry
  * the words, said in `language`. Sentences separated by " // " come back as separate lines, two seconds apart.
+ * Not `sure`: heard with less confidence, as Whisper hears accented speech it takes for another language.
  */
-export function speechWav(words: string, ms = 4000, language = 'en'): Uint8Array<ArrayBuffer> {
+export function speechWav(words: string, ms = 4000, language = 'en', sure = true): Uint8Array<ArrayBuffer> {
   const samples = Math.max(1, Math.round((ms / 1000) * 16_000));
-  const marker = Buffer.from(words ? `TEXT:${words}|LANG:${language}|` : '', 'utf8');
+  const marker = Buffer.from(words ? `TEXT:${words}|LANG:${language}|${sure ? '' : 'UNSURE|'}` : '', 'utf8');
   const data = Buffer.alloc(Math.max(samples * 2, marker.length + (marker.length % 2)));
   marker.copy(data);
   const head = Buffer.alloc(44);
@@ -158,9 +159,9 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 /* ---------- what the models "hear" and write ---------- */
 
 /** The words in a clip's samples and the language they're said in, or null when it's "silence". */
-function speechIn(wav: Buffer): { words: string; language: string } | null {
-  const m = /TEXT:([^|]*)\|LANG:([^|]*)\|/.exec(wav.subarray(44).toString('utf8'));
-  return m ? { words: m[1] ?? '', language: m[2] ?? 'en' } : null;
+function speechIn(wav: Buffer): { words: string; language: string; sure: boolean } | null {
+  const m = /TEXT:([^|]*)\|LANG:([^|]*)\|(UNSURE\|)?/.exec(wav.subarray(44).toString('utf8'));
+  return m ? { words: m[1] ?? '', language: m[2] ?? 'en', sure: !m[3] } : null;
 }
 
 /** Whisper's answer to a multipart transcription request. */
@@ -180,7 +181,7 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
   const speech = speechIn(wav);
   // Silence: Whisper's favourite hallucination, with high confidence, as the real one does.
   const said = speech === null ? [' Thank you.'] : speech.words.split(' // ').map((w) => ` ${w}`);
-  const segments = said.map((text, i) => ({ id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text, tokens: [], temperature: 0, avg_logprob: -0.2, compression_ratio: 1.1, no_speech_prob: null }));
+  const segments = said.map((text, i) => ({ id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text, tokens: [], temperature: 0, avg_logprob: speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null }));
   // The language it was told, or the one it hears.
   return { status: 200, body: { text: said.join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}` } };
 }

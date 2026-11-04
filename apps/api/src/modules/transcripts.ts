@@ -6,22 +6,22 @@
  * model the clip was sent to. When the recording stops, the lines and that evidence move into the note
  * and the rows go.
  *
- * Once the clips Whisper heard surely agree on the call's language, each clip goes in it, so short and
- * accented clips aren't taken for another, with a prompt of who's in the call and the words said just
- * before it. Each row keeps the language Whisper picked for it, when it picked one surely.
+ * Once the clips Whisper heard surely agree on the call's language, the clips of everyone it has been asked about
+ * go in it, so short and accented clips aren't taken for another, with a prompt of who's in the call and the words
+ * said just before it in the same part of the call. Each row keeps whose clip it was, the language Whisper picked
+ * for it when it picked one surely, and whether it asked Whisper what its speaker speaks.
  */
 import { InferenceEvidenceSchema, type AudioSegment, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../db';
-import { nameFrom } from '../identity';
 import { speechPrompt, transcribe, type SpeechContext } from '../inference';
 import { log } from '../log';
 import { findItem } from '../vault';
 import { profile } from './account';
 import { segments } from './audio';
-import { personOf } from './portraits';
+import { nameOf, personOf } from './portraits';
 
 const tlog = log.child({ component: 'transcripts' });
 
@@ -41,14 +41,19 @@ export type Line = z.infer<typeof Line>;
 export type HeardLine = Line & { segment: number };
 const Stored = z.object({
   segment: z.number(), lines: z.array(Line), evidence: InferenceEvidenceSchema,
+  /** In a call, whose speech the clip was (a participant ID), even when none of it survived the filter. */
+  speaker: z.string().optional(),
   /** The language Whisper picked for this clip by itself, when it was sure (it wasn't told the call's). */
   language: z.string().optional(),
-  /** The clip was sent with the call's language. */
-  pinned: z.boolean().optional()
+  /**
+   * The clip asked Whisper what its speaker speaks: it went without the call's language, and Whisper was sure of its
+   * language or it was long enough to tell (RECHECK_MS). Heard at length but unsure is how Whisper hears accented speech.
+   */
+  asked: z.boolean().optional()
 });
 type Stored = z.infer<typeof Stored>;
 /** Recording order: segment by segment, then by when in the recording. */
-const inOrder = (a: HeardLine, b: HeardLine) => a.segment - b.segment || a.at - b.at;
+const inOrder = (a: Pick<HeardLine, 'segment' | 'at'>, b: Pick<HeardLine, 'segment' | 'at'>) => a.segment - b.segment || a.at - b.at;
 const heardLines = (c: Stored): HeardLine[] => c.lines.map((l) => ({ ...l, segment: c.segment }));
 
 /** The newest clips a clip's context is read from: its prompt, and the evidence for the call's language. */
@@ -60,8 +65,8 @@ const RECENT = 20;
  */
 const AGREE = 3;
 /**
- * Clips sent with the call's language say nothing new about it, so once this many in a row have been, the next
- * clip long enough to tell goes without it and Whisper picks again.
+ * Clips sent with the call's language say nothing new about it, so once this many of someone's have been since they
+ * were last asked about, their next clip long enough to tell goes without it and Whisper picks again.
  */
 const RECHECK_EVERY = 6;
 const RECHECK_MS = 3500;
@@ -86,15 +91,16 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
   const [segs, recent] = await Promise.all([segments(o, t.recordingId), newest(o, o.pool, t.noteId, RECENT)]);
   // Lines are placed in the whole recording the way the note's player counts it: earlier segments first.
   const at = segs.filter((s) => s.index < clip.segment).reduce((n, s) => n + s.seconds, 0) + clip.startMs / 1000;
-  const callIn = callLanguage(recent, clip.durationMs);
-  // With the call's language only, a prompt of who's in the call and the words said before (see callLanguage).
-  const context: SpeechContext = callIn ? { language: callIn, prompt: speechPrompt(await peopleIn(o, t.noteId), wordsBefore(recent, at)) } : {};
+  const callIn = languageFor(recent, by?.speaker, clip.durationMs);
+  // With the call's language only, a prompt of who's in the call and the words said before (see languageFor), in
+  // the same part of the call: a breakout room's words go to Whisper only with that room's clips, and back.
+  const context: SpeechContext = callIn ? { language: callIn, prompt: speechPrompt(await peopleIn(o, t.noteId), wordsBefore(recent, { segment: clip.segment, at }, by?.room)) } : {};
   const { heard, language, evidence } = await transcribe(o.cfg, clip.wav, clip.durationMs, context);
   const lines: Line[] = heard.map((x) => ({
     id: id128(), at: Math.round((at + x.start) * 10) / 10, text: x.text,
     ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}) } : {})
   }));
-  const stored: Stored = { segment: clip.segment, lines, evidence, ...(language ? { language } : {}), ...(context.language ? { pinned: true } : {}) };
+  const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}) };
   const kept = await tx(o.pool, async (c) => {
     // Stopping takes this row's lock to move the transcript into the note. Sharing it here means
     // a clip either lands before the move, or sees the recording stopped and stays out.
@@ -110,30 +116,32 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
 }
 
 /**
- * The language a clip is sent in, from the newest clips (newest first): the one the clips Whisper heard surely
- * agree on. Clips sent with it add nothing to the evidence, so after RECHECK_EVERY of them a long enough clip goes
- * without it. A prompt goes only with it: Whisper writes a clip in its prompt's language, so without the call's
- * language a clip said in another (someone else's, or the call's next) would come back in the prompt's.
+ * The language a clip is sent in, from the newest clips (newest first): the call's, once the clips Whisper heard
+ * surely agree on it, for someone a clip among them asked Whisper about. Anyone else (just joined, or quiet for a
+ * while) may speak another, so their clip goes without it and Whisper picks. Clips sent with it add nothing to the
+ * evidence, so after RECHECK_EVERY of someone's since, their next one long enough to tell goes without it.
+ * A prompt goes only with it: Whisper writes a clip in its prompt's language, so without the call's language a clip
+ * said in another (someone else's, or the call's next) would come back in the prompt's.
  */
-function callLanguage(recent: Stored[], durationMs: number): string | undefined {
+function languageFor(recent: Stored[], speaker: string | undefined, durationMs: number): string | undefined {
   const picked = recent.flatMap((c) => (c.language ? [c.language] : []));
   const first = picked[0];
-  const agreed = first !== undefined && picked.length >= AGREE && picked.every((l) => l === first) ? first : undefined;
-  const sinceAsked = recent.findIndex((c) => !c.pinned);
-  const recheck = (sinceAsked < 0 || sinceAsked >= RECHECK_EVERY) && durationMs >= RECHECK_MS;
-  return recheck ? undefined : agreed;
+  if (first === undefined || picked.length < AGREE || picked.some((l) => l !== first)) return undefined;
+  const sinceAsked = recent.filter((c) => c.speaker === speaker).findIndex((c) => c.asked);
+  if (sinceAsked < 0) return undefined;
+  return sinceAsked >= RECHECK_EVERY && durationMs >= RECHECK_MS ? undefined : first;
 }
 
-/** The words of the newest clips' lines placed before `at` seconds into the recording, in order. */
-const wordsBefore = (recent: Stored[], at: number): string =>
-  recent.flatMap((c) => c.lines).filter((l) => l.at < at).sort((a, b) => a.at - b.at).map((l) => l.text).join(' ');
+/** The words of the newest clips' lines said in `room` (the main room when none) before `here`, in recording order. */
+const wordsBefore = (recent: Stored[], here: Pick<HeardLine, 'segment' | 'at'>, room: string | undefined): string =>
+  [...recent].reverse().flatMap(heardLines).filter((l) => l.room === room && inOrder(l, here) < 0).sort(inOrder).map((l) => l.text).join(' ');
 
 /** The part of a note's manifest that says who was invited. */
 const Invited = z.object({ invited: z.array(z.string()) });
 /** What a note's people are called, as said in its call: the organizer, then everyone invited (named from their address when nobody knows them). */
 async function peopleIn(o: Owner, noteId: string): Promise<string[]> {
   const note = await findItem(o, o.pool, 'note', noteId, Invited);
-  const invited = (note?.manifest.invited ?? []).map((e) => { const p = personOf(e); return p.name === p.email ? nameFrom(e) : p.name; });
+  const invited = (note?.manifest.invited ?? []).map((e) => nameOf(personOf(e)));
   return [(await profile(o)).name, ...invited];
 }
 
