@@ -883,7 +883,7 @@ function InCall({ session }: { session: CallSession }) {
                   {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem].filter((x): x is string => !!x)}
                     controls={controls} onSeek={cu.open} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && (cu.moment
-                    ? <MomentView moment={cu.moment} me={me?.person.email} onLive={cu.backToLive} />
+                    ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
                     : <TranscriptView state={state} me={me?.person.email} />)}
                   {shownPanel === 'ask' && <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && mode !== 'paused'} paused={mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
                     catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} />}

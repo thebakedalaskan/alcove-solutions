@@ -8,6 +8,8 @@ const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0);
 export const daysFromToday = (d: Date, now = new Date()) => Math.round((startOfDay(d).getTime() - startOfDay(now).getTime()) / 86_400_000);
 
 export const hm = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+/** "10:04:12": to the second, for moments that can fall within one minute. */
+export const hms = (d: Date | string) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 /** "Tue 3 Nov" */
 export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} ${month(d).slice(0, 3)}`;
 /** "Tuesday, 3 November" */

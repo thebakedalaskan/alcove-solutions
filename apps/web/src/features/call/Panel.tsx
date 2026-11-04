@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { organizerBrowser, organizerName, type CaptureControls } from './Capture';
-import { Moments } from './CatchUp';
+import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
 import type { VolumeActions } from './volume';
@@ -67,7 +67,7 @@ const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed
 
 /* ---------- notes ---------- */
 
-function NoteRows({ items, kind, onSeek }: { items: CatchUpItem[]; kind: 'decided' | 'next'; onSeek: (e: TranscriptMoment) => void }) {
+function NoteRows({ items, kind, times, onSeek }: { items: CatchUpItem[]; kind: 'decided' | 'next'; times: CallTimes; onSeek: (e: TranscriptMoment) => void }) {
   return (
     <>
       {items.map((it) => (
@@ -79,7 +79,7 @@ function NoteRows({ items, kind, onSeek }: { items: CatchUpItem[]; kind: 'decide
               <div className="meta">{it.owner}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
             )}
           </div>
-          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} onOpen={onSeek} /> : <span />}
+          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
         </motion.div>
       ))}
     </>
@@ -167,9 +167,9 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
         ) : (
           <div className="ic-nb">
             <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n.decided.length}</span></div>
-              {n.decided.length ? <NoteRows items={n.decided} kind="decided" onSeek={onSeek} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
+              {n.decided.length ? <NoteRows items={n.decided} kind="decided" times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
             <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{n.next.length}</span></div>
-              {n.next.length ? <NoteRows items={n.next} kind="next" onSeek={onSeek} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
+              {n.next.length ? <NoteRows items={n.next} kind="next" times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
             {held.length > 0 && (
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
