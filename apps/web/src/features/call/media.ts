@@ -973,7 +973,10 @@ export class NotesRecorder {
     const late = await Promise.race([this.queue.then(() => false), new Promise<boolean>((r) => setTimeout(() => r(true), FLUSH_MS))]);
     if (late) mlog.warn('notes audio still uploading', { segment: this.segment });
   }
-  /** Notes were paused: stops at once, and nothing recorded but not yet sent goes, held or not. The server refuses it anyway. */
+  /**
+   * Notes were paused, or the call went on without this tab (the organizer's other tab or device took over): stops at
+   * once, and nothing recorded but not yet sent goes, held or not. The server refuses it anyway.
+   */
   discard() {
     this.gen++;
     this.unhold();
