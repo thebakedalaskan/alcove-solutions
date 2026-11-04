@@ -129,9 +129,13 @@ dock at the bottom.
   you alone and not saved), **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
   who is invited and not here).
 - **Breakout rooms.** Pick two or three rooms and how long, drag people between rooms and rename them, then
-  **Open rooms**. While they're open: a shared timer, each room and who is in it, **Join room** and **Back to
-  main room**, **Message every room**, and **Bring everyone back now**. Everyone comes back when time is up,
-  and the rooms go into the call's notes.
+  **Open rooms**. While they're open: a shared timer, each room and who is in it (rename a room in place, or
+  move someone to another room or back to the main room from their name), **Join room** and **Back to main
+  room**, **Message every room**, and **Bring everyone back now**. Each room has its own encryption keys and
+  chat, so what's seen, heard and written in a room reaches only the people in it; the room sees the organizer
+  come and go, and someone moved is told. Captions and catching up in a room cover that room only, and what's
+  said in a room stays out of the call's notes. Everyone comes back when time is up, and the notes record which
+  rooms there were and who was in each.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
 

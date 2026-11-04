@@ -189,12 +189,14 @@ sequenceDiagram
    is 16 kHz mono 16-bit PCM WAV (`content-type: audio/wav`) of at most 30 seconds
    (`MAX_TRANSCRIPT_CLIP_MS`, 960,044 bytes). The headers are `x-alcove-segment` (the recording segment),
    `x-alcove-start-ms` (where the clip starts in its segment, pauses not counted) and
-   `x-alcove-duration-ms`. A declared `content-length` over the limit is refused before the body is read;
+   `x-alcove-duration-ms`, and for a call `x-alcove-place`: the part of the call it was heard in (`main`, or
+   the breakout room the organizer was in; the browser ends a clip when the organizer moves). A declared `content-length` over the limit is refused before the body is read;
    then the WAV header is checked (RIFF/WAVE, PCM, one channel, 16,000 Hz, 16 bits). Anything else is
    `400 invalid`. Each account may send 120 clips a minute, calls and room recordings together; past that
    the answer is `503 unavailable` ("Too many attempts").
-3. **When a clip is taken.** For a call, only while it is live, notes are on and the clip's segment is the
-   current one. For a room recording, only while it is recording (not paused), and only segment 0.
+3. **When a clip is taken.** For a call, only while it is live, notes are on, the clip's segment is the
+   current one and its part of the call is open (the main room, or a breakout room that hasn't closed). For a
+   room recording, only while it is recording (not paused), and only segment 0.
    Otherwise `409 conflict` (`400 invalid` for a room segment other than 0). Only the account's own calls
    and recordings: anyone else gets `404 not-found`.
 4. **Once only.** A clip is tagged `HMAC(transcript key, "clip:<segment>:<startMs>")`. If that tag is
@@ -209,15 +211,18 @@ sequenceDiagram
 6. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
    clip, to a tenth of a second.
-7. **Kept sealed.** The lines of one clip (none, if nothing survived the filter) and the evidence of the
-   verification it was sent to are one `transcript_clips` row, sealed under the state key
-   `transcript:<noteId>` (record kind `transcript-clip`; the header binds the owner, the note and the tag).
-   The insert holds a share lock on the recording row. A clip that arrives after the recording stopped is
-   dropped, because its note is already finished.
+7. **Kept sealed.** The lines of one clip (none, if nothing survived the filter), the evidence of the
+   verification it was sent to, and the part of the call it was heard in are one `transcript_clips` row,
+   sealed under the state key `transcript:<noteId>` (record kind `transcript-clip`; the header binds the owner,
+   the note and the tag). The insert holds a share lock on the recording row. A clip that arrives after the
+   recording stopped is dropped, because its note is already finished.
 8. **Shown live.** `CallState.transcript` and `RoomRecordingState.transcript` carry the latest 200 lines,
-   oldest first. Call lines are attributed to the organizer (calls have one participant); room lines name
-   nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
-   newer mic or notes change.
+   oldest first: in a call, only the viewer's part of the call's, so one breakout room's lines never show in
+   another or in the main room. Catching up, asking and caption translations read the same lines. Call lines
+   are attributed to the organizer (calls have one participant); room lines name nobody. The HTTP client takes
+   only the transcript from a clip's answer, so a slow clip can't undo a newer mic or notes change.
+9. **A room's lines go with it.** When a breakout room closes, its clips and their translations are deleted
+   ([Calls and recordings › Breakout rooms](calls-and-recordings.md#hands-spotlight-breakout-rooms-and-captions)).
 
 ## When the recording stops
 
@@ -227,8 +232,8 @@ sequenceDiagram
 1. The note becomes `pending` with its duration: for a call, its length from start to leave; for a room
    recording, the seconds recorded.
 2. The transcript rows are opened, sorted by `at` and written into the note's sealed manifest (in a call
-   every line is the organizer's; in a room nobody is named), with the verifications they went to as
-   `inference`. Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
+   every line is the organizer's, and only the main room's lines go in; in a room nobody is named), with the
+   verifications they went to as `inference`. Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
    deleted. A call's breakout rooms are written into the manifest too, in recording time, until the notes
    are written.
 3. Everyone invited gets a `note_access` row.
