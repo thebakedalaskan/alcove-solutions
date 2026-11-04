@@ -5,7 +5,7 @@
  * when a note goes or someone loses it, and that none of it reaches a row, a log line or a model in the clear. The real
  * API over HTTP via @alcove/api-http, real Postgres, the object store, the local LiveKit server and main's fake NEAR AI.
  */
-import { AlcoveApiError, MAX_PERSONAL_ENTRIES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type ScreenFrame, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, MAX_KEPT_ANSWER, MAX_KEPT_QUESTION, MAX_PERSONAL_ENTRIES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type ScreenFrame, type TranscriptClip } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -341,6 +341,73 @@ describe('answers you keep', () => {
     expect((await lena.api.notes.personal(noteId).get()).entries).toEqual([]);
     expect(JSON.stringify(await lena.api.notes.get(noteId))).not.toContain('PRIVATE');
   });
+
+  it('reads a cite as the line nearest its second, in the call or a breakout room’s section, and shares that line', async () => {
+    const kofi = await account(unique('kofi'));
+    const lena = await account(unique('lena'));
+    const { org, host, calls: [kofiCall, lenaCall] } = await callWith(kofi, lena);
+    if (!kofiCall || !lenaCall) throw new Error('nobody in the call');
+    // Over two minutes recorded: a note keeps its lines inside the audio it has, so these stay where they were said.
+    for (let i = 1; i <= 25; i++) await host.appendAudio(piece(audioBytes('audio'), 0, i));
+    await host.transcribe(speech('The merger closes on Friday.', 0, 28_000), host.ticket.identity);
+    await host.transcribe(speech('Legal signs on Thursday.', 0, 30_600), host.ticket.identity);
+    // Two minutes in when the rooms open: a room's lines are placed by the server's clock.
+    await h.pool.query(`UPDATE calls SET started_at = started_at - interval '2 minutes' WHERE call_id = $1`, [host.ticket.callId]);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
+    await inPlace(kofiCall, rooms[0]?.id ?? '');
+    await inPlace(lenaCall, rooms[1]?.id ?? '');
+    await settle(kofiCall, (x) => x.capture.room?.scribe === kofiCall.ticket.identity);
+    await kofiCall.transcribe(speech('The logo stays blue.', 0, 2000), kofiCall.ticket.identity);
+    const blue = (await settle(kofiCall, (s) => s.transcript.some((l) => l.text === 'The logo stays blue.'))).transcript.find((l) => l.text === 'The logo stays blue.');
+    if (!blue) throw new Error('nothing said in the room');
+    // What a cite says: the second the model was shown, rounded down. The call says something just before it, further off.
+    const cited = Math.floor(blue.at);
+    await host.transcribe(speech('Support is quiet this week.', 0, (cited - 1.5) * 1000), host.ticket.identity);
+    await settle(host, (s) => s.transcript.some((l) => l.text === 'Support is quiet this week.'));
+    host.closeRooms();
+    await inPlace(kofiCall, 'main');
+    const noteId = noteIdOf(await host.leave());
+    await written(org.api, noteId);
+
+    const mine = kofi.api.notes.personal(noteId);
+    const cite = async (at: number) => last(await mine.add({ kind: 'answer', question: 'Where was that?', answer: 'There.', points: [{ kind: 'moment', at }] }));
+
+    // The line it names, not the last one before it: said at 30.6, it was shown as 00:30.
+    expect(await cite(30)).toMatchObject({ moments: [{ line: { text: 'Legal signs on Thursday.' } }] });
+
+    // In a room's section, with the call talking just before it.
+    const answer = await cite(cited);
+    const inDesign = { line: { id: blue.id, text: 'The logo stays blue.' }, room: { name: 'Design' } };
+    expect(answer).toMatchObject({ moments: [inDesign] });
+
+    // That's what everyone checks it against.
+    const p = await kofi.api.notes.previewAddition(noteId, answer.id);
+    expect(p).toMatchObject({ moments: [inDesign] });
+    await kofi.api.notes.addToShared(noteId, answer.id, { text: p.text, seal: p.seal });
+    expect(only((await lena.api.notes.get(noteId)).additions)).toMatchObject({ moments: [inDesign] });
+
+    // A second nothing was said near means no line: it doesn't borrow the last one, so the answer stays yours.
+    const made = await cite(60);
+    expect(made).toMatchObject({ moments: [] });
+    expect(await fails(kofi.api.notes.previewAddition(noteId, made.id))).toBe('conflict');
+  });
+
+  it('keeps the longest answer there is, in any script, and it can go to the shared notes', async () => {
+    const kofi = await account(unique('kofi'));
+    const lena = await account(unique('lena'));
+    const { noteId } = await writtenNote('The merger closes on Friday.', kofi, lena);
+    const mine = kofi.api.notes.personal(noteId);
+    const lineId = only((await kofi.api.notes.get(noteId)).transcript ?? []).id;
+    // Three bytes a character, to the limit: a draft well past what one answer used to be able to hold.
+    const long = '語'.repeat(MAX_KEPT_ANSWER);
+    const saved = last(await mine.add({ kind: 'answer', question: '語'.repeat(MAX_KEPT_QUESTION), answer: long, points: [{ kind: 'line', lineId }] }));
+    expect(saved).toMatchObject({ kind: 'answer', answer: long });
+    const p = await kofi.api.notes.previewAddition(noteId, saved.id);
+    await kofi.api.notes.addToShared(noteId, saved.id, { text: p.text, seal: p.seal });
+    expect(only((await lena.api.notes.get(noteId)).additions).text).toBe(long);
+    expect(await fails(mine.add({ kind: 'answer', question: 'Too long?', answer: `${long}語`, points: [] }))).toBe('invalid');
+  });
 });
 
 describe('adding to the shared notes', () => {
@@ -571,19 +638,54 @@ describe('when notes go', () => {
     expect((await h.pool.query('SELECT 1 FROM operations WHERE owner_id = $1', [kofi.session.ownerId])).rowCount).toBe(0);
   });
 
-  it('deletes your own notes with your account, and leaves what you shared under your name, as the notes you shared on stay', async () => {
+  it('never brings your own notes back when you remove the note as you add from them', async () => {
+    const kofi = await account(unique('kofi'));
+    const { noteId } = await writtenNote('The merger closes on Friday.', kofi);
+    const mine = kofi.api.notes.personal(noteId);
+    const e = last(await mine.add({ kind: 'note', text: 'Add this.' }));
+    const p = await kofi.api.notes.previewAddition(noteId, e.id);
+    // Whichever gets there first, the note isn't his afterwards, so nothing of his own is left on it.
+    await Promise.allSettled([kofi.api.notes.addToShared(noteId, e.id, { text: 'Add this.', seal: p.seal }), kofi.api.notes.delete(noteId)]);
+    expect(await kept(noteId)).toBe(0);
+    expect(await fails(mine.get())).toBe('not-found');
+  });
+
+  it('takes what you added out of everyone’s notes with your account, whatever became of your own, and leaves the notes with everyone else', async () => {
     const kofi = await account(unique('kofi'));
     const lena = await account(unique('lena'));
     const { org, noteId } = await writtenNote('The merger closes on Friday.', kofi, lena);
+    const other = await writtenNote('The logo stays blue.', kofi, lena);
     await adds(kofi, noteId, 'Kofi shared this.');
+    await adds(lena, noteId, 'Lena shared this.');
+    // One he then deleted from his own notes, and one on a note he then removed from his: neither is his to reach any more.
+    const mine = kofi.api.notes.personal(noteId);
+    const entry = last(await mine.add({ kind: 'note', text: 'Deleted from his own.' }));
+    const p = await kofi.api.notes.previewAddition(noteId, entry.id);
+    await kofi.api.notes.addToShared(noteId, entry.id, { text: 'Deleted from his own.', seal: p.seal });
+    await mine.remove(entry.id);
+    await adds(kofi, other.noteId, 'On a note he removed.');
+    await kofi.api.notes.delete(other.noteId);
+    expect([await addedTo(noteId), await addedTo(other.noteId), await kept(noteId)]).toEqual([3, 1, 2]);
+
     await kofi.api.account.delete();
-    expect(await kept(noteId)).toBe(0);
-    expect(only((await lena.api.notes.get(noteId)).additions)).toMatchObject({ text: 'Kofi shared this.', by: { email: kofi.email }, removable: false });
-    // A deleted account's ID stays out of the row: who added it is sealed in the body.
+
+    // All of his, and only his.
+    expect([await addedTo(noteId), await addedTo(other.noteId), await kept(noteId)]).toEqual([1, 0, 1]);
+    // The notes open as they did for the organizer and everyone else who has them.
+    for (const reader of [org, lena]) {
+      const read = await reader.api.notes.get(noteId);
+      expect(read.additions.map((a) => a.text)).toEqual(['Lena shared this.']);
+      expect(read.transcript?.map((l) => l.text)).toEqual(['The merger closes on Friday.']);
+    }
+    expect((await other.org.api.notes.get(other.noteId)).additions).toEqual([]);
+    expect((await lena.api.notes.get(other.noteId)).additions).toEqual([]);
+    expect((await lena.api.notes.personal(noteId).get()).entries).toHaveLength(2);
+
+    // Who added what stays out of the row: it's sealed in the body, and found by a keyed hash that matches nothing else.
     const row = await h.pool.query('SELECT row_to_json(x)::text AS r FROM note_additions x WHERE note_item_id = $1', [noteId]);
-    expect(JSON.stringify(row.rows)).not.toContain(kofi.session.ownerId);
+    expect(JSON.stringify(row.rows)).not.toContain(lena.session.ownerId);
+
     // The organizer's account going takes everything on its notes.
-    await lena.api.notes.personal(noteId).add({ kind: 'note', text: 'Lena’s own.' });
     await org.api.account.delete();
     expect([await kept(noteId), await addedTo(noteId)]).toEqual([0, 0]);
   });
