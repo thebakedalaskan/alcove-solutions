@@ -1,6 +1,7 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
-import { CaptureGapSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type AnswerPart, type CaptionLanguage } from './types';
+import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
+import { IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -256,39 +257,6 @@ export interface AudioPiece {
   mimeType: string;
 }
 
-/**
- * One thing a catch-up points out, and when it was said (seconds into the recording, as transcript
- * lines count). Something to do also says who it's for and when it's due, when the call said so.
- */
-export const CatchUpItemSchema = z.object({ text: z.string(), at: z.number().optional(), owner: z.string().optional(), due: z.string().optional() });
-export type CatchUpItem = z.infer<typeof CatchUpItemSchema>;
-
-/**
- * What's happened in a call so far, from its live transcript, for the person who asked: nobody else
- * sees it, and it isn't kept. Only what was said while notes were on can be in it.
- */
-export const CatchUpSchema = z.object({
-  /** A sentence or two on where the conversation is; empty when nothing was said in the stretch. */
-  summary: z.string(),
-  /** Agreed or settled. */
-  decided: z.array(CatchUpItemSchema),
-  /** Suggested, and not agreed yet. */
-  proposed: z.array(CatchUpItemSchema),
-  /** Asked, and not answered yet. */
-  open: z.array(CatchUpItemSchema),
-  /** What someone said they, or someone else, would do. */
-  next: z.array(CatchUpItemSchema),
-  /** The stretch it read, in seconds into the recording. */
-  from: z.number(), through: z.number(),
-  /** How many lines of transcript that was. */
-  lines: z.number(),
-  /** The stretches in what it read, or after it, when notes were off: nothing said then is in here. */
-  gaps: z.array(CaptureGapSchema),
-  /** When it was put together, as seconds since the call started. */
-  asOf: z.number()
-});
-export type CatchUp = z.infer<typeof CatchUpSchema>;
-
 /** A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it. */
 export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number }
 
@@ -390,10 +358,14 @@ export interface CallSession extends LiveStore<CallState> {
    * own for its microphone). Only while notes are on.
    */
   transcribe(clip: TranscriptClip, speaker: string): Promise<void>;
-  /** What's happened so far, for you alone: the last `minutes`, or the whole call. */
-  catchUp(minutes?: number | undefined): Promise<CatchUp>;
-  /** Asks about the call so far, for you alone, with the moments the answer comes from. */
-  askSoFar(question: string): Promise<AnswerPart[]>;
+  /** What was said in `range`, for you alone: decided, proposed, still open and next, each with the moments it comes from. */
+  catchUp(range: CatchUpRange): Promise<CatchUp>;
+  /** Asks about what was said in `range`, for you alone, with the moments the answer comes from. */
+  askSoFar(question: string, range: CatchUpRange): Promise<CallAnswer>;
+  /** What you can catch up on: when you came in, your latest time away, and for a guest the stretches they were here. */
+  catchUpWindow(): Promise<CatchUpWindow>;
+  /** A moment of the live transcript from a catch-up or an answer, with what was said around it. Your access is checked again. */
+  moment(lineId: string): Promise<CallMoment>;
   /* The organizer's host controls (refused for anyone else). */
   /** Mutes one of someone's tracks; they unmute themselves. */
   mute(identity: string, trackSid: string): Promise<void>;

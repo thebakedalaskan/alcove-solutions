@@ -25,9 +25,10 @@ export interface Target { recordingId: string; noteId: string }
 
 /**
  * A line as kept. In a call, `speaker` is the participant ID of whoever said it (named from the call when it's
- * shown) and `room` the breakout room it was said in, if any. A room recording names nobody.
+ * shown), `room` the breakout room it was said in, if any, and `when` when it was said (ms), which catching up
+ * reads by. A room recording names nobody.
  */
-const Line = z.object({ id: z.string(), at: z.number(), text: z.string(), speaker: z.string().optional(), room: z.string().optional() });
+const Line = z.object({ id: z.string(), at: z.number(), when: z.number().optional(), text: z.string(), speaker: z.string().optional(), room: z.string().optional() });
 export type Line = z.infer<typeof Line>;
 /** A line, and the segment of the recording its clip was part of. */
 export type HeardLine = Line & { segment: number };
@@ -41,8 +42,11 @@ const key = (o: Owner, noteId: string) => stateKey(o.root, o.ownerId, `transcrip
 const tagOf = (o: Owner, noteId: string, segment: number, startMs: number, speaker: string) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}:${speaker}`));
 const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, kind: 'transcript-clip', ownerId: o.ownerId, noteId, tag: b64u(tag) });
 
-/** Whose speech a call's clip is (a participant ID), and the breakout room it was said in, if any. */
-export interface Heard { speaker: string; room?: string | undefined }
+/**
+ * Whose speech a call's clip is (a participant ID), the breakout room it was said in, if any, and when its segment
+ * of the recording started (ms), so each line knows when it was said.
+ */
+export interface Heard { speaker: string; room?: string | undefined; segmentStart: number }
 
 /**
  * Transcribes one clip into a note's live transcript. A clip heard before is skipped; one that
@@ -58,7 +62,8 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
   const { heard, evidence } = await transcribe(o.cfg, clip.wav, clip.durationMs);
   const lines: Line[] = heard.map((x) => ({
     id: id128(), at: Math.round((before + clip.startMs / 1000 + x.start) * 10) / 10, text: x.text,
-    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}) } : {})
+    // The browser counts a segment's time from when it began hearing it, which is when the call says it started.
+    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), when: Math.round(by.segmentStart + clip.startMs + x.start * 1000) } : {})
   }));
   const kept = await tx(o.pool, async (c) => {
     // Stopping takes this row's lock to move the transcript into the note. Sharing it here means

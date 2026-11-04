@@ -262,7 +262,7 @@ describe('what a call captures', () => {
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
     // Never on: nothing is read either.
     expect(host.getSnapshot().capture).toMatchObject({ mode: 'off', ai: { mode: 'off', since: null, by: null } });
-    expect(code(await host.catchUp().catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await host.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
     await host.setNotes(true);
     const on = host.getSnapshot().capture.ai;
     expect(on).toMatchObject({ mode: 'on', since: expect.any(String), by: { kind: 'organizer', name: org.session.user.name } });
@@ -271,7 +271,7 @@ describe('what a call captures', () => {
     // Recording and the transcript are off; the notes model still reads what was transcribed, so it's on, since it came on.
     expect(host.getSnapshot().capture).toMatchObject({ mode: 'off', recording: { mode: 'off' }, transcript: { mode: 'off' }, ai: { mode: 'on', since: on.since, by: on.by } });
     const sent = h.near.calls.length;
-    expect((await host.catchUp()).lines).toBe(1);
+    expect((await host.catchUp({ kind: 'all' })).read.lines).toBe(1);
     expect(h.near.calls.length).toBeGreaterThan(sent);
     // A pause is the one thing that stops it.
     await host.setNotes(true);
@@ -295,10 +295,10 @@ describe('what a call captures', () => {
       ['audio', () => host.appendAudio(piece('during', 0, 1))],
       ['speech', () => host.transcribe(speech('This is off the record.', 0, 6000), host.ticket.identity)],
       ['captions', () => host.translate(lines, 'es')],
-      ['catch-up', () => host.catchUp()],
-      ['a question', () => host.askSoFar('When do we ship?')],
+      ['catch-up', () => host.catchUp({ kind: 'all' })],
+      ['a question', () => host.askSoFar('When do we ship?', { kind: 'all' })],
       ['a guest’s captions', () => guest.translate(lines, 'fr')],
-      ['a guest’s catch-up', () => guest.catchUp(5)]
+      ['a guest’s catch-up', () => guest.catchUp({ kind: 'recent', minutes: 5 })]
     ];
     for (const [what, attempt] of attempts) {
       const e = await attempt().catch((x: unknown) => x);
@@ -338,8 +338,8 @@ describe('what a call captures', () => {
     expect(s.capture.gaps).toEqual([{ kind: 'paused', from: expect.any(String), to: expect.any(String), at: 5 }]);
     expect(s.transcript.map((l) => [l.at, l.text])).toEqual([[0, 'We agreed to move the launch.'], [4.9, 'Kofi will send the screens.'], [6, 'Back to pricing.']]);
     // A catch-up says what it can't have in it.
-    const caught = await host.catchUp();
-    expect(caught.gaps).toEqual(s.capture.gaps);
+    const caught = await host.catchUp({ kind: 'all' });
+    expect(caught.read.gaps).toEqual(s.capture.gaps);
     expect(h.near.prompts.at(-1)).toContain('-- at 00:05 notes were paused for less than a minute: nothing said then was recorded --');
     // Off for a moment too, then on again.
     host.setNotes(false);
