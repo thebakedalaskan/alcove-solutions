@@ -11,3 +11,4 @@ export type {
   BoardObject, BoardView, Box, FrameObject, ImageObject, InkColour, InkObject, LineEnd, LineObject, LineSide, LineStyle, LinkObject, NewObject, NodeObject, NoteObject, PlacedObject,
   ShapeKind, ShapeObject, ShotObject, StickyColour, TableLine, TableObject, TextObject
 } from './shape';
+export { objectText, observeBoard, readBoard } from './read';
