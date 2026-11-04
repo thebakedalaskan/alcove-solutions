@@ -278,6 +278,71 @@ describe('end-to-end encryption', () => {
     await back.leave();
   });
 
+  it('keeps everyone in their seat when they come back, so each viewer’s own layout keeps them in place', async () => {
+    const org = await account();
+    const invitedEmail = unique('invited');
+    const { code: c } = await org.api.calls.startNow({ guests: [invitedEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const invited = await account(invitedEmail);
+    const inv = await invited.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(inv);
+    const samsBrowser = guestBrowser();
+    const sam = await samsBrowser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const kimsBrowser = guestBrowser();
+    const kim = await kimsBrowser.calls.join(c, { mic: true, cam: false, name: 'Kim' });
+    await letIn(host, kim);
+    const seats = (s: CallState) => Object.fromEntries(s.participants.map((p) => [p.id, p.seat]));
+    const has = (s: CallState, ...ids: string[]) => ids.every((id) => s.participants.some((p) => p.id === id));
+    // Everyone sees the same seats, one each: the organizer, someone invited and a guest agree. They're random:
+    // nothing like a name or an address.
+    const byKim = seats(await settle(kim, (s) => s.participants.length === 4));
+    expect(seats(await settle(host, (s) => s.participants.length === 4))).toEqual(byKim);
+    expect(seats(await settle(inv, (s) => s.participants.length === 4))).toEqual(byKim);
+    expect(new Set(Object.values(byKim)).size).toBe(4);
+    for (const seat of Object.values(byKim)) expect(seat).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    const seatOf = (call: CallSession) => byKim[call.ticket.identity];
+    // Sam's page reloads: a new connection, in the same seat.
+    sam.closing();
+    const samAgain = await samsBrowser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    await inGroup(samAgain);
+    const reloaded = await settle(kim, (s) => has(s, samAgain.ticket.identity) && !has(s, sam.ticket.identity));
+    expect(samAgain.ticket.identity).not.toBe(sam.ticket.identity);
+    expect(seats(reloaded)[samAgain.ticket.identity]).toBe(seatOf(sam));
+    // Kim's own page reloads: she still sees everyone where they were, herself included.
+    kim.closing();
+    const kimAgain = await kimsBrowser.calls.join(c, { mic: true, cam: false, name: 'Kim', previous: kim.ticket.pass });
+    await inGroup(kimAgain);
+    const kimSees = seats(await settle(kimAgain, (s) => has(s, kimAgain.ticket.identity, samAgain.ticket.identity, host.ticket.identity, inv.ticket.identity)));
+    expect(kimSees[host.ticket.identity]).toBe(seatOf(host));
+    expect(kimSees[inv.ticket.identity]).toBe(seatOf(inv));
+    expect(kimSees[samAgain.ticket.identity]).toBe(seatOf(sam));
+    expect(kimSees[kimAgain.ticket.identity]).toBe(seatOf(kim));
+    // The organizer comes in from another device: still the organizer's seat.
+    const phone = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(phone);
+    const moved = await settle(kimAgain, (s) => has(s, phone.ticket.identity) && !has(s, host.ticket.identity));
+    expect(seats(moved)[phone.ticket.identity]).toBe(seatOf(host));
+    // Someone new sits somewhere new.
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(phone, lee);
+    expect(new Set(Object.values(seats(await settle(kimAgain, (s) => s.participants.length === 5)))).size).toBe(5);
+    // In another call the organizer and the invited person both sit elsewhere.
+    const other = await org.api.calls.startNow({ guests: [invitedEmail] });
+    const elsewhere = await org.api.calls.join(other.code, { mic: true, cam: false });
+    await inGroup(elsewhere);
+    const invElsewhere = await invited.api.calls.join(other.code, { mic: true, cam: false });
+    await inGroup(invElsewhere);
+    const there = seats(await settle(elsewhere, (s) => s.participants.length === 2));
+    expect(there[elsewhere.ticket.identity]).toBeTruthy();
+    expect(there[elsewhere.ticket.identity]).not.toBe(seatOf(host));
+    expect(there[invElsewhere.ticket.identity]).toBeTruthy();
+    expect(there[invElsewhere.ticket.identity]).not.toBe(seatOf(inv));
+    await elsewhere.leave();
+    await phone.leave();
+  });
+
   it('starts a new group when the organizer’s connection changes, and everyone already in rejoins it', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});

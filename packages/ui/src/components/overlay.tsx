@@ -2,16 +2,21 @@ import { Dialog as RDialog, Popover as RPopover, Tooltip as RTooltip } from 'rad
 import type { ReactNode } from 'react';
 import { cn } from '../cn';
 
-/** A panel anchored to what opened it. `stage` is for the always-night call stage. */
-export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, label, className }: {
+/**
+ * A panel anchored to what opened it. `stage` is for the always-night call stage. `takeFocus={false}` for one that
+ * opens as you hover or focus its anchor: focus doesn't move into it when it opens, nor back to the anchor when it
+ * closes, so Tab carries on past it and moving the mouse away doesn't open it again.
+ */
+export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, label, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
-  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; label: string; className?: string;
+  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; label: string; className?: string;
 }) {
   return (
     <RPopover.Root open={open} onOpenChange={onOpenChange}>
       <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={8} collisionPadding={12} aria-label={label} className={cn('ac-pop', stage && 'is-stage', className)}>
+        <RPopover.Content side={side} align={align} sideOffset={8} collisionPadding={12} aria-label={label} className={cn('ac-pop', stage && 'is-stage', className)}
+          onOpenAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()} onCloseAutoFocus={takeFocus ? undefined : (e) => e.preventDefault()}>
           {children}
         </RPopover.Content>
       </RPopover.Portal>

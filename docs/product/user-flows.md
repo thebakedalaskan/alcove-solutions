@@ -104,7 +104,9 @@ dock at the bottom.
 
 - **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, or **Notes off**), the same for
   everyone, which opens the notes; your view: **Auto**, **Speaker** or **Grid**, which change only your
-  screen, and **Reset my view** once you've arranged it; **Catch up**; the shield, whose hover says what
+  screen, beside a menu with the same three, two ready-made layouts (**Everyone equal**, **Presenter and me**),
+  where you see yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once you've
+  arranged it; **Catch up**; the shield, whose hover says what
   confidential compute covers (verified only when the server's hardware check is bound to this browser's
   request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
@@ -114,10 +116,17 @@ dock at the bottom.
   rooms (once someone else is in the call), **Notes**, **Chat** (**C**), **More** (Catch up, Audio and video
   settings) and **Leave**.
 - **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
-  screen. A tile's **⋯** menu says what each choice changes: **Pin for me** and **Make bigger** (Only you),
-  **Spotlight for everyone** (Everyone; organizer only). A pin or a spotlight shows on the tile with an ×, a
-  spotlight also as a bar with **Stop spotlight**, and **Escape** unpins. Alcove remembers your view in this
-  browser.
+  screen. A tile's **⋯** menu says what each choice changes and the key for it: **Pin for me** (up to six people,
+  who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for
+  everyone** (Everyone; organizer only). On your own tile it also has where you see yourself: **In the grid**,
+  **In a corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a small chip in the corner
+  brings you back; everyone else still sees you). A shared screen's **⋯** shows it big or as a tile. A pin or a
+  spotlight shows on the tile with an ×, a spotlight also as a bar with **Stop spotlight**. From the keyboard, Tab
+  to the stage, move between tiles with the arrow keys, and use **Enter** for the menu, **P** to pin, **Shift**
+  with an arrow to move and **+** or **−** to resize; **Escape** unpins everyone. Someone pinned who leaves is
+  pinned again if they come back, and nothing you arranged moves when people talk, join, leave, turn their camera
+  off or share. Alcove remembers how you like calls (the layout, room for shares, where you see yourself) for your
+  account in this browser; how you arranged this call lasts until you leave it.
 - **Sharing.** A bar says what you're sharing, with **Change** and **Stop sharing**.
 - **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
