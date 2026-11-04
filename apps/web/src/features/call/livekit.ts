@@ -73,6 +73,8 @@ export interface RoomView {
   endReason: 'left' | 'ended-by-host' | 'removed' | 'error' | null;
   /** By LiveKit identity (the call's participant IDs). */
   people: Record<string, RoomPerson>;
+  /** Everyone else connected to the room now, by identity, whether or not their media plays here. */
+  present: string[];
   /** How many times the organizer has muted this browser's microphone, so the screen can say so. */
   hostMuted: number;
   /** The browser is holding back everyone's sound until the page is clicked (startAudio). */
@@ -183,7 +185,7 @@ class LiveKitRoom implements CallRoom {
   private only: ((identity: string) => boolean) | null = null;
   private stopKeys: () => void = () => undefined;
   private listeners = new Set<() => void>();
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, present: [], hostMuted: 0, audioBlocked: false, screenFailed: null };
   private audio = new Map<string, HTMLMediaElement>();
   /** Publishing follows LocalMedia one change at a time. */
   private syncing: Promise<void> = Promise.resolve();
@@ -291,6 +293,9 @@ class LiveKitRoom implements CallRoom {
         if (this.hears(from)) for (const take of takers.on) take(plain, from);
       });
     });
+    // A short drop usually starts with the signalling connection, which LiveKit tries to resume before it reconnects
+    // everything: either way the call isn't keeping up until it's back, and the screen says so.
+    r.on(RoomEvent.SignalReconnecting, () => this.set({ connection: 'reconnecting' }));
     r.on(RoomEvent.Reconnecting, () => this.set({ connection: 'reconnecting' }));
     // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia.
     r.on(RoomEvent.Reconnected, () => { this.set({ connection: 'connected' }); refetch(); this.follow(); });
@@ -319,6 +324,9 @@ class LiveKitRoom implements CallRoom {
     await this.syncing;
     this.set({ connection: 'connected' });
     rlog.info('joined the room', { role: this.session.ticket.role, others: this.room.remoteParticipants.size, keyIndex: this.keyNow?.send?.index ?? null });
+    // What the call said while this browser was still connecting (people back with fresh keys after the organizer's
+    // reload, say) went to a room it wasn't in yet, so it looks again now instead of at its next check.
+    void this.session.refresh().catch((e: unknown) => rlog.warn('call refresh failed', { err: e }));
   }
 
   /**
@@ -386,7 +394,7 @@ class LiveKitRoom implements CallRoom {
 
   getSnapshot = (): RoomView => this.view;
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
-  private set(p: Partial<RoomView>) { this.view = { ...this.view, ...p, people: this.people() }; this.listeners.forEach((l) => l()); }
+  private set(p: Partial<RoomView>) { this.view = { ...this.view, ...p, people: this.people(), present: [...this.room.remoteParticipants.keys()] }; this.listeners.forEach((l) => l()); }
   private emit() { this.set({}); }
 
   playOnly(who: ((identity: string) => boolean) | null): void {
