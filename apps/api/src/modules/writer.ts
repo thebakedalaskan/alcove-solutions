@@ -3,18 +3,19 @@
  * content_jobs with the transcript already in it. A worker claims the job with a lease, has the
  * notes model draft the summary, decisions, open questions, follow-ups, chapters and suggested
  * questions, and each breakout room's own notes from that room's transcript (one request a room),
- * and then writes them into the note, charges the recorded minutes and deletes the job in one
- * transaction. A failed attempt is tried again a little later, up to three times; after the
+ * and, for a call in a series, compares it with what earlier calls left standing (one more request,
+ * whose failure costs only the comparison). Then it writes them into the note, charges the recorded
+ * minutes and deletes the job in one transaction. A failed attempt is tried again a little later, up to three times; after the
  * third, the note is finished without a summary, so its transcript and audio are still there. When
  * the notes model's evidence doesn't check out, or can't be checked, nothing was sent: the job waits
  * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
  * for each job and wiped after it. The organizer can have the notes written again from a corrected
  * transcript (notes.rewrite): the same job, which keeps what people already settled.
  */
-import type { Change, InferenceEvidence, Person, RoomNote, ScreenMoment } from '@alcove/api';
+import type { Change, Decision, InferenceEvidence, Person, RoomNote, ScreenMoment } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
-import { openJson, stateKey } from '../crypto';
+import { id128, openJson, stateKey } from '../crypto';
 import { bytea, exec, maybeOne, tx } from '../db';
 import { NotFoundError, UnansweredError, UnverifiedError } from '../errors';
 import { inference } from '../inference';
@@ -24,10 +25,11 @@ import { getItem, lockItem } from '../vault';
 import { me, profile } from './account';
 import { segments } from './audio';
 import * as billing from './billing';
-import { briefOf, draft, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
-import { NoteManifest, roomChapters, updateNote } from './notes';
+import { briefOf, draft, revisited, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
+import { NoteManifest, decisionsOf, roomChapters, updateNote, type Revisit } from './notes';
 import { personOf } from './portraits';
 import * as screens from './screens';
+import { standing } from './series';
 import { verificationKey } from './transcripts';
 
 const wlog = log.child({ component: 'writer' });
@@ -60,8 +62,11 @@ type Item = { text: string; at?: number | undefined; changes: Change[] };
 type RoomWritten = { id: string; notes: Written } | { id: string; failed: true };
 /** Breakout rooms' notes as written, and the verifications the requests went to. */
 interface RoomsWritten { rooms: RoomWritten[]; evidence: InferenceEvidence[] }
-/** What a job wrote: the call's notes (none when nothing was said in the main room), each breakout room's, and when the transcript was read. */
-interface Wrote { notes?: Written | undefined; rooms: RoomsWritten; readAt: string }
+/**
+ * What a job wrote: the call's notes (none when nothing was said in the main room), each breakout room's, when the
+ * transcript was read, and what the call came back to from earlier ones (undefined when that couldn't be asked).
+ */
+interface Wrote { notes?: Written | undefined; rooms: RoomsWritten; readAt: string; revisits?: Revisit[] | undefined }
 
 /**
  * The same item in other words: most of the shorter one's words are in the other, and they point at moments within a
@@ -142,44 +147,87 @@ async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promis
 }
 
 /**
- * Writes the notes into the note, each breakout room's too (or finishes it without them, with its shared screens read
- * when they were), charges for them and closes the job, together. The charge is for the minutes recorded, not the
- * length of the call: time with notes off is free. Notes written again (the organizer asked, after correcting the
- * transcript) keep what people already confirmed or changed, in the call's notes and each room's, and aren't charged
- * again; when they can't be written, the notes stay as they were. `writtenAt` says when the notes read the transcript,
+ * The note as these notes leave it: each breakout room's too (or finished without them, with its shared screens read
+ * when they were). Notes written again keep what people already confirmed or changed, in the call's notes and each
+ * room's; when they can't be written, the notes stay as they were. `writtenAt` says when the notes read the transcript,
  * so a correction made since is offered for writing them again.
+ */
+function written(m: NoteManifest, wrote: Wrote | undefined, shown?: ScreenMoment[] | undefined): NoteManifest {
+  const first = m.writtenAt === null;
+  const any = Boolean(wrote?.notes) || Boolean(wrote?.rooms.evidence.length);
+  // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
+  // The notes model's verifications join the ones the transcript went to.
+  const rooms = roomChapters(m.breakouts);
+  const chapters = [...(wrote?.notes?.chapters ?? m.chapters), ...rooms]
+    .filter((x, i, all) => all.findIndex((y) => y.at === x.at && y.title === x.title && y.summary === x.summary) === i)
+    .sort((a, b) => a.at - b.at);
+  if (!wrote) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
+  // Each room's section as it is now (a line corrected while the notes were written stays corrected), with its
+  // notes as just written: written again, what people settled in it stays, as in the call's. A room whose notes
+  // couldn't be written keeps what it had: none the first time, which the note says.
+  const sections = m.rooms.map((r): RoomNote => {
+    const w = wrote.rooms.rooms.find((x) => x.id === r.id);
+    if (!w || !('notes' in w)) return r;
+    const items = first ? { decisions: w.notes.decisions, questions: w.notes.questions, actions: w.notes.actions } : keepSettled(r, w.notes);
+    return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items };
+  });
+  const evidence = [...(wrote.notes ? [wrote.notes.evidence] : []), ...wrote.rooms.evidence];
+  const inference = evidence.reduce((all, e) => (all.some((x) => verificationKey(x) === verificationKey(e)) ? all : [...all, e]), m.inference);
+  if (!wrote.notes) {
+    return { ...m, status: 'ready', chapters, rooms: sections, inference, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
+  }
+  const { evidence: _, ...notes } = wrote.notes;
+  const again = first ? {} : keepSettled(m, notes);
+  return { ...m, status: 'ready', ...notes, ...again, chapters, rooms: sections, writtenAt: wrote.readAt, inference };
+}
+
+/**
+ * A note's revisits once its notes are written: what the notes model found now takes the place of what it found before
+ * (which stays when it couldn't be asked), what someone said it got wrong stays said, and a revisit whose own decision
+ * didn't stay in the notes goes.
+ */
+function revisitsAfter(was: Revisit[], fresh: Revisit[] | undefined, decisions: Decision[]): Revisit[] {
+  const wrong = was.filter((r) => r.dismissed);
+  const found = (fresh ?? was).filter((r) => !r.dismissed && !wrong.some((w) => w.noteId === r.noteId && w.itemId === r.itemId));
+  return [...wrong, ...found.filter((r) => !r.by || decisions.some((d) => d.id === r.by))];
+}
+
+/**
+ * What this call came back to from earlier calls in its series: one request, once its notes are written, for a call with
+ * anything to compare. A comparison that can't be made costs only itself: the notes are written without it, and writing
+ * them again tries it again.
+ */
+async function comparedWithEarlier(o: Owner, noteId: string, m: NoteManifest, organizer: Person, renew: () => Promise<void>, ctx: Record<string, string | number>): Promise<Revisit[] | undefined> {
+  try {
+    const earlier = await standing(o, noteId, m);
+    const decisions = decisionsOf(m).filter((d) => d.state !== 'rejected');
+    const said = Boolean(m.transcript?.length) || m.rooms.some((r) => r.transcript.length > 0);
+    if (!earlier.length || !said) return [];
+    await renew();
+    const t0 = performance.now();
+    const found = await revisited(o.cfg, briefOf(m, organizer, m.invited.map((e) => personOf(e))), decisions, earlier);
+    wlog.info('call compared with earlier ones in its series', { ...ctx, earlier: earlier.length, replaced: found.filter((r) => r.kind === 'replaced').length, answered: found.filter((r) => r.kind === 'answered').length, ms: Math.round(performance.now() - t0) });
+    return found.map((r): Revisit => ({ ...r, id: id128(), dismissed: null }));
+  } catch (e) {
+    wlog.warn('call not compared with earlier ones; its notes are written without it', { ...ctx, err: e });
+    return undefined;
+  }
+}
+
+/**
+ * Writes the notes into the note, charges for them and closes the job, together. The charge is for the minutes recorded,
+ * not the length of the call: time with notes off is free. Notes written again (the organizer asked, after correcting
+ * the transcript) aren't charged again.
  */
 async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, wrote: Wrote | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
   const any = Boolean(wrote?.notes) || Boolean(wrote?.rooms.evidence.length);
   const recorded = any ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
     let first = true;
-    // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
-    // The notes model's verifications join the ones the transcript went to.
     await updateNote(o, c, noteId, (m) => {
       first = m.writtenAt === null;
-      const rooms = roomChapters(m.breakouts);
-      const chapters = [...(wrote?.notes?.chapters ?? m.chapters), ...rooms]
-        .filter((x, i, all) => all.findIndex((y) => y.at === x.at && y.title === x.title && y.summary === x.summary) === i)
-        .sort((a, b) => a.at - b.at);
-      if (!wrote) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
-      // Each room's section as it is now (a line corrected while the notes were written stays corrected), with its
-      // notes as just written: written again, what people settled in it stays, as in the call's. A room whose notes
-      // couldn't be written keeps what it had: none the first time, which the note says.
-      const sections = m.rooms.map((r): RoomNote => {
-        const w = wrote.rooms.rooms.find((x) => x.id === r.id);
-        if (!w || !('notes' in w)) return r;
-        const items = first ? { decisions: w.notes.decisions, questions: w.notes.questions, actions: w.notes.actions } : keepSettled(r, w.notes);
-        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items };
-      });
-      const evidence = [...(wrote.notes ? [wrote.notes.evidence] : []), ...wrote.rooms.evidence];
-      const inference = evidence.reduce((all, e) => (all.some((x) => verificationKey(x) === verificationKey(e)) ? all : [...all, e]), m.inference);
-      if (!wrote.notes) {
-        return { ...m, status: 'ready', chapters, rooms: sections, inference, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
-      }
-      const { evidence: _, ...written } = wrote.notes;
-      const again = first ? {} : keepSettled(m, written);
-      return { ...m, status: 'ready', ...written, ...again, chapters, rooms: sections, writtenAt: wrote.readAt, inference };
+      const next = written(m, wrote, shown);
+      return wrote ? { ...next, revisits: revisitsAfter(m.revisits, wrote.revisits, decisionsOf(next)) } : next;
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (any && first) {
@@ -232,15 +280,17 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       };
       // Each breakout room's notes, from what was said there alone.
       const rooms = await writeRooms(o, note.manifest, organizer, style, renew, at);
+      /** The notes as they'll stand, with what the call came back to. */
+      const compared = async (wrote: Wrote): Promise<Wrote> => ({ ...wrote, revisits: await comparedWithEarlier(o, noteId, written(note.manifest, wrote, shown), organizer, renew, at) });
       if (!lines) {
-        await settle(o, job.job_id, noteId, recordingId, { rooms, readAt }, shown);
+        await settle(o, job.job_id, noteId, recordingId, await compared({ rooms, readAt }), shown);
         wlog.info(rooms.evidence.length ? 'only breakout rooms were transcribed; their notes written' : 'nothing was transcribed; note finished without notes',
           { ...at, screens: shown.length, rooms: note.manifest.rooms.length, roomsWritten: rooms.evidence.length });
         return;
       }
       await renew();
       const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown }, style);
-      await settle(o, job.job_id, noteId, recordingId, { notes, rooms, readAt });
+      await settle(o, job.job_id, noteId, recordingId, await compared({ notes, rooms, readAt }));
       wlog.info('notes written', {
         ...at, language: style.language, length: style.length, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length,

@@ -1,7 +1,7 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
-import { CallCodeSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
+import { CallCodeSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage, type SeriesAnswerPart } from './types';
 import type { CallMoveOut, MoveMedia } from './moves';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
@@ -533,6 +533,11 @@ export interface CallSession extends LiveStore<CallState> {
   catchUpWindow(): Promise<CatchUpWindow>;
   /** A moment of the live transcript from a catch-up or an answer, with what was said around it. Your access is checked again. */
   moment(lineId: string): Promise<CallMoment>;
+  /**
+   * Asks across the earlier calls in this call's series, for you alone, from the notes your account has now, with the
+   * calls and moments the answer comes from. `timeZone` as in series.ask. Needs a sign-in, and waits while notes are paused.
+   */
+  askEarlier(question: string, timeZone: string): Promise<SeriesAnswerPart[]>;
   /* Host controls, for whoever hosts (refused for anyone else). */
   /** Mutes one of someone's tracks; they unmute themselves. */
   mute(identity: string, trackSid: string): Promise<void>;

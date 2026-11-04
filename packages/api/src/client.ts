@@ -79,6 +79,12 @@ export interface AlcoveApi {
     /** What a call's link says before joining, for anyone, signed in or not: its title and organizer, whether notes are on, and where you stand. */
     card(code: string): Promise<CallCard>;
     /**
+     * What carries over into a call, for someone signed in: its series as you see it, from the earlier notes you have
+     * now, before joining and during the call. Null when the call isn't in a series, or you aren't its organizer and
+     * have no notes from it: being invited to this call opens nothing from the others.
+     */
+    series(code: string): Promise<Series | null>;
+    /**
      * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else asks to
      * join: signed in, under their account, otherwise with `name` (1–60 characters). Refused until the organizer is
      * there, while the call is locked, and once it has ended.
@@ -115,6 +121,11 @@ export interface AlcoveApi {
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
     updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
+    /**
+     * Says the notes got it wrong: a later call (this note) didn't replace that decision or answer that question
+     * (`Series` gives the revisit's ID). Writing the notes again doesn't bring it back. Needs both calls' notes.
+     */
+    dismissRevisit(noteId: ID, revisitId: ID): Promise<Note>;
     /** Follow-ups for you that aren't done, and decisions nobody has confirmed, from every note you have. */
     inbox(): Promise<Inbox>;
     /**

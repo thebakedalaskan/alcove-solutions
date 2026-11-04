@@ -16,7 +16,9 @@
  * without one can't be made out. The notes model writes from the transcript it was sent, screens included, so
  * tests can see the transcript arrived intact and the reply was checked before use; asked across notes, it
  * answers from the lines of each note it was sent and cites them by note, plus a note it wasn't sent, as a model
- * can make one up. Every request body is kept as it arrived, so tests can show that nothing readable crossed the
+ * can make one up; and asked to compare a call with earlier ones in its series, it reads "instead" in a decision and
+ * "Answer:" at the start of a line, with labels and moments that aren't there among them, as a model can make them up.
+ * Every request body is kept as it arrived, so tests can show that nothing readable crossed the
  * wire; each request with content records the attested key it was sealed to; and the evidence can be made to lie,
  * so tests can show what Alcove refuses.
  */
@@ -80,8 +82,11 @@ export interface FakeNear {
   rotate(task: Task): void;
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
-  /** The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape and nothing in it. */
-  failNext(n: number, how: 'down' | 'prose' | 'stub'): void;
+  /**
+   * The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape
+   * and nothing in it. With `only`, just the replies to system prompts starting so.
+   */
+  failNext(n: number, how: 'down' | 'prose' | 'stub', only?: string): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number): void;
   close(): Promise<void>;
@@ -304,13 +309,38 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
       screens: screens.map((x) => ({ n: x.n, description: `${x.title}, shown while: ${heard.find((h) => h.screen?.n === x.n)?.text ?? 'nothing was said'}` }))
     };
   }
+  if (system.startsWith('You compare one meeting')) {
+    // A decision saying "instead" replaces each earlier one it shares a long word with; a line starting "Answer:"
+    // answers each earlier question it shares one with. Then a label and a moment that aren't there, as a model can make them up.
+    const labelled = (letter: string) => user.split('\n').flatMap((l) => { const m = new RegExp(`^${letter}(\\d+): (.*)$`).exec(l); return m ? [{ label: `${letter}${m[1]}`, text: m[2] ?? '' }] : []; });
+    const long = (s: string) => s.toLowerCase().split(/\W+/).filter((w) => w.length > 4);
+    const shares = (a: string, b: string) => long(a).some((w) => long(b).includes(w));
+    const mine = labelled('N').filter((n) => /\binstead\b/i.test(n.text));
+    let room: number | null = null;
+    const replies = user.split('\n').flatMap((l) => {
+      const head = /^Breakout room (\d+), /.exec(l);
+      if (head) room = Number(head[1]);
+      return heardIn(l).filter((x) => /^Answer: /.test(x.text)).map((x) => ({ ...x, room }));
+    });
+    return {
+      replaced: [...labelled('E').flatMap((e) => mine.filter((n) => shares(n.text, e.text)).map((n) => ({ earlier: e.label, by: n.label }))), { earlier: 'E99', by: 'N1' }, { earlier: 'E1', by: 'N99' }],
+      answered: [...labelled('Q').flatMap((q) => replies.filter((r) => shares(r.text, q.text)).map((r) => ({ earlier: q.label, at: r.at, room: r.room }))), { earlier: 'Q99', at: 1, room: null }]
+    };
+  }
   const question = /\nQuestion: (.*)$/s.exec(user)?.[1] ?? '';
   const words = wordsAsked(user);
   if (system.startsWith('You answer a question about a series')) {
-    // Answers from the first transcript line, newest meeting first, that shares a word with the question.
-    const found = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => heardIn(block).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), h })))
-      .find(({ h }) => words.some((w) => h.text.toLowerCase().includes(w)));
-    return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, at: found.h.at }] : [] };
+    // Answers from the first transcript line, newest meeting first, that shares a word with the question, in the call's
+    // transcript or a breakout room's.
+    const found = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => {
+      let room: number | null = null;
+      return block.split('\n').flatMap((l) => {
+        const head = /^Breakout room (\d+), .*, transcript:$/.exec(l);
+        if (head) room = Number(head[1]);
+        return heardIn(l).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), room, h }));
+      });
+    }).find(({ h }) => words.some((w) => h.text.toLowerCase().includes(w)));
+    return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, room: found.room, at: found.h.at }] : [] };
   }
   const hit = heard.find((h) => words.some((w) => h.text.toLowerCase().includes(w)));
   // A call still going on is asked about with its lines numbered: the answer points at them (and at one that isn't there).
@@ -432,6 +462,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let failing = 0;
   let failure: 'down' | 'prose' | 'stub' = 'down';
   let slow = 0;
+  let failingOnly = '';
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
@@ -528,7 +559,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     }
     if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
     let content: string;
-    if (failing > 0) {
+    if (failing > 0 && system.startsWith(failingOnly)) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
       content = failure === 'stub'
@@ -632,7 +663,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       models[task] = { ...machine(m.name, m.image, m.compose, ohttpIds++), appId: m.appId };
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
-    failNext(count, how) { failing = count; failure = how; },
+    failNext(count, how, only = '') { failing = count; failure = how; failingOnly = only; },
     slowNext(ms) { slow = ms; },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };

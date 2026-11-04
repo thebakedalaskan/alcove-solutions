@@ -8,7 +8,7 @@
 import {
   ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type GroupShare, type Inbox, type LinePatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RoomNote, type ScreenMoment, type Speaker, type TranscriptLine
+  type NoteRoom, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RoomNote, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -56,6 +56,21 @@ type Sharer = z.infer<typeof Sharer>;
 const SharedWith = z.object({ email: z.string(), by: Sharer, group: z.string().optional(), at: z.string() });
 type SharedWith = z.infer<typeof SharedWith>;
 
+/**
+ * Where this call came back to something an earlier call in its series left standing, as the notes model read it: a
+ * decision it replaced (`by`, this note's own decision) or a question it answered (`at`, seconds into this recording,
+ * and `room`, the breakout room it was answered in). It names the earlier note and its item by their random IDs and
+ * says nothing of what they said. It's only ever a suggestion, and it lives here, in the later note: someone who has
+ * only the earlier call's notes learns nothing from this one, and it goes when this note does. `dismissed`: someone
+ * who has both said the notes got it wrong, and writing them again doesn't bring it back.
+ */
+export const Revisit = z.object({
+  id: z.string(), kind: z.enum(['replaced', 'answered']), noteId: z.string(), itemId: z.string(),
+  by: z.string().optional(), at: z.number().optional(), room: z.string().optional(),
+  dismissed: z.object({ by: z.object({ name: z.string(), email: z.string() }), at: z.string() }).nullable().default(null)
+});
+export type Revisit = z.infer<typeof Revisit>;
+
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
   meetingId: z.string().optional(), recordingId: z.string(), status: NoteStatusSchema,
@@ -80,13 +95,18 @@ export const NoteManifest = z.object({
   /** Breakout rooms the call held, in seconds into the recording: each time the notes are written, they're among its chapters. */
   breakouts: z.array(HeldRooms),
   /** The verified models that transcribed the speech and wrote the notes, as they were checked. */
-  inference: z.array(InferenceEvidenceSchema)
+  inference: z.array(InferenceEvidenceSchema),
+  /** What this call came back to from earlier calls in its series, once the notes are written. */
+  revisits: z.array(Revisit).default([])
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 /** A note's follow-ups: the call's, then each breakout room's. */
 const actionsOf = (m: NoteManifest): ActionItem[] => [...m.actions, ...m.rooms.flatMap((r) => r.actions)];
 /** A note's decisions: the call's, then each breakout room's. */
-const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...m.rooms.flatMap((r) => r.decisions)];
+export const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...m.rooms.flatMap((r) => r.decisions)];
+/** The parts of a note people settle: the call's own, then each breakout room's section, by name. */
+export const partsOf = (m: NoteManifest): (Pick<NoteManifest, 'decisions' | 'questions' | 'actions'> & { room?: NoteRoom })[] =>
+  [{ decisions: m.decisions, questions: m.questions, actions: m.actions }, ...m.rooms.map((r) => ({ room: { id: r.id, name: r.name }, decisions: r.decisions, questions: r.questions, actions: r.actions }))];
 
 /** A note about to be recorded, starting when its recording does. */
 export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined }): NoteManifest {
@@ -94,7 +114,7 @@ export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; r
     kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, rooms: [], suggestedQuestions: [], writtenAt: null,
-    breakouts: [], inference: []
+    breakouts: [], inference: [], revisits: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -568,6 +588,23 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
     });
   });
   nlog.info('follow-up changed', { noteId, actionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/**
+ * Says the notes got it wrong: this later call didn't replace that decision, or answer that question. Whoever is shown
+ * a revisit has both notes, so only they can: having this one alone says nothing about the earlier call, and finds
+ * nothing here. Saying it twice changes nothing.
+ */
+export async function dismissRevisit(o: Owner, noteId: string, revisitId: string): Promise<Note> {
+  const { owner, note, by, at } = await writtenNote(o, noteId);
+  const r = note.manifest.revisits.find((x) => x.id === revisitId);
+  if (!r) throw notFound('That later call', { noteId, revisitId });
+  await locate(o, r.noteId);
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => (
+    n.revisits.some((x) => x.id === revisitId && !x.dismissed) ? { ...n, revisits: n.revisits.map((x) => (x.id === revisitId ? { ...x, dismissed: { by, at } } : x)) } : n
+  )));
+  nlog.info('revisit dismissed', { noteId, revisitId, kind: r.kind, mine: owner.ownerId === o.ownerId });
   return get(o, noteId);
 }
 

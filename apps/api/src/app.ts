@@ -56,9 +56,9 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * the account deletes its receipts, so there is no account left to keep one under.
  */
 const NO_RECEIPT = [
-  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/account$/
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|revisits\/[^/]+\/dismiss|share|rewrite)$/, /^\/v1\/account$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -141,6 +141,8 @@ export function createApp(d: Deps) {
   const shareEndLimiter = rateLimit(30, 60_000);
   /** Opening a moment of the live transcript reads all of it, per connection to the call. */
   const momentLimiter = rateLimit(60, 60_000);
+  /** What carries over into a call opens every note someone has from its series, per account: a pre-join and a call's panel read it about once a minute. */
+  const carryLimiter = rateLimit(60, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -287,6 +289,21 @@ export function createApp(d: Deps) {
     return s ? openOwner(d, s.ownerId, s) : undefined;
   };
   app.get('/v1/calls/:code/card', async (c) => { cardLimiter(clientAddress(c), 'call card'); return c.json(await calls.card(d, c.req.param('code'), await optionalOwner(c))); });
+  /*
+   * What carries over into a call: its series as someone signed in sees it. It comes from their own notes, so it needs
+   * their session, whatever pass they hold: a guest has no account, and nothing to carry over.
+   */
+  const signedIn = async (c: Context): Promise<Owner> => {
+    const o = await optionalOwner(c);
+    if (!o) throw new AuthError('Sign in to see what carries over from earlier calls.');
+    return o;
+  };
+  app.get('/v1/calls/:code/series', async (c) => {
+    const o = await signedIn(c);
+    carryLimiter(o.ownerId, 'carry-over');
+    const seriesId = await calls.seriesOf(d, c.req.param('code'));
+    return c.json(seriesId ? await series.read(o, seriesId) : null);
+  });
   app.post('/v1/calls/:code/join', async (c) => {
     callLimiter(clientAddress(c), 'call join');
     const b = await body(c, CallJoinBodySchema);
@@ -475,6 +492,15 @@ export function createApp(d: Deps) {
     const { question, range } = await body(c, AskSoFarBodySchema);
     return c.json(await calls.askSoFar(v, c.req.param('id'), question, range));
   });
+  /* Asking across the calls before this one, during it: from the asker's own notes, so it takes their session as well as their pass. */
+  app.post('/v1/live/calls/:id/series/ask', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'ask-earlier');
+    const o = await signedIn(c);
+    askLimiter(o.ownerId, 'ask-earlier');
+    const { question, timeZone } = await body(c, SeriesAskBodySchema);
+    return c.json(await calls.askEarlier(v, c.req.param('id'), o, question, timeZone));
+  });
   app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
     const v = c.get('viewer');
     calls.requireIn(v, 'moment');
@@ -638,6 +664,7 @@ export function createApp(d: Deps) {
   app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
   app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(c.get('owner'), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
   app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(c.get('owner'), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
+  app.post('/v1/notes/:id/revisits/:revisitId/dismiss', async (c) => c.json(await notes.dismissRevisit(c.get('owner'), c.req.param('id'), c.req.param('revisitId'))));
   app.post('/v1/notes/:id/rewrite', async (c) => {
     const o = c.get('owner');
     // Writing the notes again costs inference and isn't charged, so it shares the questions' allowance.

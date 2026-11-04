@@ -552,6 +552,8 @@ export type AnswerPart = z.infer<typeof AnswerPartSchema>;
  * the note (`/notes/<id>?at=245`). It comes from the address bar, so the app parses it with this.
  */
 export const NoteMomentSchema = z.number().min(0);
+/** A breakout room's section of a note, as a link opens it (`/notes/<id>?room=<room ID>`). From the address bar too. */
+export const NoteRoomParamSchema = IDSchema.min(1).max(64);
 
 /** What the Team page's `group` opens: one of your groups by its ID, or NEW_GROUP to make one. From the address bar too. */
 export const GroupParamSchema = IDSchema.min(1).max(200);
@@ -583,12 +585,39 @@ export const SeriesNoteSchema = z.object({
 });
 export type SeriesNote = z.infer<typeof SeriesNoteSchema>;
 
-/** A decision from one of the series' notes (`noteId`, one of `Series.notes`). */
-export const CarriedDecisionSchema = DecisionSchema.extend({ noteId: IDSchema });
+/** The breakout room something came from: its section of the call's notes. Absent for the main room. */
+export const NoteRoomSchema = z.object({ id: IDSchema, name: z.string() });
+export type NoteRoom = z.infer<typeof NoteRoomSchema>;
+
+/**
+ * Where a later call came back to something, in notes you have too: the notes model thinks it replaced a decision or
+ * answered a question. It only suggests: the decision or question stands as it was until someone who has the notes
+ * says otherwise, or says the notes got it wrong (notes.dismissRevisit, with this `id` on the later call's note).
+ * Someone without both notes is never told: what a later call did is that call's.
+ */
+export const LaterCallSchema = z.object({
+  id: IDSchema,
+  /** The later call's note: one of `Series.notes`. */
+  noteId: IDSchema,
+  /** The breakout room of the later call it came up in. */
+  room: NoteRoomSchema.optional(),
+  /** The moment in the later call's recording, in seconds, if the notes could tell. */
+  at: z.number().optional()
+});
+export type LaterCall = z.infer<typeof LaterCallSchema>;
+/** A later decision that seems to replace an earlier one: where, and what it says. */
+export const ReplacedBySchema = LaterCallSchema.extend({ text: z.string() });
+export type ReplacedBy = z.infer<typeof ReplacedBySchema>;
+
+/** Where something came from: one of `Series.notes`, and the breakout room whose section of it says so, when one does. */
+const CarriedFrom = { noteId: IDSchema, room: NoteRoomSchema.optional() };
+/** A decision from one of the series' notes, and the later call that seems to replace it. */
+export const CarriedDecisionSchema = DecisionSchema.extend({ ...CarriedFrom, replacedBy: ReplacedBySchema.optional() });
 export type CarriedDecision = z.infer<typeof CarriedDecisionSchema>;
 /** How long something has gone unsettled: the later calls (whose notes you have) it stayed open through. Stale from two. */
-const Carried = { noteId: IDSchema, later: z.number(), stale: z.boolean() };
-export const CarriedQuestionSchema = QuestionSchema.extend(Carried);
+const Carried = { ...CarriedFrom, later: z.number(), stale: z.boolean() };
+/** A question from one of the series' notes, and the later call that seems to answer it. */
+export const CarriedQuestionSchema = QuestionSchema.extend({ ...Carried, answeredIn: LaterCallSchema.optional() });
 export type CarriedQuestion = z.infer<typeof CarriedQuestionSchema>;
 export const CarriedActionSchema = ActionItemSchema.extend(Carried);
 export type CarriedAction = z.infer<typeof CarriedActionSchema>;
@@ -608,19 +637,24 @@ export const SeriesSchema = z.object({
   notes: z.array(SeriesNoteSchema),
   /** How many older calls in it you also have notes from. They aren't shown, and nothing carries over from them. */
   older: z.number(),
-  /** Confirmed decisions, ones that no longer hold, and ones nobody has confirmed yet, newest call first. Never ones people said weren't decided. */
+  /**
+   * Confirmed decisions, ones that no longer hold, and ones nobody has confirmed yet, newest call first, each call's
+   * own and then its breakout rooms'. Never ones people said weren't decided.
+   */
   decisions: z.array(CarriedDecisionSchema),
-  /** Questions nobody has said were answered yet. */
+  /** Questions nobody has said were answered yet, the call's and its breakout rooms'. */
   questions: z.array(CarriedQuestionSchema),
-  /** Follow-ups not done yet, and ones done since the latest call started. */
+  /** Questions someone said were answered since the latest call started: said once, like follow-ups just done. */
+  answered: z.array(CarriedQuestionSchema),
+  /** Follow-ups not done yet, and ones done since the latest call started, the call's and its breakout rooms'. */
   actions: z.array(CarriedActionSchema)
 });
 export type Series = z.infer<typeof SeriesSchema>;
 
-/** An answer about a series: its text, then the calls it comes from, with the moment in each when it can tell. */
+/** An answer about a series: its text, then the calls it comes from, with the breakout room and the moment in each when it can tell. */
 export const SeriesAnswerPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('source'), noteId: IDSchema, title: z.string(), startedAt: ISODateSchema, at: z.number().optional() })
+  z.object({ type: z.literal('source'), noteId: IDSchema, title: z.string(), startedAt: ISODateSchema, room: NoteRoomSchema.optional(), at: z.number().optional() })
 ]);
 export type SeriesAnswerPart = z.infer<typeof SeriesAnswerPartSchema>;
 
