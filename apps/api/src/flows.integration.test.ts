@@ -2909,18 +2909,18 @@ describe('confidential computing', () => {
 });
 
 describe('maintenance', () => {
-  it('refuses to start on a database built from a different version of the schema', async () => {
+  it('refuses a database whose applied migrations were edited or removed', async () => {
     const { migrate } = await import('./migrate');
     expect(await migrate(h.pool)).toEqual([]);
     const [row] = (await h.pool.query<{ name: string; checksum: string }>('SELECT name, checksum FROM schema_migrations ORDER BY name LIMIT 1')).rows;
     if (!row) throw new Error('no migrations recorded');
     // As if the file had been edited in place after this database was built.
     await h.pool.query('UPDATE schema_migrations SET checksum = $2 WHERE name = $1', [row.name, 'edited-since']);
-    await expect(migrate(h.pool)).rejects.toThrow(/reset/);
+    await expect(migrate(h.pool)).rejects.toThrow(/changed after it was applied/);
     // As if a migration had been deleted.
     await h.pool.query('UPDATE schema_migrations SET checksum = $2 WHERE name = $1', [row.name, row.checksum]);
     await h.pool.query("INSERT INTO schema_migrations (name, checksum) VALUES ('0099_gone.sql', 'x')");
-    await expect(migrate(h.pool)).rejects.toThrow(/reset/);
+    await expect(migrate(h.pool)).rejects.toThrow(/no longer in the repository/);
     await h.pool.query("DELETE FROM schema_migrations WHERE name = '0099_gone.sql'");
     expect(await migrate(h.pool)).toEqual([]);
   });

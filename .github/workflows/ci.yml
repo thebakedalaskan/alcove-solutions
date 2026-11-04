@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Full history, so the migration check can compare with the base branch.
+        with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
@@ -26,6 +28,8 @@ jobs:
         run: node scripts/check-tests.mjs
       - name: Strict typing (no any, assertions, non-null or suppressions)
         run: node scripts/check-types.mjs
+      - name: Migrations only move forward (merged ones never change)
+        run: node scripts/check-migrations.mjs
 
   typecheck:
     name: Typecheck

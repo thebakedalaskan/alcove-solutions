@@ -43,5 +43,6 @@ second person, for example to see notes shared with someone; nothing checks it, 
 and shows your Google Calendar; it needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from a Google web
 OAuth client with `$API_URL/v1/auth/google/callback` as a redirect URI. With `NEAR_AI_API_KEY` set, calls
 and room recordings get a live transcript and written notes; without it, recordings are kept and their
-notes wait. Calls need camera and microphone permission; everything else is in `docs/`. After a change to
-`apps/api/migrations/`, run `pnpm db:reset`.
+notes wait. Calls need camera and microphone permission; everything else is in `docs/`. Schema changes are
+new migrations, which the API applies when it starts, so your local data carries over like production's;
+`pnpm db:reset` only starts it over.
