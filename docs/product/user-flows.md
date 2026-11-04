@@ -120,14 +120,25 @@ dock at the bottom.
   who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for
   everyone** (Everyone; organizer only). On your own tile it also has where you see yourself: **In the grid**,
   **In a corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a small chip in the corner
-  brings you back; everyone else still sees you). A shared screen's **⋯** shows it big or as a tile. A pin or a
+  brings you back; everyone else still sees you). A shared screen's **⋯** shows it big or as a tile, and mutes its
+  sound for you. A pin or a
   spotlight shows on the tile with an ×, a spotlight also as a bar with **Stop spotlight**. From the keyboard, Tab
   to the stage, move between tiles with the arrow keys, and use **Enter** for the menu, **P** to pin, **Shift**
   with an arrow to move and **+** or **−** to resize; **Escape** unpins everyone. Someone pinned who leaves is
   pinned again if they come back, and nothing you arranged moves when people talk, join, leave, turn their camera
   off or share. Alcove remembers how you like calls (the layout, room for shares, where you see yourself) for your
   account in this browser; how you arranged this call lasts until you leave it.
-- **Sharing.** A bar says what you're sharing, with **Change** and **Stop sharing**.
+- **Sharing.** Several people can share at once (up to four), and starting yours never stops anyone else's. A bar
+  says what you're sharing (and "with sound" when its sound goes too), with **Change**, which swaps it in place for
+  everyone, and **Stop sharing**. Each share names whoever shares it, with their face in the arch. Two sit side by
+  side, or one above the other where that shows both bigger, with a line between them to drag (or move with the arrow
+  keys); one on a phone. The rest wait as tiles: click or tap one, or press **P** on it, to see it big in place of the
+  one that's been big longest. Your own share starts as a tile on your screen. A share that starts later glows for a
+  moment where it lands, and when it comes in as a tile a toast says who, with **Show it**; it never moves what you're
+  looking at. When the browser or the computer won't share (on a Mac, the screen-recording permission), the picker
+  comes back and says what to do, and offers a tab, which needs no permission; when the sound you asked for didn't
+  come, a toast says so. Phones and tablets can see shares but can't share. Nothing shared is recorded or
+  transcribed.
 - **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.
