@@ -14,8 +14,23 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
 2. **Google** goes to Google's account chooser and consent screen, which also asks for the calendar (events
    only); unticking it still signs in. If the sign-in doesn't happen (cancelled, too slow, an email Google
    hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
-3. The first time, a short screen says what came along (the calendar, and the team when there's a company
-   directory), and **Open Alcove** goes to Home. After that, signing in goes straight to Home.
+3. The first time, the account is created on screen, in about six seconds: an arch draws itself, dawn fills
+   it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed
+   in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are
+   left today and which is next, from the connected or sample calendar (no row without calendar access). **Your
+   team at** the company, with its size and faces, when there's a company directory. **Notes are written in
+   confidential compute**, with the time the hardware was verified when this browser could check it. Then
+   "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
+   reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
+   straight to Home.
+4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and
+   the page dimmed around the real thing the slide is about, with an arrow to it. **Schedule in one line**
+   (New call), **Notes for your calls** (a call's notes setting, or the example note before there are calls),
+   **Join a call** (Join on the next Alcove call, left out when there isn't one), **Record in the room** (In the
+   room), **Your notes stay yours** (the confidential-compute badge) and **You’re ready** (New call). The card
+   moves beside its target, or along the bottom on a phone; **←**/**→** and **Enter** move through it and
+   **Escape** or **Skip tour** closes it. It isn't shown again on that browser for that account; **Take the
+   tour** in the menu under your name plays it again.
 
 The first sign-in creates the account: its keys, a profile with the name, email and photo from the sign-in,
 the notes default (on) and 10,000 credits. Later sign-ins bring the name, email and photo up to date. Microsoft
@@ -29,7 +44,8 @@ screen. Signing in on another browser doesn't end the first session.
 
 ## 2. Home
 
-- The date, a greeting, and **Up next**: the next Alcove call or, with Google Calendar connected, the next
+- The date, a greeting, a **Confidential compute** badge (with the time the hardware was verified when this
+  browser could check it), and **Up next**: the next Alcove call or, with Google Calendar connected, the next
   meeting on the calendar, with a countdown and who is invited. An Alcove call shows whether it has notes,
   **Join** (**J**), **Copy link** and, before it starts, **Change this call**. Another calendar meeting
   shows **Join on Google Meet** (or Zoom, Teams, Webex) when it has a video link, **Use Alcove instead** when
@@ -49,6 +65,9 @@ screen. Signing in on another browser doesn't end the first session.
   **Your follow-ups**: the open follow-ups from your notes, which can be ticked off.
 - With a company directory, a team card shows who already uses Alcove, with **Invite** for the rest.
   Inviting marks them as invited; no email is sent yet.
+
+The sidebar has **New call**, **Home**, **Notes** and **In the room** (record on your phone). The menu under
+your name has **Account**, **Take the tour**, the light or dark theme, and **Sign out**.
 
 ## 3. Start or schedule a call
 
@@ -170,7 +189,7 @@ nothing they "say" reaches the transcript or the notes
 
 ## 8. Record in the room
 
-**New call › Record in the room** starts recording the microphone straight away, in 5-second encrypted pieces
+**In the room** in the sidebar, or **New call › Record in the room**, starts recording the microphone straight away, in 5-second encrypted pieces
 with a live waveform, and transcribes what's said as it goes, without naming who spoke. Rename by editing the
 title, pause and resume, then **Finish and write notes** (opens the note) or **Home › Discard recording**
 (nothing is kept). Room notes are yours alone until you share them.

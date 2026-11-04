@@ -2,6 +2,7 @@ import { EmptyState, ThemeProvider, buttonClass, ToastProvider, TooltipProvider,
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
+import { Arrival } from '~/features/onboarding/Arrival';
 import css from '~/styles/app.css?url';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -40,6 +41,7 @@ function Root() {
         <TooltipProvider>
           <ToastProvider>
             <Outlet />
+            <Arrival />
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>

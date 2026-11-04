@@ -436,6 +436,10 @@ export const CallViewPrefsSchema = z.object({
 });
 export type CallViewPrefs = z.infer<typeof CallViewPrefsSchema>;
 
+/** That someone finished or closed the tour of Home. Kept in their browser for their account, never sent anywhere. */
+export const HomeTourSchema = z.object({ seenAt: ISODateSchema });
+export type HomeTour = z.infer<typeof HomeTourSchema>;
+
 /* ---------- captions ---------- */
 
 /** Languages captions can be translated into. Each person picks their own; nobody else's captions change. */

@@ -1,0 +1,94 @@
+/*
+ * The way in for a new account: the account being created (always night, one arch that draws itself,
+ * fills with dawn and opens into Home), and the art on the tour's slides (dawn sky, illustration, so
+ * literal stage colours are allowed here).
+ */
+
+/* ------------------------------------------------------------ account creation */
+.cr { position: fixed; inset: 0; z-index: 85; color: var(--ink); overflow: hidden; outline: none; border-radius: 0; }
+.cr-sky { position: absolute; inset: 0; background: var(--ground); }
+.cr-glow { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(42% 38% at 50% 40%, rgb(255 160 106 / .2), transparent 70%), radial-gradient(70% 60% at 50% 120%, rgb(91 75 224 / .22), transparent 70%); }
+.cr-box { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; padding: 24px max(20px, env(safe-area-inset-right, 0px)) 72px max(20px, env(safe-area-inset-left, 0px)); text-align: center; pointer-events: none; }
+.cr-box > * { pointer-events: auto; }
+.cr-arch { position: relative; width: 196px; height: 242px; flex: none; }
+.cr-arch svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.cr-rim { fill: none; stroke: rgb(255 255 255 / .55); stroke-width: 1.6; stroke-linecap: round; }
+.cr-head { display: grid; gap: 6px; }
+.cr-title { font: 450 34px/1.1 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 36; min-height: 1.1em; }
+.cr-sub { font-size: 15px; color: var(--ink-3); min-height: 22px; }
+.cr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; width: min(420px, 100%); text-align: left; }
+.cr-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) 24px; gap: 14px; align-items: center; padding: 10px 14px 10px 10px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.cr-row .ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--sunk); color: var(--ink-2); }
+.cr-row .ic .ac-logo { width: 18px; height: 18px; }
+.cr-row .ic .ac-faces .ac-avatar { --ring: var(--sunk); margin-left: -5px; }
+.cr-row .ic .ac-faces .ac-avatar:first-child { margin-left: 0; }
+.cr-row .t { min-width: 0; font: 500 14.5px/1.3 var(--font-sans); color: var(--ink-2); }
+.cr-row .t b { color: var(--ink); font-weight: 600; }
+.cr-row .t small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-row .ck { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--sun-text); transition: background-color var(--duration-2), box-shadow var(--duration-2); }
+.cr-row.is-done .ck { background: var(--sun-soft); box-shadow: none; animation: cr-pop 500ms cubic-bezier(.34, 1.8, .64, 1) both; }
+.cr-skip { position: absolute; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; color: var(--ink-3); }
+@keyframes cr-pop { from { transform: scale(.7); } }
+@media (max-height: 760px) { .cr-arch { width: 150px; height: 185px; } .cr-box { gap: 20px; } .cr-title { font-size: 30px; } }
+@media (max-height: 620px) { .cr-arch { width: 110px; height: 136px; } .cr-row { padding-block: 7px; } }
+
+/* ------------------------------------------------------------ the tour's art */
+.ta { position: absolute; inset: 0; display: grid; place-items: center; color: var(--stage-ink); font-family: var(--font-sans); }
+.ta-sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ta-glass { background: rgb(14 12 31 / .7); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 18px 36px -16px rgb(0 0 0 / .6); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.ac-tour.is-sheet .ta > :not(svg) { scale: .9; }
+
+.ta-stack { position: relative; display: grid; gap: 10px; justify-items: center; width: 330px; }
+.ta-cmp { display: flex; align-items: center; gap: 9px; width: 100%; height: 44px; padding: 0 14px; border-radius: 13px; font: 500 14px/1 var(--font-sans); }
+.ta-cmp .ac-i { color: #FFB08A; }
+.ta-caret { width: 1.5px; height: 17px; margin-left: -6px; background: var(--stage-ink); animation: ta-caret 1s steps(1) infinite; }
+@keyframes ta-caret { 50% { opacity: 0; } }
+.ta-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; min-height: 28px; }
+.ta-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 9px; font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
+.ta-chip .ac-i { color: var(--stage-ink-2); }
+.ta-chip.is-notes { background: rgb(255 138 91 / .22); color: #FFC2A6; box-shadow: inset 0 0 0 1px rgb(255 176 138 / .25); }
+.ta-chip.is-notes .ac-i { color: #FFB08A; }
+.ta-chip .ac-avatar { --ring: transparent; }
+
+.ta-notes { width: 316px; border-radius: 16px; padding: 12px 14px; display: grid; gap: 8px; align-self: start; margin-top: 26px; }
+.ta-notes .hd { display: flex; align-items: center; justify-content: space-between; font: 600 13px/1 var(--font-sans); }
+.ta-rows { display: grid; gap: 6px; }
+.ta-row { display: flex; align-items: center; gap: 9px; height: 26px; font: 500 13px/1 var(--font-sans); color: var(--stage-ink); overflow: hidden; }
+.ta-tick { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: rgb(255 138 91 / .2); color: #FFB08A; flex: none; }
+.ta-owner { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px 0 3px; border-radius: 999px; background: rgb(255 255 255 / .1); font: 600 11.5px/1 var(--font-sans); flex: none; }
+
+.ta-call { position: relative; width: 300px; display: grid; gap: 8px; }
+.ta-tiles { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; height: 92px; }
+.ta-tiles .ac-tile { height: 92px; border-radius: 11px; }
+.ta-tiles .ac-tile-name { left: 6px; bottom: 6px; height: 20px; padding: 0 7px; font-size: 11px; }
+.ta-cap { border-radius: 11px; padding: 8px 11px; min-height: 48px; }
+.ta-cap .who { display: flex; align-items: center; gap: 6px; font: 500 11px/1 var(--font-sans); color: var(--stage-ink-2); }
+.ta-cap .who .lbl { margin-left: auto; font-family: var(--font-mono); letter-spacing: .04em; }
+.ta-cap p { margin-top: 5px; font: 500 13.5px/1.3 var(--font-sans); color: var(--stage-ink); white-space: nowrap; overflow: hidden; }
+.ta-cap p span { display: inline-block; }
+
+.ta-room { position: absolute; left: 50%; bottom: -36px; translate: -50% 0; display: flex; align-items: flex-start; gap: 22px; }
+.ta-phone { position: relative; width: 92px; height: 150px; margin-top: 40px; border-radius: 22px; background: #0B0A18; box-shadow: inset 0 0 0 2px #2E2B55, inset 0 0 0 6px #121027, 0 20px 40px -16px rgb(0 0 0 / .7); }
+.ta-phone .scr { position: absolute; inset: 6px; border-radius: 17px; overflow: hidden; background: linear-gradient(180deg, #16123A, #241B55); display: grid; align-content: start; justify-items: center; padding-top: 18px; gap: 8px; }
+.ta-phone .rec { display: inline-flex; align-items: center; gap: 5px; font: 600 9.5px/1 var(--font-mono); color: #FF9DAE; letter-spacing: .04em; }
+.ta-phone .rec i { width: 6px; height: 6px; border-radius: 50%; background: #FF6B83; }
+.ta-wave { display: flex; align-items: center; gap: 2px; height: 34px; }
+.ta-wave i { width: 3px; height: 100%; border-radius: 2px; background: linear-gradient(180deg, #FFC774, #FF7A45); }
+.ta-status { position: relative; width: 196px; height: 58px; margin-top: 30px; }
+.ta-pill { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 9px; width: 196px; min-height: 44px; padding: 8px 12px 8px 9px; border-radius: 13px; font: 500 12.5px/1.25 var(--font-sans); }
+.ta-pill b { font-weight: 600; }
+.ta-pill .ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgb(255 255 255 / .1); flex: none; }
+.ta-pill .ic.is-gold { background: rgb(255 181 71 / .2); color: #FFC774; }
+.ta-pill small { display: block; font: 400 10.5px/1.3 var(--font-mono); color: var(--stage-ink-2); }
+
+.ta-seal { position: relative; width: 340px; height: 150px; margin-top: -18px; }
+.ta-vault, .ta-vault-glow { position: absolute; left: 50%; top: 22px; width: 92px; height: 112px; margin-left: -46px; border-radius: 46px 46px 14px 14px; }
+.ta-vault { display: grid; place-items: center; }
+.ta-vault .ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgb(255 181 71 / .18); color: #FFC774; }
+.ta-src, .ta-dst { position: absolute; top: 46px; display: grid; gap: 10px; }
+.ta-src { left: 8px; }
+.ta-dst { right: 8px; top: 40px; gap: 6px; justify-items: end; }
+.ta-src span { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 8px; font: 500 11.5px/1 var(--font-sans); }
+.ta-dst .ac-avatar { --ring: rgb(255 255 255 / .25); }
+.ta-pk { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 3px; background: #FFC774; box-shadow: 0 0 10px rgb(255 199 116 / .7); }
+.ta-label { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; align-items: center; gap: 5px; font: 500 10.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: rgb(255 255 255 / .78); }

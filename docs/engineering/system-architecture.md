@@ -40,7 +40,7 @@ flowchart TB
 
 | Path | Responsibility |
 | --- | --- |
-| `apps/web` | The app: welcome and sign-in, Home (Alcove's calls beside Google Calendar events), the new-call and change-call composer, pre-join, the full-screen call with its live transcript, notes, the room recorder, account. Talks only to `@alcove/api` through `src/lib/api.ts`. |
+| `apps/web` | The app: welcome and sign-in, a new account's creation screen and the tour of Home (`src/features/onboarding`; whether the tour was seen is kept in this browser per account, `alcove.tour.<ownerId>`, parsed with `HomeTourSchema`), Home (Alcove's calls beside Google Calendar events), the new-call and change-call composer, pre-join, the full-screen call with its live transcript, notes, the room recorder, account. Talks only to `@alcove/api` through `src/lib/api.ts`. |
 | `apps/api` | The API (`@alcove/server`): Hono on Node, raw SQL via `pg` with zod-parsed rows, crypto via `@noble/ciphers` and `@noble/hashes`, objects via the S3 client, Google ID tokens via `jose`, logs via pino. |
 | `packages/api` | The contract: domain types as zod schemas, the `AlcoveApi` interface, live-session interfaces, wire shapes. |
 | `packages/api-http` | The browser client: REST, NDJSON streams, raw audio and speech uploads, live call and recording sessions. |

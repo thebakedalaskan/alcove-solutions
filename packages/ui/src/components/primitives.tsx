@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { forwardRef, useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { ProviderMark } from './brand';
 import { Icon, type IconName } from './icon';
@@ -61,8 +61,8 @@ export const Spinner = ({ className }: { className?: string }) => <span aria-hid
 /* ---------- Status ---------- */
 export type ChipTone = 'neutral' | 'sun' | 'horizon' | 'caution' | 'outline';
 /** A fact about something: sun for chosen or ready, horizon for information, caution for a problem, outline for switched off. Never clickable. */
-export function Chip({ tone = 'neutral', icon, children, className }: { tone?: ChipTone; icon?: IconName | undefined; children: ReactNode; className?: string | undefined }) {
-  return <span className={cn('ac-chip', tone !== 'neutral' && `is-${tone}`, className)}>{icon && <Icon name={icon} size={14} />}{children}</span>;
+export function Chip({ tone = 'neutral', icon, children, className, ...rest }: { tone?: ChipTone; icon?: IconName | undefined; children: ReactNode; className?: string | undefined } & Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'className'>) {
+  return <span className={cn('ac-chip', tone !== 'neutral' && `is-${tone}`, className)} {...rest}>{icon && <Icon name={icon} size={14} />}{children}</span>;
 }
 
 /** The pulsing dot of the notes sign. Only ever means notes or recording. */
@@ -77,10 +77,10 @@ export function NotesSign({ requested = false, stage = false, children, classNam
 }
 
 /** Where something was written and what was checked, as product state. Inline in a note's footer. */
-export function SealedBadge({ title, detail, inline = false, className }: { title: ReactNode; detail?: ReactNode; inline?: boolean; className?: string | undefined }) {
-  if (inline) return <span className={cn('ac-sealed is-inline', className)}><Icon name="sealed" size={16} /><span>{title}</span></span>;
+export function SealedBadge({ title, detail, inline = false, className, ...rest }: { title: ReactNode; detail?: ReactNode; inline?: boolean; className?: string | undefined } & Omit<HTMLAttributes<HTMLSpanElement>, 'title' | 'className'>) {
+  if (inline) return <span className={cn('ac-sealed is-inline', className)} {...rest}><Icon name="sealed" size={16} /><span>{title}</span></span>;
   return (
-    <span className={cn('ac-sealed', className)}>
+    <span className={cn('ac-sealed', className)} {...rest}>
       <span className="ic"><Icon name="sealed" size={18} /></span>
       <span><b>{title}</b>{detail && <small>{detail}</small>}</span>
     </span>
