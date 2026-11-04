@@ -79,25 +79,12 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
 
 /**
  * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
- * in marked where they fall. Each new `hit` (seconds into the recording) scrolls to the line said then and marks it
- * for a moment, for a time chip that points here.
+ * in marked where they fall.
  */
-export function CallLines({ lines, gaps = [], me, hit = null }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; hit?: { at: number } | null | undefined }) {
+export function CallLines({ lines, gaps = [], me }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined }) {
   const { ref, onScroll, away, jump } = useFollow(lines.length + gaps.length);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
-  const reduce = useReducedMotion();
-  const [marked, setMarked] = useState<string | null>(null);
-  useEffect(() => {
-    if (hit === null) return;
-    const line = [...lines].reverse().find((l) => l.at <= hit.at + 0.5) ?? lines[0];
-    if (!line) return;
-    setMarked(line.id);
-    ref.current?.querySelector(`[data-line="${line.id}"]`)?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
-    const t = setTimeout(() => setMarked(null), 2200);
-    return () => clearTimeout(t);
-    // Only a new jump moves the list; new lines arriving don't.
-  }, [hit]);
   return (
     <div className="tx-wrap">
       <div ref={ref} className="tx" onScroll={onScroll} role="log" aria-label="What’s been said">
@@ -108,7 +95,7 @@ export function CallLines({ lines, gaps = [], me, hit = null }: { lines: Transcr
           return (
             <Fragment key={l.id}>
               {before.map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
-              <div data-line={l.id} className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', marked === l.id && 'is-hit')}>
+              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in')}>
                 {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
                 <div className="min-w-0">
                   {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="ac-mono">{position(l.at)}</span></div>}

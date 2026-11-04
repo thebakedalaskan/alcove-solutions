@@ -131,9 +131,10 @@ export function RequestRef({ id, className }: { id: string; className?: string |
 export const Kbd = ({ children, className }: { children: ReactNode; className?: string }) => <kbd className={cn('ac-kbd', className)}>{children}</kbd>;
 
 /** A moment in a recording you can jump to. */
-export function TimeChip({ seconds, onSeek }: { seconds: number; onSeek?: ((s: number) => void) | undefined }) {
-  const label = `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
-  return onSeek ? <button type="button" className="ac-time-chip" title={`Play from ${label}`} onClick={() => onSeek(seconds)}>{label}</button> : <span className="ac-time-chip">{label}</span>;
+/** A moment as a chip: a position in a recording (4:05) by default, or the caller's label, such as a time of day, with what pressing it does. */
+export function TimeChip({ seconds, onSeek, label, title }: { seconds: number; onSeek?: ((s: number) => void) | undefined; label?: string | undefined; title?: string | undefined }) {
+  const shown = label ?? `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+  return onSeek ? <button type="button" className="ac-time-chip" title={title ?? `Play from ${shown}`} onClick={() => onSeek(seconds)}>{shown}</button> : <span className="ac-time-chip">{shown}</span>;
 }
 
 /* ---------- Check ---------- */
