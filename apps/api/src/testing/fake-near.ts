@@ -10,10 +10,11 @@
  *    (fake-tee.ts), so the API checks the evidence with the code it checks NEAR AI's real evidence with.
  *
  * Speech is "recognised" from a marker a test writes into the WAV samples (see `speechWav`), so a test
- * decides exactly what was said; a clip without one is heard the way Whisper hears silence. A shared
- * screen is "read" the same way, from a marker in its JPEG's comment segment (see `screenJpeg`); a frame
- * without one can't be made out. The notes model writes from the transcript it was sent, screens
- * included, so tests can see the transcript arrived intact and the reply was checked before use. Every request body is kept as it arrived, so tests can show that nothing
+ * decides exactly what was said and in which language; a clip without one is heard the way Whisper hears
+ * silence. Each transcription's language and prompt are kept, so tests can see what a clip was sent with. A
+ * shared screen is "read" the same way, from a marker in its JPEG's comment segment (see `screenJpeg`); a frame
+ * without one can't be made out. The notes model writes from the transcript it was sent, screens included, so
+ * tests can see the transcript arrived intact and the reply was checked before use. Every request body is kept as it arrived, so tests can show that nothing
  * readable crossed the wire, and the evidence can be made to lie, so tests can show what Alcove refuses.
  */
 import { gcm } from '@noble/ciphers/aes.js';
@@ -59,6 +60,8 @@ export interface FakeNear {
   prompts: string[];
   /** Every image the notes model was sent, once opened: its size, what a test put on it (null for nothing legible) and the salt that tells it apart. */
   images: { bytes: number; marker: string | null; salt: string }[];
+  /** What each clip was transcribed with besides its audio, once opened, oldest first: the language it named and its prompt, or null. */
+  transcriptions: { language: string | null; prompt: string | null }[];
   /** The models' attested signing keys right now, hex. */
   keys(): Record<Task, string>;
   /** The hashes of the configurations the quotes measure. */
@@ -78,11 +81,12 @@ export interface FakeNear {
 
 /**
  * A clip of "speech" for the fake: 16 kHz mono 16-bit WAV of `ms` milliseconds whose samples carry
- * the words. Sentences separated by " // " come back as separate lines, two seconds apart.
+ * the words, said in `language`. Sentences separated by " // " come back as separate lines, two seconds apart.
+ * Not `sure`: heard with less confidence, as Whisper hears accented speech it takes for another language.
  */
-export function speechWav(words: string, ms = 4000): Uint8Array<ArrayBuffer> {
+export function speechWav(words: string, ms = 4000, language = 'en', sure = true): Uint8Array<ArrayBuffer> {
   const samples = Math.max(1, Math.round((ms / 1000) * 16_000));
-  const marker = Buffer.from(words ? `TEXT:${words}|` : '', 'utf8');
+  const marker = Buffer.from(words ? `TEXT:${words}|LANG:${language}|${sure ? '' : 'UNSURE|'}` : '', 'utf8');
   const data = Buffer.alloc(Math.max(samples * 2, marker.length + (marker.length % 2)));
   marker.copy(data);
   const head = Buffer.alloc(44);
@@ -154,27 +158,32 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
 /* ---------- what the models "hear" and write ---------- */
 
-/** The words in a clip's samples, or null when it's "silence". */
-function wordsIn(wav: Buffer): string | null {
-  const m = /TEXT:([^|]*)\|/.exec(wav.subarray(44).toString('utf8'));
-  return m ? (m[1] ?? '') : null;
+/** The words in a clip's samples and the language they're said in, or null when it's "silence". */
+function speechIn(wav: Buffer): { words: string; language: string; sure: boolean } | null {
+  const m = /TEXT:([^|]*)\|LANG:([^|]*)\|(UNSURE\|)?/.exec(wav.subarray(44).toString('utf8'));
+  return m ? { words: m[1] ?? '', language: m[2] ?? 'en', sure: !m[3] } : null;
 }
 
 /** Whisper's answer to a multipart transcription request. */
-async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], path: string, encryption: 'ohttp' | 'none'): Promise<{ status: number; body: unknown }> {
+async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none'): Promise<{ status: number; body: unknown }> {
   const form = await new Request('http://fake', { method: 'POST', headers: { 'content-type': contentType }, body: new Uint8Array(body) }).formData();
   const file = form.get('file');
   const model = str(form.get('model'));
   if (!(file instanceof Blob) || !model) return { status: 400, body: { error: { message: 'file and model are required' } } };
   const wav = Buffer.from(await file.arrayBuffer());
   calls.push({ path, model, bytes: wav.length, encryption });
+  const asked = { language: str(form.get('language')) || null, prompt: str(form.get('prompt')) || null };
+  heard.push(asked);
   if (wav.subarray(0, 4).toString('ascii') !== 'RIFF') return { status: 400, body: { error: { message: 'Unsupported audio format' } } };
+  // Like NEAR AI's Whisper, only Whisper's language codes name a language ("english" doesn't).
+  if (asked.language && !/^[a-z]{2,3}$/.test(asked.language)) return { status: 400, body: { error: { message: `Unsupported language: ${asked.language}` } } };
   const seconds = Math.max(0, wav.length - 44) / 32_000;
-  const words = wordsIn(wav);
+  const speech = speechIn(wav);
   // Silence: Whisper's favourite hallucination, with high confidence, as the real one does.
-  const said = words === null ? [' Thank you.'] : words.split(' // ').map((w) => ` ${w}`);
-  const segments = said.map((text, i) => ({ id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text, tokens: [], temperature: 0, avg_logprob: -0.2, compression_ratio: 1.1, no_speech_prob: null }));
-  return { status: 200, body: { text: said.join(''), duration: String(seconds), language: 'en', segments, id: `trans-${randomUUID()}` } };
+  const said = speech === null ? [' Thank you.'] : speech.words.split(' // ').map((w) => ` ${w}`);
+  const segments = said.map((text, i) => ({ id: i, seek: 0, start: i * 2, end: Math.min(seconds, i * 2 + 1.8), text, tokens: [], temperature: 0, avg_logprob: speech?.sure === false ? -0.45 : -0.2, compression_ratio: 1.1, no_speech_prob: null }));
+  // The language it was told, or the one it hears.
+  return { status: 200, body: { text: said.join(''), duration: String(seconds), language: asked.language ?? speech?.language ?? 'en', segments, id: `trans-${randomUUID()}` } };
 }
 
 interface Shown { n: number; at: number; title: string; parts: number }
@@ -368,6 +377,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const received: FakeNear['received'] = [];
   const prompts: string[] = [];
   const images: FakeNear['images'] = [];
+  const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
   let failure: 'down' | 'prose' = 'down';
   let slow = 0;
@@ -497,7 +507,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // The models' own endpoints: Oblivious HTTP, with the API key inside the seal.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
         return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
-          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, inner.path, 'ohttp') : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp') : { status: 404, body: { error: { message: 'Not found' } } }));
       }
       if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
         return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
@@ -526,7 +536,7 @@ export async function startFakeNear(): Promise<FakeNear> {
 
       // What real NEAR AI's gateway also takes, in plaintext. Alcove must never send these.
       if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
-        const t = await transcription(req.headers['content-type'] ?? '', body, calls, url.pathname, 'none');
+        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none');
         return send(res, t.status, t.body);
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
@@ -548,7 +558,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       NEAR_AI_BASE_URL: `${origin}/v1`, NEAR_AI_API_KEY: apiKey, NEAR_AI_STT_URL: `${origin}/direct/whisper`, NEAR_AI_NOTES_URL: `${origin}/direct/glm`,
       INTEL_PCS_URL: i.pcsUrl, INTEL_ROOT_CA: i.rootPem, NVIDIA_NRAS_URL: n.nrasUrl, NVIDIA_ROOT_CA: n.rootPem
     },
-    calls, received, prompts, images,
+    calls, received, prompts, images, transcriptions,
     keys: () => ({ transcript: hex(models.transcript.key), notes: hex(models.notes.key) }),
     composes: () => ({ transcript: hex(sha256(utf8(models.transcript.compose))), notes: hex(sha256(utf8(models.notes.compose))), gateway: hex(sha256(utf8(gateway.compose))) }),
     tamper(how, of = 'model') {

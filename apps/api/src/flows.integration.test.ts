@@ -27,8 +27,8 @@ function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 const piece = (bytes: Uint8Array<ArrayBuffer>, segment: number, seq: number): AudioPiece => ({ data: new Blob([bytes]), segment, seq, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
-/** A clip of speech saying `words` (sentences split by " // "); empty words are silence. */
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+/** A clip of speech saying `words` (sentences split by " // ") in `language`; empty words are silence. */
+const speech = (words: string, segment: number, startMs: number, ms = 4000, language = 'en'): TranscriptClip => ({ data: new Blob([speechWav(words, ms, language)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
 /** Follows a note's progress until its notes are written (or the stream gives up). */
 async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> {
   const steps: NoteProgress[] = [];
@@ -686,6 +686,78 @@ describe('live transcript and written notes', () => {
     const guest = await account(guestEmail);
     expect((await asked(guest.api, noteId, 'Who checks the numbers?'))[0]).toEqual({ type: 'text', text: 'From the call: Priya checks the numbers.' });
     expect(code(await asked((await account()).api, noteId, 'Anything?').catch((e: unknown) => e))).toBe('not-found');
+  });
+
+  it('sends each clip in the call’s language once its clips agree on it, and then with who’s in the call and the words said before', async () => {
+    const org = await account(unique('organizer'));
+    const guest = `priya.raman@l${Date.now().toString(36)}.example`;
+    const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guest] })).code, { mic: true, cam: false });
+    const names = `${org.session.user.name}, Priya Raman.`;
+    const from = h.near.transcriptions.length;
+    const sent = () => h.near.transcriptions.slice(from);
+    const said = [
+      'We should look at the launch plan first.', 'The beta went out to forty customers on Monday.', 'Most of them finished onboarding within a day.',
+      'Kofi will send the new screens by Wednesday.', 'Priya checks the numbers before the board meeting.', 'The pricing page still needs a review.',
+      'Support tickets went down by a third.', 'We agreed to keep the free tier.', 'Siobhan owns the migration plan now.'
+    ];
+    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4000), call.ticket.identity);
+    // Until three clips agree on a language, Whisper picks it for each, from the sound alone.
+    const unsure = { language: null, prompt: null };
+    expect(sent().slice(0, 3)).toEqual([unsure, unsure, unsure]);
+    // Then each clip goes in the call's language, with who's in the call and the words said before it.
+    expect(sent()[3]).toEqual({ language: 'en', prompt: `${names} ${said.slice(0, 3).join(' ')}` });
+    // As many of those words as fit, from the newest.
+    const late = sent()[8]?.prompt ?? '';
+    expect(late.startsWith(`${names} `) && late.endsWith(said[7] ?? '-')).toBe(true);
+    expect(late).not.toContain(said[0]);
+    expect(Buffer.byteLength(late.slice(names.length + 1))).toBeLessThanOrEqual(250);
+    // A retried clip is still sent once.
+    await call.transcribe(speech(said[0] ?? '', 0, 0), call.ticket.identity);
+    expect(sent()).toHaveLength(9);
+
+    // After six in the call's language, a clip too short to tell keeps it; the next long enough goes without it, and Whisper picks again.
+    await call.transcribe(speech('Sounds good to me, thanks.', 0, 36_000, 3000), call.ticket.identity);
+    expect(sent()[9]?.language).toBe('en');
+    await call.transcribe(speech('Wir verschieben den Start auf Donnerstag.', 0, 40_000, 4000, 'de'), call.ticket.identity);
+    expect(sent()[10]).toEqual(unsure);
+    // Someone spoke another language: neither the language nor a prompt is sent until that clip is no longer among the newest.
+    await call.transcribe(speech('Then we can tell the sales team on Friday.', 0, 44_000), call.ticket.identity);
+    expect(sent()[11]).toEqual(unsure);
+    expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual([...said, 'Sounds good to me, thanks.', 'Wir verschieben den Start auf Donnerstag.', 'Then we can tell the sales team on Friday.']);
+    await ended(call);
+
+    // Each note has its own: another account's room recording starts from nothing, with its own people and words.
+    const other = await account(unique('other'));
+    const rec = await other.api.recordings.start('Design crit');
+    const room = ['Sam will tidy the spacing by Friday.', 'The header stays dark for now.', 'Jo checks the icons on Monday.', 'Can we ship it on Friday?'];
+    for (const [i, words] of room.entries()) await rec.transcribe(speech(words, 0, i * 4000));
+    expect(h.near.transcriptions.at(-1)).toEqual({ language: 'en', prompt: `${other.session.user.name}. ${room.slice(0, 3).join(' ')}` });
+    // A short reply that says back what was just said is kept: people agree to things that way.
+    await rec.transcribe(speech('Ship it on Friday.', 0, 16_000));
+    expect(h.near.transcriptions.at(-1)?.prompt?.endsWith('Can we ship it on Friday?')).toBe(true);
+    // What Whisper says back from its prompt instead of what it heard is dropped, and so is a sentence it says twice over.
+    await rec.transcribe(speech('The header stays dark for now. Jo checks the icons on Monday.', 0, 20_000));
+    await rec.transcribe(speech('We should test it on phones. // We should test it on phones.', 0, 24_000));
+    await rec.transcribe(speech('Okay, that works. Can you share the link? Okay, that works. Can you share the link?', 0, 28_000));
+    expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual([...room, 'Ship it on Friday.', 'We should test it on phones.', 'Okay, that works. Can you share the link?']);
+    await rec.discard();
+    // What a clip was sent with is sealed with it, and only whether a language was sent or found, and the prompt's size, are logged.
+    expect(h.logs.join('')).not.toContain('Siobhan owns the migration plan');
+  });
+
+  it('drops the subtitle credits and closing lines Whisper invents in quiet, in its languages, and keeps sentences about the same things', async () => {
+    const rec = await (await account(unique('captions'))).api.recordings.start('Captions review');
+    const invented = [
+      ["Sous-titrage ST' 501", 'fr'], ['Untertitel im Auftrag des ZDF, 2017', 'de'], ['Субтитры сделал DimaTorzok', 'ru'], ['字幕by索兰娅', 'zh'],
+      ['자막 제공 및 광고를 포함하고 있습니다', 'ko'], ['Danke.', 'de'], ['Merci beaucoup.', 'fr'], ['감사합니다.', 'ko']
+    ] as const;
+    const real = [
+      ['Les sous-titres en direct marchent bien maintenant.', 'fr'], ['Die Untertitel der Präsentation fehlen noch.', 'de'], ['Нам нужно добавить субтитры к видео.', 'ru'],
+      ['我们需要给视频加字幕。', 'zh'], ['자막이 안 나와요.', 'ko'], ['Captions by default are off for guests.', 'en'], ['Danke, das hilft uns sehr.', 'de']
+    ] as const;
+    for (const [i, [words, language]] of [...invented, ...real].entries()) await rec.transcribe(speech(words, 0, i * 4000, 4000, language));
+    expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(real.map(([words]) => words));
+    await rec.discard();
   });
 
   it('sends no answer about notes that were deleted or removed while it was being written', async () => {
