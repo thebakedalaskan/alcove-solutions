@@ -295,6 +295,12 @@ dock at the bottom.
 - **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
   and a summary, read from the transcript as the call goes; each time opens the transcript at that moment. The organizer's
   **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
+- **Yours** (side panel), beside **Notes**: your own notes on the call, which say **Only you** before you type. Write
+  something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark in the dock, or **More**
+  on a phone; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
+  keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
+  breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
+  doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
 - **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
   who is invited and not here).
 - **Catching up**, for you alone and not saved. **Catch up** (top bar or **More**) reads what you most likely
@@ -411,9 +417,19 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More › Delete notes** deletes your own notes for everyone, audio included, and then lists what went. For
-  notes from someone else it's **Remove from your notes**: everyone else keeps them, and you're no longer
-  listed as having them.
+- **More › Delete notes** deletes your own notes for everyone, audio included, with anyone's own notes on them, and
+  then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
+  you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
+- **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
+  beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
+  says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
+- **Add to the shared notes** on anything in Your notes shows, in place of the box you write in, exactly what goes:
+  the words, which you can cut down, the moment they point at, **Added by people** on this note, and everyone who
+  has the notes. Nothing goes until **Add for 3 people**; only what's in the box goes, and never a question you asked.
+  If someone got the notes since, it says so and shows them. An answer goes only if the moments behind it are in the
+  notes. Once the notes are written is when this can be done: until then the people who'll get them aren't settled.
+- **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
+  yours for everyone, and it stays in Your notes; the organizer can **Remove** any of them.
 - A note's page starts with a way back (**Notes /** its title), the pin (**Pin these notes**, at most eight
   pinned), **Share** and **More**. Chips above the title say whether it's **Ready**, **Being written** or **Still
   recording**, the series it's in, and how you got it. Under the title: when it was and who has it, then

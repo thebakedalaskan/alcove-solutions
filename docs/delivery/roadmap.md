@@ -46,6 +46,11 @@
   it came from (only real lines), saying what it couldn't have heard and as of when, with Back to live. In a
   breakout room it reads the room's lines; guests with the link read only what was said while they were there.
   Nothing is kept ([Notes and inference › Catching up during a call](../engineering/notes-and-inference.md#catching-up-during-a-call)).
+- Your own notes beside the shared ones: what you write for yourself, moments you bookmark and answers you keep, in the
+  call and on the note, sealed under your own keys so nobody else reads them, the organizer included. Every note and AI
+  surface says who it's for. A bookmark reads what it points at again each time, as you may read it then. Adding
+  something to the shared notes shows exactly what goes, where and who reads it first, and it can be taken back
+  ([Notes and inference › Your own notes](../engineering/notes-and-inference.md#your-own-notes)).
 - A transcript honest about what it heard, and correctable: words Whisper heard with little confidence and
   lines heard on two microphones are marked in the call and the note; the organizer corrects any line and people
   their own words, in revisions that say who changed what; the notes are written again on request; and the notes
