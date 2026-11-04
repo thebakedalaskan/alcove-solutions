@@ -640,13 +640,15 @@ device pickers.
   the More menu opens the Ask view on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5
   or 15 minutes, before you joined, since you joined, while you were away, the whole call, or a stretch picked on
-  the call's timeline (two handles, by pointer or keys; notes-off stretches hatched, time away marked, and for a
-  guest what they can't read dimmed). Each answer says the stretch it read on the clock, how many lines and as of
-  when, and what can't be in it. Each point carries its moments as time chips; one opens the transcript at that
-  line, marked, with what was said around it, asked of the server again. **Back to live** returns the panel to
+  the call's timeline (two handles, by pointer or keys; notes-off and paused stretches hatched, time away marked,
+  and for a guest what they can't read dimmed). Each answer says the stretch it read, how many lines it read and as
+  of when, and what can't be in it, all as times of day like the transcript's gaps. Each point carries its moments
+  as time chips, to the second; one opens the transcript at that line, marked, with what was said around it, asked
+  of the server again. **Back to live** returns the panel to
   how it was before catching up (closing it on a phone), and the transcript to following along; the viewer's own
   layout (pins, sizes, order, self-view) is never touched. Someone who comes back after time away, or joins well
-  after the start, is offered a catch-up once, as a toast; a guest isn't, since they can't read what was said then.
+  after the start, is offered a catch-up once, as a toast, decided when the call screen first learns their window;
+  nobody is while notes have never been on, and a guest isn't, since they can't read what was said then.
   Nothing of it is kept: it goes with the page.
 - **Notes.** While notes are on, the recorder keeps the organizer's microphone, and the live transcript hears
   everyone the organizer's browser plays: its own microphone and each other microphone in its part of the call
