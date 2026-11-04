@@ -73,8 +73,6 @@ export interface RoomView {
   endReason: 'left' | 'ended-by-host' | 'removed' | 'error' | null;
   /** By LiveKit identity (the call's participant IDs). */
   people: Record<string, RoomPerson>;
-  /** Everyone else connected to the room now, by identity, whether or not their media plays here. */
-  present: string[];
   /** How many times the organizer has muted this browser's microphone, so the screen can say so. */
   hostMuted: number;
   /** The browser is holding back everyone's sound until the page is clicked (startAudio). */
@@ -182,7 +180,7 @@ class LiveKitRoom implements CallRoom {
   private only: ((identity: string) => boolean) | null = null;
   private stopKeys: () => void = () => undefined;
   private listeners = new Set<() => void>();
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, present: [], hostMuted: 0, audioBlocked: false, screenFailed: null };
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
   private audio = new Map<string, HTMLMediaElement>();
   /** Publishing follows LocalMedia one change at a time. */
   private syncing: Promise<void> = Promise.resolve();
@@ -382,7 +380,7 @@ class LiveKitRoom implements CallRoom {
 
   getSnapshot = (): RoomView => this.view;
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
-  private set(p: Partial<RoomView>) { this.view = { ...this.view, ...p, people: this.people(), present: [...this.room.remoteParticipants.keys()] }; this.listeners.forEach((l) => l()); }
+  private set(p: Partial<RoomView>) { this.view = { ...this.view, ...p, people: this.people() }; this.listeners.forEach((l) => l()); }
   private emit() { this.set({}); }
 
   playOnly(who: ((identity: string) => boolean) | null): void {

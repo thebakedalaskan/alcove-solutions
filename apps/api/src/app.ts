@@ -317,6 +317,9 @@ export function createApp(d: Deps) {
   app.use('/v1/live/calls/:id/frames', capped(MAX_FRAME_BYTES));
   const organizerOnly = (c: Context<Env>) => {
     const v = c.get('viewer');
+    // The organizer's tab from before they joined from another tab or device: the call has moved past it (409, as for
+    // audio after a pause), so its last audio, speech and changes stop there, quietly, rather than retry a refusal.
+    if (v.elsewhere) throw new ConflictError('You’re in this call from another tab or device now, so this one can’t change it.', { context: { callId: v.pass.callId, role: v.pass.role, reason: 'elsewhere' } });
     if (!v.isOrganizer) throw new ForbiddenError('Only the organizer can do that.', { context: { callId: v.pass.callId, role: v.pass.role } });
     return v;
   };

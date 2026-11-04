@@ -147,7 +147,9 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
       </div>
       <div className="ic-scroll">
         {c.mode === 'unavailable' && n && (
-          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{organizerBrowser(state)} can’t record or listen right now, so nothing new is captured.{host ? ' Everyone can see that.' : ''}</Notice></div>
+          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{c.away
+            ? `${organizerBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
+            : `${organizerBrowser(state)} can’t record or listen right now, so nothing new is captured.${host ? ' Everyone can see that.' : ''}`}</Notice></div>
         )}
         {paused && n && (
           <div className="ic-problems is-top"><Notice icon="pause">Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</Notice></div>
@@ -164,7 +166,8 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
           </EmptyState>
         ) : c.mode === 'unavailable' && !n ? (
           <EmptyState title="Nothing is being captured" className="ic-empty">
-            {organizerBrowser(state)} can’t record or listen right now.{host ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.
+            {c.away ? `${organizerBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
+              : `${organizerBrowser(state)} can’t record or listen right now.${host ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
           </EmptyState>
         ) : !n ? (
           <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="ic-empty">
