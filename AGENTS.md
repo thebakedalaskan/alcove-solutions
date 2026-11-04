@@ -156,6 +156,16 @@ Read `docs/engineering/logging-and-errors.md`.
   `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
   `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
+  `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`) and `WsDoc` (`WsDocHead` with `WsSaveState`,
+  `WsFollowBar`, `WsOfflineBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`,
+  `WsEmpty`, `WsNoAccess`), with `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` above the head.
+  Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
+  `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`; `WsPersonCard`, `WsMentionPrompt`,
+  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsPresentPreview`, `WsUploadPicker`. The call's
+  own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKnock`,
+  `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
+  note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
   `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
   `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
@@ -166,7 +176,9 @@ Read `docs/engineering/logging-and-errors.md`.
   palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
-  start with `rec-`); the other screens in `styles/app.css`, `call.css` and `welcome.css`.
+  start with `rec-`); the workspace in `styles/workspace.css` (`wt-` the list, `wd-` a document, `wm-` menus, `wv-`
+  popovers, `wp-` presenting, `wh-` history, `wl-` the call's live pages); the other screens in `styles/app.css`,
+  `call.css` and `welcome.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
