@@ -857,6 +857,15 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
   reconnected, so nothing is ever sent twice. LiveKit mutes a publication whose device was unplugged; the room
   tells that apart from the organizer's mute by whether the track's `ended` event really fired, and unmutes it
   again only if the person's microphone (or camera) is on by then.
+- **A camera that fails to publish** (a failed negotiation, no answer from LiveKit in time) is tried again under a
+  new track. LiveKit's server keeps the failed request under the track's ID and ignores a second one with it, and
+  LiveKit refuses another publish of that ID while the first waits ("a track with the same ID has already been
+  published"), so retrying the same track could never work. The room takes out what LiveKit left of the attempt (a
+  sender still in the connection, and the request waiting for an answer), never offers that track again, and after
+  1, 3 and 10 seconds, then every 30, has `LocalMedia` open the same camera again (`renewCamera`), at the size and
+  blur in use, without a word. Only while the camera is still on: one turned off meanwhile stays off. Each try waits
+  longer, also when the camera doesn't open again, and a publish that works starts the count over. The new track is
+  published as any other, at the size chosen (HD included).
 - **Video quality** (`apps/web/src/features/call/VideoQuality.tsx`, under More → **Video quality**). Two choices,
   remembered in this browser with the devices (`sendVideo` and `receiveVideo` in `alcove.devices`), changeable at
   any moment of a call:
