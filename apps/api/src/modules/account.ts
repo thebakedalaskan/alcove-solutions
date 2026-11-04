@@ -15,6 +15,7 @@ import { log } from '../log';
 import { createOwner, masterKey, openOwner, ownerFrom } from '../owners';
 import { closeSession, openSession } from '../sessions';
 import { createItem, listItems, saveRevision } from '../vault';
+import { takeAllBack } from './additions';
 import { queueDelete } from './audio';
 import { openAccount } from './billing';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from './calendar';
@@ -145,8 +146,9 @@ const REVOKE_MS = 3_000;
  *
  * Deletes this account for good, with everything it owns, in one transaction: its meetings with their
  * calls and call links; every note it organized, each the way deleting a note does, so everyone loses it;
- * its access to the notes other people gave its address (unless another account signs in with that address
- * too); and the account's row, which takes its sign-in identity, sessions, profile (pins and groups with it),
+ * what it added to other people's shared notes (its own words: a row found by a keyed hash, so nothing of theirs is
+ * opened); its access to the notes other people gave its address (unless another account signs in with that address
+ * too); and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
  * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects are deleted, and any the store refuses are queued in object_gc for maintenance. Notes it shared on
@@ -191,7 +193,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
                                     AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $1 AND owner_id <> $2)`, [blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId]);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
-    return { meetings, notes: notes.length, objects, frames, received, rooms };
+    // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
+    const added = await takeAllBack(o, c);
+    return { meetings, notes: notes.length, objects, frames, received, added, rooms };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -202,7 +206,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length, ms: Math.round(performance.now() - t0)
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length, ms: Math.round(performance.now() - t0)
   });
 }
 

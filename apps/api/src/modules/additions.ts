@@ -9,19 +9,20 @@
  *
  * What goes is a copy, under the note's organizer's keys like the note, in its own row and not in the note's manifest,
  * whose revisions stay until the note is deleted: taking it back deletes the row, and nothing of it is left. Each
- * reader's moments are read for them, each time. It stays when its author later removes the note or deletes their
- * account, as the notes they shared on do; it goes with the note.
+ * reader's moments are read for them, each time. It stays when its author later removes the note, as the notes they
+ * shared on do; it goes with the note, and when its author deletes their account, whatever became of their own notes.
  */
 import { MAX_NOTE_ADDITIONS, type NoteAddition, type PromoteBody, type PromotionPreview, type Person } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
-import { b64u, equalBytes, id128, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../crypto';
+import { b64u, blindIndex, equalBytes, id128, jcs, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, ValidationError, notFound } from '../errors';
 import { log } from '../log';
+import { masterKey } from '../owners';
 import { lockItem } from '../vault';
 import { me, profile } from './account';
-import { audienceOf, locate, type Located } from './notes';
+import { audienceOf, holdAccess, locate, type Located } from './notes';
 import * as personal from './personal';
 import { personOf } from './portraits';
 
@@ -43,6 +44,14 @@ const key = (owner: Owner, noteId: string) => stateKey(owner.root, owner.ownerId
 const header = (owner: Owner, noteId: string, additionId: string) => ({ v: 1 as const, kind: 'note-addition', ownerId: owner.ownerId, noteId, additionId });
 const Row = z.object({ addition_id: z.string(), body_ciphertext: bytea });
 const opened = (owner: Owner, noteId: string, r: z.infer<typeof Row>) => openJson(key(owner, noteId), header(owner, noteId, r.addition_id), r.body_ciphertext, Stored);
+/** Finds everything an account added, on anyone's notes, without opening any of them. */
+const authorIndex = (o: Owner) => blindIndex(masterKey(o), 'addition-author', o.ownerId);
+
+/**
+ * Takes everything an account added out of everyone's notes, in the transaction that deletes it. Its own words go with
+ * it, whether or not it still has the note or the entry they came from. Nothing is opened, so it needs nobody else's keys.
+ */
+export const takeAllBack = (o: Owner, db: Db) => exec(db, 'DELETE FROM note_additions WHERE author_index = $1', [authorIndex(o)]);
 
 /** What's been added to a note, as `readerId` reads it: the moments are read for them, now, and any they can't open aren't there. */
 export async function of(l: Located, readerId: string): Promise<NoteAddition[]> {
@@ -122,6 +131,8 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     await personal.hold(c, o.ownerId, noteId);
     await lockItem(owner, c, noteId);
     const l = await locate(o, noteId, c);
+    // Removing the note from theirs waits for this, then takes their own notes with it: it can't land in between and be undone.
+    await holdAccess(o, l, c);
     const m = l.note.manifest;
     if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, status: m.status } });
     const place = personal.inNote(o, l);
@@ -139,8 +150,8 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     const n = await maybeOne(c, z.object({ n: z.number() }), 'SELECT count(*)::int AS n FROM note_additions WHERE owner_id = $1 AND note_item_id = $2', [owner.ownerId, noteId]);
     if ((n?.n ?? 0) >= MAX_NOTE_ADDITIONS) throw new ConflictError('These notes can’t take any more additions.', { context: ctx });
     const stored: Stored = { text: body.text, by: { id: o.ownerId, name: who.name, email: who.email }, at, points };
-    await exec(c, 'INSERT INTO note_additions (owner_id, note_item_id, addition_id, body_ciphertext) VALUES ($1,$2,$3,$4)',
-      [owner.ownerId, noteId, additionId, sealJson(key(owner, noteId), header(owner, noteId, additionId), toJson(stored))]);
+    await exec(c, 'INSERT INTO note_additions (owner_id, note_item_id, addition_id, author_index, body_ciphertext) VALUES ($1,$2,$3,$4,$5)',
+      [owner.ownerId, noteId, additionId, authorIndex(o), sealJson(key(owner, noteId), header(owner, noteId, additionId), toJson(stored))]);
     await personal.markShared(c, place, entryId, { additionId, at });
     return { audience: people.length, moments: points.length };
   });

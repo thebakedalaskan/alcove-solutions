@@ -66,6 +66,11 @@ export interface Place { author: Owner; noteOwnerId: string; noteId: string; rea
 
 /** How far back a moment looks for what was just said: past this, the line before it is about something else. */
 const NEAR_SECONDS = 120;
+/**
+ * How far from a line a moment named by its second alone can be and still be that line. The notes model cites a line by
+ * the time it was shown, in whole seconds rounded down, so a true cite is within one. Further off, it isn't that line.
+ */
+const CITE_SECONDS = 2;
 
 const sayable = (l: { id: string; text: string; speaker?: Speaker | undefined }): NonNullable<SourceMoment['line']> => ({ id: l.id, text: l.text, ...(l.speaker ? { speaker: l.speaker } : {}) });
 
@@ -81,6 +86,17 @@ export function noteReader(m: NoteManifest): Reader {
   };
   /** The line just said at `at`, as the notes place it. */
   const saidAt = (lines: TranscriptLine[], at: number) => lines.findLast((l) => l.at <= at + 0.5 && at - l.at <= NEAR_SECONDS);
+  /** Every line in the note, the call's first. */
+  const said = [...main.map((line) => ({ line, room: undefined })), ...m.rooms.flatMap((room) => room.transcript.map((line) => ({ line, room })))];
+  /**
+   * The line a moment named by its second alone means: the nearest of them all, since an answer reads every section and
+   * its cite says only when. Level between two, the call's. With nothing that close, it doesn't mean a line.
+   */
+  const citedAt = (at: number): Source => {
+    const far = (l: TranscriptLine) => Math.abs(l.at - at);
+    const found = said.filter((s) => far(s.line) <= CITE_SECONDS).sort((x, y) => far(x.line) - far(y.line))[0];
+    return found ? shown(found.line, found.room) : NOTHING;
+  };
   const source = (a: Anchor): Source => {
     // Until the recording stops, what was said isn't in the note yet.
     if (m.status === 'recording') return LATER;
@@ -91,15 +107,13 @@ export function noteReader(m: NoteManifest): Reader {
     }
     const at = a.at;
     if (at === null) return NOTHING;
+    if (a.when === null) return citedAt(at);
+    // Marked in a call: where they were then is known, and it's what was just said there.
     const room = a.room === null ? undefined : m.rooms.find((r) => r.id === a.room);
     if (room) { const l = saidAt(room.transcript, at); return l ? shown(l, room) : NOTHING; }
     const l = saidAt(main, at);
     const up = a.room === null ? m.screens.find((s) => s.at <= at && at < s.until) : undefined;
-    if (!l && !up) {
-      // An answer's moment may be in a breakout room's section: it reads them too.
-      for (const r of a.when === null ? m.rooms : []) { const x = saidAt(r.transcript, at); if (x) return shown(x, r); }
-      return NOTHING;
-    }
+    if (!l && !up) return NOTHING;
     return { moment: { at: l?.at ?? at, ...(l ? { line: sayable(l) } : {}), ...(up ? { screen: { id: up.id, title: up.title } } : {}) }, reach: 'open' };
   };
   return {

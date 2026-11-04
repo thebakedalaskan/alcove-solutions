@@ -12,7 +12,8 @@ export const MAX_PERSONAL_ENTRIES = 200;
 export const MAX_PERSONAL_TEXT = 2000;
 export const MAX_BOOKMARK_LABEL = 200;
 export const MAX_KEPT_QUESTION = 500;
-export const MAX_KEPT_ANSWER = 4000;
+/** Room for the longest answer: the notes model writes at most 1,200 tokens of one, about 5,000 characters. */
+export const MAX_KEPT_ANSWER = 8000;
 /** How many moments a kept answer keeps. */
 export const MAX_KEPT_MOMENTS = 8;
 /** The most a note takes from people's own notes, and how long each can be. */
