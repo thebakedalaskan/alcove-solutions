@@ -1643,7 +1643,7 @@ describe('screen sharing', () => {
     expect(sharedTo(hostRoom, bo)).toEqual([bos.screen, bos.sound ?? ''].sort());
     // Her pass gets her no new way into the room, so nothing anyone shares reaches her again.
     expect(code(await ana.room().catch((e: unknown) => e))).toBe('forbidden');
-    // Shares go from browser to browser through LiveKit, encrypted: the API kept nothing of them.
+    // Without screen notes, shares go from browser to browser through LiveKit, encrypted: the API kept nothing of them.
     expect([...await objectIds()].filter((id) => !before.has(id))).toEqual([]);
     await host.leave();
   });
