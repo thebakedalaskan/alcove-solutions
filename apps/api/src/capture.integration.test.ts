@@ -415,7 +415,7 @@ describe('what a call captures', () => {
     const card = await anyone.calls.card(c);
     expect(card.capture).toEqual({
       mode: 'paused', recording: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, transcript: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } },
-      ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null
+      ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null, room: null
     });
     // Someone asking to join sees the same, and nobody in the call or anything said in it.
     const waiting = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });

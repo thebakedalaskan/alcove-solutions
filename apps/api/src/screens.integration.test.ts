@@ -358,6 +358,44 @@ describe('shared screens in the notes', () => {
     expect(note.screens.map((m) => [m.title, m.legible, m.presenter?.name])).toEqual([['billing/charge.ts', 'clear', org.session.user.name], ['Q3 sign-ups by week', 'clear', expect.any(String)]]);
   });
 
+  it('places each frame where its presenter was when it was taken: one from the main room just before they left is kept, one from a room stays out', async () => {
+    const org = await account(unique('organizer'));
+    const kofiEmail = unique('kofi');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    const kofiShare = await screenOf(await joinRoom(kofi));
+    await host.setScreens(true);
+    const ROOM = 'What’s shared in a breakout room stays in the room. It isn’t read for the notes.';
+    // Kofi takes a frame in the main room, and a second later the rooms open, sending him to Design, before it
+    // arrives: it's kept.
+    const inMain = Date.now();
+    await sleep(1000);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    await settle(host, (x) => x.breakouts.open !== null);
+    expect((await kofi.shareFrame(frameOf(kofiShare, CODE, { takenAt: inMain }))).duplicate).toBe(false);
+    // One he takes in Design stays out, while he's there and once the rooms have closed.
+    const inDesign = Date.now();
+    expect(await fails(kofi.shareFrame(frameOf(kofiShare, CHART, { takenAt: inDesign })))).toEqual(['conflict', ROOM]);
+    // He stays a while in Design.
+    await sleep(1500);
+    host.closeRooms();
+    await settle(host, (x) => x.breakouts.open === null);
+    expect(await fails(kofi.shareFrame(frameOf(kofiShare, CHART, { takenAt: inDesign })))).toEqual(['conflict', ROOM]);
+    // Back in the main room, his share is read again: leaving it ended his share there by presenter, not by share.
+    expect((await kofi.shareFrame(frameOf(kofiShare, CHART))).duplicate).toBe(false);
+    expect((await frames(org.session.ownerId)).length).toBe(2);
+    // In the notes, the frame he took before he went stops where he left the main room, not where he came back: what
+    // the main room had on screen while he was in Design was nothing of his.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    expect(note.screens.map((m) => m.title)).toEqual(['billing/charge.ts', 'Q3 sign-ups by week']);
+    const [before, after] = note.screens;
+    expect((after?.at ?? 0) - (before?.until ?? 0)).toBeGreaterThanOrEqual(1.4);
+  });
+
   it('reads what was shared with the private notes model, ties each frame to what was said then, and answers from it', async () => {
     const org = await account(unique('organizer'));
     const kofiEmail = unique('kofi');
