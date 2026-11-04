@@ -144,10 +144,11 @@ async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promis
 /**
  * Writes the notes into the note, each breakout room's too (or finishes it without them, with its shared screens read
  * when they were), charges for them and closes the job, together. The charge is for the minutes recorded, not the
- * length of the call: time with notes off is free. Notes written again (the organizer asked, after correcting the
- * transcript) keep what people already confirmed or changed, in the call's notes and each room's, and aren't charged
- * again; when they can't be written, the notes stay as they were. `writtenAt` says when the notes read the transcript,
- * so a correction made since is offered for writing them again.
+ * length of the call: time with notes off is free. Whenever they're written, what people already added, confirmed or
+ * changed stays, in the call's notes and each room's, even if the first try never wrote anything; notes written again
+ * (the organizer asked, after correcting the transcript) aren't charged again, and when they can't be written, the notes
+ * stay as they were. `writtenAt` says when the notes read the transcript, so a correction made since is offered for
+ * writing them again.
  */
 async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, wrote: Wrote | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
   const any = Boolean(wrote?.notes) || Boolean(wrote?.rooms.evidence.length);
@@ -164,13 +165,12 @@ async function settle(o: Owner, jobId: string, noteId: string, recordingId: stri
         .sort((a, b) => a.at - b.at);
       if (!wrote) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
       // Each room's section as it is now (a line corrected while the notes were written stays corrected), with its
-      // notes as just written: written again, what people settled in it stays, as in the call's. A room whose notes
-      // couldn't be written keeps what it had: none the first time, which the note says.
+      // notes as just written: what people settled in it stays, as in the call's. A room whose notes couldn't be
+      // written keeps what it had: none the first time, which the note says.
       const sections = m.rooms.map((r): RoomNote => {
         const w = wrote.rooms.rooms.find((x) => x.id === r.id);
         if (!w || !('notes' in w)) return r;
-        const items = first ? { decisions: w.notes.decisions, questions: w.notes.questions, actions: w.notes.actions } : keepSettled(r, w.notes);
-        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items };
+        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...keepSettled(r, w.notes) };
       });
       const evidence = [...(wrote.notes ? [wrote.notes.evidence] : []), ...wrote.rooms.evidence];
       const inference = evidence.reduce((all, e) => (all.some((x) => verificationKey(x) === verificationKey(e)) ? all : [...all, e]), m.inference);
@@ -178,8 +178,7 @@ async function settle(o: Owner, jobId: string, noteId: string, recordingId: stri
         return { ...m, status: 'ready', chapters, rooms: sections, inference, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
       }
       const { evidence: _, ...written } = wrote.notes;
-      const again = first ? {} : keepSettled(m, written);
-      return { ...m, status: 'ready', ...written, ...again, chapters, rooms: sections, writtenAt: wrote.readAt, inference };
+      return { ...m, status: 'ready', ...written, ...keepSettled(m, written), chapters, rooms: sections, writtenAt: wrote.readAt, inference };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (any && first) {

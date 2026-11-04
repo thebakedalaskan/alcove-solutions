@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallHandOffBodySchema, CallJoinBodySchema, CallLeaveBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallHandOffBodySchema, CallJoinBodySchema, CallLeaveBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -49,16 +49,17 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /**
  * Mutations that keep no stored receipt. Searching, asking and translating captions only read. Audio
  * pieces and transcript clips are already idempotent by their place in the recording (and their
- * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
- * decisions, open questions, follow-ups and transcript lines, sharing it, and having it written again
- * each set an explicit state, so a retry changes nothing; and their answer is the whole note, which a
- * receipt kept under someone it was given to would still hold after the organizer deleted it. Deleting
- * the account deletes its receipts, so there is no account left to keep one under.
+ * answers carry the live transcript, which shouldn't be copied into receipts). Proposing a decision or
+ * follow-up, changing a note's decisions, open questions, follow-ups and transcript lines, sharing it,
+ * and having it written again each set an explicit state (the same words proposed again add nothing),
+ * so a retry changes nothing; and their answer is the whole note, which a receipt kept under someone
+ * it was given to would still hold after the organizer deleted it. Deleting the account deletes its
+ * receipts, so there is no account left to keep one under.
  */
 const NO_RECEIPT = [
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/account$/
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|share|rewrite)$/, /^\/v1\/account$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -633,7 +634,9 @@ export function createApp(d: Deps) {
     const jpeg = await notes.screenImage(c.get('owner'), c.req.param('id'), frameId);
     return new Response(jpeg.slice(), { headers: { 'content-type': 'image/jpeg', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'" } });
   });
-  /* Confirming what the notes say: anyone who has them can, and everyone sees who did. */
+  /* Confirming what the notes say, and adding to it: as far as the grants let them (packages/api/src/grants.ts), and everyone sees who did. */
+  app.post('/v1/notes/:id/decisions', async (c) => c.json(await notes.proposeDecision(c.get('owner'), c.req.param('id'), await body(c, DecisionProposalSchema))));
+  app.post('/v1/notes/:id/actions', async (c) => c.json(await notes.proposeAction(c.get('owner'), c.req.param('id'), await body(c, ActionProposalSchema))));
   app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(c.get('owner'), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
   app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
   app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(c.get('owner'), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
