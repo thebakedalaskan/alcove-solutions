@@ -94,11 +94,13 @@ export function CaptureParts({ capture, stage = false, compact = false, classNam
  * each kind of capture once the call has started, and who gets the notes. Before the organizer starts the call it
  * says what will happen. Never anyone's name or anything that was said.
  */
-export function CaptureSummary({ notes, capture, className }: {
+export function CaptureSummary({ notes, capture, who, className }: {
   /** Notes as the call was scheduled. */
   notes: NotesSetting;
   /** What's captured now; null until the call has started. */
   capture: CaptureState | null;
+  /** Who gets the notes, said for the person looking (the organizer, someone invited, someone asking); by default, the people invited. */
+  who?: ReactNode;
   className?: string | undefined;
 }) {
   const mode: CaptureMode = capture ? capture.mode : notes === 'on' ? 'on' : 'off';
@@ -113,7 +115,7 @@ export function CaptureSummary({ notes, capture, className }: {
       <CaptureSign mode={mode} stage />
       <p>{said}</p>
       {capture && mode !== 'off' && <CaptureParts capture={capture} stage compact />}
-      {mode !== 'off' && <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. The people invited get them.</p>}
+      {mode !== 'off' && <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. {who ?? 'The people invited get them.'}</p>}
     </div>
   );
 }

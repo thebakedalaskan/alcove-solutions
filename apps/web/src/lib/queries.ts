@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { ActionPatch, DecisionPatch, DemoProvider, InstantCallInput, MeetingInput, NoteKind, NotesSetting, Patch, Preferences, QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type InstantCallInput, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { weekOn } from './time';
@@ -44,8 +44,27 @@ export const q = {
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
-  /** A call link's title and organizer, for anyone (no account needed). */
-  card: (code: string) => queryOptions({ queryKey: qk.card(code), queryFn: () => api.calls.card(code), retry: false }),
+  /**
+   * A call link's title and organizer, what the call captures and whether it can be joined yet, for anyone (no
+   * account needed), and for someone signed in where they stand (signing in starts the cache over, so it's read again).
+   * Read again every 3 to 5 seconds while waiting for the organizer, so joining opens soon after they arrive, and now
+   * and then after that (capture changing, a lock); a little apart, so many people waiting don't read it in step. After
+   * a refusal (too many reads from one address) or a failed read it waits 20 seconds or more; a code that leads nowhere
+   * isn't asked again.
+   */
+  card: (code: string) => queryOptions({
+    queryKey: qk.card(code), queryFn: () => api.calls.card(code),
+    refetchInterval: (query) => {
+      const failed = query.state.error ? errorCode(query.state.error) : null;
+      if (failed === 'not-found') return false;
+      const d = query.state.data;
+      const base = failed ? 20_000 : d?.ended ? 30_000 : d?.hostHere ? 10_000 : 3_000;
+      // How far apart from other browsers, by the milliseconds of when this one last heard back. It's asked for on every
+      // render and must stay the same until the next answer: a new value restarts the wait, so a random one never ends.
+      const apart = ((query.state.dataUpdatedAt + query.state.errorUpdatedAt) % 997) / 997;
+      return Math.round(base * (1 + apart / 1.5));
+    }
+  }),
   /** Someone's other calendar events; refreshed every few minutes, since they change outside Alcove. */
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),

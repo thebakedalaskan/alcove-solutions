@@ -16,7 +16,7 @@ import { hm, shortDay } from '~/lib/time';
 
 /* Notes in the room: one microphone on the table, no call. */
 export const Route = createFileRoute('/record')({
-  beforeLoad: ({ context }) => requireAccount(context.queryClient),
+  beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
   component: Record
 });
 

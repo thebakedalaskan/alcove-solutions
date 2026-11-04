@@ -2,11 +2,12 @@
  * The ways in. Google is a real sign-in: the browser goes there and comes back to the API. Microsoft
  * and single sign-on sign in on the spot; single sign-on asks for a work email first, inline.
  */
-import { errorMessage, type DemoProvider } from '@alcove/api';
+import { errorMessage, type DemoProvider, type SignInProvider } from '@alcove/api';
 import { Button, EASE, Field, ProviderButton, useToast } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useState } from 'react';
+import { clearReturn, returnToCall } from '~/lib/afterSignIn';
 import { isEmail } from '~/lib/parse';
 import { googleSignInUrl, useSignIn } from '~/lib/queries';
 
@@ -15,28 +16,34 @@ export interface Auth { busy: Busy; leaving: boolean; google: () => void; go: (p
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** One sign-in for the whole page, so every set of buttons shows the same busy state. */
-export function useAuth(): Auth {
+/**
+ * One sign-in for the whole page, so every set of buttons shows the same busy state. `call`: signing in from that
+ * call's join page, which carries on there (Google comes back to it) instead of going to Home.
+ */
+export function useAuth(o: { call?: string | undefined } = {}): Auth {
   const signIn = useSignIn();
   const navigate = useNavigate();
   const toast = useToast();
   const [busy, setBusy] = useState<Busy>(null);
   const [leaving, setLeaving] = useState(false);
 
-  /* Coming back with the browser's Back button restores this page as it was left: busy. */
+  /* Coming back with the browser's Back button restores this page as it was left: busy, and a Google sign-in started from a
+     join page may have been left there, so its way back is forgotten. */
   useEffect(() => {
-    const on = (e: PageTransitionEvent) => { if (e.persisted) setBusy(null); };
+    const on = (e: PageTransitionEvent) => { if (!e.persisted) return; setBusy(null); if (o.call) clearReturn(); };
     addEventListener('pageshow', on);
     return () => removeEventListener('pageshow', on);
-  }, []);
+  }, [o.call]);
 
   return {
     busy, leaving,
-    google: () => { setBusy('google'); location.assign(googleSignInUrl()); },
+    google: () => { setBusy('google'); if (o.call) returnToCall(o.call); location.assign(googleSignInUrl()); },
     go: async (provider, email) => {
       setBusy(provider);
       try {
         const r = await signIn.mutateAsync({ provider, email: provider === 'sso' ? email?.trim() : undefined });
+        // From a join page: it shows the account now, and joining goes on from there; no Google sign-in is coming back.
+        if (o.call) { clearReturn(); setBusy(null); return; }
         setLeaving(true);
         await sleep(300);
         await navigate({ to: r.isNew ? '/ready' : '/home', replace: true });
@@ -50,8 +57,9 @@ export function useAuth(): Auth {
 
 const swap = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 } } as const;
 
-/** Google, Microsoft and single sign-on. `hero` lays them out under the headline; `stack` in one column. */
-export function WaysIn({ auth, layout }: { auth: Auth; layout: 'hero' | 'stack' }) {
+/** Google, Microsoft and single sign-on, or only those in `only`. `hero` lays them out under the headline; `stack` in one column. */
+export function WaysIn({ auth, layout, only }: { auth: Auth; layout: 'hero' | 'stack'; only?: SignInProvider[] | undefined }) {
+  const offers = (p: SignInProvider) => !only || only.includes(p);
   const reduce = useReducedMotion() ?? false;
   const [sso, setSso] = useState(false);
   const [email, setEmail] = useState('');
@@ -62,11 +70,11 @@ export function WaysIn({ auth, layout }: { auth: Auth; layout: 'hero' | 'stack' 
 
   const providers = (
     <>
-      <ProviderButton provider="google" busy={auth.busy === 'google'} disabled={locked} onClick={auth.google}>{auth.busy === 'google' ? 'Opening Google…' : 'Continue with Google'}</ProviderButton>
-      <ProviderButton provider="microsoft" busy={auth.busy === 'microsoft'} disabled={locked} onClick={() => void auth.go('microsoft')}>{auth.busy === 'microsoft' ? 'Opening Microsoft…' : 'Continue with Microsoft'}</ProviderButton>
+      {offers('google') && <ProviderButton provider="google" busy={auth.busy === 'google'} disabled={locked} onClick={auth.google}>{auth.busy === 'google' ? 'Opening Google…' : 'Continue with Google'}</ProviderButton>}
+      {offers('microsoft') && <ProviderButton provider="microsoft" busy={auth.busy === 'microsoft'} disabled={locked} onClick={() => void auth.go('microsoft')}>{auth.busy === 'microsoft' ? 'Opening Microsoft…' : 'Continue with Microsoft'}</ProviderButton>}
     </>
   );
-  const ssoButton = () => <Button variant="quiet" size={layout === 'hero' ? 'sm' : 'md'} icon="key" disabled={locked} onClick={() => setSso(true)}>Use single sign-on</Button>;
+  const ssoButton = () => (offers('sso') ? <Button variant="quiet" size={layout === 'hero' ? 'sm' : 'md'} icon="key" disabled={locked} onClick={() => setSso(true)}>Use single sign-on</Button> : null);
   const t = reduce ? { duration: 0 } : { duration: 0.45, ease: EASE.out };
 
   return (
