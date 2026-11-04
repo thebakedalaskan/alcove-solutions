@@ -133,15 +133,17 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
       let samples = 0;
       let energy = 0;
       // Frames that can't be decrypted never arrive, so the window ends on time either way.
-      const frames = stream[Symbol.asyncIterator]();
+      const reader = stream.getReader();
       const until = Date.now() + ms;
       while (Date.now() < until) {
-        const next = await Promise.race([frames.next(), new Promise<null>((r) => setTimeout(() => r(null), Math.max(0, until - Date.now())))]);
+        const next = await Promise.race([reader.read(), new Promise<null>((r) => setTimeout(() => r(null), Math.max(0, until - Date.now())))]);
         if (!next || next.done) break;
         for (const s of next.value.data) energy += Math.abs(s);
         samples += next.value.data.length;
       }
-      await frames.return?.();
+      // Cancel rather than end an iterator: a read may still be waiting for a frame that never comes, and an
+      // iterator's return() waits for it, which hung the test whenever no frame arrived after the window.
+      await reader.cancel();
       return samples ? energy / samples : 0;
     },
     waitFor,
