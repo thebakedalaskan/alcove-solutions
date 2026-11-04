@@ -450,7 +450,8 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   counted as decided), `open` questions and `next` steps, with an `owner` and `due` as they were said. An answer
   (`CallAnswer`) is its `text`. Each point, and each answer, carries its `evidence`: the transcript moments it
   comes from, each a line's ID and when it was said. `Evidence` is a union of kinds of moment, today only
-  transcript lines; moments of a shared screen join it as a kind of their own once shared screens are read.
+  transcript lines: shared screens are read for the notes after the call, so during one there's nothing on a
+  screen to point at yet.
 - **No invented evidence.** The lines go to the notes model numbered (`L12 [03:41] Name: words`), and it says
   which numbers each point comes from. Only numbers of lines it was sent from the stretch read are kept; any
   other is dropped, and a point it couldn't tie to any such line is left out (and counted in the log). The
@@ -479,13 +480,16 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   each with when it was said. It checks again what the person may read now: a line that isn't in this call's live
   transcript, and one they may not read, are both `404 not-found`, so nothing is learned by asking. 60 a minute
   per connection to the call.
-- **Who reads what.** The organizer and everyone on the invite read the whole call: they get the notes anyway.
-  It's the invite that counts, read at every request, so someone added to it after coming in with the link reads
-  the whole call from then on. A guest with the link isn't on the invite and never gets the notes, so they read
-  only what was said while they were in the call, as with chat from before they came: nothing from before they
-  were let in, or from while they were away. The same rule holds for the live transcript, captions in another
-  language, catching up, asking and moments. A line said in a breakout room is read only by the people sent there
-  and the organizer.
+- **Who reads what.** Catching up reads through the call's one reading rule (`readableBy` in
+  `apps/api/src/modules/places.ts`): what was said in the part of the call someone is in now, while they were
+  there. In a breakout room that's the room's lines alone, and they go when the room closes; a room the organizer
+  has paused refuses catching up and asking, like the rest of what reaches the AI there. On top of that rule, the
+  organizer and everyone on the invite read all of it: they get the notes anyway. It's the invite that counts,
+  read at every request, so someone added to it after coming in with the link reads all of it from then on. A
+  guest with the link isn't on the invite and never gets the notes, so they read only what was said while they
+  were in the call, as with chat from before they came: nothing from before they were let in, or from while they
+  were away. The same holds for the live transcript, captions in another language, catching up, asking and
+  moments.
 - **Checked again once written.** An answer can take the model up to a minute. Once it's written the asker's
   grants are checked again, and it isn't sent if the host removed them (`403 forbidden`), they left the call
   (`403 forbidden`) or the call ended (`409 conflict`).
@@ -886,15 +890,17 @@ answers dropped because a note they read went while they were written.
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't
   transcribed during the recording (NEAR AI down, a clip lost) isn't transcribed again from the stored
   audio afterwards.
-- **Catching up on what was shown.** Shared screens aren't read, so a catch-up's evidence is transcript moments
-  only. When screens are read for the notes, their moments join `Evidence` as a kind of their own.
+- **Catching up on what was shown.** Screen moments in catch-up need frames read during the call; shared
+  screens are read for the notes after it, so a catch-up's evidence is transcript moments only. `Evidence` is the
+  hook: screen moments join it as a kind of their own.
 - **Time away the server doesn't see.** A connection that blinks and comes back on its own, within LiveKit's
   departure timeout, never stops being in the call, so it isn't time away; "Last 5 minutes" covers it. A browser
   that dies without a word is noticed when LiveKit says so (about 20 seconds later), which the 30-second lead-in
   of a catch-up on time away covers.
-- **When a line was said** is when its segment started on the server plus the browser's own count of the segment,
-  and the browser starts listening a moment after the server starts the segment, so a line can be placed up to
-  about a second early. For a guest that leaves out a line said just as they arrived, never one said before.
+- **When a line was said** is when its clip's speech began on the server's clock: the time the request arrived,
+  less how long ago the organizer's browser says the speech began. The time the request took to arrive is counted
+  too, so a line is placed a little late (usually well under a second). For a guest, a line said in that moment
+  before they came in can count as said once they were in.
 - **No rewind.** Nothing keeps a rolling recording of a call: audio is kept only while notes are on, for the notes,
   and catching up reads the transcript. Going back to hear or see a moment is a later phase.
 - **Series during the call.** Neither the call screen nor pre-join shows what carries over or answers

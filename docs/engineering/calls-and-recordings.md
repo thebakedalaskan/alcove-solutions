@@ -644,12 +644,12 @@ device pickers.
   and for a guest what they can't read dimmed). Each answer says the stretch it read, how many lines it read and as
   of when, and what can't be in it, all as times of day like the transcript's gaps. Each point carries its moments
   as time chips, to the second; one opens the transcript at that line, marked, with what was said around it, asked
-  of the server again. **Back to live** returns the panel to
-  how it was before catching up (closing it on a phone), and the transcript to following along; the viewer's own
-  layout (pins, sizes, order, self-view) is never touched. Someone who comes back after time away, or joins well
-  after the start, is offered a catch-up once, as a toast, decided when the call screen first learns their window;
-  nobody is while notes have never been on, and a guest isn't, since they can't read what was said then.
-  Nothing of it is kept: it goes with the page.
+  of the server again. In a breakout room it all reads what was said in the room while you were there. **Back to
+  live** returns the panel to how it was before catching up (closing it on a phone), and the transcript to
+  following along; the viewer's own layout (pins, sizes, order, self-view) is never touched. Someone who comes back
+  after time away, or joins well after the start, is offered a catch-up once, as a toast, decided when the call
+  screen first learns their window; nobody is while notes have never been on, and a guest isn't, since they can't
+  read what was said then. Nothing of it is kept: it goes with the page.
 - **Notes.** While notes are on, the recorder keeps the organizer's microphone, and the live transcript hears
   everyone the organizer's browser plays: its own microphone and each other microphone in its part of the call
   (`CallRoom.heard()`, the raw decrypted tracks of unmuted microphones, so nobody's volume on this screen changes
