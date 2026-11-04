@@ -1045,6 +1045,14 @@ device pickers.
   after time away, or joins well after the start, is offered a catch-up once, as a toast, decided when the call
   screen first learns their window; nobody is while notes have never been on, and a guest isn't, since they can't
   read what was said then. Nothing of it is kept: it goes with the page.
+- **What carries over** (`FromLastTime.tsx`, `features/join/PrejoinCarry.tsx`) is for the person looking alone, from
+  the notes their own account has: a fold at the top of the Notes view, **From last time**, open until the call has
+  notes of its own, and the same in brief under the way in at the pre-join. A guest has no account, and someone with no
+  notes from the series sees neither: nothing says there's a series. It isn't in the call's state. In the Ask view,
+  **Earlier calls** beside **This call** asks across the series, with each answer's sources; it's there only for someone
+  with written notes from it, waits while notes are paused, and an answer leaves the screen once the notes it read
+  aren't yours any more. Sources open in a new tab, so the call carries on
+  ([Notes and inference › Series](notes-and-inference.md#series)).
 - **Notes.** They run in the browser of whoever hosts (`CallState.isHost`): the organizer's, or a stand-in's while
   the organizer is away, starting on the segment the server says and stopping the moment someone else hosts. While
   notes are on, the recorder and the live transcript hear everyone the host's browser plays in the main room, and in

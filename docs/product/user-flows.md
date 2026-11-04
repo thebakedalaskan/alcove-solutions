@@ -104,9 +104,10 @@ Each card on Home does one thing, and each says what will appear in it before th
 - When the call that's up next is in a series, **From earlier calls** sits under it: the decisions people
   confirmed, the questions still open (marked once they've stayed open through two calls), and the
   follow-ups someone took on, with a count of the rest (not confirmed yet, not taken on yet, done since the
-  last call). Each names the call it came from, which opens its notes, and the moment it was said, which
-  opens them at that line. **N calls** opens the series. Before a series has notes, the card says nothing
-  carries over yet.
+  last call), and what stopped holding or was answered since the last call. Each names the call it came from, with
+  the breakout room when it was said in one, which opens its notes there, and the moment it was said, which
+  opens them at that line. When a later call seems to have replaced a decision or answered a question, it says so
+  under it. **N calls** opens the series. Before a series has notes, the card says nothing carries over yet.
 - **Waiting on you**, newest first, four at a time: decisions the notes proposed in any note you have that nobody
   has confirmed (**Confirm** or **It wasn’t decided**, each with **Undo**); follow-ups the notes suggest are yours,
   or that someone gave you (it says who), with **Take it on**, which puts it in your follow-ups, or **Not mine**,
@@ -188,6 +189,11 @@ and camera buttons switches devices without leaving the call or interrupting the
 Everyone sees what the call captures before they join and while they wait: whether notes are on, paused or off,
 the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
 confidential compute, and who gets them. Never anyone's name or anything said.
+
+When the call is in a series and you're signed in with earlier notes from it, **From last time** sits under the way
+in: one of each of what's decided, still open and handed out, each with where it comes from, how many more there are,
+and **All of it**, the series, in a new tab so the camera here stays on. It comes from the notes you have, so it isn't
+the same for everyone. Someone newly invited and a guest with the link see nothing, not even that there's a series.
 
 - **The organizer** sees the time and who is invited, **Join now** and **Copy link**. While someone is hosting in
   their place (their connection dropped, or they left the call to someone), it says who, and **Join and host**
@@ -293,6 +299,15 @@ dock at the bottom.
 - **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
   and a summary, read from the transcript as the call goes; each time opens the transcript at that moment. The organizer's
   **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
+- **From last time**, at the top of Notes when the call is in a series and you have earlier notes from it: for you
+  alone, from those notes. What's decided, what's still open and for how long, and the follow-ups (who took them on,
+  who they're only suggested for), three of each, then what was settled since the last call. Each has its call and
+  moment, a breakout room's with its room, and opens in a new tab, so the call carries on. It's open until the call has
+  notes of its own, then folds away. A later call that seems to have replaced or answered something says so.
+  **Everything from these calls** opens the series. Before a series has notes, it says so.
+- **Earlier calls**, in **Ask**, beside **This call**: ask across the calls you have notes from, such as why something was
+  chosen. Each answer says which calls it comes from, and opens them in a new tab. Only you see it. It waits while
+  notes are paused, and a guest, or someone with no notes from the series, doesn't have it.
 - **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
   who is invited and not here).
 - **Catching up**, for you alone and not saved. **Catch up** (top bar or **More**) reads what you most likely
@@ -460,10 +475,14 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   and notes setting, at the same time of day a week on (still the same time when the clocks change in
   between), on the calendar; **Change** in the confirmation moves it or cancels it.
 - The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
-  confirmed yet, and no longer holding), questions still open, and follow-ups taken on, not taken on yet and
-  done since the last call, each with the call and moment it came from. Things can be settled there, and
+  confirmed yet, and no longer holding), questions still open and answered since the last call, and follow-ups taken
+  on, not taken on yet and done since the last call, each with the call and moment it came from, breakout rooms'
+  with their room. Things can be settled there, and
   questions asked across the calls, with answers that cite the calls and moments they come from, by the
-  days you saw them on. Someone invited to only some of the calls sees only those. It shows the newest 24
+  days you saw them on. When a later call seems to have replaced a decision, it says which and offers **It no longer
+  holds** or **It still holds**; when one seems to have answered a question, **It was answered** or **It’s still open**,
+  and the notes don't suggest it again. Only someone with both calls' notes sees that, and nothing changes until
+  someone says so. Someone invited to only some of the calls sees only those. It shows the newest 24
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.

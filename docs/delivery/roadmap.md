@@ -23,9 +23,11 @@
   their own endpoints; notes wait through a verification outage; each note shows which verified models wrote
   it and what was checked ([Verified private inference](../engineering/notes-and-inference.md#verified-private-inference)).
 - Memory across a series: the occurrences of a recurring Google event held in Alcove, and calls scheduled as
-  the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
-  series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
-  calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
+  the next one, carry confirmed decisions, open questions and follow-ups into the next call, breakout rooms' too, on
+  Home, a series page, the pre-join and in the call, each with its call and moment, and people can ask across the
+  calls, during the call too. A later call that seems to replace a decision or answer a question says so to whoever
+  has both notes. Everyone sees only the calls whose notes they have
+  ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
 - What a call captures, for everyone: recording, transcript, AI notes and shared screens, each on, paused or
   off with who changed it and when, in the call and before joining; one pause that stops every kind of capture
   on the server; asking the organizer for notes; and the gaps marked in the transcript, catch-up and notes
@@ -92,5 +94,4 @@
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |
-| 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 11 | Each breakout room committed by one of its own members | The host's browser commits for every room's group today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |
+| 10 | Each breakout room committed by one of its own members | The host's browser commits for every room's group today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |

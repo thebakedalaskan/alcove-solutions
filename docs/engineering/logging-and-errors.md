@@ -73,7 +73,7 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   logged at info.
 - Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
   limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
-  (240 a minute, calls and room recordings together; 40 for each voice in a call) and `ask` (20 a minute, writing a note's notes again included) per account, and
+  (240 a minute, calls and room recordings together; 40 for each voice in a call), `ask` (20 a minute, writing a note's notes again included) and `carry-over` (60 a minute) per account, and
   `request-notes` (10 a minute), `others-point` (20 a minute), `frames` (24 a minute) and `share-ended` (30 a minute)
   per person in a call. Google sign-in
   goes back to the welcome screen with `signin=busy` instead.

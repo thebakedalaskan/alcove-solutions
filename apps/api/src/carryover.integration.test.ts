@@ -396,6 +396,8 @@ describe('what later calls did to what earlier ones left', () => {
     await bea.api.notes.dismissRevisit(two.noteId, replaced);
     await bea.api.notes.dismissRevisit(two.noteId, replaced);
     expect((await org.api.series.get(seriesId)).decisions.find((d) => d.id === decision)?.replacedBy).toBeUndefined();
+    // Its answer is the whole note, so no receipt keeps a copy under someone it was given to.
+    expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE method LIKE '%/revisits/%'")).rows[0]?.n).toBe(0);
     expect((await org.api.notes.dismissRevisit(two.noteId, answered)).id).toBe(two.noteId);
     expect((await org.api.series.get(seriesId)).answered.map((q) => q.answeredIn)).toEqual([undefined]);
 
@@ -417,7 +419,7 @@ describe('what later calls did to what earlier ones left', () => {
   });
 
   it('keeps the marks through notes written again, and carries on without them when they can’t be worked out', async () => {
-    const { org, two, next, decision, question, seriesId } = await twoCalls();
+    const { org, one, two, next, decision, question, seriesId } = await twoCalls();
     const replaced = async () => (await org.api.series.get(seriesId)).decisions.find((d) => d.id === decision)?.replacedBy;
     const first = await replaced();
     expect(first?.noteId).toBe(two.noteId);
@@ -427,6 +429,12 @@ describe('what later calls did to what earlier ones left', () => {
     const after = await replaced();
     expect(after?.noteId).toBe(two.noteId);
     expect(after?.text).toBe((await org.api.notes.get(two.noteId)).decisions[0]?.text);
+    // Settled by a person, it isn't standing any more, and written again the later call still says what replaced it.
+    await org.api.notes.updateDecision(one.noteId, decision, { state: 'superseded' });
+    await org.api.notes.rewrite(two.noteId);
+    await written(org.api, two.noteId);
+    expect((await org.api.series.get(seriesId)).decisions.find((d) => d.id === decision)).toMatchObject({ state: 'superseded', replacedBy: { noteId: two.noteId } });
+    await org.api.notes.updateDecision(one.noteId, decision, { state: 'confirmed' });
 
     // The comparison failing costs only itself: the notes are written, nothing is marked, and the job is done.
     h.near.failNext(5, 'prose', 'You compare one meeting');
@@ -564,6 +572,9 @@ describe('what stays out of what’s stored', () => {
         expect(logs.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
       }
     }
+    // A call's link is a join token: finding what carries over by it logs the path with the code masked.
+    expect(logs).toContain('/v1/calls/:code/series');
+    expect(logs).not.toContain(next.code);
     // What a later call came back to is sealed in its note like the rest: no row names it, or says which earlier item it means.
     for (const word of ['revisits', 'replaced', 'answered', 'dismissed', mark?.id ?? 'no mark']) expect(dump.includes(word), `${word} in rows`).toBe(false);
     for await (const obj of h.objects.list()) {
