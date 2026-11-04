@@ -15,6 +15,6 @@ export function useCopyLink() {
 /** Whether a call has notes, as a chip: chosen (sun) or switched off (outline). */
 export function NotesFlag({ notes, className }: { notes: NotesSetting; className?: string }) {
   return notes === 'on'
-    ? <Chip tone="sun" icon="notes" className={className}>Notes</Chip>
-    : <Chip tone="outline" className={className}>No notes</Chip>;
+    ? <Chip tone="sun" icon="notes" className={className} data-tour="notes">Notes</Chip>
+    : <Chip tone="outline" className={className} data-tour="notes">No notes</Chip>;
 }

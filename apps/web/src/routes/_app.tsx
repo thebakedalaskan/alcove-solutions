@@ -2,6 +2,8 @@ import type { Meeting } from '@alcove/api';
 import { Outlet, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Composer } from '~/features/shell/Composer';
+import { useArrival } from '~/features/onboarding/store';
+import { TourHost } from '~/features/onboarding/Tour';
 import { ComposerContext } from '~/features/shell/context';
 import { Sidebar } from '~/features/shell/Sidebar';
 import { requireAccount } from '~/lib/guards';
@@ -19,6 +21,7 @@ function Shell() {
   const [editing, setEditing] = useState<Meeting | undefined>(undefined);
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const { stage, opened } = useArrival();
   const open = useCallback((meeting?: Meeting) => { setEditing(meeting); setComposer(true); }, []);
 
   useEffect(() => {
@@ -33,11 +36,13 @@ function Shell() {
 
   return (
     <ComposerContext.Provider value={open}>
-      <div className="shell world-in">
+      {/* Behind a new account's arrival screen until it opens; then in again, as the arch opens. */}
+      <div key={opened} className="shell world-in" inert={stage === 'creating'}>
         <Sidebar onNew={() => open()} />
         <main className="main"><div key={path} className="main-in enter"><Outlet /></div></main>
       </div>
       <Composer open={composer} onOpenChange={setComposer} editing={editing} />
+      <TourHost />
     </ComposerContext.Provider>
   );
 }

@@ -24,6 +24,11 @@
 .search-btn { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px 0 13px; width: 250px; border-radius: var(--radius-md); background: var(--surface); color: var(--ink-3); font-size: 14px; box-shadow: inset 0 0 0 1px var(--line-control); transition: background-color var(--duration-1); }
 .search-btn:hover { background: var(--sunk); }
 .search-btn .ac-kbd { margin-left: auto; }
+.head-end { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.head-seal { padding-block: 6px; }
+.head-seal .ic { width: 28px; height: 28px; border-radius: 9px; }
+.me-row[aria-expanded="true"] { background: var(--sunk); }
+.me-menu { width: 288px; }
 
 /* ------------------------------------------------------------------ home */
 .home { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(330px, 1fr); gap: 24px; align-items: start; }

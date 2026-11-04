@@ -1,5 +1,5 @@
 import { errorMessage, firstName, type CalendarEvent, type Meeting, type NoteSummary, type OpenAction, type Team } from '@alcove/api';
-import { ArchThumb, Button, CalendarRow, Card, Check, EmptyState, Faces, Icon, IconButton, Kbd, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
+import { ArchThumb, Button, CalendarRow, Card, Check, EmptyState, Faces, Icon, IconButton, Kbd, SealedBadge, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -63,7 +63,10 @@ function Home() {
     <>
       <div className="head" style={{ '--d': 0 }}>
         <div><div className="date ac-eyebrow">{longDay(new Date(now))}</div><h1>{firstDay ? 'Welcome' : greeting(new Date(now))}, {first}</h1></div>
-        {!firstDay && <button type="button" className="search-btn" onClick={() => void navigate({ to: '/notes', search: { find: true } })}><Icon name="search" size={16} />Search notes<Kbd>⌘K</Kbd></button>}
+        <div className="head-end">
+          <Compute />
+          {!firstDay && <button type="button" className="search-btn" onClick={() => void navigate({ to: '/notes', search: { find: true } })}><Icon name="search" size={16} />Search notes<Kbd>⌘K</Kbd></button>}
+        </div>
       </div>
       <div className="home" style={{ '--d': 1 }}>
         <div className="hcol">
@@ -86,7 +89,7 @@ function Home() {
           {firstDay ? (
             <section className="ex-wrap" aria-labelledby="exH">
               <div className="ac-card-head"><h3 id="exH">Notes</h3></div>
-              <Link to="/notes/$noteId" params={{ noteId: 'example' }} id="exampleNote" className="block rounded-[24px]" aria-label="Open the example note">
+              <Link to="/notes/$noteId" params={{ noteId: 'example' }} className="block rounded-[24px]" aria-label="Open the example note" data-tour="notes-example">
                 <NoteCard you={session?.user} example className="ex-note" />
               </Link>
               <p className="ex-cap"><Icon name="notes" size={15} />Notes from your calls will look like this.</p>
@@ -131,7 +134,7 @@ function NextCall({ m, now }: { m: Meeting; now: number }) {
           <NotesFlag notes={m.notes} />
         </div>
         <div className="acts">
-          <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ variant: 'primary', size: 'lg' })}><Icon name="video" />Join<span className="kb">J</span></Link>
+          <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ variant: 'primary', size: 'lg' })} data-tour="join"><Icon name="video" />Join<span className="kb">J</span></Link>
           <Button variant="secondary" size="lg" icon="link" onClick={() => copy(m.code)}>Copy link</Button>
           {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" onClick={() => open(m)} />}
         </div>
@@ -215,6 +218,15 @@ function EventRow({ e, day = false }: { e: CalendarEvent; day?: boolean }) {
           : <span className="nflag off">Calendar</span>}
       </>} />
   );
+}
+
+/** Where notes are written, and whether this browser has checked the hardware it runs on. */
+function Compute() {
+  const checked = useQuery(q.trust());
+  const trust = checked.data;
+  const verified = trust?.tee === 'dstack' && trust.bound;
+  const detail = verified && trust ? `Hardware verified ${hm(new Date(trust.at))}` : checked.isPending ? 'Checking the hardware…' : 'Audio, transcripts and notes are sealed';
+  return <SealedBadge title="Confidential compute" detail={detail} className="head-seal" data-tour="sealed" />;
 }
 
 /** Signed in with Google but the calendar wasn't shared: one place to ask for it. */

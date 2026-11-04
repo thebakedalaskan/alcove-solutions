@@ -1,0 +1,54 @@
+/*
+ * A new account's way in, shared between the screens it crosses: the account being created, the arch
+ * opening into Home, and the tour of Home after it. Also asks for the tour again from the account menu.
+ * Lives in memory only: a reload lands on Home like any other visit.
+ */
+import { HomeTourSchema } from '@alcove/api';
+import { useSyncExternalStore } from 'react';
+import { log } from '~/lib/log';
+
+const olog = log.child({ component: 'onboarding' });
+
+export interface ArrivalState {
+  /** creating: the account screen is up. opening: the arch is opening into Home. */
+  stage: 'none' | 'creating' | 'opening';
+  /** Counts arches opened, so the app shell can come in again behind one. */
+  opened: number;
+  /** The tour, once asked for. `auto`: after the account was created, so only if it wasn't seen yet. */
+  tour: { n: number; auto: boolean } | null;
+}
+
+let state: ArrivalState = { stage: 'none', opened: 0, tour: null };
+const subs = new Set<() => void>();
+const set = (patch: Partial<ArrivalState>) => { state = { ...state, ...patch }; for (const f of subs) f(); };
+const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
+let asked = 0;
+
+export const arrival = {
+  /** A new account: the account screen goes up over whatever is there. */
+  begin: () => { olog.info('account arrival started'); set({ stage: 'creating' }); },
+  /** The arch starts opening; Home comes in behind it. */
+  open: () => set({ stage: 'opening', opened: state.opened + 1 }),
+  /** Home is fully in view: the tour follows. */
+  done: () => set({ stage: 'none', tour: { n: ++asked, auto: true } }),
+  /** Take the tour (again), from the account menu. */
+  askTour: () => set({ tour: { n: ++asked, auto: false } }),
+  /** The tour has been opened for the last request. */
+  tourTaken: () => set({ tour: null })
+};
+
+export const useArrival = () => useSyncExternalStore(subscribe, () => state, () => state);
+
+/* Whether someone has seen the tour: remembered in this browser, per account. */
+const tourKey = (ownerId: string) => `alcove.tour.${ownerId}`;
+export function tourSeen(ownerId: string): boolean {
+  try {
+    const raw = localStorage.getItem(tourKey(ownerId));
+    return raw !== null && HomeTourSchema.safeParse(JSON.parse(raw)).success;
+  } catch {
+    return false;
+  }
+}
+export function rememberTour(ownerId: string) {
+  try { localStorage.setItem(tourKey(ownerId), JSON.stringify({ seenAt: new Date().toISOString() })); } catch (e) { olog.debug('tour not remembered', { err: e }); }
+}

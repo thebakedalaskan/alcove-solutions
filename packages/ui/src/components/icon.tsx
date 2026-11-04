@@ -4,7 +4,7 @@ import {
   NotebookText, PanelsTopLeft, Pause, Pencil, PhoneOff, Pin, PinOff, Plane, Play, Plus, Radio, Repeat, Search, Send, Server, Share, ShieldCheck,
   Smartphone, Split, Square, Sun, Trash2, UserPlus, Users, Video, VideoOff, Volume2, Wifi, X, type LucideIcon, type LucideProps,
   AppWindow, AudioLines, Captions, ChevronUp, Eye, FileText, Focus, Globe, GripVertical, HistoryIcon, LayoutDashboard, LayoutPanelLeft, Maximize2,
-  Minimize2, Monitor, MonitorOff, MoveDiagonal2, NotebookPen, RotateCcw, SendHorizontal, Shuffle, Timer
+  Minimize2, Monitor, MonitorOff, MoveDiagonal2, NotebookPen, RotateCcw, SendHorizontal, Shuffle, Timer, Compass, WifiOff, EyeOff
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -20,7 +20,7 @@ const ICONS = {
   captions: Captions, up: ChevronUp, viewAuto: LayoutDashboard, viewSpeaker: LayoutPanelLeft, reset: RotateCcw, history: HistoryIcon,
   spotlight: Focus, grow: Maximize2, shrink: Minimize2, notesPen: NotebookPen, tab: Globe, window: AppWindow, monitor: Monitor,
   stopShare: MonitorOff, grip: GripVertical, shuffle: Shuffle, timer: Timer, noise: AudioLines, resize: MoveDiagonal2, transcript: FileText,
-  sendLine: SendHorizontal, eye: Eye, repeat: Repeat
+  sendLine: SendHorizontal, eye: Eye, repeat: Repeat, compass: Compass, wifiOff: WifiOff, eyeOff: EyeOff
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

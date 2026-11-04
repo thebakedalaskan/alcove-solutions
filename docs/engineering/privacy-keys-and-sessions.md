@@ -120,7 +120,7 @@ The hash is deterministic, so equal values show the same person across rows and 
    welcome credits. Later sign-ins with the same subject open the same account and bring the profile's name,
    email and photo, and the identity's email index, up to date with the provider. After every sign-in a
    session opens; for a demo identity with nothing upcoming, the sample calendar is placed too: five sealed
-   meetings, the first about 12 minutes later. A new account lands on `/ready`, anyone else on `/home`.
+   meetings, the first about 12 minutes later. A new account lands on `/ready`, which plays the account-creation screen over Home; anyone else lands on `/home`.
 4. **Every request opens the account's keys** (`openOwner` in `apps/api/src/owners.ts`): it reads
    `root_envelope` and `root_check`, unwraps `Kowner` under `KMASTER`, checks the root check (`IntegrityError`
    on a mismatch) and derives `Kwrap`. The request works on its own copies (`Owner.root`, `Owner.wrapKey`).
