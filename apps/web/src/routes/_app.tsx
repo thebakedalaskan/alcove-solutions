@@ -9,6 +9,7 @@ import { Palette } from '~/features/shell/Palette';
 import { OfflinePage } from '~/features/shell/OfflinePage';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
+import { TopActions } from '~/features/shell/TopActions';
 import { ComposerContext, PaletteContext, type ComposerStart, type PaletteStart } from '~/features/shell/context';
 import { ownerOf, requireAccount } from '~/lib/guards';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
@@ -66,12 +67,13 @@ function Shell() {
       <PaletteContext.Provider value={openPalette}>
         {/* Behind a new account's arrival screen until it opens; then in again, as the arch opens. */}
         <div key={opened} className={cn('shell world-in', side.hidden && 'is-bare')} inert={stage === 'creating'}>
-          <Sidebar hidden={side.hidden} hideRef={side.hideRef} onHide={side.hide} onNew={() => openComposer()} onSearch={() => openPalette()} onPin={() => openPalette({ mode: 'pin' })} />
+          <Sidebar hidden={side.hidden} hideRef={side.hideRef} onHide={side.hide} onNew={() => openComposer()} onPin={() => openPalette({ mode: 'pin' })} />
           {side.hidden && <IconButton ref={side.showRef} icon="panel" label="Show the side panel" className="sb-show" onClick={side.show} />}
           <PhoneTop onSearch={() => openPalette()} onNew={() => openComposer()} />
           <main className="main">
             {/* With the side panel hidden, its offline notice moves to the top of the page. */}
             <Offline show={side.hidden} className="main-offline" />
+            <div className="main-top"><TopActions onSearch={() => openPalette()} /></div>
             <div key={path} className="main-in enter">{account.offline && path !== '/record' ? <OfflinePage /> : <Outlet />}</div>
           </main>
           <TabBar />

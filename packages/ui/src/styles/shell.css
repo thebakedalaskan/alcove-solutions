@@ -1,14 +1,18 @@
 /*
- * The frame every screen sits in: the side panel on the ground (272px, sticky, its middle scrolling when it's
- * long) and the page beside it; at 860px and narrower a top bar that scrolls with the page and a tab bar fixed
- * at the bottom instead. The palette, which finds notes and asks them, drops from the top like the composer.
+ * The frame every screen sits in: the side panel on dusk (256px, sticky, dark in both themes, its middle scrolling
+ * when it's long) and the page beside it, under a rounded edge the page scrolls beneath. Search and you sit at the
+ * top right of every page. At 860px and narrower a top bar that scrolls with the page and a tab bar fixed at the
+ * bottom take their place. The palette, which finds notes and asks them, drops from the top like the composer.
  */
 .world-in { animation: ac-fade var(--duration-3) var(--ease-out) both; }
 
 /* ----------------------------------------------------------------- shell */
-.shell { display: grid; grid-template-columns: 272px minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; transition: grid-template-columns var(--duration-3) var(--ease-out); }
-.shell.is-bare { grid-template-columns: 0px minmax(0, 1fr); }
-.main { min-width: 0; padding: 34px clamp(20px, 3.4vw, 56px) 80px; }
+.shell { --side: 256px; display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; transition: grid-template-columns var(--duration-3) var(--ease-out); }
+.shell.is-bare { --side: 0px; }
+/* The frame: the page scrolls under this rounded edge, so the window's own scrolling carries on as it always has. */
+.shell::after { content: ""; position: fixed; z-index: 6; inset: 8px 8px 8px var(--side); border-radius: 24px; box-shadow: 0 0 0 100vmax var(--frame), inset 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent); pointer-events: none; transition: left var(--duration-3) var(--ease-out); }
+.shell.is-bare::after { left: 8px; }
+.main { --top-room: 322px; min-width: 0; padding: 30px clamp(28px, 3.4vw, 60px) 88px; }
 .main-in { max-width: 1480px; margin: 0 auto; }
 .main-in.enter > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
 /* With the side panel hidden, its button waits in the top-left corner, clear of the page, and its offline notice tops the page. */
@@ -17,11 +21,41 @@
 .main-offline { max-width: 1480px; margin: 0 auto; }
 .main-offline .sb-status { width: fit-content; max-width: 100%; margin: 0 0 24px; }
 
+/*
+ * Search and you, at the top right of every page, outside the page itself so that going from page to page leaves
+ * them and their focus alone. A page's title keeps clear of them (--top-room), and what a page's header offers sits
+ * at the page's right edge beneath them, or beside them on a note's top line.
+ */
+.main-top { position: relative; z-index: 2; height: 0; max-width: 1480px; margin: 0 auto; }
+.top-acts { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 12px; }
+.head > :first-child, .tp-head > :first-child, .rec-head > :first-child { align-self: flex-start; max-width: calc(100% - var(--top-room)); }
+.note-top { padding-right: var(--top-room); }
+@media (min-width: 861px) {
+  .head:has(> :nth-child(2)), .tp-head:has(> :nth-child(2)), .rec-head:has(> :nth-child(2)) { min-height: 92px; }
+}
+.top-find { display: flex; align-items: center; gap: 10px; width: 250px; height: 38px; padding: 0 8px 0 13px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1); }
+.top-find:hover { background: color-mix(in srgb, var(--ink) 13%, transparent); }
+.top-find > span { flex: 1; min-width: 0; text-align: left; }
+.top-me { display: inline-flex; border-radius: var(--radius-sm); }
+.top-me[aria-current="page"] { box-shadow: 0 6px 0 -4px var(--ink-2); }
+@media (max-width: 1100px) {
+  .main { --top-room: 116px; }
+  .top-find { justify-content: center; width: 40px; padding: 0; }
+  .top-find > span, .top-find .ac-kbd { display: none; }
+}
+
+/* On paper it's just the page. */
+@media print {
+  .shell { display: block; }
+  .shell::after, .sb, .sb-show, .main-top { display: none; }
+}
+
 /* ------------------------------------------------------------ side panel */
 /* Clipped, never scrolled: focus moving through the panel scrolls only its middle. */
-.sb { position: sticky; top: 0; z-index: 10; height: 100vh; height: 100dvh; min-width: 0; overflow: hidden; overflow: clip; background: var(--ground); color: var(--ink); box-shadow: inset -1px 0 0 var(--line); }
-.sb-in { width: 272px; height: 100%; display: flex; flex-direction: column; gap: 4px; padding: 20px 14px 16px; transition: opacity var(--duration-2) var(--ease-out), transform var(--duration-3) var(--ease-out); }
-.shell.is-bare .sb { box-shadow: none; }
+/* Sunk would be the frame's own colour here, so wells and hover fills in the panel lift off it instead. */
+.sb.dark { --sunk: color-mix(in srgb, var(--ink) 9%, var(--frame)); }
+.sb { position: sticky; top: 0; z-index: 10; height: 100vh; height: 100dvh; min-width: 0; overflow: hidden; overflow: clip; background: var(--frame); color: var(--ink); }
+.sb-in { width: 256px; height: 100%; display: flex; flex-direction: column; gap: 4px; padding: 18px 12px 14px 14px; transition: opacity var(--duration-2) var(--ease-out), transform var(--duration-3) var(--ease-out); }
 .shell.is-bare .sb-in { opacity: 0; transform: translateX(-16px); }
 .sb-top { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 0 16px 10px; }
 .sb-home { margin-right: auto; border-radius: var(--radius-sm); }
@@ -32,28 +66,23 @@
 .sb-status b { display: block; font-weight: 600; }
 .sb-new { flex: none; width: 100%; justify-content: flex-start; gap: 10px; padding: 0 12px 0 14px; }
 .sb-new .ac-kbd { margin-left: auto; background: color-mix(in srgb, var(--on-sun) 16%, transparent); color: var(--on-sun); box-shadow: none; opacity: .8; }
-/* Looks like the search field it opens. */
-.sb-search { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; margin: 8px 0 12px; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: var(--surface); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); font: 400 14px/1 var(--font-sans); text-align: left; cursor: text; transition: box-shadow var(--duration-1); }
-.sb-search:hover { box-shadow: inset 0 0 0 1px var(--line-control); }
-.sb-search > span { flex: 1; min-width: 0; }
 .sb .ac-nav { flex: none; }
 /*
  * Up next, pinned and groups scroll between the places and the foot. A hairline shows at an edge with more
- * beyond it: the ground-coloured covers travel with the list and hide each line while its edge is reached.
+ * beyond it: the frame-coloured covers travel with the list and hide each line while its edge is reached.
  */
 .sb-mid {
   position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
-  margin: 0 -14px; padding: 0 14px 4px;
+  margin: 0 -12px 0 -14px; padding: 0 12px 4px 14px;
   background:
-    linear-gradient(var(--ground), var(--ground)) top / 100% 1px no-repeat local,
-    linear-gradient(var(--ground), var(--ground)) bottom / 100% 1px no-repeat local,
+    linear-gradient(var(--frame), var(--frame)) top / 100% 1px no-repeat local,
+    linear-gradient(var(--frame), var(--frame)) bottom / 100% 1px no-repeat local,
     linear-gradient(var(--line), var(--line)) top / 100% 1px no-repeat scroll,
     linear-gradient(var(--line), var(--line)) bottom / 100% 1px no-repeat scroll;
 }
 /* One column that never grows past the panel: long titles end in … instead. */
 .sb-sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin-top: 20px; }
 .sb-sec-h { display: flex; align-items: center; justify-content: space-between; min-height: 24px; padding: 0 4px 0 12px; margin-bottom: 4px; }
-.sb-sec-h .ac-eyebrow { font-size: 11px; letter-spacing: .1em; }
 .sb-sec-h .ac-icon-btn { width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); }
 .sb-sec-h .ac-icon-btn:hover { color: var(--ink); }
 .sb-hint { padding: 4px 12px 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
@@ -61,29 +90,22 @@
 .sb-next-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; }
 .sb-next-top .ac-arch-thumb { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
 .sb-next b { display: block; font: 600 14px/1.25 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-next small { display: block; margin-top: 4px; font: 500 12px/1 var(--font-mono); color: var(--sun-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-next small { display: block; margin-top: 4px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--sun-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-next-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; }
 .sb-next-foot .ac-btn { margin-left: auto; }
 .sb-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; margin: 0; padding: 0; list-style: none; }
 .sb-link { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 10px; color: var(--ink-2); font: 500 14px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
 .sb-link > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-a.sb-link:hover, a.sb-link[aria-current="page"] { background: var(--sunk); color: var(--ink); }
+a.sb-link:hover, a.sb-link[aria-current="page"] { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
 .sb-link .ac-arch-thumb { box-shadow: none; }
 .sb-link > .ac-i { color: var(--ink-3); }
-.sb-link .n { flex: none; margin-left: auto; padding-left: 6px; font: 500 12px/1 var(--font-mono); color: var(--ink-3); }
+.sb-link .n { flex: none; margin-left: auto; padding-left: 6px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .sb-foot { flex: none; display: grid; gap: 4px; padding-top: 20px; }
 .sb-seal { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px; font: 500 12px/1.35 var(--font-sans); color: var(--ink-3); }
 .sb-seal .ac-i { color: var(--sun-text); }
 .sb-credits { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-md); color: var(--ink-2); font-size: 13px; line-height: 1.3; transition: background-color var(--duration-1); }
 .sb-credits b { color: var(--ink); font-weight: 600; }
-.sb-credits:hover { background: var(--sunk); }
-.sb-me { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); transition: background-color var(--duration-1), box-shadow var(--duration-1); }
-.sb-me:hover { background: var(--sunk); }
-.sb-me[aria-current="page"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
-.sb-me .who { flex: 1; min-width: 0; }
-.sb-me b { display: block; font: 600 14px/1.2 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-me small { display: block; margin-top: 2px; font-size: 12px; line-height: 1.2; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-me > .ac-i { color: var(--ink-3); }
+.sb-credits:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 /* A short window: the whole panel scrolls instead of squeezing its middle to nothing. */
 @media (max-height: 640px) {
   .sb-in { overflow-y: auto; }
@@ -94,7 +116,9 @@ a.sb-link:hover, a.sb-link[aria-current="page"] { background: var(--sunk); color
 .ph-head, .tabbar { display: none; }
 @media (max-width: 860px) {
   .shell, .shell.is-bare { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .sb, .sb-show, .main-offline { display: none; }
+  .main { --top-room: 0px; }
+  .sb, .sb-show, .main-offline, .top-acts { display: none; }
+  .shell::after { display: none; }
   .main, .shell.is-bare .main { padding: 18px 18px calc(110px + env(safe-area-inset-bottom, 0px)); }
   .ph-head { display: block; padding: 22px 18px 0; }
   .ph-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -123,7 +147,7 @@ a.sb-link:hover, a.sb-link[aria-current="page"] { background: var(--sunk); color
 .pal-line { flex: none; margin: 14px 14px 0; box-shadow: inset 0 0 0 1px var(--line); }
 .pal-line .ac-kbd { margin-right: 10px; }
 .pal-body { flex: 1 1 auto; min-height: 0; max-height: 440px; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px 10px; }
-.pal-grp { padding: 12px 12px 6px; font: 500 11.5px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.pal-grp { padding: 12px 12px 6px; font: 500 12.5px/16px var(--font-sans); color: var(--ink-3); }
 .pal-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 12px; color: var(--ink); cursor: pointer; transition: background-color var(--duration-1); }
 .pal-row.is-active { background: var(--sunk); }
 .pal-row.is-off { cursor: default; }

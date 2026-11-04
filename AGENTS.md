@@ -169,11 +169,11 @@ Read `docs/engineering/logging-and-errors.md`.
   `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
   `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
-  values on `:root`, dark on `.dark` (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
-  `bg-surface`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `shadow-sun`, `rounded-lg`,
+  values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
+  `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
-  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, phone top bar and tab bar,
-  palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`); the Team page in
+  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
+  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); the workspace in `styles/workspace.css` (`wt-` the list, `wd-` a document, `wm-` menus, `wv-`
@@ -185,11 +185,15 @@ Read `docs/engineering/logging-and-errors.md`.
 - Icons come from Lucide through `Icon` in `@alcove/ui` (one stroke family, 1.8 stroke). Add a name to its map
   rather than drawing an SVG; use an icon button with a tooltip, not a text label, for tile and toolbar actions.
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
-- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `shadow-sun`, one
-  per view. `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
+- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `on-sun` text and no
+  shadow, one per view. It's navy by day and cream by night, so it never glows against the page; the side panel
+  is dark in both themes, so its button is cream on both. The warmth lives in `sun-text` and `sun-soft`.
+  `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
   information and focus use `horizon`. The mark (`Mark`, `Logo`) is branding, never state. No green.
 - Type: Newsreader (`font-display`) for page-level headings only, Hanken Grotesk for everything you read
-  and operate, IBM Plex Mono for times, data and eyebrows. Fonts are served from `packages/ui/src/fonts`.
+  and operate, times and data included (`tabular-nums`, or `ac-mono`, keeps digits in step), and IBM Plex Mono
+  only for code and hashes. Labels and eyebrows are sentence case, never uppercase. Fonts are served from
+  `packages/ui/src/fonts`.
 - The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
   `stage-ink-2`, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,

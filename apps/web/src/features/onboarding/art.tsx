@@ -102,7 +102,7 @@ export function ArtCall() {
       <div className="ta-call">
         <div className="ta-tiles">{lines.map(([id], i) => <CallTile key={id} person={CAST[id]} name={firstOf(id)} speaking={i === k} />)}</div>
         <div className="ta-cap ta-glass">
-          <div className="who"><Avatar person={CAST[who]} size={14} />{firstOf(who)}<span className="lbl">CAPTIONS</span></div>
+          <div className="who"><Avatar person={CAST[who]} size={14} />{firstOf(who)}<span className="lbl">Captions</span></div>
           <p>{said.split(' ').map((w, i) => { const p = ramp(local, i * 0.11, 0.3); return <span key={`${k}-${i}`} style={{ opacity: p, translate: `0 ${4 * (1 - p)}px` }}>{w}&nbsp;</span>; })}</p>
         </div>
       </div>
@@ -123,7 +123,7 @@ export function ArtRoom() {
       <div className="ta-room">
         <div className="ta-phone">
           <div className="scr">
-            <span className="rec"><i />REC 04:12</span>
+            <span className="rec"><i />Rec 04:12</span>
             <div className="ta-wave">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ scale: `1 ${0.25 + 0.75 * Math.abs(Math.sin(t * (2.4 + (i % 5) * 0.55) + i * 1.7))}` }} />)}</div>
           </div>
         </div>

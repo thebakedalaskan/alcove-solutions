@@ -1,15 +1,13 @@
 /*
- * The side panel, beside every page: New call, Search or ask (the palette), the app's places, the next
- * call with Join, pinned notes, groups, the confidential-compute check, the minutes of notes left, and
- * you, which opens Settings. It can be hidden. At 860px and narrower the phone's top bar and tab bar
- * (TabBar.tsx) take its place.
+ * The side panel, beside every page and dark in both themes: New call, the app's places, the next call with
+ * Join, pinned notes, groups, the confidential-compute check and the minutes of notes left. It can be hidden.
+ * At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place.
  */
 import { NEW_GROUP, type CalendarEvent, type Meeting, type Person } from '@alcove/api';
-import { ArchThumb, Avatar, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, buttonClass, cn, coverFor } from '@alcove/ui';
+import { ArchThumb, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, buttonClass, cn, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { ariaShortcut, shortcut } from '~/lib/keys';
 import { recordOfflineHere } from '~/lib/device';
 import { log } from '~/lib/log';
 import { useNow, useOnline } from '~/lib/live';
@@ -68,15 +66,15 @@ export function Offline({ show = true, className }: { show?: boolean | undefined
   );
 }
 
-export function Sidebar({ hidden, hideRef, onHide, onNew, onSearch, onPin }: {
+export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
   hidden: boolean; hideRef: RefObject<HTMLButtonElement | null>; onHide: () => void;
-  onNew: () => void; onSearch: () => void; onPin: () => void;
+  onNew: () => void; onPin: () => void;
 }) {
   const online = useOnline();
   const counts = useCounts();
   const path = useRouterState({ select: (s) => s.location.pathname });
   return (
-    <aside className="sb" aria-label="Side panel" inert={hidden}>
+    <aside className="sb dark" aria-label="Side panel" inert={hidden}>
       <div className="sb-in">
         <div className="sb-top">
           <Link to="/home" className="sb-home" aria-label="Alcove, Home"><Logo /></Link>
@@ -85,9 +83,6 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onSearch, onPin }: {
         <Offline className="sb-offline" />
         <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'sb-new')} onClick={onNew} aria-label="New call" aria-keyshortcuts="N" data-tour="new-call">
           <Icon name="plus" size={18} /><span>New call</span><Kbd>N</Kbd>
-        </button>
-        <button type="button" className="sb-search" onClick={onSearch} aria-label="Search or ask" aria-haspopup="dialog" aria-keyshortcuts={ariaShortcut('K')}>
-          <Icon name="search" size={16} /><span>Search or ask</span><Kbd>{shortcut('K')}</Kbd>
         </button>
         <SidebarNav>
           {NAV.map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}
@@ -200,10 +195,8 @@ function Groups() {
   );
 }
 
-/** The check, the minutes of notes left (Settings' minutes), and you (Settings). */
+/** The check, and the minutes of notes left (Settings' minutes). */
 function Foot({ online }: { online: boolean }) {
-  const session = useQuery(q.session()).data;
-  const team = useQuery(q.team()).data;
   const credits = useQuery(q.balance()).data;
   const trust = useQuery(q.trust()).data;
   return (
@@ -213,13 +206,6 @@ function Foot({ online }: { online: boolean }) {
         <Link to="/settings" hash="plan" activeOptions={{ includeHash: true }} className="sb-credits">
           <span><b>{hoursAndMinutes(credits.balance / credits.perMinute)}</b> of notes left</span>
           <Meter value={credits.balance / Math.max(1, credits.granted)} />
-        </Link>
-      )}
-      {session && (
-        <Link to="/settings" className="sb-me" aria-label={`${session.user.name}, settings`}>
-          <Avatar person={session.user} size={30} />
-          <span className="who"><b>{session.user.name}</b><small>{team?.name ?? session.user.email}</small></span>
-          <Icon name="settings" size={17} />
         </Link>
       )}
     </div>

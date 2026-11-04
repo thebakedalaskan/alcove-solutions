@@ -28,7 +28,7 @@ export function useCounts(): Record<Counter, number | undefined> {
 }
 
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
-/** The side panel's places, under New call and the search. */
+/** The side panel's places, under New call. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes' },

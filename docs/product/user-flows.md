@@ -46,10 +46,9 @@ screen. Signing in on another browser doesn't end the first session.
 
 ## 2. The side panel
 
-Beside every page:
+Beside every page, dark in both themes:
 
-- **New call** (or **N**) opens the one line of flow 4. **Search or ask** (**⌘K** on a Mac, **Ctrl+K**
-  elsewhere) opens the palette, below.
+- **New call** (or **N**) opens the one line of flow 4.
 - **Home**; **Notes**, with how many notes you have; **Record**, where recording in the room starts (flow 9),
   with how many recordings on this device are waiting to upload; and **Team** (flow 10), with how many people at
   your company use Alcove, you among them, once anyone besides you does.
@@ -64,14 +63,17 @@ Beside every page:
 - **Groups**: each of your groups and how many people are in it. Each opens on the Team page, and **+**
   starts a new one there.
 - At the bottom: the confidential-compute check (**Confidential compute · verified** when the server's
-  hardware answer is bound to this browser's request), the time of notes left, which opens Settings at your
-  minutes, and you, with your company or your address and a cog, which opens Settings (flow 11).
+  hardware answer is bound to this browser's request), and the time of notes left, which opens Settings at your
+  minutes.
 - Offline, a notice at the top says recording still works and everything else catches up when you're back
   (with **Record without a connection** off, that recording waits for the connection too). Up next and the
   check wait until the connection returns. Alcove also opens offline for someone signed in on this browser:
   Record works, and every other page says it's offline, with **Record**.
 - **Hide the side panel** gives the page the room; the button left in the top-left corner brings the panel
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
+
+At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
+below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search, **New call** and
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised, in the middle),
@@ -554,7 +556,7 @@ notes load beside it: if your groups don't, their card says so, with **Try again
 
 ## 11. Settings
 
-**Settings** opens from you at the foot of the side panel, the phone's avatar or its **Settings** tab. It says who
+**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. It says who
 you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. With
 recordings on this device that haven't uploaded, **Sign out** first says so in place, under it ("2 recordings on
 this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by themselves, or,
