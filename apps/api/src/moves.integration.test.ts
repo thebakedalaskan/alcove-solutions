@@ -51,6 +51,14 @@ const asMember = (call: Pick<CallSession, 'ticket'>, method: 'GET' | 'POST' | 'D
 /** A request a new device makes about a move, with the secret in the body as the app sends it. */
 const asDevice = (path: string, body: unknown, f: typeof fetch = fetch) => f(`${h.baseUrl}/v1/moves/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) });
 const callRows = async (table: string, callId: string) => (await h.pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE call_id = $1`, [callId])).rows[0]?.n;
+/** In a part of the call (`main`, or a breakout room's ID): in its group, with keys to send with. */
+const inPlace = (call: CallSession, place: string) => waitFor(() => {
+  const s = call.crypto.getSnapshot();
+  return s.status === 'in' && s.place === place && Boolean(s.media?.send);
+}, `${call.ticket.role} in ${place === 'main' ? 'the main room' : 'a room'}`);
+const roomIds = async (host: CallSession) => (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
+/** Who's in this browser's group for the part of the call it's in, from MLS itself. */
+const members = (call: CallSession) => [...call.crypto.getSnapshot().members].sort();
 /** A participant ID of the kind a browser makes for itself. */
 const freshIdentity = () => `p_${randomBytes(16).toString('base64url')}`;
 /** Opens a move's link as a device the test drives by hand: its claim. */
@@ -414,6 +422,87 @@ describe('moving to another device', () => {
     const s = await settle(host, (v) => v.participants.length === 3 && v.participants.some((p) => p.id === phone.ticket.identity));
     expect(s.participants.filter((p) => p.person.name === 'Sam')).toHaveLength(1);
     await host.leave();
+  });
+
+  it('moves someone in a breakout room into that room’s group, once, on its next keys, and never into anyone else’s place', async () => {
+    const org = await account();
+    const kofiEmail = unique('kofi');
+    const { code: c } = await org.api.calls.startNow({ guests: [kofiEmail], notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const laptop = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(laptop);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 10 });
+    const [design = ''] = await roomIds(host);
+    await inPlace(laptop, design);
+    host.visitRoom(design);
+    await inPlace(host, design);
+    await waitFor(() => keyOf(laptop) === keyOf(host), 'Kofi and the organizer on Design’s keys');
+    const roomKeys = keyOf(laptop);
+
+    const out = await laptop.startMove({ mic: true, cam: false });
+    const phone = h.browser();
+    await phone.api.auth.signIn('sso', { email: kofiEmail });
+    const there = await open(phone.api, out.getSnapshot().code ?? '');
+    // From a room too, signed in as Kofi: naming the organizer's connection, or Sam's in the main room, is refused.
+    for (const identity of [host.ticket.identity, sam.ticket.identity]) {
+      expect((await asDevice('ready', { claim: there.claim, identity, keyPackage: 'AAAA', device: PHONE }, phone.fetch)).status).toBe(409);
+    }
+    await there.ready(PHONE);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'the laptop told the phone is ready');
+    laptop.close();
+    await out.confirm({ mic: true, cam: false });
+    const now = await arrived(there);
+    // Straight into Design's group, Kofi once: the laptop's connection taken out of it, the phone's added.
+    await inPlace(now, design);
+    await waitFor(() => members(host).includes(now.ticket.identity) && !members(host).includes(laptop.ticket.identity), 'Kofi in Design once, on the phone');
+    expect(members(host)).toEqual([host.ticket.identity, now.ticket.identity].sort());
+    const s = await settle(host, (x) => x.breakouts.open?.rooms[0]?.members.includes(now.ticket.identity) === true && x.participants.filter((p) => p.person.email === kofiEmail).length === 1);
+    expect(s.breakouts.open?.rooms[0]?.members.sort()).toEqual([host.ticket.identity, now.ticket.identity].sort());
+    // On Design's next keys (the laptop's are no use now), and never in the main room's group.
+    await waitFor(() => keyOf(now) === keyOf(host), 'the phone on Design’s keys');
+    expect(keyOf(now)).not.toBe(roomKeys);
+    expect(members(sam)).not.toContain(now.ticket.identity);
+    await host.leave();
+  });
+
+  it('moves the organizer while visiting a breakout room: back in that room on the new device, everyone in their own room, nothing resumed', async () => {
+    const email = unique('organizer');
+    const org = await account(email);
+    const kofiEmail = unique('kofi');
+    const { code: c } = await org.api.calls.startNow({ guests: [kofiEmail], notes: 'on' });
+    const laptop = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(laptop);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    laptop.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 10 });
+    const [design = ''] = await roomIds(laptop);
+    await inPlace(kofi, design);
+    laptop.visitRoom(design);
+    await inPlace(laptop, design);
+    await laptop.pauseRoom(design, true);
+    expect((await settle(kofi, (x) => x.capture.room?.mode === 'paused')).capture).toMatchObject({ mode: 'on', room: { mode: 'paused' } });
+
+    const out = await laptop.startMove({ mic: true, cam: false });
+    const phone = h.browser();
+    await phone.api.auth.signIn('sso', { email });
+    const there = await open(phone.api, out.getSnapshot().code ?? '');
+    await there.ready(PHONE);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'the laptop told the phone is ready');
+    laptop.close();
+    await out.confirm({ mic: true, cam: false });
+    const now = await arrived(there);
+    // A new generation of groups: the organizer is back in Design on the new device, and Kofi with it in Design's new group.
+    await inPlace(now, design);
+    await inPlace(kofi, design);
+    await waitFor(() => members(now).includes(kofi.ticket.identity) && keyOf(kofi) === keyOf(now), 'Kofi in the new Design group');
+    expect(members(now)).toEqual([now.ticket.identity, kofi.ticket.identity].sort());
+    // Nothing resumed: the call's notes still on and Design still paused, as the new device and Kofi both see it.
+    expect((await settle(now, (x) => x.capture.room !== null)).capture).toMatchObject({ mode: 'on', room: { mode: 'paused' } });
+    expect((await settle(kofi, (x) => x.capture.room?.mode === 'paused')).capture.room?.mode).toBe('paused');
+    await now.leave();
   });
 
   it('works once, runs out, and can be called off from either device', async () => {

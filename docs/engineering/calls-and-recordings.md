@@ -319,7 +319,9 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   notes aren't on is ignored, so the browser says again and nobody is told something isn't captured when it is.
   Both parts are also unavailable while the organizer's browser is out of the call (`away`: LiveKit says its
   connection left, and neither it nor another of the organizer's connections is back yet), and the sentence
-  says so: "Art's browser isn't in the call right now, so nothing is captured until it's back".
+  says so: "Art's browser isn't in the call right now, so nothing is captured until it's back". So is every open
+  breakout room's transcript (`CaptureState.room`), and a room's gaps include the part of an `offline` stretch while
+  it was open.
 - **Who sees it.** Everyone in the call, and anyone reconnecting, gets it with the call. People asking to join
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change nudges the room, so browsers fetch the call again.
@@ -575,11 +577,12 @@ ever sent to the presenter's computer.
   is taken out by LiveKit's `participant_left` webhook ([Group calls](#group-calls)), and the organizer's browser
   takes it out of the group, so the keys move on. If that browser is still there and comes back, it comes back in
   as it is: its log read says `admission: "out"` (it left by nobody's choice: not removed, not turned away, and its
-  place not taken by another tab or device), so it makes fresh MLS keys and sends a key package to
-  `POST /v1/live/calls/:id/mls/back`. That puts it back as the same connection and person (seat, hand and all) for
-  the organizer's browser to add again, with a fresh 90 seconds to reach the room. Until the organizer's browser has
-  taken the old connection out of the group, `mls/back` answers `409` and the browser asks again a few seconds
-  later. Someone removed, turned away or replaced gets `admission: "denied"` and stops. Chat sent while it was out
+  place not taken by another tab or device), so it lets go of the groups it held and asks
+  `POST /v1/live/calls/:id/mls/back`. That puts it back as the same connection and person (seat, hand and all), in
+  the same part of the call, with a fresh 90 seconds to reach the room; the log then asks it for keys, as for anyone
+  on their way into a group, and the organizer's browser adds it to that part's group (a breakout room's included).
+  Until the organizer's browser has taken the old connection out of its group, `mls/back` answers `409` and the
+  browser asks again a few seconds later. Someone removed, turned away or replaced gets `admission: "denied"` and stops. Chat sent while it was out
   stays unreadable to it, as for anyone let in later.
 - **The organizer away.** Notes are written from what the organizer's browser hears, so from LiveKit's
   `participant_left` for the organizer's connection (it dropped, is reloading, or is moving) until it or another
@@ -636,8 +639,11 @@ device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
    leave.
 5. **In.** The new device comes in (`POST /v1/moves/arrive`) as the same person, with the identity and key package
    it sent: a guest or invited person the way a reload comes back (the same person, so the same seat and breakout
-   room, name, role, raised hand and spotlight), the organizer as the organizer's new connection (a new key
-   generation, host powers, and the recording on a new segment, as when they join from another device). It brings in
+   room, name, role, raised hand and spotlight): a new connection in no group, which the organizer's browser adds to
+   the group of the part of the call they're in, a room's included, and takes the old one out of, so nobody is
+   counted twice. The organizer comes in as the organizer's new connection (a new key generation for every part of
+   the call, host powers, back in the room it was visiting, and the recording on a new segment, as when they join
+   from another device), with nothing resumed: a paused call, or a room it paused, stays paused. It brings in
    only the identity named when the device was ready, so another connection already using it (someone who joined
    with it in between) means `409`, never that connection's place. Asking again, after a lost answer, hands back the
    same connection with a new pass, and only that one: the connection this move made, as the person who moved, in
