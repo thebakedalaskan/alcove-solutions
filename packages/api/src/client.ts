@@ -1,5 +1,6 @@
 import type { CallCard, CallSession, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
 import type { CallMoveIn } from './moves';
+import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
@@ -140,7 +141,18 @@ export interface AlcoveApi {
      * Alcove when they sign in.
      */
     share(id: ID, to: { emails: string[]; group?: string | undefined }): Promise<Note>;
-    /** Deletes your own notes for everyone, or removes someone else's from your notes. */
+    /** Your own notes on these notes: only ever yours, whoever else has them. */
+    personal(id: ID): PersonalApi;
+    /** What adding one of your own entries to the shared notes would do: exactly what goes, where, and who gets it. Sends nothing. */
+    previewAddition(id: ID, entryId: ID): Promise<PromotionPreview>;
+    /** Adds it, as previewed, for everyone with the notes. Refused if the people or the moments changed since the preview. */
+    addToShared(id: ID, entryId: ID, body: PromoteBody): Promise<Note>;
+    /** Takes something added to the shared notes out of them, for good: your own addition, or any on your own notes. */
+    takeBack(id: ID, additionId: ID): Promise<Note>;
+    /**
+     * Deletes your own notes for everyone, with everyone's own notes on them; or removes someone else's from your notes,
+     * with your own notes on them. What you added to the shared notes stays with them.
+     */
     delete(id: ID): Promise<void>;
   };
   series: {

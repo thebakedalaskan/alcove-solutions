@@ -3,6 +3,7 @@ import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
 import { CallCodeSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
 import type { CallMoveOut, MoveMedia } from './moves';
+import type { PersonalApi } from './personal';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -441,6 +442,11 @@ export interface CallSession extends LiveStore<CallState> {
   readonly ticket: CallTicket;
   /** The call's encryption as this browser sees it. */
   readonly crypto: LiveStore<CallCrypto>;
+  /**
+   * Your own notes on this call, with this browser's account: only you read them. For the organizer and everyone on the
+   * invite, once notes have been on; someone with only the link has no account to keep them under.
+   */
+  readonly personal: PersonalApi;
   /** A LiveKit token, once you're let in. Rejected before that. */
   room(): Promise<{ serverUrl: string; roomName: string; identity: string; token: string }>;
   /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */

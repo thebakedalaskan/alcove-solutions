@@ -1,6 +1,6 @@
 import {
   ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallHandOffBodySchema, CallJoinBodySchema, CallLeaveBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
+  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PersonalEditSchema, PersonalInputSchema, PreferencesSchema, PromoteBodySchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -21,6 +21,7 @@ import { attest } from './tee';
 import { openOwner } from './owners';
 import { ABSOLUTE_MS, cookieName, findSession } from './sessions';
 import * as account from './modules/account';
+import * as additions from './modules/additions';
 import * as audioMod from './modules/audio';
 import * as billing from './modules/billing';
 import * as calendar from './modules/calendar';
@@ -29,6 +30,7 @@ import * as meetings from './modules/meetings';
 import * as moves from './modules/moves';
 import * as notes from './modules/notes';
 import * as people from './modules/people';
+import * as personal from './modules/personal';
 import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
 import { jpegSize } from './modules/screens';
@@ -52,13 +54,16 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
  * decisions, open questions, follow-ups and transcript lines, sharing it, and having it written again
  * each set an explicit state, so a retry changes nothing; and their answer is the whole note, which a
- * receipt kept under someone it was given to would still hold after the organizer deleted it. Deleting
- * the account deletes its receipts, so there is no account left to keep one under.
+ * receipt kept under someone it was given to would still hold after the organizer deleted it. Someone's
+ * own notes, and what they add to the shared notes, keep none either: deleting them must leave no copy
+ * of what they said for a day. Deleting the account deletes its receipts, so there is no account left
+ * to keep one under.
  */
 const NO_RECEIPT = [
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/account$/
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/account$/,
+  /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -141,6 +146,8 @@ export function createApp(d: Deps) {
   const shareEndLimiter = rateLimit(30, 60_000);
   /** Opening a moment of the live transcript reads all of it, per connection to the call. */
   const momentLimiter = rateLimit(60, 60_000);
+  /** Your own notes, per connection to a call or per account: reading them in a call reads its live transcript too. */
+  const personalLimiter = rateLimit(120, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -483,6 +490,20 @@ export function createApp(d: Deps) {
     if (!line.success) throw new ValidationError('That isn’t a moment of this call.');
     return c.json(await calls.moment(v, c.req.param('id'), line.data));
   });
+  /*
+   * Your own notes from inside a call: your account's, with your session, on the call's note. Nothing here goes into the
+   * call's state or tells anyone else's browser.
+   */
+  app.use('/v1/live/calls/:id/personal/*', capped(32 * 1024));
+  const ownInCall = (c: Context<Env>) => {
+    const v = c.get('viewer');
+    personalLimiter(v.pass.identity, 'personal');
+    return calls.personalIn(v, c.req.param('id') ?? '', () => optionalOwner(c));
+  };
+  app.get('/v1/live/calls/:id/personal', async (c) => c.json(await personal.read(await ownInCall(c))));
+  app.post('/v1/live/calls/:id/personal', async (c) => c.json(await personal.add(await ownInCall(c), await body(c, PersonalInputSchema))));
+  app.patch('/v1/live/calls/:id/personal/:entryId', async (c) => c.json(await personal.edit(await ownInCall(c), c.req.param('entryId'), (await body(c, PersonalEditSchema)).text)));
+  app.delete('/v1/live/calls/:id/personal/:entryId', async (c) => c.json(await personal.remove(await ownInCall(c), c.req.param('entryId'))));
   /* Captions in someone's own language: translated for them alone, so no receipt keeps a copy. */
   app.post('/v1/live/calls/:id/translate', async (c) => {
     const v = c.get('viewer');
@@ -656,6 +677,36 @@ export function createApp(d: Deps) {
     return c.json(await notes.askAll(c.get('owner'), (await body(c, AskBodySchema)).question));
   });
   app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
+  /*
+   * Your own notes on a note you have: only ever your own, so there's nothing here to ask for by anyone else's ID. Adding
+   * something to the shared notes takes a preview first, then saying so with the preview's seal.
+   */
+  app.use('/v1/notes/:id/personal/*', capped(32 * 1024));
+  const ownOnNote = (c: Context<Env>) => {
+    const o = c.get('owner');
+    personalLimiter(o.ownerId, 'personal');
+    return personal.ofNote(o, c.req.param('id') ?? '');
+  };
+  app.get('/v1/notes/:id/personal', async (c) => c.json(await personal.read(await ownOnNote(c))));
+  app.post('/v1/notes/:id/personal', async (c) => c.json(await personal.add(await ownOnNote(c), await body(c, PersonalInputSchema))));
+  app.patch('/v1/notes/:id/personal/:entryId', async (c) => c.json(await personal.edit(await ownOnNote(c), c.req.param('entryId'), (await body(c, PersonalEditSchema)).text)));
+  app.delete('/v1/notes/:id/personal/:entryId', async (c) => c.json(await personal.remove(await ownOnNote(c), c.req.param('entryId'))));
+  app.post('/v1/notes/:id/personal/:entryId/preview', async (c) => {
+    const o = c.get('owner');
+    personalLimiter(o.ownerId, 'personal');
+    return c.json(await additions.preview(o, c.req.param('id'), c.req.param('entryId')));
+  });
+  app.post('/v1/notes/:id/personal/:entryId/add', async (c) => {
+    const o = c.get('owner');
+    personalLimiter(o.ownerId, 'personal');
+    await additions.addToShared(o, c.req.param('id'), c.req.param('entryId'), await body(c, PromoteBodySchema));
+    return c.json(await notes.get(o, c.req.param('id')));
+  });
+  app.delete('/v1/notes/:id/additions/:additionId', async (c) => {
+    const o = c.get('owner');
+    await additions.takeBack(o, c.req.param('id'), c.req.param('additionId'));
+    return c.json(await notes.get(o, c.req.param('id')));
+  });
   app.delete('/v1/notes/:id', async (c) => { await notes.remove(c.get('owner'), c.req.param('id')); return c.json({ deleted: true }); });
 
   /* series: what carries over between calls, from the notes the person asking has */

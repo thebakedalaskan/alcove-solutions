@@ -20,9 +20,11 @@ import { log } from '../log';
 import { findOwner, masterKey } from '../owners';
 import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile, unpin } from './account';
+import * as additions from './additions';
 import { noteObjects, queueDelete, segments } from './audio';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
 import { MeetingManifest } from './meetings';
+import * as personal from './personal';
 import { nameOf, personOf } from './portraits';
 import * as screens from './screens';
 import * as transcripts from './transcripts';
@@ -151,6 +153,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   }));
   await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');
+  await personal.dropUnheld(db, o.ownerId, noteId);
   await queueNotes(o, db, noteId, next.recordingId);
   nlog.info('notes job queued', {
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
@@ -229,7 +232,7 @@ export async function goneSince(o: Owner, found: Located[]): Promise<number> {
     : 0;
   return found.length - ownLeft - givenLeft;
 }
-async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
+export async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const own = await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId, id]);
   if (own) return { owner: o, note: await getItem(o, db, 'note', id, NoteManifest, 'Those notes'), mine: true };
   const as = await myEmail(o);
@@ -238,6 +241,18 @@ async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const owner = a && await findOwner(o, a.owner_id, undefined, db);
   if (!owner) throw notFound('Those notes', { noteId: id });
   return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, as };
+}
+
+/**
+ * Keeps a note, and this person's way to it, in place until the transaction ends, or says they've gone: deleting the
+ * note, or removing it from their notes, waits for what's being written with it, and then takes that too.
+ */
+export async function holdAccess(o: Owner, l: Located, db: Db): Promise<void> {
+  const One = z.object({ n: z.number() });
+  const noteId = l.note.itemId;
+  const note = await maybeOne(db, One, `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL FOR KEY SHARE`, [l.owner.ownerId, noteId]);
+  const given = l.mine || await maybeOne(db, One, 'SELECT 1 AS n FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3 FOR KEY SHARE', [l.owner.ownerId, noteId, emailIndex(o, l.as)]);
+  if (!note || !given) throw notFound('Those notes', { noteId });
 }
 
 const Holder = z.object({ email_index: bytea });
@@ -256,9 +271,9 @@ const sharerOf = (s: Sharer, organizer: Person): Person => (s.id === organizer.i
  * got it, each with who shared it, the group's name and when. Whoever has since removed it from
  * their notes no longer has it, so isn't listed.
  */
-async function recipients(l: Located, organizer: Person): Promise<Recipient[]> {
+async function recipients(l: Located, organizer: Person, db: Db = l.owner.pool): Promise<Recipient[]> {
   const m = l.note.manifest;
-  const holding = await holders(l.owner, l.owner.pool, l.note.itemId);
+  const holding = await holders(l.owner, db, l.note.itemId);
   const holds = (email: string) => holding.has(b64u(emailIndex(l.owner, email)));
   // Someone invited who removed the notes and was given them again has them as shared now.
   const sharedTo = new Set(m.shared.map((s) => s.email));
@@ -269,6 +284,11 @@ async function recipients(l: Located, organizer: Person): Promise<Recipient[]> {
     ...m.shared.filter((s) => holds(s.email))
       .map((s): Recipient => ({ person: personOf(s.email), role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), at: s.at }))
   ];
+}
+
+/** Everyone who has a note now, organizer first: who reads whatever is added to it. */
+export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Person[]> {
+  return (await recipients(l, await me(l.owner), db)).map((r) => r.person);
 }
 
 /** How someone came to have a note that isn't theirs, from the address they have it under. */
@@ -333,7 +353,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const seriesId = await seriesOf(l);
   return {
     ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: m.transcript, rooms: m.rooms, writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
+    gaps: m.gaps, screens: m.screens, transcript: m.transcript, rooms: m.rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
 }
@@ -722,12 +742,16 @@ export async function share(o: Owner, id: string, to: { emails: string[]; group?
 
 /**
  * Deletes your own note for everyone (deleteOwnNote), its audio and shared-screen objects after the
- * commit, and your pin to it. Someone else's note is only removed from your notes.
+ * commit, and your pin to it. Someone else's note is only removed from your notes, with your own notes
+ * on it: they can quote it, and you no longer have it. What you added to the shared notes stays with them.
  */
 export async function remove(o: Owner, id: string): Promise<void> {
   const l = await locate(o, id);
   if (!l.mine) {
-    await exec(o.pool, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, emailIndex(o, l.as)]);
+    await tx(o.pool, async (c) => {
+      await exec(c, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, emailIndex(o, l.as)]);
+      await personal.forget(c, o.ownerId, l.owner.ownerId, id);
+    });
     await unpin(o, id);
     nlog.info('shared note removed from my notes', { noteId: id });
     return;
@@ -740,8 +764,9 @@ export async function remove(o: Owner, id: string): Promise<void> {
 
 /**
  * Deletes one of this owner's notes for good, in the caller's transaction: every revision, its
- * recording and pieces, its shared-screen frames, its jobs, everyone's access, the link from its
- * meeting, and this owner's operation receipts (which may hold copies of responses); stored bytes go
+ * recording and pieces, its shared-screen frames, its jobs, everyone's access, everyone's own notes on
+ * it and what they added to it (both cascade from its row), the link from its meeting, and this
+ * owner's operation receipts (which may hold copies of responses); stored bytes go
  * down to match. Returns the audio and frame objects, for the caller to delete once the transaction
  * commits (failures are retried by maintenance), and how many of them were frames. Deleting a whole
  * account deletes each of its notes this way.

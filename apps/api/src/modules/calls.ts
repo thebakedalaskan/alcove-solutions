@@ -10,11 +10,12 @@ import type { Deps, Owner } from '../context';
 import type { LiveKitEvent } from '../livekit';
 import { b64u, id128, mac, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
+import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
 import { me, profile } from './account';
 import * as catchup from './catchup';
 import * as drafting from './drafting';
+import * as personal from './personal';
 import { personOf, portraitFor } from './portraits';
 import { appendPiece, createRecording, segments, setRecordingState, type Piece } from './audio';
 import * as capture from './capture';
@@ -1624,6 +1625,54 @@ export async function moment(v: Viewer, callId: string, lineId: string): Promise
   const organizer = await me(o);
   clog.debug('transcript moment opened', { callId, lines: around.length });
   return { lineId, lines: transcripts.spoken(around, speakersIn(s, organizer, v), roomsIn(s)).map((l) => ({ ...l, said: saidAt.get(l.id) ?? 0 })) };
+}
+
+/* ---------- your own notes, from inside the call: for your account alone, and nothing of them goes into the call ---------- */
+
+/**
+ * Someone's own notes on this call: their account's (the session with the request, which has to be whoever this
+ * connection joined as), on the call's note, and what they may read here now, by the same rule as everything else in a
+ * call. Someone with only the link has no account to keep anything under, and doesn't get the note it would go with.
+ */
+export async function personalIn(v: Viewer, callId: string, session: () => Promise<Owner | undefined>): Promise<personal.Place> {
+  requireIn(v, 'personal');
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  const ctx = { callId, role: v.pass.role };
+  const ended = () => new ConflictError('This call has ended. Your own notes are with its notes.', { context: ctx });
+  if (row.state !== 'live') throw ended();
+  if (v.role === 'guest') throw new ForbiddenError('You joined with the link, so there’s no account to keep your own notes under.', { context: ctx });
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  const author = await session();
+  if (!author) throw new AuthError('Sign in to Alcove first.', { context: ctx });
+  const same = v.pass.role === 'host' ? author.ownerId === o.ownerId : !!mine?.email && (await profile(author)).email.toLowerCase() === mine.email.toLowerCase();
+  if (!same) throw new ForbiddenError('This browser is signed in to another account.', { context: ctx });
+  const noteId = s.notes.noteId;
+  if (!noteId) throw new ConflictError('Your own notes go with the call’s, and notes haven’t been on in this call.', { context: ctx });
+  const place = mine ? placeOf(s, mine) : MAIN_PLACE;
+  const here = place === MAIN_PLACE ? null : place;
+  return {
+    author, noteOwnerId: o.ownerId, noteId,
+    reader: async () => {
+      const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+      const heard = await transcripts.lines(o, o.pool, noteId, mayRead(v, s, mine, row.started_at, invitedIn(meeting)));
+      const said = saidIn(row.started_at);
+      const lines = transcripts.spoken(heard, speakersIn(s, await me(o), v), roomsIn(s)).map((l, i): personal.LiveLine => {
+        const h = heard[i];
+        return { ...l, when: h?.when, said: h ? said(h) : undefined };
+      });
+      const t = tenthsIn(row.started_at);
+      // Marked while nothing is captured here: there'll be nothing there to open, and the recording doesn't move on.
+      const at = capturing(row, s, place).status === 'on' ? capture.recorded(s.notes.history, s.notes.offline, t, t) : null;
+      return personal.callReader(lines, here, { kind: 'moment', at, when: Date.now(), room: here });
+    },
+    // Ending the call takes its row: anything written after it isn't in time for who gets the note to be settled.
+    holdNote: async (c) => {
+      if ((await load(o, c, callId, 'share')).row.state !== 'live') throw ended();
+      if (!(await exec(c, `SELECT 1 FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL FOR KEY SHARE`, [o.ownerId, noteId]))) throw notFound('Those notes', { noteId });
+    }
+  };
 }
 
 /**
