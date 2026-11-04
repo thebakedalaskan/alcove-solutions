@@ -57,8 +57,8 @@ export interface FakeNear {
   received: { path: string; body: Buffer }[];
   /** What the notes model was sent (the user message's text, once opened), oldest first. */
   prompts: string[];
-  /** Every image the notes model was sent, once opened: its size and the marker a test wrote into it (null without one). */
-  images: { bytes: number; marker: string | null }[];
+  /** Every image the notes model was sent, once opened: its size, what a test put on it (null for nothing legible) and the salt that tells it apart. */
+  images: { bytes: number; marker: string | null; salt: string }[];
   /** The models' attested signing keys right now, hex. */
   keys(): Record<Task, string>;
   /** The hashes of the configurations the quotes measure. */
@@ -110,9 +110,18 @@ export function screenJpeg(shown: ScreenShown | null, width = 1280, height = 720
   out.set(all);
   return out;
 }
+/** A JPEG's comment segment, as text. */
+function commentOf(jpeg: Buffer): string {
+  for (let i = 2; i + 4 <= jpeg.length && jpeg[i] === 0xff;) {
+    const length = jpeg.readUInt16BE(i + 2);
+    if (jpeg[i + 1] === 0xfe) return jpeg.subarray(i + 4, i + 2 + length).toString('utf8');
+    i += 2 + length;
+  }
+  return '';
+}
 /** What's on a frame, from its comment, or null when nothing can be made out. */
 function shownIn(jpeg: Buffer): ScreenShown | null {
-  const m = /SCREEN:(\{.*\})\|/s.exec(jpeg.toString('utf8'));
+  const m = /^SCREEN:(\{.*\})\|/s.exec(commentOf(jpeg));
   if (!m) return null;
   const v: unknown = JSON.parse(m[1] ?? '{}');
   if (typeof v !== 'object' || v === null || !('title' in v) || !('lines' in v)) return null;
@@ -451,7 +460,10 @@ export async function startFakeNear(): Promise<FakeNear> {
     const user = text('user');
     calls.push({ path, model, bytes: body.length, encryption });
     prompts.push(user);
-    for (const img of sent) images.push({ bytes: img.length, marker: /SCREEN:(\{.*\})\|/s.exec(img.toString('utf8'))?.[1] ?? null });
+    for (const img of sent) {
+      const comment = commentOf(img);
+      images.push({ bytes: img.length, marker: /^SCREEN:(\{.*\})\|/s.exec(comment)?.[1] ?? null, salt: comment.slice(comment.lastIndexOf('|') + 1) });
+    }
     if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
     let content: string;
     if (failing > 0) {

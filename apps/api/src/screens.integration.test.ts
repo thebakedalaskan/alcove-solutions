@@ -230,7 +230,12 @@ describe('shared screens in the notes', () => {
     await settle(host, (x) => x.breakouts.open === null);
     expect((await kofi.shareFrame(frameOf(kofiShare, CHART))).duplicate).toBe(false);
     expect((await frames(org.session.ownerId)).length).toBe(2);
-    await host.leave();
+    // Nothing was said, so there are no notes to write; what was on screen is still read and kept.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    expect([note.summary, note.transcript]).toEqual(['', []]);
+    expect(note.screens.map((m) => [m.title, m.legible, m.presenter?.name])).toEqual([['billing/charge.ts', 'clear', org.session.user.name], ['Q3 sign-ups by week', 'clear', expect.any(String)]]);
   });
 
   it('reads what was shared with the private notes model, ties each frame to what was said then, and answers from it', async () => {
@@ -249,7 +254,7 @@ describe('shared screens in the notes', () => {
     const now = () => (Date.now() - start) / 1000;
 
     // Priya shows a chart; what's said about it comes after it, then her next slide, then her share ends.
-    const chart = await priya.shareFrame(frameOf(priyaShare, CHART));
+    const chart = await priya.shareFrame(frameOf(priyaShare, CHART, { jpeg: screenJpeg(CHART, 1280, 720, 'flow-chart') }));
     const l1 = Math.ceil(now()) + 1;
     await host.transcribe(speech('We agreed this chart is right about the W3 dip. // Is the target still 12,000?', 0, l1 * 1000), host.ticket.identity);
     // Her next slide comes once what was said about the chart is behind it.
@@ -260,7 +265,7 @@ describe('shared screens in the notes', () => {
     await waitFor(() => now() > l3 + 0.5, 'the code’s stretch of the call');
     await priya.shareEnded(priyaShare);
     // The organizer's own screen, which nobody can read.
-    const blur = await host.shareFrame(frameOf(hostShare, null));
+    const blur = await host.shareFrame(frameOf(hostShare, null, { jpeg: screenJpeg(null, 1280, 720, 'flow-blur') }));
     await host.transcribe(speech('That is everything for today.', 0, (Math.ceil(now()) + 2) * 1000), host.ticket.identity);
 
     const noteId = (await host.leave())?.pendingNoteId ?? '';
@@ -273,8 +278,8 @@ describe('shared screens in the notes', () => {
     if (!a || !b || !u) throw new Error('expected three screen moments');
 
     // Read, sealed to the verified notes model: it got each image, and nothing went any other way.
-    expect(h.near.images.filter((i) => i.marker?.includes('Q3 sign-ups by week'))).toHaveLength(1);
-    expect(h.near.images.some((i) => i.marker === null)).toBe(true);
+    expect(h.near.images.filter((i) => i.salt === 'flow-chart').map((i) => i.marker)).toEqual([JSON.stringify(CHART)]);
+    expect(h.near.images.filter((i) => i.salt === 'flow-blur').map((i) => i.marker)).toEqual([null]);
     expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
     expect(a).toMatchObject({
       share: priyaShare, presenter: { name: 'Priya Shah' }, width: 1280, height: 720, legible: 'clear', title: 'Q3 sign-ups by week',

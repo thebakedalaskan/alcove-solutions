@@ -9,6 +9,7 @@
  * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
  * for each job and wiped after it.
  */
+import type { ScreenMoment } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { openJson, stateKey } from '../crypto';
@@ -52,18 +53,18 @@ async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefin
 }
 
 /**
- * Writes the notes into the note (or finishes it without them), charges for them and closes the
- * job, together. The charge is for the minutes recorded, not the length of the call: time with
- * notes off is free.
+ * Writes the notes into the note (or finishes it without them, with its shared screens read when
+ * they were), charges for them and closes the job, together. The charge is for the minutes recorded,
+ * not the length of the call: time with notes off is free.
  */
-async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined): Promise<void> {
+async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
   const recorded = notes ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
     // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
     // The notes model's verification joins the ones the transcript went to.
     await updateNote(o, c, noteId, (m) => {
       const chapters = [...(notes?.chapters ?? m.chapters), ...roomChapters(m.breakouts)].sort((a, b) => a.at - b.at);
-      if (!notes) return { ...m, status: 'ready', chapters, breakouts: [] };
+      if (!notes) return { ...m, status: 'ready', chapters, breakouts: [], ...(shown ? { screens: shown } : {}) };
       const { evidence, ...written } = notes;
       return { ...m, status: 'ready', ...written, chapters, breakouts: [], inference: [...m.inference, evidence] };
     });
@@ -96,16 +97,17 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       await settle(o, job.job_id, noteId, recordingId, undefined);
       return;
     }
-    if (!lines) {
-      await settle(o, job.job_id, noteId, recordingId, undefined);
-      wlog.info('nothing was transcribed; note finished without notes', at);
-      return;
-    }
     try {
       const t0 = performance.now();
-      const organizer = await me(o);
-      // What was on shared screens is read first, frame by frame, so the notes can say what was shown while it was said.
+      // What was on shared screens is read first, frame by frame, so the notes can say what was shown while it was said;
+      // a call where nothing was transcribed still keeps what its screens showed.
       const shown = screens.withReadings(note.manifest.screens, note.manifest.screens.length ? await screens.readAll(o, noteId, recordingId) : []);
+      if (!lines) {
+        await settle(o, job.job_id, noteId, recordingId, undefined, shown);
+        wlog.info('nothing was transcribed; note finished without notes', { ...at, screens: shown.length });
+        return;
+      }
+      const organizer = await me(o);
       const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown });
       await settle(o, job.job_id, noteId, recordingId, notes);
       wlog.info('notes written', {
