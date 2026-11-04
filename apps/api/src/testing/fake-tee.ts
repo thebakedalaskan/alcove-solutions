@@ -30,15 +30,24 @@ const INTEL_QE_VENDOR = Buffer.from('939a7233f79c4ca9940a0db3957f0607', 'hex');
 /** TD attributes as a production TD has them: no debug, SEPT_VE_DISABLE set. */
 const TD_ATTRIBUTES = Buffer.from([0, 0, 0, 0x10, 0, 0, 0, 0]);
 
+/** What a TD measured: the OS it booted (MRTD, RTMR0–2), what it ran (MRCONFIGID, RTMR3) and its report data. */
+export interface Measured { mrtd: string; rtmr0: string; rtmr1: string; rtmr2: string; mrConfigId: Uint8Array; rtmr3: Uint8Array; reportData: Uint8Array }
+
 export interface FakeIntel {
   /** The test root, as INTEL_ROOT_CA. */
   rootPem: string;
   /** Where its collateral is, as INTEL_PCS_URL. */
   pcsUrl: string;
-  /** A TDX quote of a TD with these measurements and report data. */
-  quote(td: { reportData: Uint8Array; mrConfigId: Uint8Array; rtmr3: Uint8Array }): Buffer;
+  /** A TDX quote of a TD that measured exactly this. */
+  quote(td: Measured): Buffer;
   /** When set, Intel's TCB information has passed its next update, as when collateral is stale. */
   expired: boolean;
+  /** The TCB status Intel's collateral gives the platform. */
+  status: 'UpToDate' | 'OutOfDate';
+  /** When set, Intel's service answers 503. */
+  down: boolean;
+  /** When set, quotes carry a PCK certificate without Intel's SGX extension, so they name no platform. */
+  unnamed: boolean;
   answer(path: string, query: URLSearchParams): Answer | undefined;
 }
 
@@ -60,32 +69,37 @@ export function fakeIntel(origin: string): FakeIntel {
     der.sequence(der.oid(`${SGX}.5`), der.enumerated(1))
   );
   const pck = issue({ commonName: 'Alcove Test SGX PCK Certificate', organization: org, curve: 'P-256', issuer: platform, ca: false, extensions: [{ oid: SGX, der: sgxExtension }] });
+  const unnamedPck = issue({ commonName: 'Alcove Test SGX PCK Certificate', organization: org, curve: 'P-256', issuer: platform, ca: false });
   const tcbSigner = issue({ commonName: 'Alcove Test SGX TCB Signing', organization: org, curve: 'P-256', issuer: root, ca: false });
   const attestation = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const qeAuth = randomBytes(32);
-  const measured = { mrSeam: randomBytes(48), mrTd: randomBytes(48), rtmr: [randomBytes(48), randomBytes(48), randomBytes(48)], mrEnclave: randomBytes(32) };
+  const measured = { mrSeam: randomBytes(48), mrEnclave: randomBytes(32) };
   const issuerChain = (...pems: string[]) => encodeURIComponent(pems.join(''));
 
   const self: FakeIntel = {
-    rootPem: root.pem, pcsUrl: base, expired: false,
+    rootPem: root.pem, pcsUrl: base, expired: false, status: 'UpToDate', down: false, unnamed: false,
     quote(td) {
       const header = Buffer.concat([u16(4), u16(2), u32(0x81), u16(0), u16(0), INTEL_QE_VENDOR, Buffer.alloc(20)]);
+      const mr = (h: string) => Buffer.from(h, 'hex');
       const report = Buffer.concat([
         Buffer.from(TEE_TCB_SVN), measured.mrSeam, Buffer.alloc(48), Buffer.alloc(8), TD_ATTRIBUTES, Buffer.from('e702060000000000', 'hex'),
-        measured.mrTd, Buffer.from(td.mrConfigId), Buffer.alloc(48), Buffer.alloc(48), ...measured.rtmr, Buffer.from(td.rtmr3), Buffer.from(td.reportData)
+        mr(td.mrtd), Buffer.from(td.mrConfigId), Buffer.alloc(48), Buffer.alloc(48), mr(td.rtmr0), mr(td.rtmr1), mr(td.rtmr2), Buffer.from(td.rtmr3), Buffer.from(td.reportData)
       ]);
       const key = rawPublicKey(attestation.publicKey);
       const qeReport = Buffer.concat([
         Buffer.from(CPUSVN), u32(0), Buffer.alloc(28), Buffer.from('11000000000000000000000000000000', 'hex'), measured.mrEnclave, Buffer.alloc(32),
         Buffer.from(QE_MRSIGNER, 'hex'), Buffer.alloc(96), u16(2), u16(6), Buffer.alloc(60), sha256(Buffer.concat([key, qeAuth])), Buffer.alloc(32)
       ]);
-      const chain = Buffer.from(pck.pem + platform.pem + root.pem);
-      const certification = Buffer.concat([qeReport, signRaw(pck.key, qeReport), u16(qeAuth.length), qeAuth, u16(5), u32(chain.length), chain]);
+      const leaf = self.unnamed ? unnamedPck : pck;
+      const chain = Buffer.from(leaf.pem + platform.pem + root.pem);
+      const certification = Buffer.concat([qeReport, signRaw(leaf.key, qeReport), u16(qeAuth.length), qeAuth, u16(5), u32(chain.length), chain]);
       const signed = Buffer.concat([header, report]);
       const auth = Buffer.concat([signRaw(attestation.privateKey, signed), key, u16(6), u32(certification.length), certification]);
       return Buffer.concat([signed, u32(auth.length), auth]);
     },
     answer(path, query) {
+      if (!path.startsWith('/intel/')) return undefined;
+      if (self.down) return { status: 503, headers: { 'content-type': 'text/plain' }, body: Buffer.from('Service unavailable') };
       const now = Date.now();
       // Stale collateral was due a day ago; current collateral is due in a month, as Intel's is.
       const dates = { issueDate: iso(now - (self.expired ? 31 : 1) * 86_400_000), nextUpdate: iso(self.expired ? now - 86_400_000 : now + 30 * 86_400_000) };
@@ -101,7 +115,7 @@ export function fakeIntel(origin: string): FakeIntel {
         const tcbInfo = {
           id: 'TDX', version: 3, ...dates, fmspc: FMSPC, pceId: '0000', tcbType: 0, tcbEvaluationDataNumber: 20,
           tdxModule: { mrsigner: '0'.repeat(96), attributes: '0000000000000000', attributesMask: 'FFFFFFFFFFFFFFFF' }, tdxModuleIdentities: [],
-          tcbLevels: [{ tcb: { sgxtcbcomponents: CPUSVN.map((svn) => ({ svn })), pcesvn: PCESVN, tdxtcbcomponents: TEE_TCB_SVN.map((svn) => ({ svn })) }, tcbDate: '2025-08-13T00:00:00Z', tcbStatus: 'UpToDate' }]
+          tcbLevels: [{ tcb: { sgxtcbcomponents: CPUSVN.map((svn) => ({ svn })), pcesvn: PCESVN, tdxtcbcomponents: TEE_TCB_SVN.map((svn) => ({ svn })) }, tcbDate: '2025-08-13T00:00:00Z', tcbStatus: self.status }]
         };
         return { status: 200, headers: { 'content-type': 'application/json', 'TCB-Info-Issuer-Chain': issuerChain(tcbSigner.pem, root.pem) }, body: signedJson('tcbInfo', tcbInfo) };
       }
@@ -121,6 +135,9 @@ export function fakeIntel(origin: string): FakeIntel {
 
 /* ---------- NVIDIA ---------- */
 
+/** Which key signs NRAS's verdicts: NVIDIA's, or one whose chain is wrong in a particular way. */
+export type NrasSigner = 'nvidia' | 'other-root' | 'expired-intermediate' | 'intermediate-not-ca';
+
 export interface FakeNvidia {
   /** The test root, as NVIDIA_ROOT_CA. */
   rootPem: string;
@@ -132,6 +149,11 @@ export interface FakeNvidia {
   verdict: 'pass' | 'fail';
   /** How long a verdict holds, in seconds (NRAS gives an hour). */
   lifetime: number;
+  signer: NrasSigner;
+  /** When set, the verdict is for another nonce than the evidence's, as a replayed one would be. */
+  stale: boolean;
+  /** When set, NRAS (or only its published keys) answers 503. */
+  down: 'no' | 'attest' | 'keys';
   answer(path: string, method: string, body: Buffer): Promise<Answer | undefined>;
 }
 
@@ -140,28 +162,43 @@ export function fakeNvidia(origin: string): FakeNvidia {
   const base = `${origin}/nvidia`;
   const org = 'Alcove Tests (NVIDIA stand-in)';
   const root = issue({ commonName: 'Alcove Test NVIDIA Attestation Service CA', organization: org, curve: 'P-384', ca: true, notAfter: new Date(Date.now() + 10 * YEAR) });
-  const intermediate = issue({ commonName: 'Alcove Test NVIDIA Attestation GPU Intermediate', organization: org, curve: 'P-384', issuer: root, ca: true });
-  const signing = issue({ commonName: 'Alcove Test NVIDIA Attestation GPU Signing', organization: org, curve: 'P-384', issuer: intermediate, ca: false });
-  const kid = `nv-eat-kid-test-${randomUUID()}`;
-  const jwk = signing.publicKey.export({ format: 'jwk' });
-  const sign = (claims: Record<string, unknown>, lifetime: number) => new SignJWT(claims).setProtectedHeader({ alg: 'ES384', kid }).setIssuer(base.replace(/\/nvidia$/, ''))
-    .setIssuedAt().setNotBefore('0s').setExpirationTime(`${lifetime}s`).setJti(randomUUID()).sign(signing.key);
+  const otherRoot = issue({ commonName: 'Alcove Test Someone Else’s CA', organization: 'Somewhere else', curve: 'P-384', ca: true });
+  const chained = (name: string, rootOf: typeof root, intermediate: { ca: boolean; notBefore?: Date; notAfter?: Date }) => {
+    const middle = issue({ commonName: `Alcove Test NVIDIA ${name} Intermediate`, organization: org, curve: 'P-384', issuer: rootOf, ...intermediate });
+    const leaf = issue({ commonName: `Alcove Test NVIDIA ${name} Signing`, organization: org, curve: 'P-384', issuer: middle, ca: false });
+    return { kid: `nv-eat-kid-test-${name}-${randomUUID()}`, middle, leaf };
+  };
+  const signers: Record<NrasSigner, ReturnType<typeof chained>> = {
+    nvidia: chained('GPU', root, { ca: true }),
+    'other-root': chained('Elsewhere', otherRoot, { ca: true }),
+    'expired-intermediate': chained('Expired', root, { ca: true, notBefore: new Date(Date.now() - 2 * 86_400_000), notAfter: new Date(Date.now() - 86_400_000) }),
+    'intermediate-not-ca': chained('Not-CA', root, { ca: false })
+  };
+  const sign = (claims: Record<string, unknown>, lifetime: number) => {
+    const s = signers[self.signer];
+    return new SignJWT(claims).setProtectedHeader({ alg: 'ES384', kid: s.kid }).setIssuer(base.replace(/\/nvidia$/, ''))
+      .setIssuedAt().setNotBefore('0s').setExpirationTime(`${lifetime}s`).setJti(randomUUID()).sign(s.leaf.key);
+  };
   const Payload = (v: unknown): { nonce: string; arch: string; evidence_list: { nonce?: string }[] } | null => {
     if (typeof v !== 'object' || v === null || !('nonce' in v) || !('arch' in v) || !('evidence_list' in v)) return null;
     const { nonce, arch, evidence_list: list } = v;
     return typeof nonce === 'string' && typeof arch === 'string' && Array.isArray(list) ? { nonce, arch, evidence_list: list.map((e: unknown) => (typeof e === 'object' && e !== null && 'nonce' in e && typeof e.nonce === 'string' ? { nonce: e.nonce } : {})) } : null;
   };
   const self: FakeNvidia = {
-    rootPem: root.pem, nrasUrl: base, verdict: 'pass', lifetime: 3600,
+    rootPem: root.pem, nrasUrl: base, verdict: 'pass', lifetime: 3600, signer: 'nvidia', stale: false, down: 'no',
     payload: (nonce) => JSON.stringify({
       nonce, arch: 'HOPPER',
       evidence_list: Array.from({ length: 8 }, () => ({ arch: 'HOPPER', certificate: randomBytes(48).toString('base64'), evidence: randomBytes(96).toString('base64'), nonce }))
     }),
     async answer(path, method, body) {
+      if (!path.startsWith('/nvidia/')) return undefined;
+      const unavailable: Answer = { status: 503, headers: { 'content-type': 'text/plain' }, body: Buffer.from('Service unavailable') };
       if (path === '/nvidia/.well-known/jwks.json') {
-        return json({ keys: [{ ...jwk, kid, alg: 'ES384', use: 'sig', x5c: [signing.der.toString('base64'), intermediate.der.toString('base64')] }] });
+        if (self.down === 'keys') return unavailable;
+        return json({ keys: Object.values(signers).map((s) => ({ ...s.leaf.publicKey.export({ format: 'jwk' }), kid: s.kid, alg: 'ES384', use: 'sig', x5c: [s.leaf.der.toString('base64'), s.middle.der.toString('base64')] })) });
       }
       if (path !== '/nvidia/v3/attest/gpu' || method !== 'POST') return undefined;
+      if (self.down === 'attest') return unavailable;
       let parsed: unknown = null;
       try { parsed = JSON.parse(body.toString('utf8')); } catch { /* answered below */ }
       const p = Payload(parsed);
@@ -172,7 +209,7 @@ export function fakeNvidia(origin: string): FakeNvidia {
       }, self.lifetime)));
       const overall = await sign({
         sub: 'NVIDIA-PLATFORM-ATTESTATION', 'x-nvidia-ver': '2.0', 'x-nvidia-overall-att-result': self.verdict === 'pass' && p.evidence_list.every((e) => e.nonce === p.nonce),
-        submods: Object.fromEntries(each.map((t, i) => [`GPU-${i}`, ['DIGEST', ['SHA-256', sha256(Buffer.from(t)).toString('hex')]]])), eat_nonce: p.nonce
+        submods: Object.fromEntries(each.map((t, i) => [`GPU-${i}`, ['DIGEST', ['SHA-256', sha256(Buffer.from(t)).toString('hex')]]])), eat_nonce: self.stale ? randomBytes(32).toString('hex') : p.nonce
       }, self.lifetime);
       return json([['JWT', overall], Object.fromEntries(each.map((t, i) => [`GPU-${i}`, t]))]);
     }

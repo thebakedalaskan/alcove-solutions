@@ -32,7 +32,7 @@ flowchart TB
     Notes -->|transcript rows, access rows, jobs| DB
     Calls -->|ciphertext objects| Obj[(S3-compatible store: O01)]
     Notes --> Inference
-    Inference -->|speech: Oblivious HTTP; transcripts: end-to-end encrypted; to attested keys| I01[NEAR AI Cloud: I01]
+    Inference -->|Oblivious HTTP, sealed to each model's attested key| I01[NEAR AI Cloud: I01]
     Inference -->|TDX collateral, GPU evidence| Verifiers[Intel PCS, NVIDIA NRAS]
     Account -->|OpenID Connect| Google[Google: sign-in and Calendar]
     Calls -->|Calendar API| Google
@@ -51,7 +51,8 @@ The API is one application with modules (account, people, meetings, calendar, ca
 transcripts, notes, drafting, writer, billing), not separate services. Modules share one database pool and
 one object store, and receive the owner context (the account's keys, opened for this request) explicitly.
 Billing is given only the owner ID and seals its state under `Kservice`. Google sign-in and Calendar live
-in `apps/api/src/google.ts` and `modules/calendar.ts`; only `apps/api/src/inference.ts` talks to NEAR AI.
+in `apps/api/src/google.ts` and `modules/calendar.ts`; only `apps/api/src/inference.ts` and `apps/api/src/evidence.ts`
+talk to NEAR AI, and only `inference.ts` sends it content.
 `apps/api/src/demo.ts` holds the stand-ins for Microsoft and SSO sign-in, the sample calendar and the
 company directory until the real providers are connected.
 
@@ -112,4 +113,4 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | Email (SMTP) as well |
 | Object store | RustFS in Docker | Cloudflare R2 |
 | Database | Postgres 17 in Docker | Cloud SQL Postgres 17 |
-| Inference | NEAR AI Cloud when `NEAR_AI_API_KEY` is set: each model's attestation checked first, then speech by Oblivious HTTP and transcripts end-to-end encrypted to its attested key | The same, with the models' builds pinned to published image provenance |
+| Inference | NEAR AI Cloud when `NEAR_AI_API_KEY` is set: each model's attestation checked first (its OS image pinned), then everything by Oblivious HTTP sealed to its attested key | The same, with the model code pinned to published provenance |

@@ -624,16 +624,13 @@ describe('live transcript and written notes', () => {
     }]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
-    // Each model was verified first: the speech went sealed to Whisper's attested key, the transcript
-    // end-to-end encrypted to the notes model's, whose signature on its reply came back with the notes.
+    // Each model was verified first, on the dstack image NEAR AI's models boot, and the speech and the
+    // transcript went sealed to its attested key, at its own endpoint.
     const measured = h.near.composes();
-    const checked = { verifiedAt: expect.any(String), tdx: { status: 'UpToDate', quote: expect.stringMatching(/^[0-9a-f]{64}$/) }, gpu: { count: 8, arch: 'HOPPER' }, gateway: { status: 'UpToDate', compose: measured.gateway } };
+    const checked = { verifiedAt: expect.any(String), tdx: { status: 'UpToDate', quote: expect.stringMatching(/^[0-9a-f]{64}$/) }, os: 'dstack-nvidia-0.5.12', gpu: { count: 8, arch: 'HOPPER' }, gateway: { status: 'UpToDate', os: 'dstack-0.5.12', compose: measured.gateway } };
     expect(note.inference).toEqual([
-      { model: 'openai/whisper-large-v3', task: 'transcript', encryption: 'ohttp', reply: 'sealed', key: h.near.keys().transcript, compose: measured.transcript, ...checked },
-      {
-        model: 'z-ai/glm-5.3-flash', task: 'notes', encryption: 'e2ee', reply: 'signed', key: h.near.keys().notes, compose: measured.notes, ...checked,
-        receipt: { completionId: expect.any(String), signedText: expect.stringMatching(/^z-ai\/glm-5\.3-flash:[0-9a-f]{64}:[0-9a-f]{64}$/), signature: expect.stringMatching(/^[0-9a-f]{128}$/) }
-      }
+      { model: 'openai/whisper-large-v3', task: 'transcript', key: h.near.keys().transcript, compose: measured.transcript, ...checked },
+      { model: 'z-ai/glm-5.3-flash', task: 'notes', key: h.near.keys().notes, compose: measured.notes, ...checked }
     ]);
     expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
     // The notes model was sent the transcript with names, not anyone's address.
@@ -811,7 +808,7 @@ describe('live transcript and written notes', () => {
 });
 
 describe('verified private inference', () => {
-  /** A NEAR AI of its own and an API server that uses it, so nothing has been verified there yet. */
+  /** A NEAR AI of its own and an API server that uses it, so nothing has been verified, or refused, there yet. */
   async function ownNear() {
     const near = await startFakeNear();
     const server = await h.secondServer(near.settings);
@@ -822,78 +819,182 @@ describe('verified private inference', () => {
   const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
   const said = (e: unknown) => (e instanceof AlcoveApiError ? e.message : 'not-an-api-error');
   const job = async (ownerId: string) => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [ownerId])).rows[0];
+  const dueNow = (ownerId: string) => h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [ownerId]);
+  const unreadable = (received: { body: Buffer }[], ...canaries: string[]) => {
+    const wire = Buffer.concat(received.map((r) => r.body));
+    for (const c of canaries) for (const enc of [c, Buffer.from(c).toString('hex'), Buffer.from(c).toString('base64').slice(0, 12)]) expect(wire.includes(Buffer.from(enc)), `${c} as ${enc} on the wire`).toBe(false);
+  };
 
-  it('checks NEAR AI’s evidence before sending anything, and sends nothing to a model whose evidence doesn’t check out', async () => {
+  it('sends nothing to a model whose evidence doesn’t check out, in any of the ways it can fail, and logs why', async () => {
+    const cases: [Tamper, 'model' | 'gateway', string][] = [
+      ['quote', 'model', 'tdx-quote'], ['quote', 'gateway', 'tdx-quote'], ['nonce', 'model', 'nonce'], ['nonce', 'gateway', 'nonce'],
+      ['key', 'model', 'signing-key'], ['key', 'gateway', 'signing-key'], ['os-image', 'model', 'os-image'], ['os-image', 'gateway', 'os-image'],
+      ['compose', 'model', 'compose'], ['compose', 'gateway', 'compose'], ['rtmr3', 'model', 'rtmr3'], ['rtmr3', 'gateway', 'rtmr3'],
+      ['ohttp-key', 'model', 'ohttp-key'], ['gpu-nonce', 'model', 'nonce'], ['verdict-nonce', 'model', 'nonce'], ['gpu', 'model', 'gpu'],
+      ['model-mismatch', 'model', 'model-mismatch'], ['expired', 'model', 'expired'], ['tcb', 'model', 'tcb-status'], ['unnamed-platform', 'model', 'tdx-quote'],
+      ['nvidia-root', 'model', 'gpu'], ['nvidia-expired', 'model', 'gpu'], ['nvidia-not-ca', 'model', 'gpu'],
+      ['pcs-down', 'model', 'collateral-unavailable'], ['nras-down', 'model', 'gpu-unavailable'], ['jwks-down', 'model', 'gpu-unavailable'], ['report-down', 'model', 'report-unavailable']
+    ];
+    const refused: Record<string, unknown> = {};
+    for (const [how, of, expected] of cases) {
+      const own = await ownNear();
+      try {
+        own.near.tamper(how, of);
+        const rec = await own.api.recordings.start('Checked first');
+        const from = h.logs.length;
+        const e = await rec.transcribe(speech(`CANARY-UNVERIFIED ${how}: the merger closes on Friday.`, 0, 0)).catch((x: unknown) => x);
+        const couldntCheck = expected.endsWith('-unavailable');
+        expect([code(e), said(e)]).toEqual(['unavailable', couldntCheck ? 'We couldn’t check NEAR AI’s private model right now, so nothing was sent. Try again in a moment.' : 'We couldn’t verify NEAR AI’s private model, so nothing was sent. Try again in a moment.']);
+        const line = logsSince(from).find((l) => l.msg === 'model evidence refused');
+        expect(line, `${how} on the ${of}`).toMatchObject({ model: 'openai/whisper-large-v3', task: 'transcript', ms: expect.any(Number) });
+        refused[`${how}/${of}`] = line?.['code'];
+        // Nothing with content reached NEAR AI: only requests for its evidence, and NVIDIA only the GPU evidence.
+        expect(own.near.calls).toEqual([]);
+        expect(own.near.received.every((r) => r.path === '/nvidia/v3/attest/gpu')).toBe(true);
+        unreadable(own.near.received, 'CANARY-UNVERIFIED', 'merger closes');
+      } finally {
+        await own.close();
+      }
+    }
+    expect(refused).toEqual(Object.fromEntries(cases.map(([how, of, expected]) => [`${how}/${of}`, expected])));
+  });
+
+  it('stands by a refusal for a while, uses a report that checks out over one that doesn’t, and sends once it checks out', async () => {
     const own = await ownNear();
     try {
       const rec = await own.api.recordings.start('Checked first');
-      // Each way the evidence can be wrong is refused, logged with its code, and the clip never leaves.
-      const refused: Record<string, unknown> = {};
-      for (const how of ['expired', 'quote', 'nonce', 'key', 'compose', 'rtmr3', 'ohttp-key', 'gpu'] satisfies Tamper[]) {
-        own.near.tamper(how);
-        const from = h.logs.length;
-        const e = await rec.transcribe(speech(`CANARY-UNVERIFIED ${how}: the merger closes on Friday.`, 0, 0)).catch((x: unknown) => x);
-        expect([code(e), said(e)]).toEqual(['unavailable', 'We couldn’t verify NEAR AI’s private model, so nothing was sent. Try again in a moment.']);
-        const line = logsSince(from).find((l) => l.msg === 'model evidence refused');
-        expect(line).toMatchObject({ model: 'openai/whisper-large-v3', task: 'transcript', ms: expect.any(Number) });
-        refused[how] = line?.['code'];
-      }
-      expect(refused).toEqual({ expired: 'expired', quote: 'tdx-quote', nonce: 'nonce', key: 'signing-key', compose: 'compose', rtmr3: 'rtmr3', 'ohttp-key': 'ohttp-key', gpu: 'gpu' });
-      // NEAR AI got nothing with content: only requests for its evidence, and NVIDIA only the GPU evidence.
-      expect(own.near.calls).toEqual([]);
-      expect(own.near.received.every((r) => r.path === '/nvidia/v3/attest/gpu')).toBe(true);
-      for (const enc of ['CANARY-UNVERIFIED', 'merger closes'].flatMap((c) => [c, Buffer.from(c).toString('hex')])) expect(Buffer.concat(own.near.received.map((r) => r.body)).includes(Buffer.from(enc))).toBe(false);
-
-      // Once it checks out, the same clip goes, sealed to the model's key.
+      own.near.tamper('quote');
+      expect(code(await rec.transcribe(speech('One.', 0, 0)).catch((e: unknown) => e))).toBe('unavailable');
+      // The next clip within half a minute is refused without fetching the evidence again.
+      let from = h.logs.length;
+      expect(code(await rec.transcribe(speech('Two.', 0, 4000)).catch((e: unknown) => e))).toBe('unavailable');
+      expect(logsSince(from).filter((l) => l.msg === 'model evidence refused' || l.msg === 'model verified')).toEqual([]);
+      await rec.discard();
       own.near.tamper(null);
+    } finally {
+      await own.close();
+    }
+
+    const other = await ownNear();
+    try {
+      // NEAR AI returns a tampered report ahead of an honest one: the tampered one is refused, the honest one used.
+      other.near.tamper('extra-candidate');
+      const from = h.logs.length;
+      const rec = await other.api.recordings.start('Two reports');
       await rec.transcribe(speech('Now it checks out.', 0, 0));
       expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Now it checks out.']);
-      expect(own.near.calls.map((c) => [c.path, c.encryption])).toEqual([['/v1/audio/transcriptions', 'ohttp']]);
+      expect(logsSince(from).find((l) => l.msg === 'model report refused')).toMatchObject({ code: 'tdx-quote', candidate: 0, candidates: 2 });
+      expect(logsSince(from).find((l) => l.msg === 'model verified')).toMatchObject({ model: 'openai/whisper-large-v3', code: 'verified', candidates: 2, passed: 1, os: 'dstack-nvidia-0.5.12' });
+      expect(other.near.calls.map((c) => [c.path, c.encryption])).toEqual([['/v1/audio/transcriptions', 'ohttp']]);
+      other.near.tamper(null);
+      await rec.discard();
+    } finally {
+      await other.close();
+    }
+  });
 
-      // The notes model's evidence doesn't check out: the transcript isn't sent, and the job tries again later.
-      own.near.tamper('key');
-      const from = h.logs.length;
+  it('keeps a note waiting while the notes model can’t be verified, without using up its attempts', async () => {
+    const own = await ownNear();
+    try {
+      const rec = await own.api.recordings.start('Waits for NVIDIA');
+      await rec.transcribe(speech('We agreed to wait for NVIDIA.', 0, 0));
+      // NVIDIA's attestation service is down: the notes model can't be verified, so the transcript isn't sent.
+      own.near.tamper('nras-down');
       const { pendingNoteId } = await rec.stop();
-      await until(async () => (await job(own.session.ownerId))?.state === 'queued', 'the first attempt to be refused');
-      expect(await job(own.session.ownerId)).toEqual({ state: 'queued', attempt: 1 });
-      expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions')).toEqual([]);
-      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', task: 'notes', code: 'signing-key' });
-      own.near.tamper(null);
+      await until(async () => (await job(own.session.ownerId))?.state === 'waiting', 'the job to wait');
       const { maintain } = await import('./maintenance');
-      await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [own.session.ownerId]);
-      await maintain(own.deps);
-      const note = await own.api.notes.get(pendingNoteId);
-      expect(note.summary).toBe('Heard 1 lines. It ended on: Now it checks out.');
-      expect(note.inference.map((x) => [x.task, x.key, x.encryption, x.reply])).toEqual([['transcript', own.near.keys().transcript, 'ohttp', 'sealed'], ['notes', own.near.keys().notes, 'e2ee', 'signed']]);
+      for (let i = 0; i < 4; i++) {
+        await dueNow(own.session.ownerId);
+        await maintain(own.deps);
+        expect(await job(own.session.ownerId)).toEqual({ state: 'waiting', attempt: 0 });
+      }
+      for await (const p of own.api.notes.progress(pendingNoteId)) { expect(p.steps.at(-1)).toEqual({ label: 'Waiting to verify the notes model. Nothing is sent until it checks out', done: false }); break; }
+      expect((await own.api.notes.get(pendingNoteId)).status).toBe('pending');
+      expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions')).toEqual([]);
+      expect(logLines().some((l) => l.msg === 'notes waiting for the notes model to check out')).toBe(true);
 
-      // A reply whose signature isn't the model's over exactly what was sent and received isn't used.
-      own.near.tamper('reply-signature');
-      const before = h.logs.length;
-      expect(code(await asked(own.api, pendingNoteId, 'Does it check out?').catch((e: unknown) => e))).toBe('unavailable');
-      expect(logsSince(before).find((l) => l.msg === 'reply refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', code: 'reply-signature' });
-      own.near.tamper(null);
-      expect(own.near.calls.every((c) => c.encryption !== 'none')).toBe(true);
+      // NVIDIA comes back. The refusal stands for half a minute here, so a fresh NEAR AI plays it coming back.
+      const back = await startFakeNear();
+      try {
+        await dueNow(own.session.ownerId);
+        await maintain({ ...own.deps, cfg: { ...own.deps.cfg, ...back.settings } });
+        const note = await own.api.notes.get(pendingNoteId);
+        expect(note).toMatchObject({ status: 'ready', summary: 'Heard 1 lines. It ended on: We agreed to wait for NVIDIA.' });
+        expect(note.inference.map((x) => [x.task, x.key])).toEqual([['transcript', own.near.keys().transcript], ['notes', back.keys().notes]]);
+        expect(back.calls.map((c) => [c.path, c.encryption])).toEqual([['/v1/chat/completions', 'ohttp']]);
+      } finally {
+        await back.close();
+      }
     } finally {
       await own.close();
     }
   });
 
-  it('verifies again when a model’s key changes, and when its verification runs out', async () => {
+  it('refuses a reply that isn’t sealed under the request, and sends nothing more when a model won’t open its key or its new key doesn’t check out', async () => {
+    const own = await ownNear();
+    try {
+      const rec = await own.api.recordings.start('Sealed replies');
+      await rec.transcribe(speech('We agreed the replies are sealed.', 0, 0));
+      // A reply someone else sealed doesn't open, and isn't used.
+      own.near.tamper('reply-sealed');
+      let from = h.logs.length;
+      expect(code(await rec.transcribe(speech('Not this one.', 0, 4000)).catch((e: unknown) => e))).toBe('unavailable');
+      expect(logsSince(from).find((l) => l.msg === 'reply refused')).toMatchObject({ what: 'transcribe', code: 'reply-sealed' });
+      const { pendingNoteId } = await rec.stop();
+      // For the notes, that's a failed attempt like any other: content went out, sealed, and the reply was bad.
+      await until(async () => (await job(own.session.ownerId))?.state === 'queued', 'the first attempt to fail');
+      expect(await job(own.session.ownerId)).toEqual({ state: 'queued', attempt: 1 });
+      own.near.tamper(null);
+      const { maintain } = await import('./maintenance');
+      await dueNow(own.session.ownerId);
+      await maintain(own.deps);
+      expect((await own.api.notes.get(pendingNoteId)).decisions.map((d) => d.text)).toEqual(['We agreed the replies are sealed.']);
+
+      // The model won't open what was sealed to its key, though its evidence still names that key:
+      // Alcove verifies again, finds the same key, and doesn't send the request again.
+      own.near.tamper('refuse');
+      const sent = own.near.received.length;
+      from = h.logs.length;
+      expect(code(await asked(own.api, pendingNoteId, 'Is this sent twice?').catch((e: unknown) => e))).toBe('unavailable');
+      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'z-ai/glm-5.3-flash', changed: false });
+      expect(own.near.received.slice(sent).filter((r) => r.path === '/direct/glm/ohttp')).toHaveLength(1);
+      own.near.tamper(null);
+
+      // The model moves to a new key whose evidence doesn't check out: the request sealed to the old key,
+      // which the model didn't open, stays the only one, and the answer says so.
+      own.near.rotate('notes');
+      own.near.tamper('quote');
+      const before = own.near.received.length;
+      from = h.logs.length;
+      const e = await asked(own.api, pendingNoteId, 'Is this sent to the new key?').catch((x: unknown) => x);
+      expect([code(e), said(e)]).toEqual(['unavailable', 'NEAR AI’s private model changed, and its new evidence didn’t check out, so the request wasn’t sent again. Try again in a moment.']);
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', code: 'tdx-quote' });
+      expect(logsSince(from).some((l) => l.msg === 'model key not accepted; verified again')).toBe(false);
+      expect(own.near.received.slice(before).filter((r) => r.path === '/direct/glm/ohttp')).toHaveLength(1);
+      own.near.tamper(null);
+    } finally {
+      await own.close();
+    }
+  });
+
+  it('verifies again when a model’s key changes, and when its verification runs out, and the note keeps every verification', async () => {
     const own = await ownNear();
     try {
       const rec = await own.api.recordings.start('Keys change');
       await rec.transcribe(speech('Before the key changed.', 0, 0));
       const first = own.near.keys();
-      // NEAR AI stops taking the old key: Alcove verifies the new one and sends the clip again, to it.
+      // The model stops taking the old key: Alcove verifies the new one and sends the clip again, to it.
       own.near.rotate('transcript');
       let from = h.logs.length;
-      await rec.transcribe(speech('After the key changed.', 0, 4000));
-      expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Before the key changed.', 'After the key changed.']);
+      await rec.transcribe(speech('', 0, 4000)); // silence: nothing is kept, but it went to the new key
       expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'openai/whisper-large-v3', changed: true });
+      const second = own.near.keys();
+      await rec.transcribe(speech('After the key changed.', 0, 6000));
+      expect(rec.getSnapshot().transcript.map((l) => l.text)).toEqual(['Before the key changed.', 'After the key changed.']);
       const { pendingNoteId } = await rec.stop();
       await written(own.api, pendingNoteId);
-      // The note keeps both verifications its lines went to, then the notes model's.
-      expect((await own.api.notes.get(pendingNoteId)).inference.map((x) => [x.task, x.key])).toEqual([['transcript', first.transcript], ['transcript', own.near.keys().transcript], ['notes', first.notes]]);
+      // The note keeps every verification its speech went to, the silent clip's included, then the notes model's.
+      expect((await own.api.notes.get(pendingNoteId)).inference.map((x) => [x.task, x.key])).toEqual([['transcript', first.transcript], ['transcript', second.transcript], ['notes', first.notes]]);
 
       own.near.rotate('notes');
       from = h.logs.length;
@@ -1175,6 +1276,11 @@ describe('confidential computing', () => {
       const cfg = await loadConfig({ ...withoutKeys, TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
       expect([cfg.KMASTER, cfg.KSERVICE]).toEqual([tee.key('alcove/kmaster/v1'), tee.key('alcove/kservice/v1')]);
       await expect(loadConfig({ ...withoutKeys, TEE: 'none' })).rejects.toThrow(/required outside a TEE/);
+      // So would whoever sets the roots inference is verified against, or the services it's checked with.
+      const { INTEL_ROOT_CA, NVIDIA_ROOT_CA, INTEL_PCS_URL, NVIDIA_NRAS_URL } = h.near.settings;
+      for (const [name, value] of Object.entries({ INTEL_ROOT_CA, NVIDIA_ROOT_CA, INTEL_PCS_URL, NVIDIA_NRAS_URL })) {
+        await expect(loadConfig({ ...withoutKeys, TEE: 'dstack', DSTACK_SOCKET: tee.socket, [name]: value })).rejects.toThrow(new RegExp(`${name}: inside a TEE, inference is verified only against the built-in roots`));
+      }
 
       const server = await h.secondServer({ TEE: 'dstack', DSTACK_SOCKET: tee.socket, ALCOVE_COMMIT: 'abc1234' });
       try {

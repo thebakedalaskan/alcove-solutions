@@ -243,9 +243,9 @@ export const RecipientSchema = z.object({ person: PersonSchema, role: RecipientR
 export type Recipient = z.infer<typeof RecipientSchema>;
 
 /**
- * What Alcove checked about a NEAR AI model before it sent the model anything for a note: an Intel TDX
- * confidential VM with NVIDIA GPUs in confidential-computing mode, measured as NEAR AI publishes it, holding
- * the key everything was encrypted to. Hashes identify the evidence; nothing in it is secret.
+ * What Alcove checked about a NEAR AI model before sending it anything for a note: an Intel TDX VM booted
+ * from a published dstack image, its GPUs in confidential-computing mode, and the key everything was
+ * sealed to, bound to Alcove's fresh challenge. Hashes identify the evidence; nothing in it is secret.
  */
 export const InferenceEvidenceSchema = z.object({
   /** The model as NEAR AI names it, e.g. "z-ai/glm-5.3-flash". */
@@ -254,25 +254,18 @@ export const InferenceEvidenceSchema = z.object({
   task: z.enum(['transcript', 'notes']),
   /** When Alcove checked the evidence, before sending anything to the key it vouches for. */
   verifiedAt: ISODateSchema,
-  /**
-   * How requests reached the model. e2ee: NEAR AI's end-to-end encrypted chat, which its gateway passes on
-   * without being able to read. ohttp: Oblivious HTTP sealed to the model's own key, which only it can open.
-   */
-  encryption: z.enum(['e2ee', 'ohttp']),
-  /** How each reply was shown to come from the model: signed by its key, or sealed under the request's encryption. */
-  reply: z.enum(['signed', 'sealed']),
-  /** The model's attested signing key (Ed25519, hex). */
+  /** The model's attested signing key (Ed25519, hex). It signs the OHTTP key requests are sealed to. */
   key: z.string(),
   /** The model's Intel TDX quote: the TCB status Intel's collateral gives it, and the quote's SHA-256. */
   tdx: z.object({ status: z.string(), quote: z.string() }),
-  /** The GPUs NVIDIA's attestation service confirmed are in confidential-computing mode. */
+  /** The dstack OS image its VM measured at boot, e.g. "dstack-nvidia-0.5.12". */
+  os: z.string(),
+  /** The GPUs NVIDIA's attestation service confirmed are in confidential-computing mode, for the same challenge. */
   gpu: z.object({ count: z.number(), arch: z.string() }),
-  /** SHA-256 of the software configuration (dstack app compose) the model's quote measures. */
+  /** SHA-256 of the app compose the VM was started with, as its quote measures it. */
   compose: z.string(),
-  /** NEAR AI's gateway, checked the same way: its TCB status and configuration hash. */
-  gateway: z.object({ status: z.string(), compose: z.string() }),
-  /** For signed replies: the model's signature over the exact request and reply, as NEAR AI's Verification Center reads it. */
-  receipt: z.object({ completionId: z.string(), signedText: z.string(), signature: z.string() }).optional()
+  /** NEAR AI's gateway, which served the evidence, checked the same way. */
+  gateway: z.object({ status: z.string(), os: z.string(), compose: z.string() })
 });
 export type InferenceEvidence = z.infer<typeof InferenceEvidenceSchema>;
 

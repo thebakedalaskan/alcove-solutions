@@ -1,9 +1,10 @@
 /*
  * The live transcript of a note while it is being recorded (docs: notes-and-inference). The browser
- * sends a few seconds of speech at a time; each clip is transcribed and kept as one sealed row,
- * tagged with a keyed hash of where it starts in the recording, so a retried clip is stored (and
- * transcribed) once. Each row also keeps the evidence of the verified model that heard it. When the
- * recording stops, the lines and that evidence move into the note and the rows go.
+ * sends a few seconds of speech at a time; each clip is transcribed and kept as one sealed row, even
+ * when nothing in it survived the filter, tagged with a keyed hash of where it starts in the recording,
+ * so a retried clip is stored (and transcribed) once. Each row also keeps the evidence of the verified
+ * model the clip was sent to. When the recording stops, the lines and that evidence move into the note
+ * and the rows go.
  */
 import { InferenceEvidenceSchema, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
@@ -51,10 +52,9 @@ export async function hear(o: Owner, t: Target, clip: Clip): Promise<void> {
     // a clip either lands before the move, or sees the recording stopped and stays out.
     const r = await maybeOne(c, z.object({ state: z.string() }), 'SELECT state FROM recordings WHERE owner_id = $1 AND recording_id = $2 FOR SHARE', [o.ownerId, t.recordingId]);
     if (!r || r.state === 'stopped') return false;
-    if (lines.length) {
-      await exec(c, 'INSERT INTO transcript_clips (owner_id, note_item_id, clip_tag, clip_ciphertext) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-        [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson({ lines, evidence }))]);
-    }
+    // Kept even without lines: the note says which verified models everything said in it went to.
+    await exec(c, 'INSERT INTO transcript_clips (owner_id, note_item_id, clip_tag, clip_ciphertext) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+      [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson({ lines, evidence }))]);
     return true;
   });
   if (kept) tlog.debug('clip transcribed into the live transcript', { ...ctx, lines: lines.length });
@@ -73,12 +73,12 @@ export async function lines(o: Owner, db: Db, noteId: string): Promise<Line[]> {
 }
 
 /**
- * The verified models that heard a note's lines: each verification once, the first time it was used.
+ * The verified models a note's speech went to: each verification once, the first time it was used.
  * Checking the same model again (every few minutes while in use) is the same verification unless its
- * key, its measured configuration or the gateway's changed.
+ * key, its OS image, its measured configuration or the gateway's changed.
  */
 export async function heardBy(o: Owner, db: Db, noteId: string): Promise<InferenceEvidence[]> {
-  const same = (e: InferenceEvidence) => [e.model, e.key, e.compose, e.tdx.status, e.gateway.compose, e.gateway.status].join('|');
+  const same = (e: InferenceEvidence) => [e.model, e.key, e.os, e.compose, e.tdx.status, e.gateway.os, e.gateway.compose, e.gateway.status].join('|');
   const first = new Map<string, InferenceEvidence>();
   for (const { evidence } of (await clips(o, db, noteId)).sort((a, b) => a.evidence.verifiedAt.localeCompare(b.evidence.verifiedAt))) {
     if (!first.has(same(evidence))) first.set(same(evidence), evidence);

@@ -4,14 +4,15 @@
  * notes model draft the summary, decisions, follow-ups, chapters and questions, and then writes
  * them into the note, charges the recorded minutes and deletes the job in one transaction. A failed
  * attempt is tried again a little later, up to three times; after the third, the note is finished
- * without a summary, so its transcript and audio are still there. The owner's keys are opened for
- * each job and wiped after it.
+ * without a summary, so its transcript and audio are still there. When the notes model's evidence
+ * doesn't check out, or can't be checked, nothing was sent: the job waits and checks again, as long as it
+ * takes, without using up an attempt. The owner's keys are opened for each job and wiped after it.
  */
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { openJson, stateKey } from '../crypto';
 import { bytea, exec, maybeOne, tx } from '../db';
-import { NotFoundError } from '../errors';
+import { NotFoundError, UnverifiedError } from '../errors';
 import { inference } from '../inference';
 import { log } from '../log';
 import { openOwner } from '../owners';
@@ -29,6 +30,8 @@ const ATTEMPTS = 3;
 const LEASE_SECONDS = 180;
 /** How long to wait before trying a job again, after its first and second failures. */
 const RETRY_SECONDS = [20, 90];
+/** How long a job waits before checking the notes model's evidence again, when it didn't check out. */
+const VERIFY_AGAIN_SECONDS = 300;
 
 const Claimed = z.object({ owner_id: z.string(), job_id: z.string(), revision_id: z.string(), job_ciphertext: bytea, attempt: z.number(), tried: z.number() });
 type Claimed = z.infer<typeof Claimed>;
@@ -101,6 +104,14 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       wlog.info('notes written', { ...at, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, ms: Math.round(performance.now() - t0) });
     } catch (e) {
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
+      if (e instanceof UnverifiedError) {
+        // Nothing was sent. An outage at Intel or NVIDIA, or NEAR AI out of date, mustn't use the attempts up.
+        wlog.warn('notes waiting for the notes model to check out', { ...at, retryInS: VERIFY_AGAIN_SECONDS, err: e });
+        await exec(d.pool, `UPDATE content_jobs SET state = 'waiting', attempt = $3, lease_until = now() + make_interval(secs => $4) WHERE owner_id = $1 AND job_id = $2`,
+          [job.owner_id, job.job_id, job.tried, VERIFY_AGAIN_SECONDS]);
+        setTimeout(() => kick(d, job.owner_id), VERIFY_AGAIN_SECONDS * 1000 + 250).unref();
+        return;
+      }
       if (job.attempt >= ATTEMPTS) {
         wlog.error('notes could not be written after three attempts; finishing the note without a summary', { ...at, err: e });
         await settle(o, job.job_id, noteId, recordingId, undefined);

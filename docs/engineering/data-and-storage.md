@@ -53,8 +53,8 @@ item of a kind.
 - **Streaming** a segment reads pieces in order, checks each digest, decrypts, and streams. Only for the note's
   organizer or someone with a `note_access` row for it, with an allow-listed content type, `nosniff` and
   `no-store`.
-- **Transcript clips** are sealed under the note's transcript key, one row per clip that had speech in it,
-  with the evidence of the verified model it went to. The live call or recording state opens them all;
+- **Transcript clips** are sealed under the note's transcript key, one row per transcribed clip (its lines,
+  none if nothing survived the filter), with the evidence of the verified model it went to. The live call or recording state opens them all;
   stopping moves the lines, and each distinct verification, into the note's manifest and deletes the rows in
   the same transaction. A note's manifest keeps those verifications, and the notes model's with its signed
   receipt, as `inference` ([Notes and inference › What a note keeps](notes-and-inference.md#what-a-note-keeps)).

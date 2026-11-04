@@ -1,9 +1,10 @@
 /*
- * Oblivious HTTP (RFC 9458), for the request NEAR AI's end-to-end encrypted chat doesn't cover: speech to
- * text. A request is a Binary HTTP message (RFC 9292) sealed with HPKE (RFC 9180, base mode) to an OHTTP
- * key the model's attestation vouches for, so only the model's TEE can open it. The reply is sealed under
- * the same exchange, so only whoever opened the request could have written it (docs: notes-and-inference ›
- * Verified private inference).
+ * Oblivious HTTP (RFC 9458), the one way Alcove sends NEAR AI anything with content. A request is a Binary
+ * HTTP message (RFC 9292), the API key included, sealed with HPKE (RFC 9180, base mode) to the OHTTP key a
+ * model's attestation vouches for and posted to the model's own endpoint, so only what holds that key, in
+ * the model's attested VM, can open it. The reply is sealed under the same exchange, so only whoever opened
+ * the request could have written it (docs: notes-and-inference › Verified private inference). The secrets
+ * of each exchange are wiped once used.
  *
  * Only the sender's side is here, with one suite: DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-128-GCM.
  */
@@ -37,30 +38,29 @@ const labeledExtract = (suite: Uint8Array, salt: Uint8Array, label: string, ikm:
 const labeledExpand = (suite: Uint8Array, prk: Uint8Array, label: string, info: Uint8Array, length: number) =>
   expand(sha256, prk, concat(i2osp(length, 2), utf8('HPKE-v1'), suite, utf8(label), info), length);
 
-interface Sender { enc: Uint8Array; seal(aad: Uint8Array, plaintext: Uint8Array): Uint8Array; exportSecret(context: Uint8Array, length: number): Uint8Array }
+/** Wipes intermediate secrets once they've been used. */
+const wipe = (...secrets: Uint8Array[]) => { for (const b of secrets) b.fill(0); };
 
-/** SetupBaseS: a fresh ephemeral key, the shared secret with the recipient, and the key schedule. Seals once. */
-function setupSender(recipient: Uint8Array, info: Uint8Array): Sender {
+/**
+ * SetupBaseS for one message: a fresh ephemeral key, the shared secret with the recipient and the key
+ * schedule, then the message sealed and the one secret the reply needs exported. Everything else is wiped.
+ */
+function sealOnce(recipient: Uint8Array, info: Uint8Array, plaintext: Uint8Array, exportContext: Uint8Array, exportLength: number): { enc: Uint8Array; sealed: Uint8Array; exported: Uint8Array } {
   const ephemeral = random(32);
   const enc = x25519.getPublicKey(ephemeral);
   const dh = x25519.getSharedSecret(ephemeral, recipient);
-  ephemeral.fill(0);
-  const shared = labeledExpand(KEM_SUITE, labeledExtract(KEM_SUITE, EMPTY, 'eae_prk', dh), 'shared_secret', concat(enc, recipient), NH);
+  const eae = labeledExtract(KEM_SUITE, EMPTY, 'eae_prk', dh);
+  const shared = labeledExpand(KEM_SUITE, eae, 'shared_secret', concat(enc, recipient), NH);
   const context = concat(new Uint8Array([0]), labeledExtract(HPKE_SUITE, EMPTY, 'psk_id_hash', EMPTY), labeledExtract(HPKE_SUITE, EMPTY, 'info_hash', info));
   const secret = labeledExtract(HPKE_SUITE, shared, 'secret', EMPTY);
   const key = labeledExpand(HPKE_SUITE, secret, 'key', context, NK);
   const nonce = labeledExpand(HPKE_SUITE, secret, 'base_nonce', context, NN);
   const exporter = labeledExpand(HPKE_SUITE, secret, 'exp', context, NH);
-  let sealed = false;
-  return {
-    enc,
-    seal(aad, plaintext) {
-      if (sealed) throw new Error('This HPKE context has already sealed its one message.');
-      sealed = true;
-      return gcm(key, nonce, aad).encrypt(plaintext);
-    },
-    exportSecret: (ctx, length) => labeledExpand(HPKE_SUITE, exporter, 'sec', ctx, length)
-  };
+  try {
+    return { enc, sealed: gcm(key, nonce, EMPTY).encrypt(plaintext), exported: labeledExpand(HPKE_SUITE, exporter, 'sec', exportContext, exportLength) };
+  } finally {
+    wipe(ephemeral, dh, eae, shared, secret, key, nonce, exporter);
+  }
 }
 
 /* ---------- key configuration (RFC 9458 §3) ---------- */
@@ -163,22 +163,24 @@ export interface Encapsulated {
   wire: Uint8Array;
   /** Opens the sealed reply (message/ohttp-res); throws if anyone but the request's recipient sealed it. */
   open(response: Uint8Array): Uint8Array;
+  /** Wipes what opening the reply needs, once it has been opened or given up on. */
+  wipe(): void;
 }
 
-/** Seals one Binary HTTP request to an OHTTP key, keeping what's needed to open its reply. */
+/** Seals one Binary HTTP request to an OHTTP key, keeping only what's needed to open its reply. */
 export function encapsulate(cfg: KeyConfig, request: Uint8Array): Encapsulated {
   const header = concat(new Uint8Array([cfg.keyId]), i2osp(KEM, 2), i2osp(KDF, 2), i2osp(AEAD, 2));
-  const sender = setupSender(cfg.publicKey, concat(utf8('message/bhttp request'), new Uint8Array([0]), header));
-  const wire = concat(header, sender.enc, sender.seal(EMPTY, request));
   const secretLength = Math.max(NN, NK);
-  const secret = sender.exportSecret(utf8('message/bhttp response'), secretLength);
+  const { enc, sealed, exported } = sealOnce(cfg.publicKey, concat(utf8('message/bhttp request'), new Uint8Array([0]), header), request, utf8('message/bhttp response'), secretLength);
   return {
-    wire,
+    wire: concat(header, enc, sealed),
     open(response) {
       if (response.length < secretLength + 16) throw new Error('The sealed reply is too short.');
-      const responseNonce = response.subarray(0, secretLength);
-      const prk = extract(sha256, secret, concat(sender.enc, responseNonce));
-      return gcm(expand(sha256, prk, utf8('key'), NK), expand(sha256, prk, utf8('nonce'), NN)).decrypt(response.subarray(secretLength));
-    }
+      const prk = extract(sha256, exported, concat(enc, response.subarray(0, secretLength)));
+      const key = expand(sha256, prk, utf8('key'), NK);
+      const nonce = expand(sha256, prk, utf8('nonce'), NN);
+      try { return gcm(key, nonce).decrypt(response.subarray(secretLength)); } finally { wipe(prk, key, nonce); }
+    },
+    wipe: () => wipe(exported)
   };
 }

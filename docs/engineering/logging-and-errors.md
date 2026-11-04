@@ -79,9 +79,9 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   `400 invalid` from its `content-length`, before the body is read.
 - NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
   `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
-  `5xx`), with the operation, status and timing as context. Evidence or a reply that doesn't check out is
-  an `UnverifiedError` (an `UnavailableError`, logged at error, or warn when a service couldn't be reached),
-  with the model, the task and the check that failed
+  `5xx`), with the operation, status and timing as context. Evidence that doesn't check out is an
+  `UnverifiedError` (an `UnavailableError`, logged at error, or warn when a service couldn't be reached), with
+  the model, the task and the check that failed; the notes worker waits on it instead of counting an attempt
   ([Notes and inference › Models and requests](notes-and-inference.md#models-and-requests)).
 
 ## Browser: `apps/web/src/lib/log.ts`

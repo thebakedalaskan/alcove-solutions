@@ -1,20 +1,28 @@
 /*
  * Verified private inference (docs: notes-and-inference › Verified private inference). Nothing with
- * content goes to NEAR AI until its evidence for the model has been fetched with a fresh nonce and checked
- * here, for its gateway and for every model report it returns:
+ * content goes to NEAR AI until its evidence for the model has been fetched with a fresh nonce from its
+ * gateway (NEAR_AI_BASE_URL, the only request this module sends NEAR AI) and checked here, for the
+ * gateway's report and for every model report it returns:
  *
  *  - the Intel TDX quote: its signature chain to INTEL_ROOT_CA, checked against Intel's collateral from
  *    INTEL_PCS_URL (revocation lists, TCB info, QE identity) with dcap-qvl; an accepted TCB status; debug off;
+ *  - the OS it booted: MRTD and RTMR0–2 must be exactly those of a published dstack image on NEAR AI's
+ *    machines (dstack-images.ts), and the os-image-hash event that image's digest;
  *  - the quote's report data: the reported signing key, then our nonce;
- *  - the measurements NEAR AI documents: the event log replays to RTMR3, and MRCONFIGID (and the
+ *  - what that OS measured after boot: the event log replays to RTMR3, and MRCONFIGID (and the
  *    compose-hash event) is the hash of the app compose the report shows;
  *  - a model's GPUs: NVIDIA's Remote Attestation Service (NVIDIA_NRAS_URL) checks the GPU evidence, which
  *    carries our nonce, and its signed verdict must chain to NVIDIA_ROOT_CA;
- *  - for speech, the model's OHTTP key: signed by the attested signing key.
+ *  - the model's OHTTP key, which every request is sealed to: signed by the attested signing key.
+ *
+ * Some things these checks can't show, and the docs say so: the app compose runs NEAR AI's compose
+ * manager, which starts the model code NEAR AI chooses; the GPU evidence is tied to the VM only by the
+ * nonce; the model name is the report's word; and the OHTTP key's signature doesn't cover the nonce.
  *
  * A verification is used for ten minutes at most (sooner when NVIDIA's verdict runs out), or until NEAR AI
- * stops accepting the key it vouched for; then the next request verifies again. Log lines carry the
- * model, a result code, the duration and hashes: never evidence contents, keys or anything sent.
+ * stops taking the key it vouched for; a refusal is kept for 30 seconds, so retries don't each fetch new
+ * evidence. Log lines carry the model, a result code, the duration and hashes: never evidence, keys or
+ * anything sent.
  */
 import type { InferenceEvidence } from '@alcove/api';
 import { ed25519 } from '@noble/curves/ed25519.js';
@@ -25,6 +33,7 @@ import { X509Certificate } from 'node:crypto';
 import { z } from 'zod';
 import type { Config } from './config';
 import { concat, equalBytes, random, utf8 } from './crypto';
+import { DSTACK_IMAGES, type DstackImage } from './dstack-images';
 import { UnverifiedError } from './errors';
 import { log } from './log';
 import { parseKeyConfig, type KeyConfig } from './ohttp';
@@ -35,12 +44,14 @@ export type Task = InferenceEvidence['task'];
 /** What every check can conclude, as logged and as the error's context says. */
 export type Check =
   | 'report-unavailable' | 'malformed' | 'no-model-evidence' | 'model-mismatch' | 'tdx-quote' | 'tcb-status' | 'debug' | 'collateral-unavailable'
-  | 'expired' | 'nonce' | 'signing-key' | 'rtmr3' | 'compose' | 'gpu' | 'gpu-unavailable' | 'ohttp-key';
+  | 'os-image' | 'expired' | 'nonce' | 'signing-key' | 'rtmr3' | 'compose' | 'gpu' | 'gpu-unavailable' | 'ohttp-key';
 /** Couldn't be checked, as opposed to checked and refused. */
 const UNAVAILABLE = new Set<Check>(['report-unavailable', 'collateral-unavailable', 'gpu-unavailable']);
 
 /** How long a verification is used before the next request checks again. */
 const TTL_MS = 10 * 60_000;
+/** How long a refusal stands before the next request checks again. */
+const REFUSED_MS = 30_000;
 /** Intel's collateral changes monthly; it's fetched again after this, or when Intel says it's due. */
 const COLLATERAL_MS = 30 * 60_000;
 /** Up to date, or up to date with software hardening Intel expects the TD's own software to provide. */
@@ -84,7 +95,7 @@ const jsonish = (v: unknown): unknown => {
 
 /* ---------- the TDX quote and its measurements ---------- */
 
-interface Tdx { status: string; advisories: string[]; quoteHash: string; compose: string; key: Uint8Array }
+interface Tdx { status: string; advisories: string[]; quoteHash: string; image: DstackImage; compose: string; key: Uint8Array }
 
 const collaterals = new Map<string, { until: number; collateral: Collateral }>();
 
@@ -118,8 +129,12 @@ const Dated = z.object({ nextUpdate: z.string() });
 
 /** Intel's collateral for a quote's platform: revocation lists, TCB info and QE identity, each with its signing chain. */
 async function collateral(cfg: Config, quote: Quote): Promise<Collateral> {
-  const fmspc = hex(intel.getFmspc(quote)).toUpperCase();
-  const ca = intel.getCa(quote);
+  let fmspc: string;
+  let ca: string;
+  try {
+    fmspc = hex(intel.getFmspc(quote)).toUpperCase();
+    ca = intel.getCa(quote);
+  } catch (e) { return refuse('tdx-quote', `the quote names no platform: ${why(e)}`); }
   const pcs = cfg.INTEL_PCS_URL.replace(/\/$/, '');
   const id = `${pcs}|${fmspc}|${ca}`;
   const hit = collaterals.get(id);
@@ -175,6 +190,10 @@ async function verifiedQuote(cfg: Config, bytes: Uint8Array): Promise<{ status: 
   return { status, advisories, td };
 }
 
+/** The published dstack image whose firmware, machine, kernel and initrd measure exactly what this TD booted. */
+const imageOf = (td: TDReport10): DstackImage | undefined =>
+  DSTACK_IMAGES.find((i) => i.mrtd === hex(td.mrTd) && i.rtmr0 === hex(td.rtMr0) && i.rtmr1 === hex(td.rtMr1) && i.rtmr2 === hex(td.rtMr2));
+
 /** RTMR3 as the event log says it was extended, or null if an event's digest doesn't match what it records. */
 function rtmr3(events: z.infer<typeof EventLog>): Uint8Array | null {
   let rtmr: Uint8Array = new Uint8Array(48);
@@ -193,8 +212,9 @@ function rtmr3(events: z.infer<typeof EventLog>): Uint8Array | null {
 }
 
 /**
- * One dstack report, the gateway's or a model's: Intel's verdict, then what the verified quote binds and
- * measures. The fields the report echoes are only compared with the quote; the gateway must echo its report data.
+ * One dstack report, the gateway's or a model's: Intel's verdict, the OS it booted, then what the verified
+ * quote binds and measures. The fields the report echoes are only compared with the quote; the gateway
+ * must echo its report data.
  */
 async function checkTdx(cfg: Config, r: z.infer<typeof Signed>, nonce: Uint8Array, echoes: 'report-data' | 'nonce-only'): Promise<Tdx> {
   const key = unhex(r.signing_address);
@@ -203,6 +223,8 @@ async function checkTdx(cfg: Config, r: z.infer<typeof Signed>, nonce: Uint8Arra
   const quote = unhex(r.intel_quote);
   if (!quote) return refuse('tdx-quote', 'the quote isn’t hex');
   const { status, advisories, td } = await verifiedQuote(cfg, quote);
+  const image = imageOf(td);
+  if (!image) return refuse('os-image', 'MRTD and RTMR0–2 aren’t a published dstack image on NEAR AI’s machines');
   // Report data: the signing key (32 bytes), then the nonce we sent.
   if (!equalBytes(td.reportData.slice(32), nonce)) return refuse('nonce', 'the quote doesn’t carry our nonce');
   if (!equalBytes(td.reportData.slice(0, 32), key)) return refuse('signing-key', 'the quote doesn’t bind the reported signing key');
@@ -211,14 +233,15 @@ async function checkTdx(cfg: Config, r: z.infer<typeof Signed>, nonce: Uint8Arra
   }
   const events = EventLog.safeParse(jsonish(r.event_log));
   const replayed = events.success ? rtmr3(events.data) : null;
-  if (!replayed || !equalBytes(replayed, td.rtMr3)) return refuse('rtmr3', 'the event log doesn’t replay to RTMR3');
+  if (!events.success || !replayed || !equalBytes(replayed, td.rtMr3)) return refuse('rtmr3', 'the event log doesn’t replay to RTMR3');
+  const said = (name: string) => events.data.find((e) => e.imr === 3 && e.event === name)?.event_payload.toLowerCase();
+  if (said('os-image-hash') !== image.osImageHash) return refuse('os-image', 'the OS says it’s another image than it measures');
   const tcb = TcbInfo.safeParse(jsonish(r.info.tcb_info));
   if (!tcb.success) return refuse('compose', 'the report has no app compose');
   const compose = sha256(utf8(tcb.data.app_compose));
   if (!equalBytes(td.mrConfigId, concat(new Uint8Array([1]), compose, new Uint8Array(15)))) return refuse('compose', 'MRCONFIGID isn’t the app compose’s hash');
-  const event = events.success ? events.data.find((e) => e.imr === 3 && e.event === 'compose-hash') : undefined;
-  if (!event || event.event_payload.toLowerCase() !== hex(compose)) return refuse('compose', 'the compose-hash event isn’t the app compose’s hash');
-  return { status, advisories, quoteHash: hex(sha256(quote)), compose: hex(compose), key };
+  if (said('compose-hash') !== hex(compose)) return refuse('compose', 'the compose-hash event isn’t the app compose’s hash');
+  return { status, advisories, quoteHash: hex(sha256(quote)), image, compose: hex(compose), key };
 }
 
 /* ---------- the GPUs, through NVIDIA's attestation service ---------- */
@@ -234,11 +257,12 @@ async function nrasKeys(cfg: Config, kid: string): Promise<z.infer<typeof Jwks>[
   const hit = keysets.get(url);
   const found = hit && hit.until > Date.now() ? hit.keys.find((k) => k.kid === kid) : undefined;
   if (found) return found;
-  const keys = Jwks.parse(await (await fetched(url)).json()).keys;
+  let keys: z.infer<typeof Jwks>['keys'];
+  try { keys = Jwks.parse(await (await fetched(url)).json()).keys; } catch (e) { return refuse('gpu-unavailable', `NRAS’s signing keys couldn’t be fetched: ${why(e)}`); }
   keysets.set(url, { until: Date.now() + 60 * 60_000, keys });
   return keys.find((k) => k.kid === kid);
 }
-/** True when `chain` (leaf first) ends at `root`, every certificate current and each one signed by the next. */
+/** True when `chain` (leaf first) ends at `root`, every certificate current and each one signed by the next, a CA. */
 function chainsTo(chain: X509Certificate[], root: X509Certificate, now: Date): boolean {
   const path = chain.at(-1)?.fingerprint256 === root.fingerprint256 ? chain.slice(0, -1) : chain;
   const current = (c: X509Certificate) => new Date(c.validFrom) <= now && now <= new Date(c.validTo);
@@ -289,9 +313,9 @@ async function checkGpu(cfg: Config, payloadText: string | undefined, nonce: Uin
 
 /* ---------- a model ---------- */
 
-interface Candidate { tdx: Tdx; gpu: { count: number; arch: string; until: number }; ohttp: KeyConfig | null }
+interface Candidate { tdx: Tdx; gpu: { count: number; arch: string; until: number }; ohttp: KeyConfig }
 
-async function checkModel(cfg: Config, raw: unknown, nonce: Uint8Array, model: string, task: Task): Promise<Candidate> {
+async function checkModel(cfg: Config, raw: unknown, nonce: Uint8Array, model: string): Promise<Candidate> {
   const r = ModelReport.safeParse(raw);
   if (!r.success) return refuse('malformed', 'a model report with an unexpected shape');
   const m = r.data;
@@ -299,28 +323,26 @@ async function checkModel(cfg: Config, raw: unknown, nonce: Uint8Array, model: s
   if (m.signing_public_key !== undefined && m.signing_public_key.toLowerCase() !== m.signing_address.toLowerCase()) return refuse('signing-key', 'the public key isn’t the signing address');
   const tdx = await checkTdx(cfg, m, nonce, 'nonce-only');
   const gpu = await checkGpu(cfg, m.nvidia_payload, nonce);
-  let ohttp: KeyConfig | null = null;
-  if (task === 'transcript') {
-    const o = m.ohttp_attestation;
-    const config = o ? unhex(o.key_config) : null;
-    const signature = o ? unhex(o.signature) : null;
-    const signer = o ? unhex(o.signing_key) : null;
-    if (!o || !config || !signature || signature.length !== 64 || o.signing_algo !== 'ed25519' || !signer || !equalBytes(signer, tdx.key)) return refuse('ohttp-key', 'the model’s OHTTP key isn’t signed by its attested key');
-    if (!ed25519.verify(signature, config, tdx.key)) return refuse('ohttp-key', 'the OHTTP key’s signature doesn’t verify');
-    ohttp = parseKeyConfig(config);
-    if (!ohttp) return refuse('ohttp-key', 'the OHTTP key doesn’t offer X25519 with AES-128-GCM');
-  }
+  // Every request is sealed to this key; it's the model's because the attested key signed it.
+  const o = m.ohttp_attestation;
+  const config = o ? unhex(o.key_config) : null;
+  const signature = o ? unhex(o.signature) : null;
+  const signer = o ? unhex(o.signing_key) : null;
+  if (!o || !config || !signature || signature.length !== 64 || o.signing_algo !== 'ed25519' || !signer || !equalBytes(signer, tdx.key)) return refuse('ohttp-key', 'the model’s OHTTP key isn’t signed by its attested key');
+  if (!ed25519.verify(signature, config, tdx.key)) return refuse('ohttp-key', 'the OHTTP key’s signature doesn’t verify');
+  const ohttp = parseKeyConfig(config);
+  if (!ohttp) return refuse('ohttp-key', 'the OHTTP key doesn’t offer X25519 with AES-128-GCM');
   return { tdx, gpu, ohttp };
 }
 
-/** A model whose evidence checked out, and how its requests go. */
+/** A model whose evidence checked out, and the key its requests are sealed to. */
 export interface Verified {
   model: string;
   task: Task;
-  /** The model's attested Ed25519 key, hex: chat is encrypted to it, and it signs replies. */
+  /** The model's attested Ed25519 key, hex, which signed its OHTTP key. */
   key: string;
-  /** For speech, the model's attested OHTTP key. */
-  ohttp: KeyConfig | null;
+  /** The model's attested OHTTP key: every request is sealed to it. */
+  ohttp: KeyConfig;
   /** What was checked, as a note keeps it. */
   evidence: InferenceEvidence;
   /** Until when this verification is used. */
@@ -349,7 +371,7 @@ async function verify(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, 
     const passed: Candidate[] = [];
     let first: Refusal | undefined;
     for (const [i, c] of candidates.entries()) {
-      try { passed.push(await checkModel(cfg, c, nonce, model, task)); } catch (e) {
+      try { passed.push(await checkModel(cfg, c, nonce, model)); } catch (e) {
         if (!(e instanceof Refusal)) throw e;
         first ??= e;
         elog.warn('model report refused', { model, task, code: e.check, reason: e.reason, candidate: i, candidates: candidates.length });
@@ -359,14 +381,14 @@ async function verify(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, 
     if (!chosen) throw first ?? new Refusal('no-model-evidence', 'no model report passed');
     const until = Math.min(Date.now() + TTL_MS, chosen.gpu.until);
     const evidence: InferenceEvidence = {
-      model, task, verifiedAt: new Date().toISOString(), encryption: task === 'transcript' ? 'ohttp' : 'e2ee', reply: task === 'transcript' ? 'sealed' : 'signed',
-      key: hex(chosen.tdx.key), tdx: { status: chosen.tdx.status, quote: chosen.tdx.quoteHash }, gpu: { count: chosen.gpu.count, arch: chosen.gpu.arch },
-      compose: chosen.tdx.compose, gateway: { status: gateway.status, compose: gateway.compose }
+      model, task, verifiedAt: new Date().toISOString(), key: hex(chosen.tdx.key), tdx: { status: chosen.tdx.status, quote: chosen.tdx.quoteHash }, os: chosen.tdx.image.image,
+      gpu: { count: chosen.gpu.count, arch: chosen.gpu.arch }, compose: chosen.tdx.compose, gateway: { status: gateway.status, os: gateway.image.image, compose: gateway.compose }
     };
     elog.info('model verified', {
-      model, task, code: 'verified', ms: ms(), tcb: chosen.tdx.status, gatewayTcb: gateway.status, advisories: [...new Set([...gateway.advisories, ...chosen.tdx.advisories])],
-      gpus: chosen.gpu.count, arch: chosen.gpu.arch, keyHash: fingerprint(chosen.tdx.key), quoteHash: chosen.tdx.quoteHash, compose: chosen.tdx.compose,
-      gatewayCompose: gateway.compose, candidates: candidates.length, passed: passed.length, validS: Math.round((until - Date.now()) / 1000)
+      model, task, code: 'verified', ms: ms(), tcb: chosen.tdx.status, gatewayTcb: gateway.status, os: chosen.tdx.image.image, gatewayOs: gateway.image.image,
+      advisories: [...new Set([...gateway.advisories, ...chosen.tdx.advisories])], gpus: chosen.gpu.count, arch: chosen.gpu.arch, keyHash: fingerprint(chosen.tdx.key),
+      quoteHash: chosen.tdx.quoteHash, compose: chosen.tdx.compose, gatewayCompose: gateway.compose, candidates: candidates.length, passed: passed.length,
+      validS: Math.round((until - Date.now()) / 1000)
     });
     return { model, task, key: hex(chosen.tdx.key), ohttp: chosen.ohttp, evidence, until };
   } catch (e) {
@@ -383,20 +405,29 @@ async function verify(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, 
 /* ---------- kept verifications ---------- */
 
 const kept = new Map<string, Verified>();
+const refused = new Map<string, { until: number; error: UnverifiedError }>();
 const running = new Map<string, Promise<Verified>>();
 const idOf = (cfg: Config, model: string, task: Task) => `${cfg.NEAR_AI_BASE_URL}|${model}|${task}`;
 
 /**
  * The model's current verification: the one kept, while it holds, or a new one. Requests that arrive
- * while one is being made wait for it, so a model is verified once however many clips come in.
+ * while one is being made wait for it, so a model is verified once however many clips come in; a
+ * refusal stands for 30 seconds before the next request checks again.
  */
 export async function verified(cfg: Config & { NEAR_AI_API_KEY: string }, model: string, task: Task): Promise<Verified> {
   const id = idOf(cfg, model, task);
   const hit = kept.get(id);
   if (hit && hit.until > Date.now()) return hit;
+  const no = refused.get(id);
+  if (no && no.until > Date.now()) throw no.error;
   const inFlight = running.get(id);
   if (inFlight) return inFlight;
-  const made = verify(cfg, model, task).then((v) => { kept.set(id, v); return v; }).finally(() => running.delete(id));
+  const made = verify(cfg, model, task)
+    .then((v) => { kept.set(id, v); refused.delete(id); return v; }, (e: unknown) => {
+      if (e instanceof UnverifiedError) refused.set(id, { until: Date.now() + REFUSED_MS, error: e });
+      throw e;
+    })
+    .finally(() => running.delete(id));
   running.set(id, made);
   return made;
 }

@@ -13,7 +13,7 @@
  *   ├─ NotFoundError        not-found        404    info
  *   ├─ ConflictError        conflict         409    info   state changed / wrong state
  *   ├─ UnavailableError     unavailable      503    warn   not connected yet / rate limited
- *   │   └─ UnverifiedError                          warn   a provider's attestation didn't check out, so nothing was sent
+ *   │   └─ UnverifiedError                          warn   a model's attestation didn't check out (or couldn't be checked), so it was sent nothing
  *   └─ InternalError        unknown          500    error  our bug or a dependency failure
  *       ├─ DatabaseError                                   a Postgres query failed
  *       └─ ObjectStoreError                                an object store call failed
@@ -54,7 +54,10 @@ export class KeyError extends AppError { constructor(m: string, o?: ErrorOptions
 export class NotFoundError extends AppError { constructor(m: string, o?: ErrorOptions) { super('not-found', m, o); } }
 export class ConflictError extends AppError { constructor(m: string, o?: ErrorOptions) { super('conflict', m, o); } }
 export class UnavailableError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unavailable', m, o); } }
-/** NEAR AI's evidence for a model didn't check out (or couldn't be checked), so nothing with content was sent to it. */
+/**
+ * NEAR AI's evidence for a model didn't check out, or couldn't be checked, so nothing with content was sent
+ * to it. The notes worker waits for evidence that checks out instead of counting this as a failed attempt.
+ */
 export class UnverifiedError extends UnavailableError {}
 export class InternalError extends AppError { constructor(m = 'Something went wrong on our side.', o?: ErrorOptions) { super('unknown', m, o); } }
 export class DatabaseError extends InternalError {}

@@ -3,9 +3,9 @@
  * server, under different paths:
  *
  *  - NEAR AI's gateway (/v1): attestation reports for the gateway and each model, as dstack reports with
- *    TDX quotes and GPU evidence; end-to-end encrypted chat (E2EE v2) and the model's signatures over each
- *    reply; and plain speech-to-text and chat, which real NEAR AI also takes and Alcove must never use.
- *  - The speech model's own endpoint (/direct/whisper): Oblivious HTTP to the model's attested key.
+ *    TDX quotes of the dstack images NEAR AI runs and GPU evidence; and plain speech-to-text and chat,
+ *    which real NEAR AI also takes and Alcove must never use.
+ *  - Each model's own endpoint (/direct/whisper, /direct/glm): Oblivious HTTP to the model's attested key.
  *  - Intel's certification service (/intel) and NVIDIA's attestation service (/nvidia), under test roots
  *    (fake-tee.ts), so the API checks the evidence with the code it checks NEAR AI's real evidence with.
  *
@@ -13,29 +13,45 @@
  * decides exactly what was said; a clip without one is heard the way Whisper hears silence. The notes
  * model writes from the transcript it was sent, so tests can see the transcript arrived intact and the
  * reply was checked before use. Every request body is kept as it arrived, so tests can show that nothing
- * readable crossed the wire, and the reports can be tampered with, so tests can show what Alcove refuses.
+ * readable crossed the wire, and the evidence can be made to lie, so tests can show what Alcove refuses.
  */
 import { gcm } from '@noble/ciphers/aes.js';
-import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
-import { expand, extract, hkdf } from '@noble/hashes/hkdf.js';
+import { expand, extract } from '@noble/hashes/hkdf.js';
 import { sha256, sha384 } from '@noble/hashes/sha2.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { DSTACK_IMAGES, type DstackImage } from '../dstack-images';
 import { fakeIntel, fakeNvidia, type Answer, type FakeIntel, type FakeNvidia } from './fake-tee';
 
 const STT_MODEL = 'openai/whisper-large-v3';
 const NOTES_MODEL = 'z-ai/glm-5.3-flash';
 
-/** What a report can be made to get wrong. */
-export type Tamper = 'quote' | 'nonce' | 'key' | 'compose' | 'rtmr3' | 'ohttp-key' | 'expired' | 'gpu' | 'reply-signature';
+/**
+ * What the evidence (or the models' endpoints) can be made to get wrong. On the gateway's report or a
+ * model's: a tampered quote, a replayed nonce, a substituted key, an unmeasured compose, an event log that
+ * doesn't replay, another OS or machine. On a model's only: an unsigned OHTTP key, GPU evidence or a verdict
+ * for another nonce, a failed GPU verdict, another model's report, a tampered report ahead of an honest one.
+ * Intel's side: collateral that's stale, a platform out of date, a quote that names no platform, unreachable. NVIDIA: a verdict signed under another root,
+ * through an expired or non-CA intermediate, or unreachable. The models' endpoints: refusing what was sealed
+ * to the key they vouched for, or sealing their replies wrong.
+ */
+export type Tamper =
+  | 'quote' | 'nonce' | 'key' | 'compose' | 'rtmr3' | 'os-image'
+  | 'ohttp-key' | 'gpu-nonce' | 'verdict-nonce' | 'gpu' | 'model-mismatch' | 'extra-candidate'
+  | 'expired' | 'tcb' | 'pcs-down' | 'unnamed-platform'
+  | 'nvidia-root' | 'nvidia-expired' | 'nvidia-not-ca' | 'nras-down' | 'jwks-down'
+  | 'report-down' | 'refuse' | 'reply-sealed';
 export type Task = 'transcript' | 'notes';
 
 export interface FakeNear {
   /** What the API is configured with to use this NEAR AI, and the stand-in Intel and NVIDIA that vouch for it. */
-  settings: { NEAR_AI_BASE_URL: string; NEAR_AI_API_KEY: string; NEAR_AI_STT_URL: string; INTEL_PCS_URL: string; INTEL_ROOT_CA: string; NVIDIA_NRAS_URL: string; NVIDIA_ROOT_CA: string };
+  settings: {
+    NEAR_AI_BASE_URL: string; NEAR_AI_API_KEY: string; NEAR_AI_STT_URL: string; NEAR_AI_NOTES_URL: string;
+    INTEL_PCS_URL: string; INTEL_ROOT_CA: string; NVIDIA_NRAS_URL: string; NVIDIA_ROOT_CA: string;
+  };
   /** Every request with content, oldest first: which endpoint, which model, how many bytes, and how it was protected. */
-  calls: { path: string; model: string; bytes: number; encryption: 'e2ee' | 'ohttp' | 'none' }[];
+  calls: { path: string; model: string; bytes: number; encryption: 'ohttp' | 'none' }[];
   /** Every request body exactly as it arrived, before anything was opened. */
   received: { path: string; body: Buffer }[];
   /** What the notes model was sent (the user message, once opened), oldest first. */
@@ -44,9 +60,9 @@ export interface FakeNear {
   keys(): Record<Task, string>;
   /** The hashes of the configurations the quotes measure. */
   composes(): Record<Task | 'gateway', string>;
-  /** Makes the next reports (and, for reply-signature, signatures) lie; null makes them honest again. */
+  /** Makes the evidence, or the models' endpoints, lie; null makes them honest again. */
   tamper(how: Tamper | null, of?: 'model' | 'gateway'): void;
-  /** A model gets a new signing key (and the speech model a new OHTTP key); the old ones stop being accepted. */
+  /** A model gets a new signing key and OHTTP key; the old ones stop being accepted. */
   rotate(task: Task): void;
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
@@ -167,10 +183,12 @@ interface Machine {
   name: string;
   seed: Uint8Array;
   key: Uint8Array;
+  /** The dstack image it boots, measured as NEAR AI's machines measure it. */
+  image: DstackImage;
   /** The dstack app compose its quote measures (MRCONFIGID and the compose-hash event). */
   compose: string;
   appId: string;
-  ohttp: { id: number; secret: Uint8Array; key: Uint8Array } | null;
+  ohttp: { id: number; secret: Uint8Array; key: Uint8Array };
 }
 const DSTACK_EVENT = 0x08000001;
 const digestOf = (type: number, event: string, payload: Uint8Array) => { const t = Buffer.alloc(4); t.writeUInt32LE(type); return sha384(cat(t, utf8(':'), utf8(event), utf8(':'), payload)); };
@@ -180,20 +198,23 @@ const eventsOf = (m: Machine): Event[] => [
   { imr: 0, event_type: 0x80000001, digest: hex(randomBytes(48)), event: '', event_payload: '' },
   { imr: 1, event_type: 0x80000003, digest: hex(randomBytes(48)), event: '', event_payload: '' },
   event('system-preparing', new Uint8Array()), event('app-id', Buffer.from(m.appId, 'hex')), event('compose-hash', sha256(utf8(m.compose))),
-  event('instance-id', randomBytes(20)), event('boot-mr-done', new Uint8Array()), event('key-provider', utf8('{"name":"kms"}')), event('system-ready', new Uint8Array())
+  event('instance-id', randomBytes(20)), event('boot-mr-done', new Uint8Array()), event('os-image-hash', Buffer.from(m.image.osImageHash, 'hex')),
+  event('key-provider', utf8('{"name":"kms"}')), event('system-ready', new Uint8Array())
 ];
 function replay(events: Event[]): Uint8Array {
   let r: Uint8Array = new Uint8Array(48);
   for (const e of events) if (e.imr === 3) r = sha384(cat(r, Buffer.from(e.digest, 'hex')));
   return r;
 }
-function machine(name: string, compose: string, ohttpId: number | null): Machine {
+const imageNamed = (name: string): DstackImage => {
+  const image = DSTACK_IMAGES.find((i) => i.image === name);
+  if (!image) throw new Error(`No measured dstack image ${name}`);
+  return image;
+};
+function machine(name: string, image: DstackImage, compose: string, ohttpId: number): Machine {
   const seed = randomBytes(32);
   const ohttpSecret = randomBytes(32);
-  return {
-    name, seed, key: ed25519.getPublicKey(seed), compose, appId: hex(randomBytes(20)),
-    ohttp: ohttpId === null ? null : { id: ohttpId, secret: ohttpSecret, key: x25519.getPublicKey(ohttpSecret) }
-  };
+  return { name, seed, key: ed25519.getPublicKey(seed), image, compose, appId: hex(randomBytes(20)), ohttp: { id: ohttpId, secret: ohttpSecret, key: x25519.getPublicKey(ohttpSecret) } };
 }
 const keyConfigOf = (o: { id: number; key: Uint8Array }) => cat(Buffer.from([o.id]), i2osp(0x20, 2), o.key, i2osp(8, 2), i2osp(1, 2), i2osp(1, 2), i2osp(1, 2), i2osp(3, 2));
 const composeFor = (service: string) => JSON.stringify({
@@ -255,33 +276,23 @@ function parseRequest(b: Uint8Array) {
 }
 const encodeResponse = (status: number, type: string, body: Uint8Array) => cat(enc(1), enc(status), sized(cat(sized(utf8('content-type')), sized(utf8(type)))), sized(body), enc(0));
 
-/* ---------- E2EE v2 (Ed25519 keys as X25519, HKDF-SHA256 "ed25519_encryption", XChaCha20-Poly1305) ---------- */
-
-const e2eeKey = (secret: Uint8Array, pub: Uint8Array) => hkdf(sha256, x25519.getSharedSecret(secret, pub), undefined, utf8('ed25519_encryption'), 32);
-function e2eeOpen(modelSeed: Uint8Array, sealedHex: string): string {
-  const b = Buffer.from(sealedHex, 'hex');
-  return Buffer.from(xchacha20poly1305(e2eeKey(ed25519.utils.toMontgomerySecret(modelSeed), b.subarray(0, 32)), b.subarray(32, 56)).decrypt(b.subarray(56))).toString('utf8');
-}
-function e2eeSeal(clientEd25519: Uint8Array, text: string): string {
-  const eph = randomBytes(32);
-  const nonce = randomBytes(24);
-  return hex(cat(x25519.getPublicKey(eph), nonce, xchacha20poly1305(e2eeKey(eph, ed25519.utils.toMontgomery(clientEd25519)), nonce).encrypt(utf8(text))));
-}
-
 export async function startFakeNear(): Promise<FakeNear> {
   const apiKey = `near-test-${randomBytes(12).toString('hex')}`;
   const calls: FakeNear['calls'] = [];
   const received: FakeNear['received'] = [];
   const prompts: string[] = [];
-  const signatures = new Map<string, { text: string; signature: string; key: string }>();
   let failing = 0;
   let failure: 'down' | 'prose' = 'down';
   let slow = 0;
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
+  const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
 
-  const gateway = machine('cloud-api', composeFor('cloud-api'), null);
-  const models: Record<Task, Machine> = { transcript: machine('whisper', composeFor('whisper'), ohttpIds++), notes: machine('vllm', composeFor('vllm'), null) };
+  const gateway = machine('cloud-api', imageNamed('dstack-0.5.12'), composeFor('cloud-api'), ohttpIds++);
+  const models: Record<Task, Machine> = {
+    transcript: machine('whisper', imageNamed('dstack-nvidia-0.5.12'), composeFor('whisper'), ohttpIds++),
+    notes: machine('vllm', imageNamed('dstack-nvidia-0.5.12'), composeFor('vllm'), ohttpIds++)
+  };
   const taskOf = (model: string): Task | undefined => (model === STT_MODEL ? 'transcript' : model === NOTES_MODEL ? 'notes' : undefined);
 
   // Set once the server is listening and its address is known.
@@ -289,22 +300,81 @@ export async function startFakeNear(): Promise<FakeNear> {
   let nvidia: FakeNvidia | undefined;
 
   /** A dstack report for one machine, answering `nonce`, as honest or as tampered as asked. */
-  function report(m: Machine, nonce: Buffer, lie: Tamper | undefined, i: FakeIntel, gatewayFields: boolean) {
+  function report(m: Machine, nonce: Buffer, how: Tamper | undefined, i: FakeIntel, gatewayFields: boolean) {
     const composeHash = sha256(utf8(m.compose));
     const events = eventsOf(m);
     // The quote binds the key and a nonce: ours, or one from an earlier report someone replays.
-    const reportData = cat(m.key, lie === 'nonce' ? randomBytes(32) : nonce);
-    let quote = i.quote({ reportData, mrConfigId: cat(Buffer.from([1]), composeHash, Buffer.alloc(15)), rtmr3: replay(events) });
-    if (lie === 'quote') { quote = Buffer.from(quote); quote[48 + 584 + 4 + 8] = (quote[48 + 584 + 4 + 8] ?? 0) ^ 0xff; }
-    const shown = lie === 'rtmr3' ? events.map((e) => (e.event === 'instance-id' ? event('instance-id', randomBytes(20)) : e)) : events;
-    const compose = lie === 'compose' ? m.compose.replace('docker-compose', 'docker-compose ') : m.compose;
-    const signer = lie === 'key' ? ed25519.getPublicKey(randomBytes(32)) : m.key;
+    const reportData = cat(m.key, how === 'nonce' ? randomBytes(32) : nonce);
+    // The same image on a machine NEAR AI doesn't run: RTMR0 measures the machine.
+    const booted = how === 'os-image' ? { ...m.image, rtmr0: hex(randomBytes(48)) } : m.image;
+    let quote = i.quote({ ...booted, mrConfigId: cat(Buffer.from([1]), composeHash, Buffer.alloc(15)), rtmr3: replay(events), reportData });
+    if (how === 'quote') { quote = Buffer.from(quote); quote[48 + 584 + 4 + 8] = (quote[48 + 584 + 4 + 8] ?? 0) ^ 0xff; }
+    const shown = how === 'rtmr3' ? events.map((e) => (e.event === 'instance-id' ? event('instance-id', randomBytes(20)) : e)) : events;
+    const compose = how === 'compose' ? m.compose.replace('docker-compose', 'docker-compose ') : m.compose;
+    const signer = how === 'key' ? ed25519.getPublicKey(randomBytes(32)) : m.key;
     return {
       signing_address: hex(signer), signing_algo: 'ed25519', intel_quote: hex(quote), event_log: JSON.stringify(shown), request_nonce: hex(nonce),
       ...(gatewayFields ? { report_data: hex(reportData) } : {}),
       info: {
-        app_id: m.appId, instance_id: hex(randomBytes(20)), app_name: m.name, compose_hash: hex(composeHash),
-        tcb_info: JSON.stringify({ rtmr3: hex(replay(events)), compose_hash: hex(composeHash), app_compose: compose, event_log: shown })
+        app_id: m.appId, instance_id: hex(randomBytes(20)), app_name: m.name, compose_hash: hex(composeHash), os_image_hash: m.image.osImageHash,
+        tcb_info: JSON.stringify({ mrtd: m.image.mrtd, rtmr0: m.image.rtmr0, rtmr1: m.image.rtmr1, rtmr2: m.image.rtmr2, rtmr3: hex(replay(events)), compose_hash: hex(composeHash), app_compose: compose, event_log: shown })
+      }
+    };
+  }
+  /** A model's report as the gateway lists it: its dstack report, GPU evidence and signed OHTTP key. */
+  function modelReport(model: string, m: Machine, nonce: Buffer, how: Tamper | undefined, i: FakeIntel, n: FakeNvidia) {
+    const shown = report(m, nonce, how, i, false);
+    const config = keyConfigOf(m.ohttp);
+    return {
+      model_name: how === 'model-mismatch' ? 'acme/another-model' : model, ...shown, signing_public_key: shown.signing_address,
+      nvidia_payload: n.payload(how === 'gpu-nonce' ? hex(randomBytes(32)) : hex(nonce)),
+      ohttp_attestation: { signing_algo: 'ed25519', signing_key: hex(m.key), key_config: hex(config), signature: hex(ed25519.sign(how === 'ohttp-key' ? randomBytes(config.length) : config, m.seed)) },
+      ohttp_key_config: hex(config)
+    };
+  }
+
+  /** A model's own endpoint: opens what was sealed to its OHTTP key, answers, and seals the answer. */
+  async function direct(res: ServerResponse, req: IncomingMessage, body: Buffer, task: Task, handle: (inner: ReturnType<typeof parseRequest>) => Promise<{ status: number; body: unknown }>) {
+    const own = models[task].ohttp;
+    // As NEAR AI's endpoints answer a request sealed to a key they don't hold.
+    const refused = () => send(res, 400, { error: { message: 'OHTTP decapsulation failed: a problem occurred with HPKE: Failed to open ciphertext' } });
+    if (req.headers['content-type'] !== 'message/ohttp-req' || body[0] !== own.id || tampered?.how === 'refuse') return refused();
+    let opened: ReturnType<typeof openRequest>;
+    try { opened = openRequest(own.secret, body); } catch { return refused(); }
+    const inner = parseRequest(opened.request);
+    const respond = (status: number, v: unknown) => {
+      const sealed = opened.sealReply(encodeResponse(status, 'application/json', utf8(JSON.stringify(v))));
+      // A reply sealed by someone who didn't open the request: it won't open.
+      reply(res, 200, tampered?.how === 'reply-sealed' ? randomBytes(sealed.length) : sealed, 'message/ohttp-res');
+    };
+    if (inner.headers.get('authorization') !== `Bearer ${apiKey}`) return respond(401, { error: { message: 'Invalid or missing Authorization header' } });
+    const out = await handle(inner);
+    return respond(out.status, out.body);
+  }
+
+  /** What the notes model answers a chat request, as JSON. */
+  async function chat(body: Uint8Array, path: string, encryption: 'ohttp' | 'none'): Promise<{ status: number; body: unknown }> {
+    const parsed: unknown = JSON.parse(Buffer.from(body).toString('utf8'));
+    const o = typeof parsed === 'object' && parsed !== null ? parsed : {};
+    const model = 'model' in o ? str(o.model) : '';
+    const messages = 'messages' in o && Array.isArray(o.messages) ? o.messages : [];
+    const text = (role: string) => str(messages.map((m: unknown) => (typeof m === 'object' && m !== null && 'role' in m && m.role === role && 'content' in m ? m.content : '')).find(Boolean));
+    const system = text('system');
+    const user = text('user');
+    calls.push({ path, model, bytes: body.length, encryption });
+    prompts.push(user);
+    if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
+    let content: string;
+    if (failing > 0) {
+      failing--;
+      if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
+      content = 'Here are your notes! The team talked about a few things.';
+    } else content = JSON.stringify(notesReply(system, user));
+    return {
+      status: 200,
+      body: {
+        id: `chatcmpl-${randomUUID().replace(/-/g, '')}`, object: 'chat.completion', model, created: Math.floor(Date.now() / 1000),
+        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
       }
     };
   }
@@ -323,97 +393,44 @@ export async function startFakeNear(): Promise<FakeNear> {
       const fromNvidia = await N.answer(url.pathname, req.method ?? 'GET', body);
       if (fromNvidia) return answer(res, fromNvidia);
 
-      // The speech model's own endpoint: Oblivious HTTP, with the API key inside the seal.
+      // The models' own endpoints: Oblivious HTTP, with the API key inside the seal.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
-        const own = models.transcript.ohttp;
-        if (req.headers['content-type'] !== 'message/ohttp-req' || !own || body[0] !== own.id) return send(res, 400, { error: { message: 'OHTTP decapsulation failed: unknown key' } });
-        let opened: ReturnType<typeof openRequest>;
-        try { opened = openRequest(own.secret, body); } catch { return send(res, 400, { error: { message: 'OHTTP decapsulation failed: a problem occurred with HPKE: Failed to open ciphertext' } }); }
-        const inner = parseRequest(opened.request);
-        const respond = (status: number, v: unknown) => reply(res, 200, opened.sealReply(encodeResponse(status, 'application/json', utf8(JSON.stringify(v)))), 'message/ohttp-res');
-        if (inner.headers.get('authorization') !== `Bearer ${apiKey}`) return respond(401, { error: { message: 'Invalid or missing Authorization header' } });
-        if (inner.method !== 'POST' || inner.path !== '/v1/audio/transcriptions') return respond(404, { error: { message: 'Not found' } });
-        const t = await transcription(inner.headers.get('content-type') ?? '', inner.body, calls, inner.path, 'ohttp');
-        return respond(t.status, t.body);
+        return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, inner.path, 'ohttp') : { status: 404, body: { error: { message: 'Not found' } } }));
+      }
+      if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
+        return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
+          ? chat(inner.body, inner.path, 'ohttp') : { status: 404, body: { error: { message: 'Not found' } } }));
       }
 
       if (req.headers.authorization !== `Bearer ${apiKey}`) return send(res, 401, { error: { message: 'Invalid API key' } });
 
       if (req.method === 'GET' && url.pathname === '/v1/attestation/report') {
+        if (tampered?.how === 'report-down') return send(res, 503, { error: { message: 'Service unavailable' } });
         const nonce = Buffer.from(url.searchParams.get('nonce') ?? '', 'hex');
         if (nonce.length !== 32 || url.searchParams.get('signing_algo') !== 'ed25519' || req.headers['x-no-aliasing'] !== 'true') return send(res, 400, { error: { message: 'Ask with a 32-byte nonce, ed25519 and x-no-aliasing.' } });
-        const task = taskOf(url.searchParams.get('model') ?? '');
-        const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
-        const m = task ? models[task] : undefined;
-        const shown = m ? report(m, nonce, lie('model'), I, false) : undefined;
-        const modelReport = m && shown ? {
-          model_name: url.searchParams.get('model'), ...shown, signing_public_key: shown.signing_address, nvidia_payload: N.payload(hex(nonce)),
-          ...(m.ohttp ? (() => {
-            const config = keyConfigOf(m.ohttp);
-            const attestation = { signing_algo: 'ed25519', signing_key: hex(m.key), key_config: hex(config), signature: hex(ed25519.sign(lie('model') === 'ohttp-key' ? randomBytes(config.length) : config, m.seed)) };
-            return { ohttp_attestation: attestation, ohttp_key_config: hex(config) };
-          })() : {})
-        } : undefined;
-        const gatewayConfig = keyConfigOf({ id: 1, key: x25519.getPublicKey(gateway.seed) });
+        const model = url.searchParams.get('model') ?? '';
+        const task = taskOf(model);
+        const candidates = task ? [
+          // A tampered report ahead of an honest one: the honest one is used.
+          ...(lie('model') === 'extra-candidate' ? [modelReport(model, models[task], nonce, 'quote', I, N)] : []),
+          modelReport(model, models[task], nonce, lie('model') === 'extra-candidate' ? undefined : lie('model'), I, N)
+        ] : [];
+        const gatewayConfig = keyConfigOf(gateway.ohttp);
         return send(res, 200, {
-          gateway_attestation: report(gateway, nonce, lie('gateway'), I, true), ...(modelReport ? { model_attestations: [modelReport] } : {}),
+          gateway_attestation: report(gateway, nonce, lie('gateway'), I, true), ...(candidates.length ? { model_attestations: candidates } : {}),
           ohttp_key_config: hex(gatewayConfig), ohttp_attestation: { signing_algo: 'ed25519', signing_key: hex(gateway.key), key_config: hex(gatewayConfig), signature: hex(ed25519.sign(gatewayConfig, gateway.seed)) }
         });
       }
 
-      if (req.method === 'GET' && url.pathname.startsWith('/v1/signature/')) {
-        const s = signatures.get(decodeURIComponent(url.pathname.slice('/v1/signature/'.length)));
-        if (!s) return send(res, 404, { error: { message: 'Signature not found' } });
-        return send(res, 200, { text: s.text, signature: s.signature, signing_address: s.key, signing_algo: 'ed25519', signature_kind: 'provider_tee' });
-      }
-
+      // What real NEAR AI's gateway also takes, in plaintext. Alcove must never send these.
       if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
         const t = await transcription(req.headers['content-type'] ?? '', body, calls, url.pathname, 'none');
         return send(res, t.status, t.body);
       }
-
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
-        const parsed: unknown = JSON.parse(body.toString('utf8'));
-        const o = typeof parsed === 'object' && parsed !== null ? parsed : {};
-        const model = 'model' in o ? str(o.model) : '';
-        const e2ee = req.headers['x-encryption-version'] !== undefined || req.headers['x-model-pub-key'] !== undefined;
-        const notes = models.notes;
-        const client = Buffer.from(str(req.headers['x-client-pub-key']), 'hex');
-        if (e2ee) {
-          if (req.headers['x-encryption-version'] !== '2' || req.headers['x-signing-algo'] !== 'ed25519' || req.headers['x-no-aliasing'] !== 'true' || client.length !== 32) {
-            return send(res, 400, { error: { message: 'Malformed E2EE request' } });
-          }
-          // A key the model no longer holds: as NEAR AI says it.
-          if (req.headers['x-model-pub-key'] !== hex(notes.key)) return send(res, 421, { error: { message: 'The encryption key is no longer valid. Please refresh your attestation report and retry.', type: 'provider_error' } });
-        }
-        const messages = 'messages' in o && Array.isArray(o.messages) ? o.messages : [];
-        const text = (role: string) => {
-          const content = str(messages.map((m: unknown) => (typeof m === 'object' && m !== null && 'role' in m && m.role === role && 'content' in m ? m.content : '')).find(Boolean));
-          return e2ee && content ? e2eeOpen(notes.seed, content) : content;
-        };
-        const system = text('system');
-        const user = text('user');
-        calls.push({ path: url.pathname, model, bytes: body.length, encryption: e2ee ? 'e2ee' : 'none' });
-        prompts.push(user);
-        if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
-        let content: string;
-        if (failing > 0) {
-          failing--;
-          if (failure === 'down') return send(res, 503, { error: { message: 'Service unavailable' } });
-          content = 'Here are your notes! The team talked about a few things.';
-        } else content = JSON.stringify(notesReply(system, user));
-        const id = `chatcmpl-${randomUUID().replace(/-/g, '')}`;
-        const out = JSON.stringify({
-          id, object: 'chat.completion', model, created: Math.floor(Date.now() / 1000),
-          choices: [{ index: 0, message: { role: 'assistant', content: e2ee ? e2eeSeal(client, content) : content }, finish_reason: 'stop' }],
-          usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
-        });
-        if (e2ee) {
-          const signed = `${model}:${hex(sha256(body))}:${hex(sha256(utf8(out)))}`;
-          const said = tampered?.how === 'reply-signature' ? `${model}:${hex(sha256(body))}:${hex(randomBytes(32))}` : signed;
-          signatures.set(id, { text: said, signature: hex(ed25519.sign(utf8(said), notes.seed)), key: hex(notes.key) });
-        }
-        return reply(res, 200, out);
+        const c = await chat(body, url.pathname, 'none');
+        return send(res, c.status, c.body);
       }
       send(res, 404, { error: { message: 'Not found' } });
     })().catch(() => send(res, 500, { error: { message: 'fake failed' } }));
@@ -427,7 +444,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   nvidia = n;
   return {
     settings: {
-      NEAR_AI_BASE_URL: `${origin}/v1`, NEAR_AI_API_KEY: apiKey, NEAR_AI_STT_URL: `${origin}/direct/whisper`,
+      NEAR_AI_BASE_URL: `${origin}/v1`, NEAR_AI_API_KEY: apiKey, NEAR_AI_STT_URL: `${origin}/direct/whisper`, NEAR_AI_NOTES_URL: `${origin}/direct/glm`,
       INTEL_PCS_URL: i.pcsUrl, INTEL_ROOT_CA: i.rootPem, NVIDIA_NRAS_URL: n.nrasUrl, NVIDIA_ROOT_CA: n.rootPem
     },
     calls, received, prompts,
@@ -436,11 +453,17 @@ export async function startFakeNear(): Promise<FakeNear> {
     tamper(how, of = 'model') {
       tampered = how ? { how, of } : null;
       i.expired = how === 'expired';
+      i.status = how === 'tcb' ? 'OutOfDate' : 'UpToDate';
+      i.down = how === 'pcs-down';
+      i.unnamed = how === 'unnamed-platform';
       n.verdict = how === 'gpu' ? 'fail' : 'pass';
+      n.stale = how === 'verdict-nonce';
+      n.signer = how === 'nvidia-root' ? 'other-root' : how === 'nvidia-expired' ? 'expired-intermediate' : how === 'nvidia-not-ca' ? 'intermediate-not-ca' : 'nvidia';
+      n.down = how === 'nras-down' ? 'attest' : how === 'jwks-down' ? 'keys' : 'no';
     },
     rotate(task) {
       const m = models[task];
-      models[task] = { ...machine(m.name, m.compose, m.ohttp ? ohttpIds++ : null), compose: m.compose, appId: m.appId };
+      models[task] = { ...machine(m.name, m.image, m.compose, ohttpIds++), appId: m.appId };
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how) { failing = count; failure = how; },

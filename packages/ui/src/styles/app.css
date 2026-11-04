@@ -163,8 +163,9 @@ a.nflag:hover { background: var(--sun-soft); color: var(--sun-text); }
 .proof-model { font: 500 14px/1.3 var(--font-mono); overflow-wrap: anywhere; }
 .proof-when { font-size: 12.5px; color: var(--ink-3); }
 .proof-link { display: inline-flex; align-items: center; gap: 4px; justify-self: start; }
-.proof-gw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 14px 20px 18px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.proof-gw { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 14px 20px 12px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
 .proof-gw code { font: 500 12px/1.35 var(--font-mono); white-space: nowrap; }
+.proof-near { padding: 0 20px 18px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
 .sec { margin-top: 40px; }
 .sec-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .sec-h h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -0.01em; }

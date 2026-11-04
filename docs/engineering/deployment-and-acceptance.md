@@ -73,8 +73,9 @@ with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models, spe
 or unset there is no binding and no placeholder secret version is needed: the API keeps recordings but
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
-With NEAR AI enabled the API also reaches, over HTTPS, the services that verify it before anything is sent:
-`whisper-large-v3.completions.near.ai` (the speech model's own endpoint), Intel's
+With NEAR AI enabled the API also reaches, over HTTPS, the models' own endpoints
+(`whisper-large-v3.completions.near.ai` and `glm-5-3-flash.completions.near.ai`), where everything with
+content goes sealed, and the services that verify them before anything is sent: Intel's
 `api.trustedservices.intel.com` and `certificates.trustedservices.intel.com`, and NVIDIA's
 `nras.attestation.nvidia.com` ([Notes and inference › Services verification depends on](notes-and-inference.md#services-verification-depends-on)).
 None of them needs a credential. If one can't be reached, notes wait and clips aren't transcribed, rather
@@ -112,7 +113,7 @@ live transcript and written notes.
 | Notes go to everyone invited when the call ends; anyone with them shares them on; removing versus deleting | API integration tests |
 | Room recording: rename, pause refuses audio, stop, discard | API integration tests |
 | Live transcript and written notes: clips transcribed while notes are on, retried clips kept once, silence dropped, notes written and charged when the recording stops, retries up to the third failure, asking | API integration tests against a local NEAR AI stand-in; verify against NEAR AI Cloud with `NEAR_AI_ENABLED=true` on each release |
-| Verified private inference: each model's TDX quote (Intel collateral, TCB status, debug), report data with a fresh nonce, RTMR3, measured compose, NVIDIA GPU verdict and OHTTP key checked before anything is sent; speech by Oblivious HTTP to Whisper's attested key, transcripts end-to-end encrypted to the notes model's, reply signatures checked; nothing sent when any check fails, each refusal logged with its code; a changed key verified again; a verification that runs out made again; the evidence kept with the note and shown on its page | API integration tests against stand-ins for NEAR AI, Intel's certification service and NVIDIA's attestation service under test roots, with the same verification code; the canary test shows nothing crosses the wire readable. Checked against NEAR AI Cloud, Intel and NVIDIA on 3 November 2026 (both models, a real transcription and notes, NEAR AI's Verification Center accepting the note's receipt); repeat on each release |
+| Verified private inference: each model's TDX quote (Intel collateral, TCB status, debug), OS image (MRTD and RTMR0–2 of a published dstack image), report data with a fresh nonce, RTMR3, measured compose, NVIDIA GPU verdict and OHTTP key checked before anything is sent; every request sealed by Oblivious HTTP to the model's attested key at its own endpoint, its reply sealed the same way; nothing sent when any check fails, each refusal logged with its code; notes waiting through a verification outage; a changed key verified again; a verification that runs out made again; the evidence kept with the note and shown on its page | API integration tests against stand-ins for NEAR AI, Intel's certification service and NVIDIA's attestation service under test roots, with the same verification code and the same measured images; the canary test shows nothing crosses the wire readable. Checked against NEAR AI Cloud, Intel and NVIDIA on 3 and 4 November 2026 (both models' evidence, the images reproduced with dstack-mr, a real transcription and notes); repeat on each release, and measure new images when NEAR AI moves |
 | Cross-owner isolation (calls, notes, audio, transcripts, recordings, asking) and origin checks | API integration tests |
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
 | Deletion removes rows, receipts and objects; maintenance removes ended sessions and orphaned objects | API integration tests |
@@ -121,7 +122,7 @@ live transcript and written notes.
 | Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
-| Model builds pinned to published image provenance | **Not implemented**: measurements are checked for consistency, not against approved builds |
+| The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
 | Multi-party end-to-end encrypted calls | **Not implemented** |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
 | Attested confidential compute, with `KMASTER` released only to it | **Required before real users**; Cloud Run is not a TEE. Inside dstack: keys from its key service and refused from the environment, and `/v1/attestation` binding a nonce and the build, in API integration tests against a local dstack stand-in. See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |

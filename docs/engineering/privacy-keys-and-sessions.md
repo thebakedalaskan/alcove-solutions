@@ -6,7 +6,7 @@
 the browsers of the people it belongs to and inside the API process while it works on it. The database,
 object store, logs and network edge see ciphertext, opaque IDs, keyed hashes, sizes and timing. NEAR AI
 Cloud transcribes speech and writes notes, but only in confidential VMs whose hardware evidence Alcove checks
-first, with everything encrypted so that only those VMs can read it
+first, with everything sealed to the key that evidence vouches for
 ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)).
 One outside service is handed content as it is: Google Calendar carries the calls an organizer schedules
 ([What is still visible](#what-is-still-visible)).
@@ -18,9 +18,11 @@ after a call. It also means that whoever runs the process, or can read `KMASTER`
 "Alcove can't read your notes" holds only when `KMASTER` is released to nothing but an attested
 confidential VM running the expected server image. That is a production requirement, not the current
 state: locally `KMASTER` is a value in `.env` read by an ordinary Node process
-([Production requirements](#production-requirements)). Inference is verified as private already: NEAR AI's
-models get content only encrypted to keys their attested VMs hold. Inside the process, modules are not a
-security boundary: any code can reach `cfg.KMASTER`.
+([Production requirements](#production-requirements)). Inference is verified before anything is sent:
+NEAR AI's models get content only sealed to keys that their attested VMs, booted from published dstack images,
+vouch for. What runs in those VMs is NEAR AI's choice and isn't pinned to a reviewable build
+([Notes and inference › What's left](notes-and-inference.md#whats-left)). Inside the process, modules are not
+a security boundary: any code can reach `cfg.KMASTER`.
 
 **Sign-in is real only for Google.** Google sign-in is OpenID Connect with checked ID tokens and verified
 emails ([Accounts and sign-in](#accounts-and-sign-in)). Microsoft and single sign-on are still stand-ins in
@@ -254,12 +256,12 @@ Only requests to Alcove itself: the web app's own origin and the API. Nothing th
 
 | Where | Visible |
 | --- | --- |
-| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips had speech in them and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
+| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips were transcribed and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds |
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
-| NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Each request is encrypted to a key the model's attested VM holds (Oblivious HTTP for speech, end-to-end encrypted chat for the rest), checked first: Intel TDX, NVIDIA confidential GPUs, the measured configuration ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
-| NEAR AI's gateway and operators | Alcove's API key, the model asked for, request parameters (token limits, temperature), the sizes and timing of every clip and prompt, and the server's address; never their content. The models' measured configurations aren't pinned to approved builds, so a deployment NEAR AI chooses to run in such a VM passes. |
+| NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
+| NEAR AI's gateway and operators | Alcove's API key on attestation requests, which models are verified when, the size and timing of every sealed request, and the server's address; never the content, the request's parameters or the key inside the seal. A deployment NEAR AI chooses to run in an attested VM on a measured dstack image passes. |
 | Intel and NVIDIA | Intel's certification service: which platform (FMSPC) each quote came from, when Alcove verifies. NVIDIA's attestation service: each model's GPU evidence (certificates and measurements). No content. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
@@ -343,8 +345,9 @@ Moving, in order:
    what runs, not that your connection reaches it.
 5. **Check it in the client** before signing in or sending audio, and pin the client itself (published build
    hashes, or a signed shell or extension), because the web app's code comes from a server.
-6. **Private inference** is done: NEAR AI gets content only encrypted to the keys of models whose evidence
+6. **Private inference** is verified: NEAR AI gets content only sealed to the keys of models whose evidence
    checked out ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)).
+   The model code those VMs run isn't pinned yet.
 
 ## Divergences from the original spec, and decisions
 
@@ -355,7 +358,7 @@ Moving, in order:
 | Attestation + HPKE channel with sequenced frames | Plain REST over TLS with a cookie session. Inside a TEE, `/v1/attestation` returns a TDX quote binding a nonce and the build; nothing binds it to the connection yet, and the app doesn't check it | **Required before production** ([steps](#moving-to-confidential-computing)) |
 | Strict JSON (reject duplicate keys and unknown fields), U64 decimal strings | zod parsing (drops unknown fields), JS numbers for credits | To do |
 | Service-side wrap of `Krec` with 24-hour / 7-day disposal | Any work, including someone else's read and the notes worker, opens the owner's keys through `KMASTER`; no separate wrap or disposal window | Accepted with `KMASTER` custody |
-| Protected inference: end-to-end encrypted requests to `I01`, with its attestation checked | Each model's evidence is checked first (Intel TDX quote and collateral, report data with a fresh nonce, RTMR3 and the measured compose, NVIDIA GPU verdict, the OHTTP key's signature). Transcripts go end-to-end encrypted to the notes model's attested key and each reply's signature is checked; speech goes by Oblivious HTTP sealed to the speech model's attested key, at its own endpoint, because NEAR AI's end-to-end encryption doesn't cover transcription. No plaintext way | Done. Measurements are checked for consistency, not pinned to approved builds, and the speech endpoint is one NEAR AI calls experimental ([What's left](notes-and-inference.md#whats-left)) |
+| Protected inference: end-to-end encrypted requests to `I01`, with its attestation checked | Each model's evidence is checked first (Intel TDX quote and collateral, a published dstack OS image by MRTD and RTMR0–2, report data with a fresh nonce, RTMR3 and the measured compose, NVIDIA GPU verdict, the OHTTP key's signature). Every request, speech and chat, goes by Oblivious HTTP sealed to the model's attested key at its own endpoint: NEAR AI's E2EE chat doesn't bind its fields to the client's key, so whoever terminates TLS could replay them, and doesn't cover speech. No plaintext way | Done for what the evidence shows. The model code NEAR AI's compose manager starts isn't pinned, the GPU evidence and model name aren't bound to the VM, and the endpoints are ones NEAR AI calls experimental ([What's left](notes-and-inference.md#whats-left)) |
 | Encrypted manifest binding all chunks; rollback detection | Not implemented: a database writer could roll a head back or drop trailing pieces | To do (version-bound associated data and an encrypted piece list) |
 | Billing keyed by a random account ID plus `owner_tag` | Keyed by `owner_id` | To do before payments |
 | Provider secrets never in environment variables | Outside a TEE, `KMASTER`, `KSERVICE`, the NEAR AI key and the Google client secret are environment variables (Secret Manager on Cloud Run). With `TEE=dstack` both keys come only from the TEE's key service and are refused from the environment | Accepted locally. In production `KMASTER` comes only from the attested VM's key release, and provider secrets are dstack encrypted environment variables. |
@@ -372,11 +375,11 @@ Moving, in order:
    the quote, and checking it in the client.
 2. **Real sign-in for every provider.** Google is done. Microsoft OAuth and OIDC SSO must return a verified
    subject and email, and `demo.ts` must go, because access to notes follows the email.
-3. **Verified private inference.** Done: speech and transcripts go to NEAR AI only encrypted to models whose
-   attestation checked out, with no plaintext fallback. Left: pinning the models' measured configurations to
-   builds with published provenance, once NEAR AI publishes it, and moving speech to NEAR AI's gateway if it
-   ever opens sealed requests inside the model's VM rather than its own
-   ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
+3. **Verified private inference.** Speech and transcripts go to NEAR AI only sealed (Oblivious HTTP) to the
+   keys of models whose attestation checked out, on published dstack OS images measured exactly, with no
+   plaintext fallback. Left: pinning the model code NEAR AI's compose manager starts to builds with published
+   provenance, binding the GPU evidence and the model's name to the VM, and endpoints NEAR AI supports as more
+   than experimental ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
 4. **End-to-end encrypted call media** once calls are multi-party, following Proton Meet's open-source model:
    - Client-generated group keys (MLS-style), never created by the server.
    - Per-frame encryption (SFrame / WebRTC encoded transforms) through an SFU that holds no keys.
