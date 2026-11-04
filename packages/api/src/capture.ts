@@ -59,7 +59,7 @@ export type RoomCapture = z.infer<typeof RoomCaptureSchema>;
 export const CaptureStateSchema = z.object({
   /**
    * All of it at once: on while notes are on, paused while the organizer holds them, off otherwise, and unavailable
-   * when notes are on but the organizer's browser can neither record nor listen.
+   * when notes are on but the organizer's browser can neither record nor listen, or is out of the call (`away`).
    */
   mode: CaptureModeSchema,
   /** The organizer's microphone, encrypted and kept with the notes. */
@@ -86,6 +86,11 @@ export const CaptureStateSchema = z.object({
   /** Your own latest ask for notes and how it went: still asking, said yes to (notes came on) or said no to. Null if you haven't asked. */
   asked: z.object({ state: z.enum(['asking', 'accepted', 'declined']), at: ISODateSchema }).nullable(),
   /** What's captured in the breakout room you're in, or null in the main room (and for people asking to join). */
-  room: RoomCaptureSchema.nullable()
+  room: RoomCaptureSchema.nullable(),
+  /**
+   * The organizer's browser is out of the call right now: its connection dropped, or it's reloading or moving to
+   * another device. While notes are on, recording and the transcript are unavailable until it's back, in every part.
+   */
+  away: z.boolean()
 });
 export type CaptureState = z.infer<typeof CaptureStateSchema>;

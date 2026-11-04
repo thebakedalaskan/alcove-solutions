@@ -137,6 +137,9 @@ function saidFor(state: CallState, c: CallState['capture'], name: string): strin
   }
   if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`;
   if (c.mode === 'off') return state.notes.everOn ? 'Nothing new is recorded or transcribed. What was transcribed before is still read for the notes.' : 'Nothing from this call is recorded or written down.';
+  // Out of the call, the organizer's own recorder keeps going and sends what it held, but nobody else is heard.
+  // Shared screens are read from each presenter's own browser, so they carry on meanwhile.
+  if (c.mode === 'unavailable' && c.away) return host ? 'Your browser isn’t in the call right now, so what others say isn’t transcribed until it’s back.' : `Notes are on, but ${name}’s browser isn’t in the call right now, so nothing ${c.screen.mode === 'on' ? 'said ' : ''}is captured until it’s back.`;
   if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t record or listen right now, so nothing is captured.`;
   if (c.recording.mode === 'on' && c.transcript.mode === 'on') return `What everyone says is transcribed for the notes, and ${mic} is recorded.`;
   if (c.transcript.mode === 'on') return `What everyone says is transcribed for the notes. ${sentence(mic)} isn’t recorded: ${browser} can’t record it right now.`;
