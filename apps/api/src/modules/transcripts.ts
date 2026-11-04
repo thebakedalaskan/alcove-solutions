@@ -43,8 +43,11 @@ const Line = z.object({
   id: z.string(), at: z.number(), end: z.number(), text: z.string(), speaker: z.string().optional(), room: z.string().optional(), unsure: z.literal(true).optional()
 });
 export type Line = z.infer<typeof Line>;
-/** A line, and the segment of the recording its clip was part of. */
-export type HeardLine = Line & { segment: number };
+/**
+ * A line as read back: the segment of the recording its clip was part of, and whether the same words were heard on
+ * someone else's microphone at the same moment (`alsoHeard`, see `crosstalk`), so who said them is in doubt.
+ */
+export type HeardLine = Line & { segment: number; alsoHeard?: true | undefined };
 const Stored = z.object({
   segment: z.number(), lines: z.array(Line), evidence: InferenceEvidenceSchema,
   /** In a call, whose speech the clip was (a participant ID), even when none of it survived the filter. */
@@ -167,7 +170,7 @@ async function clips(o: Owner, db: Db, noteId: string): Promise<Stored[]> {
 
 /** Every line heard so far for a note that's still recording, in recording order. */
 export async function lines(o: Owner, db: Db, noteId: string): Promise<HeardLine[]> {
-  return (await clips(o, db, noteId)).flatMap(heardLines).sort(inOrder);
+  return crosstalk((await clips(o, db, noteId)).flatMap(heardLines)).sort(inOrder);
 }
 
 /**
@@ -208,28 +211,31 @@ export async function heardBy(o: Owner, db: Db, noteId: string): Promise<Inferen
  * call's live view costs the same as a short one's. (Each kept clip has at least one line.)
  */
 export async function latest(o: Owner, db: Db, noteId: string, n: number): Promise<HeardLine[]> {
-  return (await newest(o, db, noteId, n)).flatMap(heardLines).sort(inOrder).slice(-n);
+  return crosstalk((await newest(o, db, noteId, n)).flatMap(heardLines)).sort(inOrder).slice(-n);
 }
 
 /**
  * Lines as the app shows them: each said by whoever `speakerOf` names (nobody, in a room recording), in the room
  * `roomOf` names, with what the transcript can't vouch for: words Whisper was unsure of, and a speaker in doubt.
  */
-export function spoken(ls: Line[], speakerOf: (identity: string) => Speaker | undefined = () => undefined,
+export function spoken(ls: readonly HeardLine[], speakerOf: (identity: string) => Speaker | undefined = () => undefined,
   roomOf: (id: string) => { id: string; name: string } | undefined = () => undefined): TranscriptLine[] {
-  const named = ls.map((l) => ({ l, speaker: l.speaker ? speakerOf(l.speaker) : undefined }));
-  const doubted = crosstalk(named);
-  return named.map(({ l, speaker }) => {
+  return ls.map((l) => {
+    const speaker = l.speaker ? speakerOf(l.speaker) : undefined;
     const room = l.room ? roomOf(l.room) : undefined;
-    const unsure = { ...(l.unsure ? { words: true as const } : {}), ...(doubted.has(l.id) ? { speaker: true as const } : {}) };
+    const unsure = { ...(l.unsure ? { words: true as const } : {}), ...(l.alsoHeard && speaker ? { speaker: true as const } : {}) };
     return { id: l.id, at: l.at, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}), text: l.text, ...(unsure.words || unsure.speaker ? { unsure } : {}) };
   });
 }
 
 /* ---------- who said it, when two microphones heard the same words ---------- */
 
-/** Two lines are the same moment heard twice when they overlap, give or take this: each voice's clips are cut at its own pauses. */
-const SLACK_S = 0.5;
+/**
+ * Two lines are the same moment heard twice when they overlap for at least this share of the shorter one. Each voice's
+ * clips are cut at its own pauses, so one voice on two tracks can come back as lines that start apart; a reply that
+ * says the question's words again comes after it, and doesn't overlap.
+ */
+const OVERLAP = 0.5;
 /** The same words: at least this many in the shorter line (so two people saying "sounds good" at once don't count), and this share of them in the other. */
 const SAME_WORDS = { atLeast: 4, share: 0.6 };
 const wordsOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
@@ -245,25 +251,28 @@ function sameWords(a: string[], b: string[]): boolean {
 }
 
 /**
- * The lines whose speaker is in doubt, by ID. In a call each voice is heard on its own track, so a line is said by
- * whoever's microphone it came from. But people sharing a room, or someone's speakers playing into another's
- * microphone, put one person's words on two tracks: two lines from different people, at the same moment, with mostly
- * the same words. Both are marked, since nothing here says whose microphone was nearer.
+ * Marks the lines whose speaker is in doubt (`alsoHeard`), judged by when they were heard, before anything places them
+ * in the recording. In a call each voice is heard on its own track, so a line is said by whoever's microphone it came
+ * from. But people sharing a room, or someone's speakers playing into another's microphone, put one person's words on
+ * two tracks: two lines from different microphones, overlapping in the same segment, with mostly the same words. Both
+ * are marked, since nothing here says whose microphone was nearer.
  */
-function crosstalk(named: readonly { l: Line; speaker: Speaker | undefined }[]): Set<string> {
-  const out = new Set<string>();
-  const heard = named.flatMap(({ l, speaker }) => (speaker ? [{ l, who: speaker.person?.id ?? `name:${speaker.name}`, words: wordsOf(l.text) }] : [])).sort((a, b) => a.l.at - b.l.at);
+function crosstalk(ls: HeardLine[]): HeardLine[] {
+  const doubted = new Set<string>();
+  const heard = ls.flatMap((l) => (l.speaker ? [{ l, who: l.speaker, words: wordsOf(l.text) }] : [])).sort((a, b) => inOrder(a.l, b.l));
   for (let i = 0; i < heard.length; i++) {
     const a = heard[i];
     if (!a) continue;
     for (let j = i + 1; j < heard.length; j++) {
       const b = heard[j];
-      // Later lines start later still: none of them overlaps this one.
-      if (!b || b.l.at > a.l.end + SLACK_S) break;
-      if (b.who !== a.who && b.l.room === a.l.room && sameWords(a.words, b.words)) { out.add(a.l.id); out.add(b.l.id); }
+      // Later lines start later still (or in a later segment): none of them overlaps this one.
+      if (!b || b.l.segment !== a.l.segment || b.l.at >= a.l.end) break;
+      const together = Math.min(a.l.end, b.l.end) - b.l.at;
+      const shorter = Math.max(0.1, Math.min(a.l.end - a.l.at, b.l.end - b.l.at));
+      if (b.who !== a.who && b.l.room === a.l.room && together >= OVERLAP * shorter && sameWords(a.words, b.words)) { doubted.add(a.l.id); doubted.add(b.l.id); }
     }
   }
-  return out;
+  return doubted.size ? ls.map((l) => (doubted.has(l.id) ? { ...l, alsoHeard: true as const } : l)) : ls;
 }
 
 /** Removes a note's live transcript, and its lines in other languages, once its lines are in the note. */

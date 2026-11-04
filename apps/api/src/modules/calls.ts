@@ -996,7 +996,7 @@ async function sofar(v: Viewer, callId: string, what: 'catch-up' | 'ask') {
   const person = await me(o);
   const segs = await segments(o, into.recordingId);
   const all = transcripts.placed(await transcripts.lines(o, o.pool, into.noteId), segs, s.notes.status === 'on' ? s.notes.segment : undefined).filter(readableBy(v, s));
-  const brief = (ls: transcripts.Line[], gaps: CaptureGap[]): drafting.Brief => ({
+  const brief = (ls: transcripts.HeardLine[], gaps: CaptureGap[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
     seconds: asOf, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
   });
