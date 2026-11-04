@@ -43,11 +43,12 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>` |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
+| Call MLS keys | Made in each browser in a call (an MLS key package and its private keys, then the group's secrets), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` | Only in the browsers in the call, in memory. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 
 All derivations are HKDF-SHA-256 with 32-byte outputs. `salt=ownerId` means the ID's 32 decoded bytes; the
 index, sign-in attempt and billing keys use an empty salt.
@@ -91,6 +92,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 | --- | --- | --- | --- |
 | `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
 | `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team directory); who else may read a note |
+| `call-code` | The call's code from its link | `call_codes.code_hash` | Finding a call for anyone with the link, guests included |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
 [What is still visible](#what-is-still-visible)), and anyone holding `KMASTER` can test a guessed address.
@@ -253,7 +255,14 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 
 ## What leaves the browser
 
-Only requests to Alcove itself: the web app's own origin and the API. Nothing third-party loads.
+Only requests to Alcove itself: the web app's own origin and the API, with one exception: calls. Nothing
+third-party loads.
+
+- **Calls** connect to LiveKit (LiveKit Cloud in production) for their audio, video and screens, which are
+  end-to-end encrypted in the browser with keys only the people in the call have: LiveKit forwards frames it
+  can't read. It sees each person's address, when they're in which room (by random identity, never a name),
+  packet sizes and timing, and who has a camera or screen on ([Calls and recordings › End-to-end
+  encryption](calls-and-recordings.md#end-to-end-encryption)).
 
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
@@ -261,9 +270,10 @@ Only requests to Alcove itself: the web app's own origin and the API. Nothing th
   where the token is the provider URL sealed under a key derived from `KMASTER`. It's stable, so the
   browser caches it, and only this server can read it. The API fetches the image from an allowed host
   (`PHOTO_HOSTS`), keeps it in memory for an hour and serves it only to signed-in browsers. Google sees
-  the API fetch a photo, not who looked at whom.
+  the API fetch a photo, not who looked at whom. Guests in a call aren't signed in, so they're shown
+  everyone without photos.
 - **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
-  photos). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
+  photos), and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
   writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
   runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
 - **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages inserts its
@@ -287,6 +297,9 @@ Only requests to Alcove itself: the web app's own origin and the API. Nothing th
 | Intel and NVIDIA | Intel's certification service: which platform (FMSPC) each quote came from, when Alcove verifies. NVIDIA's attestation service: each model's GPU evidence (certificates and measurements). No content. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
+| LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on |
+| The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size. Deleted when the call ends |
+| The API (calls) | Who's in each call, asking or turned away, and their names (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion
@@ -317,6 +330,7 @@ Cloud included, could open any account. The API is built to move into a confiden
 Phala's [dstack](https://github.com/Dstack-TEE/dstack)) without changing anything it stores. Postgres and
 the object store stay outside: they hold only sealed records, opaque IDs and timing
 ([What is still visible](#what-is-still-visible)). The keys, and every plaintext, would exist only in the VM.
+Calls' media never reaches the VM at all: it's end-to-end encrypted between the browsers in the call.
 
 What's in the code (`apps/api/src/tee.ts`, `apps/api/src/config.ts`):
 
@@ -357,7 +371,7 @@ Moving, in order:
 
 1. **A dstack compose for the API**: the image by digest, `TEE=dstack`, the guest agent's socket mounted,
    and the other secrets (`DATABASE_URL`, the object store's credentials, `NEAR_AI_API_KEY`, the Google
-   client) as dstack's encrypted environment variables, which only the VM can decrypt, with `allowed_envs`
+   client, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`) as dstack's encrypted environment variables, which only the VM can decrypt, with `allowed_envs`
    naming exactly those. Encrypted variables aren't measured, so `TEE`, `DSTACK_SOCKET` and
    `ALCOVE_COMMIT` must come only from the measured compose and image, never from `allowed_envs`. Keep the
    VM's logs private (`public_logs: false`) and forward the JSON log stream to the collector.
@@ -406,11 +420,10 @@ Moving, in order:
    plaintext fallback. Left: pinning the model code NEAR AI's compose manager starts to builds with published
    provenance, binding the GPU evidence and the model's name to the VM, and endpoints NEAR AI supports as more
    than experimental ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
-4. **End-to-end encrypted call media** once calls are multi-party, following Proton Meet's open-source model:
-   - Client-generated group keys (MLS-style), never created by the server.
-   - Per-frame encryption (SFrame / WebRTC encoded transforms) through an SFU that holds no keys.
-   - Key rotation when people join or leave.
-   - The notes service joins as an attested participant, only while notes are on.
+4. **End-to-end encrypted call media.** Done ([Calls and recordings › End-to-end
+   encryption](calls-and-recordings.md#end-to-end-encryption)): MLS keys made in browsers, frames encrypted
+   before they reach an SFU that holds no keys, new keys with every join and leave. Left: every speaker in
+   the notes (each browser sending its own audio to the notes service while notes are on).
 5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
    the subjects and emails the indexes hide), `Kowner` on suspected compromise, and `Kservice`; use
    `keyVersion`.

@@ -1,9 +1,10 @@
 /*
  * The call's top bar: the title and clock, the notes sign everyone sees, then your own view control,
- * a private catch-up, the confidential-compute shield and who is here.
+ * a private catch-up, the confidential-compute shield and who is here (with how many are asking to join,
+ * for the organizer).
  */
 import { clock, type CallViewMode, type Person } from '@alcove/api';
-import { Faces, Icon, NotesSign, Popover, Tooltip, cn, type IconName } from '@alcove/ui';
+import { Dots, Faces, Icon, NotesSign, Popover, Tooltip, cn, type IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRef, useState } from 'react';
@@ -17,14 +18,21 @@ const VIEWS: { mode: CallViewMode; icon: IconName; label: string; tip: string }[
 ];
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function TopBar({ title, elapsed, notesOn, mode, custom, people, peopleOpen, onNotes, onMode, onReset, onCatchUp, onPeople }: {
-  title: string; elapsed: number; notesOn: boolean; mode: CallViewMode; custom: boolean; people: Person[]; peopleOpen: boolean;
+export function TopBar({ title, elapsed, notesOn, mode, custom, people, asking, reconnecting, peopleOpen, onNotes, onMode, onReset, onCatchUp, onPeople }: {
+  title: string; elapsed: number; notesOn: boolean; mode: CallViewMode; custom: boolean; people: Person[];
+  /** People asking to join (the organizer's to let in). */
+  asking: number;
+  /** The call's media connection dropped and is coming back. */
+  reconnecting: boolean;
+  peopleOpen: boolean;
   onNotes: () => void; onMode: (m: CallViewMode) => void; onReset: () => void; onCatchUp: () => void; onPeople: () => void;
 }) {
+  const label = asking ? `People in this call. ${asking} asking to join` : 'People in this call';
   return (
     <header className="ic-top">
       <span className="ttl">{title}</span>
       <span className="ac-time clock">{clock(elapsed)}</span>
+      {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       <span className="vr v1" />
       <div className="nz">
         <Tooltip label="Open the notes" side="bottom">
@@ -55,8 +63,11 @@ export function TopBar({ title, elapsed, notesOn, mode, custom, people, peopleOp
           <button type="button" className="ac-btn is-secondary is-sm ic-catch" onClick={onCatchUp}><Icon name="history" size={16} /><span className="catchtxt">Catch up</span></button>
         </Tooltip>
         <Shield />
-        <Tooltip label="People in this call" side="bottom">
-          <button type="button" className={cn('ic-faces', peopleOpen && 'is-on')} aria-label="People in this call" onClick={onPeople}><Faces people={people} size={26} max={6} /><span>{people.length}</span></button>
+        <Tooltip label={asking ? `${asking} asking to join` : 'People in this call'} side="bottom">
+          <button type="button" className={cn('ic-faces', peopleOpen && 'is-on')} aria-label={label} onClick={onPeople}>
+            <Faces people={people} size={26} max={6} /><span>{people.length}</span>
+            {asking > 0 && <span className="badge" aria-hidden="true">{asking}</span>}
+          </button>
         </Tooltip>
       </div>
     </header>

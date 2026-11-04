@@ -48,6 +48,10 @@ const EnvSchema = z.object({
   KMASTER: Key('KMASTER').optional(),
   /** Seals billing state. Separate from KMASTER: billing never needs owner keys. */
   KSERVICE: Key('KSERVICE').optional(),
+  /** ws:// or wss:// URL of the LiveKit server, handed to clients with their join tickets. */
+  LIVEKIT_URL: z.string().regex(/^wss?:\/\/\S+$/, 'LIVEKIT_URL must be a ws:// or wss:// URL'),
+  LIVEKIT_API_KEY: z.string().min(1),
+  LIVEKIT_API_SECRET: z.string().min(32, 'LIVEKIT_API_SECRET must be at least 32 characters'),
   /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
   NEAR_AI_API_KEY: optional,
   /** NEAR AI's gateway, which serves the attestation reports models are verified with. */

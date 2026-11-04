@@ -37,6 +37,7 @@
     "GOOGLE_API_URL",
     "GOOGLE_ISSUER",
     "KSERVICE",
+    "LIVEKIT_URL",
     "NEAR_AI_BASE_URL",
     "NEAR_AI_STT_MODEL",
     "NEAR_AI_NOTES_MODEL",
@@ -47,6 +48,8 @@
   "globalPassThroughEnv": [
     "KMASTER",
     "NEAR_AI_API_KEY",
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET"
   ]

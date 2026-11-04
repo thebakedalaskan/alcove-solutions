@@ -1,0 +1,21 @@
+# Local and CI LiveKit (docker-compose.yml, .github/workflows/ci.yml). Not for production.
+# The key below is a local-only development key, like the Postgres password in docker-compose.yml.
+port: 7880
+bind_addresses: ["0.0.0.0"]
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: 127.0.0.1
+keys:
+  devkey: devsecret-devsecret-devsecret-0123
+room:
+  # Rooms exist only when the API creates them, so an old token can't reopen an ended call.
+  auto_create: false
+  empty_timeout: 300
+  departure_timeout: 20
+webhook:
+  api_key: devkey
+  urls: ["http://host.docker.internal:8787/hooks/livekit"]
+logging:
+  level: info

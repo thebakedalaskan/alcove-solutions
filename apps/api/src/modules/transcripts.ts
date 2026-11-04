@@ -86,6 +86,17 @@ export async function heardBy(o: Owner, db: Db, noteId: string): Promise<Inferen
   return [...first.values()];
 }
 
+/**
+ * The latest `n` lines for a note that's still recording, in order: read from its newest clips only, so a long
+ * call's live view costs the same as a short one's. (Each kept clip has at least one line.)
+ */
+export async function latest(o: Owner, db: Db, noteId: string, n: number): Promise<Line[]> {
+  const found = await rows(db, z.object({ clip_tag: bytea, clip_ciphertext: bytea }),
+    'SELECT clip_tag, clip_ciphertext FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 ORDER BY heard_at DESC LIMIT $3', [o.ownerId, noteId, n]);
+  const k = key(o, noteId);
+  return found.flatMap((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored).lines).sort((a, b) => a.at - b.at).slice(-n);
+}
+
 /** Lines as the app shows them, said by `speaker` when anyone can tell. */
 export const spoken = (ls: Line[], speaker: Speaker | undefined): TranscriptLine[] =>
   ls.map((l) => ({ id: l.id, at: l.at, ...(speaker ? { speaker } : {}), text: l.text }));

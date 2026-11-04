@@ -25,6 +25,8 @@
 /* ---- camera feeds ---- */
 .feed { position: relative; overflow: hidden; background: var(--stage-tile); }
 .feed video, .ac-tile video { transform: scaleX(-1); }
+/* Someone else's camera is shown as they see it: only your own is mirrored. */
+.ac-tile video.is-remote { transform: none; }
 .feed video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ac-tile video.screen { transform: none; object-fit: contain; background: var(--stage); }
 .feed-off { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: var(--stage-tile); color: var(--stage-ink-2); font: 500 14px/1 var(--font-sans); }
@@ -119,9 +121,11 @@
 .ic-top .ic-catch:hover { background: rgb(255 255 255 / 0.07); }
 .ic-sicon { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .ic-sicon:hover, .ic-sicon.is-on { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); }
-.ic-faces { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; border-radius: 12px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-mono); transition: background-color var(--duration-1); }
+.ic-faces { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; border-radius: 12px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-mono); transition: background-color var(--duration-1); }
 .ic-faces:hover, .ic-faces.is-on { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
 .ic-faces .ac-faces .ac-avatar { --ring: var(--stage); }
+.ic-faces .badge { position: absolute; top: -2px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--speak); color: var(--stage); font: 700 11px/18px var(--font-sans); text-align: center; box-shadow: 0 0 0 2px var(--stage); }
+.ic-recon { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 26px; padding: 0 10px; border-radius: var(--radius-pill); background: rgb(255 255 255 / 0.07); color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
 .ic-seal { width: 290px; padding: 14px 16px; }
 .ic-seal .hd { display: flex; align-items: center; gap: 8px; font: 600 14px/1.3 var(--font-sans); }
 .ic-seal .hd .ac-i { color: var(--sun-text); }
@@ -188,13 +192,16 @@
 .ic-roomc .h { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px 0 18px; font-size: 14px; color: var(--stage-ink); white-space: nowrap; overflow: hidden; }
 .ic-roomc .h b { font-weight: 600; }
 .ic-roomc .h > span { color: var(--stage-ink-2); }
-.ic-roomc .h .ac-time { margin-left: auto; color: var(--stage-ink); }
+.ic-roomc .h .ac-time { flex: none; margin-left: auto; color: var(--stage-ink); }
+.ic-roomc .empty { position: absolute; inset: 52px 16px 16px; display: grid; place-items: center; font-size: 13.5px; color: var(--stage-ink-2); }
 .ic-roomc .h .ac-notes-sign { height: 24px; }
 .ic-roomc .hand-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: var(--stage-ink); color: var(--stage) !important; font: 600 12px/1 var(--font-sans); }
 .ic-roomc.is-main { background: rgb(255 255 255 / 0.02); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }
 .ic-roomc.is-here { box-shadow: inset 0 0 0 1.5px rgba(238, 237, 248, .4); }
 @container (max-width: 420px) { .ic-roomc .h .ac-notes-sign { display: none; } }
 @container (max-width: 300px) { .ic-roomc .h > span:not(.hand-chip):not(.ac-time) { display: none; } }
+/* A room asking for help says so before it says how many are in it. */
+@container (max-width: 480px) { .ic-roomc.has-help .h > span:not(.hand-chip):not(.ac-time) { display: none; } }
 @container (max-width: 240px) { .ic-roomc .h .hand-chip { display: none; } }
 .ic-lane { position: absolute; z-index: 7; left: 0; right: 0; top: 0; height: 44px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .ic-lane .quiet { display: flex; align-items: center; gap: 8px; font: 500 13.5px/1 var(--font-sans); color: var(--stage-ink-2); white-space: nowrap; }
@@ -247,6 +254,10 @@
 .ic-nf .lbl { overflow: hidden; text-overflow: ellipsis; }
 .ic-nf .end { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
 .ic-nf .ac-faces .ac-avatar { --ring: var(--surface); }
+/* A footer that says something in full: how the call is kept private. */
+.ic-nf.is-wrap { height: auto; min-height: 44px; align-items: flex-start; padding: 12px 16px; white-space: normal; line-height: 1.45; }
+.ic-nf.is-wrap .ac-i { margin-top: 1px; }
+.ic-nf.is-wrap .lbl { overflow: visible; }
 .ic-foot { flex: none; display: grid; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--line); }
 .ic-foot .inrow, .ic-bc .inrow { display: flex; gap: 8px; }
 .ic-foot .ac-input, .ic-bc .ac-input { flex: 1; min-width: 0; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
@@ -288,6 +299,15 @@
 .ic-prow .st { display: flex; align-items: center; gap: 6px; color: var(--ink-3); }
 .ic-prow .st .ac-level i { background: var(--horizon); }
 .ic-prow.is-away { opacity: .7; }
+.ic-prow .st .ac-btn.is-sm { height: 30px; padding: 0 12px; }
+.ic-prow .ic-pmore { width: 30px; height: 30px; margin-right: -6px; }
+.ic-prow .ic-pmore[data-state="open"] { background: var(--sunk); color: var(--ink); }
+.ic-missed { margin-bottom: 16px; }
+/* The organizer's lock, under the people. */
+.ic-lock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 20px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunk); }
+.ic-lock > .ac-i { color: var(--ink-2); }
+.ic-lock b { display: block; font: 600 14px/1.2 var(--font-sans); }
+.ic-lock small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 
 /* rooms in the panel */
 .ic-rtop { display: grid; grid-template-columns: auto 1fr; gap: 12px 14px; align-items: center; font: 600 13px/1.2 var(--font-sans); }
@@ -514,3 +534,6 @@
 @media (max-height: 560px) {
   .rm-dot, .rm-wave { display: none; }
 }
+
+/* Asking to join: the join page while the organizer decides. */
+.pj-ask { display: flex; align-items: center; gap: 10px; color: var(--stage-ink-2); }

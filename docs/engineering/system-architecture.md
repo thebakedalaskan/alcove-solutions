@@ -36,6 +36,9 @@ flowchart TB
     Inference -->|TDX collateral, GPU evidence| Verifiers[Intel PCS, NVIDIA NRAS]
     Account -->|OpenID Connect| Google[Google: sign-in and Calendar]
     Calls -->|Calendar API| Google
+    Calls -->|rooms, tokens, metadata, nudges| LK[LiveKit: call media]
+    LK -->|signed webhooks| Calls
+    Media -->|WebRTC audio, video, screens| LK
 ```
 
 | Path | Responsibility |
@@ -97,7 +100,7 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | Notes job | Three attempts, a 180-second lease, retries 20 and 90 seconds after a failure; at most 120,000 characters of transcript sent |
 | Calendar | Events from an hour ago to a week ahead, at most 100 |
 | Meeting | 5 to 600 minutes, at most 100 people invited; a call started now is set to an hour |
-| Call participants | One (the organizer); multi-party calls are on the [roadmap](../delivery/roadmap.md) |
+| Call participants | No limit; the organizer, people invited and guests by name. Join tokens last 120 seconds, call passes 12 hours |
 | Note progress stream | One update a second, for at most two minutes |
 | API instances | Any number: sessions and keys come from Postgres on every request, and notes jobs are claimed with leases. The rate-limit counters, Google access tokens and the timers that retry notes are per process. The prepared deploy runs one. |
 
@@ -110,7 +113,7 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 | Sign-in | Google OpenID Connect when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set; stand-ins for Microsoft and SSO in `apps/api/src/demo.ts` | Google, Microsoft OAuth and OIDC single sign-on, all verified |
 | Calendar and directory | Google Calendar for Google accounts; a sample day for demo accounts; a demo directory for `vandelay.industries` | Every provider's calendar and the company's own directory |
 | Transport | HTTP on localhost behind the Vite proxy | TLS, plus an attested end-to-end channel (HPKE) so the edge sees only ciphertext |
-| Call media | One participant, local only | End-to-end encrypted multi-party media (Proton Meet model: SFrame-style insertable streams, keys never on the media server); the notes service joins as an attested participant |
+| Call media | LiveKit in Docker (`infra/livekit/dev.yaml`); LiveKit Cloud in production. End-to-end encrypted: MLS keys made in browsers, frames encrypted before they leave ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) | The same, plus every speaker in the notes |
 | Invitations | Sent by Google Calendar when the organizer's calendar is connected; otherwise none | Email (SMTP) as well |
 | Object store | RustFS in Docker | Cloudflare R2 |
 | Database | Postgres 17 in Docker | Cloud SQL Postgres 17 |

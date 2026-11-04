@@ -135,10 +135,9 @@ dock at the bottom.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
 
-Calls have one participant today. In development builds, five of Alcove's illustrated cast join a call so
-the parts that need other people (their tiles, captions, raised hands, spotlight and rooms) can be seen;
-nothing they "say" reaches the transcript or the notes
-([Calls and recordings › Multi-party preview](../engineering/calls-and-recordings.md#multi-party-preview)).
+Calls are for groups: invited people join with their accounts, anyone else with the link asks and the
+organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
+([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
 ## 6. End the call and get the notes
 
@@ -152,9 +151,9 @@ nothing they "say" reaches the transcript or the notes
    invited address, marked as from the organizer.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no
    summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
-   While the notes model's evidence can't be checked or doesn't check out, nothing is sent: notes wait with
-   "Waiting to verify the notes model. Nothing is sent until it checks out" and are tried again every five
-   minutes.
+   While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it
+   doesn't answer, nothing is lost. Either way notes wait with "Waiting for the notes model. The notes are
+   written as soon as it’s verified and answering" and are tried again every five minutes.
 
 ## 7. Notes
 

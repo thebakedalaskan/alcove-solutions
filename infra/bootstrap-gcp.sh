@@ -108,7 +108,7 @@ fi
 unset DB_PASSWORD DB_URL NORMALIZED_DB_URL ALCOVE_DB_PASSWORD
 
 echo "› Secrets (values you add once)"
-for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
+for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-livekit-api-key alcove-livekit-api-secret; do
   ensure_secret "$s"
 done
 # The two server keys are generated here once and never rotated by this script: KMASTER wraps every
@@ -128,7 +128,7 @@ gcp iam service-accounts describe "alcove-api@$PROJECT_ID.iam.gserviceaccount.co
 gcp iam service-accounts describe "alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-deploy --display-name "Alcove GitHub deploys"
 RUNTIME="alcove-api@$PROJECT_ID.iam.gserviceaccount.com"; DEPLOY="alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME" --role roles/cloudsql.client --condition None >/dev/null
-for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret; do
+for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-livekit-api-key alcove-livekit-api-secret; do
   gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
 done
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.admin --condition None >/dev/null
@@ -161,6 +161,10 @@ Done. Add these as GitHub repository variables (Settings › Secrets and variabl
 Then add the R2 keys (never print their values):
   printf %s "\$R2_ACCESS_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-objects-access-key --data-file=-
   printf %s "\$R2_SECRET_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-objects-secret-key --data-file=-
+Then the LiveKit Cloud project's API key and secret (calls need them), and the GitHub variable
+LIVEKIT_URL = wss://<project>.livekit.cloud:
+  printf %s "\$LIVEKIT_API_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-livekit-api-key --data-file=-
+  printf %s "\$LIVEKIT_API_SECRET" | gcloud --project="$PROJECT_ID" secrets versions add alcove-livekit-api-secret --data-file=-
 Optional, once inference is implemented:
   printf %s "\$NEAR_AI_API_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-near-ai-api-key --data-file=-
 Optional Google provider credentials (enabling their binding does not implement sign-in):

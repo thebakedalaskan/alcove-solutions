@@ -5,6 +5,7 @@ import { createPool } from './db';
 import { inference } from './inference';
 import { configureLogging, flushLogs, log } from './log';
 import { maintain } from './maintenance';
+import { createLiveKit } from './livekit';
 import { migrate } from './migrate';
 import { createObjectStore } from './objects';
 
@@ -20,7 +21,7 @@ const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);
 slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
-const deps = { cfg, pool, objects };
+const deps = { cfg, pool, objects, livekit: createLiveKit(cfg) };
 const app = createApp(deps);
 
 const mlog = log.child({ component: 'maintenance' });

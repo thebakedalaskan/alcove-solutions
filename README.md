@@ -13,10 +13,11 @@ Start with the **[docs](docs/README.md)**.
 | [Deploying](infra/README.md) | GCP + Cloudflare setup, CI/CD, merge rules |
 
 **Status:** real Google sign-in with Google Calendar (Microsoft and SSO are still demo identities, with a
-sample calendar and company directory), single-participant calls with real media, encrypted notes
-recordings, a live transcript and written notes from NEAR AI Cloud's verified private inference, asking
-about a call, sharing notes with everyone invited, credits charged for notes, CI and a deploy pipeline.
-Multi-party calls, invite emails, credit purchases and confidential compute are next; see the roadmap.
+sample calendar and company directory), group calls end-to-end encrypted with MLS on LiveKit, encrypted
+notes recordings, a live transcript and written notes from a verified private model on NEAR AI, asking about a
+call, notes that carry across a series, sharing notes with everyone invited, credits charged for notes, CI and
+a deploy pipeline. Every speaker in a call's notes, invite emails, credit purchases and confidential compute
+are next; see the roadmap.
 
 ## Running the app
 

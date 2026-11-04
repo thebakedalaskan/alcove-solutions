@@ -18,7 +18,7 @@ import type { InferenceEvidence } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from './config';
 import { equalBytes, fromUtf8, utf8 } from './crypto';
-import { AppError, InternalError, UnavailableError, UnverifiedError, ValidationError } from './errors';
+import { AppError, InternalError, UnansweredError, UnavailableError, UnverifiedError, ValidationError } from './errors';
 import { fingerprint, forget, unhex, verified, type Task, type Verified } from './evidence';
 import { log } from './log';
 import { decodeResponse, encapsulate, encodeRequest, type KeyConfig } from './ohttp';
@@ -41,7 +41,7 @@ class KeyRefused extends Error {
 function statusError(status: number, context: Record<string, string | number>): AppError {
   if (status === 400 || status === 413 || status === 422) return new ValidationError('The notes service couldn’t read that.', { context });
   if (status === 401 || status === 403) return new InternalError('The notes service turned Alcove away.', { context });
-  return new UnavailableError('Alcove’s notes service is busy. Try again in a moment.', { context });
+  return new UnansweredError('Alcove’s notes service is busy. Try again in a moment.', { context });
 }
 
 /**
@@ -64,7 +64,7 @@ async function sealed(cfg: Ready, v: Verified, endpoint: string, o: { path: stri
       });
     } catch (e) {
       const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
-      const error = new UnavailableError('Alcove’s notes service can’t be reached right now.', { cause: e, context: { what: o.what, timedOut, ms: Math.round(performance.now() - t0) } });
+      const error = new UnansweredError('Alcove’s notes service can’t be reached right now.', { cause: e, context: { what: o.what, timedOut, ms: Math.round(performance.now() - t0) } });
       if (timedOut) throw error;
       throw new KeyRefused(error);
     }
@@ -94,6 +94,8 @@ async function withVerified<T>(cfg: Ready, model: string, task: Task, run: (v: V
   try {
     return await run(v);
   } catch (e) {
+    // No answer: the next request verifies again, so it may reach a model that answers.
+    if (e instanceof UnansweredError) { forget(cfg, v); throw e; }
     if (!(e instanceof KeyRefused)) throw e;
     forget(cfg, v);
     let again: Verified;

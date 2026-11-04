@@ -2,23 +2,27 @@
  * The stage: everyone's tiles, a shared screen, the bar that says what's shared or spotlighted, and
  * the captions. Tiles sit where the layout engine (view.ts) puts them and glide there; you can drag
  * them into another order, make one bigger from its corner or its menu, and drag the line beside a
- * shared screen. All of that changes your view only. With rooms open, the stage shows the rooms.
+ * shared screen. All of that changes your view only. With rooms open, the organizer's stage shows every room;
+ * everyone else's shows the people in their own room.
  */
 import type { Person } from '@alcove/api';
 import { Avatar, CallTile, Icon, NotesSign, Popover, Scope, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { callName } from '~/lib/people';
-import { Video } from './Video';
+import { FeedVideo, type Feed } from './Video';
 import { fitGrid, layout, ordered, type CallView, type Rect } from './view';
 
 export interface StageParticipant {
   id: string; person: Person; isMe: boolean; mic: boolean; hand: boolean; speaking: boolean;
-  /** Their camera, when it's on. */
-  video: MediaStream | null;
+  /** Their camera, when it's on and this browser plays their media. */
+  video: Feed | null;
 }
+/** Open rooms, as the organizer oversees them: who's in each, and who in a room raised a hand for help. */
 export interface StageRooms {
-  rooms: { name: string; ids: string[]; talking: string | null; help: string | null }[];
+  rooms: { name: string; ids: string[]; help: string | null }[];
+  /** Everyone in no room: the organizer while there, guests, and anyone not sent to a room. */
+  main: string[];
   /** The room you're in, or null for the main room. */
   joined: number | null;
   left: number;
@@ -51,7 +55,8 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
   spotlight: string | null;
   view: CallView;
   organizer: boolean;
-  screen: { stream: MediaStream; label: string } | null;
+  /** The screen being shared, and whose it is ("You’re sharing a tab"). */
+  screen: { feed: Feed; label: string } | null;
   /** The status bar's pills: what you share, who is spotlighted. */
   bar: ReactNode;
   caption: ReactNode;
@@ -171,8 +176,8 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
       </AnimatePresence>
       {screen && L.screen && (
         <motion.div className="ic-scr" initial={{ ...box(L.screen), opacity: 0 }} animate={{ ...box(L.screen), opacity: 1 }} transition={reduce || divider.current ? { duration: 0 } : GLIDE}>
-          <Video stream={screen.stream} className="screen" />
-          <span className="ac-tile-name"><Icon name="screen" size={14} />You’re sharing {screen.label}</span>
+          <FeedVideo feed={screen.feed} className="screen" />
+          <span className="ac-tile-name"><Icon name="screen" size={14} />{screen.label}</span>
         </motion.div>
       )}
       {L.divider && !narrow && (
@@ -219,7 +224,7 @@ export function Stage({ people, spotlight, view, organizer, screen, bar, caption
                   {resizable && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p.id)}><Icon name="resize" size={14} /></span>}
                 </>
               )}>
-              {p.video ? <Video stream={p.video} /> : undefined}
+              {p.video ? <FeedVideo feed={p.video} /> : undefined}
             </CallTile>
           </motion.div>
         );
@@ -250,16 +255,15 @@ function TileMenu({ p, open, onOpenChange, pinned, spot, organizer, big, canSize
   );
 }
 
-/** Rooms are open: the main room, and each room with the people in it. */
+/** Rooms are open: the main room while anyone is in it, and each room with the people in it. */
 function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[]; rooms: StageRooms; w: number; h: number; reduce: boolean }) {
-  const me = people.find((p) => p.isMe);
   const byId = new Map(people.map((p) => [p.id, p]));
   const top = 52;
   const port = w < h * 0.9;
   const gap = port ? 10 : 14;
   const units = [
-    ...(rooms.joined === null ? [{ room: -1, weight: 0.5, ids: me ? [me.id] : [] }] : []),
-    ...rooms.rooms.map((r, k) => ({ room: k, weight: 1, ids: [...r.ids, ...(rooms.joined === k && me ? [me.id] : [])] }))
+    ...(rooms.main.length ? [{ room: -1, weight: rooms.main.length > 1 ? 1 : 0.5, ids: rooms.main }] : []),
+    ...rooms.rooms.map((r, k) => ({ room: k, weight: 1, ids: r.ids }))
   ];
   const total = units.reduce((n, u) => n + u.weight, 0);
   const avail = (port ? h - top : w) - (units.length - 1) * gap;
@@ -291,29 +295,31 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
       </div>
       {placed.map((u, k) => {
         const room = u.room >= 0 ? rooms.rooms[u.room] : undefined;
+        const here = rooms.joined === (room ? u.room : null);
+        const justMe = !room && u.ids.length === 1 && byId.get(u.ids[0] ?? '')?.isMe === true;
         return (
-          <motion.div key={`card-${u.room}`} className={cn('ic-roomc', u.room < 0 && 'is-main', rooms.joined === u.room && 'is-here', room?.help && 'has-help')}
+          <motion.div key={`card-${u.room}`} className={cn('ic-roomc', u.room < 0 && 'is-main', here && room && 'is-here', room?.help && 'has-help')}
             initial={{ ...box(u.card), opacity: 0, scale: 0.97 }} animate={{ ...box(u.card), opacity: 1, scale: 1 }} transition={reduce ? { duration: 0 } : { ...GLIDE, delay: k * 0.03 }}>
             {room && <div className="bar" style={{ background: ROOMBAR[u.room % ROOMBAR.length] }} />}
             <div className="h">
               <b>{room ? room.name : 'Main room'}</b>
-              <span>{room ? `${u.ids.length} ${u.ids.length === 1 ? 'person' : 'people'}` : 'you'}</span>
-              {rooms.joined === u.room && room && <span className="here">· you’re here</span>}
+              <span>{justMe ? 'you' : `${u.ids.length} ${u.ids.length === 1 ? 'person' : 'people'}`}</span>
+              {here && !justMe && <span className="here">· you’re here</span>}
               {room?.help && <span className="hand-chip"><Icon name="hand" size={13} />{callName(byId.get(room.help)?.person ?? { name: 'Someone', email: '' })} asked for help</span>}
               {room && <span className="ac-time">{t}</span>}
               {room && rooms.notesOn && <NotesSign stage>Notes</NotesSign>}
             </div>
+            {!u.ids.length && <p className="empty">Nobody in this room</p>}
           </motion.div>
         );
       })}
       {placed.flatMap((u) => u.tiles).map(({ id, r }) => {
         const p = byId.get(id);
         if (!p || !r) return null;
-        const talking = rooms.rooms.some((x) => x.talking === id);
         return (
           <motion.div key={id} className="ic-slot" initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce ? { duration: 0 } : GLIDE}>
-            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={talking || (p.isMe && p.speaking)} muted={!p.mic} hand={p.hand}>
-              {p.video ? <Video stream={p.video} /> : undefined}
+            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand}>
+              {p.video ? <FeedVideo feed={p.video} /> : undefined}
             </CallTile>
           </motion.div>
         );

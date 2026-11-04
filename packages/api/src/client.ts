@@ -1,4 +1,4 @@
-import type { CallSession, NoteProgress, RoomRecording } from './live';
+import type { CallCard, CallSession, NoteProgress, RoomRecording } from './live';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, OpenAction, PersonSuggestion,
@@ -67,8 +67,13 @@ export interface AlcoveApi {
   calls: {
     /** Creates a call that starts now and returns its code. */
     startNow(input?: InstantCallInput): Promise<{ code: string }>;
-    /** Joins one of your calls by code. Notes are on if the call was set up with them. */
-    join(code: string, opts: { mic: boolean; cam: boolean }): Promise<CallSession>;
+    /** A call link's title and organizer, for anyone, signed in or not. */
+    card(code: string): Promise<CallCard>;
+    /**
+     * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else
+     * needs `name` (1–60 characters). Refused until the organizer is there, and while the call is locked.
+     */
+    join(code: string, opts: { mic: boolean; cam: boolean; name?: string | undefined; previous?: string | undefined }): Promise<CallSession>;
   };
   recordings: {
     start(title?: string): Promise<RoomRecording>;

@@ -12,6 +12,7 @@ import { createApp } from '../app';
 import type { Deps } from '../context';
 import { loadConfig, type Config } from '../config';
 import { createPool } from '../db';
+import { createLiveKit } from '../livekit';
 import { configureLogging } from '../log';
 import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
@@ -61,7 +62,7 @@ export interface Harness {
   /** The NEAR AI Cloud the API transcribes speech and writes notes with, and the stand-ins that vouch for it. */
   near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
-  browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined }): Browser;
+  browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callRekeyMs?: number | undefined }): Browser;
   /** Another API process on the same database and bucket, as after a restart, on a second instance, or with other settings. */
   secondServer(cfg?: Partial<Config>): Promise<{ baseUrl: string; close(): Promise<void> }>;
   close(): Promise<void>;
@@ -106,7 +107,7 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const objects = await createObjectStore(cfg);
-  const deps: Deps = { cfg, pool, objects };
+  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg) };
   const { server, baseUrl } = await listen(deps);
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
@@ -115,7 +116,8 @@ export async function startHarness(): Promise<Harness> {
     baseUrl, pool, objects, deps, logs, google, near,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
-      return { api: createHttpApi({ baseUrl, fetch: f, ...(o.onEvent ? { onEvent: o.onEvent } : {}) }), fetch: f };
+      // Calls keep up with their keys quickly here; browsers wait 1.5 s between checks while nothing nudges them.
+      return { api: createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) }), fetch: f };
     },
     async secondServer(more = {}) {
       const second = await listen({ ...deps, cfg: { ...deps.cfg, ...more } });

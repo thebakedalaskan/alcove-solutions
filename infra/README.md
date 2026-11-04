@@ -38,7 +38,8 @@ The project must already exist and have billing linked. The script enables APIs 
   backups and point-in-time recovery. Existing instances are checked too; drift is repaired and setup
   stops if the resulting backup settings do not match.
 - Secret Manager entries `alcove-database-url`, `alcove-kservice`, `alcove-objects-access-key`,
-  `alcove-objects-secret-key`, optional `alcove-near-ai-api-key`, and optional Google provider entries
+  `alcove-objects-secret-key`, `alcove-livekit-api-key`, `alcove-livekit-api-secret`, optional
+  `alcove-near-ai-api-key`, and optional Google provider entries
   `alcove-google-client-id` and `alcove-google-client-secret`.
 - Runtime account `alcove-api@alcove-solutions.iam.gserviceaccount.com`, with Cloud SQL access and
   access to those secrets. The deploy account can publish to the `alcove` registry, manage Cloud Run,
@@ -126,6 +127,7 @@ switch; environment-scoped variables are unavailable to the early job condition.
 | `OBJECTS_BUCKET` | `alcove-objects` |
 | `WEB_ORIGIN` | `https://alcove.solutions` |
 | `API_ORIGIN` | `https://api.alcove.solutions`; also the API's `API_URL`, from which Google's redirect URI is built |
+| `LIVEKIT_URL` | the LiveKit Cloud project's URL, `wss://<project>.livekit.cloud` |
 | `NEAR_AI_ENABLED` | `false` on a new installation; `true` once the inference key has a version |
 | `GOOGLE_AUTH_ENABLED` | `false` on a new installation; `true` only after both Google credential versions exist |
 | `DEPLOY_ENABLED` | `false` during setup; `true` when ready to deploy |
@@ -140,6 +142,26 @@ the next deployment binds it, and `/health` reports `inference: configured`.
 Import `.github/rulesets/main.json` through Settings › Rules › Rulesets to require a pull request and
 the four CI checks (Policy, Typecheck, Build, Integration tests) on an up-to-date branch. The file also
 forbids force pushes and deletion. Its presence in the repository does not prove the live rule is active.
+
+## LiveKit Cloud (calls)
+
+Calls' audio, video and chat delivery go through a LiveKit Cloud project. The API needs its URL, key
+and secret; without them it doesn't start.
+
+1. Create a project at cloud.livekit.io. Its URL (`wss://<project>.livekit.cloud`) is the repository
+   variable `LIVEKIT_URL`.
+2. Settings › API keys › create a key. Add the key and secret as versions of `alcove-livekit-api-key`
+   and `alcove-livekit-api-secret`, from private environment variables (bootstrap prints the commands).
+   The secret must be at least 32 characters.
+3. Settings › Webhooks › add `https://api.alcove.solutions/hooks/livekit`, signed with that same key.
+   The API ends a call when the organizer's connection is gone for 25 s, or when its room finishes
+   (20 s after everyone has left); webhooks carry this, and upkeep catches anything they miss.
+4. Only the API issues join tokens, and only for rooms it created, so the project's other defaults
+   can stay as they are.
+
+`/health` reports `livekit: reachable` once the API can reach the project, and the deploy's health
+check requires it. The web app's CSP allows the LiveKit host (and `*.livekit.cloud`, where media
+servers live) in `connect-src`.
 
 ## Google provider preparation
 
@@ -192,9 +214,10 @@ Each deployment:
 3. Deploys `alcove-api`: gen2, port 8080, one CPU, 512 MiB, 300-second request timeout, min/max one
    instance, session affinity, and CPU between requests for key expiry and object cleanup.
 4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
-   before custom-domain provisioning.
-5. Builds the web app against `API_ORIGIN`, writes the CSP for that origin with `apps/web/scripts/csp.mjs`
-   (inline scripts allowed only by the hash of what the build produced; nothing third-party), and publishes
+   before custom-domain provisioning, and requires `livekit: reachable`.
+5. Builds the web app against `API_ORIGIN`, writes the CSP for that origin and the LiveKit host with
+   `apps/web/scripts/csp.mjs` (inline scripts allowed only by the hash of what the build produced; nothing
+   third-party but LiveKit), and publishes
    `apps/web/dist/client` to Pages production branch `main` using `pnpm dlx wrangler@4.157.0`.
    The publisher receives its token/account/project through step-scoped environment variables and
    attributes the deployment to the verified Git commit without changing workspace dependencies.
@@ -224,5 +247,5 @@ Cloud Run is not a confidential VM: until the API runs in an attested VM that al
 `KMASTER`, whoever operates the service could open accounts. The API is ready to move to one
 (`TEE=dstack`); the steps are in
 [Privacy › Moving to confidential computing](../docs/engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing). Sessions live in Postgres, so restarts
-sign nobody out. Outstanding confidential-compute, multi-party media and inference work is tracked in
+sign nobody out. Outstanding confidential-compute, call-notes and inference work is tracked in
 [deployment and acceptance](../docs/engineering/deployment-and-acceptance.md).

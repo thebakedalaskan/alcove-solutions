@@ -26,23 +26,58 @@ export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLo
 
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 export const CallActionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('mic'), on: z.boolean() }),
-  z.object({ type: z.literal('cam'), on: z.boolean() }),
-  z.object({ type: z.literal('hand'), up: z.boolean() }),
-  z.object({ type: z.literal('sharing'), on: z.boolean(), title: z.string().max(120).optional() }),
-  z.object({ type: z.literal('chat'), text: z.string().trim().min(1).max(4000) }),
   z.object({ type: z.literal('notes'), on: z.boolean() }),
-  z.object({ type: z.literal('dismiss'), id: z.string() }),
-  z.object({ type: z.literal('spotlight'), participantId: z.string().max(200).nullable() }),
+  /** Anyone in the call: a raised hand, which everyone sees. */
+  z.object({ type: z.literal('hand'), up: z.boolean() }),
+  /** Turns away someone asking to join. Letting someone in is the organizer's browser adding them to the call's MLS group. */
+  z.object({ type: z.literal('deny'), identity: z.string().min(1).max(64) }),
+  /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */
+  z.object({ type: z.literal('mute'), identity: z.string().min(1).max(64), trackSid: z.string().min(1).max(64) }),
+  z.object({ type: z.literal('remove'), identity: z.string().min(1).max(64) }),
+  z.object({ type: z.literal('lock'), on: z.boolean() }),
+  /** Puts someone in the call on everyone's main stage, or nobody. */
+  z.object({ type: z.literal('spotlight'), participantId: z.string().max(64).nullable() }),
   z.object({
     type: z.literal('rooms-open'),
     rooms: z.array(z.object({ name: z.string().trim().min(1).max(40), emails: z.array(z.string().trim().toLowerCase().max(254)).max(50) })).min(2).max(8),
     minutes: z.number().int().min(1).max(60)
   }),
   z.object({ type: z.literal('rooms-close') }),
-  z.object({ type: z.literal('rooms-message'), text: z.string().trim().min(1).max(300) })
+  z.object({ type: z.literal('rooms-message'), text: z.string().trim().min(1).max(300) }),
+  /** The organizer going to one of the open rooms, or back to the main room (null): the people in that room see and hear them. */
+  z.object({ type: z.literal('rooms-visit'), roomId: z.string().max(64).nullable() })
 ]);
 export type CallAction = z.infer<typeof CallActionSchema>;
+
+/*
+ * End-to-end encrypted calls (docs: Calls and recordings › End-to-end encryption). Every browser in a call is
+ * an MLS client; the API only orders and relays MLS messages, which it can't read. Bodies are base64url.
+ */
+const Mls = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/).max(max);
+const CallIdentity = z.string().regex(/^p_[A-Za-z0-9_-]{22}$/);
+/** Joining by link: devices to start with, a name for guests, and this browser's MLS key package. */
+export const CallJoinBodySchema = z.object({
+  mic: z.boolean(), cam: z.boolean(), name: z.string().max(200).optional(),
+  /** This connection's random identity, chosen by the browser because its key package names it. */
+  identity: CallIdentity,
+  keyPackage: Mls(8192),
+  /** The pass from this browser's last connection to the call, if it had one: someone let in before is let in again without asking. */
+  previous: z.string().max(2000).optional()
+});
+/** The organizer's browser, adding and removing people: the commit, the welcome for anyone added, and who that was. */
+export const CallCommitBodySchema = z.object({
+  generation: z.number().int().nonnegative(),
+  /** The epoch the commit was made in; the API takes commits in order, one per epoch. */
+  epoch: z.number().int().nonnegative(),
+  commit: Mls(1_000_000),
+  welcome: Mls(1_000_000).optional(),
+  added: z.array(CallIdentity).max(100),
+  removed: z.array(CallIdentity).max(100)
+});
+/** An MLS application message (chat), from anyone in the call's group. */
+export const CallMessageBodySchema = z.object({ generation: z.number().int().nonnegative(), epoch: z.number().int().nonnegative(), message: Mls(65_536) });
+/** A fresh key package for a new group generation (after the organizer's connection changed), from someone already in the call. */
+export const CallKeyPackageBodySchema = z.object({ generation: z.number().int().nonnegative(), keyPackage: Mls(8192) });
 
 export const RecordingActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rename'), title: z.string().trim().min(1).max(160) }),

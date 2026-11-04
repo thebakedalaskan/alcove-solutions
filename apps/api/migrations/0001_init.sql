@@ -80,15 +80,18 @@ CREATE TABLE operations (
 
 -- What was said while a note is still being recorded: one sealed row per transcribed clip. A
 -- retried clip has the same keyed tag, so it is stored once. When the recording stops, the lines
--- move into the note and these rows are deleted.
+-- move into the note and these rows are deleted. `heard_at` lets a live view read only the newest
+-- clips (the recording's own pieces already show when it was recorded).
 CREATE TABLE transcript_clips (
   owner_id alcove_owner_id NOT NULL,
   note_item_id alcove_id128 NOT NULL,
   clip_tag bytea NOT NULL,
   clip_ciphertext bytea NOT NULL,
+  heard_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (owner_id, note_item_id, clip_tag),
   FOREIGN KEY (owner_id, note_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
 );
+CREATE INDEX transcript_clips_latest ON transcript_clips(owner_id, note_item_id, heard_at);
 
 -- Live transcript lines in someone's caption language, while the note is still being recorded: one
 -- sealed row per line and language, found by a keyed tag of both, so each is translated once. They
@@ -120,6 +123,20 @@ CREATE TABLE content_jobs (
 );
 CREATE INDEX content_jobs_due ON content_jobs(state, lease_until);
 
+-- Group calls on LiveKit (docs: Calls and recordings). Anyone with a call's link can look it up, not only its
+-- organizer, so codes get an index: a keyed hash under KMASTER, never the code itself.
+CREATE TABLE call_codes (
+  code_hash bytea PRIMARY KEY,
+  owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
+  meeting_item_id alcove_id128 NOT NULL,
+  UNIQUE (owner_id, meeting_item_id),
+  FOREIGN KEY (owner_id, meeting_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
+);
+
+-- A call knows its LiveKit room, the organizer's current connection, when it joined and left, whether it's
+-- locked, and where its end-to-end encryption (MLS) has got to: counters only. The group's generation (a new
+-- group when the organizer's connection changes), its epoch (the API takes one commit per epoch, in order)
+-- and the last seq in its log.
 CREATE TABLE calls (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   call_id alcove_id128 NOT NULL,
@@ -129,10 +146,36 @@ CREATE TABLE calls (
   ended_at timestamptz,
   version bigint NOT NULL CHECK (version >= 0),
   state_ciphertext bytea NOT NULL,
+  room_name text,
+  host_identity text,
+  host_joined_at timestamptz,
+  host_left_at timestamptz,
+  locked boolean NOT NULL DEFAULT false,
+  mls_generation integer NOT NULL DEFAULT 0 CHECK (mls_generation >= 0),
+  mls_epoch bigint NOT NULL DEFAULT 0 CHECK (mls_epoch >= 0),
+  mls_seq bigint NOT NULL DEFAULT 0 CHECK (mls_seq >= 0),
   PRIMARY KEY (owner_id, call_id),
   FOREIGN KEY (owner_id, meeting_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
 );
 CREATE INDEX calls_live ON calls(owner_id) WHERE state = 'live';
+CREATE UNIQUE INDEX calls_room ON calls(room_name) WHERE room_name IS NOT NULL;
+
+-- A call's MLS log: key packages from people asking to join, the organizer's commits, a welcome for whoever was
+-- added, and chat. The API orders and relays these and can't read them (they're MLS messages); each body is also
+-- sealed under the organizer's call key. `party` is the random identity a key package came from or a welcome is
+-- for. Deleted when the call ends, and when a new generation starts (waiting people's key packages carry over).
+CREATE TABLE call_mls (
+  owner_id alcove_owner_id NOT NULL,
+  call_id alcove_id128 NOT NULL,
+  seq bigint NOT NULL CHECK (seq > 0),
+  generation integer NOT NULL CHECK (generation >= 0),
+  kind text NOT NULL CHECK (kind IN ('keypackage', 'commit', 'welcome', 'message')),
+  party text,
+  epoch bigint NOT NULL CHECK (epoch >= 0),
+  body_ciphertext bytea NOT NULL,
+  PRIMARY KEY (owner_id, call_id, seq),
+  FOREIGN KEY (owner_id, call_id) REFERENCES calls(owner_id, call_id) ON DELETE CASCADE
+);
 
 CREATE TABLE recordings (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,

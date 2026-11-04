@@ -123,7 +123,7 @@ live transcript and written notes.
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
 | The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
-| Multi-party end-to-end encrypted calls | **Not implemented** |
+| Multi-party end-to-end encrypted calls: keys only in browsers, commits only from the organizer's browser, a new key with every join and leave, chat unreadable to the server and to later joiners, media unreadable without the key (LiveKit included), asking to join, no names to LiveKit | API integration tests against a real LiveKit server, with MLS clients and encrypted media; verify two browsers on each release |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |
 | Attested confidential compute, with `KMASTER` released only to it | **Required before real users**; Cloud Run is not a TEE. Inside dstack: keys from its key service and refused from the environment, and `/v1/attestation` binding a nonce and the build, in API integration tests against a local dstack stand-in. See [Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing) |
 
