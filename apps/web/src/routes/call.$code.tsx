@@ -757,7 +757,7 @@ function InCall({ session }: { session: CallSession }) {
               <motion.aside key="side" className="ic-side" aria-label="Call panel" style={{ width: sideW }}
                 initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
                 <SidePanel view={shownPanel} onView={openPanel} onClose={() => setPanel(null)} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
-                  {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem].filter((x): x is string => !!x)}
+                  {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem].filter((x): x is string => !!x)} paused={notesPaused}
                     onNotes={(v) => void switchNotes(v)} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
                   {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}

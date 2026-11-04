@@ -99,11 +99,14 @@ function Summary({ text }: { text: string }) {
   );
 }
 
-export function NotesView({ state, live, getting, problems, onNotes, onSeek, onTranscript }: {
+export function NotesView({ state, live, getting, problems, paused = false, onNotes, onSeek, onTranscript }: {
   state: CallState; live: LiveNotes;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
-  problems: string[]; onNotes: (on: boolean) => void; onSeek: (at: number) => void; onTranscript: () => void;
+  problems: string[];
+  /** Notes are on, but the organizer's connection is gone, so nothing is written down until it's back. */
+  paused?: boolean | undefined;
+  onNotes: (on: boolean) => void; onSeek: (at: number) => void; onTranscript: () => void;
 }) {
   const on = state.notes.status === 'on';
   const [menu, setMenu] = useState(false);
@@ -112,8 +115,8 @@ export function NotesView({ state, live, getting, problems, onNotes, onSeek, onT
   return (
     <>
       <div className="ic-nh">
-        {on ? <NotesSign>Notes on</NotesSign> : <span className="ic-off-sign"><Icon name="notesPen" size={13} />Notes off</span>}
-        <span className="m">{on ? 'Written as people talk' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+        {on && !paused ? <NotesSign>Notes on</NotesSign> : <span className="ic-off-sign"><Icon name={paused ? 'pause' : 'notesPen'} size={13} />{paused ? 'Notes paused' : 'Notes off'}</span>}
+        <span className="m">{paused ? 'Back when the organizer’s connection is' : on ? 'Written as people talk' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
         <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
           anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options"><Icon name="more" size={18} /></button>}>
           {state.isOrganizer && (
