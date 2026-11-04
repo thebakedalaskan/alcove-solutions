@@ -54,7 +54,7 @@ Two roots.
 | `note` | `c` colour, `size` `s`/`m`/`l` | `t` |
 | `text` | `size` `title`/`heading`/`body` | `t` |
 | `shape` | `s` `rect`/`ellipse`/`diamond`/`pill`, `c` colour or none | `t` |
-| `frame` | `c` the colour new stickies take inside it, `role` `''`/`actions`, `hint` (shown while it's empty) | `title` |
+| `frame` | `c` the colour new stickies take inside it, or `''`; `role` `''`/`actions`; `hint` (shown while it's empty); `sub` (beside the title: who was in a room) | `title` |
 | `line` | `style` `elbow`/`straight`/`curve`, `from`, `to`: each `{ on, side }` or `{ x, y }` (no `x y w h`) | none |
 | `ink` | `tool` `pen`/`marker`, `c`, `pts` flat numbers relative to `x y`, at most 2000 points | none |
 | `image` | `media` | none |
@@ -82,7 +82,10 @@ your own changes". Deleting an object takes the lines attached to it in the same
 a concurrent delete isn't drawn.
 
 Limits, enforced when writing and parsing: 5000 objects, 2000 points a stroke, 4000 characters of text an object, an object
-between 16 and 8000 units a side. A board past 5000 says so and refuses more, rather than slowing down for everyone.
+between 16 and 8000 units a side, within a million units of the origin (so a camera can always fit the board), and tables up to 50 by 50. A
+board past 5000 says so and refuses more, rather than slowing down for everyone. Text is the one limit two browsers can pass together, by
+merging what each typed offline: then the object stays, showing the first 4000 characters, and the `Y.Text` keeps everything, so nobody's
+words are lost.
 
 ## Storage, keys and access
 
