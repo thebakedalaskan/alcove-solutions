@@ -60,8 +60,19 @@ async function joinRoom(call: CallSession): Promise<TestParticipant> {
   return p;
 }
 afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
-/** Shares a screen, without its sound, the way a browser does. Returns the share's track sid. */
-const screenOf = async (p: TestParticipant) => (await p.publishScreen(false)).screen;
+/**
+ * Shares a screen, without its sound, the way a browser does, and waits until LiveKit's server lists it, which is what
+ * the API checks a frame against. Returns the share's track sid.
+ */
+async function screenOf(p: TestParticipant): Promise<string> {
+  const { screen } = await p.publishScreen(false);
+  const room = p.room.name ?? '';
+  for (let i = 0; i < 300; i++) {
+    if ((await h.deps.livekit.screenShares(room)).some((x) => x.sid === screen)) return screen;
+    await sleep(50);
+  }
+  throw new Error('timed out waiting for LiveKit to list the share');
+}
 
 const audio = (segment: number, s: number): AudioPiece => {
   const src = Buffer.concat([Buffer.from('audio'), randomBytes(1024)]);
