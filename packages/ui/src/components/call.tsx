@@ -54,16 +54,18 @@ export function CallDock({ children, label = 'Call controls', className }: { chi
 
 /**
  * One dock control. `off`: a switched-off device turns solid. `on`: an open panel or a running share.
+ * `alert`: a device that can't work right now (blocked or unplugged) gets a caution mark; say why in the label.
  * `tip` shows above it on hover and focus, in place of the browser's own title.
  */
 export const DockButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
-  icon: IconName; label: string; off?: boolean; on?: boolean; badge?: number; tip?: ReactNode;
-}>(function DockButton({ icon, label, off = false, on = false, badge = 0, tip, className, type = 'button', ...rest }, ref) {
+  icon: IconName; label: string; off?: boolean; on?: boolean; alert?: boolean; badge?: number; tip?: ReactNode;
+}>(function DockButton({ icon, label, off = false, on = false, alert = false, badge = 0, tip, className, type = 'button', ...rest }, ref) {
   const button = (
     <button ref={ref} type={type} aria-label={label} title={tip ? undefined : label} aria-pressed={off ? false : on || undefined}
       className={cn('ac-dock-btn', off && 'is-off', on && 'is-on', className)} {...rest}>
       <Icon name={icon} size={20} />
       {badge > 0 && <span className="badge">{badge}</span>}
+      {alert && <span className="alert" aria-hidden="true" />}
     </button>
   );
   return tip ? <Tooltip label={tip}>{button}</Tooltip> : button;

@@ -4,6 +4,10 @@
  * plays everyone else's audio, says who has their mic on, their camera or screen up and who's speaking, and
  * refetches the call when the server nudges the room or people come and go.
  *
+ * A device switch replaces the track inside its publication (no unpublish, no gap, mute kept), everyone else's audio
+ * plays on the chosen speaker through LiveKit's own output switching, and each person plays as loud as this listener
+ * set them (volume.ts): on the elements only, so their tracks stay as they arrived.
+ *
  * Every frame is end-to-end encrypted before it leaves this browser (docs: Calls and recordings › End-to-end
  * encryption): with this browser's own media key, which comes from the call's MLS group in the CallSession and
  * changes with every join and leave. LiveKit only ever forwards ciphertext. A browser that can't encrypt frames
@@ -15,12 +19,13 @@
  */
 import { CALL_KEYRING, CALL_TOPIC, CallNudgeSchema, type CallMediaKeys, type CallSession, type LiveStore } from '@alcove/api';
 import {
-  BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, Room, RoomEvent, Track, createKeyMaterialFromBuffer, getLogger,
-  isE2EESupported, type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication
+  BaseKeyProvider, ConnectionState, CryptorError, CryptorErrorReason, DisconnectReason, LoggerNames, RemoteAudioTrack, Room, RoomEvent, Track, createKeyMaterialFromBuffer, getLogger,
+  isE2EESupported, type Participant, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type TrackPublication
 } from 'livekit-client';
 import E2EEWorker from 'livekit-client/e2ee-worker?worker';
 import { log } from '~/lib/log';
 import type { LocalMedia } from './media';
+import { volumesFor, type CallVolumes } from './volume';
 
 const rlog = log.child({ component: 'call-room' });
 
@@ -55,8 +60,12 @@ export interface RoomView {
   people: Record<string, RoomPerson>;
   /** How many times the organizer has muted this browser's microphone, so the screen can say so. */
   hostMuted: number;
+  /** The browser is holding back everyone's sound until the page is clicked (startAudio). */
+  audioBlocked: boolean;
 }
 export interface CallRoom extends LiveStore<RoomView> {
+  /** Lets everyone's sound play where the browser held it back: call it from a click or key press. */
+  startAudio(): Promise<void>;
   /** Plays a camera or screen track in an element; returns the function that stops it. */
   attach(trackSid: string, el: HTMLMediaElement): () => void;
   /**
@@ -120,15 +129,21 @@ class LiveKitRoom implements CallRoom {
   private only: ((identity: string) => boolean) | null = null;
   private stopKeys: () => void = () => undefined;
   private listeners = new Set<() => void>();
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0 };
-  private published: Partial<Record<Kind, LocalTrackPublication>> = {};
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false };
   private audio = new Map<string, HTMLMediaElement>();
   /** Publishing follows LocalMedia one change at a time. */
   private syncing: Promise<void> = Promise.resolve();
   private stopFollowing: () => void = () => undefined;
+  /** How loud each person plays here, for this listener only (see volume.ts). */
+  private volumes: CallVolumes;
+  private stopVolumes: () => void = () => undefined;
+  /** The speaker everyone else's audio plays on now, and one the browser just refused (said once). */
+  private speaker: string | null = null;
+  private speakerRefused: string | null = null;
 
   constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
     this.keys = new CallKeys(session.ticket.identity);
+    this.volumes = volumesFor(session);
     this.room = new Room({ adaptiveStream: true, dynacast: true, encryption: { keyProvider: this.keys, worker: new E2EEWorker() } });
     const r = this.room;
     const changed = () => this.emit();
@@ -136,14 +151,25 @@ class LiveKitRoom implements CallRoom {
     for (const e of [RoomEvent.TrackPublished, RoomEvent.TrackUnpublished, RoomEvent.TrackUnmuted,
       RoomEvent.LocalTrackPublished, RoomEvent.LocalTrackUnpublished, RoomEvent.ActiveSpeakersChanged] as const) r.on(e, changed);
     // The organizer muted this microphone (LiveKit does it): the dock says it's off, and it stays off until unmuted here.
+    // LiveKit also mutes a microphone whose device was unplugged (its track's ended event fired); that one isn't the
+    // organizer, and LocalMedia moves to another microphone, muted or not as it was.
     r.on(RoomEvent.TrackMuted, (pub, who) => {
-      if (who === r.localParticipant && pub.source === Track.Source.Microphone && this.media.getSnapshot().mic) {
-        this.media.setMic(false);
+      const unplugged = pub.track ? this.media.unplugged(pub.track.mediaStreamTrack) : false;
+      if (who === r.localParticipant && pub.source === Track.Source.Microphone && this.media.getSnapshot().mic && !unplugged) {
+        void this.media.setMic(false);
         this.view = { ...this.view, hostMuted: this.view.hostMuted + 1 };
         rlog.info('microphone muted by the organizer');
       }
       this.emit();
     });
+    // Sound the browser won't play until the page is clicked (Safari, when nothing is being captured): the screen asks.
+    r.on(RoomEvent.AudioPlaybackStatusChanged, (playing) => {
+      if (this.view.audioBlocked === !playing) return;
+      this.set({ audioBlocked: !playing });
+      rlog.info(playing ? 'call sound playing' : 'call sound held back by the browser');
+    });
+    // Each person's volume for this listener: on the elements that play them, whenever it changes.
+    this.stopVolumes = this.volumes.subscribe(() => this.applyVolumes());
     // Frames that can't be decrypted yet are expected for a moment around each key change (someone just let in
     // can't read what was sent before they were); anything else is worth knowing about.
     r.on(RoomEvent.EncryptionError, (e, who) => {
@@ -165,10 +191,12 @@ class LiveKitRoom implements CallRoom {
       if (nudge.success) refetch({ call: nudge.data.call, log: nudge.data.log });
     });
     r.on(RoomEvent.Reconnecting, () => this.set({ connection: 'reconnecting' }));
-    r.on(RoomEvent.Reconnected, () => { this.set({ connection: 'connected' }); refetch(); });
+    // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia.
+    r.on(RoomEvent.Reconnected, () => { this.set({ connection: 'connected' }); refetch(); this.follow(); });
     r.on(RoomEvent.Disconnected, (why) => {
       this.stopFollowing();
       this.stopKeys();
+      this.stopVolumes();
       this.set({ connection: 'ended', endReason: this.view.endReason ?? endReason(why) });
       rlog.info('left the room', { reason: this.view.endReason });
     });
@@ -181,6 +209,9 @@ class LiveKitRoom implements CallRoom {
     await this.room.setE2EEEnabled(true);
     const t = await this.session.room();
     await this.room.connect(t.serverUrl, t.token);
+    // LiveKit follows plugged-in devices itself, comparing with the list it saw last. Giving it that list now keeps its
+    // first comparison from switching the speaker on its own (or, in Safari, failing to): LocalMedia decides devices.
+    await Room.getLocalDevices(undefined, false).catch((e: unknown) => rlog.debug('could not list devices for LiveKit', { err: e }));
     this.stopFollowing = this.media.subscribe(() => this.follow());
     this.follow();
     await this.syncing;
@@ -287,10 +318,16 @@ class LiveKitRoom implements CallRoom {
     return out;
   }
 
-  /** Publishes what LocalMedia has now: its mic (muted or not), camera and screen (with a tab's sound), replacing tracks a device switch changed. */
+  /**
+   * Publishes what LocalMedia has now: its mic (muted or not), camera and screen (with a tab's sound), replacing tracks a
+   * device switch changed. Not while LiveKit is reconnecting: it republishes every track under a new publication, and
+   * publishing alongside it would send a second copy. Reconnected follows again.
+   */
   private follow() {
+    if (this.reconnecting()) return;
     this.syncing = this.syncing.then(() => this.sync()).catch((e: unknown) => rlog.warn('publishing to the room failed', { err: e }));
   }
+  private reconnecting(): boolean { return this.room.state === ConnectionState.Reconnecting || this.room.state === ConnectionState.SignalReconnecting; }
   private async sync() {
     const m = this.media.getSnapshot();
     const want: Record<Kind, MediaStreamTrack | null> = {
@@ -299,29 +336,38 @@ class LiveKitRoom implements CallRoom {
       screen: m.screen?.getVideoTracks()[0] ?? null,
       screenAudio: m.screen?.getAudioTracks()[0] ?? null
     };
+    if (this.reconnecting()) return;
     const me = this.room.localParticipant;
     for (const kind of ['mic', 'cam', 'screen', 'screenAudio'] as const) {
-      const have = this.published[kind];
+      // What LiveKit has published now (after a reconnect, a new publication), never a copy kept here.
+      const have = me.getTrackPublication(SOURCE[kind]);
       const track = want[kind];
       if (have?.track?.mediaStreamTrack === track && have) continue;
+      // Another microphone or camera: the same publication carries it, so nobody sees it stop and start, it stays
+      // muted or not, and the organizer's mute still finds it.
+      if (have?.track && track && (kind === 'mic' || kind === 'cam')) { await have.track.replaceTrack(track, true); continue; }
       // LocalMedia owns these tracks: unpublishing must never stop them.
       if (have?.track) await me.unpublishTrack(have.track, false);
-      delete this.published[kind];
-      if (track) this.published[kind] = await me.publishTrack(track, { source: SOURCE[kind] });
+      if (track) await me.publishTrack(track, { source: SOURCE[kind] });
     }
-    const mic = this.published.mic;
-    if (mic && mic.isMuted === m.mic) await (m.mic ? mic.unmute() : mic.mute());
-    for (const el of this.audio.values()) this.toSpeaker(el, m.speakerId);
+    // Mute as LocalMedia has it now, after the awaits above (the organizer may have muted it meanwhile).
+    const now = this.media.getSnapshot();
+    const mic = me.getTrackPublication(Track.Source.Microphone);
+    if (mic && mic.isMuted === now.mic) await (now.mic ? mic.unmute() : mic.mute());
+    // LiveKit mutes a camera whose device was unplugged; once LocalMedia has another one on, it's shown again.
+    const cam = me.getTrackPublication(Track.Source.Camera);
+    if (cam?.isMuted && now.cam) await cam.unmute();
+    await this.useSpeaker(now.speakerId);
     this.emit();
   }
 
-  /** Everyone else's audio plays through hidden elements, on the chosen speaker. */
+  /** Everyone else's audio plays through hidden elements, on the chosen speaker, each person as loud as set here. */
   private play(track: RemoteTrack) {
     if (track.kind !== Track.Kind.Audio || !track.sid || this.audio.has(track.sid)) return;
     const el = track.attach();
     el.hidden = true;
     document.body.append(el);
-    this.toSpeaker(el, this.media.getSnapshot().speakerId);
+    if (track instanceof RemoteAudioTrack) track.setVolume(this.levelOf(track));
     this.audio.set(track.sid, el);
   }
   private silence(track: RemoteTrack) {
@@ -332,8 +378,38 @@ class LiveKitRoom implements CallRoom {
     el.remove();
     this.audio.delete(track.sid);
   }
-  private toSpeaker(el: HTMLMediaElement, speakerId: string | null) {
-    if (speakerId && 'setSinkId' in el) void el.setSinkId(speakerId).catch((e: unknown) => rlog.warn('could not play through the chosen speaker', { err: e }));
+  /**
+   * The speaker for everyone else's audio. LiveKit sets it on every element, now and as people arrive, and its own
+   * device handling then knows it too. Null where the browser can't choose one.
+   */
+  private async useSpeaker(id: string | null) {
+    if (id === null || id === this.speaker) return;
+    try {
+      await this.room.switchActiveDevice('audiooutput', id);
+      this.speaker = id;
+      this.speakerRefused = null;
+    } catch (e) {
+      // Tried again at the next change; said once (as a warning) for each speaker the browser refuses.
+      rlog.at(this.speakerRefused === id ? 'debug' : 'warn', 'could not play through the chosen speaker', { err: e });
+      this.speakerRefused = id;
+    }
+  }
+  /**
+   * How loud someone's voice plays for this listener: the element's volume, never their track, which stays as it
+   * arrived for anything else that uses it. A tab they share plays at its own volume.
+   */
+  private levelOf(track: RemoteTrack): number {
+    for (const who of this.room.remoteParticipants.values()) if (who.getTrackPublication(Track.Source.Microphone)?.track === track) return this.volumes.level(who.identity);
+    return 1;
+  }
+  private applyVolumes() {
+    for (const who of this.room.remoteParticipants.values()) {
+      const track = who.getTrackPublication(Track.Source.Microphone)?.track;
+      if (track instanceof RemoteAudioTrack) track.setVolume(this.volumes.level(who.identity));
+    }
+  }
+  async startAudio(): Promise<void> {
+    await this.room.startAudio().catch((e: unknown) => rlog.info('call sound still held back', { err: e }));
   }
 
   attach(trackSid: string, el: HTMLMediaElement): () => void {

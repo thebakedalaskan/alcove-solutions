@@ -164,6 +164,27 @@ export const Meter = ({ value, className }: { value: number; className?: string 
   <span className={cn('ac-meter', className)}><i style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></span>
 );
 
+/* ---------- Slider ---------- */
+/**
+ * One value along a track, such as how loud someone is for you. The browser's own range input, so arrow keys move
+ * it a step, Page Up and Page Down further, and Home and End to either end. `valueText` is what a screen reader says
+ * ("40%"); `mark` draws a notch where the usual value sits.
+ */
+export function Slider({ value, onChange, min = 0, max = 1, step = 0.01, label, valueText, mark, disabled = false, className }: {
+  value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; label: string; valueText?: string | undefined;
+  mark?: number | undefined; disabled?: boolean; className?: string | undefined;
+}) {
+  // Where a value sits along the track, 0 to 1: the stylesheet places the fill and the notch from it.
+  const at = (v: number) => (Math.max(min, Math.min(max, v)) - min) / Math.max(Number.EPSILON, max - min);
+  return (
+    <span className={cn('ac-slider', className)} style={{ '--fill': at(value), ...(mark === undefined ? {} : { '--mark': at(mark) }) }}>
+      {mark !== undefined && <i className="mark" aria-hidden="true" />}
+      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} aria-label={label} aria-valuetext={valueText}
+        onChange={(e) => onChange(Number(e.target.value))} />
+    </span>
+  );
+}
+
 /* ---------- Covers ---------- */
 export const COVERS = ['dawn', 'first', 'morning', 'dusk', 'haze', 'night'] as const;
 export type Cover = (typeof COVERS)[number];

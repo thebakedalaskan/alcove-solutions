@@ -1,7 +1,7 @@
 /*
- * Microphones, cameras and speakers: which are plugged in, which ones someone chose (remembered in
- * this browser only, never sent anywhere), and a short microphone test that records a few seconds,
- * plays them back and keeps nothing.
+ * Microphones, cameras and speakers: which are plugged in, whether the browser lets Alcove use them, which ones
+ * someone chose (remembered in this browser only, never sent anywhere), and a short microphone test that records a
+ * few seconds, plays them back and keeps nothing.
  */
 import { DevicePrefsSchema, type DevicePrefs } from '@alcove/api';
 import { useEffect, useState } from 'react';
@@ -35,18 +35,93 @@ export function rememberDevice<K extends keyof DevicePrefs>(kind: K, value: Devi
   }
 }
 
+/* ---------- whether the browser lets Alcove use them ---------- */
+
+/** A microphone or a camera: the two things the browser asks about. */
+export type Capture = 'mic' | 'cam';
+/** The browser's answer: allowed, refused, or not asked yet. `unknown` where it won't say. */
+export type Permission = PermissionState | 'unknown';
+const PERMISSION: Record<Capture, PermissionName> = { mic: 'microphone', cam: 'camera' };
+
+async function permissionStatus(kind: Capture): Promise<PermissionStatus | null> {
+  try {
+    return (await navigator.permissions?.query({ name: PERMISSION[kind] })) ?? null;
+  } catch {
+    // Browsers that can't be asked about a camera or microphone throw; the device itself still says.
+    return null;
+  }
+}
+/** What the browser says now about the microphone and the camera, where it says. */
+export async function permissions(): Promise<Record<Capture, Permission>> {
+  const [mic, cam] = await Promise.all([permissionStatus('mic'), permissionStatus('cam')]);
+  return { mic: mic?.state ?? 'unknown', cam: cam?.state ?? 'unknown' };
+}
+/** Calls `onChange` when someone allows or blocks the microphone or camera in the browser's settings. */
+export function watchPermissions(onChange: () => void): () => void {
+  let alive = true;
+  const held: PermissionStatus[] = [];
+  void Promise.all([permissionStatus('mic'), permissionStatus('cam')]).then((all) => {
+    for (const s of all) {
+      if (!s || !alive) continue;
+      s.addEventListener('change', onChange);
+      held.push(s);
+    }
+  });
+  return () => { alive = false; for (const s of held) s.removeEventListener('change', onChange); };
+}
+
+type Family = 'chromium' | 'safari' | 'ios' | 'firefox';
+/** Only to say where this browser keeps its settings: nothing else changes by browser. */
+function family(): Family {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Firefox\//.test(ua)) return 'firefox';
+  if (/Safari\//.test(ua) && !/Chrome\/|Chromium\/|Edg\//.test(ua)) return 'safari';
+  return 'chromium';
+}
+const named = (kinds: Capture[]) => (kinds.includes('mic') && kinds.includes('cam') ? 'camera and microphone' : kinds.includes('cam') ? 'camera' : 'microphone');
+
+/** Where this browser lets someone allow the microphone or camera again, in a sentence. */
+export function howToAllow(kinds: Capture[]): string {
+  const what = named(kinds);
+  switch (family()) {
+    case 'firefox': return `Click the crossed-out ${kinds.includes('cam') ? 'camera' : 'microphone'} at the left of the address bar, clear the block, then try again.`;
+    case 'safari': return `In the Safari menu, choose Settings for This Website and set the ${what} to Allow, then try again.`;
+    case 'ios': return `Tap the page menu in the address bar, choose Website Settings and allow the ${what}, then try again.`;
+    default: return `Click the icon at the left of the address bar, turn on the ${what}, then try again.`;
+  }
+}
+/** Where to allow a device when the computer, not the browser, is keeping the browser from it. */
+export function howToAllowSystem(kinds: Capture[]): string {
+  const what = named(kinds);
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  if (/Macintosh/.test(ua)) return `Turn on the ${what} for your browser in System Settings › Privacy & Security, then reopen the browser.`;
+  if (/Windows/.test(ua)) return `Allow the ${what} for your browser in Settings › Privacy & security, then try again.`;
+  return `Allow the ${what} for your browser in your computer’s privacy settings, then try again.`;
+}
+
 /* ---------- what's plugged in ---------- */
 
 export interface Device { id: string; label: string }
 export type Devices = Record<DeviceKind, Device[]>;
 const NONE: Devices = { mic: [], cam: [], speaker: [] };
 
-/** Choosing where sound plays is possible in Chrome, Edge and Firefox; Safari plays through the system's choice. */
-export const canChooseSpeaker = (): boolean => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+/**
+ * Where a page can choose the speaker: media elements' setSinkId (Chrome, Edge, Firefox). LiveKit, which plays the
+ * call, won't on Safari (its WebRTC audio ignores the choice there), so Safari plays calls through the system's output.
+ */
+export const canChooseSpeaker = (): boolean => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype && family() !== 'safari' && family() !== 'ios';
+
+/** Everything the browser lists now (names only once a microphone or camera has been allowed). */
+export async function enumerate(): Promise<MediaDeviceInfo[]> {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  return navigator.mediaDevices.enumerateDevices();
+}
+/** A device's name as people know it: without the "Default - " Chrome puts in front or the USB IDs it adds. */
+export const plainName = (label: string): string => label.replace(/^(Default|Communications) - /, '').replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, '').trim();
 
 async function list(): Promise<Devices> {
-  if (!navigator.mediaDevices?.enumerateDevices) return NONE;
-  const all = await navigator.mediaDevices.enumerateDevices();
+  const all = await enumerate();
   const of = (kind: DeviceKind): Device[] => {
     const seen = new Set<string>();
     return all.filter((d) => d.kind === BROWSER_KIND[kind] && d.deviceId && !seen.has(d.deviceId) && seen.add(d.deviceId))
@@ -103,6 +178,7 @@ export async function testMicrophone(track: MediaStreamTrack, speaker: string | 
     });
   } finally {
     URL.revokeObjectURL(url);
+    chunks.length = 0;
     onPhase('idle');
   }
 }
