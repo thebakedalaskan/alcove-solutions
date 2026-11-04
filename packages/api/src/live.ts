@@ -1,5 +1,6 @@
 import { z } from './zod';
-import { IDSchema, ISODateSchema, PersonSchema, TranscriptLineSchema, type AnswerPart, type CaptionLanguage } from './types';
+import { CaptureStateSchema, type CaptureDevicePart } from './capture';
+import { CaptureGapSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, TranscriptLineSchema, type AnswerPart, type CaptionLanguage } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -22,7 +23,11 @@ export const CallCardSchema = z.object({
   organizerName: z.string(),
   /** Everyone but the organizer waits until this is true. */
   hostHere: z.boolean(),
-  locked: z.boolean()
+  locked: z.boolean(),
+  /** Notes as the call was scheduled: whether they start when it does. */
+  notes: NotesSettingSchema,
+  /** What's being captured now, without anyone's name; null until the organizer has started the call. */
+  capture: CaptureStateSchema.nullable()
 });
 export type CallCard = z.infer<typeof CallCardSchema>;
 
@@ -111,9 +116,6 @@ export type CallParticipant = z.infer<typeof CallParticipantSchema>;
 export const CallAskerSchema = z.object({ id: z.string(), person: PersonSchema });
 export type CallAsker = z.infer<typeof CallAskerSchema>;
 
-export const CallNotesStatusSchema = z.enum(['off', 'on']);
-export type CallNotesStatus = z.infer<typeof CallNotesStatusSchema>;
-
 export const CallNoticeSchema = z.object({
   id: IDSchema,
   /** Plain sentence shown to everyone, e.g. "You turned on notes." */
@@ -124,7 +126,7 @@ export type CallNotice = z.infer<typeof CallNoticeSchema>;
 
 /** Encrypted audio stored so far for the call's notes. */
 export const RecordingProgressSchema = z.object({
-  /** Current segment; a new one starts each time notes are turned on again. */
+  /** Current segment; a new one starts each time notes are turned on again or resumed. */
   segment: z.number(),
   pieces: z.number(),
   seconds: z.number()
@@ -170,8 +172,10 @@ export const CallStateSchema = z.object({
   /** The participant the organizer put on everyone's main stage, or null. */
   spotlight: IDSchema.nullable(),
   breakouts: BreakoutsSchema,
+  /** What's being captured now and how it got there: the same for everyone in the call. Only the organizer changes it. */
+  capture: CaptureStateSchema,
+  /** The note this call is writing. */
   notes: z.object({
-    status: CallNotesStatusSchema,
     /** True once notes have been on at any point, so the call produces a note. */
     everOn: z.boolean(),
     noteId: IDSchema.nullable(),
@@ -184,7 +188,7 @@ export const CallStateSchema = z.object({
   /** What's been said while notes were on, transcribed as the call goes: the latest lines, oldest first. */
   transcript: z.array(TranscriptLineSchema),
   notices: z.array(CallNoticeSchema),
-  /** Only the organizer can turn notes on or off. */
+  /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean()
 });
 export type CallState = z.infer<typeof CallStateSchema>;
@@ -247,8 +251,8 @@ export const CatchUpSchema = z.object({
   from: z.number(), through: z.number(),
   /** How many lines of transcript that was. */
   lines: z.number(),
-  /** When notes were off, as seconds since the call started: nothing said then is in here. */
-  gaps: z.array(z.object({ from: z.number(), to: z.number() })),
+  /** The stretches in what it read, or after it, when notes were off: nothing said then is in here. */
+  gaps: z.array(CaptureGapSchema),
   /** When it was put together, as seconds since the call started. */
   asOf: z.number()
 });
@@ -320,6 +324,19 @@ export interface CallSession extends LiveStore<CallState> {
   deny(identity: string): Promise<void>;
   /** Organizer only. Everyone in the call sees the change. */
   setNotes(on: boolean): void;
+  /**
+   * Organizer only: holds every kind of capture until resume(). Nothing is recorded, transcribed or sent to the AI
+   * meanwhile, and the server refuses whatever arrives. Resolves once the server has paused.
+   */
+  pause(): Promise<void>;
+  /** Organizer only: carries on capturing, on a new segment. Nothing else ever resumes it: not a reconnect, a room or a new device. */
+  resume(): Promise<void>;
+  /** Anyone but the organizer, while notes are off or paused: asks the organizer for notes, like raising a hand, or takes the ask back. */
+  requestNotes(up: boolean): Promise<void>;
+  /** Organizer only: says not now to an ask for notes. Whoever asked is told. Saying yes is turning notes on, or resuming. */
+  declineNotes(requestId: string): Promise<void>;
+  /** Organizer only: what this browser can't capture now (no microphone, or no way to record or listen), or none. */
+  setUnavailable(parts: CaptureDevicePart[]): Promise<void>;
   /** Raises or lowers your hand; everyone in the call sees it. */
   setHand(up: boolean): void;
   /** Organizer only: puts one participant on everyone's main stage, or nobody (null). */

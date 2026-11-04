@@ -1,11 +1,12 @@
 /* The pieces of a note page, shared by real notes and the example. */
 import {
-  errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
+  errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
   type Question, type QuestionPatch, type Recipient, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, TranscriptLine as SpokenLine, Words, buttonClass, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, TranscriptLine as SpokenLine, Words, buttonClass, cn, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
 import { PROMISE_MANY } from './NoteCard';
@@ -241,13 +242,13 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange }: {
 }
 
 /** The transcript of a written note, folded away under its summary; open at `focus` when a link brought someone to a moment in it. */
-export function Transcript({ lines, seconds, me, onSeek, focus }: { lines: TranscriptLine[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined }) {
+export function Transcript({ lines, gaps, seconds, me, onSeek, focus }: { lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined }) {
   const [open, setOpen] = useState(focus !== undefined);
   useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
   return (
     <>
       <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
-      {open && <TranscriptLines lines={lines} me={me} onSeek={onSeek} focus={focus} className="mt-3" />}
+      {open && <TranscriptLines lines={lines} gaps={gaps} me={me} onSeek={onSeek} focus={focus} className="mt-3" />}
     </>
   );
 }
@@ -262,25 +263,33 @@ const CENTER: ScrollIntoViewOptions = { block: 'center' };
 const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT, hashScrollIntoView: CENTER });
 
 /**
- * What was said, line by line. A speaker's lines in a row share one name; a room recording names
- * nobody. With `focus`, the line said at that moment is marked, and is where a moment's link lands.
+ * What was said, line by line, with the stretches nothing was captured in marked where they fall. A speaker's
+ * lines in a row share one name; a room recording names nobody. With `focus`, the line said at that moment is
+ * marked, and is where a moment's link lands.
  */
-export function TranscriptLines({ lines, me, onSeek, focus, className }: {
-  lines: TranscriptLine[]; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; className?: string | undefined;
+export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, className }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
+  const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} />;
   return (
     <div className={cn('tr', className)}>
       {lines.map((l, i) => {
         const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
         const mark = i === here ? { id: MOMENT, className: 'here' } : {};
-        if (!l.speaker) return <SpokenLine key={l.id} {...mark} time={time}>{l.text}</SpokenLine>;
-        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here;
+        const before = gapsBefore(gaps, lines, i);
+        if (!l.speaker) return <Fragment key={l.id}>{before.map(gap)}<SpokenLine {...mark} time={time}>{l.text}</SpokenLine></Fragment>;
+        // After a gap the speaker is named again: it's a new part of the call.
+        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length;
         return (
-          <SpokenLine key={l.id} id={mark.id} className={cn(more && 'more', mark.className)} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
-            name={more ? undefined : spokenName(l.speaker, me)} time={time}>{l.text}</SpokenLine>
+          <Fragment key={l.id}>
+            {before.map(gap)}
+            <SpokenLine id={mark.id} className={cn(more && 'more', mark.className)} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
+              name={more ? undefined : spokenName(l.speaker, me)} time={time}>{l.text}</SpokenLine>
+          </Fragment>
         );
       })}
+      {gapsAfter(gaps, lines).map(gap)}
     </div>
   );
 }
@@ -294,16 +303,22 @@ export function MomentLink({ noteId, at }: { noteId: string; at: number }) {
   );
 }
 
-export function Chapters({ chapters, pos, onSeek }: { chapters: Chapter[]; pos: number; onSeek?: ((s: number) => void) | undefined }) {
+/** The chapters of a call, with the stretches nothing was captured in between them, where they fell. */
+export function Chapters({ chapters, gaps = [], pos, onSeek }: { chapters: Chapter[]; gaps?: CaptureGap[] | undefined; pos: number; onSeek?: ((s: number) => void) | undefined }) {
   const current = chapters.findLastIndex((c) => c.at <= pos);
+  const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} className="chap-gap" />;
   return (
     <Card title="Chapters">
       <div className="chaps">
         {chapters.map((c, i) => (
-          <button key={`${c.at}-${c.title}`} type="button" className={cn('chap', i === Math.max(0, current) && 'on')} onClick={() => onSeek?.(c.at)} disabled={!onSeek}>
-            <span className="ac-mono">{position(c.at)}</span><span><b>{c.title}</b><small>{c.summary}</small></span>
-          </button>
+          <Fragment key={`${c.at}-${c.title}`}>
+            {gapsBefore(gaps, chapters, i).map(gap)}
+            <button type="button" className={cn('chap', i === Math.max(0, current) && 'on')} onClick={() => onSeek?.(c.at)} disabled={!onSeek}>
+              <span className="ac-mono">{position(c.at)}</span><span><b>{c.title}</b><small>{c.summary}</small></span>
+            </button>
+          </Fragment>
         ))}
+        {gapsAfter(gaps, chapters).map(gap)}
       </div>
     </Card>
   );

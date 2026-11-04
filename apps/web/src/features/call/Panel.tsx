@@ -5,10 +5,13 @@
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
 import { CALL_CHAT_MAX, clock, errorMessage, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Scope, Switch, TimeChip, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, TimeChip, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { gapLabel } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
+import { hm } from '~/lib/time';
+import { organizerName, type CaptureControls } from './Capture';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
 import type { VolumeActions } from './volume';
@@ -101,35 +104,59 @@ function Summary({ text }: { text: string }) {
   );
 }
 
-export function NotesView({ state, live, getting, problems, onNotes, onSeek, onTranscript }: {
+export function NotesView({ state, live, getting, problems, controls, onSeek, onTranscript }: {
   state: CallState; live: LiveNotes;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
-  problems: string[]; onNotes: (on: boolean) => void; onSeek: (at: number) => void; onTranscript: () => void;
+  problems: string[];
+  /** Notes on and off, pause and resume (the organizer's), or asking for notes (anyone else's). */
+  controls: CaptureControls;
+  onSeek: (at: number) => void; onTranscript: () => void;
 }) {
-  const on = state.notes.status === 'on';
+  const c = state.capture;
+  const on = c.mode === 'on';
+  const paused = c.mode === 'paused';
+  const host = state.isOrganizer;
+  const asking = !host && c.asked?.state === 'asking';
+  const organizer = organizerName(state);
   const [menu, setMenu] = useState(false);
   const n = live.notes;
   const held = state.breakouts.held;
+  const item = (icon: IconName, label: string, f: () => void) => (
+    <button type="button" className="mi" onClick={() => { setMenu(false); f(); }}><Icon name={icon} size={16} /><span className="t">{label}</span></button>
+  );
+  const ask = asking
+    ? <Button size="sm" variant="quiet" onClick={() => controls.ask(false)}>Take it back</Button>
+    : <Button variant="primary" size="sm" icon="hand" onClick={() => controls.ask(true)}>Ask for notes</Button>;
   return (
     <>
       <div className="ic-nh">
-        {on ? <NotesSign>Notes on</NotesSign> : <span className="ic-off-sign"><Icon name="notesPen" size={13} />Notes off</span>}
-        <span className="m">{on ? 'Written as people talk' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+        <CaptureSign mode={c.mode} requested={!on && c.requests.length > 0} />
+        <span className="m">{on ? 'Written as people talk' : paused ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
         <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
           anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options"><Icon name="more" size={18} /></button>}>
-          {state.isOrganizer && (
-            <button type="button" className="mi" onClick={() => { setMenu(false); onNotes(!on); }}><Icon name={on ? 'pause' : 'play'} size={16} /><span className="t">{on ? 'Turn notes off' : 'Turn notes on'}</span></button>
-          )}
-          <button type="button" className="mi" onClick={() => { setMenu(false); onTranscript(); }}><Icon name="transcript" size={16} /><span className="t">Open the transcript</span></button>
-          {!state.isOrganizer && <p className="hint">Only the organizer can turn notes on or off.</p>}
+          {host && on && item('pause', 'Pause notes', controls.pause)}
+          {host && paused && item('play', 'Resume notes', controls.resume)}
+          {host && (on || paused) && item('notesPen', 'Turn notes off', () => controls.notes(false))}
+          {host && c.mode === 'off' && item('play', 'Turn notes on', () => controls.notes(true))}
+          {!host && !on && (asking ? item('x', 'Take back your ask', () => controls.ask(false)) : item('hand', 'Ask for notes', () => controls.ask(true)))}
+          {item('transcript', 'Open the transcript', onTranscript)}
+          {!host && <p className="hint">Only {organizer} can turn notes on, off or pause them. You can ask for them.</p>}
         </Popover>
       </div>
       <div className="ic-scroll">
-        {!on && !n ? (
+        {paused && n && (
+          <div className="ic-problems is-top"><Notice icon="pause">Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</Notice></div>
+        )}
+        {paused && !n ? (
+          <EmptyState title="Notes are paused" className="ic-empty"
+            action={host ? <Button variant="primary" size="sm" icon="play" onClick={controls.resume}>Resume notes</Button> : ask}>
+            {host ? 'Nothing is recorded, transcribed or sent to the AI until you resume.' : asking ? `You asked ${organizer} to resume them.` : `Nothing is recorded, transcribed or sent to the AI until ${organizer} resumes.`}
+          </EmptyState>
+        ) : c.mode === 'off' && !n ? (
           <EmptyState title="Notes are off" className="ic-empty"
-            action={state.isOrganizer ? <Button variant="primary" size="sm" onClick={() => onNotes(true)}>Turn notes on</Button> : undefined}>
-            {state.isOrganizer ? 'Nothing from this call is being written down. Notes pick up from the moment you turn them on.' : 'Only the organizer can turn them on.'}
+            action={host ? <Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn notes on</Button> : ask}>
+            {host ? 'Nothing from this call is being written down. Notes pick up from the moment you turn them on.' : asking ? `You asked ${organizer} for notes.` : `Only ${organizer} can turn them on. You can ask them to.`}
           </EmptyState>
         ) : !n ? (
           <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="ic-empty">
@@ -167,12 +194,14 @@ export function NotesView({ state, live, getting, problems, onNotes, onSeek, onT
 /* ---------- transcript ---------- */
 
 export function TranscriptView({ state, me, hit }: { state: CallState; me: string | undefined; hit: { at: number } | null }) {
-  const on = state.notes.status === 'on';
+  const mode = state.capture.mode;
+  const on = mode === 'on';
   return (
     <>
       <div className="ic-tr">
-        {!on && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} me={me} hit={hit} /> : on && (
+        {mode === 'paused' && <Notice icon="pause">Notes are paused. Nothing new is transcribed until they resume.</Notice>}
+        {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
+        {state.transcript.length ? <CallLines lines={state.transcript} gaps={state.capture.gaps} me={me} hit={hit} /> : on && (
           <EmptyState title="Nothing said yet" className="ic-empty">What’s said appears here a few seconds later.</EmptyState>
         )}
       </div>
@@ -194,12 +223,17 @@ function CatchCard({ c, onSeek }: { c: CatchUp; onSeek: (at: number) => void }) 
     <>
       {c.summary && <div className="txt">{c.summary}</div>}
       {list('Decided', c.decided)}{list('Suggested, not agreed', c.proposed)}{list('Still open', c.open)}{list('Next', c.next)}
-      {c.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />Notes were off for part of this, so that part isn’t here.</p>}
+      {c.gaps.length > 0 && <p className="cu-note"><Icon name="pause" size={13} />{c.gaps.slice(0, 3).map(gapLabel).join(' · ')}. Nothing said then is in this.</p>}
     </>
   );
 }
 
-export function AskView({ asks, ready, onAsk, onCatchUp, onSeek }: { asks: Asked[]; ready: boolean; onAsk: (q: string) => void; onCatchUp: () => void; onSeek: (at: number) => void }) {
+export function AskView({ asks, ready, paused, onAsk, onCatchUp, onSeek }: {
+  asks: Asked[]; ready: boolean;
+  /** Notes are paused: nothing goes to the AI, questions included. */
+  paused: boolean;
+  onAsk: (q: string) => void; onCatchUp: () => void; onSeek: (at: number) => void;
+}) {
   const [text, setText] = useState('');
   const end = useRef<HTMLDivElement>(null);
   const busy = asks.some((a) => (a.kind === 'question' ? a.parts === null && !a.error : a.c === null && !a.error));
@@ -210,7 +244,8 @@ export function AskView({ asks, ready, onAsk, onCatchUp, onSeek }: { asks: Asked
       <div className="ic-scroll ic-pad">
         <Notice icon="lock"><b>Only you see this.</b> Answers come from what’s been said in this call, nothing else.</Notice>
         <div className="ic-qa">
-          {!asks.length && !ready && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}
+          {!asks.length && paused && <EmptyState title="Notes are paused" className="ic-empty">Nothing goes to the AI, questions included, until they resume.</EmptyState>}
+          {!asks.length && !ready && !paused && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}
           {asks.map((a) => (
             <div key={a.id} className="ic-qa-item">
               {a.kind === 'question' && <div className="q">{a.q}</div>}
@@ -326,10 +361,12 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, host, foot, volumes }: {
+export function PeopleView({ here, invited, asking, notesAsks, host, foot, volumes }: {
   here: PanelPerson[]; invited: Person[];
   /** People asking to join: only the organizer sees them. */
   asking: CallAsker[];
+  /** People asking for notes, for the organizer to answer; shown under those asking to join. */
+  notesAsks?: ReactNode;
   /** The organizer's controls; absent for everyone else. */
   host?: HostControls | undefined;
   /** What the footer says: how the call is kept private. */
@@ -362,7 +399,8 @@ export function PeopleView({ here, invited, asking, host, foot, volumes }: {
             ))}
           </>
         )}
-        <div className={cn('ac-eyebrow ic-cap-h', host && asking.length > 0 && 'mt')}>In this call · {here.length}</div>
+        {notesAsks}
+        <div className={cn('ac-eyebrow ic-cap-h', ((host && asking.length > 0) || Boolean(notesAsks)) && 'mt')}>In this call · {here.length}</div>
         {here.map((p) => (
           <div key={p.id} className="ic-prow">
             <Avatar person={p.person} size={36} />

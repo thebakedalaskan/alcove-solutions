@@ -4,8 +4,8 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
-  type ActionItem, type ActionPatch, type AnswerPart, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
+  ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
   type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
@@ -52,6 +52,8 @@ export const NoteManifest = z.object({
   /** Email addresses the notes were shared with afterwards. */
   shared: z.array(z.string()),
   summary: z.string(), decisions: z.array(DecisionSchema), questions: z.array(QuestionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
+  /** The stretches of the call nothing was captured in (notes off or paused), where they fall in the recording. */
+  gaps: z.array(CaptureGapSchema),
   screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string()),
   /** Breakout rooms the call held, in seconds into the recording, kept until the notes are written and merged into their chapters. */
   breakouts: z.array(HeldRooms),
@@ -64,7 +66,7 @@ export function blankNote(o: { kind: NoteKind; title: string; recordingId: strin
   return {
     kind: o.kind, title: o.title, startedAt: new Date().toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
-    status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: [], inference: []
+    status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, suggestedQuestions: [], breakouts: [], inference: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -92,15 +94,19 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
 }
 
 /**
- * The recording is complete: its live transcript moves into the note, everyone invited gets the
- * note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
+ * The recording is complete: its live transcript moves into the note, with the stretches nothing was captured in,
+ * everyone invited gets the note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping
+ * transaction.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, roomOf?: ((id: string) => { id: string; name: string } | undefined) | undefined): Promise<void> {
-  const heard = await transcripts.lines(o, db, noteId);
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, roomOf?: ((id: string) => { id: string; name: string } | undefined) | undefined,
+  gaps: CaptureGap[] = []): Promise<void> {
+  const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
+  // Each line inside its own segment of the recording, so nothing said before a pause comes after it.
+  const heard = transcripts.placed(await transcripts.lines(o, db, noteId), await segments(o, recordingId));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
-    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts,
+    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts, gaps,
     // In a call, each line keeps whoever said it and the breakout room it was said in, by name; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf, roomOf),
     inference: heardBy
@@ -212,7 +218,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const seriesId = await seriesOf(l);
   return {
     ...(await summary(l)), recipients: await recipients(l.owner, m), summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
-    screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
+    gaps: m.gaps, screens: m.screens, transcript: m.transcript, suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
 }
 /** The vault and recording to stream a note's audio from, after the access check. */

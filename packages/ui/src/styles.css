@@ -11,6 +11,7 @@
 @import "./styles/welcome.css";
 @import "./styles/app.css";
 @import "./styles/call.css";
+@import "./styles/capture.css";
 @import "./styles/onboarding.css";
 @custom-variant dark (&:where(.dark, .dark *));
 

@@ -1,10 +1,10 @@
 /*
- * The call's top bar: the title and clock, the notes sign everyone sees, then your own view control,
- * a private catch-up, the confidential-compute shield and who is here (with how many are asking to join,
- * for the organizer).
+ * The call's top bar: the title and clock, the notes sign everyone sees (which opens what's captured), then
+ * your own view control, a private catch-up, the confidential-compute shield and who is here (with how many
+ * are asking to join, for the organizer).
  */
 import { clock, type Person } from '@alcove/api';
-import { Dots, Faces, Icon, NotesSign, Popover, Tooltip, cn } from '@alcove/ui';
+import { Dots, Faces, Icon, Popover, Tooltip, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useRef, useState, type ReactNode } from 'react';
@@ -13,8 +13,10 @@ import { hm } from '~/lib/time';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function TopBar({ title, elapsed, notesOn, view, custom, people, asking, reconnecting, peopleOpen, onNotes, onReset, onCatchUp, onPeople }: {
-  title: string; elapsed: number; notesOn: boolean;
+export function TopBar({ title, elapsed, sign, view, custom, people, asking, reconnecting, peopleOpen, onReset, onCatchUp, onPeople }: {
+  title: string; elapsed: number;
+  /** The notes sign: what the call captures, the same for everyone. */
+  sign: ReactNode;
   /** Your view's controls (ViewMenu). */
   view: ReactNode;
   custom: boolean; people: Person[];
@@ -23,7 +25,7 @@ export function TopBar({ title, elapsed, notesOn, view, custom, people, asking, 
   /** The call's media connection dropped and is coming back. */
   reconnecting: boolean;
   peopleOpen: boolean;
-  onNotes: () => void; onReset: () => void; onCatchUp: () => void; onPeople: () => void;
+  onReset: () => void; onCatchUp: () => void; onPeople: () => void;
 }) {
   const label = asking ? `People in this call. ${asking} asking to join` : 'People in this call';
   return (
@@ -32,13 +34,7 @@ export function TopBar({ title, elapsed, notesOn, view, custom, people, asking, 
       <span className="ac-time clock">{clock(elapsed)}</span>
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       <span className="vr v1" />
-      <div className="nz">
-        <Tooltip label="Open the notes" side="bottom">
-          {notesOn
-            ? <button type="button" className="ic-sign" aria-label="Notes on. Open the notes" onClick={onNotes}><NotesSign stage>Notes on</NotesSign></button>
-            : <button type="button" className="ic-sign is-off" aria-label="Notes off. Open the notes" onClick={onNotes}><Icon name="notesPen" size={14} />Notes off</button>}
-        </Tooltip>
-      </div>
+      <div className="nz">{sign}</div>
       <div className="end">
         {view}
         <AnimatePresence initial={false}>

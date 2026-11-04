@@ -1,8 +1,9 @@
 /* The live transcript as it's written, on the call stage and in the room: the newest line at the bottom. */
-import type { Speaker, TranscriptLine } from '@alcove/api';
-import { Avatar, Icon, TimeChip, cn } from '@alcove/ui';
+import type { CaptureGap, Speaker, TranscriptLine } from '@alcove/api';
+import { Avatar, CaptureGapMark, Icon, TimeChip, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
 import { position } from '~/lib/time';
 
@@ -73,12 +74,16 @@ function groupStarts(lines: TranscriptLine[]): Set<string> {
   return starts;
 }
 
+/** Where nothing was captured, in its place between the lines. */
+const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} detail={g.to ? 'Nothing was recorded' : 'Nothing is being recorded'} />;
+
 /**
- * A call's transcript: who spoke ("You" for the reader) and what they said. Each new `hit` (seconds into
- * the recording) scrolls to the line said then and marks it for a moment, for a time chip that points here.
+ * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
+ * in marked where they fall. Each new `hit` (seconds into the recording) scrolls to the line said then and marks it
+ * for a moment, for a time chip that points here.
  */
-export function CallLines({ lines, me, hit = null }: { lines: TranscriptLine[]; me: string | undefined; hit?: { at: number } | null | undefined }) {
-  const { ref, onScroll, away, jump } = useFollow(lines.length);
+export function CallLines({ lines, gaps = [], me, hit = null }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; hit?: { at: number } | null | undefined }) {
+  const { ref, onScroll, away, jump } = useFollow(lines.length + gaps.length);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
   const reduce = useReducedMotion();
@@ -96,18 +101,24 @@ export function CallLines({ lines, me, hit = null }: { lines: TranscriptLine[]; 
   return (
     <div className="tx-wrap">
       <div ref={ref} className="tx" onScroll={onScroll} role="log" aria-label="What’s been said">
-        {lines.map((l) => {
-          const start = starts.has(l.id);
+        {lines.map((l, i) => {
+          const before = gapsBefore(gaps, lines, i);
+          // After a gap the speaker is named again: it's a new part of the call.
+          const start = starts.has(l.id) || before.length > 0;
           return (
-            <div key={l.id} data-line={l.id} className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', marked === l.id && 'is-hit')}>
-              {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
-              <div className="min-w-0">
-                {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="ac-mono">{position(l.at)}</span></div>}
-                <p>{l.text}</p>
+            <Fragment key={l.id}>
+              {before.map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
+              <div data-line={l.id} className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', marked === l.id && 'is-hit')}>
+                {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
+                <div className="min-w-0">
+                  {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="ac-mono">{position(l.at)}</span></div>}
+                  <p>{l.text}</p>
+                </div>
               </div>
-            </div>
+            </Fragment>
           );
         })}
+        {gapsAfter(gaps, lines).map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
       </div>
       {away && <Latest onClick={jump} />}
     </div>
