@@ -47,7 +47,7 @@ async function letIn(host: CallSession, who: CallSession) {
   await inGroup(who);
 }
 const latestKeys = (call: CallSession) => call.crypto.getSnapshot().media?.epochs.at(-1)?.keys ?? {};
-const sendIndex = (call: CallSession) => call.crypto.getSnapshot().media?.send.index;
+const sendIndex = (call: CallSession) => call.crypto.getSnapshot().media?.send?.index;
 const onLatestKey = (call: CallSession) => waitFor(() => sendIndex(call) !== undefined && sendIndex(call) === call.crypto.getSnapshot().media?.epochs.at(-1)?.index, `${call.ticket.role} sending with its new key`);
 /** A request about a call with someone's pass, as their browser would send it. */
 const asMember = (call: CallSession, body: unknown) => fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, {
