@@ -153,7 +153,7 @@ illustrated cast join, take turns talking with captions (in English, Spanish, Ge
 hand now and then, and go to breakout rooms, where they talk among themselves and one asks for help. This
 is a deliberate exception to "no mock data" (AGENTS.md), limited to that one module:
 
-- It's on in development builds and in builds made with `VITE_ALCOVE_MULTIPARTY_PREVIEW=on`; `?preview=off`
+- It's on in development builds and in builds made with `VITE_ALCOVE_MULTIPARTY_PREVIEW=on`. Production sets it from the repository variable `MULTIPARTY_PREVIEW` (currently `on`); `?preview=off`
   (or `on`) in the address bar overrides it for the browser tab.
 - Nothing from it is sent to or stored by the server, and it never reaches the transcript, the notes, Ask
   or catch-up. Spotlighting a preview person stays in the browser; opening rooms sends the server only the
