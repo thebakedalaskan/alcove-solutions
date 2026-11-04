@@ -69,8 +69,8 @@ with `x-no-aliasing: true`, and checks the gateway's report and every model repo
    same way and added.
 3. **Its report data**: the reported signing key, then our nonce. The echoed `request_nonce` must be our
    nonce, and the gateway's echoed `report_data` the quote's.
-4. **What that OS measured after boot**: the event log replays to the quote's RTMR3, and MRCONFIGID is `01`,
-   then SHA-256 of the report's `app_compose`, then zeros, as is the `compose-hash` event.
+4. **What that OS measured after boot**: the event log replays to the quote's RTMR3; MRCONFIGID is `01`, then
+   SHA-256 of the report's `app_compose`, then zeros; and the `compose-hash` event is that same SHA-256.
 5. **A model's GPUs**: its `nvidia_payload` carries our nonce; NVIDIA's Remote Attestation Service
    (`NVIDIA_NRAS_URL`) checks it, and its verdict is a JWT signed ES384 by a key from NRAS's published keys
    whose certificate chain (CAs only, all current) ends at `NVIDIA_ROOT_CA`, from NRAS, not expired, for our
@@ -131,9 +131,10 @@ NEAR AI sees the visit. The call screen shows none of it.
 - **NEAR AI's gateway** for the reports, and **the models' own endpoints**,
   `whisper-large-v3.completions.near.ai` and `glm-5-3-flash.completions.near.ai`, for everything sealed.
 
-Measured against NEAR AI Cloud in November 2026: verifying a model the first time takes about 1.5 s (the
-report about 0.4 s, Intel's collateral, NRAS about 0.2 s, and the quote checks), later ones about 0.4 s; a
-5-second clip through OHTTP about 0.4 to 0.6 s; a short completion through OHTTP about 0.5 s.
+Measured against NEAR AI Cloud on 3 November 2026: verifying the first model takes about 1.2 to 1.4 s (the
+report, Intel's collateral, NRAS and the quote checks), the next about 0.5 s, as Intel's collateral is kept;
+a 5-second clip through OHTTP about 0.45 s, or up to 2 s on a new connection; a short completion through
+OHTTP 0.5 to 1.1 s.
 
 ## Note states
 
@@ -357,8 +358,8 @@ Replies are checked before anything is kept:
 The deploy pipeline sets the base URL and uses the defaults for everything else. The two roots are
 configuration so that tests can run the same checks against their own; `roots.ts` says where each real one
 is published and its SHA-256 fingerprint. Inside a TEE (`TEE=dstack`) only the built-in roots and Intel's and
-NVIDIA's own services are accepted, as the keys are only taken from the TEE: whoever sets the environment
-mustn't choose what inference is verified against. The measured OS images aren't configuration at all.
+NVIDIA's own services are accepted, so whoever sets the environment there can't choose what inference is
+verified against. The measured OS images aren't configuration at all.
 
 | Request | Format | Timeout |
 | --- | --- | --- |
@@ -377,7 +378,7 @@ first ([How long a verification holds](#how-long-a-verification-holds)).
 Measured on NEAR AI Cloud in November 2026: a 5-second clip transcribes in about 0.6 s; notes for a short
 call are written in about 4 s with thinking disabled (about 48 s with it on, which is why it's off); a
 question is answered in about 1.5 to 3.5 s. Oblivious HTTP adds a few milliseconds; the first verification of
-a model adds about 1.5 s to its first request. NEAR AI answers pure
+a model adds about 1.3 s to its first request. NEAR AI answers pure
 digital silence with `502`, which Alcove reports as `503 unavailable`; the browser doesn't send silence.
 
 ## What's logged
@@ -423,7 +424,8 @@ failure, and the evidence the note keeps. `verified private inference` covers:
   reaches NEAR AI, and the refusal is logged with its code;
 - a refusal standing for half a minute, and an honest report used over a tampered one;
 - a notes job waiting through an NVIDIA outage without using up its attempts;
-- replies that won't open, and a key a model won't open that its evidence still names;
+- replies that won't open, a key a model won't open that its evidence still names, and a new key whose
+  evidence doesn't check out;
 - keys that change, a verification that runs out, and a note keeping every verification it relied on.
 
 `privacy at rest` checks that no clip, transcript, title, name or question crossed the wire to NEAR AI
