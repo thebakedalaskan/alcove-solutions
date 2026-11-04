@@ -477,8 +477,16 @@ describe('what a guest’s pass reaches', () => {
     await letIn(host, guest);
 
     // Every route of the API, from its own route table: anything outside the call routes and the public ones needs an account.
-    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join']);
+    // The new device's side of a move is public too: it has no account, and the move's secret in the body is what it holds.
+    const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
+    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', ...MOVES]);
     const table = createApp(h.deps).routes.filter((r) => r.method !== 'ALL');
+    // A pass is nothing to them: without a move's secret, they find no move.
+    for (const path of MOVES) {
+      const res = await fetch(`${h.baseUrl}${path}`, { method: 'POST', headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ code: 'x'.repeat(22), claim: 'x'.repeat(22), identity: `p_${'x'.repeat(22)}`, keyPackage: 'AAAA', device: { kind: 'phone', os: 'ios', browser: 'safari' } }) });
+      expect(`${path} → ${res.status}`).toBe(`${path} → 404`);
+      expect(await res.text()).not.toContain('Standup');
+    }
     const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/'));
     expect(routes.length).toBeGreaterThan(30);
     const fill = (path: string) => {

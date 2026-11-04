@@ -116,10 +116,18 @@ export function createApp(d: Deps) {
   const rejoinLimiter = rateLimit(20, 60_000);
   /** Asking for notes (and taking it back), per person in a call. */
   const askNotesLimiter = rateLimit(10, 60_000);
-  /** Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so this only keeps it calm); and the new device checking on its move about once a second. */
+  /**
+   * Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so
+   * this only keeps it calm); and the new device checking on its move, at most twice a second, per client address. Each
+   * move is counted too, by its secret's hash: checking on it the same, and changing it (opening, ready, coming in,
+   * calling off) a handful of times, with room for coming in to be tried again each second while the organizer's
+   * connection comes back.
+   */
   const moveLimiter = rateLimit(12, 60_000);
   const moveOpenLimiter = rateLimit(30, 60_000);
   const moveCheckLimiter = rateLimit(240, 60_000);
+  const moveSecretCheckLimiter = rateLimit(240, 60_000);
+  const moveSecretChangeLimiter = rateLimit(60, 60_000);
   /** Request bodies are read whole, so each route takes no more than it needs. */
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
@@ -286,12 +294,35 @@ export function createApp(d: Deps) {
   app.use('/v1/moves/*', capped(32 * 1024));
   app.post('/v1/moves/claim', async (c) => {
     moveOpenLimiter(clientAddress(c), 'move open');
-    return c.json(await moves.claim(d, (await body(c, MoveClaimBodySchema)).code, await optionalOwner(c)));
+    const { code } = await body(c, MoveClaimBodySchema);
+    moveSecretChangeLimiter(moves.limitKey(code), 'move change');
+    return c.json(await moves.claim(d, code, await optionalOwner(c)));
   });
-  app.post('/v1/moves/status', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); return c.json(await moves.status(d, (await body(c, MoveByClaimBodySchema)).claim, await optionalOwner(c))); });
-  app.post('/v1/moves/ready', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); return c.json(await moves.ready(d, await body(c, MoveReadyBodySchema), await optionalOwner(c))); });
-  app.post('/v1/moves/arrive', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); return c.json(await moves.arrive(d, (await body(c, MoveByClaimBodySchema)).claim, await optionalOwner(c))); });
-  app.post('/v1/moves/cancel', async (c) => { moveCheckLimiter(clientAddress(c), 'move'); await moves.cancelIn(d, (await body(c, MoveByClaimBodySchema)).claim); return c.json({ cancelled: true }); });
+  app.post('/v1/moves/status', async (c) => {
+    moveCheckLimiter(clientAddress(c), 'move');
+    const { claim } = await body(c, MoveByClaimBodySchema);
+    moveSecretCheckLimiter(moves.limitKey(claim), 'move check');
+    return c.json(await moves.status(d, claim, await optionalOwner(c)));
+  });
+  app.post('/v1/moves/ready', async (c) => {
+    moveCheckLimiter(clientAddress(c), 'move');
+    const b = await body(c, MoveReadyBodySchema);
+    moveSecretChangeLimiter(moves.limitKey(b.claim), 'move change');
+    return c.json(await moves.ready(d, b, await optionalOwner(c)));
+  });
+  app.post('/v1/moves/arrive', async (c) => {
+    moveCheckLimiter(clientAddress(c), 'move');
+    const { claim } = await body(c, MoveByClaimBodySchema);
+    moveSecretChangeLimiter(moves.limitKey(claim), 'move change');
+    return c.json(await moves.arrive(d, claim, await optionalOwner(c)));
+  });
+  app.post('/v1/moves/cancel', async (c) => {
+    moveCheckLimiter(clientAddress(c), 'move');
+    const { claim } = await body(c, MoveByClaimBodySchema);
+    moveSecretChangeLimiter(moves.limitKey(claim), 'move change');
+    await moves.cancelIn(d, claim);
+    return c.json({ cancelled: true });
+  });
   /* Everything about a live call needs that call's pass; the organizer's keys are opened for the request. */
   const viewerFor = async (c: Context<Env>, next: () => Promise<void>) => {
     const pass = readPass(d.cfg, c.req.header(CALL_PASS_HEADER));
