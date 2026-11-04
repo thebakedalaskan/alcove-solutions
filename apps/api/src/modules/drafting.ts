@@ -83,8 +83,13 @@ function screenLine(m: ScreenMoment, n: number): string {
   const parts = m.regions.length ? ` Parts: ${m.regions.map((r, i) => `(${i + 1}) ${oneLine(r.label)}`).join(' ')}` : '';
   return `[${mmss(m.at)}] [screen ${n}${from}, ${LEGIBLE[m.legible]}] ${oneLine(m.title) || 'Untitled'}.${reads}${parts}`;
 }
-/** One line of the transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who spoke. */
-const spoken = (l: TranscriptLine) => `[${mmss(l.at)}] ${l.speaker ? `${saidBy(l.speaker)}: ` : ''}${oneLine(l.text)}`;
+/**
+ * One line of the transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who
+ * spoke. Words the speech model was unsure of end "(unclear)", and a speaker in doubt is "Name (not sure who)", so the
+ * model doesn't rest anything on them (DOUBT).
+ */
+const spoken = (l: TranscriptLine) =>
+  `[${mmss(l.at)}] ${l.speaker ? `${saidBy(l.speaker)}${l.unsure?.speaker ? ' (not sure who)' : ''}: ` : ''}${oneLine(l.text)}${l.unsure?.words ? ' (unclear)' : ''}`;
 /**
  * The transcript in order, each entry a line (by its index), a "--" line where nothing was captured, or a "[screen N"
  * line where a shared screen changed.
@@ -173,6 +178,9 @@ const moment = (b: Brief) => {
 };
 const issues = (e: z.ZodError) => e.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ');
 
+/** What every prompt that reads a transcript is told about the lines it can't vouch for (see transcriptText). */
+export const DOUBT = 'A line ending in "(unclear)" was hard to hear, so its words may be wrong: never rest a name, number or decision on it alone. "(not sure who)" after a name means someone else may have said it.';
+
 const NOTES_PROMPT = `You write the notes for a meeting from its transcript. Reply with a single JSON object and nothing else, in this shape:
 {"summary": string, "decisions": [{"text": string, "at": number, "screen": number | null, "part": number | null, "sure": boolean}], "questions": [{"text": string, "at": number, "screen": number | null, "part": number | null, "sure": boolean}], "actions": [{"text": string, "owner": string | null, "due": string | null, "at": number, "screen": number | null, "part": number | null, "sure": boolean}], "chapters": [{"at": number, "title": string, "summary": string, "screen": number | null, "part": number | null, "sure": boolean}], "suggestedQuestions": [string], "screens": [{"n": number, "description": string}]}
 
@@ -188,7 +196,7 @@ A line starting "[mm:ss] [screen N" says what was on a shared screen from then o
 screens: one entry for each screen N in the transcript, {"n": N, "description": string}: one or two plain sentences on what it shows and what was being said about it then. If it couldn't be read, or nothing said was about it, say only what can be told.
 screen: when a decision, question, action or chapter was about something on a screen, the N of that screen, with part: the number of the part meant, if one part is, and sure: true when what was said plainly refers to it ("this chart", "the numbers on the slide"), false when that only seems likely. Otherwise screen is null.
 
-Write in the language of the transcript. Use only what the transcript and its screens say: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke. A line starting "--" marks a stretch when notes were off or paused and nothing was recorded: never say or guess what happened in it. ${SAID_ONLY}`;
+Write in the language of the transcript. Use only what the transcript and its screens say: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke. A line starting "--" marks a stretch when notes were off or paused and nothing was recorded: never say or guess what happened in it. ${DOUBT} ${SAID_ONLY}`;
 
 /** A second the model points at, if it gave one. */
 const At = z.coerce.number().nullish().catch(null);
@@ -272,7 +280,7 @@ export async function draft(cfg: Config, b: Brief): Promise<Written> {
 
 const ASK_PROMPT = `You answer a question about one meeting, using only its transcript and notes. Reply with a single JSON object and nothing else: {"answer": string, "moments": [number], "screens": [number]}
 
-answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the transcript doesn't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it. A line starting "[mm:ss] [screen N" says what was on a shared screen from then on, as it was read: never say a screen showed more than its line says. ${SAID_ONLY}
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the transcript doesn't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it. A line starting "[mm:ss] [screen N" says what was on a shared screen from then on, as it was read: never say a screen showed more than its line says. ${DOUBT} ${SAID_ONLY}
 moments: the seconds the answer comes from, read from the transcript's [mm:ss] marks; at most four, in order. An empty list if there are none.
 screens: the N of each shared screen the answer comes from; at most two. An empty list if there are none.`;
 
@@ -314,7 +322,7 @@ decided: what the people agreed or settled.
 proposed: what someone suggested that hasn't been agreed yet. Something only suggested is never decided.
 open: questions that were asked and haven't been answered yet.
 next: what someone said they, or someone else, would do. owner is that person's name as the transcript gives it, or null if it doesn't say; due is when, as it was said ("Friday"), or null.
-Each item is one short sentence. lines are the numbers of the transcript lines it comes from, one to three of them; leave out anything you can't point to a line for. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions. A line starting "--" marks a stretch when nothing was recorded: never say or guess what happened in it. ${SAID_ONLY}`;
+Each item is one short sentence. lines are the numbers of the transcript lines it comes from, one to three of them; leave out anything you can't point to a line for. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions. A line starting "--" marks a stretch when nothing was recorded: never say or guess what happened in it. ${DOUBT} ${SAID_ONLY}`;
 
 const Items = z.array(z.object({
   text: z.string(), lines: Refs, owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
@@ -357,7 +365,7 @@ export async function catchUp(cfg: Config, b: Brief, reading: string): Promise<S
 
 const ASK_SO_FAR_PROMPT = `You answer a question about a meeting that is still going on, using only part of its transcript. Each transcript line starts with its number, as in "L12 [03:41] Name: words". Reply with a single JSON object and nothing else: {"answer": string, "lines": [number]}
 
-answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. Answer from what was said in these lines. If they don't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it. ${SAID_ONLY}
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. Answer from what was said in these lines. If they don't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it. ${DOUBT} ${SAID_ONLY}
 lines: the numbers of the transcript lines the answer comes from; at most four, in order. An empty list if there are none.`;
 
 const AnswerSoFar = z.object({ answer: z.string().min(1), lines: Refs });
