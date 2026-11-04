@@ -113,7 +113,10 @@
 .ic-vc { display: inline-flex; gap: 2px; padding: 3px; border-radius: 11px; background: rgb(255 255 255 / 0.06); }
 .ic-vc .vbtn { display: grid; place-items: center; width: 32px; height: 28px; border-radius: 8px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .ic-vc .vbtn:hover { color: var(--stage-ink); background: rgb(255 255 255 / 0.06); }
-.ic-vc .vbtn[aria-pressed="true"] { background: rgb(255 255 255 / 0.16); color: var(--stage-ink); }
+.ic-vc .vbtn[aria-pressed="true"], .ic-vc .vbtn.is-on { background: rgb(255 255 255 / 0.16); color: var(--stage-ink); }
+.ic-vc .vbtn.is-more { width: 26px; }
+.ic-vc .vbtn .wide, .ic-vc .vbtn .narrow { display: grid; place-items: center; }
+.ic-vc .vbtn .narrow { display: none; }
 .ic-top .ac-btn.is-quiet { color: var(--stage-ink-2); }
 .ic-top .ac-btn.is-quiet:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
 .ic-top .ic-reset { height: 32px; padding: 0 10px; }
@@ -139,7 +142,17 @@
 .ic-main { position: relative; min-height: 0; }
 .ic-stage-box { position: absolute; left: 0; top: 0; bottom: 0; }
 .ic-stage { position: absolute; inset: 0; }
-.ic-slot { position: absolute; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ic-slot { position: absolute; container-type: size; border-radius: var(--radius-md); touch-action: none; user-select: none; -webkit-user-select: none; }
+/* A small tile keeps its pin and spotlight as icons, so they never run into its menu. */
+@container (max-width: 260px) { .ic-tch { height: 26px; padding: 0 2px 0 7px; gap: 4px; } .ic-tch .tl { display: none; } }
+@container (max-width: 150px) { .ic-tch { padding: 0 6px; } .ic-tch .tx { display: none; } }
+.ic-slot:focus-visible, .ic-scr:focus-visible { outline: 2px solid var(--speak); outline-offset: 3px; }
+.ic-slot.is-corner { z-index: 6; }
+.ic-slot.is-corner > .ac-tile { box-shadow: 0 22px 44px -18px rgba(0, 0, 0, .9), inset 0 0 0 1px rgba(255, 255, 255, .16); }
+.ic-slot.is-corner > .ac-tile.is-speaking { box-shadow: 0 22px 44px -18px rgba(0, 0, 0, .9), inset 0 0 0 2px var(--speak); }
+.ic-slot.is-corner .ac-tile-name { left: 6px; bottom: 6px; height: 22px; padding: 0 7px; font-size: 11.5px; }
+.ic-slot.is-corner .ic-more { right: 6px; top: 6px; }
+.ic-slot.is-corner .ac-tile-mic, .ic-slot.is-corner .ac-tile-hand { display: none; }
 .ic-slot.can-drag { cursor: grab; }
 .ic-slot.is-drag { z-index: 10; cursor: grabbing; }
 .ic-slot.is-drag .ac-tile { box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .85), inset 0 0 0 2px rgba(238, 237, 248, .7); }
@@ -157,13 +170,23 @@
 .ic-tch.is-spot .tx:hover { background: rgba(11, 10, 24, .12); }
 .ic-more { position: absolute; z-index: 4; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(11, 10, 24, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
 .ic-more:hover { background: rgba(11, 10, 24, .85); }
-.ac-tile:hover .ic-more, .ic-more:focus-visible, .ic-more.is-on, .ic-more[data-state="open"] { opacity: 1; }
+.ac-tile:hover .ic-more, .ic-more:focus-visible, .ic-more.is-on, .ic-more[data-state="open"], .ic-slot:focus-visible .ic-more, .ic-scr:hover .ic-more, .ic-scr:focus-visible .ic-more { opacity: 1; }
 .ac-tile.is-hand .ic-more, .ac-tile:has(.ac-tile-mic) .ic-more { top: 40px; }
+.ic-slot:focus-visible .ic-rs { opacity: 1; }
 .ic-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgba(11, 10, 24, .62); color: var(--stage-ink); cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity var(--duration-1); }
 .ac-tile:hover .ic-rs, .is-sizing .ic-rs { opacity: 1; }
 .ic-scr { position: absolute; overflow: hidden; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06); }
 .ic-scr video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .ic-scr .ac-tile-name { z-index: 2; }
+.ic-scr.is-tile .ac-tile-name { max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* You, folded away: a small chip in your corner that brings you back. */
+.ic-selfchip { position: absolute; z-index: 6; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px 0 8px; border-radius: 12px; background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12), 0 14px 30px -14px rgba(0, 0, 0, .85); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: box-shadow var(--duration-1); }
+.ic-selfchip:hover { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.26), 0 14px 30px -14px rgba(0, 0, 0, .85); }
+.ic-selfchip .ac-avatar { --ring: var(--stage-raised); }
+.ic-selfchip .ac-i { color: var(--stage-ink-2); }
+/* Nothing on the stage but you, folded away. */
+.ic-stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
+.ic-stage-empty > * { pointer-events: auto; }
 .ic-divider { position: absolute; z-index: 6; display: grid; place-items: center; width: 24px; height: 56px; cursor: ew-resize; touch-action: none; }
 .ic-divider.is-v { width: 56px; height: 24px; cursor: ns-resize; }
 .ic-divider i { display: block; width: 6px; height: 56px; border-radius: 3px; background: rgba(238, 237, 248, .55); box-shadow: 0 0 0 5px rgb(255 255 255 / 0.06); transition: background-color var(--duration-1); }
@@ -388,6 +411,36 @@
 .ic-menu .mi .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-menu .mi:hover .ac-scope { background: var(--surface); }
 .ic-menu .only-narrow { display: none; }
+.ic-menu .scope { margin: -2px 0 4px; padding: 0 10px 6px; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+.ic-menu .mi[disabled] { opacity: .45; pointer-events: none; }
+.ic-menu .mi .ac-kbd { flex: none; }
+.ic-menu .mi .tick { flex: none; margin-left: auto; color: var(--sun-text); opacity: 0; }
+.ic-menu .mi[aria-checked="true"] .tick { opacity: 1; }
+.ic-menu .mi:has(.sub) { height: auto; min-height: 44px; padding-top: 7px; padding-bottom: 7px; }
+.ic-menu .mi .sub { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; line-height: 1.35; color: var(--ink-3); white-space: normal; }
+.ic-menu .mi:has(.sub) .t { white-space: normal; }
+.ic-menu .ac-eyebrow { margin: 10px 10px 4px; }
+.ic-menu .ac-eyebrow:first-child { margin-top: 6px; }
+.ic-tmenu { width: 280px; }
+.ic-mgrp { margin-top: 4px; }
+.ic-vmenu { width: 304px; max-height: min(640px, calc(100dvh - 96px)); overflow-y: auto; }
+.ic-vself { display: grid; gap: 2px; padding: 2px 6px 4px; }
+.ic-vself .ac-seg { display: flex; }
+.ic-vself .ac-seg button { flex: 1; justify-content: center; padding: 0 6px; font-size: 12.5px; }
+.ic-vself .hint { margin: 6px 4px 0; }
+.ic-keys { display: flex; align-items: flex-start; gap: 8px; }
+.ic-keys .ac-i { flex: none; margin-top: 2px; }
+.ic-keys .ac-kbd { margin: 0 1px; }
+/* No keyboard hints where there's no hover (a touch screen), and the tile menu is always there to tap. */
+@media (hover: none) {
+  .ic-keys, .ic-menu .mi .ac-kbd { display: none; }
+  .ic-more { opacity: 1; width: 32px; height: 32px; }
+}
+/* A short tile: its menu and the mic-off mark sit side by side at the top, clear of the name. */
+@container (max-height: 120px) {
+  .ic-more, .ac-tile.is-hand .ic-more, .ac-tile:has(.ac-tile-mic) .ic-more { top: 6px; right: 6px; width: 26px; height: 26px; }
+  .ac-tile-mic, .ac-tile-hand { top: 7px; right: 38px; width: 24px; height: 24px; }
+}
 
 /* the dock */
 .ic-dockbar { position: relative; display: flex; justify-content: center; align-items: center; height: 84px; }
@@ -427,7 +480,12 @@
 }
 @media (max-width: 760px) {
   .ic-top { height: 60px; gap: 10px; }
-  .ic-top .clock, .ic-top .vr.v1, .ic-vc, .ic-reset { display: none; }
+  .ic-top .clock, .ic-top .vr.v1, .ic-reset { display: none; }
+  .ic-vc { padding: 0; background: none; }
+  .ic-vc .vbtn.is-mode { display: none; }
+  .ic-vc .vbtn.is-more { width: 36px; height: 36px; border-radius: 10px; }
+  .ic-vc .vbtn .wide { display: none; }
+  .ic-vc .vbtn .narrow { display: grid; }
   .ic-faces .ac-faces .ac-avatar:nth-child(n+3), .ic-faces .ac-faces .more { display: none; }
   .ic-dockbar { height: 76px; }
   .ic-dockbar .ac-dock { gap: 2px; padding: 5px; }
@@ -436,7 +494,7 @@
   .ic-dockbar .ac-dock-sep { margin: 0 2px; }
   .ic-dockbar .ac-dock-leave { padding: 0 12px; }
   .ic-dockbar .ac-dock-leave .lt { display: none; }
-  .ic-tstate, .ic-rs, .ic-divider { display: none; }
+  .ic-rs, .ic-divider { display: none; }
   .ic-side { left: 0; width: auto !important; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
 }

@@ -3,29 +3,27 @@
  * a private catch-up, the confidential-compute shield and who is here (with how many are asking to join,
  * for the organizer).
  */
-import { clock, type CallViewMode, type Person } from '@alcove/api';
-import { Dots, Faces, Icon, NotesSign, Popover, Tooltip, cn, type IconName } from '@alcove/ui';
+import { clock, type Person } from '@alcove/api';
+import { Dots, Faces, Icon, NotesSign, Popover, Tooltip, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { q } from '~/lib/queries';
 import { hm } from '~/lib/time';
 
-const VIEWS: { mode: CallViewMode; icon: IconName; label: string; tip: string }[] = [
-  { mode: 'auto', icon: 'viewAuto', label: 'Auto layout', tip: 'Auto: Alcove picks the layout · changes your view only' },
-  { mode: 'speaker', icon: 'viewSpeaker', label: 'Speaker and sidebar', tip: 'Speaker and sidebar · changes your view only' },
-  { mode: 'grid', icon: 'grid', label: 'Grid', tip: 'Grid · changes your view only' }
-];
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function TopBar({ title, elapsed, notesOn, mode, custom, people, asking, reconnecting, peopleOpen, onNotes, onMode, onReset, onCatchUp, onPeople }: {
-  title: string; elapsed: number; notesOn: boolean; mode: CallViewMode; custom: boolean; people: Person[];
+export function TopBar({ title, elapsed, notesOn, view, custom, people, asking, reconnecting, peopleOpen, onNotes, onReset, onCatchUp, onPeople }: {
+  title: string; elapsed: number; notesOn: boolean;
+  /** Your view's controls (ViewMenu). */
+  view: ReactNode;
+  custom: boolean; people: Person[];
   /** People asking to join (the organizer's to let in). */
   asking: number;
   /** The call's media connection dropped and is coming back. */
   reconnecting: boolean;
   peopleOpen: boolean;
-  onNotes: () => void; onMode: (m: CallViewMode) => void; onReset: () => void; onCatchUp: () => void; onPeople: () => void;
+  onNotes: () => void; onReset: () => void; onCatchUp: () => void; onPeople: () => void;
 }) {
   const label = asking ? `People in this call. ${asking} asking to join` : 'People in this call';
   return (
@@ -42,17 +40,11 @@ export function TopBar({ title, elapsed, notesOn, mode, custom, people, asking, 
         </Tooltip>
       </div>
       <div className="end">
-        <div className="ic-vc" role="group" aria-label="Your view. Only your view changes">
-          {VIEWS.map((v) => (
-            <Tooltip key={v.mode} label={v.tip} side="bottom">
-              <button type="button" className="vbtn" aria-label={v.label} aria-pressed={mode === v.mode} onClick={() => onMode(v.mode)}><Icon name={v.icon} size={16} /></button>
-            </Tooltip>
-          ))}
-        </div>
+        {view}
         <AnimatePresence initial={false}>
           {custom && (
             <motion.span key="reset" initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={UI}>
-              <Tooltip label="Back to Auto, default order and sizes" side="bottom">
+              <Tooltip label="Back to Auto: nobody pinned, the call’s order and sizes" side="bottom">
                 <button type="button" className="ac-btn is-quiet is-sm ic-reset" onClick={onReset}><Icon name="reset" size={15} /><span className="rtxt">Reset my view</span></button>
               </Tooltip>
             </motion.span>

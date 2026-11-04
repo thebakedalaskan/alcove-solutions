@@ -420,21 +420,46 @@ export const DevicePrefsSchema = z.object({
 });
 export type DevicePrefs = z.infer<typeof DevicePrefsSchema>;
 
-/** How someone arranges a call on their own screen. Kept in their browser only: nobody else's view changes. */
+/*
+ * How someone arranges a call on their own screen. Kept in their browser only: nobody else's view changes, and
+ * nothing in it names anyone or carries anything from a call.
+ */
 export const CallViewModeSchema = z.enum(['auto', 'speaker', 'grid']);
 export type CallViewMode = z.infer<typeof CallViewModeSchema>;
+/** Where you see yourself: in the grid with everyone, as a small picture in a corner, or folded away. */
+export const SelfViewSchema = z.enum(['grid', 'corner', 'hidden']);
+export type SelfView = z.infer<typeof SelfViewSchema>;
+export const StageCornerSchema = z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right']);
+export type StageCorner = z.infer<typeof StageCornerSchema>;
+/** How someone likes to see every call: remembered for their account in this browser. */
 export const CallViewPrefsSchema = z.object({
   mode: CallViewModeSchema,
-  /** Tiles in the order they were dragged into, by participant ID. Anyone not listed follows. */
-  order: z.array(z.string().max(200)).max(100),
-  /** Tiles made bigger, by participant ID. */
-  big: z.array(z.string().max(200)).max(100),
-  /** How much of the stage a shared screen takes beside the people, 0.42 to 0.8. */
+  /** How much of the stage shared screens take beside the people, 0.42 to 0.8. */
   ratio: z.number().min(0.3).max(0.85),
-  /** The participant you keep on your main stage, by participant ID. */
-  pinned: z.string().max(200).nullable()
+  self: SelfViewSchema,
+  /** The corner your own picture sits in. */
+  corner: StageCornerSchema
 });
 export type CallViewPrefs = z.infer<typeof CallViewPrefsSchema>;
+/**
+ * How someone arranged one call: kept in that tab until they leave the call. People are named by their seat in the
+ * call (`CallParticipant.seat`) and shares by their sharer's participant ID: random, and only meaningful in this call.
+ */
+export const CallLayoutSchema = z.object({
+  /** Seats pinned, in the order they were pinned. Someone pinned who leaves stays pinned for when they come back. */
+  pins: z.array(z.string().max(200)).max(6),
+  /** Seats in the order you arranged them. Anyone else follows in the order they first came in. */
+  order: z.array(z.string().max(200)).max(200),
+  /** Seats in the order they first came into the call, so someone coming back keeps their place. */
+  arrived: z.array(z.string().max(200)).max(400),
+  /** Seats you made bigger. */
+  big: z.array(z.string().max(200)).max(200),
+  /** Shares you chose to see big, or as a tile. Any other share follows the layout. */
+  shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(20),
+  /** How the space splits between two shares side by side: the first one's part, 0.25 to 0.75. */
+  split: z.number().min(0.2).max(0.8)
+});
+export type CallLayout = z.infer<typeof CallLayoutSchema>;
 
 /** That someone finished or closed the tour of Home. Kept in their browser for their account, never sent anywhere. */
 export const HomeTourSchema = z.object({ seenAt: ISODateSchema });
