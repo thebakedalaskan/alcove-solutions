@@ -4,21 +4,26 @@
  * the room's summary, decisions, open questions, follow-ups and chapters, written from what was said in that room
  * alone, and what was said there. Everyone with the call's notes reads every room's section.
  */
-import { minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Person, type Question, type QuestionPatch, type RoomNote } from '@alcove/api';
+import { minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type NoteReader, type NoteRoom, type Person, type Question, type QuestionPatch } from '@alcove/api';
 import { Faces, Fold, Notice } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { listNames } from '~/lib/people';
-import type { Correcting } from './lines';
+import type { Correcting, FromLine } from './lines';
 import { Decisions, FollowUps, Questions, Section, TranscriptLines } from './parts';
 
 /** What someone who has the notes does with a room's decisions, questions and follow-ups, as with the call's. */
 export interface Settling {
+  /** Who's reading, for what `grants.ts` lets them do. */
+  reader: NoteReader;
   onDecision: (d: Decision, patch: DecisionPatch) => void;
   onQuestion: (x: Question, patch: QuestionPatch) => void;
   onToggle: (a: ActionItem, done: boolean) => void;
   onAction: (a: ActionItem, patch: ActionPatch) => void;
   /** Who a follow-up can be given to: the people who have the notes. */
   people: Person[];
+  /** Adding a decision or a follow-up to a room's section. */
+  decisionForm: (room: string) => ReactNode;
+  actionForm: (room: string) => ReactNode;
 }
 
 /**
@@ -26,19 +31,19 @@ export interface Settling {
  * the reader correct a room's lines and settle what its notes say, as they do the call's. `tryAgain` is under a room
  * whose notes couldn't be written, for someone who can have them written again.
  */
-export function RoomSections({ rooms, me, writing, correct, settle, tryAgain }: {
-  rooms: RoomNote[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
+export function RoomSections({ rooms, me, writing, correct, fromLine, settle, tryAgain }: {
+  rooms: NoteRoom[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
 }) {
   return (
     <Section title="Breakout rooms" count={`${rooms.length} ${rooms.length === 1 ? 'room' : 'rooms'}`} className="rooms-sec">
       <p className="rooms-lead">Each room’s notes come from what was said in it alone.</p>
-      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} settle={settle} tryAgain={tryAgain} />)}
+      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} />)}
     </Section>
   );
 }
 
-function RoomFold({ room, me, writing, correct, settle, tryAgain }: {
-  room: RoomNote; me: string | undefined; writing: boolean; correct?: Correcting | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
+function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain }: {
+  room: NoteRoom; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
 }) {
   const people = room.people.flatMap((x): Person[] => (x.person ? [x.person] : []));
   const said = room.transcript.length > 0;
@@ -55,10 +60,10 @@ function RoomFold({ room, me, writing, correct, settle, tryAgain }: {
           {room.summary ? <p className="summary">{room.summary}</p>
             : writing ? <p className="room-quiet">This room’s notes are being written.</p>
               : <><Notice tone="caution" icon="pen">This room’s notes couldn’t be written. What was said is below.</Notice>{tryAgain}</>}
-          {room.decisions.length > 0 && <Part title="Decided"><Decisions items={room.decisions} me={me} onChange={settle?.onDecision} /></Part>}
+          {(room.decisions.length > 0 || settle) && <Part title="Decisions"><Decisions items={room.decisions} me={me} reader={settle?.reader} onChange={settle?.onDecision} />{settle?.decisionForm(room.id)}</Part>}
           {room.questions.length > 0 && <Part title="Still open"><Questions items={room.questions} me={me} onChange={settle?.onQuestion} /></Part>}
-          {room.actions.length > 0 && (
-            <Part title="Follow-ups"><FollowUps actions={room.actions} me={me} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} /></Part>
+          {(room.actions.length > 0 || settle) && (
+            <Part title="Follow-ups"><FollowUps actions={room.actions} me={me} reader={settle?.reader} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} />{settle?.actionForm(room.id)}</Part>
           )}
           {room.chapters.length > 0 && (
             <Part title="Chapters">
@@ -66,7 +71,7 @@ function RoomFold({ room, me, writing, correct, settle, tryAgain }: {
             </Part>
           )}
           <Fold className="room-said" summary={<span className="room-h"><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></span>}>
-            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} correct={correct} />
+            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} correct={correct} fromLine={fromLine} />
           </Fold>
         </>
       )}

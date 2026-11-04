@@ -4,7 +4,7 @@
  * picked in the list shows beside it, with what it decided and what's still to do; narrower, a note opens on its own
  * page. Before the first notes, the page shows what they'll look like.
  */
-import { EmailParamSchema, errorCode, errorMessage, type ActionItem, type Decision, type Note, type NoteKind, type NoteSummary, type Person } from '@alcove/api';
+import { EmailParamSchema, errorCode, errorMessage, mayChangeAction, mayDecide, type ActionItem, type Decision, type Note, type NoteKind, type NoteReader, type NoteSummary, type Person } from '@alcove/api';
 import {
   ArchThumb, Avatar, Button, Check, Chip, EmptyArch, EmptyState, Faces, GhostArch, GoneArch, Icon, IconButton, Notice, NotesSign, Popover, SealedBadge, Segmented, Spinner,
   buttonClass, cn, coverFor, useToast, type IconName
@@ -15,7 +15,7 @@ import { useDeferredValue, useEffect, useId, useRef, useState, useSyncExternalSt
 import { NoteCard } from '~/features/notes/NoteCard';
 import { highlight } from '~/features/notes/highlight';
 import { peopleLine, receivedLine } from '~/features/notes/meta';
-import { MomentLink, decisionLine } from '~/features/notes/parts';
+import { MomentLink, decisionLine, proposedLine } from '~/features/notes/parts';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { useOpenComposer } from '~/features/shell/context';
 import { fold } from '~/lib/parse';
@@ -282,6 +282,7 @@ function PreviewBody({ note, me }: { note: Note; me: string | undefined }) {
   const tick = (a: ActionItem, done: boolean) => act.mutate({ noteId: note.id, actionId: a.id, patch: { done } }, {
     onSuccess: () => { if (done) toast('Marked done', { ms: 2200 }); }, onError: failed
   });
+  const reader: NoteReader = { organizer: !note.received, email: me ?? '' };
   const everyone = note.kind === 'room' ? 'They show here when they’re ready.' : 'Everyone invited gets them when they’re ready.';
   const decided = note.decisions.filter((d) => d.state !== 'rejected');
   const unconfirmed = decided.filter((d) => d.state === 'proposed').length;
@@ -305,12 +306,12 @@ function PreviewBody({ note, me }: { note: Note; me: string | undefined }) {
         <div className="pv-sec"><div className="ac-eyebrow">Summary</div><p className="summary">{note.summary}</p></div>
         {decided.length > 0 && (
           <div className="pv-sec">
-            <div className="ac-eyebrow">Decided{unconfirmed ? ` · ${unconfirmed} to confirm` : ''}</div>
+            <div className="ac-eyebrow">Decisions{unconfirmed ? ` · ${unconfirmed} to confirm` : ''}</div>
             {decided.slice(0, DECISIONS).map((d) => (
               <div key={d.id} className="pv-row">
                 {d.state === 'confirmed' ? <span className="ac-tick"><Icon name="check" size={13} /></span> : <span className="ac-tick maybe" />}
                 <span className="min-w-0">{d.text}
-                  <small>{d.state === 'proposed' ? <>Proposed by the notes · <button type="button" className="lk" onClick={() => confirm(d)}>Confirm</button></> : decisionLine(d, me)}</small>
+                  <small>{d.state === 'proposed' ? <>{proposedLine(d, me)}{mayDecide(d, 'confirmed', reader) && <> · <button type="button" className="lk" onClick={() => confirm(d)}>Confirm</button></>}</> : decisionLine(d, me)}</small>
                 </span>
                 {d.at !== undefined ? <MomentLink noteId={note.id} at={d.at} /> : <span />}
               </div>
@@ -323,7 +324,7 @@ function PreviewBody({ note, me }: { note: Note; me: string | undefined }) {
             <div className="ac-eyebrow">Follow-ups · {open} open</div>
             {note.actions.slice(0, FOLLOW_UPS).map((a) => (
               <div key={a.id} className={cn('pv-act', a.done && 'done')}>
-                <Check checked={a.done} onChange={(on) => tick(a, on)} label={`Mark done: ${a.text}`} />
+                <Check checked={a.done} disabled={!mayChangeAction(a, reader)} onChange={(on) => tick(a, on)} label={`Mark done: ${a.text}`} />
                 <span className="t">{a.text}</span>
                 {a.owner ? (
                   <span className={cn('ac-owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>

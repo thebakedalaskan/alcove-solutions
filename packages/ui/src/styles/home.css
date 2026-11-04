@@ -115,6 +115,8 @@
 .hm-wait-k { font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
 .hm-wait-t { margin-top: 6px; font: 500 14.5px/1.4 var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; transition: color var(--duration-2); }
 .hm-wait-from { margin-top: 3px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
+.hm-wait-ev { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 7px; }
+.hm-wait-ev:empty { display: none; }
 .hm-wait-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 9px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
 .hm-wait-item[aria-busy="true"] .hm-wait-acts { opacity: .6; }
 .hm-wait-item.is-confirmed .hm-wait-k, .hm-wait-item.is-taken .hm-wait-k { color: var(--sun-text); }

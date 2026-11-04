@@ -1,12 +1,13 @@
 import {
-  NoteMomentSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
-  type Question, type QuestionPatch
+  NoteMomentSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type NoteReader, type Person,
+  type Question, type QuestionPatch, type TranscriptLine
 } from '@alcove/api';
 import { Button, Chip, Dots, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, Spinner, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Provenance } from '~/features/notes/Evidence';
+import { Propose, type Seed } from '~/features/notes/entries';
 import { Player, usePlayer, type PlayerState } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
@@ -20,7 +21,7 @@ import { useNoteOnScreen } from '~/features/shell/notify';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { sameEmail } from '~/lib/people';
-import { q, qk, useCorrectLine, useDeleteNote, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { q, qk, useCorrectLine, useDeleteNote, useProposeAction, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
 import { noteWhen } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
@@ -115,13 +116,13 @@ function useOpenAt(noteId: string, at: number | undefined, player: PlayerState) 
 }
 
 function asText(n: Note): string {
-  const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due].filter((x): x is string => !!x).join(', ');
+  const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due && !a.takenOn ? `suggested for ${a.due}` : a.due].filter((x): x is string => !!x).join(', ');
   // What people said wasn't decided stays out; what nobody has confirmed yet, or no longer holds, says so.
   const decided = n.decisions.filter((d) => d.state !== 'rejected');
   const open = n.questions.filter((x) => x.state === 'open');
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
-    ...(decided.length ? ['', 'Decided', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`)] : []),
+    ...(decided.length ? ['', 'Decisions', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`)] : []),
     ...(open.length ? ['', 'Still open', ...open.map((x) => `- ${x.text}`)] : []),
     ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`)] : [])
   ].join('\n');
@@ -158,6 +159,8 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const updateAction = useUpdateAction();
   const updateDecision = useUpdateDecision();
   const updateQuestion = useUpdateQuestion();
+  const proposeDecision = useProposeDecision();
+  const proposeAction = useProposeAction();
   const correctLine = useCorrectLine();
   const rewrite = useRewriteNotes();
   const player = usePlayer(note.id, note.audio);
@@ -167,8 +170,11 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const [confirm, setConfirm] = useState(false);
   const [going, setGoing] = useState(false);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
+  /* The transcript line someone is proposing something from, if they are. */
+  const [seed, setSeed] = useState<Seed | null>(null);
   const received = note.received;
   const mine = !received;
+  const reader: NoteReader = { organizer: mine, email: me ?? '' };
   const organizer = note.recipients.find((r) => r.role === 'organizer')?.person;
   const ready = note.status === 'ready';
   const seek = note.audio.length ? (s: number) => player.seek(s) : undefined;
@@ -195,6 +201,14 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const changeAction = (a: ActionItem, patch: ActionPatch) => updateAction.mutate({ noteId: note.id, actionId: a.id, patch }, {
     onSuccess: () => { if (patch.takeOn) toast('It’s yours. Everyone with the notes sees that.', { icon: 'check' }); }, onError: failed
   });
+  /* Whichever part of the notes it's for, what someone adds is proposed by them; what failed says why, and stays in the field. */
+  const added = (p: Promise<unknown>) => p.then(() => true, (e: unknown) => { failed(e); return false; });
+  const addDecision = (room: string | undefined) => (text: string, lines: string[]) => added(proposeDecision.mutateAsync({ noteId: note.id, proposal: { text, lines, ...(room ? { room } : {}) } }));
+  const addAction = (room: string | undefined) => (text: string, lines: string[]) => added(proposeAction.mutateAsync({ noteId: note.id, proposal: { text, lines, ...(room ? { room } : {}) } }));
+  const proposing = (kind: Seed['kind'], line: TranscriptLine) => setSeed({ kind, line, room: note.rooms.find((r) => r.transcript.some((l) => l.id === line.id))?.id });
+  const seedFor = (kind: Seed['kind'], room: string | undefined) => (seed?.kind === kind && seed.room === room ? seed : undefined);
+  const decisionForm = (room?: string | undefined) => <Propose label="Propose a decision" placeholder="What was decided" hint="It shows as proposed by you until someone else confirms it." busy={proposeDecision.isPending} seed={seedFor('decision', room)} onAdd={addDecision(room)} onDone={() => setSeed(null)} />;
+  const actionForm = (room?: string | undefined) => <Propose label="Add a follow-up" placeholder="What needs doing" hint="Everyone with the notes sees it. Give it to someone from its menu." busy={proposeAction.isPending} seed={seedFor('follow-up', room)} onAdd={addAction(room)} onDone={() => setSeed(null)} />;
   const changeDecision = (d: Decision, patch: DecisionPatch) => updateDecision.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
   const changeQuestion = (x: Question, patch: QuestionPatch) => updateQuestion.mutate({ noteId: note.id, questionId: x.id, patch }, { onError: failed });
   // The organizer corrects any line; anyone else who has the notes, the words of their own lines (the server's rule too).
@@ -204,6 +218,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
     organizer: mine,
     onCorrect: (l, patch) => correctLine.mutate({ noteId: note.id, lineId: l.id, patch }, { onError: failed })
   } : undefined;
+  const fromLine = ready ? proposing : undefined;
   const corrected = correctedSince([...lines, ...note.rooms.flatMap((r) => r.transcript)], note.writtenAt);
   // Where writing them again has got to, once the notes service says.
   const step = note.writingAgain && progress && !progress.ready ? progress.steps.at(-1)?.label : undefined;
@@ -217,9 +232,9 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
     </div>
   ) : null;
   // Each breakout room's own section, under the call's notes; and whether any room had something said in it.
-  const settle = ready ? { onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person) } : undefined;
+  const settle = ready ? { reader, onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person), decisionForm, actionForm } : undefined;
   const tryAgain = mine ? <Button variant="secondary" size="sm" className="mt-3" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button> : null;
-  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} me={me} writing={!ready || note.writingAgain} correct={correct} settle={settle} tryAgain={tryAgain} /> : null;
+  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} me={me} writing={!ready || note.writingAgain} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} /> : null;
   const roomsSaid = note.rooms.some((r) => r.transcript.length > 0);
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
   const stillOpen = note.questions.filter((x) => x.state === 'open').length;
@@ -268,26 +283,24 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                 </section>
               )}
               <Section title="Summary" {...part(0)}><p className="summary">{note.summary}</p></Section>
-              {note.decisions.length > 0 && (
-                <Section title="Decided" count={toConfirm ? `${toConfirm} to confirm` : note.decisions.length} {...part(1)}>
-                  <Decisions items={note.decisions} me={me} onChange={changeDecision} onSeek={seek} shown={onScreen} />
-                </Section>
-              )}
+              <Section title="Decisions" count={toConfirm ? `${toConfirm} to confirm` : note.decisions.length || undefined} {...part(1)}>
+                {note.decisions.length > 0 ? <Decisions items={note.decisions} me={me} reader={reader} onChange={changeDecision} onSeek={seek} shown={onScreen} /> : <p className="sec-none">The notes didn’t hear anything decided.</p>}
+                {decisionForm()}
+              </Section>
               {note.questions.length > 0 && (
                 <Section title="Still open" count={stillOpen ? `${stillOpen} open` : 'All answered'} {...part(2)}>
                   <Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} shown={onScreen} />
                 </Section>
               )}
-              {note.actions.length > 0 && (
-                <Section title="Follow-ups" count={`${open} open`} {...part(3)}>
-                  <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} shown={onScreen} />
-                </Section>
-              )}
+              <Section title="Follow-ups" count={note.actions.length ? `${open} open` : undefined} {...part(3)}>
+                {note.actions.length > 0 ? <FollowUps actions={note.actions} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} /> : <p className="sec-none">The notes didn’t hear anything to follow up.</p>}
+                {actionForm()}
+              </Section>
               {rooms}
               {lines.length > 0 && (
                 <Section title="Transcript" count={minutesLabel(note.duration)} {...part(4)}>
                   {again}
-                  <Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} />
+                  <Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} fromLine={fromLine} />
                 </Section>
               )}
             </>
@@ -305,7 +318,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   </>
                 )}
               </section>
-              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} /></Section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} fromLine={fromLine} /></Section>
               {rooms}
             </>
           ) : ready ? (
@@ -414,7 +427,7 @@ function Example({ me }: { me: Person }) {
         <article className="doc">
           <DocHead title={note.title} when="Example · 24 min" people={note.people} me={me.email} chips={<Chip tone="sun">Example</Chip>} />
           <Section title="Summary"><p className="summary">{note.summary}</p></Section>
-          <Section title="Decided" count={note.decisions.length}><Decisions items={note.decisions} me={me.email} /></Section>
+          <Section title="Decisions" count={note.decisions.length}><Decisions items={note.decisions} me={me.email} /></Section>
           <Section title="Still open" count={`${note.questions.length} open`}><Questions items={note.questions} me={me.email} /></Section>
           <Section title="Follow-ups" count={`${actions.filter((a) => !a.done).length} open`}>
             <FollowUps actions={actions} me={me.email} onToggle={(a, on) => setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: on } : x)))} />

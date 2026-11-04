@@ -153,9 +153,9 @@ export function TimeChip({ seconds, onSeek, label, title }: { seconds: number; o
 }
 
 /* ---------- Check ---------- */
-export function Check({ checked, onChange, label }: { checked: boolean; onChange: (on: boolean) => void; label: string }) {
+export function Check({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean | undefined }) {
   return (
-    <button type="button" role="checkbox" aria-checked={checked} aria-label={label} className={cn('ac-check', checked && 'on')} onClick={() => onChange(!checked)}>
+    <button type="button" role="checkbox" aria-checked={checked} aria-label={label} disabled={disabled} className={cn('ac-check', checked && 'on')} onClick={() => onChange(!checked)}>
       <CheckDraw done={checked} />
     </button>
   );
