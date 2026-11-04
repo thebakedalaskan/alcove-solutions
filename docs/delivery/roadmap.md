@@ -30,6 +30,10 @@
   off with who changed it and when, in the call and before joining; one pause that stops every kind of capture
   on the server; asking the organizer for notes; and the gaps marked in the transcript, catch-up and notes
   ([Calls and recordings › What's captured](../engineering/calls-and-recordings.md#whats-captured)).
+- Seamless reconnects and moving a call to another device: someone whose connection dropped comes back in as the
+  same person by themselves, and **Move to another device** hands a place in a call to a phone or another computer
+  (a QR code or link, one use, two minutes), releasing the old device's microphone before the new one's starts
+  ([Calls and recordings › Moving to another device](../engineering/calls-and-recordings.md#moving-to-another-device)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
