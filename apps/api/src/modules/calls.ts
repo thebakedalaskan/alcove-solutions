@@ -308,7 +308,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     waiting: v.isOrganizer ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     // Connections on their way out of their group (the organizer's browser takes them out), shown as who they are.
     leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && groupOf(s, j) !== null && j.role !== 'host').map((j) => ({
-      id: j.identity, person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
+      id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
       now: s.people.find((x) => x.person === j.person && x.status === 'in')?.identity ?? null
     })) : [],
     capture: {
