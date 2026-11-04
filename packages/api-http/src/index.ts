@@ -205,6 +205,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),
       updateAction: (noteId, actionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/actions/${encodeURIComponent(actionId)}`, patch),
       updateQuestion: (noteId, questionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/questions/${encodeURIComponent(questionId)}`, patch),
+      correctLine: (noteId, lineId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/lines/${encodeURIComponent(lineId)}`, patch),
+      rewrite: (noteId) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/rewrite`, {}),
       openActions: () => req(z.array(OpenActionSchema), 'GET', '/notes/actions'),
       ask: async function* (noteId, question) {
         const parts = await req(z.array(AnswerPartSchema), 'POST', `/notes/${encodeURIComponent(noteId)}/ask`, { question });

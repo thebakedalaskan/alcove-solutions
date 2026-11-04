@@ -1185,7 +1185,7 @@ async function sofar(v: Viewer, callId: string, what: 'catch-up' | 'ask') {
   // Lines stay inside their segment once it's over, so what was said before a pause is read before it.
   const all = transcripts.placed(await transcripts.lines(o, o.pool, into.noteId, mayRead(v, s, mine, row.started_at, invited)), segs, s.notes.status === 'on' ? s.notes.segment : undefined)
     .map((l) => ({ ...l, said: said(l) }));
-  const brief = (ls: transcripts.Line[], gaps: CaptureGap[]): drafting.Brief => ({
+  const brief = (ls: transcripts.HeardLine[], gaps: CaptureGap[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
     seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
   });

@@ -17,7 +17,7 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`), current revision, `deleted_at`, `version` | — |
 | `revisions` | owner, item, revision, parent revision, `created_at` | `key_envelope`, `manifest_ciphertext` |
 | `operations` | owner, operation ID, method, completion time | `request_commitment` (HMAC), `result_ciphertext` |
-| `transcript_clips` | owner, note item, when it was heard (so a live view, and the next clip's language and prompt, read only the newest clips; the recording's pieces already show when it was recorded) | `clip_tag` (keyed hash of the clip's segment, start and speaker), `clip_ciphertext` (its segment; in a call, the participant ID of whose speech it was; its transcript lines, each with the participant ID of who said it, the breakout room it was said in, if any, while rooms were open who may read it, and when it was said; the evidence of the verified model that heard them; the language Whisper picked for it when sure, and whether it asked Whisper what its speaker speaks. A breakout room's clips are deleted when it closes) |
+| `transcript_clips` | owner, note item, when it was heard (so a live view, and the next clip's language and prompt, read only the newest clips; the recording's pieces already show when it was recorded) | `clip_tag` (keyed hash of the clip's segment, start and speaker), `clip_ciphertext` (its segment; in a call, the participant ID of whose speech it was; its transcript lines, each with when it starts and ends, the participant ID of who said it, the breakout room it was said in, if any, while rooms were open who may read it, when it was said, and whether Whisper was unsure of its words; the evidence of the verified model that heard them; the language Whisper picked for it when sure, and whether it asked Whisper what its speaker speaks. A breakout room's clips are deleted when it closes) |
 | `transcript_translations` | owner, note item | `line_tag` (keyed hash of the line and the caption language), `translation_ciphertext` (the line in that language) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version`, LiveKit room name (random), organizer's LiveKit identity (random), when the organizer's connection joined and left, locked | `state_ciphertext` (what the call captures: notes off, on or paused, every change with who made it and when, what the organizer's browser says it can't capture now, and asks for notes; who joined (with the addresses of people signed in whom the notes may go to), when each connection was let in and when it left, whose hand is up, who was removed, spotlight, breakout rooms, who's in which, where each person was before their last move and when they moved, the rooms' messages, each room's MLS epoch and when the organizer paused it or carried on there, notices, each for everyone or one room), and where its MLS groups have got to (generation, the main room's epoch and the last seq in its log: counters only) |
@@ -43,12 +43,13 @@ transcript clips and its `note_access` rows.
 | --- | --- |
 | `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (`notesDefault`), colleagues invited to Alcove |
 | `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), the Google Calendar event ID and link when it's on a calendar, the series it's in (`seriesId`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), and which guests were added by being let in from the call's link (`addedFromLink`), once any were |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, and text; null while recording), suggested questions, breakout rooms (kept from the end of the call until the notes are written) |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
 (`409 conflict` if someone else saved first). Reads decrypt the head revision; listing decrypts every live
-item of a kind.
+item of a kind. Earlier revisions stay until the item is deleted: correcting a transcript line or changing a
+decision never erases what was there before.
 
 ## Writes, reads and deletes
 
@@ -81,6 +82,20 @@ item of a kind.
   check `identities.email_index`; shared notes are found through `note_access.email_index`
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).
 - **Deleting** is physical (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)).
+
+## What's kept, and for how long
+
+One fixed behaviour, with no settings ([Notes and inference › What's kept, and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
+
+- **Speech clips** are never stored: each lives in the API process's memory while it's transcribed.
+- **`transcript_clips` and `transcript_translations`** last while the recording runs and are deleted in the
+  transaction that stops it; the lines move into the note.
+- **`call_mls`** lasts while the call runs and is deleted when it ends.
+- **The recording** (`recording_pieces` and their objects), **shared-screen frames** (`screen_frames` and their
+  objects), **the note and every revision of it** (transcript, notes, corrections and who made them) are kept
+  until the organizer deletes the note. Then everything goes in
+  one transaction, and the objects after it (failed deletes retried from `object_gc`).
+- **Questions, answers and catch-ups** are never stored.
 
 ## Operations
 

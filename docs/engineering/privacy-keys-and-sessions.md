@@ -222,6 +222,10 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   until that person takes it on. Only the person a follow-up is for can take it on (`403 forbidden` for
   anyone else; giving it to yourself is taking it on), and it can only go to someone who has the note.
   Refusals name nobody, so no name reaches a log line.
+- **The transcript** of a written note can be corrected: by the organizer, any line, its words and who said it;
+  by anyone else who has the note, the words of their own lines (`403 forbidden` otherwise). Each correction is
+  a new revision with who made it and when, and only the organizer has the notes written again from it
+  ([Notes and inference › Correcting the transcript](notes-and-inference.md#correcting-the-transcript)).
 - **Series.** What carries over from one call to the next is put together on each request from the notes
   the asker can read at that moment, through this same check, and kept nowhere
   ([Notes and inference › Series](notes-and-inference.md#series)). Being in a series opens nothing: someone
@@ -251,13 +255,13 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   translations, audio pieces and transcript clips keep no receipt: searching, asking and translating only
   read, pieces and clips are already idempotent by their place in the recording, and their answers carry the
   live transcript, which shouldn't be copied into receipts. Nor do changes to a note's decisions, open
-  questions and follow-ups, or sharing it: anyone who has the note can make them, and each answers with the
+  questions, follow-ups and transcript lines, having it written again, or sharing it: anyone who has the note can make them, and each answers with the
   whole note, so a receipt kept under someone it was given to would outlive the organizer deleting it. Each
   sets an explicit state (confirmed, answered, done, these addresses added), so a retry changes nothing anyway.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the last
   `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
-  waits); joining by link: 120. Transcript clips: 120 a minute per account, calls and room recordings together.
+  waits); joining by link: 120. Transcript clips: 240 a minute per account, calls and room recordings together, and 40 for each voice in a call.
   Shared-screen frames: 24 a minute per person in a call, and
   30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
   series): 20 a minute per account, together (during a call, per connection to it). Opening a moment of a call's
@@ -342,7 +346,9 @@ third-party loads.
   shared-screen frames and what was read on them, any transcript clips still there, its notes job, every `note_access` row (so everyone loses it), the link from
   its meeting, and the owner's operation receipts; stored bytes go down to match. Nobody else holds a receipt
   with the note in it: what others can do to a note keeps none ([Requests](#requests)). Then the audio and
-  frame objects are deleted; failures are queued in `object_gc` and retried.
+  frame objects are deleted; failures are queued in `object_gc` and retried. Until then every revision stays:
+  correcting a transcript line deletes nothing, and what it said before stays in earlier revisions and in the
+  line's history ([Notes and inference › What's kept, and for how long](notes-and-inference.md#whats-kept-and-for-how-long)).
 - **Removing someone else's note** deletes only your own `note_access` row. The organizer and everyone else
   keep it.
 - **Closing a breakout room** deletes its entries in the call's MLS log (so its chat's ciphertext) and what was
@@ -460,8 +466,9 @@ Moving, in order:
 4. **End-to-end encrypted call media.** Done ([Calls and recordings › End-to-end
    encryption](calls-and-recordings.md#end-to-end-encryption)): MLS keys made in browsers, frames encrypted
    before they reach an SFU that holds no keys, new keys with every join and leave. While notes are on,
-   the organizer's browser sends everyone's speech it hears to the notes service, outside the media
-   encryption (left: an attested notes participant, so no browser sends audio in the clear to the API).
+   the organizer's browser sends what it hears to the notes service, outside the media encryption: everyone's
+   speech as clips to transcribe, and the recording, which mixes their voices (left: an attested notes
+   participant, so no browser sends audio in the clear to the API).
 5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
    the subjects and emails the indexes hide), `Kowner` on suspected compromise, and `Kservice`; use
    `keyVersion`.

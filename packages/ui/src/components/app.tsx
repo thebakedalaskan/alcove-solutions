@@ -2,6 +2,7 @@
 import { forwardRef, useId, type CSSProperties, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
+import { Tooltip } from './overlay';
 import { Avatar, Faces, type AvatarPerson } from './people';
 
 /**
@@ -104,5 +105,33 @@ export function TranscriptLine({ person, name, time, children, className, id }: 
       {person ? <Avatar person={person} size={26} /> : <span />}
       <div className="min-w-0">{name && <b>{name}</b>}{children}{time}</div>
     </div>
+  );
+}
+
+/** What the transcript can't vouch for in a line: words that were hard to hear, or who said them. */
+export type UnsureOf = 'words' | 'speaker';
+const UNSURE: Record<UnsureOf, { tip: string; said: string }> = {
+  words: { tip: 'Hard to hear. It may not be exactly what was said.', said: 'hard to hear, may not be exact' },
+  speaker: { tip: 'Heard on more than one microphone. Someone else may have said it.', said: 'may have been someone else' }
+};
+/**
+ * Something in a transcript it can't vouch for: a dotted underline (never colour alone), the reason on hover or focus,
+ * and in words for screen readers. Calm on purpose: it says the transcript isn't sure, not that anything is wrong.
+ */
+export function Unsure({ of, children, className }: { of: UnsureOf; children: ReactNode; className?: string | undefined }) {
+  return (
+    <Tooltip label={UNSURE[of].tip}>
+      <span tabIndex={0} className={cn('ac-unsure', className)}>{children}<span className="sr-only"> ({UNSURE[of].said})</span></span>
+    </Tooltip>
+  );
+}
+/** One quiet line under a transcript saying what its dotted marks mean, for the kinds it has; nothing when it has none. */
+export function UnsureKey({ words, speaker, className }: { words: boolean; speaker: boolean; className?: string | undefined }) {
+  if (!words && !speaker) return null;
+  return (
+    <p className={cn('ac-unsure-key', className)}>
+      {words && <><span className="ac-unsure">Dotted</span> words were hard to hear and may not be exact. </>}
+      {speaker && <>A <span className="ac-unsure">dotted</span> name was heard on more than one microphone.</>}
+    </p>
   );
 }

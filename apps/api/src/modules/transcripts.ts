@@ -11,6 +11,9 @@
  * go in it, so short and accented clips aren't taken for another, with a prompt of who's in the call and the words
  * said just before it in the same part of the call (where the server placed it). Each row keeps whose clip it was,
  * the language Whisper picked for it when it picked one surely, and whether it asked Whisper what its speaker speaks.
+ *
+ * Nothing is presented as surer than it was heard: a line keeps whether Whisper was unsure of its words, and a line
+ * heard on two people's microphones at once is shown with its speaker in doubt (see `crosstalk`).
  */
 import { InferenceEvidenceSchema, type AudioSegment, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
@@ -32,16 +35,22 @@ export interface Clip { segment: number; startMs: number; durationMs: number; wa
 export interface Target { recordingId: string; noteId: string }
 
 /**
- * A line as kept. In a call, `speaker` is the participant ID of whoever said it (named from the call when it's
- * shown), `room` the breakout room it was said in, if any, `readers` (said while rooms were open) who may read
- * it: the people in that part of the call when it was said, by their call seat's person, and `when` when it was said
- * (ms, on the server's clock), which catching up reads by. A room recording names nobody, and anyone with the
- * recording reads it.
+ * A line as kept: when it starts and ends (seconds into the recording) and what was said. In a call, `speaker` is the
+ * participant ID of whoever said it (named from the call when it's shown), `room` the breakout room it was said in, if
+ * any, `readers` (said while rooms were open) who may read it: the people in that part of the call when it was said,
+ * by their call seat's person, and `when` when it was said (ms, on the server's clock), which catching up reads by. A
+ * room recording names nobody, and anyone with the recording reads it. `unsure`: Whisper was unsure of its words.
  */
-const Line = z.object({ id: z.string(), at: z.number(), when: z.number().optional(), text: z.string(), speaker: z.string().optional(), room: z.string().optional(), readers: z.array(z.string()).optional() });
+const Line = z.object({
+  id: z.string(), at: z.number(), end: z.number(), when: z.number().optional(), text: z.string(), speaker: z.string().optional(),
+  room: z.string().optional(), readers: z.array(z.string()).optional(), unsure: z.literal(true).optional()
+});
 export type Line = z.infer<typeof Line>;
-/** A line, and the segment of the recording its clip was part of. */
-export type HeardLine = Line & { segment: number };
+/**
+ * A line as read back: the segment of the recording its clip was part of, and whether the same words were heard on
+ * someone else's microphone at the same moment (`alsoHeard`, see `crosstalk`), so who said them is in doubt.
+ */
+export type HeardLine = Line & { segment: number; alsoHeard?: true | undefined };
 const Stored = z.object({
   segment: z.number(), lines: z.array(Line), evidence: InferenceEvidenceSchema,
   /** In a call, whose speech the clip was (a participant ID), even when none of it survived the filter. */
@@ -110,8 +119,9 @@ export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefin
   const context: SpeechContext = callIn ? { language: callIn, prompt: speechPrompt(await peopleIn(o, t.noteId), wordsBefore(recent, { segment: clip.segment, at }, by?.room)) } : {};
   const { heard, language, evidence } = await transcribe(o.cfg, clip.wav, clip.durationMs, context);
   const lines: Line[] = heard.map((x) => ({
-    id: id128(), at: Math.round((at + x.start) * 10) / 10, text: x.text,
-    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}), when: Math.round(by.began + x.start * 1000) } : {})
+    id: id128(), at: Math.round((at + x.start) * 10) / 10, end: Math.round((at + x.end) * 10) / 10, text: x.text,
+    ...(by ? { speaker: by.speaker, ...(by.room ? { room: by.room } : {}), ...(by.readers ? { readers: by.readers } : {}), when: Math.round(by.began + x.start * 1000) } : {}),
+    ...(x.unsure ? { unsure: true as const } : {})
   }));
   const stored: Stored = { segment: clip.segment, lines, evidence, ...(by ? { speaker: by.speaker } : {}), ...(language ? { language } : {}), ...(!context.language && (language || clip.durationMs >= RECHECK_MS) ? { asked: true } : {}) };
   const kept = await tx(o.pool, async (c) => {
@@ -182,7 +192,7 @@ async function clips(o: Owner, db: Db, noteId: string): Promise<ReturnType<typeo
 
 /** Every line heard so far for a note that's still recording, in recording order (those `keep` takes, if it's given). */
 export async function lines(o: Owner, db: Db, noteId: string, keep: (l: Line) => boolean = () => true): Promise<HeardLine[]> {
-  return (await clips(o, db, noteId)).flatMap(heardLines).filter(keep).sort(inOrder);
+  return crosstalk((await clips(o, db, noteId)).flatMap(heardLines).filter(keep)).sort(inOrder);
 }
 
 /**
@@ -198,7 +208,9 @@ export function placed(ls: HeardLine[], segs: AudioSegment[], open?: number | un
     const seconds = segs.find((g) => g.index === l.segment)?.seconds ?? 0;
     if (l.segment === open || !seconds) return l;
     const from = start(l.segment);
-    return { ...l, at: Math.round(Math.min(Math.max(l.at, from), Math.max(from, from + seconds - 0.1)) * 10) / 10 };
+    const at = Math.round(Math.min(Math.max(l.at, from), Math.max(from, from + seconds - 0.1)) * 10) / 10;
+    // A line moved keeps its length, so it's still heard at the same moment as whatever was heard with it.
+    return { ...l, at, end: Math.round((at + Math.max(0, l.end - l.at)) * 10) / 10 };
   }).sort(inOrder);
 }
 
@@ -208,13 +220,19 @@ export function placed(ls: HeardLine[], segs: AudioSegment[], open?: number | un
  * key, its OS image, its measured configuration or the gateway's changed.
  */
 export async function heardBy(o: Owner, db: Db, noteId: string): Promise<InferenceEvidence[]> {
-  const same = (e: InferenceEvidence) => [e.model, e.key, e.os, e.compose, e.tdx.status, e.gateway.os, e.gateway.compose, e.gateway.status].join('|');
   const first = new Map<string, InferenceEvidence>();
   for (const { evidence } of (await clips(o, db, noteId)).sort((a, b) => a.evidence.verifiedAt.localeCompare(b.evidence.verifiedAt))) {
-    if (!first.has(same(evidence))) first.set(same(evidence), evidence);
+    if (!first.has(verificationKey(evidence))) first.set(verificationKey(evidence), evidence);
   }
   return [...first.values()];
 }
+
+/**
+ * What makes two verifications of a model the same one, for a note's list of them: checking the same model again is
+ * the same verification unless its key, OS image, measured configuration or TCB status, or the gateway's, changed.
+ */
+export const verificationKey = (e: InferenceEvidence): string =>
+  [e.model, e.key, e.os, e.compose, e.tdx.status, e.gateway.os, e.gateway.compose, e.gateway.status].join('|');
 
 /** Clips read back at a time while finding the latest lines. */
 const LATEST_PAGE = 200;
@@ -236,7 +254,7 @@ export async function latest(o: Owner, db: Db, noteId: string, n: number, keep: 
     if (out.length >= n || page.length < LATEST_PAGE || !last) break;
     cursor = { at: last.heard_at, tag: last.clip_tag };
   }
-  return out.sort(inOrder).slice(-n);
+  return crosstalk(out).sort(inOrder).slice(-n);
 }
 
 /**
@@ -257,14 +275,72 @@ export async function dropRooms(o: Owner, db: Db, noteId: string, rooms: string[
   return gone.length;
 }
 
-/** Lines as the app shows them: each said by whoever `speakerOf` names (nobody, in a room recording), in the room `roomOf` names. */
-export const spoken = (ls: Line[], speakerOf: (identity: string) => Speaker | undefined = () => undefined,
-  roomOf: (id: string) => { id: string; name: string } | undefined = () => undefined): TranscriptLine[] =>
-  ls.map((l) => {
+/**
+ * Lines as the app shows them: each said by whoever `speakerOf` names (nobody, in a room recording), in the room
+ * `roomOf` names, with what the transcript can't vouch for: words Whisper was unsure of, and a speaker in doubt.
+ */
+export function spoken(ls: readonly HeardLine[], speakerOf: (identity: string) => Speaker | undefined = () => undefined,
+  roomOf: (id: string) => { id: string; name: string } | undefined = () => undefined): TranscriptLine[] {
+  return ls.map((l) => {
     const speaker = l.speaker ? speakerOf(l.speaker) : undefined;
     const room = l.room ? roomOf(l.room) : undefined;
-    return { id: l.id, at: l.at, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}), text: l.text };
+    const unsure = { ...(l.unsure ? { words: true as const } : {}), ...(l.alsoHeard && speaker ? { speaker: true as const } : {}) };
+    return { id: l.id, at: l.at, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}), text: l.text, ...(unsure.words || unsure.speaker ? { unsure } : {}) };
   });
+}
+
+/* ---------- who said it, when two microphones heard the same words ---------- */
+
+/**
+ * Two lines are the same moment heard twice when they overlap for at least this share of the shorter one. Each voice's
+ * clips are cut at its own pauses, so one voice on two tracks can come back as lines that start apart; a reply that
+ * says the question's words again comes after it, and doesn't overlap.
+ */
+const OVERLAP = 0.5;
+/**
+ * The same words: at least this many in the shorter line, and this share of them in the other, in the same order. One
+ * voice on two microphones comes back in the same order; two people agreeing at once ("Yes, that sounds good" and
+ * "Yeah, that sounds good") say too little, and two people saying different things share words in no order.
+ */
+const SAME_WORDS = { atLeast: 6, share: 0.8 };
+const wordsOf = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
+/** Whether most of the shorter line's words are in the longer one, in order (their longest common subsequence). */
+function sameWords(a: string[], b: string[]): boolean {
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (short.length < SAME_WORDS.atLeast) return false;
+  let row = new Array<number>(long.length + 1).fill(0);
+  for (const w of short) {
+    const next = new Array<number>(long.length + 1).fill(0);
+    long.forEach((v, j) => { next[j + 1] = w === v ? (row[j] ?? 0) + 1 : Math.max(row[j + 1] ?? 0, next[j] ?? 0); });
+    row = next;
+  }
+  return (row[long.length] ?? 0) >= SAME_WORDS.share * short.length;
+}
+
+/**
+ * Marks the lines whose speaker is in doubt (`alsoHeard`), judged by when they were heard, before anything places them
+ * in the recording. In a call each voice is heard on its own track, so a line is said by whoever's microphone it came
+ * from. But people sharing a room, or someone's speakers playing into another's microphone, put one person's words on
+ * two tracks: two lines from different microphones, overlapping in the same segment, with mostly the same words. Both
+ * are marked, since nothing here says whose microphone was nearer.
+ */
+function crosstalk(ls: HeardLine[]): HeardLine[] {
+  const doubted = new Set<string>();
+  const heard = ls.flatMap((l) => (l.speaker ? [{ l, who: l.speaker, words: wordsOf(l.text) }] : [])).sort((a, b) => inOrder(a.l, b.l));
+  for (let i = 0; i < heard.length; i++) {
+    const a = heard[i];
+    if (!a) continue;
+    for (let j = i + 1; j < heard.length; j++) {
+      const b = heard[j];
+      // Later lines start later still (or in a later segment): none of them overlaps this one.
+      if (!b || b.l.segment !== a.l.segment || b.l.at >= a.l.end) break;
+      const together = Math.min(a.l.end, b.l.end) - b.l.at;
+      const shorter = Math.max(0.1, Math.min(a.l.end - a.l.at, b.l.end - b.l.at));
+      if (b.who !== a.who && b.l.room === a.l.room && together >= OVERLAP * shorter && sameWords(a.words, b.words)) { doubted.add(a.l.id); doubted.add(b.l.id); }
+    }
+  }
+  return doubted.size ? ls.map((l) => (doubted.has(l.id) ? { ...l, alsoHeard: true as const } : l)) : ls;
+}
 
 /** Removes a note's live transcript, and its lines in other languages, once its lines are in the note. */
 export async function clear(o: Owner, db: Db, noteId: string): Promise<number> {

@@ -171,6 +171,30 @@ export type InstantCallInput = z.infer<typeof InstantCallInputSchema>;
 export const SpeakerSchema = z.object({ name: z.string(), person: PersonSchema.optional() });
 export type Speaker = z.infer<typeof SpeakerSchema>;
 
+/**
+ * Someone changing a note: its decisions, open questions or follow-ups, or a line of its transcript. Who, when, what,
+ * and what it was before. On a transcript line, `reworded` corrects its words, `reassigned` says someone else said it
+ * (`before` and `after` are the speakers' names) and `confirmed` says it's right as it was heard.
+ */
+export const ChangeSchema = z.object({
+  by: z.object({ name: z.string(), email: z.string() }),
+  at: ISODateSchema,
+  what: z.enum(['confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'reassigned', 'due', 'done', 'undone']),
+  /** The wording, owner, speaker or due date before a change to it, and after. */
+  before: z.string().optional(),
+  after: z.string().optional()
+});
+export type Change = z.infer<typeof ChangeSchema>;
+
+/**
+ * What the transcript can't vouch for in a line. `words`: the speech model heard them with little confidence, so they
+ * may not be exactly what was said. `speaker`: the same words were heard on more than one person's microphone at
+ * once (people in one room, or a speaker picked up by someone else's microphone), so someone else may have said them.
+ * Correcting the line, or saying it's right, clears it.
+ */
+export const LineDoubtSchema = z.object({ words: z.literal(true).optional(), speaker: z.literal(true).optional() });
+export type LineDoubt = z.infer<typeof LineDoubtSchema>;
+
 export const TranscriptLineSchema = z.object({
   id: IDSchema,
   /** Seconds into the recording, counting every segment before this one (as the player does). */
@@ -179,7 +203,11 @@ export const TranscriptLineSchema = z.object({
   speaker: SpeakerSchema.optional(),
   /** The breakout room it was said in. Absent for the main room, and outside calls. */
   room: z.object({ id: IDSchema, name: z.string() }).optional(),
-  text: z.string()
+  text: z.string(),
+  /** What the transcript can't vouch for in this line. Absent when it was heard clearly. */
+  unsure: LineDoubtSchema.optional(),
+  /** Corrections to a written note's line, oldest first. Absent until someone corrects it. */
+  changes: z.array(ChangeSchema).optional()
 });
 export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
 
@@ -233,17 +261,6 @@ export type ScreenMoment = z.infer<typeof ScreenMomentSchema>;
  */
 export const ScreenRefSchema = z.object({ id: IDSchema, region: z.number().optional(), sure: z.boolean() });
 export type ScreenRef = z.infer<typeof ScreenRefSchema>;
-
-/** Someone changing a note's decisions, open questions or follow-ups: who, when, what, and what it was before. */
-export const ChangeSchema = z.object({
-  by: z.object({ name: z.string(), email: z.string() }),
-  at: ISODateSchema,
-  what: z.enum(['confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'reassigned', 'due', 'done', 'undone']),
-  /** The wording, owner or due date before a change to it, and after. */
-  before: z.string().optional(),
-  after: z.string().optional()
-});
-export type Change = z.infer<typeof ChangeSchema>;
 
 /**
  * Something the call settled, as the notes heard it. It stays proposed until someone who has the
@@ -380,6 +397,16 @@ export const NoteSchema = NoteSummarySchema.extend({
   screens: z.array(ScreenMomentSchema),
   /** What was said while notes were on. Null while the recording is still going. */
   transcript: z.array(TranscriptLineSchema).nullable(),
+  /**
+   * When the notes were last written from the transcript; null until they have been. Corrections to the transcript
+   * after it reach the notes when the organizer has them written again (notes.rewrite).
+   */
+  writtenAt: ISODateSchema.nullable(),
+  /**
+   * The organizer asked for the notes to be written again and they're being written. Until then the note stays as it
+   * is, readable and changeable by everyone who has it.
+   */
+  writingAgain: z.boolean(),
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
   audio: z.array(AudioSegmentSchema),

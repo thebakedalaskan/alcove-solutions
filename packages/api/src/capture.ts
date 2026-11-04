@@ -12,7 +12,7 @@ import { CaptureGapSchema, IDSchema, ISODateSchema } from './types';
 
 /**
  * on: being captured. paused: the organizer is holding it until they resume. off: not captured. unavailable: notes
- * are on, but the organizer's browser can't capture it now (no microphone, or a browser that can't record or listen).
+ * are on, but the organizer's browser can't capture it now (a recorder that can't start, or a browser that can't listen).
  */
 export const CaptureModeSchema = z.enum(['on', 'paused', 'off', 'unavailable']);
 export type CaptureMode = z.infer<typeof CaptureModeSchema>;
@@ -62,7 +62,10 @@ export const CaptureStateSchema = z.object({
    * when notes are on but the organizer's browser can neither record nor listen.
    */
   mode: CaptureModeSchema,
-  /** The organizer's microphone, encrypted and kept with the notes. */
+  /**
+   * What the organizer's browser hears, mixed into one recording: their microphone and everyone in their part of the
+   * call, encrypted and kept with the notes. Silent while the organizer visits a breakout room.
+   */
   recording: CapturePartSchema,
   /** What everyone the organizer's browser hears says, turned into text as the call goes by a private speech model. */
   transcript: CapturePartSchema,

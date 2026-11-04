@@ -90,7 +90,7 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
     const r = recorder.current;
     const sp = speech.current;
     if (!r || !sp || !mic) return;
-    if (s.status === 'recording') { r.start(mic, 0); sp.start(mic, 0); }
+    if (s.status === 'recording') { r.start([{ identity: 'microphone', track: mic }], 0); sp.start(mic, 0); }
     if (s.status === 'paused') { void r.pause(); sp.pause(); }
   }, [s.status, mic]);
   useEffect(() => () => speech.current?.stop(), []);

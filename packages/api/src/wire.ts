@@ -153,19 +153,25 @@ function isTimeZone(name: string): boolean {
 /** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
 export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
 /**
+ * Words people type for a note: on one line, whitespace collapsed, so nothing typed can pass for another line of a
+ * transcript or a list where a prompt reads it.
+ */
+const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
+
+/**
  * A change to a decision: confirm it, say it wasn't decided, put it back to proposed, reword it, or
  * say a confirmed one no longer holds (superseded).
  */
 export const DecisionPatchSchema = z.object({
   state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']).optional(),
-  text: z.string().trim().min(1).max(300).optional()
+  text: oneLine(300).optional()
 }).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
 export type DecisionPatch = z.infer<typeof DecisionPatchSchema>;
 
 /** A change to an open question: say it was answered, open it again, or reword it. */
 export const QuestionPatchSchema = z.object({
   state: z.enum(['open', 'answered']).optional(),
-  text: z.string().trim().min(1).max(300).optional()
+  text: oneLine(300).optional()
 }).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
 export type QuestionPatch = z.infer<typeof QuestionPatchSchema>;
 
@@ -179,9 +185,20 @@ export const ActionPatchSchema = z.object({
   /** Give it to someone who has the notes, by email address, or to nobody. */
   owner: z.string().trim().toLowerCase().max(254).nullable().optional(),
   due: z.string().trim().max(40).nullable().optional(),
-  text: z.string().trim().min(1).max(300).optional()
+  text: oneLine(300).optional()
 }).refine((p) => Object.values(p).some((v) => v !== undefined), 'Nothing to change.');
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
+
+/**
+ * A correction to a line of a written note's transcript: its words, who said it (someone from the call, by their
+ * `Person.id`, or null when nobody can tell), or that it's right as it was heard (`confirm`).
+ */
+export const LinePatchSchema = z.object({
+  text: oneLine(1000).optional(),
+  speaker: z.string().min(1).max(254).nullable().optional(),
+  confirm: z.literal(true).optional()
+}).refine((p) => p.text !== undefined || p.speaker !== undefined || p.confirm !== undefined, 'Nothing to change.');
+export type LinePatch = z.infer<typeof LinePatchSchema>;
 
 /** Captions in another language: which live transcript lines, and into what. */
 export const TranslateBodySchema = z.object({ language: CaptionLanguageSchema, lines: z.array(z.string().max(64)).min(1).max(20) });

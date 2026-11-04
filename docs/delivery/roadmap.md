@@ -43,6 +43,11 @@
   it came from (only real lines), saying what it couldn't have heard and as of when, with Back to live. In a
   breakout room it reads the room's lines; guests with the link read only what was said while they were there.
   Nothing is kept ([Notes and inference › Catching up during a call](../engineering/notes-and-inference.md#catching-up-during-a-call)).
+- A transcript honest about what it heard, and correctable: words Whisper heard with little confidence and
+  lines heard on two microphones are marked in the call and the note; the organizer corrects any line and people
+  their own words, in revisions that say who changed what; the notes are written again on request; and the notes
+  recording mixes everyone the organizer's browser hears
+  ([Notes and inference › Correcting the transcript](../engineering/notes-and-inference.md#correcting-the-transcript)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
@@ -67,9 +72,10 @@
 | 3 | Invitation emails (SMTP) | For organizers without a connected calendar, and for people notes are shared with |
 | 4 | Release acceptance in the deployed environment | [Deployment and acceptance](../engineering/deployment-and-acceptance.md); public journeys, private storage and deletion |
 | 5 | Deploy the API to a dstack VM on Phala Cloud, bind TLS to the attestation, check it in the client, and pin the client | [Moving to confidential computing](../engineering/privacy-keys-and-sessions.md#moving-to-confidential-computing) |
-| 6 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
-| 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
-| 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
-| 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 11 | A breakout room's own notes, for the people who were in it; each room committed by one of its own members | What's said in a room is shown live there and kept out of the call's notes today; a room's own committer builds on host hand-off (#30) |
+| 6 | An attested notes participant | A member of the call's MLS group in a TEE that browsers verify before adding it, so no browser sends audio to the API; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
+| 7 | Credit purchases (1Click) and admission before recording | [Payments and usage](../engineering/payments-and-usage.md) |
+| 8 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
+| 9 | Speaker diarization for room recordings | Room transcripts name nobody today |
+| 10 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
+| 11 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
+| 12 | A breakout room's own notes, for the people who were in it; each room committed by one of its own members | What's said in a room is shown live there and kept out of the call's notes today; a room's own committer builds on host hand-off (#30) |

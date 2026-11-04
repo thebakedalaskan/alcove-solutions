@@ -1,6 +1,6 @@
 /* The live transcript as it's written, on the call stage and in the room: the newest line at the bottom. */
 import type { CaptureGap, Speaker, TranscriptLine } from '@alcove/api';
-import { Avatar, CaptureGapMark, Icon, TimeChip, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, TimeChip, Unsure, UnsureKey, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
@@ -79,7 +79,8 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
 
 /**
  * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
- * in marked where they fall.
+ * in marked where they fall, and what it isn't sure of dotted (words hard to hear, a line heard on two microphones),
+ * explained once at the top.
  */
 export function CallLines({ lines, gaps = [], me }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined }) {
   const { ref, onScroll, away, jump } = useFollow(lines.length + gaps.length);
@@ -88,18 +89,24 @@ export function CallLines({ lines, gaps = [], me }: { lines: TranscriptLine[]; g
   return (
     <div className="tx-wrap">
       <div ref={ref} className="tx" onScroll={onScroll} role="log" aria-label="What’s been said">
+        <UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="tx-key" />
         {lines.map((l, i) => {
           const before = gapsBefore(gaps, lines, i);
-          // After a gap the speaker is named again: it's a new part of the call.
-          const start = starts.has(l.id) || before.length > 0;
+          // After a gap the speaker is named again: it's a new part of the call, and so is a speaker in doubt.
+          const start = starts.has(l.id) || before.length > 0 || !!l.unsure?.speaker;
           return (
             <Fragment key={l.id}>
               {before.map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
               <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in')}>
                 {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
                 <div className="min-w-0">
-                  {start && <div className="tx-h">{l.speaker && <b>{spokenName(l.speaker, me)}</b>}<span className="ac-mono">{position(l.at)}</span></div>}
-                  <p>{l.text}</p>
+                  {start && (
+                    <div className="tx-h">
+                      {l.speaker && <b>{l.unsure?.speaker ? <Unsure of="speaker">{spokenName(l.speaker, me)}</Unsure> : spokenName(l.speaker, me)}</b>}
+                      <span className="ac-mono">{position(l.at)}</span>
+                    </div>
+                  )}
+                  <p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p>
                 </div>
               </div>
             </Fragment>
@@ -119,7 +126,8 @@ export function RoomLines({ lines }: { lines: TranscriptLine[] }) {
   return (
     <div className="tx-wrap">
       <div ref={ref} className="rm-lines" onScroll={onScroll} role="log" aria-label="What’s been said">
-        {lines.map((l) => <div key={l.id} className={cn('rm-line', arrived(l.id) && 'tx-in')}><TimeChip seconds={l.at} /><p>{l.text}</p></div>)}
+        <UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={false} className="tx-key" />
+        {lines.map((l) => <div key={l.id} className={cn('rm-line', arrived(l.id) && 'tx-in')}><TimeChip seconds={l.at} /><p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p></div>)}
       </div>
       {away && <Latest onClick={jump} />}
     </div>
