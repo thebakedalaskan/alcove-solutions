@@ -392,7 +392,7 @@ third-party loads.
   stay. A live call can't be cancelled.
 - **Discarding a room recording** deletes its note in the same way as deleting your own note.
 - **Deleting your account** (`DELETE /v1/account`) removes, in one transaction: its meetings, with their calls
-  (chat, call links and MLS logs included), live ones too; every note it organized, each the way deleting your
+  (chat, call links, MLS logs and moves to another device included), live ones too; every note it organized, each the way deleting your
   own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every
   note other people gave it, unless another account still signs in with that address; and its `owners` row,
   from which everything else keyed by the account cascades: its identity (subject and email indexes), every
