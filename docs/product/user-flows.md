@@ -170,6 +170,15 @@ dock at the bottom.
   notes: nothing for the first ten seconds of a share, and at most one frame every few seconds. Cameras never. Once
   the notes have kept as many shared screens as they can for a call (about four hours of slides), screen notes turn
   off for everyone, with a message saying why, and what was shared stays in the notes.
+- **Looking closer at a share.** On someone else's share you see big, pinch or Ctrl/⌘ and the wheel to zoom where you
+  point (or **+**, **−**, and **0** for the whole picture), drag to move around, and double-click for 200% and back; a
+  label says how far in and a minimap where. **Freeze** (**F**) holds the picture still while the share goes on, and
+  **Earlier picture** (**,**) steps back through the last 30 times it changed; a bar says how far behind live you are,
+  with **Back to live**. They're kept in your browser's memory only, never saved or sent, and go when the share stops,
+  you show it as a tile, rooms change or you leave; none are kept while notes are paused (zoom and freeze still work).
+  **Open in its own window** puts a share in a window of its own (Picture-in-Picture in Chrome, Edge and Firefox, a
+  popup in Safari) to keep in view or put on another screen; its tile says **In its own window**, with **Bring it
+  back**. Two shares side by side are each zoomed and frozen on their own, to compare. Only your screen changes.
 - **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.
