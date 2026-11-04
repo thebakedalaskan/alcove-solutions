@@ -1,6 +1,6 @@
 /*
  * The live transcript's ears. While notes are on, a voice (a room recording's microphone, or in a call each voice
- * the organizer's browser plays: see CallEars) also runs through a small audio worklet (public/pcm-capture.js) that
+ * the host's browser plays: see CallEars) also runs through a small audio worklet (public/pcm-capture.js) that
  * hands over 16 kHz mono samples. They're cut into clips at natural pauses, clips without a voice in them are
  * dropped, and the rest go to the server one at a time as WAV files to be transcribed. This runs beside
  * NotesRecorder and never touches the encrypted recording: a clip that can't be transcribed costs a line of
@@ -377,7 +377,7 @@ function wav(pcm: Float32Array): Blob {
 }
 
 /**
- * The live transcript of a call, heard in the organizer's browser: its own microphone and everyone else's it plays
+ * The live transcript of a call, heard in the host's browser: its own microphone and everyone else's it plays
  * (the people in its part of the call), each on its own, so every line is said by whoever's voice it was. Every
  * voice counts from the segment's start, so lines fall where they were said. A voice no longer heard stops being
  * listened to at once and sends what it had already heard. While a pause is on its way, every voice holds still.
@@ -438,7 +438,7 @@ export class CallEars {
   }
 
   /**
-   * The organizer's browser moved to another part of the call: every clip in progress ends here, so what's said from
+   * The host's browser moved to another part of the call: every clip in progress ends here, so what's said from
    * now on starts a clip of its own and is placed where it was said.
    */
   mark(): void {

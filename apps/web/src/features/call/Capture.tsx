@@ -74,7 +74,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
     <>
       <div className="cap-h"><CaptureSign mode={c.mode} requested={!notesAreOn(c.mode) && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
       <p className="cap-said">{saidFor(state, c, name)}</p>
-      <CaptureParts capture={c} />
+      <CaptureParts capture={c} taker={state.isHost ? 'you' : takerName(state)} />
       {/* The call's shared screens, so it's the call's state, and not shown in a breakout room, where nothing shared is read. */}
       {host && !call.room && call.mode !== 'off' && (
         <div className="cap-screens">
@@ -118,23 +118,25 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
 }
 
 /**
- * What's captured right now, in a sentence: what everyone says is recorded and transcribed (through the organizer's
- * browser, from what it hears), less whatever it can't do now; nothing while paused; and while notes are off, that
- * what was transcribed before is still read for the notes. In a breakout room (`c` is the room's), what's said is
- * transcribed only while the organizer is there, for the people there; it isn't recorded or put in the call's notes.
+ * What's captured right now, in a sentence: what everyone says is recorded and transcribed (through the browser of
+ * whoever hosts, the organizer or someone standing in for them, from what it hears), less whatever it can't do now;
+ * nothing while paused, until the organizer resumes; and while notes are off, that what was transcribed before is
+ * still read for the notes. In a breakout room (`c` is the room's), what's said is transcribed only while the browser
+ * taking the notes is there, for the people there; it isn't recorded or put in the call's notes.
  */
 function saidFor(state: CallState, c: CallState['capture'], name: string): string {
-  const host = state.isOrganizer;
-  const browser = host ? 'your browser' : `${name}’s browser`;
-  const until = host ? 'you resume' : `${name} resumes`;
+  const mine = state.isHost;
+  const by = takerName(state);
+  const browser = mine ? 'your browser' : `${by}’s browser`;
+  const until = state.isOrganizer ? 'you resume' : `${name} resumes`;
   if (c.room) {
     const room = roomNameOf(state);
     if (c.mode === 'paused') return state.capture.mode === 'paused' ? `Nothing is recorded, transcribed or sent to the AI until ${until}.` : `Notes are paused in ${room}. Nothing said here is transcribed or sent to the AI until ${until}.`;
     if (c.mode === 'off') return state.notes.everOn ? `Nothing said in ${room} is transcribed now. What was transcribed here before is still read when someone here catches up.` : `Nothing said in ${room} is transcribed.`;
     if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t listen right now, so nothing said here is transcribed.`;
-    return `What’s said here is transcribed while ${host ? 'you’re' : `${name} is`} in ${room}, for the people here, and deleted when the room closes. Nothing here is recorded or goes into the notes.`;
+    return `What’s said here is transcribed while ${mine ? 'you’re' : `${by} is`} in ${room}, for the people here, and deleted when the room closes. Nothing here is recorded or goes into the notes.`;
   }
-  if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`;
+  if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${until}.`;
   if (c.mode === 'off') return state.notes.everOn ? 'Nothing new is recorded or transcribed. What was transcribed before is still read for the notes.' : 'Nothing from this call is recorded or written down.';
   if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t record or listen right now, so nothing is captured.`;
   if (c.recording.mode === 'on' && c.transcript.mode === 'on') return 'What everyone says, you included, is recorded and transcribed for the notes.';
@@ -221,12 +223,17 @@ export function NotesAsks({ state, controls, decline, after }: {
 /** "Asked for notes", on the asker's row in People, for everyone. */
 export const askedTag = (state: CallState, participantId: string): string => (!notesAreOn(state.capture.mode) && state.capture.requests.some((r) => r.participantId === participantId) ? 'Asked for notes' : '');
 
-/** The organizer's first name for a sentence, from the call itself, or "the organizer" while they're away (reloading). */
+/** The organizer's first name for a sentence, from the call itself (they may be away from it), or "the organizer" for someone not let in yet. */
 export function organizerName(state: CallState): string {
-  const p = state.participants.find((x) => x.isOrganizer)?.person;
+  const p = state.participants.find((x) => x.isOrganizer)?.person ?? (state.host.organizer.name ? state.host.organizer : undefined);
   return p ? callName(p) : 'the organizer';
+}
+/** Whose browser takes the notes, by first name: whoever hosts (someone standing in while the organizer is away), else the organizer. */
+function takerName(state: CallState): string {
+  const p = state.participants.find((x) => x.id === state.host.id)?.person;
+  return p ? callName(p) : organizerName(state);
 }
 /** A name that starts a sentence. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-/** Where the call is captured, to start a sentence: "Your browser" for the organizer, "Art’s browser" for everyone else. */
-export const organizerBrowser = (state: CallState): string => (state.isOrganizer ? 'Your browser' : `${sentence(organizerName(state))}’s browser`);
+/** Where the call is captured, to start a sentence: "Your browser" for whoever hosts, "Art’s browser" (or a stand-in's) for everyone else. */
+export const notesBrowser = (state: CallState): string => (state.isHost ? 'Your browser' : `${sentence(takerName(state))}’s browser`);

@@ -75,6 +75,9 @@
 .pj .ac-field .hint { color: var(--stage-ink-2); }
 /* Problems on the stage: amber, calm, with what to do and a request's reference to quote. */
 .pj .ac-notice.is-caution { background: rgb(243 184 90 / 0.1); color: #F3B85A; box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.16); }
+/* Information on the stage (someone hosting while the organizer is away): horizon, as the night draws it. */
+.pj .ac-notice.is-info { background: rgb(169 159 255 / 0.1); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(169 159 255 / 0.18); }
+.pj .ac-notice.is-info > .ac-i { color: #A99FFF; }
 .pj-refused > div { display: grid; gap: 4px; justify-items: start; }
 .pj-refused > div > span { color: var(--stage-ink); }
 .pj-refused .ac-ref { margin-left: -7px; }
@@ -321,6 +324,10 @@
 .ic-spill .sp-btn { flex: none; height: 28px; padding: 0 10px; border-radius: 8px; background: rgb(255 255 255 / 0.07); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-spill .sp-btn:hover { background: rgb(255 255 255 / 0.14); }
 .ic-spill .sp-btn.is-strong { background: var(--stage-ink); color: var(--stage); }
+/* Who hosts while the organizer is away: their arch at the start, and room at the end when there's no button. */
+.ic-hosting .ac-avatar { flex: none; }
+.ic-hosting:has(> .ac-avatar) { padding-left: 8px; }
+.ic-hosting:not(:has(.sp-btn)) { padding-right: 14px; }
 .ic-cap { position: absolute; z-index: 7; left: 12px; right: 12px; bottom: 6px; display: flex; justify-content: center; }
 .ic-cap .ac-caption { width: 100%; max-width: 720px; }
 .ic-cap .who { height: 22px; }
@@ -620,6 +627,15 @@
 .ic-leave .state { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13.5px; color: var(--ink-3); }
 .ic-leave .state .ac-i { color: var(--sun-text); }
 .ic-leave .state .ok { display: inline-flex; align-items: center; gap: 10px; }
+/* Whoever hosts, leaving: who takes over (the best person, chosen already), and Change for who else could. */
+.ic-leave .next-host { margin-top: 16px; }
+.ic-leave .next-host .who { margin-top: 0; }
+.ic-leave .next-host .who b { color: var(--ink); font-weight: 600; }
+.ic-leave .next-host .change { flex: none; margin-left: auto; padding: 4px 2px; border-radius: 6px; font: 600 13px/1 var(--font-sans); color: var(--horizon); }
+.ic-leave .next-host .change:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ic-leave .next-host .pick { overflow: hidden; }
+.ic-leave .next-host .pick > :first-child { margin-top: 6px; }
+.ic-leave .next-host .ic-opt { height: 40px; }
 
 /* narrower screens: words give way to icons, the panel covers the stage on phones */
 @media (max-width: 980px) {

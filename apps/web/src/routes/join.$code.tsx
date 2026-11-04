@@ -39,7 +39,7 @@ function Join() {
   const shell = (body: ReactNode) => <div className="stage ac-stage"><div className="stg"><Top home={signedIn} />{body}</div></div>;
 
   if (session.isPending || (me && meeting.isPending)) return shell(null);
-  if (meeting.data) return shell(<Prejoin meeting={meeting.data} capture={card.data?.capture ?? null} me={me ?? meeting.data.organizer} media={media} />);
+  if (meeting.data) return shell(<Prejoin meeting={meeting.data} capture={card.data?.capture ?? null} standIn={card.data?.standIn?.name ?? null} me={me ?? meeting.data.organizer} media={media} />);
   const lost = card.error && errorCode(card.error) === 'not-found';
   if (lost || (!card.data && card.isError)) {
     return shell(lost
@@ -85,7 +85,8 @@ function usePrejoinMedia(go: boolean) {
 }
 type Prejoining = ReturnType<typeof usePrejoinMedia>;
 
-function Prejoin({ meeting, capture, me, media: { media, m, levels, devices } }: { meeting: Meeting; capture: CaptureState | null; me: Person; media: Prejoining }) {
+/** The organizer's own page. While someone hosts in their place (`standIn`, by name), joining takes the call back. */
+function Prejoin({ meeting, capture, standIn, me, media: { media, m, levels, devices } }: { meeting: Meeting; capture: CaptureState | null; standIn: string | null; me: Person; media: Prejoining }) {
   const navigate = useNavigate();
   const copy = useCopyLink();
   const [joining, setJoining] = useState(false);
@@ -119,7 +120,8 @@ function Prejoin({ meeting, capture, me, media: { media, m, levels, devices } }:
             : <span className="nobody"><Icon name="link" size={16} />Just you on this call so far.</span>}
         </div>
         <PrejoinCapture notes={meeting.notes} capture={capture} audience={{ kind: 'organizer', guests }} organizerName={me.name} />
-        <button type="button" className={cn(buttonClass({ variant: 'primary', size: 'lg' }), 'join')} disabled={joining} onClick={() => void join()}>{joining ? <Spinner /> : 'Join now'}</button>
+        {standIn && <Notice icon="people" className="pj-standin">{firstName(standIn)} is hosting while you’re away. Joining makes you the host again.</Notice>}
+        <button type="button" className={cn(buttonClass({ variant: 'primary', size: 'lg' }), 'join')} disabled={joining} onClick={() => void join()}>{joining ? <Spinner /> : standIn ? 'Join and host' : 'Join now'}</button>
         {problem !== null && <JoinRefused error={problem} />}
         <div className="pj-sub"><button type="button" onClick={() => copy(meeting.code)}><Icon name="link" size={15} />Copy link</button></div>
       </div>
@@ -159,7 +161,7 @@ function GuestPrejoin({ card, code, me, media: { media, m, levels, devices } }: 
   const [signingIn, setSigningIn] = useState(false);
   const [joining, setJoining] = useState(false);
   const [problem, setProblem] = useState<unknown>(null);
-  /* Asked to join: the call opens once the organizer's browser lets this one into the call's encrypted group. */
+  /* Asked to join: the call opens once the host's browser lets this one into the call's encrypted group. */
   const [asked, setAsked] = useState<CallSession | null>(null);
   const entered = useRef(false);
   useRaisedToasts();
@@ -202,8 +204,8 @@ function GuestPrejoin({ card, code, me, media: { media, m, levels, devices } }: 
       <div className="pj-side">
         <h1>{card.title}</h1>
         <div className="pj-time ac-mono">Hosted by {card.organizerName}</div>
-        <PrejoinCapture notes={card.notes} capture={card.capture} audience={audience} organizerName={card.organizerName} />
-        {asked ? <Asking session={asked} organizer={organizer} onIn={enter} onStop={stopAsking} /> : (
+        <PrejoinCapture notes={card.notes} capture={card.capture} audience={audience} organizerName={card.organizerName} taker={card.standIn ? 'the host' : undefined} />
+        {asked ? <Asking session={asked} host={card.standIn ? 'the host' : organizer} onIn={enter} onStop={stopAsking} /> : (
           <AnimatePresence mode="wait" initial={false}>
             {signingIn && guest ? (
               <motion.div key="sign-in" className="pj-step" {...swap} transition={t}>
@@ -218,7 +220,7 @@ function GuestPrejoin({ card, code, me, media: { media, m, levels, devices } }: 
                   {joining ? <Spinner /> : card.you === 'invited' ? 'Join now' : 'Ask to join'}
                 </button>
                 {problem !== null && <JoinRefused error={problem} />}
-                {guest && <GuestTradeOff notesOn={notesOn} signedIn={me !== undefined} onSignIn={() => setSigningIn(true)} />}
+                {guest && <GuestTradeOff notesOn={notesOn} signedIn={me !== undefined} away={card.standIn ? organizer : undefined} onSignIn={() => setSigningIn(true)} />}
               </motion.div>
             )}
           </AnimatePresence>
@@ -228,19 +230,22 @@ function GuestPrejoin({ card, code, me, media: { media, m, levels, devices } }: 
   );
 }
 
-/** After asking to join: waiting for the organizer, then into the call; or told plainly that they said no. */
-function Asking({ session, organizer, onIn, onStop }: { session: CallSession; organizer: string; onIn: (s: CallSession) => void; onStop: () => void }) {
+/**
+ * After asking to join: waiting for whoever hosts (the organizer, or "the host" while someone stands in for them: nobody
+ * waiting is told who), then into the call; or told plainly that they said no.
+ */
+function Asking({ session, host, onIn, onStop }: { session: CallSession; host: string; onIn: (s: CallSession) => void; onStop: () => void }) {
   const c = useLive(session.crypto);
   // In once this browser is in the call's group and the call (who's here) has come with it.
   const named = useLive(session).participants.some((p) => p.isMe);
   useEffect(() => { if (c.status === 'in' && named) onIn(session); }, [c.status, named, onIn, session]);
   if (c.status === 'denied') {
-    return <div className="pj-step"><p className="pj-ask">{organizer} didn’t let you in.</p><button type="button" className="pj-link pj-back" onClick={onStop}><Icon name="left" size={15} />Back</button></div>;
+    return <div className="pj-step"><p className="pj-ask">{host.charAt(0).toUpperCase() + host.slice(1)} didn’t let you in.</p><button type="button" className="pj-link pj-back" onClick={onStop}><Icon name="left" size={15} />Back</button></div>;
   }
   if (c.status === 'failed') return <p className="pj-ask">Alcove couldn’t set up this call’s encryption. Reload the page and try again.</p>;
   return (
     <div className="pj-step">
-      <p className="pj-ask" aria-live="polite"><Spinner />{c.status === 'waiting' ? `Asked to join. Waiting for ${organizer} to let you in.` : 'Joining…'}</p>
+      <p className="pj-ask" aria-live="polite"><Spinner />{c.status === 'waiting' ? `Asked to join. Waiting for ${host} to let you in.` : 'Joining…'}</p>
       {c.status === 'waiting' && <button type="button" className="pj-link pj-back" onClick={onStop}><Icon name="x" size={15} />Stop asking</button>}
     </div>
   );

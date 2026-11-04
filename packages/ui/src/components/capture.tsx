@@ -12,7 +12,7 @@ import { NotesSign, RecDot } from './primitives';
 
 /**
  * The notes sign, in the same place for everyone: on is the crimson sign with its pulsing dot, paused shows the
- * pause mark, unavailable (notes on, but the organizer's browser can't capture anything) the caution mark, and off is
+ * pause mark, unavailable (notes on, but the browser taking the notes can't capture anything) the caution mark, and off is
  * quiet, or says "Notes requested" while someone in the call has asked for them (`requested`; a pause says so
  * first). `pausing` is the organizer's own, while their pause is on its way: their browser has already stopped
  * capturing. `stage` is for the night call stage.
@@ -41,19 +41,26 @@ export function CaptureModeMark({ mode, stage = false }: { mode: CaptureMode; st
   );
 }
 
-const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName; label: string; short: string; detail: string }[] = [
-  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: 'Everyone the organizer hears, encrypted' },
-  { key: 'transcript', icon: 'transcript', label: 'Transcript', short: 'Transcript', detail: 'Everyone the organizer hears, as text' },
-  { key: 'ai', icon: 'sealed', label: 'AI notes', short: 'AI notes', detail: 'Written from the transcript' },
-  { key: 'screen', icon: 'screen', label: 'Shared screens', short: 'Screens', detail: 'Not read' }
+/**
+ * Whose browser takes the notes, as said in a sentence: "the organizer" (the default), "the host" while someone stands
+ * in for them, a first name, or "you".
+ */
+const whose = (taker: string) => (taker === 'you' ? 'your' : `${taker}’s`);
+const hears = (taker: string) => (taker === 'you' ? 'you hear' : `${taker} hears`);
+
+const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName; label: string; short: string; detail: (taker: string) => string }[] = [
+  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: (t) => `Everyone ${hears(t)}, encrypted` },
+  { key: 'transcript', icon: 'transcript', label: 'Transcript', short: 'Transcript', detail: (t) => `Everyone ${hears(t)}, as text` },
+  { key: 'ai', icon: 'sealed', label: 'AI notes', short: 'AI notes', detail: () => 'Written from the transcript' },
+  { key: 'screen', icon: 'screen', label: 'Shared screens', short: 'Screens', detail: () => 'Not read' }
 ];
 /**
- * What a kind of capture does now: what the organizer's browser can't capture says so, the notes model keeps reading
+ * What a kind of capture does now: what the browser taking the notes can't capture says so, the notes model keeps reading
  * what was transcribed while notes are off, and shared screens say when they're read. In a breakout room nothing is
  * recorded or read from shared screens, what's said is heard only while the organizer is there, and nothing goes into
  * the notes.
  */
-function detailOf(p: (typeof PARTS)[number], c: CaptureState): string {
+function detailOf(p: (typeof PARTS)[number], c: CaptureState, taker: string): string {
   if (c.room && p.key === 'recording') return 'Never in a breakout room';
   if (c.room && p.key === 'transcript' && c.transcript.mode !== 'unavailable') return 'Only while the organizer is here';
   if (c.room && p.key === 'ai') return 'Catching up here, never the notes';
@@ -62,13 +69,18 @@ function detailOf(p: (typeof PARTS)[number], c: CaptureState): string {
   if (p.key === 'recording' && c.recording.mode === 'unavailable') return 'Can’t record right now';
   if (p.key === 'transcript' && c.transcript.mode === 'unavailable') return 'Can’t listen right now';
   if (p.key === 'screen' && c.screen.mode !== 'off') return 'Read for the notes, never cameras';
-  return p.detail;
+  return p.detail(taker);
 }
 /**
  * Each kind of capture, what it is, and whether it's on, paused, unavailable or off right now. `compact` says it in a
  * row of small marks, for where there's little room (before joining, on a phone).
  */
-export function CaptureParts({ capture, stage = false, compact = false, className }: { capture: CaptureState; stage?: boolean; compact?: boolean; className?: string | undefined }) {
+export function CaptureParts({ capture, taker = 'the organizer', stage = false, compact = false, className }: {
+  capture: CaptureState;
+  /** Whose browser takes the notes, as said in a sentence: "the organizer" (the default), "the host", a first name, or "you". */
+  taker?: string | undefined;
+  stage?: boolean; compact?: boolean; className?: string | undefined;
+}) {
   if (compact) {
     return (
       <ul className={cn('ac-capture-chips', stage && 'is-stage', className)} aria-label="What’s captured">
@@ -88,7 +100,7 @@ export function CaptureParts({ capture, stage = false, compact = false, classNam
       {PARTS.map((p) => (
         <li key={p.key}>
           <Icon name={p.icon} size={16} />
-          <span className="what"><b>{p.label}</b><small>{detailOf(p, capture)}</small></span>
+          <span className="what"><b>{p.label}</b><small>{detailOf(p, capture, taker)}</small></span>
           <CaptureModeMark mode={capture[p.key].mode} stage={stage} />
         </li>
       ))}
@@ -101,13 +113,15 @@ export function CaptureParts({ capture, stage = false, compact = false, classNam
  * each kind of capture once the call has started, and who gets the notes. Before the organizer starts the call it
  * says what will happen. Never anyone's name or anything that was said.
  */
-export function CaptureSummary({ notes, capture, who, className }: {
+export function CaptureSummary({ notes, capture, who, taker = 'the organizer', className }: {
   /** Notes as the call was scheduled. */
   notes: NotesSetting;
   /** What's captured now; null until the call has started. */
   capture: CaptureState | null;
   /** Who gets the notes, said for the person looking (the organizer, someone invited, someone asking); by default, the people invited. */
   who?: ReactNode;
+  /** Whose browser takes the notes once the call has started: "the organizer" (the default), or "the host" while someone stands in for them. */
+  taker?: string | undefined;
   className?: string | undefined;
 }) {
   const mode: CaptureMode = capture ? capture.mode : notes === 'on' ? 'on' : 'off';
@@ -115,21 +129,21 @@ export function CaptureSummary({ notes, capture, who, className }: {
   const said: ReactNode = !capture
     ? notes === 'on' ? 'When the call starts, what everyone says, you included, is recorded and transcribed for the notes.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
     : mode === 'on' ? `${onLine(capture)}${shared ? ' What anyone shares on screen is read for them too.' : ''}`
-      : mode === 'unavailable' ? shared ? 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing said is captured. What anyone shares on screen is still read for the notes.'
-        : 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing is captured.'
+      : mode === 'unavailable' ? shared ? `Notes are on, but ${whose(taker)} browser can’t record or listen right now, so nothing said is captured. What anyone shares on screen is still read for the notes.`
+        : `Notes are on, but ${whose(taker)} browser can’t record or listen right now, so nothing is captured.`
         : mode === 'paused' ? 'The organizer paused notes. Nothing is recorded, transcribed or sent to the AI until they resume.'
           : 'Nothing is recorded. The organizer can turn notes on during the call, and you can ask them to.';
   return (
     <div className={cn('ac-capture-sum', className)}>
       <CaptureSign mode={mode} stage />
       <p>{said}</p>
-      {capture && mode !== 'off' && <CaptureParts capture={capture} stage compact />}
+      {capture && mode !== 'off' && <CaptureParts capture={capture} taker={taker} stage compact />}
       {mode !== 'off' && <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. {who ?? 'The people invited get them.'}</p>}
     </div>
   );
 }
 
-/** What notes on means for someone about to join, leaving out whatever the organizer's browser can't capture now. */
+/** What notes on means for someone about to join, leaving out whatever the browser taking the notes can't capture now. */
 function onLine(c: CaptureState): string {
   if (c.recording.mode === 'on' && c.transcript.mode === 'on') return 'What everyone says, you included, is recorded and transcribed for the notes.';
   if (c.transcript.mode === 'on') return 'What everyone says, you included, is transcribed for the notes. It isn’t recorded right now.';
