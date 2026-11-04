@@ -87,7 +87,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
         <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
         <div>
           <Icon name="people" size={15} />
-          {roomName ? <span>Nothing said in {roomName} goes into the notes.</span> : <>
+          {roomName ? <span>What’s said in {roomName} goes into the call’s notes as its own section, for everyone who gets them.</span> : <>
             <span>{host ? 'The notes go to you and everyone invited.' : role === 'invited' ? 'The notes go to everyone invited, you included.' : 'The notes go to the people invited.'}</span>
             {host && getting.length > 0 && <Faces people={getting} size={18} max={4} />}
           </>}
@@ -122,8 +122,9 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
  * What's captured right now, in a sentence: what everyone says is recorded and transcribed (through the browser of
  * whoever hosts, the organizer or someone standing in for them, from what it hears), less whatever it can't do now;
  * nothing while paused, until the organizer resumes; and while notes are off, that what was transcribed before is
- * still read for the notes. In a breakout room (`c` is the room's), what's said is transcribed only while the browser
- * taking the notes is there, for the people there; it isn't recorded or put in the call's notes.
+ * still read for the notes. In a breakout room (`c` is the room's), what's said is transcribed by the room's scribe, a
+ * browser in the room, named (yours, if it's you), and goes into the call's notes as the room's own section; nothing
+ * there is recorded.
  */
 function saidFor(state: CallState, c: CallState['capture'], name: string): string {
   const mine = state.isHost;
@@ -133,9 +134,9 @@ function saidFor(state: CallState, c: CallState['capture'], name: string): strin
   if (c.room) {
     const room = roomNameOf(state);
     if (c.mode === 'paused') return state.capture.mode === 'paused' ? `Nothing is recorded, transcribed or sent to the AI until ${until}.` : `Notes are paused in ${room}. Nothing said here is transcribed or sent to the AI until ${until}.`;
-    if (c.mode === 'off') return state.notes.everOn ? `Nothing said in ${room} is transcribed now. What was transcribed here before is still read when someone here catches up.` : `Nothing said in ${room} is transcribed.`;
-    if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t listen right now, so nothing said here is transcribed.`;
-    return `What’s said here is transcribed while ${mine ? 'you’re' : `${by} is`} in ${room}, for the people here, and deleted when the room closes. Nothing here is recorded or goes into the notes.`;
+    if (c.mode === 'off') return state.notes.everOn ? `Nothing said in ${room} is transcribed now. What was transcribed here before goes into the call’s notes as the room’s section.` : `Nothing said in ${room} is transcribed.`;
+    if (c.mode === 'unavailable') return `Notes are on, but nobody’s browser here can transcribe ${room} right now, so nothing said here is captured.`;
+    return `What’s said here is transcribed by ${roomScribe(state, c)} and goes into the call’s notes as ${room}’s own section. Live, only the people here see it. Nothing here is recorded.`;
   }
   if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${until}.`;
   if (c.mode === 'off') return state.notes.everOn ? 'Nothing new is recorded or transcribed. What was transcribed before is still read for the notes.' : 'Nothing from this call is recorded or written down.';
@@ -148,6 +149,17 @@ function saidFor(state: CallState, c: CallState['capture'], name: string): strin
   return `What everyone says is recorded for the notes. Nothing is transcribed: ${browser} can’t listen right now.`;
 }
 
+/**
+ * Whose browser transcribes the breakout room you're in (`c`, the room's capture), to say mid-sentence: yours, someone's
+ * by name, or, while the room has none, a browser here.
+ */
+export function roomScribe(state: CallState, c: CallState['capture'] = state.capture): string {
+  const id = c.room?.scribe ?? null;
+  if (id === null) return 'a browser here';
+  if (id === state.participants.find((p) => p.isMe)?.id) return 'your browser';
+  const p = state.participants.find((x) => x.id === id)?.person;
+  return `${p ? capital(callName(p)) : 'someone here'}’s browser`;
+}
 /** The breakout room you're in, by name. */
 const roomNameOf = (state: CallState): string => state.breakouts.open?.rooms.find((r) => r.id === state.capture.room?.id)?.name ?? 'this room';
 

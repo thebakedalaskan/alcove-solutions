@@ -2754,7 +2754,9 @@ describe('privacy at rest', () => {
     expect(session.user.name).toBe('Canary Person');
     const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'on' });
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
-    const call = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: true });
+    const scribeEmail = 'canary-scribe@canary.example';
+    const started = await c.api.calls.startNow({ notes: 'on', guests: [scribeEmail] });
+    const call = await c.api.calls.join(started.code, { mic: true, cam: true });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
@@ -2765,8 +2767,16 @@ describe('privacy at rest', () => {
     expect(call.crypto.getSnapshot().chat.map((m) => m.text)).toEqual(['CANARY-CHAT private remark']);
     // Captions in another language, and breakout room names and messages, are sealed too.
     expect((await call.translate(call.getSnapshot().transcript.map((l) => l.id), 'de'))[0]?.text).toContain('CANARY-SPEECH');
-    call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5 });
+    // Someone invited, sent to a breakout room, is its scribe: what's said there is kept sealed until the call ends, and
+    // then in the note, as that room's section.
+    const invitee = tapped();
+    await invitee.api.auth.signIn('sso', { email: scribeEmail });
+    const scribe = await invitee.api.calls.join(started.code, { mic: true, cam: false });
+    await until(async () => scribe.crypto.getSnapshot().status === 'in', 'the invitee in the call’s group');
+    call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [scribeEmail] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5 });
     await settle(call, (x) => x.breakouts.open !== null);
+    await settle(scribe, (x) => x.capture.room?.scribe === scribe.ticket.identity);
+    await scribe.transcribe(speech('CANARY-ROOMTALK the merger moves to Monday.', 0, 2000), scribe.ticket.identity);
     call.messageRooms('CANARY-BROADCAST to every room');
     await settle(call, (x) => x.breakouts.open?.message !== null);
     const caught = await call.catchUp({ kind: 'all' });
@@ -2786,7 +2796,9 @@ describe('privacy at rest', () => {
     expect(moveRows).not.toBe('');
     move.close();
     const live = `${liveClips} ${translations} ${callRows} ${moveRows}`;
-    await call.leave();
+    const ended = await call.leave();
+    await written(c.api, ended?.pendingNoteId ?? '');
+    expect((await c.api.notes.get(ended?.pendingNoteId ?? '')).rooms.map((r) => r.transcript.map((l) => l.text))).toEqual([['CANARY-ROOMTALK the merger moves to Monday.'], []]);
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
     await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
@@ -2847,7 +2859,7 @@ describe('privacy at rest', () => {
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
-      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event'
@@ -2873,6 +2885,7 @@ describe('privacy at rest', () => {
     // And NEAR AI: the clips, transcripts, titles, names and questions it was sent crossed the wire sealed
     // to the verified models, never readable, though the models themselves read them (the fake's prompts).
     expect(h.near.prompts.some((p) => p.includes('CANARY-SPEECH'))).toBe(true);
+    expect(h.near.prompts.some((p) => p.includes('CANARY-ROOMTALK'))).toBe(true);
     const wire = Buffer.concat(h.near.received.map((r) => r.body));
     for (const canary of [...canaries, 'What closes on Friday']) for (const enc of encodings(canary)) expect(wire.includes(Buffer.from(enc)), `${canary} as ${enc} on the wire to NEAR AI`).toBe(false);
     expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);

@@ -197,13 +197,26 @@ const roomSteps = (history: CaptureChange[], pauses: RoomPause[]): RoomStep[] =>
   [...history.map((h): RoomStep => ({ at: h.at, status: h.status, paused: null, by: h.by })), ...pauses.map((p): RoomStep => ({ at: p.at, status: null, paused: p.paused, by: 'organizer' }))]
     .sort((a, b) => a.at - b.at);
 
+/** Whether a breakout room was capturing at `t` (seconds since the call started): the call's notes on, and the room not paused. */
+export function roomCapturingAt(history: CaptureChange[], pauses: RoomPause[], t: number): boolean {
+  let call: CaptureStatus = 'off';
+  let paused = false;
+  for (const s of roomSteps(history, pauses)) {
+    if (s.at > t) break;
+    if (s.status) call = s.status;
+    if (s.paused !== null) paused = s.paused;
+  }
+  return call === 'on' && !paused;
+}
+
 /**
  * The stretches since a breakout room opened (`from`) with nothing captured in it, oldest first: the call's notes off
- * or paused, the room paused, or the host's browser out of the call (`offline`, for the part of it while the room
- * was open). A room's own pause doesn't end a segment, so each is placed in the recording where the recording was when
- * it began. `now` is the call's seconds so far; `end`, if given, closes one still going.
+ * or paused, or the room paused. The host's browser being out of the call isn't one: a room is heard by its own scribe.
+ * A room's own pause doesn't end a segment, so each is placed in the recording where the recording was when it began
+ * (`offline` only says where that is). `now` is the call's seconds so far; `end`, if given, is when the room closed: one
+ * still going ends there, and nothing after it is the room's.
  */
-function roomGaps(history: CaptureChange[], offline: OfflineStretch[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
+export function roomGaps(history: CaptureChange[], offline: OfflineStretch[], pauses: RoomPause[], from: number, startedAt: Date, now: number, end?: number | undefined): CaptureGap[] {
   const when = (s: number) => new Date(startedAt.getTime() + s * 1000).toISOString();
   const out: CaptureGap[] = [];
   type Open = { kind: 'off' | 'paused'; from: number };
@@ -222,6 +235,7 @@ function roomGaps(history: CaptureChange[], offline: OfflineStretch[], pauses: R
   let open: Open | null = null;
   let started = false;
   for (const s of roomSteps(history, pauses)) {
+    if (end !== undefined && s.at >= end) break;
     if (!started && s.at > from) { open = next(open, call, paused, from); started = true; }
     if (s.status) call = s.status;
     if (s.paused !== null) paused = s.paused;
@@ -229,25 +243,19 @@ function roomGaps(history: CaptureChange[], offline: OfflineStretch[], pauses: R
   }
   if (!started) open = next(open, call, paused, from);
   if (open && (end === undefined || end > open.from)) out.push(gap(open, end ?? null));
-  for (const o of offline) {
-    const f = Math.max(o.from, from);
-    const t = end === undefined ? o.to : Math.min(o.to, end);
-    if (t > f) out.push({ kind: 'offline', from: when(f), to: when(t), at: at(f) });
-  }
-  return out.sort((a, b) => Date.parse(a.from) - Date.parse(b.from));
+  return out;
 }
 
 /**
- * What's captured in a breakout room, for the people in it and the organizer visiting it. It's never recorded, and
- * stays out of the notes; the transcript and the notes model follow the call's notes, held while the organizer has
- * paused the room (and unavailable while the host's browser can't listen). Each part says when it last changed
- * and who changed it, from the call's changes and the room's together.
+ * What's captured in a breakout room, for the people in it and the organizer visiting it. It's never recorded; what's
+ * said there goes into the call's notes as the room's own section. The transcript and the notes model follow the
+ * call's notes, held while the organizer has paused the room, and the transcript is unavailable while the room has no
+ * scribe to hear it. Each part says when it last changed and who changed it, from the call's changes and the room's
+ * together.
  */
 export function roomStateFor(c: {
-  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
-  /** The host's browser is out of the call (nothing is heard in any part of it), and the stretches it was. */
-  away: boolean; offline: OfflineStretch[];
-  room: { id: string; from: number; pauses: RoomPause[] }; now: number; end?: number | undefined;
+  status: CaptureStatus; history: CaptureChange[]; offline: OfflineStretch[]; startedAt: Date; organizer: string | null;
+  room: { id: string; from: number; pauses: RoomPause[]; scribe: string | null }; now: number; end?: number | undefined;
 }): RoomCapture {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
   const changed = new Map<'transcript' | 'ai', RoomStep>();
@@ -265,7 +273,7 @@ export function roomStateFor(c: {
   }
   const status = roomStatus(c.status, c.room.pauses);
   const current = modes(status, everOn);
-  const deaf = status === 'on' && (c.away || c.unavailable.includes('transcript'));
+  const deaf = status === 'on' && c.room.scribe === null;
   const part = (k: 'transcript' | 'ai'): CapturePart => {
     const h = changed.get(k);
     return { mode: k === 'transcript' && deaf ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actorOf(h.by, c.organizer) : null };
@@ -273,7 +281,7 @@ export function roomStateFor(c: {
   const never: CapturePart = { mode: 'off', since: null, by: null };
   return {
     id: c.room.id, mode: deaf ? 'unavailable' : status, recording: never, transcript: part('transcript'), ai: part('ai'), screen: never,
-    gaps: roomGaps(c.history, c.offline, c.room.pauses, c.room.from, c.startedAt, c.now, c.end)
+    gaps: roomGaps(c.history, c.offline, c.room.pauses, c.room.from, c.startedAt, c.now, c.end), scribe: c.room.scribe
   };
 }
 

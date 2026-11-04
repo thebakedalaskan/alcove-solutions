@@ -7,7 +7,7 @@
  */
 import {
   firstName, type ActionItem, type AnswerPart, type CaptureGap, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type NotesLanguage, type Person, type Question,
-  type ScreenMoment, type ScreenRef, type Speaker, type SummaryLength, type TranscriptLine
+  type RoomNote, type ScreenMoment, type ScreenRef, type Speaker, type SummaryLength, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
@@ -39,10 +39,17 @@ export interface Brief {
   live?: boolean | undefined;
   /** For notes written again: what people already settled, which the model is told not to list again (settledOf). */
   settled?: string[] | undefined;
+  /** The breakout room these lines were said in, by name, when the notes are that room's own. */
+  room?: string | undefined;
+  /** Each breakout room's section of a finished note, for questions about it. */
+  rooms?: RoomNote[] | undefined;
 }
-/** A finished note, as the model reads it. */
+/** A finished note, as the model reads it: the main room's transcript, and each breakout room's section. */
 export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief =>
-  ({ title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary, settled: m.writtenAt === null ? [] : settledOf(m) });
+  ({
+    title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary,
+    settled: m.writtenAt === null ? [] : settledOf(m), rooms: m.rooms
+  });
 
 /** What people settle in written notes: a part's decisions, open questions and follow-ups. */
 export type Settled = Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>;
@@ -63,6 +70,20 @@ export function settledOf(m: Settled): string[] {
     })
   ];
 }
+
+/**
+ * A breakout room's section, as the model reads it to write that room's notes: the call's title and organizer, the
+ * people who were in the room, how long it was open, what was said there alone, and when they're written again, what
+ * was settled in the room's notes before.
+ */
+export const roomBriefOf = (m: NoteManifest, room: RoomNote, organizer: Person): Brief => ({
+  title: m.title, kind: m.kind, organizer, people: room.people.flatMap((x) => (x.person && x.person.id !== organizer.id ? [x.person] : [])),
+  seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: m.writtenAt === null ? [] : settledOf(room)
+});
+
+/** Each breakout room's section, after the main room's, for a question about the whole note; `texts` are their transcripts as fitted. */
+const roomsText = (rooms: RoomNote[], texts: string[]): string => rooms.map((r, i) =>
+  `\n\nBreakout room “${oneLine(r.name)}” (${r.people.map((x) => oneLine(x.name)).join(', ') || 'nobody named'}):\nSummary: ${r.summary || '(none)'}\nTranscript:\n${fenced(texts[i] ?? '')}`).join('');
 
 /** About 30,000 tokens of transcript; longer calls keep their beginning and end. */
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -141,14 +162,14 @@ export interface Cut { count: number; first: number; last: number }
  * What fits: all of it, or a long transcript's beginning and end with a marker between. `kept` are the lines (by index)
  * the model was sent, and `cut` the ones it wasn't.
  */
-function fit(all: Entry[]): { text: string; kept: Set<number>; cut: Cut | null } {
+function fit(all: Entry[], max = MAX_TRANSCRIPT_CHARS): { text: string; kept: Set<number>; cut: Cut | null } {
   const lineNos = (xs: Entry[]) => xs.flatMap((e) => (e.line === null ? [] : [e.line]));
   const text = all.map((e) => e.text).join('\n');
-  if (text.length <= MAX_TRANSCRIPT_CHARS) return { text, kept: new Set(lineNos(all)), cut: null };
+  if (text.length <= max) return { text, kept: new Set(lineNos(all)), cut: null };
   const head: Entry[] = [];
   const tail: Entry[] = [];
   let used = 0;
-  for (let i = 0, j = all.length - 1; i <= j && used < MAX_TRANSCRIPT_CHARS;) {
+  for (let i = 0, j = all.length - 1; i <= j && used < max;) {
     const front = all[i];
     if (front) { head.push(front); used += front.text.length + 1; }
     i++;
@@ -168,6 +189,16 @@ function fit(all: Entry[]): { text: string; kept: Set<number>; cut: Cut | null }
     text: [...head.map((e) => e.text), `[… ${out.length} lines left out …]`, ...tail.map((e) => e.text)].join('\n'),
     kept, cut: { count: out.length, first, last }
   };
+}
+/**
+ * Transcripts read together (a call's and its breakout rooms', for a question about the note), fitted into one budget:
+ * each keeps a share of it in proportion to its length, so together they're no longer than one transcript may be.
+ */
+function fitTogether(parts: { lines: TranscriptLine[]; gaps: CaptureGap[]; screens: ScreenMoment[] }[]): string[] {
+  const all = parts.map((p) => entries(p.lines, p.gaps, spoken, p.screens));
+  const sizes = all.map((es) => es.reduce((n, e) => n + e.text.length + 1, 0));
+  const total = sizes.reduce((n, x) => n + x, 0);
+  return all.map((es, i) => fit(es, total <= MAX_TRANSCRIPT_CHARS ? MAX_TRANSCRIPT_CHARS : Math.floor((MAX_TRANSCRIPT_CHARS * (sizes[i] ?? 0)) / total)).text);
 }
 /** The transcript as the model reads it, with a "--" line where nothing was captured and a "[screen N" line where a shared screen changed. */
 const transcriptText = (lines: TranscriptLine[], gaps: CaptureGap[] = [], screens: ScreenMoment[] = []): string => fit(entries(lines, gaps, spoken, screens)).text;
@@ -192,6 +223,7 @@ function about(b: Brief): string {
   return [
     `Meeting: ${b.title}`,
     `Kind: ${b.kind === 'room' ? 'an in-person meeting, recorded on one device in the room' : 'a video call'}`,
+    ...(b.room ? [`Part: the breakout room “${oneLine(b.room)}”, where some of the call talked on their own. Write the notes of this room alone, from what was said in it.`] : []),
     `Organizer: ${b.organizer.name}`,
     `Invited: ${invited}`,
     b.live ? `Going on for: ${Math.max(1, Math.round(b.seconds / 60))} minutes so far` : `Length: ${Math.max(1, Math.round(b.seconds / 60))} minutes`
@@ -239,7 +271,8 @@ const At = z.coerce.number().nullish().catch(null);
 const OnScreen = { screen: At, part: At, sure: z.boolean().nullish().catch(null) };
 const Said = z.union([z.string().transform((text) => ({ text, at: null, screen: null, part: null, sure: null })), z.object({ text: z.string(), at: At, ...OnScreen })]);
 const Draft = z.object({
-  summary: z.string().min(1),
+  // Words, in any script: the model sometimes answers with the shape and nothing in it ("..."), which isn't notes.
+  summary: z.string().regex(/[\p{L}\p{N}]/u),
   decisions: z.array(Said).catch([]),
   questions: z.array(Said).catch([]),
   actions: z.array(z.object({ text: z.string(), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null), at: At, ...OnScreen })).catch([]),
@@ -324,9 +357,12 @@ const Answer = z.object({ answer: z.string().min(1), moments: z.array(z.coerce.n
 /** Answers a question about a written-up call, with the moments in its note's recording and the shared screens it comes from. */
 export async function answer(cfg: Config, noteId: string, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
   const shown = b.screens ?? [];
+  // The call's transcript and each breakout room's share one budget, so a call with many rooms still fits.
+  const rooms = (b.rooms ?? []).filter((r) => r.transcript.length);
+  const [said = '', ...roomTexts] = fitTogether([{ lines: b.lines, gaps: b.gaps, screens: shown }, ...rooms.map((r) => ({ lines: r.transcript, gaps: r.gaps, screens: [] }))]);
   const reply = Answer.safeParse(await completeJson(cfg, [
     { role: 'system', content: ASK_PROMPT },
-    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${fenced(transcriptText(b.lines, b.gaps, shown))}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
+    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${fenced(said)}${roomsText(rooms, roomTexts)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: issues(reply.error) } });
   const at = moment(b);

@@ -62,15 +62,26 @@ export type Joined = z.infer<typeof Joined>;
 /** A breakout room as kept: invited people by email, shown with their names when the call is read. */
 export const Room = HeldRooms.shape.rooms.element;
 /**
+ * One stretch of a breakout room's scribe (modules/scribes.ts): the connection that transcribes the room, its turn
+ * (from 1), and when it started and ended (ms; null while it lasts).
+ */
+export const ScribeTerm = z.object({ identity: z.string(), term: z.number(), from: z.number(), until: z.number().nullable() });
+/**
+ * What a call keeps of each breakout room for its notes, in its sealed state (the ended call's too): the organizer's
+ * pauses of it, who its scribe was when, and everyone who was in it (by `readerOf`). Each is empty in a call stored
+ * before rooms kept them (a closed room kept none of them), so those calls still open.
+ */
+const RoomRecord = { pauses: z.array(RoomPause).default([]), scribes: z.array(ScribeTerm).default([]), seen: z.array(z.string()).default([]) };
+/**
  * Breakout rooms: those open now (each with its MLS group's epoch in this generation, and the room the organizer is
- * visiting, or null for the main room), and those that have closed, which go into the notes.
+ * visiting, or null for the main room), and those that have closed, which go into the notes as each room's section.
  */
 export const BreakoutState = z.object({
   open: z.object({
-    rooms: z.array(Room.extend({ epoch: z.number(), pauses: z.array(RoomPause) })), from: z.number(), until: z.number(),
+    rooms: z.array(Room.extend({ epoch: z.number(), ...RoomRecord })), from: z.number(), until: z.number(),
     message: z.object({ text: z.string(), at: z.number() }).nullable(), visiting: z.string().nullable()
   }).nullable(),
-  held: z.array(HeldRooms)
+  held: z.array(z.object({ rooms: z.array(Room.extend(RoomRecord)), from: z.number(), to: z.number() }))
 });
 /**
  * What the rules here read of a call's state. `host` is the connection that hosts now (the organizer's, or someone's
@@ -125,9 +136,9 @@ export const epochIn = (mainEpoch: number, s: Placing, place: string): number | 
  */
 export const committerOf = (s: Placing): string | null => s.host;
 /**
- * The connection whose browser transcribes the main room now (and the room the organizer visits, while they're
- * there), and records the call's notes: whoever hosts, the organizer's connection or a stand-in's. The same connection
- * as the committer today, but its own question: a breakout room's own scribe is never this, and never the committer.
+ * The connection whose browser transcribes the main room now, and records the call's notes: whoever hosts, the
+ * organizer's connection or a stand-in's. The same connection as the committer today, but its own question: a breakout
+ * room's own scribe (modules/scribes.ts) is never this, and never the committer.
  */
 export const mainScribeOf = (s: Placing): string | null => s.host;
 

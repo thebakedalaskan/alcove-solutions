@@ -877,7 +877,7 @@ export class NotesRecorder {
   /** Set by hold(): nothing more is recorded or sent until release() carries on or discard() drops it. */
   private gate: { wait: Promise<void>; open: () => void } | null = null;
   private graph: { ctx: AudioContext; mix: DynamicsCompressorNode; gain: GainNode; dest: MediaStreamAudioDestinationNode; voices: Map<string, Voice> } | null = null;
-  /** While the organizer is in a breakout room, the recording hears nothing: the call's recording has the main room's talk. */
+  /** While whoever hosts is in a breakout room, the recording hears nothing: it has the main room's talk, and a room's reaches the notes only through its own transcript. */
   private hushed = false;
   /** Until then, pieces go straight to `keep`: sending just failed. */
   private keepUntil = 0;

@@ -524,6 +524,7 @@
 .ic-rp.is-float { position: fixed; z-index: 90; width: 150px; pointer-events: none; box-shadow: var(--shadow-3); cursor: grabbing; }
 .ic-rnote { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
 .ic-rnote .ac-i { flex: none; margin-top: 1px; color: var(--sun-text); }
+.ic-rnote + .ic-rnote { margin-top: 8px; }
 .ic-rtimer { display: flex; align-items: center; gap: 16px; }
 .ic-rtimer svg { flex: none; }
 .ic-rtimer .trk { stroke: var(--sunk); }
