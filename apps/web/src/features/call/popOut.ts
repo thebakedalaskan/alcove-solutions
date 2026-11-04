@@ -49,17 +49,27 @@ export async function openPop(kind: PopKind, title: string, aspect: number): Pro
   return win;
 }
 
-/** The window looks like the call: the app's stylesheets (and so its fonts), its theme, night. */
+/**
+ * The window looks like the call: the app's stylesheets (and so its fonts), its theme, night. The window is a blank page
+ * that carries the call's own CSP, whose `base-uri 'none'` refuses a `<base>`, so each stylesheet is linked by its full
+ * address (the fonts in it resolve against that) rather than by the path the call's page uses.
+ */
 function dress(win: Window, title: string) {
   const doc = win.document;
   doc.title = title;
   doc.documentElement.lang = document.documentElement.lang;
   doc.documentElement.className = document.documentElement.className;
-  const base = doc.createElement('base');
-  base.href = location.href;
   const scheme = doc.createElement('meta');
   scheme.name = 'color-scheme';
   scheme.content = 'dark';
-  doc.head.append(base, scheme, ...[...document.querySelectorAll('link[rel="stylesheet"], style')].map((el) => el.cloneNode(true)));
+  const sheets = [...document.querySelectorAll('link[rel="stylesheet"], style')].map((el): Node => {
+    if (!(el instanceof HTMLLinkElement)) return el.cloneNode(true);
+    const link = doc.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = el.href;
+    if (el.media) link.media = el.media;
+    return link;
+  });
+  doc.head.append(scheme, ...sheets);
   doc.body.className = 'ic-popbody';
 }

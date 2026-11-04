@@ -1,10 +1,12 @@
 /*
  * A share you see big, or in its own window, looked at your own way: zoom, pan, a picture held still and earlier
- * pictures, for you only (shareLook.ts holds the state, shareFrame.ts the coordinates). Pinching, or Ctrl/⌘ with the
- * wheel, zooms where the pointer is; a drag, or the wheel, moves around once zoomed in; a double-click goes in to 200% or
- * back to the whole picture. The bar does the same, and so do the keys on the focused share (+, −, 0, arrows, F, comma and
- * full stop), which its ⋯ menu lists, so in the call the bar's buttons are for pointers and touch and the stage stays one
- * tab stop. While a picture is held still, a bar at the top says how far behind live it is, with Back to live.
+ * pictures, for you only (shareLook.ts holds the state, shareFrame.ts the coordinates). Pinching (a trackpad's, Safari's
+ * gesture, or two fingers), or Ctrl/⌘ with the wheel, zooms where the pointer is; a drag, or the wheel, moves around once
+ * zoomed in; a double-click goes in to 200% or back to the whole picture. The bar does the same, and so do the keys on the
+ * focused share (LOOK_KEYS: +, −, 0, arrows, F, comma and full stop), which its ⋯ menu lists, so in the call the bar's
+ * buttons are for pointers and touch and the stage stays one tab stop. In its own window the share takes the keys itself
+ * and has focus as soon as the window opens. While a picture is held still, a bar at the top says how far behind live it
+ * is, with Back to live.
  *
  * Nothing here uses motion's frame loop or anything else timed by the call's tab: in its own window a share keeps
  * working while that tab is in the background.
@@ -15,14 +17,17 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as Reac
 import type { CallRoom } from './livekit';
 import { POP_HEADER, type PopKind } from './popOut';
 import { WHOLE, ZOOM_MAX, centreOn, inView, isZoomed, panBy, place, zoomLabel, zoomTo, type Framing, type Point, type Size } from './shareFrame';
-import { HISTORY, type HistoryOff, type ShareLook, type ShareLookState } from './shareLook';
+import { HISTORY, LOOK_ARIA, LOOK_KEYS, type HistoryOff, type LookKey, type ShareLook, type ShareLookState } from './shareLook';
 import { ShareMenu } from './TileMenu';
 import { useLive } from '~/lib/live';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
-/** A change from a key or a button glides; a drag, a pinch or the wheel follows at once. */
+/** A change from a key, a button or the menu glides; a drag, a pinch or the wheel follows at once. */
 const DIRECT_MS = 250;
+/** How long a glide lasts, a little past the CSS transition (--duration-2), so it plays out. */
+const GLIDE_MS = 300;
+const sameSize = (a: Size, b: Size) => a.w === b.w && a.h === b.h;
 
 /** One short line on earlier pictures: what's kept and where, or why nothing is. */
 export function historyNote(off: HistoryOff | null): string {
@@ -56,11 +61,12 @@ function Behind({ seen }: { seen: number }) {
 
 /** A button on the share's bar: a tooltip in the call; in its own window, the browser's (the call's tooltips live in the call's tab). */
 function BarButton({ icon, label, keys, onClick, disabled = false, where, className, children }: {
-  icon?: IconName | undefined; label: string; keys?: string | undefined; onClick: () => void; disabled?: boolean; where: 'stage' | 'window'; className?: string | undefined; children?: ReactNode;
+  icon?: IconName | undefined; label: string; keys?: LookKey | undefined; onClick: () => void; disabled?: boolean; where: 'stage' | 'window'; className?: string | undefined; children?: ReactNode;
 }) {
-  const tip = keys ? `${label} (${keys})` : label;
+  const key = keys ? LOOK_KEYS[keys] : null;
+  const tip = key ? `${label} (${key.shown})` : label;
   const b = (
-    <button type="button" className={className} aria-label={label} aria-keyshortcuts={keys} disabled={disabled} tabIndex={where === 'stage' ? -1 : 0}
+    <button type="button" className={className} aria-label={label} aria-keyshortcuts={key?.aria} disabled={disabled} tabIndex={where === 'stage' ? -1 : 0}
       title={where === 'window' ? tip : undefined} onClick={onClick}>
       {icon && <Icon name={icon} size={16} />}{children}
     </button>
@@ -86,6 +92,8 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
   const canvas = useRef<HTMLCanvasElement>(null);
   // When the framing last changed under a pointer or the wheel: such changes follow it at once instead of gliding.
   const directAt = useRef(0);
+  // What was drawn last, so only a new framing glides, and never a change of the view's or the picture's size.
+  const drawn = useRef<{ view: Size; pic: Size; framing: Framing; until: number } | null>(null);
   // On touch screens the bar shows after a tap, as there's no hover.
   const [tapped, setTapped] = useState(false);
 
@@ -171,12 +179,36 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
       if (points.size) restart(); else from = null;
       if (tap) setTapped((v) => !v);
     };
+    // Safari reads a trackpad pinch as gesture events (with how far it has scaled since it began), not as Ctrl and the
+    // wheel, and zooms the whole page unless told not to. On a touch screen two fingers are already a pinch above.
+    let gesture: { f: Framing; at: Point } | null = null;
+    const gestureAt = (e: Event): Point | null => {
+      const x: unknown = Reflect.get(e, 'clientX');
+      const y: unknown = Reflect.get(e, 'clientY');
+      return typeof x === 'number' && typeof y === 'number' ? local({ clientX: x, clientY: y }) : null;
+    };
+    const gestureStart = (e: Event) => {
+      e.preventDefault();
+      if (points.size) return;
+      const st = look.getSnapshot();
+      gesture = { f: st.framing, at: gestureAt(e) ?? { x: st.view.w / 2, y: st.view.h / 2 } };
+    };
+    const gestureChange = (e: Event) => {
+      e.preventDefault();
+      const scale: unknown = Reflect.get(e, 'scale');
+      if (!gesture || points.size || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
+      directAt.current = performance.now();
+      const st = look.getSnapshot();
+      look.setFraming(zoomTo(gesture.f, gesture.f.zoom * scale, st.view, picOf(st), gesture.at));
+    };
+    const gestureEnd = (e: Event) => { e.preventDefault(); gesture = null; };
     const wheel = (e: WheelEvent) => {
       const st = look.getSnapshot();
       const pic = picOf(st);
       if (e.ctrlKey || e.metaKey) {
-        // A pinch on a trackpad, or Ctrl/⌘ and a mouse wheel (a notch is a step).
+        // A pinch on a trackpad, or Ctrl/⌘ and a mouse wheel (a notch is a step). Not twice during a Safari gesture.
         e.preventDefault();
+        if (gesture) return;
         directAt.current = performance.now();
         const k = Math.abs(e.deltaY) >= 40 ? (e.deltaY < 0 ? 1.25 : 0.8) : Math.exp(-e.deltaY * 0.01);
         look.setFraming(zoomTo(st.framing, st.framing.zoom * k, st.view, pic, local(e)));
@@ -199,6 +231,9 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
     el.addEventListener('pointercancel', up);
     el.addEventListener('wheel', wheel, { passive: false });
     el.addEventListener('dblclick', double);
+    el.addEventListener('gesturestart', gestureStart);
+    el.addEventListener('gesturechange', gestureChange);
+    el.addEventListener('gestureend', gestureEnd);
     return () => {
       el.removeEventListener('pointerdown', down);
       el.removeEventListener('pointermove', move);
@@ -206,8 +241,22 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
       el.removeEventListener('pointercancel', up);
       el.removeEventListener('wheel', wheel);
       el.removeEventListener('dblclick', double);
+      el.removeEventListener('gesturestart', gestureStart);
+      el.removeEventListener('gesturechange', gestureChange);
+      el.removeEventListener('gestureend', gestureEnd);
     };
   }, [look]);
+
+  /* In its own window the share has focus from the start, and again whenever you come back to the window, so its keys work at once. */
+  useEffect(() => {
+    const el = root.current;
+    const win = el?.ownerDocument.defaultView;
+    if (where !== 'window' || !el || !win) return;
+    el.focus({ preventScroll: true });
+    const back = () => { const a = el.ownerDocument.activeElement; if (!a || a === el.ownerDocument.body) el.focus({ preventScroll: true }); };
+    win.addEventListener('focus', back);
+    return () => { try { win.removeEventListener('focus', back); } catch { /* its window has closed */ } };
+  }, [where]);
 
   /* The minimap: press or drag in it to look at that part of the picture. */
   const mapAt = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -222,8 +271,15 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
   const zoomed = isZoomed(s.framing);
   const held = s.held;
   const newest = held !== null && (held.index === null || held.index === s.count - 1);
-  // The clock only decides whether this change glides: not right after a drag, a pinch or the wheel.
-  const glide = performance.now() - directAt.current > DIRECT_MS;
+  // A new framing from a key, a button or the menu glides; one from a drag, a pinch or the wheel follows the pointer, and
+  // the view or the picture changing size (a divider dragged, the layout moving, a new picture) follows the tile at once.
+  const now = performance.now();
+  const was = drawn.current;
+  const resized = !was || !sameSize(was.view, s.view) || !sameSize(was.pic, pic);
+  const stepped = !!was && was.framing !== s.framing && now - directAt.current > DIRECT_MS;
+  const until = resized ? 0 : stepped ? now + GLIDE_MS : was.until;
+  drawn.current = { view: s.view, pic, framing: s.framing, until };
+  const glide = now < until;
   const seen = inView(s.framing, s.view, pic);
   const aspect = pic.w > 0 && pic.h > 0 ? pic.w / pic.h : 1.6;
   const mapW = Math.round(Math.max(72, Math.min(132, s.view.w * 0.16)));
@@ -232,7 +288,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
   return (
     <div ref={root} tabIndex={where === 'window' ? 0 : undefined} role={where === 'window' ? 'group' : undefined}
       aria-roledescription={where === 'window' ? 'shared screen' : undefined} aria-label={where === 'window' ? `${label}. ${said}` : undefined}
-      aria-keyshortcuts={where === 'window' ? '+ - 0 F , .' : undefined}
+      aria-keyshortcuts={where === 'window' ? LOOK_ARIA : undefined}
       className={cn('ic-sv', zoomed && 'is-zoomed', held && 'is-held', (zoomed || held || tapped || where === 'window') && 'is-on', where === 'window' && 'in-window')}
       onKeyDown={where === 'window' ? (e) => { if (!e.metaKey && !e.ctrlKey && !e.altKey && look.key(e.key)) e.preventDefault(); } : undefined}>
       <div className={cn('ic-sv-pic', glide && 'is-glide')} style={{ left: box.x, top: box.y, width: box.w, height: box.h }}>
@@ -255,15 +311,15 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
         </div>
       )}
       <div className="ic-svbar" data-ui>
-        <BarButton where={where} icon="stepBack" label="Earlier picture" keys="," disabled={!s.canEarlier} onClick={() => void look.earlier()} />
-        <BarButton where={where} icon={held ? 'play' : 'pause'} label={held ? 'Back to live' : 'Freeze the picture'} keys="F" onClick={() => (held ? look.live() : void look.freeze())} />
-        {held && <BarButton where={where} icon="stepForward" label={newest ? 'Back to live' : 'Later picture'} keys="." onClick={() => look.later()} />}
+        <BarButton where={where} icon="stepBack" label="Earlier picture" keys="earlier" disabled={!s.canEarlier} onClick={() => void look.earlier()} />
+        <BarButton where={where} icon={held ? 'play' : 'pause'} label={held ? 'Back to live' : 'Freeze the picture'} keys="freeze" onClick={() => (held ? look.live() : void look.freeze())} />
+        {held && <BarButton where={where} icon="stepForward" label={newest ? 'Back to live' : 'Later picture'} keys="later" onClick={() => look.later()} />}
         <span className="sep" aria-hidden="true" />
-        <BarButton where={where} icon="zoomOut" label="Zoom out" keys="-" disabled={!zoomed} onClick={() => look.zoomStep(-1)} />
-        <BarButton where={where} className="lv" label={zoomed ? `Zoomed to ${zoomLabel(s.framing.zoom)}. Show the whole picture` : 'The whole picture'} keys="0" disabled={!zoomed} onClick={() => look.whole()}>
+        <BarButton where={where} icon="zoomOut" label="Zoom out" keys="zoomOut" disabled={!zoomed} onClick={() => look.zoomStep(-1)} />
+        <BarButton where={where} className="lv" label={zoomed ? `Zoomed to ${zoomLabel(s.framing.zoom)}. Show the whole picture` : 'The whole picture'} keys="whole" disabled={!zoomed} onClick={() => look.whole()}>
           {zoomLabel(s.framing.zoom)}
         </BarButton>
-        <BarButton where={where} icon="zoomIn" label="Zoom in" keys="+" disabled={s.framing.zoom >= ZOOM_MAX - 0.001} onClick={() => look.zoomStep(1)} />
+        <BarButton where={where} icon="zoomIn" label="Zoom in" keys="zoomIn" disabled={s.framing.zoom >= ZOOM_MAX - 0.001} onClick={() => look.zoomStep(1)} />
         {popOut && (
           <>
             <span className="sep" aria-hidden="true" />
@@ -288,7 +344,7 @@ function LookedMenu({ look, ...menu }: ShareMenuProps & { look: ShareLook }) {
       zoomed: isZoomed(s.framing), max: s.framing.zoom >= ZOOM_MAX - 0.001,
       zoomIn: () => look.zoomStep(1), zoomOut: () => look.zoomStep(-1), whole: () => look.whole(),
       held: s.held !== null, canEarlier: s.canEarlier,
-      freeze: () => { void look.freeze(); }, live: () => look.live(), earlier: () => { void look.earlier(); },
+      freeze: () => { void look.freeze(); }, live: () => look.live(), earlier: () => { void look.earlier(); }, later: () => look.later(),
       note: historyNote(s.off)
     }} />
   );

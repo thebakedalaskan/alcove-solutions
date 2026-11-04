@@ -6,6 +6,7 @@ import type { Person, SelfView } from '@alcove/api';
 import { Avatar, Icon, Kbd, Popover, Scope, cn, type IconName } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { callName } from '~/lib/people';
+import { LOOK_KEYS } from './shareLook';
 import { VolumeControl } from './VolumeControl';
 
 /** What a person's menu offers. A choice left out isn't offered on this tile. */
@@ -94,6 +95,7 @@ export interface ShareLookMenu {
   freeze: () => void;
   live: () => void;
   earlier: () => void;
+  later: () => void;
   /** One short line on earlier pictures: what's kept and where, or why nothing is. */
   note: string;
 }
@@ -118,15 +120,17 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
       {!own?.open && <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={pick(onToggle)} />}
       {look && (
         <>
-          <Item icon="zoomIn" label="Zoom in" kb="+" keys="+" disabled={look.max} onPick={pick(look.zoomIn)} />
-          {look.zoomed && <Item icon="zoomOut" label="Zoom out" kb="−" keys="-" onPick={pick(look.zoomOut)} />}
-          {look.zoomed && <Item icon="whole" label="See the whole picture" kb="0" keys="0" onPick={pick(look.whole)} />}
-          <Item icon={look.held ? 'play' : 'pause'} label={look.held ? 'Back to live' : 'Freeze the picture'} kb="F" keys="F" onPick={pick(look.held ? look.live : look.freeze)} />
-          <Item icon="stepBack" label="Earlier picture" kb="," keys="," disabled={!look.canEarlier} onPick={pick(look.earlier)} />
+          <Item icon="zoomIn" label="Zoom in" kb={LOOK_KEYS.zoomIn.shown} keys={LOOK_KEYS.zoomIn.aria} disabled={look.max} onPick={pick(look.zoomIn)} />
+          {look.zoomed && <Item icon="zoomOut" label="Zoom out" kb={LOOK_KEYS.zoomOut.shown} keys={LOOK_KEYS.zoomOut.aria} onPick={pick(look.zoomOut)} />}
+          {look.zoomed && <Item icon="whole" label="See the whole picture" kb={LOOK_KEYS.whole.shown} keys={LOOK_KEYS.whole.aria} onPick={pick(look.whole)} />}
+          <Item icon={look.held ? 'play' : 'pause'} label={look.held ? 'Back to live' : 'Freeze the picture'} kb={LOOK_KEYS.freeze.shown} keys={LOOK_KEYS.freeze.aria} onPick={pick(look.held ? look.live : look.freeze)} />
+          <Item icon="stepBack" label="Earlier picture" kb={LOOK_KEYS.earlier.shown} keys={LOOK_KEYS.earlier.aria} disabled={!look.canEarlier} onPick={pick(look.earlier)} />
+          {look.held && <Item icon="stepForward" label="Later picture" kb={LOOK_KEYS.later.shown} keys={LOOK_KEYS.later.aria} onPick={pick(look.later)} />}
         </>
       )}
       {own && <Item icon={own.open ? 'popIn' : 'pip'} label={own.open ? 'Bring it back here' : 'Open in its own window'} disabled={!own.toggle} onPick={pick(() => own.toggle?.())} />}
       {sound && <Item icon={sound.muted ? 'speaker' : 'speakerOff'} label={sound.muted ? 'Play its sound' : 'Mute its sound for me'} onPick={pick(sound.toggle)} />}
+      {look?.zoomed && <p className="hint">The arrow keys move around the picture while it’s zoomed in.</p>}
       {look && <p className="hint">{look.note}</p>}
       {own?.why && <p className="hint">{own.why}</p>}
     </Popover>
