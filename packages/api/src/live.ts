@@ -157,7 +157,12 @@ export const CallParticipantSchema = z.object({
   seat: z.string(),
   person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
   /** A raised hand, which everyone sees. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
-  hand: z.boolean()
+  hand: z.boolean(),
+  /**
+   * Whether others may point at and mark what they share: their own choice, kept across their reconnections, on until
+   * they turn it off. They can always point at their own share.
+   */
+  othersPoint: z.boolean()
 });
 export type CallParticipant = z.infer<typeof CallParticipantSchema>;
 
@@ -222,6 +227,11 @@ export const CallStateSchema = z.object({
   phase: z.enum(['in-call', 'ended']),
   participants: z.array(CallParticipantSchema),
   locked: z.boolean(),
+  /**
+   * Whether people may point at and mark shared screens (docs: Calls and recordings › Pointing at shared screens): the
+   * organizer's switch, on until they turn it off. Pointers and marks go from browser to browser, encrypted end to end.
+   */
+  pointing: z.boolean(),
   /** The participant the organizer put on everyone's main stage, or null. */
   spotlight: IDSchema.nullable(),
   breakouts: BreakoutsSchema,
@@ -380,6 +390,17 @@ export interface CallSession extends LiveStore<CallState> {
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
   /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
   sendChat(text: string): Promise<void>;
+  /**
+   * Seals data this browser sends straight to the others in the call through LiveKit (pointers and marks on shared
+   * screens): AES-GCM under a key derived from its own media key for the epoch it sends in, bound to `topic` and to who
+   * sends it. Only someone holding that key (the people in the call's group) can open it. Null while there's no key.
+   */
+  sealData(topic: string, payload: Uint8Array): Promise<Uint8Array<ArrayBuffer> | null>;
+  /**
+   * Opens data `from` someone in the call, with their media key for the epoch it was sealed in (one of the last few). Null
+   * when it doesn't open: not sealed by them, for another topic, from too long ago, or changed on the way.
+   */
+  openData(topic: string, from: string, sealed: Uint8Array): Promise<Uint8Array | null>;
   /** Organizer only: lets someone who asked into the call (their browser is added to the group). */
   admit(identity: string): Promise<void>;
   /** Organizer only: turns someone away. */
@@ -413,6 +434,10 @@ export interface CallSession extends LiveStore<CallState> {
   shareEnded(share: string): Promise<void>;
   /** Raises or lowers your hand; everyone in the call sees it. */
   setHand(up: boolean): void;
+  /** Whether others may point at and mark what you share; everyone sees it. Resolves once the server has it. */
+  letOthersPoint(on: boolean): Promise<void>;
+  /** Organizer only: whether anyone may point at and mark shared screens in this call. Resolves once the server has it. */
+  setPointing(on: boolean): Promise<void>;
   /** Organizer only: puts one participant on everyone's main stage, or nobody (null). */
   setSpotlight(participantId: string | null): void;
   /** Organizer only: splits the invited people into rooms for a while. */

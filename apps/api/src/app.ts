@@ -116,6 +116,8 @@ export function createApp(d: Deps) {
   const rejoinLimiter = rateLimit(20, 60_000);
   /** Asking for notes (and taking it back), per person in a call. */
   const askNotesLimiter = rateLimit(10, 60_000);
+  /** Saying whether others may point at what you share, per person in a call: each change makes every browser fetch the call again. */
+  const othersPointLimiter = rateLimit(20, 60_000);
   /** Request bodies are read whole, so each route takes no more than it needs. */
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
@@ -299,11 +301,13 @@ export function createApp(d: Deps) {
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/actions', async (c) => {
     const a = await body(c, CallActionSchema);
-    // A raised hand and an ask for notes are anyone's in the call; every other action is the organizer's.
-    if (a.type === 'hand' || a.type === 'request-notes') calls.requireIn(c.get('viewer'), a.type);
+    // A raised hand, an ask for notes and whether others may point at your share are anyone's in the call; every other
+    // action is the organizer's.
+    if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point') calls.requireIn(c.get('viewer'), a.type);
     else organizerOnly(c);
     // Each ask reaches the organizer, so nobody can keep asking.
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
+    if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
   });
   /*

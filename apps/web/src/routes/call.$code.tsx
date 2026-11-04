@@ -77,7 +77,7 @@ function Call() {
 function asShown(state: CallState, members: string[], self: string): CallState {
   const unknown = members.filter((id) => !state.participants.some((p) => p.id === id));
   if (!unknown.length) return state;
-  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: id, person: { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false }))] };
+  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: id, person: { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false, othersPoint: true }))] };
 }
 
 /** Whether you're talking now, from the real microphone level. */
