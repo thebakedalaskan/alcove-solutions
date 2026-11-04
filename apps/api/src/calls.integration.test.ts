@@ -6,7 +6,7 @@
  */
 import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import type { ClientEvent } from '@alcove/api-http';
-import { DisconnectReason } from '@livekit/rtc-node';
+import { DisconnectReason, TrackKind } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from './testing/fake-near';
@@ -1059,5 +1059,31 @@ describe('joining by link', () => {
     const guest = guestBrowser();
     expect(code(await guest.calls.card('zzz-zzzz-zzz').catch((e: unknown) => e))).toBe('not-found');
     expect(code(await guest.calls.join('zzz-zzzz-zzz', { mic: true, cam: false, name: 'Sam' }).catch((e: unknown) => e))).toBe('not-found');
+  });
+});
+
+describe('devices', () => {
+  it('lets someone whose browser allows no microphone or camera join with both off, hear everyone, and send nothing', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    await hostRoom.publishTone();
+    // Pre-join found nothing it may use (blocked, or nothing plugged in): the browser joins with both off and asks.
+    const guest = await guestBrowser().calls.join(c, { mic: false, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+    await waitFor(() => keyOf(host) === keyOf(guest), 'the same keys');
+    const guestRoom = await joinRoom(guest, host);
+
+    // LiveKit forwards the organizer's encrypted audio to them, and they hold the organizer's key to read it.
+    const audioFrom = (p: TestParticipant, identity: string) => [...(p.room.remoteParticipants.get(identity)?.trackPublications.values() ?? [])].filter((t) => t.kind === TrackKind.KIND_AUDIO && t.track !== undefined);
+    await guestRoom.waitFor(() => audioFrom(guestRoom, host.ticket.identity).length === 1, 'the organizer’s audio reaching them');
+    expect(senderKey(guest, host.ticket.identity)).toBe(senderKey(host, host.ticket.identity));
+    // Everyone sees them in the call, and they send nothing LiveKit could forward.
+    const seen = await settle(host, (s) => s.participants.some((p) => p.id === guest.ticket.identity));
+    expect(seen.participants.find((p) => p.id === guest.ticket.identity)?.person.name).toBe('Sam');
+    await hostRoom.waitFor(() => hostRoom.remoteIdentities().includes(guest.ticket.identity), 'them in the room');
+    expect([...(hostRoom.room.remoteParticipants.get(guest.ticket.identity)?.trackPublications.values() ?? [])]).toEqual([]);
+    await host.leave();
   });
 });
