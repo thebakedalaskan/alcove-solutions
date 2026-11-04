@@ -116,9 +116,10 @@ The call itself stays in the API: who's let in, notes and the transcript.
   reload) and, for the organizer, on any device, which viewers' own layouts key them by
   ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device gets a new seat.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
-  room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera into the
-  same publication, plays everyone else's audio on the chosen speaker at each person's volume for this listener,
-  and refetches the call on nudges, arrivals and departures. One screen is shared at a time.
+  room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera (or a
+  change of what's shared) into the same publication, plays everyone else's audio on the chosen speaker at each
+  person's volume for this listener, and refetches the call on nudges, arrivals and departures. Several people can
+  share a screen at once ([The call screen › Shares](#the-call-screen)).
 
 ## End-to-end encryption
 
@@ -297,8 +298,8 @@ device pickers.
   Other people's cameras and screens are attached with `CallRoom.attach` and aren't mirrored. The join page
   opens the call once the browser is in the group and the call names it.
 - **The room.** One connection per session, shared across remounts and left when no screen uses it. It
-  publishes `LocalMedia`'s mic, camera and screen (with a tab's sound), and plays only encrypted media from
-  members of the browser's MLS group. LiveKit's own logs go to the app's logger at debug; a decryption error
+  publishes `LocalMedia`'s mic, camera and screen (with its sound), and plays only encrypted media from
+  members of the browser's MLS group; screens are under the same per-sender encryption as everything else. LiveKit's own logs go to the app's logger at debug; a decryption error
   is logged at debug when a key is briefly missing around a key change, and as a warning otherwise.
 - **Asking to join.** The organizer gets a toast with Let in, a count on the People button, and an Asking to
   join section in People to let people in or turn them away.
@@ -337,16 +338,42 @@ device pickers.
   people first came in, by seat). Speaker view hands the main stage to someone only after a moment of talking and
   leaves it with them while they talk, and in the strip whoever steps down takes the place of whoever steps up.
   Auto shows one person big only once they've had most of the talk time over the last minute or so (yours
-  counted), and only while you haven't arranged anything. A share takes the stage in Auto and Speaker unless you
-  chose which shares to see big, in which case a new one comes in as a tile; your pins stay first beside it, and
-  when it stops everything is where it was. Cameras turning off move nothing.
+  counted), and only while you haven't arranged anything. Shares take the stage in Auto and Speaker until you
+  choose how to see any of them; from then on a new one comes in as a tile. Your pins stay first beside them, and
+  when they stop everything is where it was. Cameras turning off move nothing.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu,
-  P pins or unpins, Shift with an arrow moves a tile earlier or later (your corner picture to another corner), and
-  + and − make it bigger or smaller; Escape unpins everyone. The line beside a shared screen is a separator moved
-  with the arrow keys, Home and End. Each tile's menu shows its keys, and on touch screens its ⋯ is always there.
-- **Shares** reach the stage as a list (one at a time for now), each with the viewer's own choice of big or tile and
-  two side by side with a line between them, so several at once (#9) needs no new layout.
-- **Screen sharing** is one screen at a time: while someone else shares, the share button says who.
+  P pins or unpins (on a share, shows it big or as a tile), Shift with an arrow moves a tile earlier or later (your
+  corner picture to another corner), and + and − make it bigger or smaller; Escape unpins everyone. The line beside a
+  shared screen, and the one between two, is a separator moved with the arrow keys, Home and End. Each tile's menu
+  shows its keys, and on touch screens its ⋯ is always there.
+- **Shares.** Several people can share at once, a screen each, and nobody's share replaces anyone else's. A share
+  starts only while fewer than four (`MAX_SHARES`, `share.ts`) are going in your part of the call, yours counted:
+  two sit side by side and the rest wait as tiles, and past four the stage would give screens more room than people
+  while every browser decrypts and decodes one more stream for each. The cap is the browser's, not LiveKit's: two
+  people starting at the same moment can go one over, and the stage takes any number. While four share, the share
+  button says so.
+- **Seeing shares.** The stage keeps shares in the order they started here. Each names whoever shares it, in the arch
+  with their name (never by colour alone), and marks a share that carries sound. Until you choose, the first two of
+  everyone else's are big, side by side or one above the other, whichever shows both pictures bigger, with a line
+  between them that you drag or move with the arrow keys (Home, End, Enter for half and half); one on a narrow
+  stage, where the rest sit under it as tiles to switch to. A click on a share's tile, or P on it, shows it big in
+  place of the one that's been big longest; its ⋯ shows it as a tile again (nothing takes its place). Your own share
+  starts as a tile on your stage: you see what you share on your screen already, and a whole screen shown big would
+  show itself. Choices about a share go when it stops: one seen on this connection that's gone.
+- **A share starting or stopping.** A new share glows for a moment where the layout puts it and never moves what you
+  look at. When it comes in as a tile for you, a toast says who started sharing, with Show it. When one you see big
+  stops, the toast says that too. Neither is said in the first seconds after the room connects or reconnects, when
+  shares come and go with the connection.
+- **Changing what you share** swaps the track inside the same LiveKit publication, so everyone sees it change in
+  place, with their choices and its muting kept, rather than one share stopping and another starting.
+- **A share's sound.** Anyone can mute the sound of someone else's share for themselves from its ⋯ (`CallRoom.muteShare`:
+  this browser stops playing that track); it's said on the share, lasts while that share goes on, and changes nothing
+  for anyone else.
+- **Sharing honestly.** The bar says you're sharing only once LiveKit has your screen (until then it says it's
+  starting), and adds "with sound" while the capture's sound is live. A screen that can't be published is stopped and
+  you're told, with Try again. When the picture ends (the browser's own Stop, or the shared tab or window closing),
+  the whole capture stops, sound included, and LiveKit unpublishes it, so it goes for everyone at once; a presenter
+  who leaves or drops takes their share with them when LiveKit says they've gone.
 - **Captions** show the newest live transcript line, under whoever said it, translated for each viewer who
   picks a language. They're hidden while rooms are open, and say so instead of showing an old line while notes
   are paused or off, or while the organizer's browser can't listen.
@@ -360,7 +387,10 @@ device pickers.
   muted, or a room move took them out of earshot) stops being listened to at once and sends what it had heard.
   A line keeps the breakout room its speaker was in, from where they were sent (the organizer: the room they
   were visiting), with rooms that have run out counted as closed. Without a microphone of the organizer's own,
-  everyone else is still heard. Pausing holds the recorder and every voice (`hold()`) until the server answers,
+  everyone else is still heard. Nothing shared, picture or sound, is recorded or transcribed (`heard()` is
+  microphones only, and the capture state's `screen` part, "Shared screens", is always off): seeing a share takes only
+  being in the call (its group, and your room while rooms are open), and what the notes capture is decided apart from
+  it. Pausing holds the recorder and every voice (`hold()`) until the server answers,
   then drops what they held (`discard()`, `stop()`) or carries on (`release()`) ([What's captured](#whats-captured)).
   The browser also says what it can't capture, whenever that changes: no microphone, a recorder that failed
   (`NotesRecorder`'s `onBroken`), or no audio worklet (`canListen()`, and `CallEars`' `onDeaf` when the worklet
@@ -467,7 +497,19 @@ resume are actions; **Stop** finishes the note like leaving a call (stopping twi
 - The microphone test (`apps/web/src/features/call/devices.ts`) records three seconds in memory and plays
   them back through the chosen speaker. Nothing is uploaded or kept. In the call, **Play test sound** plays a
   short chime through the chosen speaker.
-- `getDisplayMedia` for screen sharing; ending it from the browser's own control updates the call.
+- `getDisplayMedia` for screen sharing (`shareScreen`), opened on the kind picked in the share picker (tab, window or
+  screen), from the click itself (Safari and Firefox need that), with the call's own tab left out of the browser's
+  picker. It captures nothing but what's picked: sound only when asked for (a tab's, or the computer's on a whole
+  screen), and with `restrictOwnAudio`, so where the browser knows that constraint the computer's sound never carries
+  the call's own (everyone's voices). The picker offers sound only where the browser can share it: Chrome and Edge
+  share a tab's sound, Firefox and Safari share none. Ending it from the browser's own control updates the call.
+- Why a share didn't start is read from the browser's refusal (`share.ts`): closing the picker says nothing; Chrome's
+  "Permission denied by system" is the computer refusing (macOS without Screen & System Audio Recording permission:
+  the picker comes back saying where to allow it, and offers a tab, which needs no permission); a refusal faster than
+  anyone could answer a picker is the browser or a policy blocking it; the rest are nothing to share, the capture
+  held by another app, or a failure to try again. Each comes back in the picker with what to do. A browser without
+  `getDisplayMedia` (phones and tablets) is told it can't share and can still see shares. Sound asked for that didn't
+  come (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
   in its menu), the speaking ring and the recorder waveform.
 - Sound the browser won't play until the page is clicked (Safari, when nothing is being captured) is said in the
