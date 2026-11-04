@@ -258,6 +258,11 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 - A written note shows the summary, decisions, open questions, follow-ups, chapters and transcript, and
   takes questions about the call: a suggested question or your own. Answers cite the moments in the recording
   they come from.
+- The transcript dots what it isn't sure of (words that were hard to hear, a name heard on more than one
+  microphone) and says what the dots mean above it. The organizer can correct any line in place, its words or
+  who said it, or say it was heard right; anyone else who has the notes can correct the words of their own lines.
+  Each line says who corrected it and when. Once lines were corrected, the organizer is offered **Write the
+  notes again**, which keeps what people already confirmed or took on.
 - What the notes heard is a proposal until people say so. Each decision shows **Proposed by the notes** until
   someone who has the notes taps **Confirm** (or **It wasn’t decided**); it says who did, and can be reworded,
   undone or reopened. A confirmed decision that a later one replaced can be marked **It no longer holds**. An
