@@ -595,6 +595,7 @@
 .tx-l p { margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--ink); text-wrap: pretty; }
 .tx-start p { margin-top: 0; }
 .tx-in { animation: ac-rise var(--duration-3) var(--ease-out) both; }
+.tx .tx-key { margin: 6px 0 2px; }
 .tx-latest { position: absolute; left: 50%; bottom: 12px; translate: -50% 0; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px 0 10px; border-radius: var(--radius-pill); background: var(--ink); color: var(--ground); font: 600 12.5px/1 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-rise var(--duration-2) var(--ease-out) both; }
 
 /* ---- in the room ---- */
@@ -610,6 +611,8 @@
 .rm-line { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 12px; align-items: baseline; }
 .rm-line .ac-time-chip { justify-self: start; }
 .rm-line p { font-size: 16px; line-height: 1.55; color: var(--stage-ink); text-wrap: pretty; }
+.rm-lines .ac-unsure { text-decoration-color: var(--stage-ink-2); }
+.rm-lines .tx-key { color: var(--stage-ink-2); text-align: center; }
 .rm-wait { margin: auto; max-width: 34ch; font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
 .rm-problem { flex: none; display: flex; align-items: flex-start; justify-content: center; gap: 8px; padding-top: 10px; font-size: 13px; line-height: 1.45; color: var(--stage-ink-2); }
 .rm-problem .ac-i { margin-top: 2px; }

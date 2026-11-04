@@ -3,12 +3,13 @@ import {
   errorMessage, firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
   type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, TranscriptLine as SpokenLine, Words, buttonClass, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Kbd, Popover, SealedBadge, TimeChip, UnsureKey, Words, buttonClass, cn, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { hm, position, shortDay } from '~/lib/time';
+import { LineRow, type Correcting } from './lines';
 import { PROMISE_MANY } from './NoteCard';
 import { ROLE } from './meta';
 
@@ -246,15 +247,16 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange, shown 
 }
 
 /** The transcript of a written note, folded away under its summary; open at `focus` when a link brought someone to a moment in it. */
-export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens }: {
-  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; screens?: ScreensShown | undefined;
+export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct }: {
+  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined;
 }) {
   const [open, setOpen] = useState(focus !== undefined);
   useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
   return (
     <>
       <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>Transcript · {Math.max(1, Math.round(seconds / 60))} min<Icon name="down" size={16} /></button>
-      {open && <TranscriptLines lines={lines} gaps={gaps} me={me} onSeek={onSeek} focus={focus} screens={screens} className="mt-3" />}
+      {open && <TranscriptLines lines={lines} gaps={gaps} me={me} onSeek={onSeek} focus={focus} screens={screens} correct={correct} className="mt-3" />}
     </>
   );
 }
@@ -272,13 +274,15 @@ const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT
 export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) => ReactNode }
 
 /**
- * What was said, line by line, with the stretches nothing was captured in marked where they fall, and what was on a
- * shared screen just before the lines said while it was up. A speaker's lines in a row share one name; a room
- * recording names nobody. With `focus`, the line said at that moment is marked, and is where a moment's link lands.
+ * What was said, line by line, with the stretches nothing was captured in marked where they fall, what was on a
+ * shared screen just before the lines said while it was up, and what the transcript isn't sure of dotted and explained
+ * at the top. A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line said at
+ * that moment is marked, and is where a moment's link lands. With `correct`, whoever may corrects lines in place
+ * (lines.tsx).
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, className }: {
+export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, correct, className }: {
   lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; className?: string | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
   const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} />;
@@ -286,22 +290,15 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, 
   const shown = (m: ScreenMoment) => <Fragment key={m.id}>{screens?.row(m)}</Fragment>;
   return (
     <div className={cn('tr', className)}>
+      <UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="tr-key" />
       {lines.map((l, i) => {
         const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
         const mark = i === here ? { id: MOMENT, className: 'here' } : {};
         const before = gapsBefore(gaps, lines, i);
         const up = gapsBefore(moments, lines, i);
-        if (!l.speaker) return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<SpokenLine {...mark} time={time}>{l.text}</SpokenLine></Fragment>;
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
-        const more = voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length && !up.length;
-        return (
-          <Fragment key={l.id}>
-            {before.map(gap)}
-            {up.map(shown)}
-            <SpokenLine id={mark.id} className={cn(more && 'more', mark.className)} person={more ? undefined : l.speaker.person ?? { name: l.speaker.name }}
-              name={more ? undefined : spokenName(l.speaker, me)} time={time}>{l.text}</SpokenLine>
-          </Fragment>
-        );
+        const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length && !up.length;
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} mark={mark} time={time} me={me} correct={correct} /></Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
       {gapsAfter(moments, lines).map(shown)}
