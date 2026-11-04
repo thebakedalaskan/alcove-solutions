@@ -43,7 +43,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>` |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -265,8 +265,8 @@ third-party loads.
   encryption](calls-and-recordings.md#end-to-end-encryption)).
 
 - **Your view of a call** never leaves the browser. Layout preferences stay in `localStorage` for the account and
-  the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people only by their
-  random per-call seat: no names, addresses or call content ([Calls and recordings › The call
+  the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
+  random per-call seat and shares by their sharer's random connection ID: no names, addresses or call content ([Calls and recordings › The call
   screen](calls-and-recordings.md#the-call-screen)).
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.

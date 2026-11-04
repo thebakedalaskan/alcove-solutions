@@ -107,8 +107,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
   everyone has left, LiveKit finishes the room after 20 seconds, which ends the call too, and upkeep ends
   calls whose room is gone.
 - **Who's in** comes from admission, sealed in the call's state: never from LiveKit's API on reads, so a
-  call's reads cost LiveKit nothing. Each participant also has a `seat`, the same across their connections to the
-  call, which viewers' own layouts key them by ([The call screen](#the-call-screen)).
+  call's reads cost LiveKit nothing. Each participant also has a `seat`, the same across their reconnections (a
+  reload) and, for the organizer, on any device, which viewers' own layouts key them by
+  ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device gets a new seat.
 - **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, encrypted, plays everyone else's audio on the chosen
   speaker, and refetches the call on nudges, arrivals and departures. One screen is shared at a time.
@@ -212,8 +213,10 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
 
 `apps/web/src/routes/call.$code.tsx` is the call for everyone in it; no account is needed, since the call's
 pass is what lets a guest in. It's built from `apps/web/src/features/call/`: the stage (`Stage.tsx`, laid out
-by `view.ts`), the top bar, the side panel (`Panel.tsx`: Notes, Transcript, Ask, Chat, People), breakout
-rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and the device pickers.
+by `stageLayout.ts` from your view in `view.ts`, with who's talking settled in `speakers.ts`), each tile's menu
+(`TileMenu.tsx`), the top bar and its view menu (`ViewMenu.tsx`), the side panel (`Panel.tsx`: Notes, Transcript,
+Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and the
+device pickers.
 
 - **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript), its
   `crypto` store (MLS status and members, media keys, chat) and the LiveKit room (`livekit.ts`: mic, camera,
@@ -250,11 +253,15 @@ rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and
   `sessionStorage` for the tab, `alcove.callLayout.<callId>`: a reload keeps it, and leaving the call deletes it.
   It names people by their `seat` (`CallParticipant.seat`), not their participant ID: participant IDs are LiveKit
   identities, new for every connection (a reload is a new connection), while a seat is the same across someone's
-  connections in the call (a reload's pass carries their random `person`; the organizer has one seat on any
-  device). The API derives it from the call and that `person` when the call is read, stores nothing new, and it
-  differs in every call. Neither store holds a name, an address, or anything said or shared.
+  reconnections (a reload's pass carries their random `person`; the organizer has one seat on any device; anyone
+  else joining from a second browser is a new person with a new seat). The API makes it when the call is read, a MAC
+  of that `person` under a key for the call from the organizer's root, so nobody can work one out, it stores nothing
+  new, and it differs in every call. Shares are named by their sharer's participant ID, since a share lives and dies
+  with its connection. Neither store holds a name, an address, or anything said or shared.
 - **Nothing you chose moves by itself.** Someone you pinned who leaves keeps their pin and has it again when they
-  come back to the same seat; you're told both times. Everyone keeps their place across reconnections (the order
+  come back to the same seat; you're told both times. With all six pins taken, pinning someone else gives up the
+  oldest pin of someone who isn't here, and someone the organizer removes loses the organizer's pin, since they
+  can't come back. Everyone keeps their place across reconnections (the order
   people first came in, by seat). Speaker view hands the main stage to someone only after a moment of talking and
   leaves it with them while they talk, and in the strip whoever steps down takes the place of whoever steps up.
   Auto shows one person big only once they've had most of the talk time over the last minute or so (yours
