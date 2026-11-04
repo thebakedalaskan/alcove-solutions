@@ -155,6 +155,10 @@
 .ac-line .ac-time { margin-left: 6px; color: var(--ink-3); font-size: 12px; }
 .ac-line .ac-time-chip { margin-left: 6px; vertical-align: 1px; }
 .ac-line mark { color: inherit; border-radius: 3px; background: linear-gradient(var(--sun-soft), var(--sun-soft)) no-repeat 0 100% / 100% 60%; }
+/* What a transcript can't vouch for: a dotted underline, never colour alone, and the reason on hover or focus. */
+.ac-unsure { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--ink-3); text-decoration-thickness: 1.5px; text-underline-offset: 3px; text-decoration-skip-ink: none; border-radius: 3px; cursor: help; }
+.ac-unsure:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-unsure-key { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); text-wrap: pretty; }
 
 /* ---- Card, CalendarRow, SidebarNav ---- */
 .ac-card { border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); padding: 20px 24px; }
