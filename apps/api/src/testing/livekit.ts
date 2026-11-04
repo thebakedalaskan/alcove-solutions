@@ -37,6 +37,13 @@ export interface TestParticipant {
   waitFor(pred: () => boolean, what: string, ms?: number): Promise<void>;
   /** Resolves on the next "the call changed" nudge the server sends to the room. */
   nextNudge(): Promise<void>;
+  /**
+   * Sends data on `topic` as a browser does: from this participant, with its key when it has one (LiveKit encrypts data
+   * packets with the participant's media key then), to everyone in the room.
+   */
+  sendData(payload: Uint8Array, topic: string, reliable?: boolean): Promise<void>;
+  /** Data that arrived on `topic` and could be read here, oldest first: who sent it (null for the server) and its bytes. */
+  received(topic: string): { from: string | null; payload: Uint8Array }[];
   /** Resolves with the reason once LiveKit disconnects this participant. */
   disconnectReason(): Promise<DisconnectReason>;
   disconnect(): Promise<void>;
@@ -86,8 +93,11 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
   let pumps: ReturnType<typeof setInterval>[] = [];
   let reason: DisconnectReason | null = null;
   let nudges = 0;
-  room.on(RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
-    if (topic !== CALL_TOPIC) return;
+  const data: { topic: string; from: string | null; payload: Uint8Array }[] = [];
+  room.on(RoomEvent.DataReceived, (payload, from, _kind, topic) => {
+    data.push({ topic: topic ?? '', from: from?.identity ?? null, payload });
+    // Only the server's nudge counts, as in a browser: it comes from no participant.
+    if (topic !== CALL_TOPIC || from) return;
     try { if (CallNudgeSchema.safeParse(JSON.parse(new TextDecoder().decode(payload))).success) nudges++; } catch { /* not a nudge */ }
   });
   room.on(RoomEvent.Disconnected, (r) => { reason = r; });
@@ -198,6 +208,12 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
     },
     waitFor,
     async nextNudge() { const seen = nudges; await waitFor(() => nudges > seen, 'a nudge from the server'); },
+    async sendData(payload, topic, reliable = true) {
+      const local = room.localParticipant;
+      if (!local) throw new Error('not connected');
+      await local.publishData(payload, { reliable, topic });
+    },
+    received: (topic) => data.filter((d) => d.topic === topic).map(({ from, payload }) => ({ from, payload })),
     async disconnectReason() {
       await waitFor(() => reason !== null, 'disconnect');
       return reason ?? DisconnectReason.UNKNOWN_REASON;
