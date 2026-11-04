@@ -2,6 +2,7 @@ import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
 import { IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
+import type { CallMoveOut, MoveMedia } from './moves';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -111,8 +112,12 @@ export type CallMlsGroup = z.infer<typeof CallMlsGroupSchema>;
 export const CallMlsSchema = z.object({
   /** A new generation (new MLS groups for every part of the call) starts when the organizer's connection changes. */
   generation: z.number(),
-  /** Where this person stands: let in, still waiting to be, or not in the call (turned away, removed, or gone). */
-  admission: z.enum(['in', 'waiting', 'denied']),
+  /**
+   * Where this person stands: let in, still waiting to be, out for now (taken out while this connection was away, so it
+   * can come back in as it is: `mls/back`), or not in the call (turned away, removed, left, or their place went to
+   * another tab or device).
+   */
+  admission: z.enum(['in', 'waiting', 'out', 'denied']),
   /**
    * The connection that commits for every group in this generation: the organizer's, at leaf 0 of each, the only one whose
    * commits count. Kept in one place so another connection could take over committing.
@@ -180,6 +185,8 @@ export const CallNoticeSchema = z.object({
   kind: z.enum(['notes', 'people', 'info'])
 });
 export type CallNotice = z.infer<typeof CallNoticeSchema>;
+/** Notices a tab has shown for a call, as it keeps them (sessionStorage), so a reload doesn't show them again. */
+export const CallNoticesSeenSchema = z.array(IDSchema.max(64)).max(50);
 
 /** Encrypted audio stored so far for the call's notes. */
 export const RecordingProgressSchema = z.object({
@@ -246,6 +253,12 @@ export const CallStateSchema = z.object({
   }),
   /** People asking to join, for the organizer to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
+  /**
+   * Connections that left but are still in the call's group for a moment, while the organizer's browser takes them
+   * out: whose they were, and that person's connection now (`now`) when they're still in the call, back from a reload
+   * or moved to another device. Shown as who they are, never as a stranger, and never twice.
+   */
+  leaving: z.array(z.object({ id: z.string(), person: PersonSchema, now: z.string().nullable() })),
   /** The call's MLS group generation; browsers already in the call rejoin when it changes. */
   generation: z.number(),
   /**
@@ -496,6 +509,8 @@ export interface CallSession extends LiveStore<CallState> {
   lock(on: boolean): Promise<void>;
   /** Hides a notice on this screen only. */
   dismissNotice(id: string): void;
+  /** Starts moving your place in the call to another device, with your microphone and camera as they are now. */
+  startMove(media: MoveMedia): Promise<CallMoveOut>;
   /** The organizer leaving ends the call for everyone and returns how it ended; anyone else just leaves (null). */
   leave(): Promise<CallEndResult | null>;
   /** Stops keeping up with the call here, without leaving it: the call ended, or this person is out of it. */
