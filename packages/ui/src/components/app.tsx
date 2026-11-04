@@ -131,7 +131,7 @@ export function UnsureKey({ words, speaker, className }: { words: boolean; speak
   return (
     <p className={cn('ac-unsure-key', className)}>
       {words && <><span className="ac-unsure">Dotted</span> words were hard to hear and may not be exact. </>}
-      {speaker && <>A <span className="ac-unsure">dotted</span> name was heard on more than one microphone, so someone else may have said it.</>}
+      {speaker && <>A <span className="ac-unsure">dotted</span> name was heard on more than one microphone.</>}
     </p>
   );
 }

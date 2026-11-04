@@ -220,13 +220,16 @@ function InCall({ session }: { session: CallSession }) {
   const live = state.phase === 'in-call';
   // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
   const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
+  // Once the organizer is ending the call, the last audio and speech have been sent: nothing starts listening again as
+  // people drop out of the room.
+  const capturing = organizer && on && live && !leaving && !ended;
   useEffect(() => {
     const r = recorder.current;
     if (!r) return;
     // In a breakout room it records silence (hush, below): what's said in a room stays out of the notes.
-    if (organizer && on && live) r.start([...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
+    if (capturing) r.start([...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
     else if (!on || !organizer) r.discard();
-  }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
+  }, [capturing, organizer, on, segment, micTrack, room, self, heardKey]);
   // Nothing is heard while this browser is between two parts of the call: it holds neither part's keys.
   const settledHere = crypto.status === 'in';
   // Nobody is heard in a breakout room the organizer paused: what was held is dropped, and the segment carries on.
@@ -235,10 +238,10 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => {
     const e = ears.current;
     if (!e) return;
-    if (organizer && on && live && !roomHeld) e.follow(segment, settledHere ? [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))] : []);
+    if (capturing && !roomHeld) e.follow(segment, settledHere ? [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))] : []);
     else if (!on || !organizer) e.stop();
     else if (roomHeld) e.quiet();
-  }, [organizer, on, live, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
+  }, [capturing, organizer, on, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
   useEffect(() => () => ears.current?.stop(), []);
   /*
    * What this browser can't capture while notes are on, which everyone is told: the recording when the recorder
