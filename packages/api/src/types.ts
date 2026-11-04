@@ -484,6 +484,40 @@ export const RoomNoteSchema = z.object({
 });
 export type RoomNote = z.infer<typeof RoomNoteSchema>;
 
+/**
+ * A moment something points at, as the person reading may read it now: a bookmark, an answer someone kept, or something
+ * added to the shared notes. Never stored like this: what's kept is only a pointer, and it's read again each time.
+ */
+export const SourceMomentSchema = z.object({
+  /** Where it falls: seconds since the call started while the call is on, seconds into the recording in a note. */
+  at: z.number(),
+  /** The transcript line there. */
+  line: z.object({ id: IDSchema, text: z.string(), speaker: SpeakerSchema.optional() }).optional(),
+  /** The breakout room it was said in. Absent for the main room. */
+  room: z.object({ id: IDSchema, name: z.string() }).optional(),
+  /** What was on a shared screen then (a `ScreenMoment`). Only in a note: shared screens are read once the call ends. */
+  screen: z.object({ id: IDSchema, title: z.string() }).optional()
+});
+export type SourceMoment = z.infer<typeof SourceMomentSchema>;
+
+/**
+ * Something someone chose to add to the shared notes from their own, after seeing exactly what goes and who gets it. It's
+ * theirs, under their name: never the notes' own words, and never a decision or a follow-up until someone makes it one.
+ */
+export const NoteAdditionSchema = z.object({
+  id: IDSchema,
+  /** Exactly the words they chose to share. Empty when they shared a moment they bookmarked and said nothing about it. */
+  text: z.string(),
+  /** Who added it, as they were when they did. */
+  by: PersonSchema,
+  at: ISODateSchema,
+  /** The moments it points at, those you may open: checked for each reader, each time they read it. */
+  moments: z.array(SourceMomentSchema),
+  /** You can take it back: you added it, or these are your notes. */
+  removable: z.boolean()
+});
+export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
+
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
@@ -500,6 +534,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   transcript: z.array(TranscriptLineSchema).nullable(),
   /** Each breakout room's own section, in the order the rooms closed. Empty for a call without rooms and for room recordings. */
   rooms: z.array(RoomNoteSchema).default([]),
+  /** What people added from their own notes, oldest first. Everyone with the notes reads them. */
+  additions: z.array(NoteAdditionSchema).default([]),
   /**
    * When the notes were last written from the transcript; null until they have been. Corrections to the transcript
    * after it reach the notes when the organizer has them written again (notes.rewrite).
