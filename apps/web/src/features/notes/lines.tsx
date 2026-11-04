@@ -89,6 +89,9 @@ function LineEditor({ line, me, people, mark, onSave, onDone }: {
   /** Who said it: a person's ID, null for nobody can tell, or undefined while it's unchanged. */
   const [who, setWho] = useState<string | null | undefined>(undefined);
   const [picking, setPicking] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  // Opened with the caret after the words, ready for a small fix; after that the caret is wherever it's put.
+  useEffect(() => { const el = box.current; if (!el) return; el.focus(); el.setSelectionRange(el.value.length, el.value.length); }, []);
   const speaker = who === undefined ? line.speaker : who === null ? undefined : people?.find((p) => p.person?.id === who);
   const save = () => {
     const t = text.trim();
@@ -122,8 +125,8 @@ function LineEditor({ line, me, people, mark, onSave, onDone }: {
             </button>
           </Popover>
         ) : line.speaker && <b>{spokenName(line.speaker, me)}</b>}
-        <textarea className="ln-input" autoFocus value={text} maxLength={1000} rows={Math.min(6, Math.max(2, Math.ceil(text.length / 64)))} aria-label="What was said"
-          onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)} onChange={(e) => setText(e.target.value)}
+        <textarea ref={box} className="ln-input" value={text} maxLength={1000} rows={Math.min(6, Math.max(2, Math.ceil(text.length / 64)))} aria-label="What was said"
+          onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
             if (e.key === 'Escape') { e.preventDefault(); onDone(); }

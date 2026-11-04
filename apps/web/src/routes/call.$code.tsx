@@ -216,19 +216,22 @@ function InCall({ session }: { session: CallSession }) {
   // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
   const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
   const inBreakout = !!state.breakouts.open?.rooms.some((r) => r.members.includes(meId));
+  // Once the organizer is ending the call, the last audio and speech have been sent: nothing starts listening again as
+  // people drop out of the room.
+  const capturing = organizer && on && live && !leaving && !ended;
   useEffect(() => {
     const r = recorder.current;
     if (!r) return;
-    if (organizer && on && live) r.start(inBreakout ? [] : [...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
+    if (capturing) r.start(inBreakout ? [] : [...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
     else if (!on || !organizer) r.discard();
-  }, [organizer, on, live, segment, micTrack, room, self, heardKey, inBreakout]);
+  }, [capturing, organizer, on, segment, micTrack, room, self, heardKey, inBreakout]);
   // Everyone else is heard whether or not the organizer has a microphone of their own.
   useEffect(() => {
     const e = ears.current;
     if (!e) return;
-    if (organizer && on && live) e.follow(segment, [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))]);
+    if (capturing) e.follow(segment, [...(micTrack ? [{ identity: self, track: micTrack, own: true }] : []), ...room.heard().map((h) => ({ ...h, own: false }))]);
     else if (!on || !organizer) e.stop();
-  }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
+  }, [capturing, organizer, on, segment, micTrack, room, self, heardKey]);
   useEffect(() => () => ears.current?.stop(), []);
   /*
    * What this browser can't capture while notes are on, which everyone is told: the recording when the recorder
