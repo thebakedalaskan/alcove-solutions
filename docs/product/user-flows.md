@@ -89,10 +89,14 @@ the organizer, for now. Everyone invited still gets the notes (flow 6).
 ## 4. Join
 
 Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title and time, who
-is invited, and whether the call has notes and who gets them. Under the preview you pick a microphone,
-camera and speaker (where the browser allows choosing one), and **Test microphone** records three seconds
-and plays them back, without uploading or keeping anything. Alcove remembers the choices in this browser and
-says when one isn't plugged in. In the call, the arrow beside the microphone and camera buttons switches
+is invited, and whether the call has notes and who gets them. Under the preview you pick a microphone (its
+level moves as you speak), camera and speaker (where the browser allows choosing one; otherwise it says calls
+play through your system's speaker), and **Test microphone** records three seconds and plays them back,
+without uploading or keeping anything. Alcove remembers the choices in this browser and says when one isn't
+plugged in. When the browser or the computer blocks the microphone or camera, or there's none, the picker
+says so ("Microphone blocked", "No camera") and a note under it says how to allow it in this browser, with
+**Try again**; you can still join, with them off, and turn them on later. Allowing them in the browser's
+settings is noticed by itself. In the call, the arrow beside the microphone and camera buttons switches
 devices without leaving the call or interrupting the notes. **Join now** opens the call; **Copy link**
 copies the join link. A link to a call that isn't on your calendar says so: only the person who set it up can
 join it.
@@ -111,7 +115,10 @@ dock at the bottom.
   request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
-  browser can do it, **Blur my background**. Then **Share** (a tab, a window or a screen; the browser's own
+  browser can do it, **Blur my background**. A microphone or camera that can't work has a caution mark, and
+  pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
+  muted or not as before, and says which; a device that comes back is used again. Nothing turns your
+  microphone or camera on by itself during a call. Then **Share** (a tab, a window or a screen; the browser's own
   picker asks which one), **Raise hand**, **Captions** (with an arrow to pick the caption language), breakout
   rooms (once someone else is in the call), **Notes**, **Chat** (**C**), **More** (Catch up, Audio and video
   settings) and **Leave**.
@@ -120,13 +127,16 @@ dock at the bottom.
   who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for
   everyone** (Everyone; organizer only). On your own tile it also has where you see yourself: **In the grid**,
   **In a corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a small chip in the corner
-  brings you back; everyone else still sees you). A shared screen's **⋯** shows it big or as a tile. A pin or a
-  spotlight shows on the tile with an ×, a spotlight also as a bar with **Stop spotlight**. From the keyboard, Tab
-  to the stage, move between tiles with the arrow keys, and use **Enter** for the menu, **P** to pin, **Shift**
-  with an arrow to move and **+** or **−** to resize; **Escape** unpins everyone. Someone pinned who leaves is
-  pinned again if they come back, and nothing you arranged moves when people talk, join, leave, turn their camera
-  off or share. Alcove remembers how you like calls (the layout, room for shares, where you see yourself) for your
-  account in this browser; how you arranged this call lasts until you leave it.
+  brings you back; everyone else still sees you). On anyone else's it has **Volume for you** (Only you): a slider
+  from muted to 100% and a quick mute, for that person's voice in your speakers only; the same control is in their
+  row in People, and someone you've turned down shows "40% for you" on their tile and in People. Nobody else hears
+  a difference, and nothing they say goes into the notes any differently. A shared screen's **⋯** shows it big or
+  as a tile. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar with **Stop spotlight**.
+  From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use **Enter** for the menu,
+  **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize; **Escape** unpins everyone. Someone
+  pinned who leaves is pinned again if they come back, and nothing you arranged moves when people talk, join,
+  leave, turn their camera off or share. Alcove remembers how you like calls (the layout, room for shares, where
+  you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
 - **Sharing.** A bar says what you're sharing, with **Change** and **Stop sharing**.
 - **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
