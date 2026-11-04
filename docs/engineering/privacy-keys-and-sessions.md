@@ -214,6 +214,9 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   same answer as for a note that doesn't exist.
 - **The live transcript** is only in the organizer's own call or room recording; nobody else sees it until
   the note is finished and given to them.
+- **Breakout rooms' sections** are part of the note: everyone who can read it reads every room's, whichever room
+  they were in, while during the call a room's talk is read only there
+  ([Notes and inference › Breakout rooms](notes-and-inference.md#breakout-rooms)).
 - **Decisions, open questions and follow-ups** are one list for everyone who has the note, and every
   change writes a new revision in the organizer's vault with who made it (their name and address, inside
   the sealed manifest) and when. What the notes model wrote is only a proposal: a decision stays
@@ -337,7 +340,7 @@ third-party loads.
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on; each frame's key index, which travels in the clear (the frame trailer), so whose keys change together: who is in the same part of the call, and who is between two |
 | The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size, for each part of the call (the main room, or a breakout room by its random ID). A room's entries are deleted when it closes, the rest when the call ends |
-| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); who sent each chat message, in which part of the call and when, by size; raised hands, spotlight, breakout rooms and who's in which; when notes were turned on, off, paused and resumed, in the call or in one room, and who asked for notes; when shared screens were turned on and off, who sent frames of which share and when, and when shares ended. What's on a shared screen only in memory, and only for the frames presenters' browsers send for the notes from the main room: each is held to seal it as it arrives, and opened again only to send it sealed to the notes model and to show it to the note's people. It's never kept readable. It vouches for who's invited and decides who goes into which room's group: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
+| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); who sent each chat message, in which part of the call and when, by size; raised hands, spotlight, breakout rooms, who's in which and whose browser is each room's scribe; when notes were turned on, off, paused and resumed, in the call or in one room, and who asked for notes; when shared screens were turned on and off, who sent frames of which share and when, and when shares ended. What's on a shared screen only in memory, and only for the frames presenters' browsers send for the notes from the main room: each is held to seal it as it arrives, and opened again only to send it sealed to the notes model and to show it to the note's people. It's never kept readable. It vouches for who's invited and decides who goes into which room's group: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion
@@ -351,8 +354,9 @@ third-party loads.
   line's history ([Notes and inference › What's kept, and for how long](notes-and-inference.md#whats-kept-and-for-how-long)).
 - **Removing someone else's note** deletes only your own `note_access` row. The organizer and everyone else
   keep it.
-- **Closing a breakout room** deletes its entries in the call's MLS log (so its chat's ciphertext) and what was
-  heard in it (its transcript lines and their translations). Nothing said in a room goes into the note.
+- **Closing a breakout room** deletes its entries in the call's MLS log (so its chat's ciphertext). What was said
+  in it stays sealed until the call ends, then moves into the note as the room's section, and the live rows are
+  deleted with the rest of the call's; deleting the note deletes every room's section with it.
 - **Cancelling a meeting** deletes it with every revision and its calls (including chat), and the owner's
   receipts. With a connected calendar, its Google event is cancelled too, which tells the guests. Its notes
   stay. A live call can't be cancelled.
@@ -466,9 +470,10 @@ Moving, in order:
 4. **End-to-end encrypted call media.** Done ([Calls and recordings › End-to-end
    encryption](calls-and-recordings.md#end-to-end-encryption)): MLS keys made in browsers, frames encrypted
    before they reach an SFU that holds no keys, new keys with every join and leave. While notes are on,
-   the organizer's browser sends what it hears to the notes service, outside the media encryption: everyone's
-   speech as clips to transcribe, and the recording, which mixes their voices (left: an attested notes
-   participant, so no browser sends audio in the clear to the API).
+   the organizer's browser sends what it hears in the main room to the notes service, outside the media
+   encryption: everyone's speech as clips to transcribe, and the recording, which mixes their voices; each
+   breakout room's scribe sends its room's speech as clips (left: an attested notes participant, so no browser
+   sends audio in the clear to the API).
 5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
    the subjects and emails the indexes hide), `Kowner` on suspected compromise, and `Kservice`; use
    `keyVersion`.

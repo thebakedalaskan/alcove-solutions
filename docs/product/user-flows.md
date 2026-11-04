@@ -207,11 +207,12 @@ dock at the bottom.
   move someone to another room or back to the main room from their name), **Join room** and **Back to main
   room**, **Message every room**, and **Bring everyone back now**. Each room has its own encryption keys and
   chat, so what's seen, heard and written in a room reaches only the people in it; the room sees the organizer
-  come and go, and someone moved is told. Captions and catching up in a room cover that room only, and the
-  call's notes have what was said in the main room. Each room shows its own notes sign: inside a room, the organizer
-  can **Pause notes here** (that room alone is told, and its card says **Notes paused**) and carry on later.
-  Everyone comes back when time is up, told when notes are on in the main room, and the notes record which rooms
-  there were and who was in each.
+  come and go, and someone moved is told. Captions and catching up in a room cover that room only. With notes on,
+  what's said in a room is transcribed by one browser there (someone sent to the room, told when it's theirs),
+  never recorded, and goes into the call's notes as the room's own section, for everyone who gets the notes:
+  everyone is told so when the rooms open, and each room's notes sign says whose browser transcribes it. Inside a
+  room, the organizer can **Pause notes here** (that room alone is told, and its card says **Notes paused**) and
+  carry on later. Everyone comes back when time is up, told when notes are on in the main room.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - **Pausing** stops everything at once: nothing is recorded, transcribed or sent to the AI, catch-up and
   captions included, until the organizer resumes. Nothing resumes it by itself. The transcript, a catch-up and
@@ -265,6 +266,13 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   Once lines were corrected, the organizer is offered **Write the notes again**, which keeps what people already
   confirmed or took on. Meanwhile everyone still reads, asks about and confirms the notes as they were, marked
   **Being written again**.
+- A call with breakout rooms has a **Breakout rooms** part under its own notes, one section per room, closed until
+  opened: the room's name, who was in it and for how long, and inside, its own summary, decisions, open
+  questions, follow-ups and chapters, written from what was said in that room alone, and what was said there.
+  A room where nothing was said says so. Everyone who has the notes reads every room's section, and confirms,
+  answers, takes on and ticks off what a room's notes say as they do the call's; a room's lines are corrected like
+  the call's, and writing the notes again writes each room's section again too, keeping what people settled.
+  Questions about the notes cover the rooms. Deleting the notes deletes the rooms' sections with them.
 - What the notes heard is a proposal until people say so. Each decision shows **Proposed by the notes** until
   someone who has the notes taps **Confirm** (or **It wasn’t decided**); it says who did, and can be reworded,
   undone or reopened. A confirmed decision that a later one replaced can be marked **It no longer holds**. An
