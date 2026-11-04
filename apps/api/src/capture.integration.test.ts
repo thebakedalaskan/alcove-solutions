@@ -181,6 +181,105 @@ describe('what a call captures', () => {
     await host.leave();
   });
 
+  it('keeps an ask with whoever asked: gone while they’re away, back when they return, and answered by notes coming on while paused', async () => {
+    const org = await account(unique('organizer'));
+    const kofiEmail = unique('kofi');
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const kofi = await account(kofiEmail);
+    const first = await kofi.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(first);
+    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+    await host.pause();
+    await first.requestNotes(true);
+    const ask = (await settle(host, (x) => x.capture.requests.length === 1)).capture.requests[0];
+    expect(ask?.participantId).toBe(first.ticket.identity);
+
+    // Kofi leaves: his ask goes with him, for everyone.
+    await first.leave();
+    await settle(host, (x) => x.capture.requests.length === 0);
+    await settle(guest, (x) => x.capture.requests.length === 0);
+    // He comes back on another connection: the same ask, still open, under who he is now.
+    const back = await kofi.api.calls.join(c, { mic: true, cam: false, previous: first.ticket.pass });
+    await inGroup(back);
+    expect((await settle(back, (x) => x.participants.some((p) => p.isMe))).capture.asked?.state).toBe('asking');
+    expect((await settle(host, (x) => x.capture.requests.length === 1)).capture.requests).toEqual([{ id: ask?.id, participantId: back.ticket.identity, at: ask?.at }]);
+    await guest.requestNotes(true);
+    await settle(host, (x) => x.capture.requests.length === 2);
+
+    // Turning notes on while they're paused carries on in a new segment, as resuming does, and answers every ask.
+    await host.setNotes(true);
+    const s = host.getSnapshot();
+    expect(s.capture).toMatchObject({ mode: 'on', requests: [], recording: { mode: 'on', by: { kind: 'organizer', name: org.session.user.name } } });
+    expect(s.notes.recording.segment).toBe(1);
+    for (const call of [back, guest]) expect((await settle(call, (x) => x.capture.asked?.state === 'accepted')).capture.mode).toBe('on');
+    expect(code(await host.appendAudio(piece('before', 0, 0)).catch((e: unknown) => e))).toBe('conflict');
+    await host.appendAudio(piece('after', 1, 0));
+    await host.leave();
+  });
+
+  it('shows everyone what the organizer’s browser can’t capture while notes are on, and forgets it with every change', async () => {
+    const orgEmail = unique('organizer');
+    const org = await account(orgEmail);
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+
+    // No microphone: the recording is unavailable, and what everyone else says is still transcribed.
+    await host.setUnavailable(['recording']);
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'unavailable', by: { kind: 'schedule' } }, transcript: { mode: 'on' }, ai: { mode: 'on' } });
+    expect((await settle(guest, (x) => x.capture.recording.mode === 'unavailable')).capture.mode).toBe('on');
+    // Neither: notes are on but nothing can be captured, which everyone sees, and anyone with the link too.
+    await host.setUnavailable(['transcript', 'recording']);
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'unavailable', recording: { mode: 'unavailable' }, transcript: { mode: 'unavailable' }, ai: { mode: 'on' } });
+    expect((await h.browser().api.calls.card(c)).capture).toMatchObject({ mode: 'unavailable', recording: { mode: 'unavailable' }, transcript: { mode: 'unavailable' } });
+    expect((await settle(guest, (x) => x.capture.mode === 'unavailable')).capture.requests).toEqual([]);
+    // Notes are on all the same: there's nothing to ask for, and only the organizer's browser says what it can't do.
+    expect(code(await guest.requestNotes(true).catch((e: unknown) => e))).toBe('conflict');
+    expect(await act(guest, { type: 'unavailable', parts: [] })).toBe(403);
+    await host.setUnavailable([]);
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'on' }, transcript: { mode: 'on' } });
+
+    // A pause forgets it, and what arrives while paused is from before: back on, everything says on until the browser says again.
+    await host.setUnavailable(['transcript']);
+    await host.pause();
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'paused', recording: { mode: 'paused' }, transcript: { mode: 'paused' } });
+    await host.setUnavailable(['recording']);
+    await host.resume();
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'on' }, transcript: { mode: 'on' } });
+    // So does the organizer joining again from another device: the new browser says for itself, and the old one can't.
+    await host.setUnavailable(['recording', 'transcript']);
+    const host2 = await (await account(orgEmail)).api.calls.join(c, { mic: true, cam: false });
+    expect(host2.getSnapshot().capture).toMatchObject({ mode: 'on', recording: { mode: 'on' }, transcript: { mode: 'on' } });
+    expect(code(await host.setUnavailable(['recording']).catch((e: unknown) => e))).toBe('forbidden');
+    await host2.leave();
+  });
+
+  it('keeps the AI part on while notes are off once they’ve been on, since catch-up, questions and the notes still read the transcript', async () => {
+    const org = await account(unique('organizer'));
+    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
+    // Never on: nothing is read either.
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'off', ai: { mode: 'off', since: null, by: null } });
+    expect(code(await host.catchUp().catch((e: unknown) => e))).toBe('conflict');
+    await host.setNotes(true);
+    const on = host.getSnapshot().capture.ai;
+    expect(on).toMatchObject({ mode: 'on', since: expect.any(String), by: { kind: 'organizer', name: org.session.user.name } });
+    await host.transcribe(speech('We agreed to ship on Friday.', 0, 0), host.ticket.identity);
+    await host.setNotes(false);
+    // Recording and the transcript are off; the notes model still reads what was transcribed, so it's on, since it came on.
+    expect(host.getSnapshot().capture).toMatchObject({ mode: 'off', recording: { mode: 'off' }, transcript: { mode: 'off' }, ai: { mode: 'on', since: on.since, by: on.by } });
+    const sent = h.near.calls.length;
+    expect((await host.catchUp()).lines).toBe(1);
+    expect(h.near.calls.length).toBeGreaterThan(sent);
+    // A pause is the one thing that stops it.
+    await host.setNotes(true);
+    await host.pause();
+    expect(host.getSnapshot().capture.ai.mode).toBe('paused');
+    await host.leave();
+  });
+
   it('refuses audio, speech, captions, catch-up and questions while paused, keeps what came before, and resumes in a new segment', async () => {
     const org = await account();
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });

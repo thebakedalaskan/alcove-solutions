@@ -1,7 +1,8 @@
 /*
  * What a call captures, shown the same way wherever it appears: the notes sign, each kind of capture with its
  * state, and the summary someone sees before they join. The state comes from the call (CaptureState); only the
- * organizer changes it. Crimson only ever means notes are on.
+ * organizer changes it, and their browser says what it can't capture. Crimson only ever means notes are on and
+ * capturing.
  */
 import type { CaptureMode, CaptureState, NotesSetting } from '@alcove/api';
 import type { ReactNode } from 'react';
@@ -11,38 +12,54 @@ import { NotesSign, RecDot } from './primitives';
 
 /**
  * The notes sign, in the same place for everyone: on is the crimson sign with its pulsing dot, paused shows the
- * pause mark, and off is quiet, or says "Notes requested" while someone in the call has asked for them (`requested`;
- * a pause says so first). `stage` is for the night call stage.
+ * pause mark, unavailable (notes on, but the organizer's browser can't capture anything) the caution mark, and off is
+ * quiet, or says "Notes requested" while someone in the call has asked for them (`requested`; a pause says so
+ * first). `pausing` is the organizer's own, while their pause is on its way: their browser has already stopped
+ * capturing. `stage` is for the night call stage.
  */
-export function CaptureSign({ mode, requested = false, stage = false, className }: { mode: CaptureMode; requested?: boolean; stage?: boolean; className?: string | undefined }) {
+export function CaptureSign({ mode, requested = false, pausing = false, stage = false, className }: {
+  mode: CaptureMode; requested?: boolean; pausing?: boolean; stage?: boolean; className?: string | undefined;
+}) {
+  if (pausing) return <span className={cn('ac-capture-sign is-paused is-changing', stage && 'is-stage', className)} aria-busy="true"><Icon name="pause" size={13} />Pausing…</span>;
   if (mode === 'on') return <NotesSign stage={stage} className={className}>Notes on</NotesSign>;
   if (mode === 'off' && requested) return <NotesSign requested stage={stage} className={className}>Notes requested</NotesSign>;
+  const [icon, text]: [IconName, string] = mode === 'paused' ? ['pause', 'Notes paused'] : mode === 'unavailable' ? ['alert', 'Notes unavailable'] : ['notesPen', 'Notes off'];
   return (
-    <span className={cn('ac-capture-sign', mode === 'paused' && 'is-paused', stage && 'is-stage', className)}>
-      <Icon name={mode === 'paused' ? 'pause' : 'notesPen'} size={13} />{mode === 'paused' ? 'Notes paused' : 'Notes off'}
+    <span className={cn('ac-capture-sign', mode !== 'off' && `is-${mode}`, stage && 'is-stage', className)}>
+      <Icon name={icon} size={13} />{text}
     </span>
   );
 }
 
 const MODE: Record<CaptureMode, string> = { on: 'On', paused: 'Paused', off: 'Off', unavailable: 'Unavailable' };
-/** On, paused or off, as a small mark beside each kind of capture. */
+/** On, paused, unavailable or off, as a small mark beside each kind of capture. */
 export function CaptureModeMark({ mode, stage = false }: { mode: CaptureMode; stage?: boolean }) {
   return (
     <span className={cn('ac-capture-mode', `is-${mode}`, stage && 'is-stage')}>
-      {mode === 'on' ? <RecDot /> : mode === 'paused' ? <Icon name="pause" size={11} /> : null}{MODE[mode]}
+      {mode === 'on' ? <RecDot /> : mode === 'paused' ? <Icon name="pause" size={11} /> : mode === 'unavailable' ? <Icon name="alert" size={11} /> : null}{MODE[mode]}
     </span>
   );
 }
 
 const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName; label: string; short: string; detail: string }[] = [
-  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: 'The call’s audio, encrypted' },
-  { key: 'transcript', icon: 'transcript', label: 'Transcript', short: 'Transcript', detail: 'What everyone says, as text' },
+  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: 'The organizer’s microphone, encrypted' },
+  { key: 'transcript', icon: 'transcript', label: 'Transcript', short: 'Transcript', detail: 'Everyone the organizer hears, as text' },
   { key: 'ai', icon: 'sealed', label: 'AI notes', short: 'AI notes', detail: 'Written from the transcript' },
   { key: 'screen', icon: 'screen', label: 'Shared screens', short: 'Screens', detail: 'Not read' }
 ];
 /**
- * Each kind of capture, what it is, and whether it's on, paused or off right now. `compact` says it in a row of
- * small marks, for where there's little room (before joining, on a phone).
+ * What a kind of capture does now: what the organizer's browser can't capture says so, and the notes model keeps
+ * reading what was transcribed while notes are off.
+ */
+function detailOf(p: (typeof PARTS)[number], c: CaptureState): string {
+  if (p.key === 'ai' && c.ai.mode === 'on' && c.transcript.mode === 'off') return 'Reads what was transcribed earlier';
+  if (p.key === 'recording' && c.recording.mode === 'unavailable') return 'Can’t record right now';
+  if (p.key === 'transcript' && c.transcript.mode === 'unavailable') return 'Can’t listen right now';
+  return p.detail;
+}
+/**
+ * Each kind of capture, what it is, and whether it's on, paused, unavailable or off right now. `compact` says it in a
+ * row of small marks, for where there's little room (before joining, on a phone).
  */
 export function CaptureParts({ capture, stage = false, compact = false, className }: { capture: CaptureState; stage?: boolean; compact?: boolean; className?: string | undefined }) {
   if (compact) {
@@ -52,7 +69,7 @@ export function CaptureParts({ capture, stage = false, compact = false, classNam
           const mode = capture[p.key].mode;
           return (
             <li key={p.key} className={cn('ac-capture-chip', `is-${mode}`)}>
-              {mode === 'on' ? <RecDot /> : <Icon name={mode === 'paused' ? 'pause' : p.icon} size={12} />}{p.short} {MODE[mode].toLowerCase()}
+              {mode === 'on' ? <RecDot /> : <Icon name={mode === 'paused' ? 'pause' : mode === 'unavailable' ? 'alert' : p.icon} size={12} />}{p.short} {MODE[mode].toLowerCase()}
             </li>
           );
         })}
@@ -64,7 +81,7 @@ export function CaptureParts({ capture, stage = false, compact = false, classNam
       {PARTS.map((p) => (
         <li key={p.key}>
           <Icon name={p.icon} size={16} />
-          <span className="what"><b>{p.label}</b><small>{p.detail}</small></span>
+          <span className="what"><b>{p.label}</b><small>{detailOf(p, capture)}</small></span>
           <CaptureModeMark mode={capture[p.key].mode} stage={stage} />
         </li>
       ))}
@@ -86,10 +103,11 @@ export function CaptureSummary({ notes, capture, className }: {
 }) {
   const mode: CaptureMode = capture ? capture.mode : notes === 'on' ? 'on' : 'off';
   const said: ReactNode = !capture
-    ? notes === 'on' ? 'When the call starts, what everyone says, you included, is recorded and transcribed for the notes.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
-    : mode === 'on' ? 'What everyone says, you included, is recorded and transcribed for the notes.'
-      : mode === 'paused' ? 'The organizer paused notes. Nothing is recorded, transcribed or sent to the AI until they resume.'
-        : 'Nothing is recorded. The organizer can turn notes on during the call, and you can ask them to.';
+    ? notes === 'on' ? 'When the call starts, what everyone says, you included, is transcribed for the notes, and the organizer’s microphone is recorded.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
+    : mode === 'on' ? onLine(capture)
+      : mode === 'unavailable' ? 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing is captured.'
+        : mode === 'paused' ? 'The organizer paused notes. Nothing is recorded, transcribed or sent to the AI until they resume.'
+          : 'Nothing is recorded. The organizer can turn notes on during the call, and you can ask them to.';
   return (
     <div className={cn('ac-capture-sum', className)}>
       <CaptureSign mode={mode} stage />
@@ -98,6 +116,13 @@ export function CaptureSummary({ notes, capture, className }: {
       {mode !== 'off' && <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. The people invited get them.</p>}
     </div>
   );
+}
+
+/** What notes on means for someone about to join, leaving out whatever the organizer's browser can't capture now. */
+function onLine(c: CaptureState): string {
+  if (c.recording.mode === 'on' && c.transcript.mode === 'on') return 'What everyone says, you included, is transcribed for the notes, and the organizer’s microphone is recorded.';
+  if (c.transcript.mode === 'on') return 'What everyone says, you included, is transcribed for the notes. The organizer’s microphone isn’t recorded right now.';
+  return 'The organizer’s microphone is recorded for the notes. Nothing is transcribed right now.';
 }
 
 /** Where nothing was captured, between the lines of a transcript or the chapters of a note: "Paused 10:02–10:05". */

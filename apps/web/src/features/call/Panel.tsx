@@ -4,14 +4,14 @@
  * and answers come from what was really said while notes were on; nothing here is invented. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
+import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, TimeChip, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { gapLabel } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
-import { organizerName, type CaptureControls } from './Capture';
+import { organizerBrowser, organizerName, type CaptureControls } from './Capture';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
 import type { VolumeActions } from './volume';
@@ -114,7 +114,7 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
   onSeek: (at: number) => void; onTranscript: () => void;
 }) {
   const c = state.capture;
-  const on = c.mode === 'on';
+  const on = notesAreOn(c.mode);
   const paused = c.mode === 'paused';
   const host = state.isOrganizer;
   const asking = !host && c.asked?.state === 'asking';
@@ -132,7 +132,7 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
     <>
       <div className="ic-nh">
         <CaptureSign mode={c.mode} requested={!on && c.requests.length > 0} />
-        <span className="m">{on ? 'Written as people talk' : paused ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+        <span className="m">{c.mode === 'unavailable' ? 'Nothing is being captured' : on ? 'Written as people talk' : paused ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
         <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
           anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options"><Icon name="more" size={18} /></button>}>
           {host && on && item('pause', 'Pause notes', controls.pause)}
@@ -145,6 +145,9 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
         </Popover>
       </div>
       <div className="ic-scroll">
+        {c.mode === 'unavailable' && n && (
+          <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{organizerBrowser(state)} can’t record or listen right now, so nothing new is captured.{host ? ' Everyone can see that.' : ''}</Notice></div>
+        )}
         {paused && n && (
           <div className="ic-problems is-top"><Notice icon="pause">Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</Notice></div>
         )}
@@ -157,6 +160,10 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
           <EmptyState title="Notes are off" className="ic-empty"
             action={host ? <Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn notes on</Button> : ask}>
             {host ? 'Nothing from this call is being written down. Notes pick up from the moment you turn them on.' : asking ? `You asked ${organizer} for notes.` : `Only ${organizer} can turn them on. You can ask them to.`}
+          </EmptyState>
+        ) : c.mode === 'unavailable' && !n ? (
+          <EmptyState title="Nothing is being captured" className="ic-empty">
+            {organizerBrowser(state)} can’t record or listen right now.{host ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.
           </EmptyState>
         ) : !n ? (
           <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="ic-empty">
@@ -195,10 +202,11 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
 
 export function TranscriptView({ state, me, hit }: { state: CallState; me: string | undefined; hit: { at: number } | null }) {
   const mode = state.capture.mode;
-  const on = mode === 'on';
+  const on = notesAreOn(mode);
   return (
     <>
       <div className="ic-tr">
+        {state.capture.transcript.mode === 'unavailable' && <Notice tone="caution" icon="alert">{organizerBrowser(state)} can’t listen right now, so nothing new is transcribed.</Notice>}
         {mode === 'paused' && <Notice icon="pause">Notes are paused. Nothing new is transcribed until they resume.</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
         {state.transcript.length ? <CallLines lines={state.transcript} gaps={state.capture.gaps} me={me} hit={hit} /> : on && (

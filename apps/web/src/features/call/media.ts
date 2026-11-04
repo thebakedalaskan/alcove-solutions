@@ -725,6 +725,18 @@ const MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;co
 export const recordingMime = (): string => MIME.find((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
 export const PIECE_MS = 5000;
 
+/** A recorder for `stream`, started, or null when this browser can't record it. */
+function recorderFor(stream: MediaStream, mimeType: string, segment: number): MediaRecorder | null {
+  try {
+    const rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32_000 });
+    rec.start(PIECE_MS);
+    return rec;
+  } catch (e) {
+    mlog.error('notes recorder could not start', { err: e, mimeType, segment });
+    return null;
+  }
+}
+
 /**
  * Records the microphone in 5-second pieces and uploads them in order. Each piece is retried a few
  * times; the server treats a repeated (segment, seq) as a no-op, so retries never duplicate audio.
@@ -738,20 +750,26 @@ export class NotesRecorder {
   private queue: Promise<void> = Promise.resolve();
   /** Bumped by discard(): pieces recorded before it, and any still waiting to go, are never sent. */
   private gen = 0;
+  /** Set by hold(): nothing more is recorded or sent until release() carries on or discard() drops it. */
+  private gate: { wait: Promise<void>; open: () => void } | null = null;
   private graph: { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; source: MediaStreamAudioSourceNode | null; track: MediaStreamTrack | null } | null = null;
-  constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void) {}
+  /** `onBroken` hears whether this browser can record at all: false once a recorder runs, true if one can't start or fails. */
+  constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void,
+    private readonly onBroken: (broken: boolean) => void = () => undefined) {}
 
   get running() { return this.rec?.state === 'recording'; }
   /** Starts (or continues) recording into `segment`, from `track`, which may be a different microphone than before. */
   start(track: MediaStreamTrack, segment: number) {
     if (this.rec && this.segment === segment) {
       this.listen(track);
-      if (this.rec.state === 'paused') this.rec.resume();
+      // Held while a pause is on its way: it carries on only when release() says so.
+      if (this.rec.state === 'paused' && !this.gate) this.rec.resume();
       return;
     }
     this.stop();
     const mimeType = recordingMime();
-    const rec = new MediaRecorder(this.listen(track).stream, { mimeType, audioBitsPerSecond: 32_000 });
+    const rec = recorderFor(this.listen(track).stream, mimeType, segment);
+    if (!rec) { this.onBroken(true); return; }
     // Each recorder numbers its own pieces, so a late last piece keeps the segment it was recorded in.
     let seq = 0;
     let last = performance.now();
@@ -761,14 +779,36 @@ export class NotesRecorder {
       const now = performance.now();
       const p: AudioPiece = { data: e.data, segment, seq: seq++, durationMs: Math.max(0, now - last), mimeType };
       last = now;
-      this.queue = this.queue.then(() => (gen === this.gen ? this.send(p, gen) : undefined));
+      this.queue = this.queue.then(async () => {
+        while (this.gate) await this.gate.wait;
+        if (gen === this.gen) await this.send(p, gen);
+      });
     });
     rec.addEventListener('resume', () => { last = performance.now(); });
-    rec.addEventListener('error', (e) => mlog.error('notes recorder failed', { err: e.error }));
-    rec.start(PIECE_MS);
+    rec.addEventListener('error', (e) => { mlog.error('notes recorder failed', { err: e.error, segment }); this.onBroken(true); });
+    if (this.gate) rec.pause();
     this.rec = rec;
     this.segment = segment;
-    mlog.info('notes recorder started', { mimeType, segment });
+    this.onBroken(false);
+    mlog.info('notes recorder started', { mimeType, segment, held: Boolean(this.gate) });
+  }
+  /**
+   * Notes are being paused: records nothing more and sends nothing, keeping what it has, until the server answers.
+   * release() carries on with the same recorder, so its pieces stay in order (the pause failed); discard() drops it all.
+   */
+  hold() {
+    if (this.gate) return;
+    let open: () => void = () => undefined;
+    const wait = new Promise<void>((r) => { open = r; });
+    this.gate = { wait, open };
+    const rec = this.rec;
+    // The last moments before the pause are handed over now, and wait with the rest.
+    if (rec?.state === 'recording') { rec.requestData(); rec.pause(); }
+  }
+  /** Carries on where it was after hold() or pause(): what it held is sent, and recording goes on in the same segment. */
+  release() {
+    this.unhold();
+    if (this.rec?.state === 'paused') this.rec.resume();
   }
   /** Pauses, and resolves once everything recorded so far is uploaded: the server refuses audio once paused. */
   async pause(): Promise<void> {
@@ -787,10 +827,16 @@ export class NotesRecorder {
   stop() { void this.finish(); }
   /** Stops and waits until every recorded piece has been uploaded. */
   async flush(): Promise<void> { await this.finish(); await this.queue; }
-  /** Notes were paused: stops at once, and nothing recorded but not yet sent goes. The server refuses it anyway. */
+  /** Notes were paused: stops at once, and nothing recorded but not yet sent goes, held or not. The server refuses it anyway. */
   discard() {
     this.gen++;
+    this.unhold();
     void this.finish();
+  }
+  private unhold() {
+    const g = this.gate;
+    this.gate = null;
+    g?.open();
   }
   /** Points the recording at `track`; the recorder keeps the same input throughout. */
   private listen(track: MediaStreamTrack): MediaStreamAudioDestinationNode {

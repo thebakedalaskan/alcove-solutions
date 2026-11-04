@@ -322,8 +322,8 @@ export interface CallSession extends LiveStore<CallState> {
   admit(identity: string): Promise<void>;
   /** Organizer only: turns someone away. */
   deny(identity: string): Promise<void>;
-  /** Organizer only. Everyone in the call sees the change. */
-  setNotes(on: boolean): void;
+  /** Organizer only. Everyone in the call sees the change. Resolves once it's made, so capture can wait for it. */
+  setNotes(on: boolean): Promise<void>;
   /**
    * Organizer only: holds every kind of capture until resume(). Nothing is recorded, transcribed or sent to the AI
    * meanwhile, and the server refuses whatever arrives. Resolves once the server has paused.

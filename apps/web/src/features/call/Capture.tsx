@@ -3,9 +3,9 @@
  * opens what's captured: each kind of capture, who changed it and when, who gets the notes, and the organizer's
  * controls (pause and resume, notes on and off), or for anyone else a way to ask for notes. Asks reach the organizer
  * as a toast and in People; whoever asked hears the answer. The state is the server's (CallState.capture), read with
- * useLive() by the call screen and never copied here.
+ * useLive() by the call screen and never copied here; only the organizer's own pause on its way is this screen's.
  */
-import type { CallRole, CallState, NotesRequest, Person } from '@alcove/api';
+import { errorMessage, notesAreOn, type CallRole, type CallState, type NotesRequest, type Person } from '@alcove/api';
 import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { changedLine } from '~/lib/capture';
@@ -24,22 +24,25 @@ export interface CaptureControls {
 }
 
 /** The notes sign in the top bar, the same for everyone; it opens what's captured. */
-export function CaptureButton({ state, role, getting, controls, onOpenNotes }: {
+export function CaptureButton({ state, role, getting, controls, pausing, onOpenNotes }: {
   state: CallState;
   /** How you're in the call: whether you get the notes depends on it. */
   role: CallRole;
   /** Who gets the notes, as far as you can tell (the organizer knows everyone invited). */
   getting: Person[];
   controls: CaptureControls;
+  /** The organizer's pause is on its way: their browser has stopped capturing, and the call hasn't answered yet. */
+  pausing: boolean;
   onOpenNotes: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const c = state.capture;
-  const requested = c.mode !== 'on' && c.requests.length > 0;
-  const label = c.mode === 'on' ? 'Notes on' : c.mode === 'paused' ? 'Notes paused' : requested ? 'Notes requested' : 'Notes off';
+  const changing = pausing && c.mode !== 'paused';
+  const requested = !notesAreOn(c.mode) && c.requests.length > 0;
+  const label = changing ? 'Pausing notes' : c.mode === 'on' ? 'Notes on' : c.mode === 'unavailable' ? 'Notes unavailable' : c.mode === 'paused' ? 'Notes paused' : requested ? 'Notes requested' : 'Notes off';
   return (
     <Popover open={open} onOpenChange={setOpen} side="bottom" align="start" label="What’s captured" className="ic-capture"
-      anchor={<button type="button" className="ic-sign" aria-label={`${label}. What’s captured`}><CaptureSign mode={c.mode} requested={requested} stage /></button>}>
+      anchor={<button type="button" className="ic-sign" aria-label={`${label}. What’s captured`}><CaptureSign mode={c.mode} requested={requested} pausing={changing} stage /></button>}>
       <CaptureDetails state={state} role={role} getting={getting} controls={controls} done={() => setOpen(false)} onOpenNotes={onOpenNotes} />
     </Popover>
   );
@@ -50,18 +53,16 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
 }) {
   const c = state.capture;
   const host = state.isOrganizer;
+  const on = notesAreOn(c.mode);
   const name = organizerName(state);
   const when = changedLine(c, name);
-  const said = c.mode === 'on' ? 'What everyone says is recorded and transcribed for the notes.'
-    : c.mode === 'paused' ? `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`
-      : state.notes.everOn ? 'Nothing new is recorded. What was captured before is kept for the notes.' : 'Nothing from this call is recorded or written down.';
   const askers = c.requests.map((r) => askerOf(state, r));
   const mine = !host ? c.asked : null;
   const run = (f: () => void) => () => { done(); f(); };
   return (
     <>
-      <div className="cap-h"><CaptureSign mode={c.mode} requested={c.mode !== 'on' && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
-      <p className="cap-said">{said}</p>
+      <div className="cap-h"><CaptureSign mode={c.mode} requested={!on && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
+      <p className="cap-said">{saidFor(state, name)}</p>
       <CaptureParts capture={c} />
       <div className="cap-facts">
         <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
@@ -72,18 +73,18 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
         </div>
         <div><Icon name="lock" size={15} /><span>Video and chat are encrypted end to end and never captured.</span></div>
       </div>
-      {host && askers.length > 0 && c.mode !== 'on' && (
+      {host && askers.length > 0 && !on && (
         <div className="cap-ask"><Faces people={askers} size={22} max={3} /><span className="t">{listNames(askers)} asked for notes.</span></div>
       )}
       {mine?.state === 'asking' && (
         <div className="cap-ask"><Icon name="hand" size={16} /><span className="t">You asked {name} for notes.</span><Button size="sm" variant="quiet" onClick={run(() => controls.ask(false))}>Take it back</Button></div>
       )}
-      {mine?.state === 'declined' && c.mode !== 'on' && (
+      {mine?.state === 'declined' && !on && (
         <div className="cap-ask"><Icon name="clock" size={16} /><span className="t">{sentence(name)} said not now at {hm(mine.at)}.</span></div>
       )}
-      {(host || (c.mode !== 'on' && mine?.state !== 'asking')) && (
+      {(host || (!on && mine?.state !== 'asking')) && (
         <div className="cap-acts">
-          {host && c.mode === 'on' && <><Button size="sm" icon="pause" onClick={run(controls.pause)}>Pause notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
+          {host && on && <><Button size="sm" icon="pause" onClick={run(controls.pause)}>Pause notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
           {host && c.mode === 'paused' && <><Button size="sm" variant="primary" icon="play" onClick={run(controls.resume)}>Resume notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
           {host && c.mode === 'off' && <Button size="sm" variant="primary" onClick={run(() => controls.notes(true))}>Turn on notes</Button>}
           {!host && <Button size="sm" variant="primary" icon="hand" onClick={run(() => controls.ask(true))}>Ask for notes</Button>}
@@ -92,6 +93,24 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
       <button type="button" className="cap-open" onClick={run(onOpenNotes)}><Icon name="notesPen" size={16} />Open the notes<Icon name="right" size={15} /></button>
     </>
   );
+}
+
+/**
+ * What's captured right now, in a sentence: what everyone says is transcribed (through the organizer's browser) and
+ * the organizer's microphone recorded, less whatever their browser can't do now; nothing while paused; and while
+ * notes are off, that what was transcribed before is still read for the notes.
+ */
+function saidFor(state: CallState, name: string): string {
+  const c = state.capture;
+  const host = state.isOrganizer;
+  const mic = host ? 'your microphone' : `${name}’s microphone`;
+  const browser = host ? 'your browser' : `${name}’s browser`;
+  if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`;
+  if (c.mode === 'off') return state.notes.everOn ? 'Nothing new is recorded or transcribed. What was transcribed before is still read for the notes.' : 'Nothing from this call is recorded or written down.';
+  if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t record or listen right now, so nothing is captured.`;
+  if (c.recording.mode === 'on' && c.transcript.mode === 'on') return `What everyone says is transcribed for the notes, and ${mic} is recorded.`;
+  if (c.transcript.mode === 'on') return `What everyone says is transcribed for the notes. ${sentence(mic)} isn’t recorded: ${browser} can’t record it right now.`;
+  return `${sentence(mic)} is recorded for the notes. Nothing is transcribed: ${browser} can’t listen right now.`;
 }
 
 /** Whoever asked, as the call shows them. */
@@ -141,11 +160,11 @@ export function NotesAsks({ state, controls, decline, after }: {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const c = state.capture;
-  if (!state.isOrganizer || c.mode === 'on' || !c.requests.length) return null;
+  if (!state.isOrganizer || notesAreOn(c.mode) || !c.requests.length) return null;
   const paused = c.mode === 'paused';
   const no = (r: NotesRequest, p: Person) => {
     setBusy(r.id);
-    decline(r.id).then(() => toast(`${callName(p)} was told not now`, { icon: 'check' }), (e: unknown) => toast(e instanceof Error ? e.message : 'That didn’t work.', { icon: 'x' })).finally(() => setBusy(null));
+    decline(r.id).then(() => toast(`${callName(p)} was told not now`, { icon: 'check' }), (e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => setBusy(null));
   };
   return (
     <>
@@ -168,7 +187,7 @@ export function NotesAsks({ state, controls, decline, after }: {
 }
 
 /** "Asked for notes", on the asker's row in People, for everyone. */
-export const askedTag = (state: CallState, participantId: string): string => (state.capture.mode !== 'on' && state.capture.requests.some((r) => r.participantId === participantId) ? 'Asked for notes' : '');
+export const askedTag = (state: CallState, participantId: string): string => (!notesAreOn(state.capture.mode) && state.capture.requests.some((r) => r.participantId === participantId) ? 'Asked for notes' : '');
 
 /** The organizer's first name for a sentence, from the call itself, or "the organizer" while they're away (reloading). */
 export function organizerName(state: CallState): string {
@@ -177,3 +196,5 @@ export function organizerName(state: CallState): string {
 }
 /** A name that starts a sentence. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** Where the call is captured, to start a sentence: "Your browser" for the organizer, "Art’s browser" for everyone else. */
+export const organizerBrowser = (state: CallState): string => (state.isOrganizer ? 'Your browser' : `${sentence(organizerName(state))}’s browser`);

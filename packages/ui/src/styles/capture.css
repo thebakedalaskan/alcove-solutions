@@ -1,12 +1,18 @@
 /*
- * What a call captures: the notes sign's paused and off states (on is the crimson .ac-notes-sign), each kind of
- * capture with its state, the summary before joining, the mark where nothing was captured, and the call's
- * "what's captured" popover. Raw colours are the night stage's own overlays, as in call.css.
+ * What a call captures: the notes sign's paused, unavailable and off states (on is the crimson .ac-notes-sign), each
+ * kind of capture with its state, the summary before joining, the mark where nothing was captured, and the call's
+ * "what's captured" popover. Unavailable is a problem, so it's caution. Raw colours are the night stage's own
+ * overlays (and its caution, the dark theme's), as in call.css.
  */
 .ac-capture-sign { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 10px; border-radius: var(--radius-pill); background: var(--sunk); color: var(--ink-3); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
 .ac-capture-sign.is-paused { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .ac-capture-sign.is-stage { background: transparent; color: var(--stage-ink-2); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14); }
 .ac-capture-sign.is-stage.is-paused { background: rgb(255 255 255 / 0.1); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
+.ac-capture-sign.is-unavailable { background: var(--caution-soft); color: var(--caution); }
+.ac-capture-sign.is-stage.is-unavailable { background: rgb(243 184 90 / 0.14); color: #F3B85A; box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.28); }
+/* The organizer's own pause on its way: the mark breathes until the server answers. */
+.ac-capture-sign.is-changing .ac-i { animation: ac-capture-changing var(--duration-4) var(--ease-in-out) infinite alternate; }
+@keyframes ac-capture-changing { to { opacity: 0.35; } }
 .ac-notes-sign.is-requested.is-stage { background: transparent; color: var(--stage-ink-2); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2); }
 .ac-notes-sign.is-requested.is-stage .ac-rec-dot { background: var(--stage-ink-2); }
 
@@ -16,10 +22,12 @@
 .ac-capture-mode.is-on { background: var(--rec-soft); color: var(--rec); }
 .ac-capture-mode.is-paused { background: var(--sunk); color: var(--ink); }
 .ac-capture-mode.is-off { color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); }
+.ac-capture-mode.is-unavailable { background: var(--caution-soft); color: var(--caution); }
 .ac-capture-mode.is-stage.is-on { background: rgba(227, 53, 84, .18); color: #FF9DAE; }
 .ac-capture-mode.is-stage.is-on .ac-rec-dot { background: #FF6B83; }
 .ac-capture-mode.is-stage.is-paused { background: rgb(255 255 255 / 0.1); color: var(--stage-ink); }
 .ac-capture-mode.is-stage.is-off { color: var(--stage-ink-2); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14); }
+.ac-capture-mode.is-stage.is-unavailable { background: rgb(243 184 90 / 0.14); color: #F3B85A; }
 
 /* Each kind of capture: what it is, and its state. */
 .ac-capture-parts { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
@@ -38,10 +46,12 @@
 .ac-capture-chip.is-on { background: var(--rec-soft); color: var(--rec); }
 .ac-capture-chip.is-paused { background: var(--sunk); color: var(--ink); }
 .ac-capture-chip.is-off { color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); }
+.ac-capture-chip.is-unavailable { background: var(--caution-soft); color: var(--caution); }
 .ac-capture-chips.is-stage .ac-capture-chip.is-on { background: rgba(227, 53, 84, .18); color: #FF9DAE; }
 .ac-capture-chips.is-stage .ac-capture-chip.is-on .ac-rec-dot { background: #FF6B83; }
 .ac-capture-chips.is-stage .ac-capture-chip.is-paused { background: rgb(255 255 255 / 0.1); color: var(--stage-ink); }
 .ac-capture-chips.is-stage .ac-capture-chip.is-off { color: var(--stage-ink-2); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14); }
+.ac-capture-chips.is-stage .ac-capture-chip.is-unavailable { background: rgb(243 184 90 / 0.14); color: #F3B85A; }
 
 /* Before joining, on the stage: the sign, what happens to what you say, and each kind of capture. */
 .ac-capture-sum { display: grid; gap: 12px; padding: 16px; border-radius: var(--radius-lg); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }

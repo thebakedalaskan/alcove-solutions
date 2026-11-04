@@ -1,4 +1,4 @@
-import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
+import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
 import {
   Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Icon, Popover, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
@@ -19,7 +19,7 @@ import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, ty
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { SharePicker } from '~/features/call/SharePicker';
-import { CallEars } from '~/features/call/speech';
+import { CallEars, canListen } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
@@ -106,9 +106,11 @@ function InCall({ session }: { session: CallSession }) {
   const me = selfIn(state);
   const meId = me?.id ?? self;
   const organizer = state.isOrganizer;
-  // What the call captures now, the same for everyone: notes on, paused by the organizer, or off.
+  // What the call captures now, the same for everyone: notes on (unavailable while the organizer's browser can't
+  // capture anything), paused by the organizer, or off. The live transcript is heard only while it says on.
   const mode = state.capture.mode;
-  const on = mode === 'on';
+  const on = notesAreOn(mode);
+  const hearing = state.capture.transcript.mode === 'on';
   const width = useWidth();
   const narrow = width < 760;
   const sideW = narrow ? width : width < 1100 ? 360 : 400;
@@ -124,6 +126,10 @@ function InCall({ session }: { session: CallSession }) {
   const [hit, setHit] = useState<{ at: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
+  // The organizer's browser: a recorder that couldn't start or failed, no way to listen, and its own pause on its way.
+  const [cantRecord, setCantRecord] = useState(false);
+  const [cantListen, setCantListen] = useState(() => !canListen());
+  const [pausing, setPausing] = useState(false);
   // Your own view of the call (never sent anywhere): how you like calls, remembered for your account, and how you
   // arranged this one, kept in this tab until you leave it.
   const account = useQuery(q.session());
@@ -186,13 +192,13 @@ function InCall({ session }: { session: CallSession }) {
   /*
    * The call's notes, in the organizer's browser. The recorder keeps the organizer's microphone; the live transcript
    * hears everyone this browser plays (its own microphone and the people in its part of the call), each under
-   * their own name. Both run while notes are on; paused or off, they stop at once and drop whatever wasn't sent: the
+   * their own name. Both run while notes are on; paused or off, they stop and drop whatever wasn't sent: the
    * server refuses it anyway.
    */
   const recorder = useRef<NotesRecorder | null>(null);
-  if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError);
+  if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError, setCantRecord);
   const ears = useRef<CallEars | null>(null);
-  if (!ears.current) ears.current = new CallEars((c, speaker) => session.transcribe(c, speaker), setHeardProblem);
+  if (!ears.current) ears.current = new CallEars((c, speaker) => session.transcribe(c, speaker), setHeardProblem, setCantListen);
   const micTrack = media.micTrack();
   const segment = state.notes.recording.segment;
   const live = state.phase === 'in-call';
@@ -212,6 +218,19 @@ function InCall({ session }: { session: CallSession }) {
     else if (!on || !organizer) e.stop();
   }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
   useEffect(() => () => ears.current?.stop(), []);
+  /*
+   * What this browser can't capture while notes are on, which everyone is told: the recording without a microphone
+   * (none, refused, or in use elsewhere) or with a recorder that failed, the transcript without a way to listen. It's
+   * said again whenever it changes, and after every change to notes, which forgets it.
+   */
+  const cant = (['recording', 'transcript'] as const).filter((p) => (p === 'recording' ? !micTrack || cantRecord : cantListen));
+  const cantKey = cant.join(' ');
+  const toldKey = (['recording', 'transcript'] as const).filter((p) => state.capture[p].mode === 'unavailable').join(' ');
+  useEffect(() => {
+    if (!organizer || !live || !on || cantKey === toldKey) return;
+    clog.info('saying what this browser can’t capture', { parts: cantKey || 'none' });
+    session.setUnavailable(cant).catch((e: unknown) => clog.warn('could not say what this browser can’t capture', { err: e, parts: cantKey || 'none' }));
+  }, [organizer, live, on, cantKey, toldKey, session]);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
   const shown = useRef(new Set(state.notices.slice(0, -1).map((n) => n.id)));
@@ -518,23 +537,44 @@ function InCall({ session }: { session: CallSession }) {
     for (const s of was.away) if (pins.includes(s) && here.has(s)) toast(`${seatName(s)} is back, pinned for you`, { icon: 'pin' });
   }, [seatKey, pinKey, toast]);
 
-  /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
+  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
+  /*
+   * Turning notes off keeps everything said while they were on: recording stops, and the last audio and speech are
+   * sent first. If notes can't be turned off, the same recorder carries on, so its pieces stay in order.
+   */
   const switchNotes = async (v: boolean) => {
-    if (!v && on) await Promise.all([recorder.current?.flush(), ears.current?.flush()]);
-    session.setNotes(v);
+    const r = recorder.current;
+    if (!v && on) await Promise.all([r?.pause(), ears.current?.flush()]);
+    try {
+      await session.setNotes(v);
+    } catch (e) {
+      if (!v) r?.release();
+      failed(e);
+      return;
+    }
+    if (!v) r?.discard();
     if (v && !panel && innerWidth >= 1100) setPanel('notes');
   };
   /*
-   * Pausing stops everything at once: what's recorded but not sent yet is dropped rather than sent, and the server
-   * refuses anything that arrives after it. Resuming is only ever the organizer's choice. Anyone else asks.
+   * Pausing stops everything at once: nothing more is recorded or heard, and nothing held is sent. Once the server has
+   * paused, what was held is dropped, and the server refuses anything that arrives after it; if it couldn't, notes
+   * are still on, so the same recorder and voices carry on and send it. Resuming is only ever the organizer's
+   * choice. Anyone else asks.
    */
-  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   const controls: CaptureControls = {
     notes: (v) => void switchNotes(v),
     pause: () => {
-      recorder.current?.discard();
-      ears.current?.stop();
-      session.pause().catch(failed);
+      const r = recorder.current;
+      const e = ears.current;
+      r?.hold();
+      e?.hold();
+      setPausing(true);
+      session.pause().then(() => { r?.discard(); e?.stop(); }, (err: unknown) => {
+        clog.warn('pausing notes failed; capture carries on', { err });
+        r?.release();
+        e?.release();
+        failed(err);
+      }).finally(() => setPausing(false));
     },
     resume: () => { session.resume().catch(failed); },
     ask: (up) => {
@@ -591,12 +631,12 @@ function InCall({ session }: { session: CallSession }) {
   );
   // Captions come back when the rooms close: what's said in one room isn't shown in another. While notes are paused
   // or off nothing new is said in them, so the last line isn't left up as if it were live.
-  const capNode = !cc || open ? null : caption && on ? (
+  const capNode = !cc || open ? null : caption && hearing ? (
     <Caption who={<>{caption.line.speaker?.person && <Avatar person={caption.line.speaker.person} size={18} />}<span className="name">{caption.line.speaker ? callName(caption.line.speaker.person ?? { name: caption.line.speaker.name, email: '' }) : ''}</span>{caption.translated && lang && <span className="lang">→ {lang.toUpperCase()}</span>}{capButton}</>}
       original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
   ) : (
     <Caption who={<><Icon name="captions" size={15} /><span className="name">Captions</span>{capButton}</>}>
-      <span className="ic-cap-wait">{on ? 'What’s said appears here as people talk.' : mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
+      <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : on ? 'Nothing is transcribed for captions right now: the organizer’s browser can’t listen.' : mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
     </Caption>
   );
 
@@ -763,7 +803,7 @@ function InCall({ session }: { session: CallSession }) {
     <div className="stage ac-stage">
       <div className={cn('ic-call', ended && 'is-ended')}>
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
-          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} onOpenNotes={() => openPanel('notes')} />}
+          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
           asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting'} peopleOpen={shownPanel === 'people'}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom}

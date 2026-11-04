@@ -296,17 +296,21 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
   if (s.notes.recordingId) {
     await setRecordingState(o, db, s.notes.recordingId, 'recording');
     const segment = s.notes.segment + 1;
-    return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment, history: [...s.notes.history, { at, status: 'on', by, segment }], asks } };
+    return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment, history: [...s.notes.history, { at, status: 'on', by, segment }], asks, unavailable: [] } };
   }
   const { noteId, recordingId } = await createNoteWithRecording(o, db,
     (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests }),
     (nid) => createRecording(o, db, nid));
-  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks } };
+  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks, unavailable: [] } };
 }
-/** Notes paused or off, `at` seconds into the call: the recording stops taking audio until notes are on again. */
+/**
+ * Notes paused or off, `at` seconds into the call: the recording stops taking audio until notes are on again. What
+ * the organizer's browser couldn't capture is forgotten with every change: it says again once notes are back on, so
+ * nobody is told something isn't captured when it is.
+ */
 async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'paused' | 'off'): Promise<Stored> {
   if (s.notes.recordingId && s.notes.status === 'on') await setRecordingState(o, db, s.notes.recordingId, 'paused');
-  return { ...s, notes: { ...s.notes, status, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }] } };
+  return { ...s, notes: { ...s.notes, status, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
 }
 
 /* ---------- joining by link: for anyone; the organizer's keys are opened with KMASTER ---------- */
@@ -555,7 +559,9 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
     return notice(await startNotes(o, c, s, await meeting(), at, 'organizer'), 'The organizer resumed notes. Everyone here can see that.');
   }
   if (a.type === 'unavailable') {
-    // What the organizer's browser can't capture now (no microphone, or a browser that can't record or listen).
+    // What the organizer's browser can't capture now (no microphone, or a browser that can't record or listen). It
+    // only means something while notes are on; one that arrives after a pause or notes off is from before it.
+    if (s.notes.status !== 'on') return s;
     return { ...s, notes: { ...s.notes, unavailable: [...new Set(a.parts)] } };
   }
   if (a.type === 'request-notes') {

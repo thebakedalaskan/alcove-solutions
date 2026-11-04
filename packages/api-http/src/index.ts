@@ -627,7 +627,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   };
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
-  setNotes = (on: boolean) => this.act({ type: 'notes', on });
+  setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
   /* What the call captures: pause and resume are the organizer's; anyone else asks for notes. Each resolves once the server has done it. */
   pause = async () => { this.take(await this.t.act(this.state.callId, { type: 'pause' })); };
   resume = async () => { this.take(await this.t.act(this.state.callId, { type: 'resume' })); };

@@ -108,16 +108,16 @@ invited get them. Never anyone's name or anything said.
 The call opens full screen: the stage with everyone's tiles, a side panel that slides in beside it, and one
 dock at the bottom.
 
-- **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes off**,
-  or **Notes requested** while someone has asked), the same for everyone, which opens what's captured: each
-  kind of capture and its state, who changed it and when, who gets the notes, and the organizer's **Pause
-  notes**, **Resume notes** and **Turn off** (or **Turn on notes**), or anyone else's **Ask for notes**; your
-  view: **Auto**, **Speaker** or **Grid**, which change only your screen, beside a menu with the same three,
-  two ready-made layouts (**Everyone equal**, **Presenter and me**), where you see yourself, and a reset (on a
-  phone, that menu is the one button); **Reset my view** once you've arranged it; **Catch up**; the shield,
-  whose hover says what
-  confidential compute covers (verified only when the server's hardware check is bound to this browser's
-  request); and who is here, which opens People.
+- **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
+  unavailable** when the organizer's browser can't record or listen, **Notes off**, or **Notes requested** while
+  someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
+  opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
+  the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**), or anyone else's
+  **Ask for notes**; your view: **Auto**, **Speaker** or **Grid**, which change only your screen, beside a menu
+  with the same three, two ready-made layouts (**Everyone equal**, **Presenter and me**), where you see
+  yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once you've arranged it;
+  **Catch up**; the shield, whose hover says what confidential compute covers (verified only when the server's
+  hardware check is bound to this browser's request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
   browser can do it, **Blur my background**. A microphone or camera that can't work has a caution mark, and
@@ -160,6 +160,10 @@ dock at the bottom.
 - **Pausing** stops everything at once: nothing is recorded, transcribed or sent to the AI, catch-up and
   captions included, until the organizer resumes. Nothing resumes it by itself. The transcript, a catch-up and
   the notes everyone gets say where it was paused ("Paused 10:02–10:05"), and where notes were off.
+- **When the organizer's browser can't capture.** Without a microphone that works (none, refused, or busy in
+  another app), everyone sees the recording as unavailable, and the transcript carries on for everyone else.
+  When the browser can neither record nor listen, the sign says **Notes unavailable**, for everyone and on the
+  join page, until it can again.
 - **Asking for notes.** While notes are off or paused, anyone can ask for them, from the notes sign or the Notes
   panel. Everyone sees who asked. The organizer gets a toast and sees the ask in People, then turns notes on (or
   resumes them) or says not now, and whoever asked is told.

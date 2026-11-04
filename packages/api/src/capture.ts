@@ -14,6 +14,8 @@ import { CaptureGapSchema, IDSchema, ISODateSchema } from './types';
  */
 export const CaptureModeSchema = z.enum(['on', 'paused', 'off', 'unavailable']);
 export type CaptureMode = z.infer<typeof CaptureModeSchema>;
+/** Notes are on, whether or not the organizer's browser can capture right now: asks and the organizer's controls follow it. */
+export const notesAreOn = (mode: CaptureMode): boolean => mode === 'on' || mode === 'unavailable';
 
 /** The kinds of capture the organizer's browser does itself, and so can say it can't do. */
 export const CaptureDevicePartSchema = z.enum(['recording', 'transcript']);
