@@ -292,7 +292,10 @@ third-party loads.
 - **Your view of a call** never leaves the browser. Layout preferences stay in `localStorage` for the account and
   the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
   random per-call seat and shares by their sharer's random connection ID: no names, addresses or call content ([Calls and recordings › The call
-  screen](calls-and-recordings.md#the-call-screen)).
+  screen](calls-and-recordings.md#the-call-screen)). How you zoom into a share, and the earlier pictures of it you can
+  step back through, live only in the page's memory: at most 30 pictures and 16 MiB a share, taken from what the
+  browser already decrypts and shows, never written to any storage, sent or logged, and gone when the share stops,
+  your part of the call changes or you leave ([Looking closer at a share](calls-and-recordings.md#looking-closer-at-a-share)).
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
 - **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),

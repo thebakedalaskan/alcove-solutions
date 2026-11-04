@@ -342,7 +342,9 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   the sealed call state, one per person, by the person's ID across their reconnections.
 - **What it doesn't cover.** Cameras and chat are never captured: they're encrypted end to end between the
   browsers. Shared screens are captured only as the frames a presenter's own browser sends while screen notes
-  are on. Nothing stops someone recording their own screen or speakers. Retention has one fixed behaviour,
+  are on. The earlier pictures of a share a viewer can step back through stay in that viewer's browser's memory and
+  go when the share stops; none are kept while notes are paused ([Looking closer at a share](#looking-closer-at-a-share)).
+  Nothing stops someone recording their own screen or speakers. Retention has one fixed behaviour,
   with no settings: the live transcript and caption translations last only until the call ends; the audio,
   transcript, shared-screen frames, what was read on them and the notes stay in the organizer's vault until
   someone with the right deletes the note, and deleting is physical
@@ -586,8 +588,10 @@ device pickers.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu,
   P pins or unpins (on a share, shows it big or as a tile), Shift with an arrow moves a tile earlier or later (your
   corner picture to another corner), and + and − make it bigger or smaller; Escape unpins everyone. The line beside a
-  shared screen, and the one between two, is a separator moved with the arrow keys, Home and End. Each tile's menu
-  shows its keys, and on touch screens its ⋯ is always there.
+  shared screen, and the one between two, is a separator moved with the arrow keys, Home and End. On someone else's
+  share you see big, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in, F freezes it or
+  goes back to live, and comma and full stop step through earlier pictures ([below](#looking-closer-at-a-share)). Each
+  tile's menu shows its keys, and on touch screens its ⋯ is always there.
 - **Shares.** Several people can share at once, a screen each, and nobody's share replaces anyone else's. A share
   starts only while fewer than four (`MAX_SHARES`, `share.ts`) are going in your part of the call, yours counted:
   two sit side by side and the rest wait as tiles, and past four the stage would give screens more room than people
@@ -687,6 +691,74 @@ device pickers.
   the organizer ended the call, and the organizer's sheet follows the notes being written. A browser that's
   removed, out of the group, or whose room ended is told, closes the session and leaves the room; one whose
   keys fell out of step, or whose connection dropped for good, is offered a reload.
+
+## Looking closer at a share
+
+Someone else's share you see big can be zoomed into, moved around, frozen and stepped back through, or opened in its
+own window: for you only, in this browser only. Nothing is sent, the presenter's screen and everyone else's view don't
+change, and the server is never involved (`ShareSurface.tsx`, with `shareLook.ts` for the state and `shareFrame.ts` for
+the coordinates). Your own share has none of this: you have the original.
+
+- **Zoom and pan.** 100% is the whole picture, as big as it fits; + and − step through 125, 150, 200, 300, 400, 600 and
+  800%, and pinching, or Ctrl/⌘ with the wheel, zooms anywhere between, where the pointer is. A drag, or the wheel, moves
+  around once zoomed in; a double-click goes to 200% or back to the whole picture; 0 (or the label, "200%") shows the
+  whole picture again. While zoomed in, the bar stays up with the label and a minimap of where you are, which you can
+  press or drag. The bar's buttons are for pointers and touch (on a phone a tap shows it); from the keyboard the keys on
+  the focused share do the same, and its ⋯ menu lists them, so the stage stays one tab stop. A change from a key or a
+  button glides (instantly under reduced motion); a drag or a pinch follows the pointer.
+- **Sharp when zoomed.** LiveKit sends a screen in two layers (full and half size) and its adaptive stream picks one by
+  the size of the element showing it. Zooming makes the video element itself bigger, inside a box that clips it, so a
+  zoomed-in share asks for the full layer and stays sharp; at 100% it may get the half one.
+- **The coordinate model** (`shareFrame.ts`, pure): a point on a share is normalised (0 to 1 across the picture and down
+  it), whatever its resolution and however anyone has zoomed, so it names the same spot on every screen. A framing is a
+  zoom and the point of the picture at the middle of your view; `place` gives the rectangle the picture is drawn in for
+  a view, and `toShare` and `toView` convert points. It's settled for each view, so a picture bigger than the view always
+  covers it. Pointers and marks on shares (#12) align with your zoom through it.
+- **Freezing and earlier pictures.** F, or the bar, holds the picture on screen still while the share goes on; comma
+  steps back through earlier pictures (from live, it freezes first) and full stop forward, back to live after the
+  newest. While a picture is held a ring goes round the share and a bar at its top says how far behind live it is
+  ("0:42 behind live", counted from when that picture was last on the share) and which it is ("3 of 12"), with
+  Back to live.
+- **What's kept, and where.** Earlier pictures are a bounded buffer in this page's memory: at most 30 for each share and
+  16 MiB, the oldest going first (never the one you're looking at). Each is a moment the picture changed, judged by a
+  48 × 27 grey copy (a new slide, a scroll or a window moved counts; a cursor moving doesn't), taken at most once a
+  second from the video this browser already decodes to show the share, and only while you see that share big or in its
+  own window. They're compressed (WebP, or JPEG where the browser can't write WebP, at most 4K) into ArrayBuffers in the
+  page: never written to storage, a file or a Blob that's kept, never sent, never logged. A frozen picture is shown
+  from a bitmap of the frame on screen. The one line under the share's menu says it: up to 30 earlier pictures stay in
+  this browser's memory until the share stops, and nothing is saved or sent. Presenters are told in the share picker
+  that everyone can zoom in and look back at its last 30 pictures, each on their own screen, until they stop.
+- **Never before you could see it.** Pictures come only from what this browser decrypts and shows, so none predates the
+  moment you could see the share: after you were let in (the media keys move on as you join, so earlier frames can't be
+  read), and only while you're in the same part of the call as its sharer (other rooms' media is never attached).
+- **When it goes.** Everything about a share goes the moment it leaves your stage: its sharer stops, leaves, is removed
+  (LiveKit takes the share out of every room at once, and their pass can't get them back in) or drops out of the call's
+  group (the MLS check stops showing it). All of it goes when your part of the call changes (breakout rooms opening,
+  closing or moving you, the organizer's visits included) and when you leave or are removed. Showing a share as a tile
+  goes back to live and lets its earlier pictures go. A share's own window closes at the same moments. A presenter's
+  Change swaps the track inside the same publication, so viewers can't tell a new surface from new content: pictures
+  from before a change stay until the share stops.
+- **Without earlier pictures.** While the organizer has paused notes nothing new is kept and what was kept goes (pausing
+  stops every kind of capture), and they're kept again when notes resume. A device with little memory
+  (`navigator.deviceMemory` under 2 GB) or a browser that can't draw or compress the picture keeps none either. Zoom,
+  pan and freezing still work, and the menu says why there's nothing earlier.
+- **Its own window.** Open in its own window (the share's ⋯ or its bar) puts the share in a window of its own, to keep
+  in view over other apps or put on another screen. Document Picture-in-Picture where the browser has it (Chrome and
+  Edge 116+, Firefox 151+): an always-on-top window this page fills itself, which LiveKit's adaptive stream counts as
+  on screen even while the call's tab is in the background. Elsewhere on a computer (Safari) a popup window, which can
+  go full screen on another display; LiveKit pauses its picture while the call's tab is hidden, as it pauses every
+  video then, and the window says so. Phones and tablets show shares in the call only, and the menu says that. One share
+  at a time: the stage keeps it as a tile ("In its own window", Bring it back, or P), and the next share takes its
+  place. The window has the share's own bar and keys, carries the app's stylesheets, uses its own timers (so it keeps
+  going while the call's tab is in the background), and nothing in it relies on the call tab's animation frames.
+- **Comparing shares.** Two shares sit side by side ([The call screen](#the-call-screen)); each is zoomed, frozen and
+  stepped back through on its own, so you can hold one still beside the other live, or open one in its own window on
+  another screen beside the call.
+- **Checked by hand,** with three people and two shares at once (Chromium, fake devices, the presenters sharing slide
+  decks drawn on a canvas): zoom by keys, Ctrl and the wheel and dragging; freezing, stepping back and forward and back
+  to live; Document Picture-in-Picture and the popup window, each closing as its share stopped; phone and wide stages,
+  keyboard only and reduced motion; and memory over ten minutes of a share that changed every frame, which stayed flat
+  once 30 pictures were kept.
 
 ## Room recordings
 
