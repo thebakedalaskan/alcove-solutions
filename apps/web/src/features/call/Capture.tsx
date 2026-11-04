@@ -1,0 +1,179 @@
+/*
+ * What the call captures, in the call (docs: Calls and recordings › What's captured). The notes sign in the top bar
+ * opens what's captured: each kind of capture, who changed it and when, who gets the notes, and the organizer's
+ * controls (pause and resume, notes on and off), or for anyone else a way to ask for notes. Asks reach the organizer
+ * as a toast and in People; whoever asked hears the answer. The state is the server's (CallState.capture), read with
+ * useLive() by the call screen and never copied here.
+ */
+import type { CallRole, CallState, NotesRequest, Person } from '@alcove/api';
+import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, cn, useToast } from '@alcove/ui';
+import { useEffect, useRef, useState } from 'react';
+import { changedLine } from '~/lib/capture';
+import { callName, listNames } from '~/lib/people';
+import { hm } from '~/lib/time';
+
+/** What the screen does when someone changes what's captured: the organizer's controls, and anyone else's ask. */
+export interface CaptureControls {
+  /** The organizer: notes on or off. */
+  notes: (on: boolean) => void;
+  /** The organizer: hold all capture, or carry on. */
+  pause: () => void;
+  resume: () => void;
+  /** Anyone else: ask for notes, or take the ask back. */
+  ask: (up: boolean) => void;
+}
+
+/** The notes sign in the top bar, the same for everyone; it opens what's captured. */
+export function CaptureButton({ state, role, getting, controls, onOpenNotes }: {
+  state: CallState;
+  /** How you're in the call: whether you get the notes depends on it. */
+  role: CallRole;
+  /** Who gets the notes, as far as you can tell (the organizer knows everyone invited). */
+  getting: Person[];
+  controls: CaptureControls;
+  onOpenNotes: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const c = state.capture;
+  const requested = c.mode !== 'on' && c.requests.length > 0;
+  const label = c.mode === 'on' ? 'Notes on' : c.mode === 'paused' ? 'Notes paused' : requested ? 'Notes requested' : 'Notes off';
+  return (
+    <Popover open={open} onOpenChange={setOpen} side="bottom" align="start" label="What’s captured" className="ic-capture"
+      anchor={<button type="button" className="ic-sign" aria-label={`${label}. What’s captured`}><CaptureSign mode={c.mode} requested={requested} stage /></button>}>
+      <CaptureDetails state={state} role={role} getting={getting} controls={controls} done={() => setOpen(false)} onOpenNotes={onOpenNotes} />
+    </Popover>
+  );
+}
+
+function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
+  state: CallState; role: CallRole; getting: Person[]; controls: CaptureControls; done: () => void; onOpenNotes: () => void;
+}) {
+  const c = state.capture;
+  const host = state.isOrganizer;
+  const name = organizerName(state);
+  const when = changedLine(c, name);
+  const said = c.mode === 'on' ? 'What everyone says is recorded and transcribed for the notes.'
+    : c.mode === 'paused' ? `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`
+      : state.notes.everOn ? 'Nothing new is recorded. What was captured before is kept for the notes.' : 'Nothing from this call is recorded or written down.';
+  const askers = c.requests.map((r) => askerOf(state, r));
+  const mine = !host ? c.asked : null;
+  const run = (f: () => void) => () => { done(); f(); };
+  return (
+    <>
+      <div className="cap-h"><CaptureSign mode={c.mode} requested={c.mode !== 'on' && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
+      <p className="cap-said">{said}</p>
+      <CaptureParts capture={c} />
+      <div className="cap-facts">
+        <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
+        <div>
+          <Icon name="people" size={15} />
+          <span>{host ? 'The notes go to you and everyone invited.' : role === 'invited' ? 'The notes go to everyone invited, you included.' : 'The notes go to the people invited.'}</span>
+          {host && getting.length > 0 && <Faces people={getting} size={18} max={4} />}
+        </div>
+        <div><Icon name="lock" size={15} /><span>Video and chat are encrypted end to end and never captured.</span></div>
+      </div>
+      {host && askers.length > 0 && c.mode !== 'on' && (
+        <div className="cap-ask"><Faces people={askers} size={22} max={3} /><span className="t">{listNames(askers)} asked for notes.</span></div>
+      )}
+      {mine?.state === 'asking' && (
+        <div className="cap-ask"><Icon name="hand" size={16} /><span className="t">You asked {name} for notes.</span><Button size="sm" variant="quiet" onClick={run(() => controls.ask(false))}>Take it back</Button></div>
+      )}
+      {mine?.state === 'declined' && c.mode !== 'on' && (
+        <div className="cap-ask"><Icon name="clock" size={16} /><span className="t">{sentence(name)} said not now at {hm(mine.at)}.</span></div>
+      )}
+      {(host || (c.mode !== 'on' && mine?.state !== 'asking')) && (
+        <div className="cap-acts">
+          {host && c.mode === 'on' && <><Button size="sm" icon="pause" onClick={run(controls.pause)}>Pause notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
+          {host && c.mode === 'paused' && <><Button size="sm" variant="primary" icon="play" onClick={run(controls.resume)}>Resume notes</Button><Button size="sm" variant="quiet" onClick={run(() => controls.notes(false))}>Turn off</Button></>}
+          {host && c.mode === 'off' && <Button size="sm" variant="primary" onClick={run(() => controls.notes(true))}>Turn on notes</Button>}
+          {!host && <Button size="sm" variant="primary" icon="hand" onClick={run(() => controls.ask(true))}>Ask for notes</Button>}
+        </div>
+      )}
+      <button type="button" className="cap-open" onClick={run(onOpenNotes)}><Icon name="notesPen" size={16} />Open the notes<Icon name="right" size={15} /></button>
+    </>
+  );
+}
+
+/** Whoever asked, as the call shows them. */
+function askerOf(state: CallState, r: NotesRequest): Person {
+  return state.participants.find((p) => p.id === r.participantId)?.person ?? { id: r.participantId, name: 'Someone', email: '' };
+}
+
+/**
+ * Asks for notes as they come: the organizer hears about each new one once, with a way to turn notes on (or resume
+ * them); whoever asked hears when the organizer says not now. Saying yes is notes coming on, which everyone hears.
+ */
+export function useCaptureAlerts(state: CallState, controls: CaptureControls) {
+  const toast = useToast();
+  const c = state.capture;
+  const heard = useRef(new Set<string>());
+  const live = useRef(controls);
+  live.current = controls;
+  useEffect(() => {
+    if (!state.isOrganizer) return;
+    for (const r of c.requests) {
+      if (heard.current.has(r.id)) continue;
+      heard.current.add(r.id);
+      const paused = c.mode === 'paused';
+      toast(`${callName(askerOf(state, r))} asked for notes`, {
+        icon: 'notesPen', ms: 12_000, action: { label: paused ? 'Resume' : 'Turn on', onClick: () => (paused ? live.current.resume() : live.current.notes(true)) }
+      });
+    }
+  }, [c.requests, c.mode, state, toast]);
+  // Said no to before this screen opened (a reload): already told.
+  const told = useRef(c.asked?.state === 'declined' ? c.asked.at : null);
+  const name = organizerName(state);
+  useEffect(() => {
+    const a = c.asked;
+    if (state.isOrganizer || a?.state !== 'declined' || told.current === a.at) return;
+    told.current = a.at;
+    toast(`${sentence(name)} said not now to notes`, { icon: 'notesPen', ms: 5000 });
+  }, [c.asked, name, state.isOrganizer, toast]);
+}
+
+/** Asks for notes, for the organizer in People: who asked and when, Not now for each, and notes on (or resumed) for everyone. */
+export function NotesAsks({ state, controls, decline, after }: {
+  state: CallState; controls: CaptureControls;
+  decline: (requestId: string) => Promise<void>;
+  /** Something is listed above it. */
+  after: boolean;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const c = state.capture;
+  if (!state.isOrganizer || c.mode === 'on' || !c.requests.length) return null;
+  const paused = c.mode === 'paused';
+  const no = (r: NotesRequest, p: Person) => {
+    setBusy(r.id);
+    decline(r.id).then(() => toast(`${callName(p)} was told not now`, { icon: 'check' }), (e: unknown) => toast(e instanceof Error ? e.message : 'That didn’t work.', { icon: 'x' })).finally(() => setBusy(null));
+  };
+  return (
+    <>
+      <div className={cn('ac-eyebrow ic-cap-h', after && 'mt')}>Asking for notes · {c.requests.length}</div>
+      {c.requests.map((r) => {
+        const p = askerOf(state, r);
+        return (
+          <div key={r.id} className="ic-prow is-asking">
+            <Avatar person={p} size={36} />
+            <div className="min-w-0"><b>{p.name}</b><small>Asked at {hm(r.at)}</small></div>
+            <div className="st">
+              <IconButton icon="x" label={`Say not now to ${callName(p)}`} disabled={busy === r.id} onClick={() => no(r, p)} />
+              <Button size="sm" variant="secondary" onClick={() => (paused ? controls.resume() : controls.notes(true))}>{paused ? 'Resume notes' : 'Turn on notes'}</Button>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** "Asked for notes", on the asker's row in People, for everyone. */
+export const askedTag = (state: CallState, participantId: string): string => (state.capture.mode !== 'on' && state.capture.requests.some((r) => r.participantId === participantId) ? 'Asked for notes' : '');
+
+/** The organizer's first name for a sentence, from the call itself, or "the organizer" while they're away (reloading). */
+export function organizerName(state: CallState): string {
+  const p = state.participants.find((x) => x.isOrganizer)?.person;
+  return p ? callName(p) : 'the organizer';
+}
+/** A name that starts a sentence. */
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

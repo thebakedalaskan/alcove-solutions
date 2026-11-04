@@ -1,5 +1,5 @@
 import { errorMessage, type CallCard, type CallSession, type Meeting, type Person } from '@alcove/api';
-import { Avatar, CallDock, DockButton, Faces, Icon, Logo, NotesSign, Spinner, buttonClass, cn, useRaisedToasts, useToast } from '@alcove/ui';
+import { Avatar, CallDock, CaptureSummary, DockButton, Faces, Icon, Logo, NotesSign, Spinner, buttonClass, cn, useRaisedToasts, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -165,6 +165,8 @@ function GuestPrejoin({ card, code, me }: { card: CallCard; code: string; me: Pe
             <h1>{card.title}</h1>
             <div className="pj-time ac-mono">Hosted by {card.organizerName}</div>
             {!card.hostHere ? <p>Waiting for the host to start the call.</p> : card.locked ? <p>The host has locked this call.</p> : null}
+            {/* What the call captures, before and while asking to join: refreshed with the card. */}
+            <CaptureSummary notes={card.notes} capture={card.capture} />
             {asked ? <Asking session={asked} organizerName={card.organizerName} onIn={enter} /> : (
               <>
                 {!me && <input className="ac-input" value={name} maxLength={60} autoComplete="name" placeholder="Your name" aria-label="Your name" onChange={(e) => setName(e.target.value)} />}

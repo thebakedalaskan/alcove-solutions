@@ -231,7 +231,7 @@ describe('signing in', () => {
     expect(await api.account.preferences()).toEqual({ notesDefault: 'on' });
     expect(await api.account.updatePreferences({ notesDefault: 'off' })).toEqual({ notesDefault: 'off' });
     const call = await api.calls.join((await api.calls.startNow()).code, { mic: true, cam: false });
-    expect(call.getSnapshot().notes.status).toBe('off');
+    expect(call.getSnapshot().capture.mode).toBe('off');
     await call.leave();
   });
 });
@@ -537,7 +537,8 @@ describe('calls with notes', () => {
     const call = await api.calls.join(callCode, { mic: true, cam: true });
     let s = call.getSnapshot();
     expect(s.title).toBe(`${firstName(session.user.name)}’s call`);
-    expect(s.notes).toMatchObject({ status: 'on', everOn: true });
+    expect(s.capture.mode).toBe('on');
+    expect(s.notes.everOn).toBe(true);
     expect(s.notes.noteId).toBeTruthy();
     expect(s.isOrganizer).toBe(true);
     expect(s.participants).toEqual([expect.objectContaining({ isMe: true, isOrganizer: true })]);
@@ -549,10 +550,10 @@ describe('calls with notes', () => {
     expect(call.getSnapshot().notes.recording).toEqual({ segment: 0, pieces: 2, seconds: 10 });
 
     call.setNotes(false);
-    await settle(call, (x) => x.notes.status === 'off');
+    await settle(call, (x) => x.capture.mode === 'off');
     expect(code(await call.appendAudio(piece(audioBytes('x'), 0, 2)).catch((e: unknown) => e))).toBe('conflict');
     call.setNotes(true);
-    s = await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
+    s = await settle(call, (x) => x.capture.mode === 'on' && x.notes.recording.segment === 1);
     expect(s.notes.recording.segment).toBe(1);
     await call.appendAudio(piece(audioBytes('segment-one'), 1, 0));
 
@@ -585,7 +586,7 @@ describe('calls with notes', () => {
   it('joins a call without notes and leaves no note behind', async () => {
     const { api } = await account();
     const call = await api.calls.join((await api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
-    expect(call.getSnapshot().notes.status).toBe('off');
+    expect(call.getSnapshot().capture.mode).toBe('off');
     expect((await ended(call)).pendingNoteId).toBeNull();
     expect(await api.notes.list()).toEqual([]);
   });
@@ -636,10 +637,10 @@ describe('live transcript and written notes', () => {
 
     // Notes off: nothing more is transcribed. Back on, lines continue after the first segment's 10 seconds.
     call.setNotes(false);
-    await settle(call, (x) => x.notes.status === 'off');
+    await settle(call, (x) => x.capture.mode === 'off');
     expect(code(await call.transcribe(speech('Off the record.', 0, 12_000)).catch((e: unknown) => e))).toBe('conflict');
     call.setNotes(true);
-    await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
+    await settle(call, (x) => x.capture.mode === 'on' && x.notes.recording.segment === 1);
     expect(code(await call.transcribe(speech('From before.', 0, 14_000)).catch((e: unknown) => e))).toBe('conflict');
     await call.transcribe(speech('That is everything for today.', 1, 0));
     expect(call.getSnapshot().transcript.at(-1)).toMatchObject({ at: 10, text: 'That is everything for today.' });
@@ -741,13 +742,13 @@ describe('live transcript and written notes', () => {
 
     // While notes were off nothing was heard, and a catch-up says so.
     call.setNotes(false);
-    await settle(call, (x) => x.notes.status === 'off');
+    await settle(call, (x) => x.capture.mode === 'off');
     await new Promise((r) => setTimeout(r, 1100));
     call.setNotes(true);
-    await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
+    await settle(call, (x) => x.capture.mode === 'on' && x.notes.recording.segment === 1);
     const gaps = (await call.catchUp()).gaps;
-    expect(gaps).toHaveLength(1);
-    expect((gaps[0]?.to ?? 0) - (gaps[0]?.from ?? 0)).toBeGreaterThanOrEqual(1);
+    expect(gaps).toEqual([{ kind: 'off', from: expect.any(String), to: expect.any(String), at: 5 }]);
+    expect(Date.parse(gaps[0]?.to ?? '') - Date.parse(gaps[0]?.from ?? '')).toBeGreaterThanOrEqual(1000);
 
     // Nobody else can catch up on this call, and nothing about it keeps a receipt.
     const b = await account();

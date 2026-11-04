@@ -5,7 +5,7 @@
  * inference.ts and accepts only the JSON shapes below; anything else is refused (docs:
  * notes-and-inference › Prompts).
  */
-import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type Person, type Question, type Speaker, type TranscriptLine } from '@alcove/api';
+import { firstName, type ActionItem, type AnswerPart, type CaptureGap, type CatchUp, type CatchUpItem, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type Person, type Question, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
 import { id128 } from '../crypto';
@@ -25,6 +25,8 @@ export interface Brief {
   people: Person[];
   seconds: number;
   lines: TranscriptLine[];
+  /** The stretches nothing was captured in, which the transcript marks so the model never runs over them. */
+  gaps: CaptureGap[];
   /** The written summary, for questions after the notes are written. */
   summary?: string | undefined;
   /** The meeting is still going on. */
@@ -32,7 +34,7 @@ export interface Brief {
 }
 /** A finished note, as the model reads it. */
 export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief =>
-  ({ title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], summary: m.summary });
+  ({ title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, summary: m.summary });
 
 /** About 30,000 tokens of transcript; longer calls keep their beginning and end. */
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -41,9 +43,30 @@ const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${St
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
-/** The transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who spoke. */
-function transcriptText(lines: TranscriptLine[]): string {
-  const all = lines.map((l) => `[${mmss(l.at)}] ${l.speaker ? `${l.speaker.name}: ` : ''}${l.text}`);
+/**
+ * Where nothing was captured, as the model reads it: a line of its own starting "--", which says how long and that
+ * nothing said then was recorded, so the model never writes as if the meeting ran on through it.
+ */
+function gapLine(g: CaptureGap, now: number): string {
+  const ms = (g.to ? Date.parse(g.to) : now) - Date.parse(g.from);
+  const long = ms < 60_000 ? 'less than a minute' : `${Math.round(ms / 60_000)} min`;
+  const kind = g.kind === 'paused' ? 'paused' : 'off';
+  return g.to ? `-- at ${mmss(g.at)} notes were ${kind} for ${long}: nothing said then was recorded --`
+    : `-- at ${mmss(g.at)} notes went ${kind}, ${long} ago: nothing said since was recorded --`;
+}
+/**
+ * The transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who spoke, with
+ * a "--" line where nothing was captured.
+ */
+function transcriptText(lines: TranscriptLine[], gaps: CaptureGap[] = []): string {
+  const now = Date.now();
+  const all: string[] = [];
+  let g = 0;
+  for (const l of lines) {
+    for (; g < gaps.length && (gaps[g]?.at ?? 0) <= l.at; g++) { const gap = gaps[g]; if (gap) all.push(gapLine(gap, now)); }
+    all.push(`[${mmss(l.at)}] ${l.speaker ? `${l.speaker.name}: ` : ''}${l.text}`);
+  }
+  for (const gap of gaps.slice(g)) all.push(gapLine(gap, now));
   const text = all.join('\n');
   if (text.length <= MAX_TRANSCRIPT_CHARS) return text;
   const head: string[] = [];
@@ -89,7 +112,7 @@ Every at is read from the transcript's [mm:ss] marks.
 chapters: the parts of the meeting in order, two to six of them (one for a short meeting). at is the second the part starts, read from the transcript's [mm:ss] marks. title is two to five words; summary is one short sentence.
 suggestedQuestions: three short questions someone might ask about this meeting afterwards.
 
-Write in the language of the transcript. Use only what the transcript says: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke.`;
+Write in the language of the transcript. Use only what the transcript says: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke. A line starting "--" marks a stretch when notes were off or paused and nothing was recorded: never say or guess what happened in it.`;
 
 /** A second the model points at, if it gave one. */
 const At = z.coerce.number().nullish().catch(null);
@@ -109,7 +132,7 @@ const NOBODY = new Set(['', 'unknown', 'unassigned', 'none', 'n/a', 'someone', '
 export async function draft(cfg: Config, b: Brief): Promise<Written> {
   const { json, evidence } = await complete(cfg, [
     { role: 'system', content: NOTES_PROMPT },
-    { role: 'user', content: `${about(b)}\n\nTranscript:\n${transcriptText(b.lines)}` }
+    { role: 'user', content: `${about(b)}\n\nTranscript:\n${transcriptText(b.lines, b.gaps)}` }
   // A full draft can take the model well over a minute (about 24 tokens a second, up to 2,500 of them).
   ], { what: 'notes', maxTokens: 2500, timeoutMs: 180_000 });
   const reply = Draft.safeParse(json);
@@ -153,7 +176,7 @@ export async function draft(cfg: Config, b: Brief): Promise<Written> {
 
 const ASK_PROMPT = `You answer a question about one meeting, using only its transcript and notes. Reply with a single JSON object and nothing else: {"answer": string, "moments": [number]}
 
-answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the meeting is still going on, answer from what has been said so far. If the transcript doesn't cover it, say so plainly.
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the meeting is still going on, answer from what has been said so far. If the transcript doesn't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it.
 moments: the seconds the answer comes from, read from the transcript's [mm:ss] marks; at most four, in order. An empty list if there are none.`;
 
 const Answer = z.object({ answer: z.string().min(1), moments: z.array(z.coerce.number()).catch([]) });
@@ -162,7 +185,7 @@ const Answer = z.object({ answer: z.string().min(1), moments: z.array(z.coerce.n
 export async function answer(cfg: Config, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
   const reply = Answer.safeParse(await completeJson(cfg, [
     { role: 'system', content: ASK_PROMPT },
-    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${transcriptText(b.lines)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
+    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${transcriptText(b.lines, b.gaps)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: b.live ? 'ask-live' : 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: issues(reply.error) } });
   const at = moment(b);
@@ -178,7 +201,7 @@ decided: what the people agreed or settled.
 proposed: what someone suggested that hasn't been agreed yet. Something only suggested is never decided.
 open: questions that were asked and haven't been answered yet.
 next: what someone said they, or someone else, would do. owner is that person's name as the transcript gives it, or null if it doesn't say; due is when, as it was said ("Friday"), or null.
-Each item is one short sentence, and at is the second it was said, read from the transcript's [mm:ss] marks. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions.`;
+Each item is one short sentence, and at is the second it was said, read from the transcript's [mm:ss] marks. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions. A line starting "--" marks a stretch when nothing was recorded: never say or guess what happened in it.`;
 
 const Items = z.array(z.object({
   text: z.string(), at: z.coerce.number().nullish().catch(null), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
@@ -190,7 +213,7 @@ type Sorted = Pick<CatchUp, 'summary' | 'decided' | 'proposed' | 'open' | 'next'
 export async function catchUp(cfg: Config, b: Brief): Promise<Sorted> {
   const reply = CatchUpReply.safeParse(await completeJson(cfg, [
     { role: 'system', content: CATCH_UP_PROMPT },
-    { role: 'user', content: `${about({ ...b, live: true })}\n\nTranscript so far:\n${transcriptText(b.lines)}` }
+    { role: 'user', content: `${about({ ...b, live: true })}\n\nTranscript so far:\n${transcriptText(b.lines, b.gaps)}` }
   ], { what: 'catch-up', maxTokens: 1500, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
   const at = moment(b);

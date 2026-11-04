@@ -3,7 +3,7 @@
  * pre-join screen through the call, so permission is asked once and the preview carries over. The
  * microphone and camera chosen last time are used again when they're plugged in.
  */
-import type { AudioPiece } from '@alcove/api';
+import { errorCode, type AudioPiece } from '@alcove/api';
 import { log } from '~/lib/log';
 import { canChooseSpeaker, readPrefs, rememberDevice } from './devices';
 
@@ -295,6 +295,8 @@ export class NotesRecorder {
   private rec: MediaRecorder | null = null;
   private segment = -1;
   private queue: Promise<void> = Promise.resolve();
+  /** Bumped by discard(): pieces recorded before it, and any still waiting to go, are never sent. */
+  private gen = 0;
   private graph: { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; source: MediaStreamAudioSourceNode | null; track: MediaStreamTrack | null } | null = null;
   constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void) {}
 
@@ -312,12 +314,13 @@ export class NotesRecorder {
     // Each recorder numbers its own pieces, so a late last piece keeps the segment it was recorded in.
     let seq = 0;
     let last = performance.now();
+    const gen = this.gen;
     rec.addEventListener('dataavailable', (e) => {
-      if (!e.data.size) return;
+      if (!e.data.size || gen !== this.gen) return;
       const now = performance.now();
       const p: AudioPiece = { data: e.data, segment, seq: seq++, durationMs: Math.max(0, now - last), mimeType };
       last = now;
-      this.queue = this.queue.then(() => this.send(p));
+      this.queue = this.queue.then(() => (gen === this.gen ? this.send(p, gen) : undefined));
     });
     rec.addEventListener('resume', () => { last = performance.now(); });
     rec.addEventListener('error', (e) => mlog.error('notes recorder failed', { err: e.error }));
@@ -343,6 +346,11 @@ export class NotesRecorder {
   stop() { void this.finish(); }
   /** Stops and waits until every recorded piece has been uploaded. */
   async flush(): Promise<void> { await this.finish(); await this.queue; }
+  /** Notes were paused: stops at once, and nothing recorded but not yet sent goes. The server refuses it anyway. */
+  discard() {
+    this.gen++;
+    void this.finish();
+  }
   /** Points the recording at `track`; the recorder keeps the same input throughout. */
   private listen(track: MediaStreamTrack): MediaStreamAudioDestinationNode {
     if (!this.graph) {
@@ -370,9 +378,11 @@ export class NotesRecorder {
     if (!rec || rec.state === 'inactive') { close(); return Promise.resolve(); }
     return new Promise((resolve) => { rec.addEventListener('stop', () => { close(); resolve(); }, { once: true }); rec.stop(); });
   }
-  private async send(p: AudioPiece) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+  private async send(p: AudioPiece, gen: number) {
+    for (let attempt = 0; attempt < 3 && gen === this.gen; attempt++) {
       try { await this.upload(p); mlog.debug('audio piece uploaded', { segment: p.segment, seq: p.seq, bytes: p.data.size, attempt }); return; } catch (e) {
+        // Expected around changes: notes were paused or turned off, or a new segment began. It isn't kept, by design.
+        if (errorCode(e) === 'conflict') { mlog.debug('audio piece refused: notes are paused, off or moved on', { segment: p.segment, seq: p.seq, err: e }); return; }
         mlog.at(attempt === 2 ? 'error' : 'warn', attempt === 2 ? 'audio piece lost after 3 attempts' : 'audio piece upload failed; retrying', { err: e, segment: p.segment, seq: p.seq, bytes: p.data.size, attempt });
         if (attempt === 2) this.onError(e instanceof Error ? e.message : 'A piece of the recording couldn’t be saved.');
         await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));

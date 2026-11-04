@@ -15,6 +15,7 @@ import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { useLiveNotes } from '~/features/call/liveNotes';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
+import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { SharePicker } from '~/features/call/SharePicker';
 import { SpeechClips } from '~/features/call/speech';
@@ -101,7 +102,9 @@ function InCall({ session }: { session: CallSession }) {
   const me = selfIn(state);
   const meId = me?.id ?? self;
   const organizer = state.isOrganizer;
-  const on = state.notes.status === 'on';
+  // What the call captures now, the same for everyone: notes on, paused by the organizer, or off.
+  const mode = state.capture.mode;
+  const on = mode === 'on';
   const width = useWidth();
   const narrow = width < 760;
   const sideW = narrow ? width : width < 1100 ? 360 : 400;
@@ -166,7 +169,10 @@ function InCall({ session }: { session: CallSession }) {
     };
   }, [session, media, toast]);
 
-  /* The recorder and the live transcript follow the call's notes, from the organizer's microphone only. */
+  /*
+   * The recorder and the live transcript run in the organizer's browser while notes are on. Paused or off, they stop
+   * at once and drop whatever wasn't sent: the server refuses it anyway.
+   */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError);
   const speech = useRef<SpeechClips | null>(null);
@@ -179,12 +185,12 @@ function InCall({ session }: { session: CallSession }) {
     const s = speech.current;
     if (!r || !s) return;
     if (organizer && on && live && micTrack) { r.start(micTrack, segment); s.start(micTrack, segment); }
-    else if (!on || !organizer) { r.stop(); s.stop(); }
+    else if (!on || !organizer) { r.discard(); s.stop(); }
   }, [organizer, on, live, segment, micTrack]);
   useEffect(() => () => speech.current?.stop(), []);
 
-  /* What the call says happened ("Notes are on…") arrives once, as a toast. */
-  const shown = useRef(new Set<string>());
+  /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
+  const shown = useRef(new Set(state.notices.slice(0, -1).map((n) => n.id)));
   useEffect(() => {
     for (const n of state.notices) {
       if (shown.current.has(n.id)) continue;
@@ -406,10 +412,28 @@ function InCall({ session }: { session: CallSession }) {
 
   /* Turning notes off keeps everything said while they were on: the last audio and speech are sent first. */
   const switchNotes = async (v: boolean) => {
-    if (!v) await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
+    if (!v && on) await Promise.all([recorder.current?.flush(), speech.current?.flush()]);
     session.setNotes(v);
     if (v && !panel && innerWidth >= 1100) setPanel('notes');
   };
+  /*
+   * Pausing stops everything at once: what's recorded but not sent yet is dropped rather than sent, and the server
+   * refuses anything that arrives after it. Resuming is only ever the organizer's choice. Anyone else asks.
+   */
+  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
+  const controls: CaptureControls = {
+    notes: (v) => void switchNotes(v),
+    pause: () => {
+      recorder.current?.discard();
+      speech.current?.stop();
+      session.pause().catch(failed);
+    },
+    resume: () => { session.resume().catch(failed); },
+    ask: (up) => {
+      session.requestNotes(up).then(() => toast(up ? `You asked ${organizerName(state)} for notes` : 'You took back your ask', { icon: 'hand' }), failed);
+    }
+  };
+  useCaptureAlerts(state, controls);
   const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
   const flip = (v: PanelView) => setPanel((x) => (x === v ? null : v));
 
@@ -457,13 +481,14 @@ function InCall({ session }: { session: CallSession }) {
     <Popover open={pop === 'cap'} onOpenChange={(o) => setPop(o ? 'cap' : null)} side="top" align="end" label="Caption language" className="ic-dmenu"
       anchor={<button type="button" className="ic-capbtn" aria-label="Choose the caption language"><Icon name="translate" size={14} />{langName(lang)}</button>}>{langMenu}</Popover>
   );
-  // Captions come back when the rooms close: what's said in one room isn't shown in another.
-  const capNode = !cc || open ? null : caption ? (
+  // Captions come back when the rooms close: what's said in one room isn't shown in another. While notes are paused
+  // or off nothing new is said in them, so the last line isn't left up as if it were live.
+  const capNode = !cc || open ? null : caption && on ? (
     <Caption who={<>{caption.line.speaker?.person && <Avatar person={caption.line.speaker.person} size={18} />}<span className="name">{caption.line.speaker ? callName(caption.line.speaker.person ?? { name: caption.line.speaker.name, email: '' }) : ''}</span>{caption.translated && lang && <span className="lang">→ {lang.toUpperCase()}</span>}{capButton}</>}
       original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
   ) : (
     <Caption who={<><Icon name="captions" size={15} /><span className="name">Captions</span>{capButton}</>}>
-      <span className="ic-cap-wait">{on ? 'What’s said appears here as people talk.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
+      <span className="ic-cap-wait">{on ? 'What’s said appears here as people talk.' : mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
     </Caption>
   );
 
@@ -540,7 +565,7 @@ function InCall({ session }: { session: CallSession }) {
     return {
       id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false,
       detail: detail.filter(Boolean).join(' · '),
-      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.view.pinned === p.id ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : ''].filter(Boolean)
+      tags: [!open && state.spotlight === p.id ? 'Spotlight · everyone' : '', layout.view.pinned === p.id ? 'Pinned for you' : '', p.hand ? (inARoom(p.id) ? `Asked for help in ${where ?? 'a room'}` : 'Hand raised') : '', askedTag(state, p.id)].filter(Boolean)
     };
   });
   const host: HostControls | undefined = organizer ? {
@@ -552,8 +577,9 @@ function InCall({ session }: { session: CallSession }) {
     lock: (v) => session.lock(v)
   } : undefined;
   const privacyLine = on
-    ? 'Video, audio and chat are encrypted end to end. While notes are on, the organizer’s microphone also goes to Alcove for the notes.'
-    : 'Video, audio and chat are encrypted end to end between the people here.';
+    ? 'Video, audio and chat are encrypted end to end. While notes are on, what everyone says also goes to the notes, written in confidential compute.'
+    : mode === 'paused' ? 'Video, audio and chat are encrypted end to end. Notes are paused, so nothing goes to the notes.'
+      : 'Video, audio and chat are encrypted end to end between the people here.';
 
   /* ---------- the status bar ---------- */
   const spotlight = open ? null : state.spotlight;
@@ -610,9 +636,10 @@ function InCall({ session }: { session: CallSession }) {
   return (
     <div className="stage ac-stage">
       <div className={cn('ic-call', ended && 'is-ended')}>
-        <TopBar title={state.title} elapsed={state.elapsed} notesOn={on} mode={layout.view.mode} custom={isCustom(layout.view)} people={stagePeople.map((p) => p.person)}
+        <TopBar title={state.title} elapsed={state.elapsed} mode={layout.view.mode} custom={isCustom(layout.view)} people={stagePeople.map((p) => p.person)}
+          sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} onOpenNotes={() => openPanel('notes')} />}
           asking={organizer ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting'} peopleOpen={shownPanel === 'people'}
-          onNotes={() => openPanel('notes')} onMode={(mode) => { if (open && organizer) toast('Your view comes back when the rooms close', { icon: 'door' }); else layout.setMode(mode); }}
+          onMode={(m) => { if (open && organizer) toast('Your view comes back when the rooms close', { icon: 'door' }); else layout.setMode(m); }}
           onReset={() => { layout.reset(); toast('Your view is back to Auto', { icon: 'reset' }); }} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
@@ -625,11 +652,12 @@ function InCall({ session }: { session: CallSession }) {
                 initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
                 <SidePanel view={shownPanel} onView={openPanel} onClose={() => setPanel(null)} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
                   {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem].filter((x): x is string => !!x)}
-                    onNotes={(v) => void switchNotes(v)} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
+                    controls={controls} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
-                  {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
+                  {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0 && mode !== 'paused'} paused={mode === 'paused'} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} who={personOf} onSend={(t) => session.sendChat(t)} />}
-                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} />}
+                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine}
+                    notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
                       people={byId} activity={activity} me={me.person} onJoin={visit} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />

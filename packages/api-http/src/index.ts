@@ -628,6 +628,11 @@ class HttpCall extends Live<CallState> implements CallSession {
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   setNotes = (on: boolean) => this.act({ type: 'notes', on });
+  /* What the call captures: pause and resume are the organizer's; anyone else asks for notes. Each resolves once the server has done it. */
+  pause = async () => { this.take(await this.t.act(this.state.callId, { type: 'pause' })); };
+  resume = async () => { this.take(await this.t.act(this.state.callId, { type: 'resume' })); };
+  requestNotes = async (up: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'request-notes', up })); };
+  declineNotes = async (requestId: string) => { this.take(await this.t.act(this.state.callId, { type: 'decline-notes', requestId })); };
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
   /** They're disconnected at once; the organizer's browser then takes them out of the group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };

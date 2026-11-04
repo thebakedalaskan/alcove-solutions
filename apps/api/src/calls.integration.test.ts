@@ -221,9 +221,9 @@ describe('end-to-end encryption', () => {
     await host.transcribe(speech('CANARY-SAID something private.', 0, 0));
     const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
 
-    // Waiting: the organizer sees who's asking; Sam sees only that notes are on, and gets no room and nothing said.
+    // Waiting: the organizer sees who's asking; Sam sees only what's captured, and gets no room and nothing said.
     expect((await settle(host, (s) => s.waiting.length === 1)).waiting).toEqual([expect.objectContaining({ id: sam.ticket.identity, person: expect.objectContaining({ name: 'Sam' }) })]);
-    expect(sam.getSnapshot()).toMatchObject({ participants: [], transcript: [], waiting: [], notes: { status: 'on' } });
+    expect(sam.getSnapshot()).toMatchObject({ participants: [], transcript: [], waiting: [], capture: { mode: 'on', gaps: [], requests: [] } });
     expect(code(await sam.room().catch((e: unknown) => e))).toBe('forbidden');
     for (const attempt of [() => sam.catchUp(), () => sam.askSoFar('What was said?'), () => sam.sendChat('hello?')]) {
       const e = await attempt().catch((x: unknown) => x);
@@ -862,7 +862,7 @@ describe('joining by link', () => {
     expect(code(await guest.catchUp().catch((e: unknown) => e))).toBe('conflict');
 
     host.setNotes(true);
-    await settle(host, (x) => x.notes.status === 'on');
+    await settle(host, (x) => x.capture.mode === 'on');
     await host.appendAudio(piece(audioBytes('catch'), 0, 0));
     await host.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0));
     expect(await guest.catchUp()).toMatchObject({ lines: 2 });

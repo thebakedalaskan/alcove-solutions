@@ -6,7 +6,7 @@
  * model the clip was sent to. When the recording stops, the lines and that evidence move into the note
  * and the rows go.
  */
-import { InferenceEvidenceSchema, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
+import { InferenceEvidenceSchema, type AudioSegment, type InferenceEvidence, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { b64u, id128, mac, openJson, sealJson, stateKey, toJson, utf8 } from '../crypto';
@@ -28,7 +28,12 @@ export interface Target { recordingId: string; noteId: string }
 /** A line as kept. Who said it comes from the note when it's shown: the organizer in a call, nobody in particular in a room. */
 const Line = z.object({ id: z.string(), at: z.number(), text: z.string() });
 export type Line = z.infer<typeof Line>;
-const Stored = z.object({ lines: z.array(Line), evidence: InferenceEvidenceSchema });
+/** A line, and the segment of the recording its clip was part of. */
+export type HeardLine = Line & { segment: number };
+const Stored = z.object({ segment: z.number(), lines: z.array(Line), evidence: InferenceEvidenceSchema });
+/** Recording order: segment by segment, then by when in the recording. */
+const inOrder = (a: HeardLine, b: HeardLine) => a.segment - b.segment || a.at - b.at;
+const heardLines = (c: z.infer<typeof Stored>): HeardLine[] => c.lines.map((l) => ({ ...l, segment: c.segment }));
 
 const key = (o: Owner, noteId: string) => stateKey(o.root, o.ownerId, `transcript:${noteId}`);
 const tagOf = (o: Owner, noteId: string, segment: number, startMs: number) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}`));
@@ -54,7 +59,7 @@ export async function hear(o: Owner, t: Target, clip: Clip): Promise<void> {
     if (!r || r.state === 'stopped') return false;
     // Kept even without lines: the note says which verified models everything said in it went to.
     await exec(c, 'INSERT INTO transcript_clips (owner_id, note_item_id, clip_tag, clip_ciphertext) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-      [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson({ lines, evidence }))]);
+      [o.ownerId, t.noteId, tag, sealJson(key(o, t.noteId), header(o, t.noteId, tag), toJson({ segment: clip.segment, lines, evidence }))]);
     return true;
   });
   if (kept) tlog.debug('clip transcribed into the live transcript', { ...ctx, lines: lines.length });
@@ -67,9 +72,26 @@ async function clips(o: Owner, db: Db, noteId: string): Promise<z.infer<typeof S
   return found.map((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored));
 }
 
-/** Every line heard so far for a note that's still recording, in order. */
-export async function lines(o: Owner, db: Db, noteId: string): Promise<Line[]> {
-  return (await clips(o, db, noteId)).flatMap((c) => c.lines).sort((a, b) => a.at - b.at);
+/** Every line heard so far for a note that's still recording, in recording order. */
+export async function lines(o: Owner, db: Db, noteId: string): Promise<HeardLine[]> {
+  return (await clips(o, db, noteId)).flatMap(heardLines).sort(inOrder);
+}
+
+/**
+ * Lines kept inside their own segment of the recording, in order. A line placed past the end of its segment's audio
+ * (its last pieces were dropped when notes were paused, or never arrived) goes at the end of that segment, and one
+ * placed before its start (an earlier segment's audio arrived after it) at the start, so nothing said before a pause
+ * lands after it. `open` is the segment still being recorded, whose end isn't known yet; a segment with no audio
+ * can't be measured either.
+ */
+export function placed(ls: HeardLine[], segs: AudioSegment[], open?: number | undefined): HeardLine[] {
+  const start = (segment: number) => segs.filter((g) => g.index < segment).reduce((n, g) => n + g.seconds, 0);
+  return ls.map((l) => {
+    const seconds = segs.find((g) => g.index === l.segment)?.seconds ?? 0;
+    if (l.segment === open || !seconds) return l;
+    const from = start(l.segment);
+    return { ...l, at: Math.round(Math.min(Math.max(l.at, from), Math.max(from, from + seconds - 0.1)) * 10) / 10 };
+  }).sort(inOrder);
 }
 
 /**
@@ -90,11 +112,11 @@ export async function heardBy(o: Owner, db: Db, noteId: string): Promise<Inferen
  * The latest `n` lines for a note that's still recording, in order: read from its newest clips only, so a long
  * call's live view costs the same as a short one's. (Each kept clip has at least one line.)
  */
-export async function latest(o: Owner, db: Db, noteId: string, n: number): Promise<Line[]> {
+export async function latest(o: Owner, db: Db, noteId: string, n: number): Promise<HeardLine[]> {
   const found = await rows(db, z.object({ clip_tag: bytea, clip_ciphertext: bytea }),
     'SELECT clip_tag, clip_ciphertext FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 ORDER BY heard_at DESC LIMIT $3', [o.ownerId, noteId, n]);
   const k = key(o, noteId);
-  return found.flatMap((r) => openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored).lines).sort((a, b) => a.at - b.at).slice(-n);
+  return found.flatMap((r) => heardLines(openJson(k, header(o, noteId, r.clip_tag), r.clip_ciphertext, Stored))).sort(inOrder).slice(-n);
 }
 
 /** Lines as the app shows them, said by `speaker` when anyone can tell. */

@@ -12,5 +12,6 @@ export * from './components/theme';
 export * from './components/illustrations';
 export * from './components/empty';
 export * from './components/call';
+export * from './components/capture';
 export * from './components/app';
 export * from './components/guidance';
