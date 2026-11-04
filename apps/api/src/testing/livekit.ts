@@ -5,8 +5,8 @@
  */
 import { CALL_TOPIC, CallNudgeSchema, type CallCrypto, type LiveStore } from '@alcove/api';
 import {
-  AudioFrame, AudioSource, AudioStream, DisconnectReason, EncryptionType, KeyProvider, LocalAudioTrack, Room, RoomEvent, TrackKind,
-  TrackPublishOptions, TrackSource, dispose, type RemoteTrack
+  AudioFrame, AudioSource, AudioStream, DisconnectReason, EncryptionType, KeyProvider, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
+  TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, dispose, type RemoteTrack
 } from '@livekit/rtc-node';
 import { KeyDerivationFunction } from '@livekit/rtc-ffi-bindings';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
@@ -23,6 +23,11 @@ export interface TestParticipant {
   remoteIdentities(): string[];
   /** Publishes a 440 Hz tone as this participant's microphone. Returns the track sid. */
   publishTone(): Promise<string>;
+  /**
+   * Shares a screen the way a browser does: a picture (ScreenShare) and, `withSound`, its sound (ScreenShareAudio), both
+   * encrypted like everything this participant sends. Returns their track sids.
+   */
+  publishScreen(withSound: boolean): Promise<{ screen: string; sound: string | null }>;
   /** Mean absolute sample of `identity`'s audio over `ms` (a tone at our amplitude is about 7600; silence is 0). */
   meanLevelFrom(identity: string, ms?: number): Promise<number>;
   waitFor(pred: () => boolean, what: string, ms?: number): Promise<void>;
@@ -124,6 +129,24 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
         void source.captureFrame(new AudioFrame(buf, RATE, 1, FRAME));
       }, 10));
       return pub.sid ?? '';
+    },
+    async publishScreen(withSound) {
+      const local = room.localParticipant;
+      if (!local) throw new Error('not connected');
+      const [w, h] = [320, 180];
+      const picture = new VideoSource(w, h);
+      const screenOpts = new TrackPublishOptions();
+      screenOpts.source = TrackSource.SOURCE_SCREENSHARE;
+      const screen = await local.publishTrack(LocalVideoTrack.createVideoTrack('screen', picture), screenOpts);
+      const frame = new VideoFrame(new Uint8Array(w * h * 4).fill(180), w, h, VideoBufferType.RGBA);
+      pumps.push(setInterval(() => picture.captureFrame(frame), 100));
+      if (!withSound) return { screen: screen.sid ?? '', sound: null };
+      const source = new AudioSource(RATE, 1);
+      const soundOpts = new TrackPublishOptions();
+      soundOpts.source = TrackSource.SOURCE_SCREENSHARE_AUDIO;
+      const sound = await local.publishTrack(LocalAudioTrack.createAudioTrack('screen-sound', source), soundOpts);
+      pumps.push(setInterval(() => { void source.captureFrame(new AudioFrame(new Int16Array(FRAME).fill(2_000), RATE, 1, FRAME)); }, 10));
+      return { screen: screen.sid ?? '', sound: sound.sid ?? null };
     },
     async meanLevelFrom(identity, ms = 2000) {
       await waitFor(() => audioFrom(identity) !== undefined, `audio from ${identity}`);

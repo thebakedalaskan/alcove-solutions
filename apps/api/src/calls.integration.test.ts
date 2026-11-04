@@ -6,7 +6,7 @@
  */
 import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import type { ClientEvent } from '@alcove/api-http';
-import { DisconnectReason, TrackKind } from '@livekit/rtc-node';
+import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from './testing/fake-near';
@@ -1082,6 +1082,37 @@ describe('devices', () => {
     // And everyone sees them in the call.
     const seen = await settle(host, (s) => s.participants.some((p) => p.id === guest.ticket.identity));
     expect(seen.participants.find((p) => p.id === guest.ticket.identity)?.person.name).toBe('Sam');
+    await host.leave();
+  });
+});
+
+describe('screen sharing', () => {
+  it('lets two people share at once, each picture and its sound encrypted, and one leaving takes only their share', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const ana = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Ana' });
+    await letIn(host, ana);
+    const bo = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Bo' });
+    await letIn(host, bo);
+    const [anaRoom, boRoom] = await Promise.all([joinRoom(ana), joinRoom(bo)]);
+
+    // Both share at once with the tokens the API gave them: the grant lets a second screen, and its sound, through.
+    const [anas, bos] = await Promise.all([anaRoom.publishScreen(true), boRoom.publishScreen(true)]);
+    // The organizer receives all four, each encrypted end to end.
+    const shared = (who: CallSession) => [...(hostRoom.room.remoteParticipants.get(who.ticket.identity)?.trackPublications.values() ?? [])]
+      .filter((t) => (t.source === TrackSource.SOURCE_SCREENSHARE || t.source === TrackSource.SOURCE_SCREENSHARE_AUDIO) && t.track !== undefined);
+    await hostRoom.waitFor(() => shared(ana).length === 2 && shared(bo).length === 2, 'both shares, picture and sound');
+    for (const t of [...shared(ana), ...shared(bo)]) expect(t.encryptionType).toBe(EncryptionType.GCM);
+    expect(shared(ana).map((t) => t.sid).sort()).toEqual([anas.screen, anas.sound].sort());
+    expect(shared(bo).map((t) => t.sid).sort()).toEqual([bos.screen, bos.sound].sort());
+
+    // Ana leaving takes her share with her, and only hers.
+    await ana.leave();
+    await anaRoom.disconnect();
+    await hostRoom.waitFor(() => shared(ana).length === 0, 'Ana’s share gone');
+    expect(shared(bo).map((t) => t.sid).sort()).toEqual([bos.screen, bos.sound].sort());
     await host.leave();
   });
 });
