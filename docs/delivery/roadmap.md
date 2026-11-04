@@ -51,6 +51,11 @@
   their own words, in revisions that say who changed what; the notes are written again on request; and the notes
   recording mixes everyone the organizer's browser hears
   ([Notes and inference › Correcting the transcript](../engineering/notes-and-inference.md#correcting-the-transcript)).
+- Decisions people confirm and follow-ups people acknowledge: what the notes write stays proposed; anyone with the notes
+  can propose and confirm, and the organizer or the person concerned takes things away, with who, when and in what standing
+  on every change; a follow-up and its date are suggestions until the person it's for says **I’ll do it** or **Not mine**;
+  each entry shows the transcript lines and screens behind it, and flags what's missing, in doubt or said otherwise
+  ([Notes and inference › Decisions and follow-ups](../engineering/notes-and-inference.md#decisions-and-follow-ups)).
 - Pointing at shared screens: a pointer with your name and marks that fade, aligned on the shared picture at any
   size and however each person zooms into it, sent from browser to browser end-to-end encrypted and kept to your part
   of the call; the presenter decides

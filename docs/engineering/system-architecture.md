@@ -78,7 +78,7 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
    commitment of method, path and body plus the encrypted response; a retry returns the same response,
    and a different request under the same ID is `409 conflict`. Note search, asking, catching up, caption
-   translations, audio pieces, transcript clips, changes to a note's decisions, open questions,
+   translations, audio pieces, transcript clips, proposals and changes to a note's decisions, open questions,
    follow-ups and transcript lines, having its notes written again, and sharing a note keep no receipt.
 6. The handler reads and writes through the vault (encrypted manifests), the audio pipeline (encrypted
    objects), transcript rows, `note_access` (who else may read a note) or Kservice-sealed billing, and calls
