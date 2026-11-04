@@ -1,5 +1,5 @@
 /* The call stage, always night: tiles, the dock and captions. */
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
@@ -97,5 +97,23 @@ export function Caption({ who, lang, children, original, className }: { who: Rea
       <p>{children}</p>
       {original && <p className="orig">{original}</p>}
     </div>
+  );
+}
+
+/** Whose a pointer or a mark on a shared screen is: their face in the arch and their name, never told apart by colour alone. */
+export function PointerTag({ person, name, className, style }: { person: AvatarPerson; name: ReactNode; className?: string | undefined; style?: CSSProperties | undefined }) {
+  return <span className={cn('ac-ptag', className)} style={style}><Avatar person={person} size={16} /><span className="n">{name}</span></span>;
+}
+
+/**
+ * Someone's pointer on a shared screen: an arrow whose tip is the spot they point at, with whose it is beside it. The tip
+ * is at the top left of its box: place it on the spot with left and top.
+ */
+export function SharePointer({ person, name, style, className }: { person: AvatarPerson; name: ReactNode; style?: CSSProperties | undefined; className?: string | undefined }) {
+  return (
+    <span className={cn('ac-pointer', className)} style={style}>
+      <svg className="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z" /></svg>
+      <PointerTag person={person} name={name} />
+    </span>
   );
 }

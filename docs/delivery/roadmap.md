@@ -48,6 +48,11 @@
   their own words, in revisions that say who changed what; the notes are written again on request; and the notes
   recording mixes everyone the organizer's browser hears
   ([Notes and inference › Correcting the transcript](../engineering/notes-and-inference.md#correcting-the-transcript)).
+- Pointing at shared screens: a pointer with your name and marks that fade, aligned on the shared picture at any
+  size and however each person zooms into it, sent from browser to browser end-to-end encrypted and kept to your part
+  of the call; the presenter decides
+  whether others can point, and the organizer can turn it off
+  ([Calls and recordings › Pointing at shared screens](../engineering/calls-and-recordings.md#pointing-at-shared-screens)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical

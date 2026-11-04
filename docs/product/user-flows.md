@@ -191,7 +191,8 @@ dock at the bottom.
   a difference, and nothing they say goes into the notes any differently. A shared screen's **⋯** shows it big or
   as a tile, and mutes its sound for you. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar with **Stop spotlight**.
   From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use **Enter** for the menu,
-  **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize; **Escape** unpins everyone. Someone
+  **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize, **L** to point at a share shown big;
+  **Escape** stops pointing, then unpins everyone. Someone
   pinned who leaves is pinned again if they come back, and nothing you arranged moves when people talk, join,
   leave, turn their camera off or share. Alcove remembers how you like calls (the layout, room for shares, where
   you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
@@ -220,6 +221,18 @@ dock at the bottom.
   **Open in its own window** puts a share in a window of its own (Picture-in-Picture in Chrome, Edge and Firefox, a
   popup in Safari) to keep in view or put on another screen; its tile says **In its own window**, with **Bring it
   back**. Two shares side by side are each zoomed and frozen on their own, to compare. Only your screen changes.
+- **Pointing at a share.** On a share shown big and live, the pointer button (or **L**, or **Point and mark** in its
+  **⋯**) starts pointing: everyone sees your pointer there with your face and name, a click leaves a ring and a drag a
+  line, and each fades after a few seconds. A small bar says you're pointing, with **Undo** (or Backspace) for your
+  last mark and **Stop pointing**, the × (or Escape). From the keyboard, the arrow keys move your pointer and Enter
+  leaves a ring; on a phone, tap and drag. Pointers and marks stay on the same spot of the picture however each person
+  has zoomed into it or moved around, and while you point the wheel, a pinch and the keys still zoom. A frozen or earlier
+  picture shows none, as they're about the live one, and freezing stops your pointing; a share in its own window shows
+  them, and you point in the call. Your own share shows what others point at too. Its bar has a switch for whether others can point at it
+  (on unless you turn it off; you always can) and **Clear marks** while there are any; changing what you share clears
+  them too. The organizer can turn pointing off for everyone in People. Pointers and marks go from browser to browser,
+  encrypted end to end, and stay in your room; they're never recorded or read for the notes, and nobody's computer is
+  ever controlled from the call.
 - **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.

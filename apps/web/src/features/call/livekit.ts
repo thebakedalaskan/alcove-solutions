@@ -21,6 +21,11 @@
  * the call it's in and no other, and between two parts it sends under a key nobody has. The call screen narrows what
  * plays to the same people from the call's state as well (`playOnly`).
  *
+ * Browsers also send each other data (pointers and marks on shared screens, `send` and `receive`), end-to-end encrypted
+ * too: the session seals it with a key from the sender's own media key (CallSession.sealData), and only what opens with
+ * the key of whoever LiveKit says sent it is taken, only from the people whose media would play here. LiveKit's own data
+ * encryption runs underneath. The call's nudges are taken only from the server, since anyone in the room can send data.
+ *
  * Load it with `await import('~/features/call/livekit')` from the call routes only: livekit-client is large and
  * stays out of the first page load.
  */
@@ -100,8 +105,23 @@ export interface CallRoom extends LiveStore<RoomView> {
    * Their share goes on for everyone else.
    */
   muteShare(screenSid: string, muted: boolean): void;
+  /**
+   * Sends this browser's own data on `topic` to everyone in the room, sealed with a key from its own media key:
+   * reliably (in order, sent again when lost) or not (newest wins, nothing waits). Nothing goes before this browser holds
+   * its key and the room is connected, and nothing ever goes unsealed.
+   */
+  send(topic: string, payload: Uint8Array, o: { reliable: boolean }): void;
+  /**
+   * Data on `topic` from someone whose media this browser would play (in its MLS group, in its part of the call), opened
+   * with their key. Before anything is opened, a packet bigger than `limits.bytes` is dropped, and so is one past its
+   * sender's rate (a burst of `limits.burst`, then `limits.perSecond`), opened or not: LiveKit limits no one's data.
+   * Anything else is dropped too. Returns the function that stops listening.
+   */
+  receive(topic: string, on: (payload: Uint8Array, from: string) => void, limits: DataLimits): () => void;
   leave(): Promise<void>;
 }
+/** What the room lets through on a topic before opening anything: a packet's size as sealed, and each sender's rate. */
+export interface DataLimits { bytes: number; burst: number; perSecond: number }
 
 function endReason(r: DisconnectReason | undefined): RoomView['endReason'] {
   switch (r) {
@@ -178,6 +198,14 @@ class LiveKitRoom implements CallRoom {
    * change of what's shared swaps tracks inside it) and across this browser's reconnects.
    */
   private quiet = new Set<string>();
+  /**
+   * Who takes the data on each topic (see CallRoom.receive) and what it lets through, each sender's allowance on each
+   * topic (a bucket that fills again over time), and how much data wasn't taken or sent, for the log.
+   */
+  private takers = new Map<string, { limits: DataLimits; on: Set<(payload: Uint8Array, from: string) => void> }>();
+  private allowance = new Map<string, { tokens: number; at: number }>();
+  private dropped = 0;
+  private unsent = 0;
 
   constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
     this.keys = new CallKeys(session.ticket.identity);
@@ -226,13 +254,31 @@ class LiveKitRoom implements CallRoom {
     r.on(RoomEvent.ParticipantDisconnected, () => { setTimeout(() => { if (r.state === ConnectionState.Connected) refetch(); }, 400); });
     r.on(RoomEvent.TrackSubscribed, (track, pub, who) => { this.consider(track, pub, who); if (pub.source === Track.Source.Camera) this.receiveCams(); this.emit(); });
     r.on(RoomEvent.TrackUnsubscribed, (track) => { if (track.sid) this.held.delete(track.sid); this.silence(track); this.emit(); });
-    // The server's nudge says what changed. LiveKit could send one too: all it can do is make this browser look again.
-    r.on(RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
-      if (topic !== CALL_TOPIC) return;
-      let n: unknown = null;
-      try { n = JSON.parse(new TextDecoder().decode(payload)); } catch { /* not a nudge */ }
-      const nudge = CallNudgeSchema.safeParse(n);
-      if (nudge.success) refetch({ call: nudge.data.call, log: nudge.data.log });
+    r.on(RoomEvent.DataReceived, (payload, _p, _kind, topic, _encryption, from) => {
+      if (topic === CALL_TOPIC) {
+        // The server's nudge says what changed, and comes from no participant. Anyone in the room can send data, so one
+        // from a participant isn't taken: a stream of them would keep every browser fetching the call. LiveKit could
+        // send one too: all it can do is make this browser look again.
+        if (from) return;
+        let n: unknown = null;
+        try { n = JSON.parse(new TextDecoder().decode(payload)); } catch { /* not a nudge */ }
+        const nudge = CallNudgeSchema.safeParse(n);
+        if (nudge.success) refetch({ call: nudge.data.call, log: nudge.data.log });
+        return;
+      }
+      const takers = topic ? this.takers.get(topic) : undefined;
+      if (!topic || !takers?.on.size) return;
+      // Only from someone whose media would play here, and only what opens with their key: LiveKit's own data encryption
+      // can't be told apart on arrival (it reports every packet as unencrypted), so the session seals data itself.
+      if (!from || !this.hears(from)) { this.notTaken(topic, 'not here'); return; }
+      // LiveKit limits no one's data, so size and rate are checked here, before anything is copied or opened: a flood from
+      // one browser costs the others a look at each packet's length, and no more.
+      if (payload.byteLength > takers.limits.bytes) { this.notTaken(topic, 'too big'); return; }
+      if (!this.allows(topic, from, takers.limits)) { this.notTaken(topic, 'too many'); return; }
+      void this.session.openData(topic, from, payload).then((plain) => {
+        if (!plain) { this.notTaken(topic, 'unopened'); return; }
+        if (this.hears(from)) for (const take of takers.on) take(plain, from);
+      });
     });
     r.on(RoomEvent.Reconnecting, () => this.set({ connection: 'reconnecting' }));
     // Publishing waits while LiveKit reconnects (it republishes everything itself), then catches up with LocalMedia.
@@ -287,6 +333,10 @@ class LiveKitRoom implements CallRoom {
   private allowed(pub: TrackPublication | undefined, who: Participant): boolean {
     if (who === this.room.localParticipant) return true;
     return Boolean(pub?.isEncrypted) && this.session.crypto.getSnapshot().members.includes(who.identity) && (this.only?.(who.identity) ?? true);
+  }
+  /** Someone else whose media would play here: in this browser's MLS group and, while rooms are open, in its part of the call. */
+  private hears(identity: string): boolean {
+    return identity !== this.room.localParticipant.identity && this.session.crypto.getSnapshot().members.includes(identity) && (this.only?.(identity) ?? true);
   }
   private consider(track: RemoteTrack, pub: RemoteTrackPublication, who: RemoteParticipant) {
     if (!track.sid) return;
@@ -519,6 +569,46 @@ class LiveKitRoom implements CallRoom {
     rlog.info(muted ? 'a share’s sound muted here' : 'a share’s sound playing here again');
     this.emit();
   }
+  send(topic: string, payload: Uint8Array, o: { reliable: boolean }): void {
+    // Sealed by the session with this browser's own media key (none yet: nothing goes), then encrypted again by LiveKit's
+    // data encryption, which the room was made with.
+    if (this.room.state !== ConnectionState.Connected) return;
+    void this.session.sealData(topic, payload).then((sealed) => {
+      if (sealed && this.room.state === ConnectionState.Connected) return this.room.localParticipant.publishData(sealed, { reliable: o.reliable, topic });
+      return undefined;
+    }).catch((e: unknown) => {
+      this.unsent += 1;
+      if (this.unsent === 1 || this.unsent % 100 === 0) rlog.debug('data not sent', { err: e, topic, unsent: this.unsent });
+    });
+  }
+  /** Data that wasn't taken, for the log: counted, and said now and then, never what it was. */
+  private notTaken(topic: string, why: string) {
+    this.dropped += 1;
+    if (this.dropped === 1 || this.dropped % 100 === 0) rlog.debug('data not taken', { topic, why, dropped: this.dropped });
+  }
+  receive(topic: string, on: (payload: Uint8Array, from: string) => void, limits: DataLimits): () => void {
+    const t = this.takers.get(topic) ?? { limits, on: new Set<(payload: Uint8Array, from: string) => void>() };
+    t.limits = limits;
+    t.on.add(on);
+    this.takers.set(topic, t);
+    return () => { t.on.delete(on); };
+  }
+  /**
+   * Whether `from` may send one more packet on `topic` now: each sender has a bucket of `burst` packets that fills
+   * again at `perSecond`, and a packet past it is dropped before it's opened.
+   */
+  private allows(topic: string, from: string, limits: DataLimits): boolean {
+    const key = `${topic}\n${from}`;
+    const t = performance.now();
+    const a = this.allowance.get(key) ?? { tokens: limits.burst, at: t };
+    a.tokens = Math.min(limits.burst, a.tokens + ((t - a.at) / 1000) * limits.perSecond);
+    a.at = t;
+    this.allowance.set(key, a);
+    if (a.tokens < 1) return false;
+    a.tokens -= 1;
+    return true;
+  }
+
   /** The sound of a share this listener muted: it isn't played. */
   private hushed(track: RemoteTrack): boolean {
     if (track.source !== Track.Source.ScreenShareAudio) return false;

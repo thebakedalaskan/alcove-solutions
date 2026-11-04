@@ -1,6 +1,6 @@
 import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, Tooltip, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -17,6 +17,8 @@ import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
 import { useLiveNotes } from '~/features/call/liveNotes';
+import { ShareMarks } from '~/features/call/marks';
+import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
@@ -54,7 +56,7 @@ const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (mode ===
 const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
 const NO_ROOM: CallRoom = {
   getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, startAudio: async () => undefined,
-  muteShare: () => undefined, leave: async () => undefined
+  muteShare: () => undefined, send: () => undefined, receive: () => () => undefined, leave: async () => undefined
 };
 /**
  * One room connection per call session. React may mount the screen twice (StrictMode in dev); a second
@@ -77,7 +79,7 @@ function Call() {
 function asShown(state: CallState, members: string[], self: string): CallState {
   const unknown = members.filter((id) => !state.participants.some((p) => p.id === id));
   if (!unknown.length) return state;
-  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: id, person: { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false }))] };
+  return { ...state, participants: [...state.participants, ...unknown.map((id) => ({ id, seat: id, person: { ...SOMEONE, id }, isMe: id === self, isOrganizer: false, hand: false, othersPoint: true }))] };
 }
 
 /** Whether you're talking now, from the real microphone level. */
@@ -204,6 +206,14 @@ function InCall({ session }: { session: CallSession }) {
       }, 0);
     };
   }, [session, media, toast]);
+  /* Pointers and marks on what's shared: kept in this browser only, sent and taken through the room, encrypted end to end. */
+  const [marks, setMarks] = useState<ShareMarks | null>(null);
+  useEffect(() => {
+    if (room === NO_ROOM) return;
+    const m = new ShareMarks(room, self);
+    setMarks(m);
+    return () => { m.dispose(); setMarks(null); };
+  }, [room, self]);
 
   /*
    * The call's notes, in the organizer's browser, from what it hears: its own microphone and the people in its part of
@@ -556,8 +566,14 @@ function InCall({ session }: { session: CallSession }) {
    * Several people share at once (a share starts while fewer than MAX_SHARES are going), each viewer chooses which to
    * see big, and anyone can mute the sound a share carries, for themselves.
    */
+  // Pointing at a share: the organizer's switch for the call, and each presenter's own choice for others on theirs.
+  const othersPointAt = (id: string) => state.participants.find((p) => p.id === id)?.othersPoint ?? true;
+  const closedFor = (owner: string, mine: boolean): 'call' | 'presenter' | null => (!state.pointing ? 'call' : mine || othersPointAt(owner) ? null : 'presenter');
   const shares: StageShare[] = [
-    ...(m.screen ? [{ id: meId, feed: { stream: m.screen }, presenter: me?.person ?? SOMEONE, mine: true, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen', sound: null }] : []),
+    ...(m.screen ? [{
+      id: meId, feed: { stream: m.screen }, presenter: me?.person ?? SOMEONE, mine: true, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen', sound: null,
+      point: myShare ? { sid: myShare, closed: closedFor(meId, true) } : null
+    }] : []),
     ...others.flatMap((p): StageShare[] => {
       const r = roomView.people[p.id];
       const sid = r?.screenSid;
@@ -568,9 +584,23 @@ function InCall({ session }: { session: CallSession }) {
         muted: !on,
         toggle: () => { room.muteShare(sid, on); toast(on ? `${who}’s share is muted for you` : `${who}’s share plays its sound again`, { icon: on ? 'speakerOff' : 'speaker' }); }
       } : null;
-      return [{ id: p.id, feed: { room, sid }, presenter: p.person, mine: false, label: `${who} is sharing`, name: `${who}’s screen`, sound }];
+      return [{ id: p.id, feed: { room, sid }, presenter: p.person, mine: false, label: `${who} is sharing`, name: `${who}’s screen`, sound, point: { sid, closed: closedFor(p.id, false) } }];
     })
   ];
+  /*
+   * The marks store follows the call: the shares shown here (by their picture's track sid, with whose each is and whether
+   * others may point at it), who's in your part of the call, which part that is, and whether pointing is on at all.
+   */
+  const pointingOn = state.pointing && live && roomView.connection === 'connected';
+  const pointShares = shares.flatMap((s) => (s.point ? [{ sid: s.point.sid, owner: s.id, others: othersPointAt(s.id) }] : []));
+  const pointPeople = unit ?? stagePeople.map((p) => p.id);
+  // The part of the call is the one whose keys this browser holds (the main room, or a room by its ID): someone coming
+  // or going changes who's in it, and only their own pointer and marks go.
+  const pointKey = [pointingOn, crypto.place, pointShares.map((s) => `${s.sid}:${s.owner}:${s.others}`).join(','), [...pointPeople].sort().join(',')].join('|');
+  useEffect(() => {
+    marks?.use({ on: pointingOn, shares: new Map(pointShares.map((s) => [s.sid, { owner: s.owner, others: s.others }])), people: new Set(pointPeople), part: crypto.place });
+    // pointKey says everything this reads.
+  }, [marks, pointKey]);
   // A share's big-or-tile choice goes when the share stops: one seen on this connection that's gone. Before the room
   // connects (a reload) or just after it reconnects, a share may not be visible yet, and its choice stays.
   const shareKey = shares.map((s) => s.id).join(' ');
@@ -907,7 +937,9 @@ function InCall({ session }: { session: CallSession }) {
       if (gone?.person.email) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) });
     },
     locked: state.locked,
-    lock: (v) => session.lock(v)
+    lock: (v) => session.lock(v),
+    pointing: state.pointing,
+    setPointing: (v) => session.setPointing(v)
   } : undefined;
   const privacyLine = [
     open ? 'Each room has its own encryption keys, so video, audio and chat reach only the people in the same room.'
@@ -922,11 +954,36 @@ function InCall({ session }: { session: CallSession }) {
   // Shared means the call has it: until LiveKit has published it, it's starting. "With sound" only while its sound is live.
   const published = Boolean(roomView.people[meId]?.screenSid);
   const withSound = Boolean(m.screen?.getAudioTracks().some((t) => t.readyState === 'live'));
+  /* Whether others may point at what you share (your choice, everyone sees it), and everyone's marks on it, to clear. */
+  const othersPoint = me?.othersPoint ?? true;
+  const marksOnMine = useShareMarkCount(marks, myShare);
+  // Something else shared in place of what was (Change: the same share, a new picture): marks on it were about the old
+  // picture, so they go, for everyone.
+  const screenStream = m.screen;
+  const lastScreen = useRef<MediaStream | null>(null);
+  useEffect(() => {
+    const was = lastScreen.current;
+    lastScreen.current = screenStream;
+    if (was && screenStream && was !== screenStream && myShare) marks?.clear(myShare);
+  }, [screenStream, myShare, marks]);
+  const flipOthersPoint = () => {
+    const on = !othersPoint;
+    session.letOthersPoint(on).then(() => toast(on ? 'Others can point at your screen again' : 'Only you can point at your screen now', { icon: on ? 'pointer' : 'pointerOff' }),
+      (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+  };
   const sharePill = m.screen && (
     <div className="ic-spill"><Icon name="screen" size={15} />
       <span className="tx2">{published ? <>You’re sharing <b>{m.screenLabel ?? 'your screen'}</b>{withSound && ' with sound'}</> : <>Starting to share <b>{m.screenLabel ?? 'your screen'}</b></>}</span>
       {!published && <Dots />}
       {published && screensOn && !sharingInRoom && <span className="sp-read"><RecDot />Read for the notes</span>}
+      {published && state.pointing && (
+        <Tooltip label={othersPoint ? 'Others can point at your screen. Press so only you can' : 'Only you can point at your screen. Press to let others'}>
+          <button type="button" className={cn('sp-btn sp-ico', !othersPoint && 'is-off')} aria-pressed={othersPoint} aria-label="Others can point at your screen" onClick={flipOthersPoint}>
+            <Icon name={othersPoint ? 'pointer' : 'pointerOff'} size={15} />
+          </button>
+        </Tooltip>
+      )}
+      {published && myShare && marksOnMine > 0 && <button type="button" className="sp-btn" onClick={() => marks?.clear(myShare)}>Clear marks</button>}
       <button type="button" className="sp-btn" onClick={() => pickShare()}>Change</button>
       <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
     </div>
@@ -1006,7 +1063,7 @@ function InCall({ session }: { session: CallSession }) {
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
-            <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
+            <Stage people={onStage} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={organizer}
               bar={bar} caption={capNode} rooms={stageRooms} place={crypto.place} paused={mode === 'paused'} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
               onShareStarted={shareStarted} onShareStopped={shareStopped} />
           </motion.div>

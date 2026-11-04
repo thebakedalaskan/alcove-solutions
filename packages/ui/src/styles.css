@@ -56,6 +56,8 @@
   --stage-ink: #EEEDF8;
   --stage-ink-2: #A7A2C0;
   --speak: #A9B2FF;
+  /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
+  --stage-point: #5B4BE0;
   /* The sky: illustration, tour art and covers only */
   --dawn-1: #141148;
   --dawn-2: #3B2EA6;

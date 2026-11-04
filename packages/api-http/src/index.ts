@@ -4,7 +4,7 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
@@ -305,6 +305,21 @@ const RING_HALF = Math.floor(CALL_VOID_KEY_INDEX / 2);
 export const keyIndex = (generation: number, epoch: number): number => (generation % 2) * RING_HALF + (epoch % RING_HALF);
 /** How many epochs' keys a browser keeps to decrypt with: frames still under a slightly older key play. */
 const KEEP_EPOCHS = 4;
+/*
+ * Data browsers send each other through LiveKit (pointers and marks on shared screens), sealed here: AES-GCM under a key
+ * derived with HKDF from the sender's media key for its epoch (so a key never serves media and data both), bound to the
+ * topic and the sender. A sealed message is a version byte, the key's ring index, a 12-byte nonce and the ciphertext.
+ * LiveKit's own data encryption runs underneath, but a browser can't tell on arrival whether a packet came through it.
+ */
+const DATA_VERSION = 1;
+const DATA_HEAD = 14;
+const DATA_LABEL = 'alcove/call-data/v1';
+const utf8 = new TextEncoder();
+const dataBound = (topic: string, identity: string) => utf8.encode(`${DATA_LABEL}\n${topic}\n${identity}`);
+async function dataKeyFrom(raw: Uint8Array): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey('raw', new Uint8Array(raw), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(DATA_LABEL) }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
 /**
  * After someone is only added, the wait before sending with the new key is short: whoever was just let in is
  * still connecting, and can't hear anyone until everyone does. After someone leaves, or the keys move on by
@@ -756,6 +771,35 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.outbox.push({ local, text: t, at: this.state.elapsed, place: this.place, tries: 0, sealed: null });
     await this.sync();
   };
+  /** Data keys, one per media key (each sender's, each epoch), made once. */
+  private dataKeys = new WeakMap<Uint8Array, Promise<CryptoKey>>();
+  private dataKey(raw: Uint8Array): Promise<CryptoKey> {
+    let k = this.dataKeys.get(raw);
+    if (!k) { k = dataKeyFrom(raw); this.dataKeys.set(raw, k); }
+    return k;
+  }
+  sealData = async (topic: string, payload: Uint8Array): Promise<Uint8Array<ArrayBuffer> | null> => {
+    const send = this.media?.send;
+    if (!send) return null;
+    const iv = randomBytes(12);
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: dataBound(topic, this.ticket.identity) }, await this.dataKey(send.key), new Uint8Array(payload)));
+    const out = new Uint8Array(DATA_HEAD + sealed.length);
+    out[0] = DATA_VERSION;
+    out[1] = send.index;
+    out.set(iv, 2);
+    out.set(sealed, DATA_HEAD);
+    return out;
+  };
+  openData = async (topic: string, from: string, sealed: Uint8Array): Promise<Uint8Array | null> => {
+    if (sealed.length < CALL_DATA_OVERHEAD || sealed[0] !== DATA_VERSION) return null;
+    const raw = this.media?.epochs.find((e) => e.index === sealed[1])?.keys[from];
+    if (!raw) return null;
+    try {
+      return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: sealed.slice(2, DATA_HEAD), additionalData: dataBound(topic, from) }, await this.dataKey(raw), sealed.slice(DATA_HEAD)));
+    } catch {
+      return null;
+    }
+  };
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
@@ -773,6 +817,8 @@ class HttpCall extends Live<CallState> implements CallSession {
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
   setHand = (up: boolean) => this.act({ type: 'hand', up });
+  letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
+  setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
   openRooms = (plan: BreakoutPlan) => this.actAndSync({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes });
   closeRooms = () => this.actAndSync({ type: 'rooms-close' });
