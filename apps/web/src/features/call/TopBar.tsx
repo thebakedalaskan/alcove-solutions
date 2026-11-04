@@ -49,7 +49,7 @@ export function TopBar({ title, elapsed, sign, view, custom, people, asking, rec
           )}
         </AnimatePresence>
         <span className="vr" />
-        <Tooltip label="A private recap of the last few minutes" side="bottom">
+        <Tooltip label="A private recap of what you missed" side="bottom">
           <button type="button" className="ac-btn is-secondary is-sm ic-catch" onClick={onCatchUp}><Icon name="history" size={16} /><span className="catchtxt">Catch up</span></button>
         </Tooltip>
         <Shield screens={screens} />
