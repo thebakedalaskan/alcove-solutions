@@ -1228,14 +1228,16 @@ function InCall({ session }: { session: CallSession }) {
   const surfaces = { ws: false, board: false };
   const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0 };
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
-  const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (!setApart && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
+  // A stage that holds the shares has its own width to fit them in; panels of their own find their room with `adapt`.
+  const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
+  const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
   const seats = staged.shareSeats;
   const roomy = surfaces.ws || surfaces.board || seats.size > 0;
   const seatsKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const top = bar ? 46 : 0;
   const bottom = capNode ? (stageW < 700 ? 150 : 124) : 0;
   const facts: PanelFacts = { ...noFacts, shown: [...seats.values()], top, bottom };
-  const solved = useMemo(() => solve(panels, size, facts), [panels, size, seatsKey, front, phone, !!stageRooms, top, bottom]);
+  const solved = useMemo(() => solve(panels, size, facts), [panels, size, surfaces.ws, surfaces.board, seatsKey, front, phone, !!stageRooms, top, bottom]);
   const loudKey = solved.A.apart ? onStage.filter((p) => p.hand || p.speaking).map((p) => p.id).join(' ') : '';
   const frame = useMemo((): StageFrame => {
     const { A, rects } = solved;
@@ -1310,7 +1312,7 @@ function InCall({ session }: { session: CallSession }) {
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
           asking={hosting ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={showing.includes('people')} screens={state.capture.screen.mode !== 'off'}
-          swap={swap}
+          swap={!phone && swap}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom} layout={presetOf(panels)} people={panels.people} list={facts.ws ? panels.list : null}
               roomy={roomy} phone={phone} onMode={(m) => { if (!roomsHold()) layout.setMode(m); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset}
@@ -1318,7 +1320,7 @@ function InCall({ session }: { session: CallSession }) {
           )}
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
-          label={panelName} group={sidePanel} handle={hostHandle}
+          label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={resizing} phone={phone} people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}

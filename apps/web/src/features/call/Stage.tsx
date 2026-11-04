@@ -101,10 +101,10 @@ const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const box = (r: Rect) => ({ left: r[0], top: r[1], width: r[2], height: r[3] });
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
-/** Where a handle is along its space, 0 to 1, snapping at half as every line does. */
+/** Where a handle is along its space, 0 to 1, with the pointer on the middle of the line, snapping at half as every line does. */
 const along = (hd: Handle, p: { x: number; y: number }) => {
   const room = Math.max(1, (hd.along === 'x' ? hd.area.w : hd.area.h) - 12);
-  const v = (hd.along === 'x' ? p.x - hd.area.x : p.y - hd.area.y) / room;
+  const v = ((hd.along === 'x' ? p.x - hd.area.x : p.y - hd.area.y) - 6) / room;
   return Math.abs(v - 0.5) * room < 8 ? 0.5 : v;
 };
 /** The corner a picture dropped at (x, y) goes to, or that Shift and an arrow move it to. */
@@ -241,8 +241,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   const reduce = useReducedMotion();
   const { ordered, fresh, looks, seenLooks, popped, plan, shareSeats, narrow, shareIds } = staged;
   const { prefs, layout: lay } = view;
-  const { box: at, panels } = frame;
-  const { x: fx, y: fy, w, h } = at;
+  const { panels } = frame;
+  const { x: fx, y: fy, w, h } = frame.box;
   const L = useMemo(() => placeFrame(plan, frame), [plan, frame]);
 
   /*
@@ -562,7 +562,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
         const here = pointingNow === s.id;
         const said = [s.label, s.sound ? (s.sound.muted ? 'its sound muted for you' : 'with sound') : '', away ? 'in its own window, P brings it back' : big ? '' : 'a tile, P shows it big',
           here ? 'you’re pointing at it: arrow keys move your pointer, Enter marks, Backspace takes your last mark back, Escape stops' : canPoint ? 'L to point at it' : ''];
-        const shortcuts = `Enter P${canPoint ? ' L' : ''}${look ? ` ${LOOK_ARIA}` : ''}`;
+        const shortcuts = `Enter P${canPoint ? ' L' : ''}${big && canMove ? ' G' : ''}${look ? ` ${LOOK_ARIA}` : ''}`;
         return (
           <motion.div key={k} {...tileProps(k, said.filter(Boolean).join(', '))} aria-roledescription="shared screen" aria-keyshortcuts={shortcuts}
             aria-describedby={look ? `sv-${s.id}` : undefined}
@@ -588,7 +588,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
               ) : <><FeedVideo feed={s.feed} className="screen" />{pointing}</>;
             })()}
             <span className="ac-tile-name">
-              <Avatar person={s.presenter} size={18} /><span className="tl">{s.label}</span>
+              <Avatar person={s.presenter} size={18} /><span className="tl">{panels && !s.mine ? s.name : s.label}</span>
               {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
             </span>
             {!big && !away && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}

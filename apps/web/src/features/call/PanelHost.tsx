@@ -95,7 +95,7 @@ function nextSpot<S extends { box: Box }>(x: number, y: number, key: string, spo
   return best;
 }
 
-export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeLive, onLive, onArranged, label, tiles, group, ws, board, handle }: {
+export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeLive, onLive, onArranged, label, tiles, group, ws, board, swap, handle }: {
   /** The call's area and its size (`useCallArea`). */
   area: RefObject<HTMLDivElement | null>;
   size: Size;
@@ -118,6 +118,8 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
   /** The workspace and the board, once something fills them. Each is given where it is, kept mounted while it's behind something else. */
   ws?: ((r: Box) => ReactNode) | undefined;
   board?: ((r: Box) => ReactNode) | undefined;
+  /** On a phone, what's showing when things take turns: it sits under the row of arches. */
+  swap?: ReactNode;
   handle?: Ref<PanelHostHandle> | undefined;
 }) {
   const reduce = useReducedMotion();
@@ -151,6 +153,7 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || !(e.target instanceof Element)) return;
     moved.current = false;
+    if (A.phone) return;
     const dv = e.target.closest('[data-div]');
     if (dv) {
       const d = dividers.find((x) => x.key === dv.getAttribute('data-div'));
@@ -260,6 +263,9 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
       if (e.key === 'Enter' || e.key === ' ') {
         setDrag(null);
         if (d.drop) { h.place(d.moving, d.drop); setSaid(`${d.label} moved.`); } else setSaid(`${d.label} stays where it was.`);
+        // Focus stays with what moved, which may have come back to life somewhere else.
+        const id = d.moving.kind === 'panel' ? d.moving.id : null;
+        if (id) requestAnimationFrame(() => { area.current?.querySelector<HTMLElement>(`[data-move="${id}"]`)?.focus(); });
         return;
       }
       const next = nextSpot(d.x, d.y, e.key, h.spots());
@@ -269,7 +275,7 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
     };
     addEventListener('keydown', onKey, true);
     return () => removeEventListener('keydown', onKey, true);
-  }, [isHeld]);
+  }, [isHeld, area]);
 
   const glow = drag?.drop ? dropBox(solved, size, drag.drop) : null;
   const shown = (leaf: Leaf) => { const r = rects[leaf]; if (r) last.current.set(leaf, r); return r ?? last.current.get(leaf) ?? null; };
@@ -296,7 +302,7 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
     const r = shown(leaf);
     if (!r) return null;
     return (
-      <motion.section key={leaf} className={cn(`ic-${leaf}`, !rects[leaf] && 'is-off')} aria-label={name} initial={false} animate={at(r)} transition={slide}>
+      <motion.section key={leaf} className={cn('ic-surface', !rects[leaf] && 'is-off')} aria-label={name} data-surface={leaf} initial={false} animate={at(r)} transition={slide}>
         {canMove && <button type="button" className="ic-grab" data-move={leaf} aria-label={`Drag to move the ${name.toLowerCase()}`} title="Drag to move" />}
         {draw(r)}
       </motion.section>
@@ -317,6 +323,7 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
       ))}
       {glow && <div className={cn('ic-drop', drag?.drop && `is-${drag.drop.side}`)} style={at({ x: glow.x + 4, y: glow.y + 4, w: Math.max(0, glow.w - 8), h: Math.max(0, glow.h - 8) })} />}
       {drag && <div className="ic-ghost" style={{ left: drag.x + 12, top: drag.y + 10 }}><Icon name="grip" size={15} /><span>{drag.label}</span></div>}
+      {swap && <div className="ic-swapbar">{swap}</div>}
       <span className="sr-only" role="status">{said}</span>
     </div>
   );

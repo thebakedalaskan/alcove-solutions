@@ -665,7 +665,7 @@ export interface Horizon {
 }
 const TILE_GAP = 10;
 /** The smallest a tile gets before the rest wait behind a count. */
-const TILE_MIN = { w: 96, h: 60 };
+const TILE_MIN = { w: 88, h: 48 };
 
 /** The first `n`, with anyone in `loud` (talking, or with a hand up) taking the place of the last who isn't. */
 function keepLoud(items: TileItem[], n: number, loud: ReadonlySet<string>): TileItem[] {
@@ -681,21 +681,24 @@ function keepLoud(items: TileItem[], n: number, loud: ReadonlySet<string>): Tile
 function result(items: TileItem[], kept: TileItem[], at: (it: TileItem, i: number) => TileSpot, chip: TileSpot | null): PeoplePlaced {
   const spots = new Map(kept.map((it, i) => [it.id, at(it, i)]));
   const off = new Set(items.filter((it) => !spots.has(it.id)).map((it) => it.id));
-  if (chip) for (const id of off) spots.set(id, chip);
+  const [first] = kept;
+  const under = chip ?? (first ? at(first, 0) : null);
+  if (under) for (const id of off) spots.set(id, under);
   return { spots, off, more: chip && off.size ? { ...chip, n: off.size } : null };
 }
 
 /** On the horizon: small arches stand in the empty space beside the dock, and whoever's talking rises (Stage.tsx). */
 function onHorizon(items: TileItem[], h: Horizon, loud: ReadonlySet<string>): PeoplePlaced {
   const size = (it: TileItem) => (it.share ? { w: 54, h: 34 } : { w: 34, h: 38 });
-  const room = h.dock - 16;
+  const room = h.dock - 8;
   const widths = (list: TileItem[]) => sum(list.map((it) => size(it).w + 6));
   let n = items.length;
-  while (n > 0 && 2 + widths(items.slice(0, n)) + (n < items.length ? 40 : 0) > room) n--;
+  while (n > 1 && 2 + widths(items.slice(0, n)) + (n < items.length ? 40 : 0) > room) n--;
   const kept = keepLoud(items, n, loud);
   let x = 2;
   const xs = kept.map((it) => { const at = x; x += size(it).w + 6; return at; });
-  const chip: TileSpot | null = n < items.length ? { box: { x, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' } : null;
+  // With room for one, it's whoever's talking, with nothing else beside them.
+  const chip: TileSpot | null = n < items.length && x + 34 <= room ? { box: { x, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' } : null;
   return result(items, kept, (it, i) => { const s = size(it); return { box: { x: xs[i] ?? 0, y: h.base - s.h, w: s.w, h: s.h }, mode: 'horizon' }; }, chip);
 }
 
@@ -705,18 +708,19 @@ function inArches(r: Box, items: TileItem[], loud: ReadonlySet<string>, small: b
   const space = tall ? r.h : r.w;
   const size = tall ? ah : aw;
   const pitch = small ? 70 : tall ? 92 : 84;
-  // Arches never overlap: as many as fit, then the count.
+  // Arches never overlap: as many as fit, then the count. With room for one, it's whoever's talking.
   const fit = Math.max(1, Math.floor((space + pitch - size) / pitch));
-  const n = items.length > fit ? fit - 1 : items.length;
+  const n = items.length > fit ? Math.max(1, fit - 1) : items.length;
   const at = (i: number): Box => ({ x: tall ? r.x + (r.w - aw) / 2 : r.x + i * pitch, y: tall ? r.y + i * pitch : r.y + (r.h - ah) / 2, w: aw, h: ah });
-  return result(items, keepLoud(items, n, loud), (_, i) => ({ box: at(i), mode: 'arch' }), n < items.length ? { box: at(n), mode: 'arch' } : null);
+  return result(items, keepLoud(items, n, loud), (_, i) => ({ box: at(i), mode: 'arch' }), n < items.length && fit > 1 ? { box: at(n), mode: 'arch' } : null);
 }
 
 function inTiles(r: Box, items: TileItem[], loud: ReadonlySet<string>): PeoplePlaced {
   const cap = Math.max(1, Math.floor((r.w + TILE_GAP) / (TILE_MIN.w + TILE_GAP)) * Math.floor((r.h + TILE_GAP) / (TILE_MIN.h + TILE_GAP)));
   const over = items.length > cap;
-  const kept = keepLoud(items, over ? cap - 1 : items.length, loud);
-  const n = kept.length + (over ? 1 : 0);
+  const kept = keepLoud(items, over ? Math.max(1, cap - 1) : items.length, loud);
+  const chip = over && cap > 1;
+  const n = kept.length + (chip ? 1 : 0);
   let best: { c: number; rows: number; w: number; h: number; area: number } | null = null;
   for (let c = 1; c <= n; c++) {
     const rows = Math.ceil(n / c);
@@ -735,7 +739,7 @@ function inTiles(r: Box, items: TileItem[], loud: ReadonlySet<string>): PeoplePl
     const inRow = row === rows - 1 ? n - row * c : c;
     return { x: r.x + (r.w - (inRow * tw + (inRow - 1) * TILE_GAP)) / 2 + (i % c) * (tw + TILE_GAP), y: r.y + row * (th + TILE_GAP), w: tw, h: th };
   };
-  return result(items, kept, (_, i) => ({ box: at(i), mode: 'tile' }), over ? { box: at(kept.length), mode: 'tile' } : null);
+  return result(items, kept, (_, i) => ({ box: at(i), mode: 'tile' }), chip ? { box: at(kept.length), mode: 'tile' } : null);
 }
 
 /**

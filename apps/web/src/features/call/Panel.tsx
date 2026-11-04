@@ -54,7 +54,7 @@ export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }:
   return (
     <>
       {view === 'rooms' || tabs.length < 2 ? (
-        <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={`Close ${name}`} onClick={onClose} /></div>
+        <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={view === 'rooms' ? 'Close the panel' : `Close ${name}`} onClick={onClose} /></div>
       ) : (
         <div className="ic-side-head">
           <div className="ac-tabs" role="tablist" aria-label="Call panel">
