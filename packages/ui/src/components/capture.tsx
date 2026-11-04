@@ -48,13 +48,14 @@ const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName
   { key: 'screen', icon: 'screen', label: 'Shared screens', short: 'Screens', detail: 'Not read' }
 ];
 /**
- * What a kind of capture does now: what the organizer's browser can't capture says so, and the notes model keeps
- * reading what was transcribed while notes are off.
+ * What a kind of capture does now: what the organizer's browser can't capture says so, the notes model keeps reading
+ * what was transcribed while notes are off, and shared screens say when they're read.
  */
 function detailOf(p: (typeof PARTS)[number], c: CaptureState): string {
   if (p.key === 'ai' && c.ai.mode === 'on' && c.transcript.mode === 'off') return 'Reads what was transcribed earlier';
   if (p.key === 'recording' && c.recording.mode === 'unavailable') return 'Can’t record right now';
   if (p.key === 'transcript' && c.transcript.mode === 'unavailable') return 'Can’t listen right now';
+  if (p.key === 'screen' && c.screen.mode !== 'off') return 'Read for the notes, never cameras';
   return p.detail;
 }
 /**
@@ -104,10 +105,12 @@ export function CaptureSummary({ notes, capture, who, className }: {
   className?: string | undefined;
 }) {
   const mode: CaptureMode = capture ? capture.mode : notes === 'on' ? 'on' : 'off';
+  const shared = capture?.screen.mode === 'on';
   const said: ReactNode = !capture
     ? notes === 'on' ? 'When the call starts, what everyone says, you included, is transcribed for the notes, and the organizer’s microphone is recorded.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
-    : mode === 'on' ? onLine(capture)
-      : mode === 'unavailable' ? 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing is captured.'
+    : mode === 'on' ? `${onLine(capture)}${shared ? ' What anyone shares on screen is read for them too.' : ''}`
+      : mode === 'unavailable' ? shared ? 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing said is captured. What anyone shares on screen is still read for the notes.'
+        : 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing is captured.'
         : mode === 'paused' ? 'The organizer paused notes. Nothing is recorded, transcribed or sent to the AI until they resume.'
           : 'Nothing is recorded. The organizer can turn notes on during the call, and you can ask them to.';
   return (

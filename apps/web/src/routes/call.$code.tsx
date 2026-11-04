@@ -10,6 +10,7 @@ import { stateOf } from '~/features/call/access';
 import { useCaptions } from '~/features/call/captions';
 import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
 import { useDevices } from '~/features/call/devices';
+import { ScreenFrames } from '~/features/call/frames';
 import { LeaveSheet, type Ended } from '~/features/call/LeaveSheet';
 import { useCopyLink } from '~/features/call/links';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
@@ -136,6 +137,7 @@ function InCall({ session }: { session: CallSession }) {
   const [cantRecord, setCantRecord] = useState(false);
   const [cantListen, setCantListen] = useState(() => !canListen());
   const [pausing, setPausing] = useState(false);
+  const [frameProblem, setFrameProblem] = useState<string | null>(null);
   // Your own view of the call (never sent anywhere): how you like calls, remembered for your account, and how you
   // arranged this one, kept in this tab until you leave it.
   const account = useQuery(q.session());
@@ -237,6 +239,30 @@ function InCall({ session }: { session: CallSession }) {
     clog.info('saying what this browser can’t capture', { parts: cantKey || 'none' });
     session.setUnavailable(cant).catch((e: unknown) => clog.warn('could not say what this browser can’t capture', { err: e, parts: cantKey || 'none' }));
   }, [organizer, live, on, cantKey, toldKey, session]);
+
+  /*
+   * Your own shared screen, while screen notes are on: this browser looks at it and sends what changes to the notes
+   * (features/call/frames.ts). Paused, off, or in a breakout room, it stops at once and drops what wasn't sent; a share
+   * that ends says so, so its last frame stops there in the notes.
+   */
+  const frames = useRef<ScreenFrames | null>(null);
+  if (!frames.current) frames.current = new ScreenFrames((f) => session.shareFrame(f), (share) => session.shareEnded(share), setFrameProblem);
+  const myShare = roomView.people[self]?.screenSid ?? null;
+  const screensOn = state.capture.screen.mode === 'on';
+  const sharingInRoom = !!state.breakouts.open?.rooms.some((r) => r.members.includes(self));
+  useEffect(() => {
+    const f = frames.current;
+    if (!f) return;
+    if (m.screen && myShare && screensOn && live && !sharingInRoom) f.start(m.screen, myShare);
+    else f.stop();
+  }, [m.screen, myShare, screensOn, live, sharingInRoom]);
+  const lastShare = useRef<string | null>(null);
+  useEffect(() => {
+    const was = lastShare.current;
+    lastShare.current = myShare;
+    if (was && was !== myShare) frames.current?.end(was);
+  }, [myShare]);
+  useEffect(() => () => frames.current?.stop(), []);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
   const shown = useRef(new Set(state.notices.slice(0, -1).map((n) => n.id)));
@@ -645,6 +671,7 @@ function InCall({ session }: { session: CallSession }) {
       }).finally(() => setPausing(false));
     },
     resume: () => { session.resume().catch(failed); },
+    screens: (v) => { session.setScreens(v).catch(failed); },
     ask: (up) => {
       session.requestNotes(up).then(() => toast(up ? `You asked ${organizerName(state)} for notes` : 'You took back your ask', { icon: 'hand' }), failed);
     }
@@ -822,6 +849,7 @@ function InCall({ session }: { session: CallSession }) {
     <div className="ic-spill"><Icon name="screen" size={15} />
       <span className="tx2">{published ? <>You’re sharing <b>{m.screenLabel ?? 'your screen'}</b>{withSound && ' with sound'}</> : <>Starting to share <b>{m.screenLabel ?? 'your screen'}</b></>}</span>
       {!published && <Dots />}
+      {published && screensOn && !sharingInRoom && <span className="sp-read"><RecDot />Read for the notes</span>}
       <button type="button" className="sp-btn" onClick={() => pickShare()}>Change</button>
       <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
     </div>
@@ -897,7 +925,7 @@ function InCall({ session }: { session: CallSession }) {
               <motion.aside key="side" className="ic-side" aria-label="Call panel" style={{ width: sideW }}
                 initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
                 <SidePanel view={shownPanel} onView={openPanel} onClose={() => setPanel(null)} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
-                  {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem].filter((x): x is string => !!x)}
+                  {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
                     controls={controls} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
                   {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0 && mode !== 'paused'} paused={mode === 'paused'} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
@@ -963,7 +991,7 @@ function InCall({ session }: { session: CallSession }) {
         </footer>
       </div>
       <SharePicker open={sharePick} onOpenChange={(o) => { setSharePick(o); if (!o) setShareTrouble(null); }} sharing={!!m.screen}
-        others={sharing.map((s) => s.presenter)} trouble={shareTrouble} onShare={share} />
+        others={sharing.map((s) => s.presenter)} trouble={shareTrouble} read={sharingInRoom ? undefined : screenRead(state.capture.screen.mode)} onShare={share} />
       <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
         organizer={organizer} notes={state.notes.everOn} locked={state.locked} others={others.length}
         getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />

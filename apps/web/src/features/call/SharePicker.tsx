@@ -19,12 +19,17 @@ const KINDS: { surface: ShareSurface; label: string; icon: IconName; title: stri
 ];
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function SharePicker({ open, onOpenChange, sharing, others, trouble, onShare }: {
+/**
+ * `read`: shared screens are read for the notes now (`on`), or will be once notes resume (`paused`), so the presenter
+ * is told before they choose.
+ */
+export function SharePicker({ open, onOpenChange, sharing, others, trouble, read, onShare }: {
   open: boolean; onOpenChange: (o: boolean) => void; sharing: boolean;
   /** Everyone else sharing now: yours goes beside theirs. */
   others: Person[];
   /** Why the last try didn't start. A computer that won't let the browser capture a window or screen still lets it share a tab, so Tab is offered then. */
   trouble: Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null;
+  read?: 'on' | 'paused' | undefined;
   onShare: (c: ShareChoice) => void;
 }) {
   const [surface, setSurface] = useState<ShareSurface>('browser');
@@ -56,7 +61,7 @@ export function SharePicker({ open, onOpenChange, sharing, others, trouble, onSh
       </div>
       <div className="pk-f">
         {sound && <div className="ic-srow"><span>{sound}</span><Switch checked={audio} label={sound} onChange={setAudio} /></div>}
-        <span className="pk-note">Everyone in the call sees what you share.</span>
+        <span className="pk-note">{read === 'on' ? 'Everyone in the call sees what you share, and it’s read for the notes.' : read === 'paused' ? 'Everyone in the call sees what you share. Notes are paused; once they resume, it’s read for them.' : 'Everyone in the call sees what you share.'}</span>
         <Button variant="quiet" onClick={() => onOpenChange(false)}>Cancel</Button>
         <Button variant="primary" icon="screen" onClick={() => onShare({ surface: kind.surface, audio: !!sound && audio })}>{kind.go}</Button>
       </div>
