@@ -796,6 +796,10 @@ export function wakeAudio(ctx: AudioContext) {
 const MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
 export const recordingMime = (): string => MIME.find((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
 export const PIECE_MS = 5000;
+/** How long a piece of the recording keeps trying to get through while the connection is down. */
+const RETRY_MS = 2 * 60_000;
+/** How long stopping waits for the last pieces before it lets whoever stopped carry on. */
+const FLUSH_MS = 10_000;
 
 /** One voice in the recording's mix: its track's source, and the gain it fades in and out on. */
 interface Voice { track: MediaStreamTrack; source: MediaStreamAudioSourceNode; gain: GainNode }
@@ -833,8 +837,9 @@ export interface RecordedVoice { identity: string; track: MediaStreamTrack }
 const FADE_S = 0.03;
 
 /**
- * Records in 5-second pieces and uploads them in order. Each piece is retried a few times; the server treats a
- * repeated (segment, seq) as a no-op, so retries never duplicate audio. The server refuses audio once notes are off,
+ * Records in 5-second pieces and uploads them in order. A piece that can't get through is tried again for up to two
+ * minutes, so a short drop in the connection loses nothing; the server treats a repeated (segment, seq) as a no-op,
+ * so retries never duplicate audio. The server refuses audio once notes are off,
  * so stopping waits for the last piece before anyone switches notes off.
  *
  * What it records is a mix of voices (a room recording: the microphone; a call: everyone the organizer's browser
@@ -940,8 +945,15 @@ export class NotesRecorder {
     await this.queue;
   }
   stop() { void this.finish(); }
-  /** Stops and waits until every recorded piece has been uploaded. */
-  async flush(): Promise<void> { await this.finish(); await this.queue; }
+  /**
+   * Stops and waits until every recorded piece has been uploaded, or FLUSH_MS have gone by while the connection is
+   * down: whoever's waiting (ending the call, moving) isn't held up for long, and the pieces keep trying meanwhile.
+   */
+  async flush(): Promise<void> {
+    await this.finish();
+    const late = await Promise.race([this.queue.then(() => false), new Promise<boolean>((r) => setTimeout(() => r(true), FLUSH_MS))]);
+    if (late) mlog.warn('notes audio still uploading', { segment: this.segment });
+  }
   /** Notes were paused: stops at once, and nothing recorded but not yet sent goes, held or not. The server refuses it anyway. */
   discard() {
     this.gen++;
@@ -1000,14 +1012,22 @@ export class NotesRecorder {
     if (!rec || rec.state === 'inactive') { close(); return Promise.resolve(); }
     return new Promise((resolve) => { rec.addEventListener('stop', () => { close(); resolve(); }, { once: true }); rec.stop(); });
   }
+  /**
+   * Uploads one piece, in order. While the connection is down (or the server is busy) it keeps trying for up to
+   * RETRY_MS, so a short drop loses nothing: the recording goes on here meanwhile, and the pieces go up once it's back.
+   * A refusal that trying again won't change gives up at once; discard() stops it trying.
+   */
   private async send(p: AudioPiece, gen: number) {
-    for (let attempt = 0; attempt < 3 && gen === this.gen; attempt++) {
+    const since = performance.now();
+    for (let attempt = 0; gen === this.gen; attempt++) {
       try { await this.upload(p); mlog.debug('audio piece uploaded', { segment: p.segment, seq: p.seq, bytes: p.data.size, attempt }); return; } catch (e) {
         // Expected around changes: notes were paused or turned off, or a new segment began. It isn't kept, by design.
-        if (errorCode(e) === 'conflict') { mlog.debug('audio piece refused: notes are paused, off or moved on', { segment: p.segment, seq: p.seq, err: e }); return; }
-        mlog.at(attempt === 2 ? 'error' : 'warn', attempt === 2 ? 'audio piece lost after 3 attempts' : 'audio piece upload failed; retrying', { err: e, segment: p.segment, seq: p.seq, bytes: p.data.size, attempt });
-        if (attempt === 2) this.onError(e instanceof Error ? e.message : 'A piece of the recording couldn’t be saved.');
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        const code = errorCode(e);
+        if (code === 'conflict') { mlog.debug('audio piece refused: notes are paused, off or moved on', { segment: p.segment, seq: p.seq, err: e }); return; }
+        const waiting = (code === 'network' || code === 'unavailable' || code === 'unknown') && performance.now() - since < RETRY_MS;
+        mlog.at(waiting ? 'warn' : 'error', waiting ? 'audio piece upload failed; retrying' : 'audio piece lost', { err: e, code, segment: p.segment, seq: p.seq, bytes: p.data.size, attempt });
+        if (!waiting) { this.onError(e instanceof Error ? e.message : 'A piece of the recording couldn’t be saved.'); return; }
+        await new Promise((r) => setTimeout(r, Math.min(5000, 500 * 2 ** attempt)));
       }
     }
   }

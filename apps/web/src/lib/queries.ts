@@ -80,7 +80,8 @@ export const q = {
 /* ---------- account ---------- */
 
 /** Where the browser goes to sign in with Google; it comes back to /ready, /home or /welcome?signin=… */
-export const googleSignInUrl = () => api.auth.signInUrl('google');
+/** Where Google sign-in starts. `next: '/move'` comes back to a move to this device that was waiting for it. */
+export const googleSignInUrl = (next?: '/move' | undefined) => api.auth.signInUrl('google', next ? { next } : undefined);
 
 /** Signing in or out changes whose data everything is, so the cache starts over. */
 export function useSignIn() {
