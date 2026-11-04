@@ -114,7 +114,7 @@ export function createApp(d: Deps) {
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
   const captionLimiter = rateLimit(90, 60_000);
-  /** Opening a moment of the live transcript reads all of it, per person in the call. */
+  /** Opening a moment of the live transcript reads all of it, per connection to the call. */
   const momentLimiter = rateLimit(60, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
