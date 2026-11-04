@@ -33,7 +33,7 @@ const QUALITY = 0.72;
 const QUEUE = 3;
 const TRIES = 3;
 
-/** Grabs frames of a video track: ImageCapture where the browser has it (it keeps working in a background tab), else a video element. */
+/** Grabs frames of a video track: ImageCapture where the browser has it (it reads the track itself, not a video on the page), else a video element. */
 interface Grabber { grab(): Promise<CanvasImageSource | null>; size(): { width: number; height: number }; close(): void }
 interface FrameGrabber { grabFrame(): Promise<ImageBitmap> }
 type GrabberMaker = new (track: MediaStreamTrack) => FrameGrabber;

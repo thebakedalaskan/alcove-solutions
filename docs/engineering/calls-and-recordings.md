@@ -291,8 +291,8 @@ to the API, and the private notes model reads them after the call (`apps/web/src
   doesn't bring it back: that's the organizer's choice each time. Every change is a notice for everyone, and
   the card, the join page and someone waiting see `capture.screen` like the other parts, without a name.
 - **In the presenter's browser.** While screen notes are on and not paused, the call is live and the presenter
-  isn't in a breakout room, the browser looks at its own share once a second (`ImageCapture.grabFrame`, which
-  keeps working in a background tab, or a video element where there's no ImageCapture). It compares each look on
+  isn't in a breakout room, the browser looks at its own share once a second (`ImageCapture.grabFrame` where the
+  browser has it, which reads the track itself rather than a video on the page, or a hidden video element). It compares each look on
   a 48×27 grey grid: the screen changed when 2% of the grid moved by more than 24 levels from the last frame
   kept, which a moving cursor doesn't. A frame is kept once the change has settled (two looks agree), at most
   one every 4 seconds, and every 15 seconds while a screen never settles (a video playing). A share's first

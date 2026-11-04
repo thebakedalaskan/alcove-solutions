@@ -252,7 +252,8 @@ export function moments(frames: Frame[], t: Timeline): ScreenMoment[] {
     ...t.screens.filter((c) => !c.on).map((c) => place(c.at, segmentAt(c.at))),
     ...t.gaps.map((g) => g.at)
   ];
-  return placed.map(({ f, at }) => {
+  // In recording order, which is how the notes model reads and numbers them.
+  return placed.sort((a, b) => a.at - b.at || a.f.at - b.f.at).map(({ f, at }) => {
     const next = placed.find((p) => p.f.presenter === f.presenter && p.f.share === f.share && p.f.at > f.at)?.at;
     const end = t.ended.find((e) => e.presenter === f.presenter && e.share === f.share && e.at >= f.at);
     const until = Math.min(recordedEnd, ...[next, end ? place(end.at, segmentAt(end.at)) : undefined, ...stops].filter((x): x is number => x !== undefined && x > at));
