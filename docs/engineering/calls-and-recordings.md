@@ -62,20 +62,33 @@ Media goes through LiveKit (an SFU: a local server in Docker for development, Li
 production), end-to-end encrypted: LiveKit forwards frames it can't read ([below](#end-to-end-encryption)).
 The call itself stays in the API: who's let in, notes and the transcript.
 
-- **Joining.** `GET /v1/calls/:code/card` (no account needed) gives the title, organizer's name, whether
-  the organizer is there and whether the call is locked. `POST /v1/calls/:code/join` takes `{mic, cam}`,
-  this connection's random `identity` and MLS `keyPackage` (made in the browser), a `name` (1–60
-  characters) without an account, and `previous`, this tab's last pass for the call, if it has one. It
-  returns a ticket: the LiveKit URL and room, the identity, the role and a **call pass**. No LiveKit token:
-  that comes only once you're let in.
+- **Joining.** `GET /v1/calls/:code/card` (no account needed; 300 a minute per client address, as every
+  pre-join keeps reading it) gives the title, organizer's name, whether the organizer is there, whether the
+  call is locked, whether it has ended (and nobody started it again), whether notes are on (the live call's,
+  or as it was scheduled) and, for someone signed in, whether they're invited. `POST /v1/calls/:code/join`
+  (120 a minute per address) takes `{mic, cam}`, this connection's random `identity` and MLS `keyPackage`
+  (made in the browser), a `name` (1–60 characters) without an account, and `previous`, this tab's last pass
+  for the call, if it has one. Someone signed in joins under their account's name; a typed name is only for
+  guests. It returns a ticket: the LiveKit URL and room, the identity, the role and a **call pass**. No LiveKit
+  token: that comes only once you're let in.
 - **Who gets in.** The organizer by their account; it starts the call and makes the room (`r_<random>`;
   LiveKit never creates rooms itself). Invited people (signed in with an invited address) are let in by the
   organizer's browser without anyone asking, and so is someone let in before who comes back with their old
   pass (a reload). **Anyone else asks to join**: the organizer sees them (`CallState.waiting`, a toast and
-  People) and lets them in or turns them away (`deny`). Nobody joins before the organizer is there
-  (`409 conflict`) or while the call is locked (`403 forbidden`); someone removed asks again. Someone
-  waiting learns only whether notes are on: nobody's name and nothing that's been said. There's no
-  participant limit.
+  People) and lets them in or turns them away (`deny`). Someone signed in asks under their account, so the
+  organizer sees their name and address; a guest is the name they typed. Nobody joins before the organizer is
+  there (`409 conflict`), while the call is locked (`403 forbidden`) or once it has ended (`409`, "This call
+  has ended."); someone removed asks again. Someone waiting learns only whether notes are on: nobody's name and
+  nothing that's been said. There's no participant limit.
+- **Let in from the link, signed in.** The commit that lets someone signed in into the group also adds their
+  address to the invite: to the meeting's guests, and to the note's invited people when notes have been on
+  (`modules/invites.ts`), so they get the notes when the call ends, like everyone invited by email. From then
+  on they're invited: the call shows them their role as `invited` (`CallState.role`, which can be more than
+  their pass says), they see people as invited people do, a reload or another device comes in without asking,
+  and the organizer can send them to a breakout room. Removing them takes them off the invite again (the call
+  keeps which addresses it added, sealed in its state); people invited by email stay invited. The calendar
+  event isn't changed: Google would email everyone on it in the middle of the call. A guest with only a name
+  is never added and never gets the notes.
 - **The room.** `GET /v1/live/calls/:id/room` gives a LiveKit token for that one room (120 seconds, no
   admin rights, no data messages) to people let in, and to nobody else. Tokens carry no name: LiveKit knows
   people only by random identity.
@@ -88,7 +101,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
   (pass role `host`, their own session and their current connection: joining from another device takes the
   powers with it): let people in or turn them away, notes on/off, audio and speech uploads, mute someone's
   microphone, remove someone, lock the call, and end it. Notes come from the organizer's microphone only;
-  link guests get no notes, invited people get them as before.
+  link guests get no notes, invited people (and people signed in whom the organizer let in) get them.
 - **Leaving and ending.** Anyone but the organizer leaving is taken out of the call's group, so the keys move
   on without them. They leave with **Leave** (`POST /v1/live/calls/:id/leave`), or when their page goes away
   (closed, reloaded or left for another), which sends the same request as a keepalive request. A page that is
@@ -202,6 +215,40 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   caption bar, and the call is still transcribed for notes while notes are on.
 
 
+## The join page
+
+`apps/web/src/routes/join.$code.tsx` (with `apps/web/src/features/join/`) is the pre-join for everyone with the
+link: the organizer by their account, and anyone else from the call's card.
+
+- **What it says before anyone joins.** The title and organizer, whether notes are on and who gets them, said
+  for the person looking (`PrejoinNotes`, one component for every pre-join): the organizer and who's invited;
+  "You're invited, so you get them"; for someone signed in who isn't invited, that once they're let in they're
+  added to the invite and get them; for a guest, that they go to the people invited. Nobody's name but the
+  organizer's. The card is read again every 3 seconds while the organizer isn't there, every 10 after (notes
+  going on, a lock), and every 15 once it has ended, so the page follows the call; a refresh that fails keeps
+  the last answer.
+- **Guest or signed in.** A guest types a name and asks. One line says the trade-off ("Guests don't get the
+  notes. Sign in to get them"); signing in opens in place of the name (Google, Microsoft, single sign-on). With
+  Microsoft and single sign-on the page carries on signed in. Google's way back lands on Home, so the call to
+  return to waits in the tab's sessionStorage (`lib/afterSignIn.ts`, ten minutes, used once) rather than in
+  the sign-in URL, which the API's request logs would keep; a refused Google sign-in comes back to the join
+  page with the reason. Signed in, the page shows the account you join as, and the button says **Join now**
+  when you're invited and **Ask to join** when you're not. Asking can be taken back (**Stop asking**).
+- **Camera and microphone.** They start as soon as there's a call to join, while the rest of the page loads
+  (`LocalMedia`, [Media in the browser](#media-in-the-browser)), and joining works with either or both off.
+- **When it can't go on.** A code that leads nowhere, a call that's over, or a card that can't be read each get
+  their own page; a refused join (locked, ended, the organizer not there) shows under the button. Every failed
+  request's reference (its request ID, `RequestRef`) is shown, finds its lines in the server's log, and says
+  nothing about anyone.
+- **Time to join.** The card is read alongside the session, and the call screen's media code (`livekit.ts`)
+  loads while the pre-join is open. A browser waiting to be let in checks the call's log after 150 ms, then
+  twice as long each time up to the usual 1.5 seconds, so an invited person (let in by the organizer's browser
+  within about 50 ms) is in after a quick check or two. Measured from opening the link to being in the room, on
+  a local stack (a production build, Chromium with fake devices, median of five runs): the organizer 0.4 s, an
+  invited person 0.6 s (2.0 s before the quick checks), and a guest 0.6 s after the organizer presses Let in
+  straight away (1.7 s before). A guest let in after a few seconds waits for their browser's next check, at
+  most 1.5 s away as before (0.9 s median with the organizer taking 3 to 8 seconds).
+
 ## The call screen
 
 `apps/web/src/routes/call.$code.tsx` is the call for everyone in it; no account is needed, since the call's
@@ -222,7 +269,10 @@ rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and
   members of the browser's MLS group. LiveKit's own logs go to the app's logger at debug; a decryption error
   is logged at debug when a key is briefly missing around a key change, and as a warning otherwise.
 - **Asking to join.** The organizer gets a toast with Let in, a count on the People button, and an Asking to
-  join section in People to let people in or turn them away.
+  join section in People to let people in or turn them away: someone signed in with their address and "Gets
+  the notes once let in", a guest as "Guest with the link · no notes". Their call re-reads the meeting as
+  people with an account arrive, so who's invited (who gets the notes, who can go to a breakout room) includes
+  whoever they let in.
 - **Host controls** are the organizer's, in People: mute someone's microphone (LiveKit mutes the track, their
   dock shows it off, they're told, and only they can unmute), remove someone (they're told and go back to the
   call's page), and lock the call.
