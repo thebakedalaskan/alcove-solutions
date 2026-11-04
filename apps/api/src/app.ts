@@ -1,6 +1,6 @@
 import {
   ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
+  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -51,12 +51,13 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
  * decisions, open questions, follow-ups and transcript lines, sharing it, and having it written again
  * each set an explicit state, so a retry changes nothing; and their answer is the whole note, which a
- * receipt kept under someone it was given to would still hold after the organizer deleted it.
+ * receipt kept under someone it was given to would still hold after the organizer deleted it. Deleting
+ * the account deletes its receipts, so there is no account left to keep one under.
  */
 const NO_RECEIPT = [
-  /^\/v1\/notes\/search$/, /^\/v1\/(?:notes|series)\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/account$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -446,6 +447,12 @@ export function createApp(d: Deps) {
   /* account */
   app.get('/v1/account/preferences', async (c) => c.json(await account.preferences(c.get('owner'))));
   app.patch('/v1/account/preferences', async (c) => c.json(await account.updatePreferences(c.get('owner'), await body(c, PreferencesSchema.partial()))));
+  /* Every session goes with the account; this browser's cookie goes too. */
+  app.delete('/v1/account', async (c) => {
+    await account.deleteAccount(c.get('owner'));
+    deleteCookie(c, COOKIE, { path: '/', secure });
+    return c.json({ deleted: true });
+  });
 
   /* people: search terms travel in the body, never the URL */
   app.post('/v1/people/search', async (c) => c.json(await people.search(c.get('owner'), (await body(c, PeopleSearchBodySchema)).query)));
@@ -462,6 +469,7 @@ export function createApp(d: Deps) {
 
   /* calendar: someone's other events, and making one of them an Alcove call */
   app.get('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.view(o, () => meetings.recurringSeries(o))); });
+  app.delete('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.disconnect(o, () => meetings.recurringSeries(o))); });
   app.post('/v1/calendar/events/:id/adopt', async (c) => {
     const { notes } = await body(c, z.object({ notes: NotesSettingSchema.optional() }));
     return c.json(await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
@@ -472,7 +480,7 @@ export function createApp(d: Deps) {
   app.post('/v1/calls', async (c) => c.json(await meetings.startNow(c.get('owner'), await body(c, InstantCallInputSchema))));
 
   /* room recordings */
-  app.post('/v1/recordings', async (c) => c.json(await recordings.start(c.get('owner'), (await body(c, z.object({ title: z.string().max(160).optional() }))).title ?? 'Untitled recording')));
+  app.post('/v1/recordings', async (c) => c.json(await recordings.start(c.get('owner'), await body(c, RoomRecordingInputSchema))));
   app.post('/v1/recordings/:id/actions', async (c) => c.json(await recordings.act(c.get('owner'), c.req.param('id'), await body(c, RecordingActionSchema))));
   app.post('/v1/recordings/:id/audio', async (c) => c.json(await recordings.audio(c.get('owner'), c.req.param('id'), await piece(c))));
   app.post('/v1/recordings/:id/transcribe', async (c) => {
@@ -488,7 +496,7 @@ export function createApp(d: Deps) {
     const q = await body(c, z.object({ kind: NoteKindSchema.optional(), text: z.string().max(200).optional() }));
     return c.json(await notes.list(c.get('owner'), { kind: q.kind, text: q.text }));
   });
-  app.get('/v1/notes/actions', async (c) => c.json(await notes.openActions(c.get('owner'))));
+  app.get('/v1/notes/inbox', async (c) => c.json(await notes.inbox(c.get('owner'))));
   app.get('/v1/notes/:id', async (c) => c.json(await notes.get(c.get('owner'), c.req.param('id'))));
   app.get('/v1/notes/:id/progress', async (c) => {
     const o = c.get('owner'); const id = c.req.param('id');
@@ -539,7 +547,12 @@ export function createApp(d: Deps) {
     askLimiter(c.get('owner').ownerId, 'ask');
     return c.json(await notes.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
   });
-  app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), (await body(c, ShareBodySchema)).emails)));
+  /* Asking across every note you have, under the same limit as asking about one. */
+  app.post('/v1/notes/ask', async (c) => {
+    askLimiter(c.get('owner').ownerId, 'ask');
+    return c.json(await notes.askAll(c.get('owner'), (await body(c, AskBodySchema)).question));
+  });
+  app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), await body(c, ShareInputSchema))));
   app.delete('/v1/notes/:id', async (c) => { await notes.remove(c.get('owner'), c.req.param('id')); return c.json({ deleted: true }); });
 
   /* series: what carries over between calls, from the notes the person asking has */
@@ -556,15 +569,18 @@ export function createApp(d: Deps) {
   return app;
 }
 
+/** A position header: a whole number that fits the integer columns it's stored in. */
+const position = (c: Context, name: string) => z.coerce.number().int().min(0).max(2_147_483_647).parse(c.req.header(name));
+
 /** Reads a raw audio piece and its position headers. */
 async function piece(c: Context): Promise<audioMod.Piece> {
-  const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
+  const num = (name: string) => position(c, name);
   const mimeType = c.req.header('content-type') ?? '';
   if (!/^audio\/(webm|mp4|ogg)/.test(mimeType)) throw new ValidationError('Audio must be WebM, MP4 or Ogg.');
   if (Number(c.req.header('content-length') ?? 0) > MAX_AUDIO_PIECE_BYTES) throw new ValidationError('That piece of audio is empty or too large.');
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_AUDIO_PIECE_BYTES) throw new ValidationError('That piece of audio is empty or too large.');
-  return { segment: num(AUDIO_HEADERS.segment), seq: num(AUDIO_HEADERS.seq), durationMs: num(AUDIO_HEADERS.duration), mimeType, bytes };
+  return { segment: num(AUDIO_HEADERS.segment), seq: num(AUDIO_HEADERS.seq), atMs: num(AUDIO_HEADERS.at), durationMs: num(AUDIO_HEADERS.duration), mimeType, bytes };
 }
 
 /**
@@ -616,7 +632,7 @@ function speakerOf(c: Context): string {
 
 /** Reads a transcript clip: 16 kHz mono WAV, and where it starts in its segment. */
 async function clip(c: Context): Promise<Clip> {
-  const num = (name: string) => z.coerce.number().int().min(0).parse(c.req.header(name));
+  const num = (name: string) => position(c, name);
   if (!/^audio\/(?:wav|x-wav|wave)\b/.test((c.req.header('content-type') ?? '').toLowerCase())) throw new ValidationError('Speech for the transcript must be WAV audio.');
   const declared = Number(c.req.header('content-length') ?? 0);
   if (declared > MAX_TRANSCRIPT_CLIP_BYTES) throw new ValidationError('That clip of speech is too long.', { context: { bytes: declared } });
@@ -625,5 +641,5 @@ async function clip(c: Context): Promise<Clip> {
   if (!isSpeechWav(wav)) throw new ValidationError('Speech for the transcript must be 16 kHz mono 16-bit WAV.', { context: { bytes: wav.length } });
   const durationMs = num(AUDIO_HEADERS.duration);
   if (durationMs > MAX_TRANSCRIPT_CLIP_MS) throw new ValidationError('That clip of speech is too long.', { context: { durationMs } });
-  return { segment: num(AUDIO_HEADERS.segment), startMs: num(AUDIO_HEADERS.start), durationMs, wav };
+  return { segment: num(AUDIO_HEADERS.segment), atMs: num(AUDIO_HEADERS.at), durationMs, wav };
 }

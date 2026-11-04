@@ -2,9 +2,9 @@
  * A stand-in for Google, for integration tests: OpenID Connect discovery, an authorize endpoint that
  * "signs in" whoever the test says, a token endpoint that checks the client secret, the one-time code,
  * the redirect URI and the PKCE verifier, ID tokens signed with a real RS256 key published at its
- * JWKS, refresh tokens issued the way Google issues them (only on first consent, or when asked again),
- * and a Calendar API behind bearer tokens. The API talks to it over HTTP exactly as it talks to
- * Google, so nothing in the sign-in or calendar path is stubbed.
+ * JWKS, refresh tokens issued the way Google issues them (only on first consent, or when asked again)
+ * and revoked at its revocation endpoint, and a Calendar API behind bearer tokens. The API talks to it
+ * over HTTP exactly as it talks to Google, so nothing in the sign-in or calendar path is stubbed.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -41,8 +41,18 @@ export interface FakeGoogle {
   expireAccess(): void;
   /** The person withdraws Alcove's access at Google. */
   revoke(sub: string): void;
-  /** Refresh tokens issued so far, to check they never leak. */
+  /**
+   * Google stops answering (true) or answers again (false). Requests still arrive, and those to the Calendar
+   * API and the revocation endpoint are noted in `calls` and `revocations()`, but get no reply until the
+   * caller gives up.
+   */
+  unresponsive(on: boolean): void;
+  /** Tokens Alcove asked Google to revoke at its revocation endpoint, oldest first. */
+  revocations(): string[];
+  /** Every refresh token issued so far, revoked ones too, to check none of them ever leaks. */
   refreshTokens(): string[];
+  /** Whether Google still honours this refresh token: issued, and not revoked since. */
+  honours(refreshToken: string): boolean;
   /** How many times a profile photo was fetched from here. */
   photoFetches(): number;
   close(): Promise<void>;
@@ -71,10 +81,17 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
   const clientSecret = randomBytes(16).toString('hex');
   const grants = new Map<string, Grant>();
   const accessTokens = new Map<string, { sub: string; scopes: string[] }>();
+  /** Refresh tokens Google honours; `issued` keeps every one it ever gave out. */
   const refreshTokens = new Map<string, { sub: string; scopes: string[] }>();
+  const issued: string[] = [];
   const consented = new Map<string, Set<string>>();
   const calendars = new Map<string, FakeEvent[]>();
   const calls: FakeGoogle['calls'] = [];
+  const revoked: string[] = [];
+  /** While Google isn't answering: the replies it owes, left open until the caller gives up. */
+  let silent = false;
+  const unanswered = new Set<ServerResponse>();
+  const hangUp = () => { for (const res of unanswered) res.destroy(); unanswered.clear(); };
   let issuer = '';
   let registered = '';
   let pending: { user: GoogleUser; spoil: Spoil | undefined } | null = null;
@@ -96,7 +113,11 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
       const to = Date.parse(url.searchParams.get('timeMax') ?? '2999-01-01T00:00:00Z');
       const at = (e: FakeEvent) => Date.parse(e.start?.dateTime ?? `${e.start?.date ?? '1970-01-01'}T00:00:00Z`);
       const end = (e: FakeEvent) => Date.parse(e.end?.dateTime ?? `${e.end?.date ?? '1970-01-01'}T00:00:00Z`);
-      return send(res, 200, { items: events.filter((e) => end(e) > from && at(e) < to).sort((a, b) => at(a) - at(b)) });
+      const inWindow = events.filter((e) => end(e) > from && at(e) < to).sort((a, b) => at(a) - at(b));
+      const size = Number(url.searchParams.get('maxResults') ?? '250');
+      const start = Number(url.searchParams.get('pageToken') ?? '0');
+      const next = start + size;
+      return send(res, 200, { items: inWindow.slice(start, next), ...(next < inWindow.length ? { nextPageToken: String(next) } : {}) });
     }
     if (req.method === 'POST' && !id) {
       const body: unknown = JSON.parse(await text(req));
@@ -125,8 +146,15 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url ?? '/', issuer);
+    if (silent) {
+      if (url.pathname.startsWith('/calendar/v3/')) calls.push({ method: req.method ?? '', path: url.pathname, sendUpdates: url.searchParams.get('sendUpdates') });
+      if (req.method === 'POST' && url.pathname === '/revoke') revoked.push(new URLSearchParams(await text(req)).get('token') ?? '');
+      unanswered.add(res);
+      res.on('close', () => unanswered.delete(res));
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/.well-known/openid-configuration') {
-      return send(res, 200, { issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, jwks_uri: `${issuer}/jwks` });
+      return send(res, 200, { issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, revocation_endpoint: `${issuer}/revoke`, jwks_uri: `${issuer}/jwks` });
     }
     if (req.method === 'GET' && url.pathname === '/jwks') return send(res, 200, { keys: [jwk] });
     // Profile photos, as lh3.googleusercontent.com serves them: a small PNG for any name.
@@ -162,6 +190,16 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
       res.end();
       return;
     }
+    // Revoking a refresh token ends it and every access token made from it, as at Google.
+    if (req.method === 'POST' && url.pathname === '/revoke') {
+      const token = new URLSearchParams(await text(req)).get('token') ?? '';
+      revoked.push(token);
+      const held = refreshTokens.get(token);
+      if (!held) return send(res, 400, { error: 'invalid_token' });
+      refreshTokens.delete(token);
+      for (const [t, v] of accessTokens) if (v.sub === held.sub) accessTokens.delete(t);
+      return send(res, 200, {});
+    }
     if (req.method === 'POST' && url.pathname === '/token') {
       const form = new URLSearchParams(await text(req));
       if (form.get('grant_type') === 'refresh_token') {
@@ -187,7 +225,7 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
         .setIssuedAt(issuedAt).setExpirationTime(issuedAt + 3600)
         .sign(privateKey);
       const refreshToken = grant.refresh ? randomBytes(24).toString('hex') : undefined;
-      if (refreshToken) refreshTokens.set(refreshToken, { sub: grant.user.sub, scopes: grant.scopes });
+      if (refreshToken) { refreshTokens.set(refreshToken, { sub: grant.user.sub, scopes: grant.scopes }); issued.push(refreshToken); }
       return send(res, 200, {
         access_token: issueAccess(grant.user.sub, grant.scopes), token_type: 'Bearer', expires_in: 3599, scope: grant.scopes.join(' '), id_token: idToken,
         ...(refreshToken ? { refresh_token: refreshToken } : {})
@@ -209,8 +247,11 @@ export async function startFakeGoogle(): Promise<FakeGoogle> {
     preconsent: (sub) => { consented.set(sub, new Set(['openid', 'email', 'profile', CALENDAR])); },
     expireAccess: () => accessTokens.clear(),
     revoke: (sub) => { for (const [t, v] of refreshTokens) if (v.sub === sub) refreshTokens.delete(t); for (const [t, v] of accessTokens) if (v.sub === sub) accessTokens.delete(t); },
-    refreshTokens: () => [...refreshTokens.keys()],
+    unresponsive: (on) => { silent = on; if (!on) hangUp(); },
+    revocations: () => revoked,
+    refreshTokens: () => [...issued],
+    honours: (t) => refreshTokens.has(t),
     photoFetches: () => photoFetches,
-    close: () => new Promise<void>((r) => server.close(() => r()))
+    close: () => { hangUp(); return new Promise<void>((r) => server.close(() => r())); }
   };
 }

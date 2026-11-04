@@ -9,6 +9,15 @@
 .ac-time { font: 500 13px/16px var(--font-mono); font-variant-numeric: tabular-nums; }
 /* Mono figures inside another style: keeps the size around it. */
 .ac-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/*
+ * One line (ac-clamp-1) or two (ac-clamp-2), then an ellipsis. Unlike nowrap, the text may wrap and only the
+ * first lines show, so a long name never makes a grid column or flex row wider than the screen. One line breaks
+ * anywhere, so it fills its box to the edge as text-overflow does; two lines break between words. Keep the text
+ * left-aligned: Chrome drops the ellipsis from right-aligned clamped text.
+ */
+.ac-clamp-1, .ac-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.ac-clamp-1 { -webkit-line-clamp: 1; word-break: break-all; }
+.ac-clamp-2 { -webkit-line-clamp: 2; }
 :where(.ac-btn, .ac-icon-btn, .ac-provider, .ac-tab, .ac-seg button, .ac-dock-btn, .ac-dock-leave, .ac-nav-item, .ac-input, .ac-composer):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* ---- Button ---- */
@@ -85,6 +94,9 @@
 .ac-faces .ac-avatar { --ring: var(--surface); margin-left: -6px; }
 .ac-faces .ac-avatar:first-child { margin-left: 0; }
 .ac-faces .more { margin-left: 6px; align-self: center; color: var(--ink-3); font: 600 12px/1 var(--font-sans); }
+/* An empty arch where a person will be: an Avatar's shape, dashed, with an initial low in it or "+n". */
+.ac-ghost { --size: 44px; display: inline-grid; place-items: center; flex: none; width: var(--size); height: calc(var(--size) * 1.08); padding-top: calc(var(--size) * .3); border: 1.5px dashed var(--line-control); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--size) * .22) calc(var(--size) * .22); font: 480 calc(var(--size) * .42)/1 var(--font-display); color: var(--ink-3); vertical-align: middle; user-select: none; }
+.ac-ghost.is-more { font: 600 calc(var(--size) * .3)/1 var(--font-sans); }
 
 /* ---- CallTile (stage) ---- */
 .ac-stage { background: var(--stage); color: var(--stage-ink); }
@@ -182,6 +194,66 @@
 .ac-nav-item[aria-current="page"] { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-mono); color: var(--ink-3); }
 
+/* ---- NoteTile: a note as a tile; the foot stays at the bottom when tiles in a row stretch ---- */
+.ac-note-tile { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); color: var(--ink); text-decoration: none; transition: box-shadow var(--duration-2), transform var(--duration-2) var(--ease-out); }
+a.ac-note-tile:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
+a.ac-note-tile:active { transform: none; }
+.ac-note-tile .top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.ac-note-tile .t { min-width: 0; }
+.ac-note-tile .t b { display: block; font: 600 15px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-note-tile .t small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-note-tile .ex { min-height: 40px; font-size: 13.5px; line-height: 20px; color: var(--ink-2); }
+.ac-note-tile .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 24px; margin-top: auto; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+/* Who has it never shrinks, so the faces never run into `end`, which ends in an ellipsis instead. */
+.ac-note-tile .who { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
+.ac-note-tile .end { flex: 0 1 auto; max-width: 62%; }
+
+/* ---- PersonCard: actions line up at the bottom of every card in a row ---- */
+.ac-person-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 22px 12px 14px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); text-align: center; }
+.ac-person-card > .tag { position: absolute; top: 12px; right: 12px; }
+.ac-person-card > b { max-width: 100%; margin-top: 12px; font: 600 14.5px/1.25 var(--font-sans); color: var(--ink); }
+.ac-person-card > small { max-width: 100%; font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
+.ac-person-card > .last { max-width: 100%; margin-top: 8px; font: 500 11.5px/1.35 var(--font-mono); color: var(--ink-3); text-wrap: balance; }
+.ac-person-card > .acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: auto; padding-top: 10px; }
+.ac-person-card > .acts .ac-icon-btn { width: 34px; height: 34px; background: var(--sunk); }
+.ac-person-card > .acts .ac-icon-btn:hover { background: var(--line); color: var(--ink); }
+
+/* ---- Timeline: times, a line of dots, and the calls; TimelineNow crosses it in sun ---- */
+.ac-tl { position: relative; display: grid; margin: 8px 0 4px; padding: 0; list-style: none; }
+.ac-tl::before { content: ""; position: absolute; left: 66px; top: 16px; bottom: 16px; width: 2px; border-radius: 1px; background: var(--line); }
+.ac-tl-item { position: relative; display: grid; grid-template-columns: 52px 30px minmax(0, 1fr); align-items: start; padding: 9px 0; }
+.ac-tl-item .time { padding-top: 10px; font: 500 13px/1.2 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.ac-tl-item .time small { display: block; margin-top: 4px; font: 400 11.5px/1 var(--font-sans); color: var(--ink-3); }
+.ac-tl-item .dot { position: relative; z-index: 1; justify-self: center; width: 10px; height: 10px; margin-top: 13px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--line-control); }
+.ac-tl-item.is-past .dot { background: var(--line-control); box-shadow: none; }
+.ac-tl-item.is-next .dot { background: var(--sun); box-shadow: 0 0 0 4px var(--sun-soft); }
+.ac-tl-item .body { min-width: 0; display: grid; gap: 7px; padding: 9px 12px 10px; border-radius: var(--radius-md); color: var(--ink); text-decoration: none; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.ac-tl-item a.body:hover { background: var(--sunk); }
+.ac-tl-item a.body:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.ac-tl-item.is-next .body { background: var(--sun-soft); }
+.ac-tl-item.is-next a.body:hover { background: var(--sun-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sun) 40%, transparent); }
+.ac-tl-item .body > b { font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-tl-item.is-past .body > b { color: var(--ink-2); }
+.ac-tl-item .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.ac-tl-item .meta > .m { display: contents; }
+.ac-tl-now { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; height: 22px; }
+.ac-tl-now .time { font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--sun-text); }
+.ac-tl-now i { position: relative; height: 2px; margin-left: 10px; border-radius: 1px; background: var(--sun); }
+.ac-tl-now i::before { content: ""; position: absolute; left: 0; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--sun); }
+
+/* ---- SettingsCard, SettingRow: a control that can't sit beside its words wraps under them ---- */
+.ac-set-card { padding: 24px 28px 10px; scroll-margin-top: 24px; }
+.ac-set-card > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
+.ac-set-card > .lead { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
+.ac-set-card > h3 + .ac-set-row, .ac-set-card > .lead + .ac-set-row { margin-top: 12px; }
+.ac-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 17px 0; border-top: 1px solid var(--line); }
+.ac-set-row > .txt { flex: 1 1 220px; min-width: 0; }
+.ac-set-row > .txt > b { display: block; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
+.ac-set-row > .txt > small { display: block; max-width: 54ch; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.ac-set-row.is-caution > .txt > b { color: var(--caution); }
+.ac-set-row > .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
+@media (max-width: 600px) { .ac-set-card { padding: 20px 18px 6px; } }
+
 /* ---- Composer, Field ---- */
 .ac-composer { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 8px 0 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); color: var(--ink-3); font: 400 15.5px/1.4 var(--font-sans); }
 .ac-composer > .ac-i { color: var(--sun-text); }
@@ -254,6 +326,8 @@
 .ac-tour.is-sheet .ac-tour-card .art { height: 150px; }
 .ac-tour.is-sheet .ac-tour-card .body { padding: 18px 20px 14px; }
 .ac-tour.is-sheet .ac-tour-card .foot { padding: 0 16px 18px 20px; }
+/* A sheet standing above a target along the bottom, such as a tab bar: a card of the same width, rounded all round. */
+.ac-tour.is-sheet.is-lifted .ac-tour-card { border-radius: var(--radius-xl); padding-bottom: 0; }
 .ac-steps { display: flex; gap: 6px; margin-right: auto; }
 .ac-steps i { width: 6px; height: 6px; border-radius: 3px; background: var(--line-control); transition: width var(--duration-2) var(--ease-out), background-color var(--duration-2); }
 .ac-steps i.is-on { width: 20px; background: var(--ink); }
@@ -285,6 +359,27 @@
 .ac-pop.is-stage .ac-pop-item > .ac-i { color: var(--stage-ink-2); }
 .ac-pop.is-stage .ac-pop-item.is-caution, .ac-pop.is-stage .ac-pop-item.is-caution > .ac-i { color: #F3B85A; }
 .ac-pop.is-stage .ac-pop-sep { background: rgba(255, 255, 255, .08); }
+/* Select: the button shows the choice; its listbox is a popover, scrolling when long, never wider than the window. */
+.ac-select { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; height: 38px; padding: 0 10px 0 12px; border: 0; border-radius: var(--radius-sm); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-control); color: var(--ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.ac-select:hover, .ac-select[data-state="open"] { background: var(--sunk); }
+.ac-select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-select > .ac-i { color: var(--ink-3); }
+.ac-select .v { line-height: 1.3; text-align: left; }
+.ac-select[disabled] { opacity: .45; cursor: default; pointer-events: none; }
+.ac-select.is-stage { height: 36px; border-radius: 11px; background: rgb(255 255 255 / .07); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); color: var(--stage-ink); }
+.ac-select.is-stage:hover, .ac-select.is-stage[data-state="open"] { background: rgb(255 255 255 / .12); }
+.ac-select.is-stage > .ac-i { color: var(--stage-ink-2); }
+.ac-select.is-stage:focus-visible, .ac-pop.is-stage .ac-option:focus-visible { outline-color: var(--speak); }
+.ac-select-list { position: relative; min-width: max(var(--radix-popover-trigger-width, 0px), 160px); max-width: min(360px, var(--radix-popover-content-available-width, 360px)); max-height: min(320px, var(--radix-popover-content-available-height, 320px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.ac-option { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--ink); font: 500 13.5px/1.3 var(--font-sans); cursor: pointer; outline: none; scroll-margin: 6px; }
+.ac-option > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ac-option:focus { background: var(--sunk); }
+.ac-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.ac-option[aria-selected="true"] { font-weight: 600; }
+.ac-option[aria-selected="true"] > .ac-i { color: var(--sun-text); }
+.ac-pop.is-stage .ac-option { color: var(--stage-ink); }
+.ac-pop.is-stage .ac-option:focus { background: rgba(255, 255, 255, .07); }
+.ac-pop.is-stage .ac-option[aria-selected="true"] > .ac-i { color: #FFB08A; }
 .ac-tip { z-index: 80; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ink); color: var(--ground); font: 600 12px/1.2 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-pop-in 160ms var(--ease-out) both; }
 
 /* ---- EmptyState ---- */
@@ -319,11 +414,47 @@
 .ac-slider .mark { position: absolute; top: 50%; left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--mark)); width: 2px; height: 12px; margin: -6px 0 0 -1px; border-radius: 1px; background: var(--line-control); pointer-events: none; }
 .ac-kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: var(--radius-xs); background: var(--sunk); color: var(--ink-3); font: 500 11px/1 var(--font-mono); box-shadow: inset 0 -1px 0 var(--line); }
 .ac-time-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 7px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1), color var(--duration-1); }
-button.ac-time-chip:hover, a.ac-time-chip:hover { background: var(--sun-soft); color: var(--sun-text); }
+:is(button, a).ac-time-chip:hover { background: var(--sun-soft); color: var(--sun-text); }
 .ac-stage .ac-time-chip { background: rgba(255, 255, 255, .08); color: var(--stage-ink-2); }
 .ac-stage .ac-avatar { background: var(--stage-tile); }
 .ac-stage .ac-avatar .initial { color: var(--stage-ink-2); }
 .ac-stage .ac-faces .ac-avatar { --ring: var(--stage); }
+
+/* ---- ThemePreview: a window in each theme's own colours (.light/.dark scope them), ringed in sun when it's the one ---- */
+.ac-theme { display: grid; gap: 10px; min-width: 0; text-align: left; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink-2); cursor: pointer; transition: color var(--duration-1); }
+.ac-theme:hover, .ac-theme[aria-pressed="true"] { color: var(--ink); }
+.ac-theme .win { position: relative; display: grid; height: 104px; border-radius: 14px; overflow: hidden; transition: box-shadow var(--duration-1); }
+.ac-theme .win::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; transition: box-shadow var(--duration-1); }
+.ac-theme:hover .win::after { box-shadow: inset 0 0 0 1px var(--line-control); }
+.ac-theme[aria-pressed="true"] .win { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--sun); }
+.ac-theme:focus-visible { outline: none; }
+.ac-theme:focus-visible .win { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ac-theme[aria-pressed="true"]:focus-visible .win { outline-offset: 6px; }
+.ac-theme .win.is-split { grid-template-columns: 1fr 1fr; }
+.ac-theme .pane { display: grid; grid-template-columns: 30% 1fr; min-width: 0; background: var(--ground); }
+.ac-theme .is-split .pane { grid-template-columns: 44% 1fr; }
+.ac-theme .w-side { display: grid; align-content: start; gap: 6px; padding: 12px 9px; box-shadow: inset -1px 0 0 var(--line); }
+.ac-theme .w-side i { display: block; height: 6px; border-radius: 3px; background: var(--line); }
+.ac-theme .w-side i:first-child { width: 70%; height: 8px; background: var(--sun); }
+.ac-theme .w-main { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 12px; }
+.ac-theme .w-main i { display: block; height: 26px; border-radius: 7px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.ac-theme .w-main i + i { width: 80%; height: 18px; }
+
+/* ---- MicLevel: eight bars in horizon; on the stage, the recorder's waveform in speak ---- */
+.ac-mic-level { display: inline-flex; flex: none; align-items: center; gap: 3px; height: 18px; vertical-align: middle; }
+.ac-mic-level i { width: 4px; height: 100%; border-radius: 2px; background: var(--sunk); transition: background-color 80ms linear; }
+.ac-mic-level i.on { background: var(--horizon); }
+.ac-mic-level.is-stage { height: 22px; }
+.ac-mic-level.is-stage i { background: var(--speak); transition: height 90ms linear; }
+
+/* ---- GroupChip: the size of a person in the people picker, so the two sit together ---- */
+.ac-group-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 30px; padding: 0 10px 0 8px; border-radius: var(--radius-sm); background: var(--sunk); color: var(--ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; vertical-align: middle; }
+.ac-group-chip > .ac-i { color: var(--ink-3); }
+.ac-group-chip .name { line-height: 1.3; }
+.ac-group-chip .n { font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ac-group-chip.has-x { padding-right: 4px; }
+.ac-group-chip button { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 7px; color: var(--ink-3); transition: background-color var(--duration-1), color var(--duration-1); }
+.ac-group-chip button:hover { background: var(--line); color: var(--ink); }
 
 /* ---- Brand: the mark and the wordmark ---- */
 .ac-brand { display: inline-flex; align-items: center; gap: 9px; font: 650 21px/1 var(--font-sans); letter-spacing: -.055em; color: var(--ink); }

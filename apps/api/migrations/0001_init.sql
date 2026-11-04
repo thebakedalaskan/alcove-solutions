@@ -180,6 +180,8 @@ CREATE TABLE call_mls (
   FOREIGN KEY (owner_id, call_id) REFERENCES calls(owner_id, call_id) ON DELETE CASCADE
 );
 
+-- A recording's start is its own: a room recording made without a connection keeps when it really
+-- started, however much later it is uploaded.
 CREATE TABLE recordings (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   recording_id alcove_id128 NOT NULL,
@@ -193,11 +195,14 @@ CREATE TABLE recordings (
   FOREIGN KEY (owner_id, note_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
 );
 
+-- One row per stored piece, found by its place in the recording (segment, seq), so a piece sent
+-- again is stored once. at_ms is where it starts in its segment, pauses not counted.
 CREATE TABLE recording_pieces (
   owner_id alcove_owner_id NOT NULL,
   recording_id alcove_id128 NOT NULL,
   segment integer NOT NULL CHECK (segment >= 0),
   seq integer NOT NULL CHECK (seq >= 0),
+  at_ms integer NOT NULL CHECK (at_ms >= 0),
   object_id alcove_id128 NOT NULL UNIQUE,
   cipher_sha256 bytea NOT NULL,
   cipher_bytes bigint NOT NULL CHECK (cipher_bytes > 0),

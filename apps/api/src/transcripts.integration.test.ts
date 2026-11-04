@@ -31,9 +31,9 @@ async function account(email = unique()) {
   return { ...b, session: r.session };
 }
 const audioBytes = (marker: string) => { const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]); const out = new Uint8Array(new ArrayBuffer(src.length)); out.set(src); return out; };
-const piece = (marker: string, segment: number, s: number): AudioPiece => ({ data: new Blob([audioBytes(marker)]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+const piece = (marker: string, segment: number, s: number): AudioPiece => ({ data: new Blob([audioBytes(marker)]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
 /** Speech saying `words` (sentences split by " // "; one starting "~" is heard with little confidence). */
-const speech = (words: string, segment: number, startMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, startMs, durationMs: ms });
+const speech = (words: string, segment: number, atMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
   const until = Date.now() + ms;
@@ -73,7 +73,7 @@ const revisions = async (noteId: string) => (await h.pool.query<{ n: number }>('
 const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
 
 describe('a transcript that says what it isn’t sure of', () => {
-  it('marks words heard unclearly, and lines heard on two people’s microphones, live, in catch-up and in the notes', async () => {
+  it('marks words heard unclearly, and lines heard on two people’s microphones, live, in catch-up, in the notes and across notes', async () => {
     const org = await account(unique('organizer'));
     const kofiEmail = invitee('kofi');
     const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
@@ -131,6 +131,17 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(draft).toContain('Transcript:');
     expect(draft).toContain('the vendor wants eighty something (unclear)');
     expect(draft).toContain(`Kofi (not sure who): I will send the contract to legal today.`);
+
+    // A question across your notes reads them the same way, told what the marks mean, each transcript fenced.
+    const across: AnswerPart[] = [];
+    for await (const p of org.api.notes.askAll('What does the vendor want?')) across.push(p);
+    expect(across[0]).toMatchObject({ type: 'text' });
+    expect(h.near.instructions.at(-1)).toContain('A line ending in "(unclear)" was hard to hear');
+    expect(h.near.instructions.at(-1)).toContain("Each note's transcript comes between <transcript> and </transcript>.");
+    const acrossPrompt = h.near.prompts.at(-1) ?? '';
+    expect(acrossPrompt).toContain('Transcript:\n<transcript>\n');
+    expect(acrossPrompt).toContain('the vendor wants eighty something (unclear)');
+    expect(acrossPrompt).toContain(`Kofi (not sure who): I will send the contract to legal today.`);
   });
 
   it('lets the organizer correct any line and people their own words, in revisions that say who changed what', async () => {
@@ -221,7 +232,7 @@ describe('a transcript that says what it isn’t sure of', () => {
 
     // Someone the notes were shared with reads them, and corrects nothing that isn't theirs.
     const laterEmail = unique('later');
-    await org.api.notes.share(noteId, [laterEmail]);
+    await org.api.notes.share(noteId, { emails: [laterEmail] });
     const later = await account(laterEmail);
     expect(lineIn(await later.api.notes.get(noteId), fixed)?.changes?.[0]?.what).toBe('reworded');
     expect(code(await later.api.notes.correctLine(noteId, vendor ?? '', { text: 'Something else entirely.' }).catch((e: unknown) => e))).toBe('forbidden');
@@ -229,19 +240,19 @@ describe('a transcript that says what it isn’t sure of', () => {
     // changed, and notes still recording can't be corrected yet.
     const stranger = await account();
     expect(code(await stranger.api.notes.correctLine(noteId, vendor ?? '', { text: 'Not mine to change.' }).catch((e: unknown) => e))).toBe('not-found');
-    const rec = await stranger.api.recordings.start('Theirs');
+    const rec = await stranger.api.recordings.start({ title: 'Theirs' });
     await rec.transcribe(speech('A room of their own.', 0, 0));
     const { pendingNoteId: theirs } = await rec.stop();
     await written(stranger.api, theirs);
     expect(code(await stranger.api.notes.correctLine(theirs, vendor ?? '', { text: 'Not in this note.' }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await org.api.notes.correctLine(theirs, lineIn(await stranger.api.notes.get(theirs), 'A room of their own.')?.id ?? '', { text: 'Not mine.' }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await org.api.notes.correctLine(noteId, 'AAAAAAAAAAAAAAAAAAAAAA', { confirm: true }).catch((e: unknown) => e))).toBe('not-found');
-    const still = await org.api.recordings.start('Still going');
+    const still = await org.api.recordings.start({ title: 'Still going' });
     expect(code(await org.api.notes.correctLine(still.getSnapshot().noteId, vendor ?? '', { confirm: true }).catch((e: unknown) => e))).toBe('conflict');
     await still.discard();
 
     // Questions read the corrected transcript, with nothing marked unclear any more.
-    expect(await asked(later.api, noteId, 'What does the vendor want?')).toEqual([{ type: 'text', text: `From the call: ${fixed}` }, { type: 'cite', at: 4 }]);
+    expect(await asked(later.api, noteId, 'What does the vendor want?')).toEqual([{ type: 'text', text: `From the call: ${fixed}` }, { type: 'cite', noteId, at: 4 }]);
     const transcript = (h.near.prompts.at(-1) ?? '').split('Transcript:\n')[1]?.split('\n\nAsked by')[0] ?? '';
     expect(transcript).toContain(`Kofi: ${fixed}\n`);
     expect(transcript).toContain('Sam (guest): I can take the design review myself.');
@@ -331,7 +342,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     expect(await jobs()).toBe(0);
 
     // Nothing to write from, or still recording: refused.
-    const rec = await org.api.recordings.start('Quiet');
+    const rec = await org.api.recordings.start({ title: 'Quiet' });
     expect(code(await org.api.notes.rewrite(rec.getSnapshot().noteId).catch((e: unknown) => e))).toBe('conflict');
     const { pendingNoteId: silent } = await rec.stop();
     await written(org.api, silent);
@@ -349,7 +360,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     const before = (await org.api.credits.balance()).balance;
     // The notes model never gives a usable answer: after three attempts the note is finished without notes, free.
     h.near.failNext(3, 'prose');
-    const rec = await org.api.recordings.start('Unwritten');
+    const rec = await org.api.recordings.start({ title: 'Unwritten' });
     await rec.appendAudio(piece('unwritten', 0, 0));
     await rec.transcribe(speech('We agreed to ship on Monday.', 0, 0));
     const { pendingNoteId: noteId } = await rec.stop();

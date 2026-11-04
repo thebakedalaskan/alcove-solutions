@@ -21,7 +21,7 @@ import { listItems, type Loaded } from '../vault';
 import { me } from './account';
 import { DOUBT, fenced, oneLine } from './drafting';
 import { all as allMeetings, toMeeting, type MeetingManifest } from './meetings';
-import { NoteManifest, goneSince, seriesOf, sharedWithMe, type Located } from './notes';
+import { NoteManifest, goneSince, myEmail, receivedBy, seriesOf, sharedWithMe, type Located } from './notes';
 import { personOf } from './portraits';
 
 const slog = log.child({ component: 'series' });
@@ -50,7 +50,7 @@ async function find(o: Owner, seriesId: string): Promise<Found> {
   } else {
     // Someone else's series: only the notes given to you, and only those whose call is in it.
     const seriesOfCall = new Map<string, Promise<string | undefined>>();
-    for (const l of await sharedWithMe(o)) {
+    for (const l of await sharedWithMe(o, await myEmail(o))) {
       const meetingId = l.note.manifest.meetingId;
       if (!meetingId || l.note.manifest.status === 'recording') continue;
       const key = `${l.owner.ownerId}/${meetingId}`;
@@ -99,7 +99,7 @@ export async function get(o: Owner, seriesId: string): Promise<Series> {
     const m = s.note.manifest;
     return {
       id: s.note.itemId, title: m.title, startedAt: m.startedAt, duration: m.duration, status: m.status,
-      ...(s.mine ? (m.meetingId ? { meetingId: m.meetingId } : {}) : { from: organizer })
+      ...(s.mine ? (m.meetingId ? { meetingId: m.meetingId } : {}) : { received: receivedBy(m, s.as, organizer) })
     };
   });
   const older = found.length - sources.length;

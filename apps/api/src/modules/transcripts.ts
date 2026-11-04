@@ -30,7 +30,7 @@ import { nameOf, personOf } from './portraits';
 const tlog = log.child({ component: 'transcripts' });
 
 /** Speech from the browser: where it starts in its segment (pauses not counted), and its WAV bytes. */
-export interface Clip { segment: number; startMs: number; durationMs: number; wav: Uint8Array }
+export interface Clip { segment: number; atMs: number; durationMs: number; wav: Uint8Array }
 /** Where a clip's lines go: the recording it was part of, and the note being made from it. */
 export interface Target { recordingId: string; noteId: string }
 
@@ -85,7 +85,7 @@ const RECHECK_MS = 3500;
 
 const key = (o: Owner, noteId: string) => stateKey(o.root, o.ownerId, `transcript:${noteId}`);
 /** One clip of one person's speech: the same person's retried clip has the same tag, two people speaking at once don't. */
-const tagOf = (o: Owner, noteId: string, segment: number, startMs: number, speaker: string) => mac(key(o, noteId), utf8(`clip:${segment}:${startMs}:${speaker}`));
+const tagOf = (o: Owner, noteId: string, segment: number, atMs: number, speaker: string) => mac(key(o, noteId), utf8(`clip:${segment}:${atMs}:${speaker}`));
 const header = (o: Owner, noteId: string, tag: Uint8Array) => ({ v: 1 as const, kind: 'transcript-clip', ownerId: o.ownerId, noteId, tag: b64u(tag) });
 
 /**
@@ -105,13 +105,14 @@ export type Still = (db: Db) => Promise<boolean>;
  * are gone.
  */
 export async function hear(o: Owner, t: Target, clip: Clip, by?: Heard | undefined, still?: Still | undefined): Promise<void> {
-  const tag = tagOf(o, t.noteId, clip.segment, clip.startMs, by?.speaker ?? '');
-  const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, startMs: clip.startMs, durationMs: clip.durationMs, bytes: clip.wav.length, room: Boolean(by?.room) };
+  const tag = tagOf(o, t.noteId, clip.segment, clip.atMs, by?.speaker ?? '');
+  const ctx = { noteId: t.noteId, recordingId: t.recordingId, segment: clip.segment, atMs: clip.atMs, durationMs: clip.durationMs, bytes: clip.wav.length, room: Boolean(by?.room) };
   const seen = await maybeOne(o.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM transcript_clips WHERE owner_id = $1 AND note_item_id = $2 AND clip_tag = $3', [o.ownerId, t.noteId, tag]);
   if (seen) { tlog.debug('clip already transcribed', ctx); return; }
   const [segs, recent] = await Promise.all([segments(o, t.recordingId), newest(o, o.pool, t.noteId, RECENT)]);
-  // Lines are placed in the whole recording the way the note's player counts it: earlier segments first.
-  const at = segs.filter((s) => s.index < clip.segment).reduce((n, s) => n + s.seconds, 0) + clip.startMs / 1000;
+  // Lines are placed in the whole recording the way the note's player counts it: earlier segments first, then where
+  // the clip says it starts in its own, so they keep their time however late they arrive.
+  const at = segs.filter((s) => s.index < clip.segment).reduce((n, s) => n + s.seconds, 0) + clip.atMs / 1000;
   const callIn = languageFor(recent, by?.speaker, clip.durationMs);
   // With the call's language only, a prompt of who's in the call and the words said before (see languageFor), in
   // the same part of the call, as the server placed this clip: a breakout room's words go to Whisper only with that

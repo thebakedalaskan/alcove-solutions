@@ -847,9 +847,10 @@ export interface RecordedVoice { identity: string; track: MediaStreamTrack }
 const FADE_S = 0.03;
 
 /**
- * Records in 5-second pieces and uploads them in order. Each piece is retried a few times; the server treats a
- * repeated (segment, seq) as a no-op, so retries never duplicate audio. The server refuses audio once notes are off,
- * so stopping waits for the last piece before anyone switches notes off.
+ * Records in 5-second pieces and uploads them in order. Each piece says where it starts in its segment, pauses not
+ * counted, so its time is its own however late it arrives. Each is retried a few times; the server treats a repeated
+ * (segment, seq) as a no-op, so retries never duplicate audio. The server refuses audio once notes are off, so stopping
+ * waits for the last piece before anyone switches notes off.
  *
  * What it records is a mix of voices (a room recording: the microphone; a call: everyone the organizer's browser
  * hears), through one small audio graph: each voice's own track, as it arrived, faded in when it's heard and out when
@@ -898,12 +899,16 @@ export class NotesRecorder {
     if (!rec) { this.onBroken(true); return; }
     // Each recorder numbers its own pieces, so a late last piece keeps the segment it was recorded in.
     let seq = 0;
+    /** Milliseconds recorded into the segment so far: where the next piece starts. */
+    let recorded = 0;
     let last = performance.now();
     const gen = this.gen;
     rec.addEventListener('dataavailable', (e) => {
       if (!e.data.size || gen !== this.gen) return;
       const now = performance.now();
-      const p: AudioPiece = { data: e.data, segment, seq: seq++, durationMs: Math.max(0, now - last), mimeType };
+      const durationMs = Math.max(0, now - last);
+      const p: AudioPiece = { data: e.data, segment, seq: seq++, at: recorded / 1000, durationMs, mimeType };
+      recorded += durationMs;
       last = now;
       this.queue = this.queue.then(async () => {
         while (this.gate) await this.gate.wait;

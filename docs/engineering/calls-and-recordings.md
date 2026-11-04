@@ -24,7 +24,7 @@ sequenceDiagram
       A->>D: note item (status recording) + recording with wrapped Krec
     end
     loop every 5 seconds while notes are on
-      B->>A: POST /v1/live/calls/:id/audio (segment, seq, bytes)
+      B->>A: POST /v1/live/calls/:id/audio (segment, seq, start, bytes)
       A->>O: sealed audio record under a random object ID
       A->>O: read back, verify length and SHA-256
       A->>D: recording_pieces row
@@ -45,20 +45,24 @@ sequenceDiagram
   (`{type: "pause"}`, `{type: "resume"}`); anyone else can ask for them. Each change adds a notice shown in
   the call, and everyone sees the same capture state ([What's captured](#whats-captured)).
 - **Segments.** Turning notes off, or pausing them, stops the recording. Turning them on again, or resuming,
-  starts segment `n+1`. Each segment is one continuous MediaRecorder stream, so its pieces concatenate into
-  one playable file.
+  starts segment `n+1`, and so does the organizer joining the call again while notes are on (a reload,
+  another tab: the new connection takes over from the old one): the new page's recorder never lands among
+  the old one's pieces, and audio from the old page, still in the earlier segment, is refused. Each segment
+  is one continuous MediaRecorder stream, so its pieces concatenate into one playable file.
 - **Ordering and retries.** The browser uploads pieces in order and tries each one up to three times.
-  The server treats a repeated `(segment, seq)` as a no-op and rejects audio for a paused or stopped
-  recording, or for an earlier segment. A piece whose `content-length` is over 2 MiB is refused before its
-  body is read.
+  Each piece says where it starts in its segment, pauses not counted (`x-alcove-at-ms`). The server treats
+  a repeated `(segment, seq)` as a no-op (a different piece sent to a place already stored is
+  `409 conflict`) and rejects audio for a paused or stopped recording, or for an earlier segment. A piece
+  whose `content-length` is over 2 MiB is refused before its body is read.
 - **Live transcript.** While notes are on, the organizer's browser also sends clips of speech, one stream per
   voice it hears (its own microphone and each other unmuted microphone it plays), to
-  `POST /v1/live/calls/:id/transcribe` (16 kHz mono WAV, at most 30 seconds, each saying whose it is with
-  `x-alcove-speaker` and how long before the request it began with `x-alcove-ago-ms`; 40 a minute for each
-  voice, 240 for the account). Each clip is transcribed by NEAR AI and kept as sealed lines in the part of the
-  call its speaker was in when it began, and `CallState.transcript` carries the latest 200 the viewer may read,
-  each under whoever said it. Clips are refused while notes are off or paused, for an earlier segment, from
-  anyone not in the call, or for a breakout room that has closed. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
+  `POST /v1/live/calls/:id/transcribe` (16 kHz mono WAV, at most 30 seconds, each saying where it starts in
+  its segment with `x-alcove-at-ms`, whose it is with `x-alcove-speaker` and how long before the request it
+  began with `x-alcove-ago-ms`; 40 a minute for each voice, 240 for the account). Each clip is transcribed by
+  NEAR AI and kept as sealed lines in the part of the call its speaker was in when it began, and
+  `CallState.transcript` carries the latest 200 the viewer may read, each under whoever said it. Clips are
+  refused while notes are off or paused, for an earlier segment, from anyone not in the call, or for a
+  breakout room that has closed. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
 - **Leaving.** The browser stops the recorder, sends the last audio and speech, then calls `leave`. The
   server finishes the note in the same transaction that ends the call, then starts the notes worker.
 ## Group calls
@@ -812,6 +816,39 @@ records the microphone in 5-second pieces to `POST /v1/recordings/:id/audio` and
 paused. `RoomRecordingState.transcript` carries the latest 200 lines, with no speaker. Rename, pause and
 resume are actions; **Stop** finishes the note like leaving a call (stopping twice finishes it once);
 **Discard** deletes the note, its recording and every object, as deleting your own note does.
+
+### The recording's own times
+
+Every piece and clip says where it starts in its segment (a room recording has one): `at`, in seconds with
+pauses not counted (`x-alcove-at-ms` on the wire). Pieces play in the order of their `seq`, and a piece
+sent again must start and last as the stored one does; transcript lines are placed by their clip's `at`.
+Nothing is timed by when it arrives, so a recording keeps its own times however late it's uploaded.
+
+- **Starting.** `POST /v1/recordings {title?, startedAt?}`. Without `startedAt` the recording starts now.
+  With it, the recording and its note start then. `startedAt` may be up to 14 days back
+  (`MAX_RECORDING_AGE_DAYS`) and up to 5 minutes ahead of the server's clock, since a device's clock can
+  run a little fast; anything else is `400 invalid`.
+- **Starting again.** Starting from the same `startedAt` as one of the account's room recordings returns
+  that recording as it is (recording, paused or stopped), however old it is by now, instead of making a
+  second one. Starts from the same moment wait for each other (a transaction-scoped advisory lock per
+  account), so two at once still make one recording. Only the account's own room recordings are found (a
+  call's recording from the same moment isn't); a discarded or deleted one is gone, so its moment starts a
+  new one.
+- **Pieces** are found by their place, `(segment, seq)`, and stored once. Sending a piece that's stored
+  already is a no-op, even once the room recording has paused or stopped, so its upload can be sent again
+  at any point. A different piece sent to a place that's taken (another start or length) is
+  `409 conflict`, never dropped as if it were stored. New pieces are refused while the recording is paused
+  or stopped.
+- **Clips** are transcribed once each, by a keyed tag of their segment and start, and each line is placed
+  at the clip's `at` plus where it starts in the clip
+  ([Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript)).
+- **Length.** The note's duration, what stopping returns and the minutes charged are the pieces' total,
+  never the time since the recording started.
+
+**Late uploads.** A recording made without a connection uploads the same way, later: start with its
+`startedAt`, send its pieces and clips, then stop. An upload cut off part way (a closed tab, an answer
+that never arrived) starts again from the same `startedAt` and sends everything again: what's there
+already is skipped, and stopping finishes the note once.
 
 ## Media in the browser
 

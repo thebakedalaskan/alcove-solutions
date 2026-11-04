@@ -292,7 +292,7 @@ export class SpeechClips {
     const pcm = new Float32Array(sent.length * FRAME);
     sent.forEach((f, i) => pcm.set(f.pcm, i * FRAME));
     const heardAt = this.wall ? this.wall.ms + ((start - this.wall.at) * 1000) / RATE : undefined;
-    this.enqueue({ data: wav(pcm), segment: this.segment, startMs: (start * 1000) / RATE, durationMs: (pcm.length * 1000) / RATE, ...(heardAt === undefined ? {} : { heardAt }) });
+    this.enqueue({ data: wav(pcm), segment: this.segment, at: start / RATE, durationMs: (pcm.length * 1000) / RATE, ...(heardAt === undefined ? {} : { heardAt }) });
   }
 
   private enqueue(clip: TranscriptClip) {
@@ -304,7 +304,7 @@ export class SpeechClips {
   }
 
   private async send(clip: TranscriptClip) {
-    const where = { segment: clip.segment, startMs: Math.round(clip.startMs), durationMs: Math.round(clip.durationMs), bytes: clip.data.size };
+    const where = { segment: clip.segment, atMs: Math.round(clip.at * 1000), durationMs: Math.round(clip.durationMs), bytes: clip.data.size };
     if (Date.now() < this.restUntil) { slog.debug('transcript clip skipped while transcription rests', where); return; }
     for (let attempt = 1; ; attempt++) {
       try {

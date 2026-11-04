@@ -29,8 +29,8 @@ clog.warn('object delete failed; queued for retry', { objectId, err: e });
 | Level | Use for |
 | --- | --- |
 | `debug` | Every query and object call with timing, request starts, audio pieces, transcript clips and NEAR AI replies (sizes, counts, timings), people searches |
-| `info` | Things that happened: sign-ins, accounts created, sessions opened and ended, Google connected, calls placed on or changed in a calendar, calls started and ended, notes jobs queued, notes written, questions answered, notes shared or deleted, ordinary refusals (400, 401, 404, 409) |
-| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet or busy, notes retried after a failed attempt, calendar changes that didn't reach Google (the call is kept), retries, slow queries (>250 ms), slow object calls (>1 s) |
+| `info` | Things that happened: sign-ins, accounts created and deleted, sessions opened and ended, Google connected, calls placed on or changed in a calendar, calls started and ended, notes jobs queued, notes written, questions answered, notes shared or deleted, ordinary refusals (400, 401, 404, 409) |
+| `warn` | Something is off but handled: forbidden requests, keys that can't open data, rate limits and services not connected yet or busy, notes retried after a failed attempt, calendar changes that didn't reach Google (the call is kept), calls a deleted account's Google Calendar didn't cancel and grants Google didn't revoke (the deletion goes ahead), retries, slow queries (>250 ms), slow object calls (>1 s) |
 | `error` | We failed: 5xx, integrity failures, lost data, a Google sign-in that failed on our side, notes finished without a summary after their last attempt, maintenance failures, uncaught exceptions |
 
 - **Context.** The request middleware sets `requestId`, `method` and `path` with AsyncLocalStorage; the

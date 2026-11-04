@@ -27,7 +27,7 @@ const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api
 /** An error's code and the message the app shows for it. */
 const refusal = (e: unknown) => (e instanceof AlcoveApiError ? [e.code, e.message] : ['not-an-api-error', '']);
 /** A clip of speech saying `words`; sentences split by " // " come back as lines two seconds apart. */
-const speech = (words: string): TranscriptClip => ({ data: new Blob([speechWav(words)], { type: 'audio/wav' }), segment: 0, startMs: 0, durationMs: 4000 });
+const speech = (words: string): TranscriptClip => ({ data: new Blob([speechWav(words)], { type: 'audio/wav' }), segment: 0, at: 0, durationMs: 4000 });
 
 /** Holds a call with notes on: joins it by its code, says `words`, ends it and waits for its notes to be written. */
 async function hold(api: AlcoveApi, callCode: string, words: string, during?: () => Promise<void>): Promise<{ noteId: string; meetingId: string }> {
@@ -108,7 +108,7 @@ describe('memory across a series', () => {
     // What the notes heard carries over as they heard it: proposed, open, suggested.
     let s = await org.api.series.get(seriesId);
     expect(s).toMatchObject({ id: seriesId, title: 'Launch sync', isOrganizer: true, recurring: false, next: { id: next.id }, organizer: { id: org.session.ownerId }, older: 0 });
-    expect(s.notes.map((n) => [n.id, n.status, n.meetingId, n.from])).toEqual([[one.noteId, 'ready', one.meetingId, undefined]]);
+    expect(s.notes.map((n) => [n.id, n.status, n.meetingId, n.received])).toEqual([[one.noteId, 'ready', one.meetingId, undefined]]);
     expect(s.decisions.map((d) => [d.text, d.state, d.noteId])).toEqual([['We agreed to ship the beta on Monday.', 'proposed', one.noteId]]);
     expect(s.questions.map((q) => [q.text, q.later, q.stale])).toEqual([['Can we afford a second designer?', 0, false]]);
     expect(s.actions.map((a) => [a.text, a.owner?.person?.email, a.takenOn, a.done])).toEqual([['Draft the launch email by Friday', bea.email, false, false]]);
@@ -126,7 +126,7 @@ describe('memory across a series', () => {
     const theirs = await bea.api.series.get(seriesId);
     expect(theirs).toMatchObject({ isOrganizer: false, recurring: false, organizer: { id: org.session.ownerId }, title: 'Launch sync' });
     expect(theirs.next).toBeUndefined();
-    expect(theirs.notes.map((n) => [n.id, n.meetingId, n.from?.id])).toEqual([[one.noteId, undefined, org.session.ownerId]]);
+    expect(theirs.notes.map((n) => [n.id, n.meetingId, n.received?.role, n.received?.by.id])).toEqual([[one.noteId, undefined, 'invited', org.session.ownerId]]);
     expect([theirs.decisions, theirs.questions, theirs.actions].map((xs) => xs.length)).toEqual([1, 1, 1]);
 
     // A second and a third call. A call's notes join the series when it ends: while the second is going, nothing has stayed open through it yet.
@@ -220,7 +220,7 @@ describe('memory across a series', () => {
     expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE method LIKE '%/series/%'")).rows[0]?.n).toBe(0);
 
     // Sharing the first call's notes with Cal, deliberately, brings them into Cal's series...
-    await bea.api.notes.share(one.noteId, [cal.email]);
+    await bea.api.notes.share(one.noteId, { emails: [cal.email] });
     expect(sourcesOf(await cal.api.series.get(seriesId)).sort()).toEqual([one.noteId, two.noteId].sort());
     expect((await asked(cal.api, seriesId, 'Who drafts the launch email?'))[1]).toMatchObject({ type: 'source', noteId: one.noteId });
     // ...and removing them from Cal's notes takes them out again, with nothing left behind.
@@ -243,7 +243,7 @@ describe('memory across a series', () => {
   it('keeps room recordings out of every series, and answers only once there are written notes', async () => {
     const org = await account(at('rhea'));
     // A recording in the room has no call, so it's in no series, even shared.
-    const rec = await org.api.recordings.start('Corridor chat');
+    const rec = await org.api.recordings.start({ title: 'Corridor chat' });
     await rec.transcribe(speech('We agreed to repaint the office.'));
     const { pendingNoteId: room } = await rec.stop();
     for await (const p of org.api.notes.progress(room)) if (p.ready) break;

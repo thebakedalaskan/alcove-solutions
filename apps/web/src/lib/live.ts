@@ -7,6 +7,15 @@ export function useLive<S>(store: LiveStore<S>): S {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
+const onLine = () => navigator.onLine;
+const onConnection = (changed: () => void) => {
+  addEventListener('online', changed);
+  addEventListener('offline', changed);
+  return () => { removeEventListener('online', changed); removeEventListener('offline', changed); };
+};
+/** Whether this browser has a connection. Recording and calls need one; everything else waits for it. */
+export const useOnline = (): boolean => useSyncExternalStore(onConnection, onLine, () => true);
+
 /** The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. */
 export function useNow(every = 30_000): number {
   const [now, setNow] = useState(() => Date.now());
