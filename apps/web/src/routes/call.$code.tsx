@@ -17,6 +17,7 @@ import { useCopyLink } from '~/features/call/links';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
+import { FromLastTime } from '~/features/call/FromLastTime';
 import { useLiveNotes } from '~/features/call/liveNotes';
 import { ShareMarks } from '~/features/call/marks';
 import { useShareMarkCount } from '~/features/call/SharePointing';
@@ -44,7 +45,7 @@ import { useMoveOut } from '~/features/move/useMoveOut';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q, qk } from '~/lib/queries';
+import { q, qk, useCallSeries } from '~/lib/queries';
 
 /* Guests have no account: being in the call (its pass) is what lets them in. */
 export const Route = createFileRoute('/call/$code')({ component: Call });
@@ -875,6 +876,10 @@ function InCall({ session }: { session: CallSession }) {
   const cu = useCatchingUp(session, { panel, setPanel: (v) => { setPop(null); setPanel(v); }, narrow, everOn: state.notes.everOn, room: roomName });
   const catchUp = () => { setPop(null); cu.catchUp(); };
   const liveNotes = useLiveNotes(session, state.transcript.at(-1)?.id, on && live, panel === 'notes');
+  // What carries over is your account's, not the call's: a guest has none, and everyone else reads only their own.
+  // It's read while it's on screen, in the Notes and Ask views.
+  const carried = useCallSeries(state.code, Boolean(account.data) && (panel === 'notes' || panel === 'ask'));
+  const earlierNotes = carried?.notes.filter((n) => n.status === 'ready').map((n) => n.id) ?? [];
 
   /* ---------- captions: the live transcript's newest line, in your language if you chose one ---------- */
   const caption = useCaptions(session, state.transcript, lang, cc && live);
@@ -1199,12 +1204,13 @@ function InCall({ session }: { session: CallSession }) {
                 initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
                 <SidePanel view={shownPanel} onView={(v) => { cu.settle(); openPanel(v); }} onClose={() => { cu.settle(); setPanel(null); }} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
                   {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
-                    controls={controls} onSeek={cu.open} onTranscript={() => openPanel('transcript')} />}
+                    controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!liveNotes.notes} />} onSeek={cu.open} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && (cu.moment
                     ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
                     : <TranscriptView state={state} me={me?.person.email} />)}
                   {shownPanel === 'ask' && <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
-                    catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} />}
+                    catching={cu.catching} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
+                    onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
                     here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
                   {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} host={host} foot={privacyLine} volumes={volumes}

@@ -12,6 +12,29 @@
 .cu-bar .t .ac-i { flex: none; color: var(--horizon); }
 .cu-bar .ac-btn { flex: none; }
 
+/* What carries over from earlier calls, at the top of the Notes view: a fold, unfolded until the call has notes of its own. */
+.ic-carry { margin: 12px 12px 0; }
+.ic-carry > .ac-fold-h { min-height: 44px; padding: 8px 12px 8px 14px; }
+.ic-carry > .ac-fold-b { padding: 0 14px 14px; }
+.ic-carry-h { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink); }
+.ic-carry-h .ac-i { flex: none; color: var(--horizon); }
+.ic-carry-h b { font-weight: 600; }
+.ic-carry-h .n { padding: 3px 6px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-carry .prep-groups { gap: 14px; margin-top: 10px; }
+.ic-carry .carry { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; padding: 9px 0; }
+.ic-carry .carry .g { width: 20px; }
+.ic-carry .carry .t { font-size: 14px; }
+/* Nothing to carry yet: said quietly, since the Notes view has its own empty state under it. */
+.ic-carry .ac-empty { justify-items: start; gap: 2px; padding: 0 0 2px; text-align: left; }
+.ic-carry .ac-empty b { font: 600 13.5px/1.4 var(--font-sans); letter-spacing: 0; }
+.ic-carry .ac-empty p { font-size: 13px; line-height: 1.45; }
+.ic-carry-all { margin-top: 12px; }
+.ic-carry-all a { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Which calls a question reads: this one, or the earlier ones whose notes you have. */
+.cu-scope { display: flex; }
+.cu-scope button { flex: 1; justify-content: center; }
+
 /* What to read: a chip in the composer, and its menu. */
 .cu-range { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 9px; border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px var(--line-control); cursor: pointer; transition: background-color var(--duration-1); }
 .cu-range:hover { background: var(--sunk); }

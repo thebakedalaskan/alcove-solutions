@@ -171,7 +171,8 @@ const MAX_STANDING = 24;
 /**
  * What earlier calls in a note's series left standing, for comparing it with once it's written: the organizer's own
  * notes of the calls before it, newest first, with their breakout rooms'. Decisions nobody said weren't decided or
- * replaced, and questions still open. Nothing for a call that isn't in a series.
+ * replaced, and questions still open; and what this note came back to already, however people have settled it since,
+ * so that writing its notes again can find it again. Nothing for a call that isn't in a series.
  */
 export async function standing(o: Owner, noteId: string, note: NoteManifest): Promise<Standing[]> {
   const seriesId = note.meetingId ? (await findItem(o, o.pool, 'meeting', note.meetingId, MeetingManifest))?.manifest.seriesId : undefined;
@@ -179,9 +180,10 @@ export async function standing(o: Owner, noteId: string, note: NoteManifest): Pr
   const earlier = (await find(o, seriesId)).sources.filter((s) => s.note.itemId !== noteId && s.note.manifest.status === 'ready' && s.note.manifest.startedAt < note.startedAt);
   const each = (kind: Standing['kind'], items: (p: ReturnType<typeof partsOf>[number]) => { id: string; text: string }[]) =>
     earlier.flatMap((s) => partsOf(s.note.manifest).flatMap(items).map((x): Standing => ({ kind, noteId: s.note.itemId, itemId: x.id, text: x.text })));
+  const named = new Set(note.revisits.map((r) => r.itemId));
   return [
-    ...each('decision', (p) => p.decisions.filter((d) => d.state === 'confirmed' || d.state === 'proposed')).slice(0, MAX_STANDING),
-    ...each('question', (p) => p.questions.filter((q) => q.state === 'open')).slice(0, MAX_STANDING)
+    ...each('decision', (p) => p.decisions.filter((d) => d.state === 'confirmed' || d.state === 'proposed' || named.has(d.id))).slice(0, MAX_STANDING),
+    ...each('question', (p) => p.questions.filter((q) => q.state === 'open' || named.has(q.id))).slice(0, MAX_STANDING)
   ];
 }
 

@@ -15,11 +15,12 @@ import type { ThemeChoice } from './theme';
 /**
  * A part of a page that opens and closes in place, closed until someone opens it: its heading row (`summary`, the
  * whole row is what you press) and what's under it. Built on the browser's own details element, so the keyboard and
- * screen readers work as they expect. Folds stacked one after another sit close together.
+ * screen readers work as they expect. Folds stacked one after another sit close together. `open` starts it open, and
+ * closes it again when it changes back; between changes it stays as whoever is reading left it.
  */
-export function Fold({ summary, children, className }: { summary: ReactNode; children: ReactNode; className?: string | undefined }) {
+export function Fold({ summary, children, className, open, id }: { summary: ReactNode; children: ReactNode; className?: string | undefined; open?: boolean | undefined; id?: string | undefined }) {
   return (
-    <details className={cn('ac-fold', className)}>
+    <details className={cn('ac-fold', className)} open={open} id={id}>
       <summary className="ac-fold-h">{summary}<Icon name="down" size={16} className="ac-fold-i" /></summary>
       <div className="ac-fold-b">{children}</div>
     </details>

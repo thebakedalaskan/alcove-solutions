@@ -1,5 +1,5 @@
 import {
-  NoteMomentSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
+  NoteMomentSchema, NoteRoomParamSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
   type Question, type QuestionPatch
 } from '@alcove/api';
 import { Button, Chip, Dots, EmptyState, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, Spinner, buttonClass, cn, useToast } from '@alcove/ui';
@@ -26,11 +26,13 @@ import { noteWhen } from '~/lib/time';
 export const Route = createFileRoute('/_app/notes/$noteId')({
   /**
    * `at`: a moment in the recording, in seconds, from a link in an answer or a series: the page opens the player
-   * there without playing, and the transcript at the line said then.
+   * there without playing, and the transcript at the line said then. `room`: the breakout room's section the link came
+   * to, which opens, with its own transcript at `at`.
    */
-  validateSearch: (s: Record<string, unknown>): { at?: number | undefined } => {
+  validateSearch: (s: Record<string, unknown>): { at?: number | undefined; room?: string | undefined } => {
     const at = NoteMomentSchema.safeParse(s['at']);
-    return { at: at.success ? at.data : undefined };
+    const room = NoteRoomParamSchema.safeParse(s['room']);
+    return { at: at.success ? at.data : undefined, room: room.success ? room.data : undefined };
   },
   loader: ({ context, params }) => (params.noteId === 'example' ? undefined : context.queryClient.ensureQueryData(q.note(params.noteId))),
   errorComponent: Missing,
@@ -42,15 +44,15 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function NotePage() {
   const { noteId } = Route.useParams();
-  const { at } = Route.useSearch();
+  const { at, room } = Route.useSearch();
   const me = useQuery(q.session()).data?.user;
   if (noteId === 'example') return me ? <Example me={me} /> : null;
-  return <Stored key={noteId} id={noteId} me={me?.email} at={at} />;
+  return <Stored key={noteId} id={noteId} me={me?.email} at={at} room={room} />;
 }
 
 interface GoneInfo { kind: 'deleted' | 'removed'; audio: string; screens: number; rooms: number; organizer: string }
 
-function Stored({ id, me, at }: { id: string; me: string | undefined; at: number | undefined }) {
+function Stored({ id, me, at, room }: { id: string; me: string | undefined; at: number | undefined; room: string | undefined }) {
   const qc = useQueryClient();
   const [gone, setGone] = useState<GoneInfo | null>(null);
   const note = useQuery({ ...q.note(id), enabled: !gone }).data;
@@ -58,7 +60,7 @@ function Stored({ id, me, at }: { id: string; me: string | undefined; at: number
   useNoteOnScreen(id);
   if (gone) return <Gone {...gone} />;
   if (!note) return null;
-  return <NoteView note={note} me={me} at={at} onGone={setGone} />;
+  return <NoteView note={note} me={me} at={at} room={room} onGone={setGone} />;
 }
 
 /*
@@ -152,7 +154,7 @@ function Chips({ note }: { note: Note }) {
   );
 }
 
-function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined; at: number | undefined; onGone: (g: GoneInfo) => void }) {
+function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | undefined; at: number | undefined; room: string | undefined; onGone: (g: GoneInfo) => void }) {
   const toast = useToast();
   const del = useDeleteNote();
   const updateAction = useUpdateAction();
@@ -219,7 +221,9 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   // Each breakout room's own section, under the call's notes; and whether any room had something said in it.
   const settle = ready ? { onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person) } : undefined;
   const tryAgain = mine ? <Button variant="secondary" size="sm" className="mt-3" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button> : null;
-  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} me={me} writing={!ready || note.writingAgain} correct={correct} settle={settle} tryAgain={tryAgain} /> : null;
+  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} me={me} writing={!ready || note.writingAgain} correct={correct} settle={settle} tryAgain={tryAgain} open={room} at={at} /> : null;
+  // A moment in a breakout room is in that room's lines: the call's own transcript has nothing to mark.
+  const focus = room !== undefined && note.rooms.some((r) => r.id === room) ? undefined : at;
   const roomsSaid = note.rooms.some((r) => r.transcript.length > 0);
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
   const stillOpen = note.questions.filter((x) => x.state === 'open').length;
@@ -287,7 +291,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
               {lines.length > 0 && (
                 <Section title="Transcript" count={minutesLabel(note.duration)} {...part(4)}>
                   {again}
-                  <Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} />
+                  <Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={focus} screens={screens} correct={correct} />
                 </Section>
               )}
             </>
@@ -305,7 +309,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   </>
                 )}
               </section>
-              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} /></Section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={focus} screens={screens} correct={correct} /></Section>
               {rooms}
             </>
           ) : ready ? (

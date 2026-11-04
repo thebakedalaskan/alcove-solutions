@@ -13,6 +13,7 @@ import { lastPass, rememberPass } from '~/features/call/pass';
 import { GuestName, GuestTradeOff, SignInHere, SignedInAs } from '~/features/join/JoinAs';
 import { JoinProblem, JoinRefused } from '~/features/join/JoinProblem';
 import { PrejoinCapture, type NotesAudience } from '~/features/join/PrejoinCapture';
+import { PrejoinCarry } from '~/features/join/PrejoinCarry';
 import { useAuth } from '~/features/welcome/WaysIn';
 import { api } from '~/lib/api';
 import { sessions, useClosingWithPage, useLive } from '~/lib/live';
@@ -124,6 +125,7 @@ function Prejoin({ meeting, capture, standIn, me, media: { media, m, levels, dev
         <button type="button" className={cn(buttonClass({ variant: 'primary', size: 'lg' }), 'join')} disabled={joining} onClick={() => void join()}>{joining ? <Spinner /> : standIn ? 'Join and host' : 'Join now'}</button>
         {problem !== null && <JoinRefused error={problem} />}
         <div className="pj-sub"><button type="button" onClick={() => copy(meeting.code)}><Icon name="link" size={15} />Copy link</button></div>
+        <PrejoinCarry code={meeting.code} me={me.email} />
       </div>
     </div>
   );
@@ -225,6 +227,7 @@ function GuestPrejoin({ card, code, me, media: { media, m, levels, devices } }: 
             )}
           </AnimatePresence>
         )}
+        <PrejoinCarry code={code} me={me?.email} />
       </div>
     </div>
   );
