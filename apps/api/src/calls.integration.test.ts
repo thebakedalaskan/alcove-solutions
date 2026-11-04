@@ -315,6 +315,209 @@ describe('end-to-end encryption', () => {
   });
 });
 
+describe('breakout rooms, each with its own keys', () => {
+  /** A call with the organizer and invited people (each with an account), everyone in the main room's group. */
+  async function roomsCall(names: string[], o: { notes?: 'on' | 'off' } = {}) {
+    const org = await account();
+    const emails = names.map((n) => unique(n.toLowerCase()));
+    const { code: c } = await org.api.calls.startNow({ guests: emails, ...(o.notes ? { notes: o.notes } : {}) });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const people: { email: string; call: CallSession; browser: Awaited<ReturnType<typeof account>> }[] = [];
+    for (const email of emails) {
+      const browser = await account(email);
+      const call = await browser.api.calls.join(c, { mic: true, cam: false });
+      await inGroup(call);
+      people.push({ email, call, browser });
+    }
+    return { org, host, code: c, people };
+  }
+  /** An action as the organizer's browser sends it: its pass together with its own session. */
+  const asOrganizer = (org: Awaited<ReturnType<typeof account>>, host: CallSession, body: unknown) => org.fetch(`${h.baseUrl}/v1/live/calls/${host.ticket.callId}/actions`, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': host.ticket.pass }, body: JSON.stringify(body)
+  });
+  /** In the group of a part of the call (the main room, or a room), holding its keys. */
+  const inPlace = (call: CallSession, place: string) => waitFor(() => {
+    const s = call.crypto.getSnapshot();
+    return s.status === 'in' && s.place === place && Boolean(s.media?.send);
+  }, `${call.ticket.role} in ${place === 'main' ? 'the main room' : 'a room'}`);
+  const roomIds = async (host: CallSession) => (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
+  const members = (call: CallSession) => [...call.crypto.getSnapshot().members].sort();
+  const hex = (k: Uint8Array | undefined) => Buffer.from(k ?? []).toString('hex');
+  /** Chat that's in the log, not only on its sender's screen. */
+  const logged = (call: CallSession, text: string) => waitFor(() => call.crypto.getSnapshot().chat.some((m) => m.text === text && !m.id.startsWith('me:')), `“${text}” in the log`);
+  /** Listens to `sender` with one key at one index, as someone LiveKit (which holds the API key) let into the room. */
+  const listen = async (call: CallSession, sender: string, key: Uint8Array, index: number) => {
+    const identity = `p_${randomBytes(16).toString('base64url')}`;
+    const p = await connect({ serverUrl: call.ticket.serverUrl, token: await tokenDirectly(h.deps.cfg, call.ticket.roomName, identity), identity }, { key, index });
+    open.push(p);
+    return p.meanLevelFrom(sender);
+  };
+
+  it('gives each room its own keys: nobody in one room can read or hear another, LiveKit included', async () => {
+    const { host, code: c, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena']);
+    if (!kofi || !lena) throw new Error('two people expected');
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const [design = '', support = ''] = await roomIds(host);
+    await inPlace(kofi.call, design);
+    await inPlace(lena.call, support);
+    // Each room's group is its people and the organizer, which commits for every group; the guest stays in the main room's.
+    await waitFor(() => members(kofi.call).length === 2 && members(lena.call).length === 2, 'each room’s group');
+    expect(members(kofi.call)).toEqual([host.ticket.identity, kofi.call.ticket.identity].sort());
+    expect(members(lena.call)).toEqual([host.ticket.identity, lena.call.ticket.identity].sort());
+    await waitFor(() => members(guest).length === 2, 'the main room’s group without them');
+    expect(members(guest)).toEqual([host.ticket.identity, guest.ticket.identity].sort());
+    // No key in common: each part of the call's keys come from its own group, the organizer's included.
+    await waitFor(() => keyOf(guest) === keyOf(host), 'the main room on one set of keys');
+    const design1 = Object.values(latestKeys(kofi.call)).map(hex);
+    for (const k of [...Object.values(latestKeys(lena.call)), ...Object.values(latestKeys(guest))]) expect(design1).not.toContain(hex(k));
+    expect(senderKey(kofi.call, host.ticket.identity)).not.toBe(senderKey(lena.call, host.ticket.identity));
+
+    // Chat stays in its room. The organizer, in the main room, doesn't get it either.
+    await kofi.call.sendChat('CANARY-DESIGN for Design only');
+    await lena.call.sendChat('CANARY-SUPPORT for Support only');
+    await guest.sendChat('for the main room');
+    await logged(kofi.call, 'CANARY-DESIGN for Design only');
+    await logged(lena.call, 'CANARY-SUPPORT for Support only');
+    await waitFor(() => chatOf(host).includes('for the main room'), 'the main room’s chat');
+    for (const call of [host, guest, lena.call, kofi.call]) await call.refresh();
+    expect(chatOf(lena.call)).toEqual(['CANARY-SUPPORT for Support only']);
+    expect(chatOf(kofi.call)).toEqual(['CANARY-DESIGN for Design only']);
+    expect(chatOf(guest)).toEqual(['for the main room']);
+    expect(chatOf(host)).toEqual(['for the main room']);
+    // The organizer gets a room's chat only once it's there, and the room sees it come in.
+    host.visitRoom(design);
+    await inPlace(host, design);
+    expect((await settle(kofi.call, (s) => s.breakouts.open?.rooms[0]?.members.includes(host.ticket.identity) === true)).breakouts.open?.rooms[0]?.members).toContain(host.ticket.identity);
+    await kofi.call.sendChat('welcome to Design');
+    await waitFor(() => chatOf(host).includes('welcome to Design'), 'the organizer in Design’s chat');
+    expect(chatOf(host)).not.toContain('CANARY-DESIGN for Design only');
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.place).toBe(design);
+    await host.sendChat('the organizer, in Design');
+    await waitFor(() => chatOf(kofi.call).includes('the organizer, in Design'), 'Design reads the organizer');
+    await lena.call.refresh();
+    expect(chatOf(lena.call)).not.toContain('the organizer, in Design');
+    // A room member can't post into another room's chat, nor anyone into a room they're not in.
+    const lenaLog = CallMlsSchema.parse(await (await asMember(lena.call, 'GET', '/mls?after=0')).json());
+    expect((await asMember(lena.call, 'POST', '/mls/messages', { generation: lenaLog.generation, group: design, epoch: 1, message: 'AAAA' })).status).toBe(400);
+    expect((await asMember(guest, 'POST', '/mls/messages', { generation: lenaLog.generation, group: support, epoch: 1, message: 'AAAA' })).status).toBe(400);
+    // Nothing readable reached the server.
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-DESIGN', 'CANARY-SUPPORT']);
+    expect(h.logs.join('').includes('CANARY-DESIGN')).toBe(false);
+
+    // Media: the organizer, visiting Design, hears Kofi with Design's keys.
+    const kofiRoom = await joinRoom(kofi.call);
+    await kofiRoom.publishTone();
+    const hostRoom = await joinRoom(host, kofi.call);
+    await onLatestKey(kofi.call);
+    expect(await hostRoom.meanLevelFrom(kofi.call.ticket.identity)).toBeGreaterThan(3000);
+    // Lena holds no key for Kofi: none of hers opens his frames. Neither does a random one, LiveKit's only way in.
+    const index = sendIndex(kofi.call) ?? 0;
+    for (const key of [...Object.values(latestKeys(lena.call)), randomBytes(32)]) expect(await listen(kofi.call, kofi.call.ticket.identity, key, index)).toBeLessThan(300);
+    await host.leave();
+  });
+
+  it('moves someone’s keys with them: the old room’s keys move on without them, and they’re in the new room’s', async () => {
+    const { org, host, people: [kofi, mia, lena] } = await roomsCall(['Kofi', 'Mia', 'Lena']);
+    if (!kofi || !mia || !lena) throw new Error('three people expected');
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const [design = '', support = ''] = await roomIds(host);
+    await inPlace(kofi.call, design);
+    await inPlace(mia.call, design);
+    await inPlace(lena.call, support);
+    await waitFor(() => members(mia.call).length === 3 && keyOf(kofi.call) === keyOf(mia.call), 'Design on one set of keys');
+    const before = latestKeys(kofi.call);
+    const held = Object.values(before).map(hex);
+
+    host.moveToRoom(kofi.email, support);
+    await inPlace(kofi.call, support);
+    await waitFor(() => keyOf(kofi.call) === keyOf(lena.call) && members(lena.call).includes(kofi.call.ticket.identity), 'Kofi on Support’s keys');
+    expect(members(kofi.call)).toEqual([host.ticket.identity, kofi.call.ticket.identity, lena.call.ticket.identity].sort());
+    // Design moved on without him: nothing Mia holds now is a key Kofi had.
+    await waitFor(() => !members(mia.call).includes(kofi.call.ticket.identity) && keyOf(mia.call) !== JSON.stringify(Object.entries(before).sort(([a], [b]) => a.localeCompare(b)).map(([id, k]) => [id, hex(k)])), 'Design’s keys moved on');
+    for (const k of Object.values(latestKeys(mia.call))) expect(held).not.toContain(hex(k));
+    // Design's chat no longer reaches him; Support's does.
+    await mia.call.sendChat('Design, after Kofi left');
+    await logged(mia.call, 'Design, after Kofi left');
+    await lena.call.sendChat('welcome to Support, Kofi');
+    await waitFor(() => chatOf(kofi.call).includes('welcome to Support, Kofi'), 'Support’s chat for Kofi');
+    await kofi.call.refresh();
+    expect(chatOf(kofi.call)).not.toContain('Design, after Kofi left');
+    // Mia keeps talking in Design on its new keys: the key Kofi had for her doesn't open them, hers does.
+    const miaRoom = await joinRoom(mia.call);
+    await miaRoom.publishTone();
+    await onLatestKey(mia.call);
+    const index = sendIndex(mia.call) ?? 0;
+    const own = mia.call.crypto.getSnapshot().media?.send?.key ?? randomBytes(32);
+    expect(await listen(mia.call, mia.call.ticket.identity, before[mia.call.ticket.identity] ?? randomBytes(32), index)).toBeLessThan(300);
+    expect(await listen(mia.call, mia.call.ticket.identity, own, index)).toBeGreaterThan(3000);
+    // Only people invited can be moved, only into a room this call has open, and only by the organizer.
+    expect((await asOrganizer(org, host, { type: 'rooms-move', email: 'stranger@elsewhere.example', roomId: design })).status).toBe(400);
+    expect((await asOrganizer(org, host, { type: 'rooms-move', email: mia.email, roomId: 'AAAAAAAAAAAAAAAAAAAAAA' })).status).toBe(400);
+    expect((await asOrganizer(org, host, { type: 'rooms-rename', roomId: 'AAAAAAAAAAAAAAAAAAAAAA', name: 'Theirs' })).status).toBe(400);
+    expect((await asMember(lena.call, 'POST', '/actions', { type: 'rooms-move', email: lena.email, roomId: design })).status).toBe(403);
+    expect((await asMember(lena.call, 'POST', '/actions', { type: 'rooms-rename', roomId: support, name: 'Ours' })).status).toBe(403);
+    await host.leave();
+  });
+
+  it('brings everyone back on fresh keys when the rooms close, sends a reload straight back to its room, and keeps what’s said in a room in it', async () => {
+    const { org, host, code: c, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena'], { notes: 'on' });
+    if (!kofi || !lena) throw new Error('two people expected');
+    await host.transcribe(speech('We start together.', 0, 0));
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const [design = '', support = ''] = await roomIds(host);
+    await inPlace(kofi.call, design);
+    await inPlace(lena.call, support);
+    host.renameRoom(design, 'CANARY-ROOMNAME');
+    await settle(host, (s) => s.breakouts.open?.rooms[0]?.name === 'CANARY-ROOMNAME');
+
+    // The organizer visits Design: what's said there is Design's alone, in the transcript, captions and catching up.
+    host.visitRoom(design);
+    await inPlace(host, design);
+    await host.transcribe(speech('CANARY-HEARD only for Design.', 0, 5000, 4000, design));
+    const said = (call: CallSession) => call.getSnapshot().transcript.map((l) => l.text);
+    await settle(kofi.call, (s) => s.transcript.length > 0);
+    expect(said(kofi.call)).toEqual(['CANARY-HEARD only for Design.']);
+    expect(said(host)).toEqual(['CANARY-HEARD only for Design.']);
+    await lena.call.refresh();
+    expect(said(lena.call)).toEqual([]);
+    expect(await kofi.call.catchUp()).toMatchObject({ lines: 1 });
+    expect(await lena.call.catchUp()).toMatchObject({ lines: 0 });
+    // Speech for a room that isn't open is refused.
+    expect(code(await host.transcribe(speech('Nowhere.', 0, 9000, 4000, 'AAAAAAAAAAAAAAAAAAAAAA')).catch((e: unknown) => e))).toBe('conflict');
+
+    // A reload in Design goes straight back into Design's group, without counting Kofi twice.
+    const again = await kofi.browser.api.calls.join(c, { mic: true, cam: false, previous: kofi.call.ticket.pass });
+    await inPlace(again, design);
+    await waitFor(() => members(host).includes(again.ticket.identity) && !members(host).includes(kofi.call.ticket.identity), 'Kofi in Design once');
+    expect(members(host)).toEqual([host.ticket.identity, again.ticket.identity].sort());
+    const s = await settle(host, (x) => x.participants.filter((p) => p.person.email === kofi.email).length === 1 && x.breakouts.open?.rooms[0]?.members.includes(again.ticket.identity) === true);
+    expect(s.breakouts.open?.rooms[0]?.members.sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
+
+    // The rooms close: everyone back in the main room's group, on keys that are new to all of them.
+    const roomKey = latestKeys(again);
+    host.closeRooms();
+    for (const call of [host, again, lena.call]) await inPlace(call, 'main');
+    await waitFor(() => members(host).length === 3 && keyOf(again) === keyOf(host) && keyOf(lena.call) === keyOf(host), 'everyone on the main room’s keys');
+    expect(members(host)).toEqual([host.ticket.identity, again.ticket.identity, lena.call.ticket.identity].sort());
+    for (const k of Object.values(latestKeys(host))) expect(Object.values(roomKey).map(hex)).not.toContain(hex(k));
+    // The rooms' MLS logs and what was heard in them are gone; only the main room's lines go on, and into the notes.
+    expect((await h.pool.query('SELECT count(*)::int AS n FROM call_mls WHERE call_id = $1 AND grp = ANY($2::text[])', [host.ticket.callId, [design, support]])).rows[0]?.n).toBe(0);
+    await settle(host, (x) => x.breakouts.open === null);
+    expect(said(host)).toEqual(['We start together.']);
+    await expectNotInRows(['calls', 'call_mls', 'transcript_clips'], ['CANARY-ROOMNAME', 'CANARY-HEARD']);
+    expect(h.logs.join('').includes('CANARY-ROOMNAME')).toBe(false);
+    // Once the rooms are closed there's nothing to commit to in them.
+    expect((await asOrganizer(org, host, { type: 'rooms-rename', roomId: design, name: 'Late' })).status).toBe(409);
+    const end = await host.leave();
+    const noteId = end?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    expect((await org.api.notes.get(noteId)).transcript?.map((l) => l.text)).toEqual(['We start together.']);
+  });
+});
+
 describe('keeping in step', () => {
   it('reads past anything in the log it can’t use: junk, replays and mislabelled chat stop nobody', async () => {
     const org = await account();
