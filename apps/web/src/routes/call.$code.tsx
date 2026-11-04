@@ -1,6 +1,6 @@
 import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person, type SelfView } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Icon, Popover, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -16,6 +16,7 @@ import { useLiveNotes } from '~/features/call/liveNotes';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
+import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/share';
 import { SharePicker } from '~/features/call/SharePicker';
 import { CallEars } from '~/features/call/speech';
 import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
@@ -39,8 +40,10 @@ const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
 /** Before the room has connected: nobody's media yet. */
-const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0 };
-const NO_ROOM: CallRoom = { getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, leave: async () => undefined };
+const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, screenFailed: 0 };
+const NO_ROOM: CallRoom = {
+  getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, muteShare: () => undefined, leave: async () => undefined
+};
 /**
  * One room connection per call session. React may mount the screen twice (StrictMode in dev); a second
  * connection under the same identity would push the first out of the room, so remounts share this one,
@@ -109,6 +112,8 @@ function InCall({ session }: { session: CallSession }) {
   const [panel, setPanel] = useState<PanelView | null>(() => (on && innerWidth >= 1100 ? 'notes' : null));
   const [pop, setPop] = useState<Pop>(null);
   const [sharePick, setSharePick] = useState(false);
+  /** Why the last share didn't start: the picker opens again and says what to do. */
+  const [shareTrouble, setShareTrouble] = useState<Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [ended, setEnded] = useState<Ended | null>(null);
@@ -233,6 +238,14 @@ function InCall({ session }: { session: CallSession }) {
     hostMuted.current = roomView.hostMuted;
     toast('The organizer muted your microphone. Unmute when you’re ready.', { icon: 'micOff', ms: 5000 });
   }, [roomView.hostMuted, toast]);
+  /* Your screen couldn't reach the call: it's stopped rather than shown as shared to nobody, and you can try again. */
+  const screenFailed = useRef(0);
+  useEffect(() => {
+    if (roomView.screenFailed <= screenFailed.current) return;
+    screenFailed.current = roomView.screenFailed;
+    media.stopScreen();
+    toast('Your screen couldn’t reach the call, so sharing stopped.', { icon: 'stopShare', ms: 8000, action: { label: 'Try again', onClick: () => setSharePick(true) } });
+  }, [roomView.screenFailed, media, toast]);
 
   /*
    * The organizer ended the call, or removed you, or the call went on from another tab or device: you're told,
@@ -388,15 +401,22 @@ function InCall({ session }: { session: CallSession }) {
   };
 
   /*
-   * ---------- what's shared: yours, and anyone else's in your part of the call ----------
-   * One screen at a time for now; the stage takes a list (each viewer chooses which to see big), ready for more.
+   * ---------- what's shared: yours, and everyone else's in your part of the call ----------
+   * Several people share at once (a share starts while fewer than MAX_SHARES are going), each viewer chooses which to
+   * see big, and anyone can mute the sound a share carries, for themselves.
    */
-  const presenter = others.find((p) => roomView.people[p.id]?.screenSid);
   const shares: StageShare[] = [
-    ...(m.screen ? [{ id: meId, feed: { stream: m.screen }, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen' }] : []),
-    ...others.flatMap((p) => {
-      const sid = roomView.people[p.id]?.screenSid;
-      return sid ? [{ id: p.id, feed: { room, sid }, label: `${callName(p.person)} is sharing`, name: `${callName(p.person)}’s screen` }] : [];
+    ...(m.screen ? [{ id: meId, feed: { stream: m.screen }, presenter: me?.person ?? SOMEONE, mine: true, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen', sound: null }] : []),
+    ...others.flatMap((p): StageShare[] => {
+      const r = roomView.people[p.id];
+      if (!r?.screenSid) return [];
+      const who = callName(p.person);
+      const on = r.screenSound === 'on';
+      const sound = r.screenSound ? {
+        muted: !on,
+        toggle: () => { room.muteShare(p.id, on); toast(on ? `${who}’s share is muted for you` : `${who}’s share plays its sound again`, { icon: on ? 'speakerOff' : 'speaker' }); }
+      } : null;
+      return [{ id: p.id, feed: { room, sid: r.screenSid }, presenter: p.person, mine: false, label: `${who} is sharing`, name: `${who}’s screen`, sound }];
     })
   ];
   // A share's big-or-tile choice goes when the share stops: one seen on this connection that's gone. Before the room
@@ -413,16 +433,42 @@ function InCall({ session }: { session: CallSession }) {
     const ended = seen ? [...seen].filter((id) => !live.includes(id)) : [];
     if (ended.length) endShares(ended);
   }, [shareKey, connected, endShares]);
-  const otherSharer = !m.screen && presenter ? callName(presenter.person) : null;
+  const sharing = shares.filter((s) => !s.mine);
+  const full = !m.screen && sharing.length >= MAX_SHARES;
+  /*
+   * A share that starts once you're settled in and isn't big for you is told, with a way to see it; one you were
+   * watching that stops, too. Not while the room connects or reconnects, when shares come and go with the connection.
+   */
+  const settledAt = useRef<number | null>(null);
+  useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected]);
+  const settled = () => settledAt.current !== null && Date.now() - settledAt.current > 4000;
+  const shareStarted = (s: StageShare, big: boolean, show: () => void) => {
+    if (!big && settled()) toast(`${callName(s.presenter)} started sharing`, { icon: 'screen', ms: 6000, action: { label: 'Show it', onClick: show } });
+  };
+  const shareStopped = (s: StageShare, wasBig: boolean) => { if (wasBig && settled()) toast(`${callName(s.presenter)} stopped sharing`, { icon: 'stopShare' }); };
 
   /* ---------- actions ---------- */
   const share = (c: ShareChoice) => {
     setSharePick(false);
+    setShareTrouble(null);
     // The browser's picker needs this click: nothing is awaited before it opens.
-    void media.shareScreen(c, () => toast('You stopped sharing', { icon: 'stopShare' }));
+    void media.shareScreen(c, () => toast('You stopped sharing', { icon: 'stopShare' })).then((r) => {
+      if (!r.ok) {
+        if (r.problem === 'unsupported') toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 });
+        else if (r.problem !== 'cancelled') { setShareTrouble(r.problem); setSharePick(true); }
+        return;
+      }
+      if (r.sound !== 'left-out') return;
+      // The sound asked for didn't come: the picker's own switch was off, or this browser or computer can't share it.
+      if (!canShareTabSound()) toast('This browser shares no sound. Chrome and Edge can share a tab’s sound.', { icon: 'speakerOff', ms: 8000 });
+      else toast(r.surface === 'browser' ? 'The tab’s sound isn’t shared. Change what you share and turn on Also share tab audio.' : 'Your computer’s sound isn’t shared here. A tab can share its sound.',
+        { icon: 'speakerOff', ms: 9000, action: { label: 'Change', onClick: () => setSharePick(true) } });
+    });
   };
   const pickShare = () => {
-    if (otherSharer) { toast(`${otherSharer} is sharing. You can share once they stop.`, { icon: 'screen' }); return; }
+    if (!canShareScreen()) { toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 }); return; }
+    if (full) { toast(`${MAX_SHARES} people are sharing. You can share once one of them stops.`, { icon: 'screen' }); return; }
+    setShareTrouble(null);
     setSharePick(true);
   };
   const stopShare = () => { media.stopScreen(); toast('You stopped sharing', { icon: 'stopShare' }); };
@@ -643,9 +689,14 @@ function InCall({ session }: { session: CallSession }) {
   /* ---------- the status bar ---------- */
   const spotlight = open ? null : state.spotlight;
   const spotName = spotlight ? (spotlight === meId ? null : callName(byId.get(spotlight) ?? SOMEONE)) : null;
+  // Shared means the call has it: until LiveKit has published it, it's starting. "With sound" only while its sound is live.
+  const published = Boolean(roomView.people[meId]?.screenSid);
+  const withSound = Boolean(m.screen?.getAudioTracks().some((t) => t.readyState === 'live'));
   const sharePill = m.screen && (
-    <div className="ic-spill"><Icon name="screen" size={15} /><span className="tx2">You’re sharing <b>{m.screenLabel ?? 'your screen'}</b></span>
-      <button type="button" className="sp-btn" onClick={() => setSharePick(true)}>Change</button>
+    <div className="ic-spill"><Icon name="screen" size={15} />
+      <span className="tx2">{published ? <>You’re sharing <b>{m.screenLabel ?? 'your screen'}</b>{withSound && ' with sound'}</> : <>Starting to share <b>{m.screenLabel ?? 'your screen'}</b></>}</span>
+      {!published && <Dots />}
+      <button type="button" className="sp-btn" onClick={pickShare}>Change</button>
       <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
     </div>
   );
@@ -705,7 +756,8 @@ function InCall({ session }: { session: CallSession }) {
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
             <Stage people={onStage} shares={shares} spotlight={spotlight} view={layout} organizer={organizer}
-              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} />
+              bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom}
+              onShareStarted={shareStarted} onShareStopped={shareStopped} />
           </motion.div>
           <AnimatePresence>
             {shownPanel && (
@@ -740,8 +792,8 @@ function InCall({ session }: { session: CallSession }) {
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>
-            <DockButton icon="screen" label={m.screen ? 'Change what you share' : otherSharer ? `${otherSharer} is sharing` : 'Share a tab, window or screen'}
-              tip={m.screen ? 'Change what you share' : otherSharer ? `${otherSharer} is sharing. One screen at a time.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={pickShare} />
+            <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
+              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={pickShare} />
             <DockButton icon="hand" label={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Ask for help' : 'Raise your hand'} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Raise your hand to ask the organizer for help' : 'Raise your hand'}
               on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
             <DockSplit>
@@ -775,7 +827,8 @@ function InCall({ session }: { session: CallSession }) {
           </CallDock>
         </footer>
       </div>
-      <SharePicker open={sharePick} onOpenChange={setSharePick} sharing={!!m.screen} onShare={share} />
+      <SharePicker open={sharePick} onOpenChange={(o) => { setSharePick(o); if (!o) setShareTrouble(null); }} sharing={!!m.screen}
+        others={sharing.map((s) => s.presenter)} trouble={shareTrouble} onShare={share} />
       <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
         organizer={organizer} notes={state.notes.everOn} locked={state.locked} others={others.length}
         getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />

@@ -75,14 +75,19 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
   );
 }
 
-/** A shared screen's menu: see it big, or as a tile among the people. */
-export function ShareMenu({ label, open, onOpenChange, big, onToggle }: { label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void }) {
+/** A shared screen's menu: see it big or as a tile among the people, and mute the sound it carries, for you. */
+export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound }: {
+  presenter: Person; label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void;
+  sound: { muted: boolean; toggle: () => void } | null;
+}) {
+  const pick = (f: () => void) => () => { onOpenChange(false); f(); };
   return (
     <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${label}`} className="ic-menu ic-tmenu"
       anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${label}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
-      <div className="mh"><Icon name="screen" size={18} /><b>{label}</b></div>
+      <div className="mh"><Avatar person={presenter} size={22} /><b>{label}</b></div>
       <p className="scope">Only your view changes</p>
-      <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={() => { onOpenChange(false); onToggle(); }} />
+      <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={pick(onToggle)} />
+      {sound && <Item icon={sound.muted ? 'speaker' : 'speakerOff'} label={sound.muted ? 'Play its sound' : 'Mute its sound for me'} onPick={pick(sound.toggle)} />}
     </Popover>
   );
 }

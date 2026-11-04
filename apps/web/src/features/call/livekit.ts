@@ -46,6 +46,8 @@ export interface RoomPerson {
   /** Track sids to attach, once there's media for them that this browser plays. */
   camSid: string | null;
   screenSid: string | null;
+  /** The sound their share carries (a tab's or the computer's), if any: playing here, or muted here by this listener. */
+  screenSound: 'on' | 'muted' | null;
   speaking: boolean;
 }
 export interface RoomView {
@@ -55,6 +57,8 @@ export interface RoomView {
   people: Record<string, RoomPerson>;
   /** How many times the organizer has muted this browser's microphone, so the screen can say so. */
   hostMuted: number;
+  /** How many times this browser's screen couldn't be published: it reaches nobody, so the screen stops it and says so. */
+  screenFailed: number;
 }
 export interface CallRoom extends LiveStore<RoomView> {
   /** Plays a camera or screen track in an element; returns the function that stops it. */
@@ -71,6 +75,8 @@ export interface CallRoom extends LiveStore<RoomView> {
    * chosen.
    */
   heard(): { identity: string; track: MediaStreamTrack }[];
+  /** Mutes the sound someone's share carries, for this listener only, or plays it again. Their share goes on for everyone else. */
+  muteShare(identity: string, muted: boolean): void;
   leave(): Promise<void>;
 }
 
@@ -120,12 +126,14 @@ class LiveKitRoom implements CallRoom {
   private only: ((identity: string) => boolean) | null = null;
   private stopKeys: () => void = () => undefined;
   private listeners = new Set<() => void>();
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0 };
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, screenFailed: 0 };
   private published: Partial<Record<Kind, LocalTrackPublication>> = {};
   private audio = new Map<string, HTMLMediaElement>();
   /** Publishing follows LocalMedia one change at a time. */
   private syncing: Promise<void> = Promise.resolve();
   private stopFollowing: () => void = () => undefined;
+  /** Whose shares this listener muted: their sound isn't played here (see muteShare). */
+  private quiet = new Set<string>();
 
   constructor(private readonly session: CallSession, private readonly media: LocalMedia) {
     this.keys = new CallKeys(session.ticket.identity);
@@ -156,6 +164,8 @@ class LiveKitRoom implements CallRoom {
     r.on(RoomEvent.ParticipantDisconnected, () => { setTimeout(() => { if (r.state === ConnectionState.Connected) refetch(); }, 400); });
     r.on(RoomEvent.TrackSubscribed, (track, pub, who) => { this.consider(track, pub, who); this.emit(); });
     r.on(RoomEvent.TrackUnsubscribed, (track) => { if (track.sid) this.held.delete(track.sid); this.silence(track); this.emit(); });
+    // A share that stops takes its muting with it: like every choice about a share, it isn't anyone's once it's gone.
+    r.on(RoomEvent.TrackUnpublished, (pub, who) => { if (pub.source === Track.Source.ScreenShare) this.quiet.delete(who.identity); });
     // The server's nudge says what changed. LiveKit could send one too: all it can do is make this browser look again.
     r.on(RoomEvent.DataReceived, (payload, _p, _kind, topic) => {
       if (topic !== CALL_TOPIC) return;
@@ -276,11 +286,13 @@ class LiveKitRoom implements CallRoom {
       const mic = pub(Track.Source.Microphone);
       const cam = shown(Track.Source.Camera);
       const screen = shown(Track.Source.ScreenShare);
+      const sound = screen ? shown(Track.Source.ScreenShareAudio) : undefined;
       out[p.identity] = {
         mic: Boolean(mic && !mic.isMuted),
         micSid: mic?.trackSid ?? null,
         camSid: cam && !cam.isMuted ? cam.trackSid : null,
         screenSid: screen ? screen.trackSid : null,
+        screenSound: sound ? (this.quiet.has(p.identity) ? 'muted' : 'on') : null,
         speaking: p.isSpeaking
       };
     }
@@ -289,7 +301,12 @@ class LiveKitRoom implements CallRoom {
 
   /** Publishes what LocalMedia has now: its mic (muted or not), camera and screen (with a tab's sound), replacing tracks a device switch changed. */
   private follow() {
-    this.syncing = this.syncing.then(() => this.sync()).catch((e: unknown) => rlog.warn('publishing to the room failed', { err: e }));
+    this.syncing = this.syncing.then(() => this.sync()).catch((e: unknown) => {
+      rlog.warn('publishing to the room failed', { err: e });
+      // A screen that isn't published (or swapped in) reaches nobody: the call screen stops it instead of saying it's shared.
+      const screen = this.media.getSnapshot().screen?.getVideoTracks()[0];
+      if (screen && this.published.screen?.track?.mediaStreamTrack !== screen) this.set({ screenFailed: this.view.screenFailed + 1 });
+    });
   }
   private async sync() {
     const m = this.media.getSnapshot();
@@ -304,6 +321,9 @@ class LiveKitRoom implements CallRoom {
       const have = this.published[kind];
       const track = want[kind];
       if (have?.track?.mediaStreamTrack === track && have) continue;
+      // Something else shared: the same publication carries it, so everyone sees it change in place, their choices kept,
+      // instead of a share that stops and another that starts.
+      if (have?.track && track && (kind === 'screen' || kind === 'screenAudio')) { await have.track.replaceTrack(track, true); continue; }
       // LocalMedia owns these tracks: unpublishing must never stop them.
       if (have?.track) await me.unpublishTrack(have.track, false);
       delete this.published[kind];
@@ -318,6 +338,7 @@ class LiveKitRoom implements CallRoom {
   /** Everyone else's audio plays through hidden elements, on the chosen speaker. */
   private play(track: RemoteTrack) {
     if (track.kind !== Track.Kind.Audio || !track.sid || this.audio.has(track.sid)) return;
+    if (this.hushed(track)) return;
     const el = track.attach();
     el.hidden = true;
     document.body.append(el);
@@ -343,6 +364,23 @@ class LiveKitRoom implements CallRoom {
     if (!track) return () => undefined;
     track.attach(el);
     return () => { track.detach(el); };
+  }
+
+  muteShare(identity: string, muted: boolean): void {
+    if (muted === this.quiet.has(identity)) return;
+    if (muted) this.quiet.add(identity); else this.quiet.delete(identity);
+    const who = this.room.remoteParticipants.get(identity);
+    const pub = who?.getTrackPublication(Track.Source.ScreenShareAudio);
+    const track = pub?.track;
+    if (who && track && this.allowed(pub, who)) { if (muted) this.silence(track); else this.play(track); }
+    rlog.info(muted ? 'a share’s sound muted here' : 'a share’s sound playing here again');
+    this.emit();
+  }
+  /** A share's sound that this listener muted: it isn't played. */
+  private hushed(track: RemoteTrack): boolean {
+    if (track.source !== Track.Source.ScreenShareAudio) return false;
+    for (const who of this.room.remoteParticipants.values()) if (who.getTrackPublication(Track.Source.ScreenShareAudio)?.track === track) return this.quiet.has(who.identity);
+    return false;
   }
 
   async leave(): Promise<void> {
