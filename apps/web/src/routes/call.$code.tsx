@@ -14,9 +14,11 @@ import { ScreenFrames } from '~/features/call/frames';
 import { LeaveSheet, type Ended } from '~/features/call/LeaveSheet';
 import { useCopyLink } from '~/features/call/links';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
+import { AskView, MomentView } from '~/features/call/CatchUp';
+import { useCatchingUp } from '~/features/call/catchingUp';
 import { useLiveNotes } from '~/features/call/liveNotes';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
-import { AskView, ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type Asked, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
+import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
@@ -136,8 +138,6 @@ function InCall({ session }: { session: CallSession }) {
   const [ended, setEnded] = useState<Ended | null>(null);
   const [cc, setCc] = useState(false);
   const [lang, setLang] = useState<CaptionLanguage | null>(null);
-  const [asks, setAsks] = useState<Asked[]>([]);
-  const [hit, setHit] = useState<{ at: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
   // The organizer's browser: a recorder that couldn't start or failed, no way to listen, and its own pause on its way.
@@ -750,27 +750,10 @@ function InCall({ session }: { session: CallSession }) {
   const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
   const flip = (v: PanelView) => setPanel((x) => (x === v ? null : v));
 
-  /* ---------- asking ---------- */
-  const askId = useRef(0);
-  const askQuestion = (question: string) => {
-    const id = ++askId.current;
-    setAsks((a) => [...a, { id, kind: 'question', q: question, parts: null, error: null }]);
-    session.askSoFar(question).then(
-      (parts) => setAsks((a) => a.map((x) => (x.id === id && x.kind === 'question' ? { ...x, parts } : x))),
-      (e: unknown) => { clog.warn('question during a call failed', { err: e }); setAsks((a) => a.map((x) => (x.id === id ? { ...x, error: errorMessage(e) } : x))); }
-    );
-  };
-  const catchUp = () => {
-    openPanel('ask');
-    const id = ++askId.current;
-    setAsks((a) => [...a, { id, kind: 'catch-up', c: null, error: null }]);
-    session.catchUp(5).then(
-      (c) => setAsks((a) => a.map((x) => (x.id === id && x.kind === 'catch-up' ? { ...x, c } : x))),
-      (e: unknown) => { clog.warn('catch-up failed', { err: e }); setAsks((a) => a.map((x) => (x.id === id ? { ...x, error: errorMessage(e) } : x))); }
-    );
-  };
-  const seek = (at: number) => { setPanel('transcript'); setHit({ at }); };
-  const liveNotes = useLiveNotes(session, state.transcript.length, on && live, panel === 'notes');
+  /* ---------- catching up and asking: for you alone, with the moments behind each answer, and a way back to live ---------- */
+  const cu = useCatchingUp(session, { panel, setPanel: (v) => { setPop(null); setPanel(v); }, narrow, everOn: state.notes.everOn, room: roomName });
+  const catchUp = () => { setPop(null); cu.catchUp(); };
+  const liveNotes = useLiveNotes(session, state.transcript.at(-1)?.id, on && live, panel === 'notes');
 
   /* ---------- captions: the live transcript's newest line, in your language if you chose one ---------- */
   const caption = useCaptions(session, state.transcript, lang, cc && live);
@@ -1009,11 +992,14 @@ function InCall({ session }: { session: CallSession }) {
             {shownPanel && (
               <motion.aside key="side" className="ic-side" aria-label="Call panel" style={{ width: sideW }}
                 initial={reduce ? { opacity: 0 } : { x: sideW + 40 }} animate={{ x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: sideW + 40 }} transition={reduce ? { duration: 0 } : SLIDE}>
-                <SidePanel view={shownPanel} onView={openPanel} onClose={() => setPanel(null)} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
+                <SidePanel view={shownPanel} onView={(v) => { cu.settle(); openPanel(v); }} onClose={() => { cu.settle(); setPanel(null); }} roomsTitle={open ? 'Rooms are open' : 'Breakout rooms'}>
                   {shownPanel === 'notes' && <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
-                    controls={controls} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
-                  {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
-                  {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
+                    controls={controls} onSeek={cu.open} onTranscript={() => openPanel('transcript')} />}
+                  {shownPanel === 'transcript' && (cu.moment
+                    ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
+                    : <TranscriptView state={state} me={me?.person.email} />)}
+                  {shownPanel === 'ask' && <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
+                    catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
                     here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
                   {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} volumes={volumes}
@@ -1068,7 +1054,7 @@ function InCall({ session }: { session: CallSession }) {
                 <VideoQuality media={media} m={m} />
               ) : (
                 <>
-                  <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on the last few minutes</span></button>
+                  <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on what you missed</span></button>
                   <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
                   <button type="button" className="mi" onClick={() => setPop('quality')}><Icon name="sliders" size={17} /><span className="t">Video quality</span></button>
                   {roomsHere && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}

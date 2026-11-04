@@ -177,11 +177,22 @@ dock at the bottom.
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.
 - **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
-  and a summary, read from the transcript as the call goes; each time jumps to the transcript. The organizer's
+  and a summary, read from the transcript as the call goes; each time opens the transcript at that moment. The organizer's
   **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
-- **Transcript**, **Ask** (questions about the call so far, and **Catch me up** for the last few minutes, for
-  you alone and not saved), **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
+- **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, and
   who is invited and not here).
+- **Catching up**, for you alone and not saved. **Catch up** (top bar or **More**) reads what you most likely
+  missed: your time away if you just came back, what was said before you came if you joined late, or the last
+  five minutes. In **Ask**, a chip says what's read (**Whole call** at first) and changes it: the last 5 or 15
+  minutes, before you joined, since you joined, while you were away, the whole call, or a stretch picked on the
+  call's timeline. Ask a question, or **Catch me up** for what was decided, suggested, left open and what's next.
+  Each answer says the stretch it read, as of when, and what isn't in it (notes off or paused, the organizer's
+  connection away, the middle of a stretch too long to read whole), all as times of day, and each point has the
+  times it was said: one opens the transcript there, that line marked.
+  **Back to live** returns to the call as it was before you started catching up; your own view stays as you
+  arranged it. Coming back after time away, or joining well after the start, offers a catch-up once, if notes have
+  been on. A guest with
+  the link can catch up on what was said while they were in the call; the notes go to the people invited.
 - **Breakout rooms.** Pick two or three rooms and how long, drag people between rooms and rename them, then
   **Open rooms**. While they're open: a shared timer, each room and who is in it (rename a room in place, or
   move someone to another room or back to the main room from their name), **Join room** and **Back to main

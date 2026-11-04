@@ -4,11 +4,11 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CatchUpSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
 SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
-  type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CatchUp, type RecordingAction, type RoomRecording,
+  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
 } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
@@ -170,8 +170,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
             ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
           })).json(), 'frame receipt'),
           shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
-          catchUp: (id, minutes) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, minutes ? { minutes } : {}, p),
-          askSoFar: (id, question) => req(z.array(AnswerPartSchema), 'POST', `${live(id)}/ask`, { question }, p),
+          catchUp: (id, range) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, { range }, p),
+          askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
+          catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
+          moment: (id, lineId) => req(CallMomentSchema, 'GET', `${live(id)}/transcript/${encodeURIComponent(lineId)}`, undefined, p),
           translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
           leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, {}, p, o?.keepalive ?? false)).ended,
           mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
@@ -242,8 +244,10 @@ interface CallTransport {
   transcribe(id: string, c: TranscriptClip, speaker: string): Promise<CallState>;
   frame(id: string, f: ScreenFrame): Promise<ScreenFrameReceipt>;
   shareEnded(id: string, share: string): Promise<void>;
-  catchUp(id: string, minutes: number | undefined): Promise<CatchUp>;
-  askSoFar(id: string, question: string): Promise<AnswerPart[]>;
+  catchUp(id: string, range: CatchUpRange): Promise<CatchUp>;
+  askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
+  catchUpWindow(id: string): Promise<CatchUpWindow>;
+  moment(id: string, lineId: string): Promise<CallMoment>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   leave(id: string, o?: { keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
   mls(id: string, after: number): Promise<CallMls>;
@@ -781,8 +785,10 @@ class HttpCall extends Live<CallState> implements CallSession {
     const byId = new Map([...this.state.transcript, ...s.transcript].map((l) => [l.id, l]));
     this.set({ ...this.state, transcript: [...byId.values()].sort((a, b) => a.at - b.at).slice(-LIVE_TRANSCRIPT_LINES) });
   };
-  catchUp = (minutes?: number | undefined) => this.t.catchUp(this.state.callId, minutes);
-  askSoFar = (question: string) => this.t.askSoFar(this.state.callId, question);
+  catchUp = (range: CatchUpRange) => this.t.catchUp(this.state.callId, range);
+  askSoFar = (question: string, range: CatchUpRange) => this.t.askSoFar(this.state.callId, question, range);
+  catchUpWindow = () => this.t.catchUpWindow(this.state.callId);
+  moment = (lineId: string) => this.t.moment(this.state.callId, lineId);
   close = () => {
     this.closed = true;
     this.stopTicking();

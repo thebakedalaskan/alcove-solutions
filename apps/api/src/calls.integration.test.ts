@@ -227,7 +227,7 @@ describe('end-to-end encryption', () => {
     expect((await settle(host, (s) => s.waiting.length === 1)).waiting).toEqual([expect.objectContaining({ id: sam.ticket.identity, person: expect.objectContaining({ name: 'Sam' }) })]);
     expect(sam.getSnapshot()).toMatchObject({ participants: [], transcript: [], waiting: [], capture: { mode: 'on', gaps: [], requests: [] } });
     expect(code(await sam.room().catch((e: unknown) => e))).toBe('forbidden');
-    for (const attempt of [() => sam.catchUp(), () => sam.askSoFar('What was said?'), () => sam.sendChat('hello?')]) {
+    for (const attempt of [() => sam.catchUp({ kind: 'all' }), () => sam.askSoFar('What was said?', { kind: 'all' }), () => sam.catchUpWindow(), () => sam.sendChat('hello?')]) {
       const e = await attempt().catch((x: unknown) => x);
       if (e !== undefined) expect(code(e)).toBe('forbidden');
     }
@@ -554,8 +554,12 @@ describe('breakout rooms, each with its own keys', () => {
     expect(said(host)).toEqual(['CANARY-HEARD only for Design.']);
     await lena.call.refresh();
     expect(said(lena.call)).toEqual([]);
-    expect(await kofi.call.catchUp()).toMatchObject({ lines: 1 });
-    expect(await lena.call.catchUp()).toMatchObject({ lines: 0 });
+    expect(await kofi.call.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 1 } });
+    expect(await lena.call.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 0 } });
+    // Its moments too: Kofi opens the line in Design, and for Lena, in Support, it isn't there.
+    const designLine = kofi.call.getSnapshot().transcript[0]?.id ?? '';
+    expect((await kofi.call.moment(designLine)).lines.map((l) => l.text)).toEqual(['CANARY-HEARD only for Design.']);
+    expect(code(await lena.call.moment(designLine).catch((e: unknown) => e))).toBe('not-found');
     // The organizer's last words in Design, begun while it was there and still on their way when it went back, stay in
     // Design: they're placed where it was when it began saying them, not where it is when they arrive.
     host.visitRoom(null);
@@ -590,6 +594,8 @@ describe('breakout rooms, each with its own keys', () => {
     expect((await h.pool.query('SELECT count(*)::int AS n FROM call_mls WHERE call_id = $1 AND grp = ANY($2::text[])', [host.ticket.callId, [design, support]])).rows[0]?.n).toBe(0);
     await settle(host, (x) => x.breakouts.open === null);
     expect(said(host)).toEqual(['We start together.']);
+    // A moment of Design's goes with the room.
+    expect(code(await again.moment(designLine).catch((e: unknown) => e))).toBe('not-found');
     await expectNotInRows(['calls', 'call_mls', 'transcript_clips'], ['CANARY-ROOMNAME', 'CANARY-HEARD']);
     expect(h.logs.join('').includes('CANARY-ROOMNAME') || h.logs.join('').includes('CANARY-HEARD')).toBe(false);
     // Once the rooms are closed there's nothing to commit to in them.
@@ -632,8 +638,8 @@ describe('breakout rooms, each with its own keys', () => {
     const refused = await host.transcribe(speech('CANARY-PAUSED said in Design.', 0, 3000), kofi.call.ticket.identity).catch((e: unknown) => e);
     expect(code(refused)).toBe('conflict');
     expect(refused instanceof Error ? refused.message : '').toContain('paused in this room');
-    expect(code(await kofi.call.catchUp().catch((e: unknown) => e))).toBe('conflict');
-    expect(code(await kofi.call.askSoFar('What did we decide?').catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await kofi.call.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await kofi.call.askSoFar('What did we decide?', { kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await kofi.call.translate(['x'], 'fr').catch((e: unknown) => e))).toBe('conflict');
     // Support's is, and the recording goes on: the call's notes are still on.
     await host.transcribe(speech('Support is going fine.', 0, 3000), lena.call.ticket.identity);
@@ -1141,7 +1147,7 @@ describe('host controls', () => {
     await host.remove(guest.ticket.identity);
     expect(await guestRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
     // Their pass goes with them: no more reading the call, chatting or catching up.
-    for (const attempt of [() => guest.refresh(), () => guest.room(), () => guest.catchUp()]) {
+    for (const attempt of [() => guest.refresh(), () => guest.room(), () => guest.catchUp({ kind: 'all' })]) {
       expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
     }
     await host.lock(false);
@@ -1368,16 +1374,16 @@ describe('joining by link', () => {
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
     const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
-    expect(code(await guest.catchUp().catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await guest.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('forbidden');
     await letIn(host, guest);
-    expect(code(await guest.catchUp().catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await guest.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
 
     host.setNotes(true);
     await settle(host, (x) => x.capture.mode === 'on');
     await host.appendAudio(piece(audioBytes('catch'), 0, 0));
     await host.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0), host.ticket.identity);
-    expect(await guest.catchUp()).toMatchObject({ lines: 2 });
-    expect(await guest.askSoFar('What should move?')).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text' })]));
+    expect(await guest.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 2 } });
+    expect(await guest.askSoFar('What should move?', { kind: 'all' })).toMatchObject({ text: 'From the call: We should move the launch.' });
     expect(code(await guest.transcribe(speech('Not mine to send.', 0, 5000), guest.ticket.identity).catch((e: unknown) => e))).toBe('forbidden');
 
     const otherOrg = await account();
@@ -1399,10 +1405,11 @@ describe('joining by link', () => {
     await settle(host, (x) => x.capture.mode === 'on');
     await host.appendAudio(piece(audioBytes('everyone'), 0, 0));
     // The organizer's browser hears its own microphone and Sam's, each on its own: both may start at once, and a
-    // retried clip is kept once.
-    await host.transcribe(speech('Shall we start with the budget?', 0, 0), host.ticket.identity);
-    await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
-    await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
+    // retried clip is kept once. (Said once Sam is in: a guest reads only what was said while they were here.)
+    const inTime = Math.round(((await sam.catchUpWindow()).joined + 1) * 1000);
+    await host.transcribe(speech('Shall we start with the budget?', 0, inTime), host.ticket.identity);
+    await host.transcribe(speech('Yes, the budget first.', 0, inTime), sam.ticket.identity);
+    await host.transcribe(speech('Yes, the budget first.', 0, inTime), sam.ticket.identity);
     const organizer = host.getSnapshot().participants.find((p) => p.isOrganizer)?.person.name ?? '';
     const said = (ls: TranscriptLine[]) => ls.map((l) => `${l.speaker?.name ?? '?'}: ${l.text}`).sort();
     const both = [`${organizer}: Shall we start with the budget?`, 'Sam: Yes, the budget first.'];
@@ -1410,7 +1417,7 @@ describe('joining by link', () => {
     // Sam, a guest, sees the organizer as guests see everyone: a name and an arch, no email.
     expect(sam.getSnapshot().transcript.find((l) => l.speaker?.name === organizer)?.speaker?.person?.email).toBe('');
     // Catching up reads who said what, a guest marked as one.
-    await sam.catchUp();
+    await sam.catchUp({ kind: 'all' });
     expect(h.near.prompts.at(-1)).toContain('Sam (guest): Yes, the budget first.');
     expect(h.near.prompts.at(-1)).toContain(`${organizer}: Shall we start with the budget?`);
 
@@ -1478,7 +1485,7 @@ describe('joining by link', () => {
     expect(where((await settle(host, (x) => x.transcript.length === 2)).transcript)).toEqual(['Before the rooms. @ main', 'Sam, how is support going? @ main']);
     expect(where((await settle(sam, (x) => x.transcript.length === 2)).transcript)).toEqual(['Before the rooms. @ main', 'Sam, how is support going? @ main']);
     // Sam doesn't read Design: not in catching up, or captions in another language.
-    expect(await sam.catchUp()).toMatchObject({ lines: 2 });
+    expect(await sam.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 2 } });
     const blue = (await settle(kofi, (x) => x.transcript.length === 4)).transcript.find((l) => l.text === 'Blue for the buttons.')?.id ?? '';
     expect(await sam.translate([blue], 'fr')).toEqual([]);
     // Rooms that have run out are closed, whatever is stored: what's said after is the main room's, Kofi's main room

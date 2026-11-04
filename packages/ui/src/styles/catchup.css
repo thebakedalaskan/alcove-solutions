@@ -1,0 +1,63 @@
+/* Catching up during a call (apps/web/src/features/call/CatchUp.tsx): what to read, what came back with the moments
+   behind it, and the transcript at one of them. In the side panel, which follows the app's theme. */
+
+/* Moments, and every time chip in the panel: the panel's own colours, not the night stage's. */
+.ac-stage .ic-side .ac-time-chip { background: var(--sunk); color: var(--ink-2); }
+.ac-stage .ic-side button.ac-time-chip:hover { background: var(--sun-soft); color: var(--sun-text); }
+.ac-stage .ic-side button.ac-time-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* The way back to the call as it is now, at the top of a catch-up and of a moment. */
+.cu-bar { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.cu-bar .t { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font: 500 13px/1.3 var(--font-sans); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cu-bar .t .ac-i { flex: none; color: var(--horizon); }
+.cu-bar .ac-btn { flex: none; }
+
+/* What to read: a chip in the composer, and its menu. */
+.cu-range { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 9px; border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px var(--line-control); cursor: pointer; transition: background-color var(--duration-1); }
+.cu-range:hover { background: var(--sunk); }
+.cu-range .ac-i:first-child { color: var(--horizon); }
+.cu-range .ac-i:last-child { color: var(--ink-3); }
+.cu-range:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cu-range span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.cu-menu { width: 312px; }
+.cu-menu .cu-h { padding: 6px 10px 6px; }
+.cu-menu .ic-opt:disabled { opacity: .5; cursor: default; }
+.cu-menu .ic-opt .cu-more { flex: none; margin-left: auto; color: var(--ink-3); }
+.cu-menu .hint { margin: 8px 10px 4px; }
+
+/* A stretch on the call's timeline: hatched while notes were off, marked where you were away, dimmed where you can't read. */
+/* Where a guest wasn't here: one opaque fill, so the mark looks the same over the rail, over the stretch, and in the legend. */
+.cu-pick { --cu-out: color-mix(in srgb, var(--surface) 72%, var(--sunk)); display: grid; gap: 10px; padding: 8px 10px 6px; }
+.cu-track { position: relative; height: 36px; touch-action: none; cursor: pointer; }
+.cu-track > span { position: absolute; top: 50%; translate: 0 -50%; pointer-events: none; }
+.cu-track .rail { left: 0; right: 0; height: 8px; border-radius: 4px; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.cu-track .gap { height: 8px; border-radius: 2px; background: repeating-linear-gradient(135deg, var(--line-control) 0 1.5px, var(--surface) 1.5px 4px); }
+.cu-track .out { height: 8px; border-radius: 2px; background: var(--cu-out); box-shadow: inset 0 0 0 1px var(--line); }
+.cu-track .away { height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--horizon); }
+.cu-track .sel { height: 8px; border-radius: 4px; background: var(--horizon); opacity: .85; }
+.cu-track .thumb { width: 18px; height: 18px; translate: -50% -50%; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--horizon), var(--shadow-1); pointer-events: auto; cursor: grab; transition: box-shadow var(--duration-1); }
+.cu-track .thumb:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--horizon), 0 0 0 3px var(--horizon-soft), 0 0 0 5px var(--focus); }
+.cu-track .thumb:active { cursor: grabbing; }
+.cu-ends { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 500 11.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.cu-ends .sel { color: var(--ink); font-size: 12.5px; }
+.cu-use { justify-self: start; }
+.cu-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-3); }
+.cu-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cu-legend i { flex: none; width: 18px; height: 8px; border-radius: 2px; }
+.cu-legend i.gap { background: repeating-linear-gradient(135deg, var(--line-control) 0 1.5px, var(--surface) 1.5px 4px); box-shadow: inset 0 0 0 1px var(--line); }
+.cu-legend i.away { height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1.5px var(--horizon); }
+.cu-legend i.out { background: var(--cu-out); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* What came back: each point with the moments it comes from, and how complete and current it is. */
+.cu-meta { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); }
+.cu-ev { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: 1px; }
+.ic-qa .a .cu-grp .cu-ev .ac-time-chip { height: 20px; padding: 0 6px; font-size: 11px; }
+.cu-read { display: grid; gap: 6px; margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cu-when { font: 500 11.5px/1.4 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ic-qa .a .cu-read .cu-note { align-items: flex-start; line-height: 1.45; }
+.ic-qa .a .cu-read .cu-note .ac-i { flex: none; margin-top: 2px; }
+
+/* The transcript at a moment: the line it pointed at, marked, among what was said around it. */
+.cu-moment { padding-top: 6px; }
+.cu-moment .tx-l.is-hit { margin: 10px 0 4px; padding: 6px 8px 8px; border-radius: var(--radius-md); box-shadow: none; }
+.cu-moment-msg { padding: 18px 20px; }
