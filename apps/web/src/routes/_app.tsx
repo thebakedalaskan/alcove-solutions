@@ -1,23 +1,38 @@
 import { IconButton, cn } from '@alcove/ui';
-import { Outlet, createFileRoute, useRouterState } from '@tanstack/react-router';
+import { Outlet, createFileRoute, useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useKeptUploads } from '~/features/record/uploads';
 import { Composer } from '~/features/shell/Composer';
 import { useArrival } from '~/features/onboarding/store';
 import { TourHost } from '~/features/onboarding/Tour';
 import { Palette } from '~/features/shell/Palette';
+import { OfflinePage } from '~/features/shell/OfflinePage';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { ComposerContext, PaletteContext, type ComposerStart, type PaletteStart } from '~/features/shell/context';
-import { requireAccount } from '~/lib/guards';
+import { ownerOf, requireAccount } from '~/lib/guards';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 
-/* Everything in the frame: the side panel (on a phone, the top bar and the tab bar) beside Home, Notes, a note and Settings. */
+/*
+ * Everything in the frame: the side panel (on a phone, the top bar and the tab bar) beside Home, Notes, a note, Record,
+ * Team and Settings. Opened without a connection by someone signed in here, Record works and every other page says it's
+ * offline; once the connection is back, everything is read again.
+ */
 export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
   component: Shell
 });
 
 function Shell() {
+  const { account } = Route.useRouteContext();
+  const router = useRouter();
+  useKeptUploads(ownerOf(account));
+  useEffect(() => {
+    if (!account.offline) return;
+    const back = () => { void router.invalidate(); };
+    addEventListener('online', back);
+    return () => removeEventListener('online', back);
+  }, [account.offline, router]);
   const [composer, setComposer] = useState(false);
   const [composing, setComposing] = useState<ComposerStart>({});
   const [palette, setPalette] = useState(false);
@@ -57,7 +72,7 @@ function Shell() {
           <main className="main">
             {/* With the side panel hidden, its offline notice moves to the top of the page. */}
             <Offline show={side.hidden} className="main-offline" />
-            <div key={path} className="main-in enter"><Outlet /></div>
+            <div key={path} className="main-in enter">{account.offline && path !== '/record' ? <OfflinePage /> : <Outlet />}</div>
           </main>
           <TabBar />
         </div>

@@ -702,6 +702,98 @@ export type CallLayout = z.infer<typeof CallLayoutSchema>;
 export const HomeTourSchema = z.object({ seenAt: ISODateSchema });
 export type HomeTour = z.infer<typeof HomeTourSchema>;
 
+/**
+ * That this browser has a signed-in session, so the app opens without a connection and Record works: the account's
+ * opaque ID, when its session ends at the latest, and whether it records without a connection. Kept in this browser
+ * (localStorage) while the session lasts; never a name or an address.
+ */
+export const SignedInHereSchema = z.object({
+  ownerId: z.string().min(1).max(100),
+  until: ISODateSchema,
+  recordOffline: z.boolean()
+});
+export type SignedInHere = z.infer<typeof SignedInHereSchema>;
+
+/*
+ * Room recordings kept on this device until they upload, as the browser's IndexedDB holds them
+ * (apps/web/src/features/record/offline.ts). Whatever is readable (the name, the audio, the speech) is sealed with
+ * AES-GCM under a key made on this device that can't be exported, with a fresh IV each time, bound to where it
+ * belongs. In the clear: opaque IDs, times, lengths, sizes and the codec.
+ */
+export const DeviceSealedSchema = z.object({ iv: z.instanceof(ArrayBuffer), data: z.instanceof(ArrayBuffer) });
+export type DeviceSealed = z.infer<typeof DeviceSealedSchema>;
+/**
+ * `recording`: a recorder has it, or had it until its tab closed. `finished`: it waits to upload. `discarded`: it was
+ * thrown away, and whatever reached Alcove of it is deleted when there's a connection.
+ */
+export const KeptStateSchema = z.enum(['recording', 'finished', 'discarded']);
+export type KeptState = z.infer<typeof KeptStateSchema>;
+export const KeptRecordingSchema = z.object({
+  id: z.string().min(1).max(100),
+  /** The account it was recorded under. Only that account uploads it or sees it here. */
+  owner: z.string().min(1).max(100),
+  /** When it started, to the millisecond: it uploads as starting then (RoomRecordingInput.startedAt). */
+  startedAt: ISODateSchema,
+  state: KeptStateSchema,
+  /** How long it is, as far as this device knows. */
+  seconds: z.number().min(0),
+  /** The audio and speech kept here, in bytes. */
+  bytes: z.number().int().min(0),
+  /** The recording it began as on Alcove, once it had one. */
+  server: z.string().max(100).nullable(),
+  /** Alcove was asked to start it at least once: it may be there even if the answer never came. */
+  tried: z.boolean(),
+  /** Something kept of it won't open on this device any more (its key is gone): it's never uploaded, only deleted. */
+  unreadable: z.boolean(),
+  /** Why Alcove refused it the last time it tried, as Alcove said it. */
+  problem: z.string().max(500).nullable(),
+  title: DeviceSealedSchema
+});
+export type KeptRecording = z.infer<typeof KeptRecordingSchema>;
+/** A piece of a kept recording's audio, exactly as it would have been sent (AudioPiece). */
+export const KeptPieceSchema = z.object({
+  rec: z.string().min(1).max(100), segment: z.number().int().min(0), seq: z.number().int().min(0), at: z.number().min(0),
+  durationMs: z.number().min(0), mimeType: z.string().max(100), sealed: DeviceSealedSchema
+});
+export type KeptPiece = z.infer<typeof KeptPieceSchema>;
+/** A clip of a kept recording's speech, waiting to be transcribed (TranscriptClip), found by where it starts. */
+export const KeptClipSchema = z.object({
+  rec: z.string().min(1).max(100), segment: z.number().int().min(0), atMs: z.number().int().min(0), at: z.number().min(0),
+  durationMs: z.number().min(0), sealed: DeviceSealedSchema
+});
+export type KeptClip = z.infer<typeof KeptClipSchema>;
+
+/**
+ * The browser notifications shown for an account in this browser, oldest first, so no tab shows one again: each
+ * event's key, made of its kind and the IDs it's about (`call:<meetingId>:<startsAt>`, `ready:<noteId>`), never a
+ * title or a name, and when it showed (ms since the epoch). Kept in localStorage for the account
+ * (`alcove.notified.<ownerId>`) for a day or until someone signs out here, never sent anywhere.
+ */
+export const NotifiedStoredSchema = z.array(z.object({ key: z.string().max(300), at: z.number() })).max(500);
+
+/** A call's code, as its links have it: `kpw-rnzq-hte`. */
+export const CallCodeSchema = z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
+
+/**
+ * Where clicking a browser notification leads: a call (its join page, or the call itself for whoever is in it), a
+ * note, Notes or Home. It travels on the notification, so the page parses what the service worker hands back.
+ */
+export const NotificationOpenSchema = z.discriminatedUnion('to', [
+  z.object({ to: z.literal('call'), code: CallCodeSchema }),
+  z.object({ to: z.literal('note'), noteId: IDSchema }),
+  z.object({ to: z.literal('notes') }),
+  z.object({ to: z.literal('home') })
+]);
+export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
+/**
+ * What the service worker (apps/web/public/sw.js) posts to the app's windows when a notification is clicked: it asks
+ * each where it is, answered on the port it sends, then tells the one it brought forward where the notification leads.
+ */
+export const WorkerMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('alcove.where') }),
+  z.object({ type: z.literal('alcove.notification'), open: NotificationOpenSchema })
+]);
+
 /* ---------- captions ---------- */
 
 /** Languages captions can be translated into. Each person picks their own; nobody else's captions change. */

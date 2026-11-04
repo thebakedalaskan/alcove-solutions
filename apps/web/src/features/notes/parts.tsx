@@ -13,6 +13,7 @@ import { hm, position, shortDay } from '~/lib/time';
 import { AnswerView, useAnswer, type Cite } from './answer';
 import { LineRow, type Correcting } from './lines';
 import { peopleLine, roleLine } from './meta';
+import { capital } from '~/lib/words';
 
 /**
  * A note's head: chips for its state, its series and how you got it; the title; when and who, you first; and
@@ -40,7 +41,6 @@ export function Section({ title, count, children, className, style }: { title: s
 
 /* ---------- decisions, open questions and follow-ups: what the notes heard, until people say so ---------- */
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Who did something, as the reader sees them: "you", or a first name. */
 const byName = (by: Change['by'], me: string | undefined) => (me && sameEmail(by, { email: me }) ? 'you' : firstName(by.name));
 /** A name as kept in a change; someone known only by their address goes by the part before the @. */
@@ -51,7 +51,7 @@ export type ScreenRefShown = (screen: ScreenRef) => ReactNode;
 
 /** One change, as a sentence. */
 function changeLine(c: Change, me: string | undefined): string {
-  const who = cap(byName(c.by, me));
+  const who = capital(byName(c.by, me));
   switch (c.what) {
     case 'confirmed': return `${who} confirmed it`;
     case 'rejected': return `${who} said it wasn’t decided`;
@@ -71,8 +71,8 @@ function changeLine(c: Change, me: string | undefined): string {
 export function decisionLine(d: Decision, me: string | undefined): string {
   const last = [...d.changes].reverse().find((c) => c.what !== 'reworded');
   if (d.state === 'confirmed' && last) return `Confirmed by ${byName(last.by, me)}`;
-  if (d.state === 'rejected' && last) return `${cap(byName(last.by, me))} said this wasn’t decided`;
-  if (d.state === 'superseded' && last) return `${cap(byName(last.by, me))} said this no longer holds`;
+  if (d.state === 'rejected' && last) return `${capital(byName(last.by, me))} said this wasn’t decided`;
+  if (d.state === 'superseded' && last) return `${capital(byName(last.by, me))} said this no longer holds`;
   return 'Proposed by the notes. Nobody has confirmed it yet';
 }
 /** Every change to something, one per line, for its tooltip. */
@@ -122,7 +122,7 @@ export function Decisions({ items, me, onChange, onSeek, shown }: {
 /** Where an open question stands, in a sentence: still open, reopened by someone, or answered. */
 export function questionLine(x: Question, me: string | undefined): string {
   const last = [...x.changes].reverse().find((c) => c.what !== 'reworded');
-  if (x.state === 'answered') return last ? `${cap(byName(last.by, me))} said this was answered` : 'Answered';
+  if (x.state === 'answered') return last ? `${capital(byName(last.by, me))} said this was answered` : 'Answered';
   return last?.what === 'reopened' ? `Reopened by ${byName(last.by, me)}` : 'Not answered yet';
 }
 
@@ -171,7 +171,7 @@ export function actionLine(a: ActionItem, me: string | undefined): string {
   if (a.takenOn) return mine ? 'You took this on' : `${them} took this on`;
   const gave = [...a.changes].reverse().find((c) => c.what === 'reassigned');
   const ask = mine ? 'Take it on if it’s yours' : `Waiting for ${them} to take it on`;
-  return gave ? `${cap(byName(gave.by, me))} gave this to ${them}. ${ask}` : `The notes suggest ${them}. ${ask}`;
+  return gave ? `${capital(byName(gave.by, me))} gave this to ${them}. ${ask}` : `The notes suggest ${them}. ${ask}`;
 }
 
 function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | undefined; people: Person[]; onChange: (a: ActionItem, patch: ActionPatch) => void }) {

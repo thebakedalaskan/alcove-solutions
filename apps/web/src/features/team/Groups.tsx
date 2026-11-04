@@ -6,7 +6,7 @@
  * you share with it.
  */
 import { MAX_GROUPS, MAX_GROUP_NAME, MAX_GROUP_PEOPLE, NEW_GROUP, errorMessage, type Group, type NoteSummary, type Person } from '@alcove/api';
-import { Avatar, Button, Card, EmptyState, Faces, Icon, IconButton, Popover, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, Card, EmptyState, Faces, Icon, IconButton, Notice, Popover, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
@@ -41,7 +41,8 @@ export function Groups({ open, onOpen, notes, person }: {
   person: (email: string) => Person;
 }) {
   const qc = useQueryClient();
-  const groups = useQuery(q.prefs()).data?.groups ?? [];
+  const prefs = useQuery(q.prefs());
+  const groups = prefs.data?.groups ?? [];
   const save = useGroups();
   const toast = useToast();
   const [all, setAll] = useState(false);
@@ -113,6 +114,11 @@ export function Groups({ open, onOpen, notes, person }: {
       )}
       {groups.length > 0 ? (
         <div className="tp-foot"><span>{full ? `${MAX_GROUPS} groups, the most you can have. Delete one to make another.` : 'Invite a whole group to a call, or share notes with all of them at once.'}</span></div>
+      ) : prefs.isError && !prefs.data ? (
+        <Notice tone="caution" icon="alert" className="tp-unloaded">
+          <b>Your groups didn’t load.</b> {errorMessage(prefs.error)}{' '}
+          <Button variant="secondary" size="sm" loading={prefs.isFetching} onClick={() => void prefs.refetch()}>Try again</Button>
+        </Notice>
       ) : !making && (
         <EmptyState title="No groups yet" art={<span className="tp-ic is-big"><Icon name="hash" size={22} /></span>}
           action={<Button ref={newRef} size="sm" icon="plus" onClick={() => onOpen(NEW_GROUP)}>New group</Button>}>

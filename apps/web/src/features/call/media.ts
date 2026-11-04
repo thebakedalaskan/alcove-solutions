@@ -9,7 +9,7 @@
  * wanted it; in the call, nothing turns a microphone or camera on by itself: after a gap with none, it waits for
  * its button.
  */
-import { errorCode, type AudioPiece, type VideoReceive, type VideoSend } from '@alcove/api';
+import { errorCode, errorMessage, type AudioPiece, type VideoReceive, type VideoSend } from '@alcove/api';
 import { log } from '~/lib/log';
 import { canChooseSpeaker, enumerate, permissions, plainName, readPrefs, rememberDevice, watchPermissions, type Capture, type Permission } from './devices';
 import { canShareScreen, shareProblem, type ShareProblem } from './share';
@@ -862,6 +862,11 @@ const FADE_S = 0.03;
  * it isn't, into a limiter so voices over each other don't clip. A voice on a new track (another microphone) carries
  * on in the same recording, and voices come and go mid-segment without the recording stopping: MediaRecorder can't
  * change its input, the graph can. Nobody's volume on this screen, or the speaker chosen, reaches it.
+ *
+ * Given somewhere to keep pieces (`keep`: the stage recorder's, on this device), a piece that can't be sent (no
+ * connection, a failed try, or refused because Alcove's copy of the recording is out of step) is kept there at once
+ * instead of lost, to upload later exactly as it is; nothing waits in memory through more tries. After one is kept
+ * because sending failed, the next go straight there for a while.
  */
 export class NotesRecorder {
   private rec: MediaRecorder | null = null;
@@ -874,9 +879,11 @@ export class NotesRecorder {
   private graph: { ctx: AudioContext; mix: DynamicsCompressorNode; gain: GainNode; dest: MediaStreamAudioDestinationNode; voices: Map<string, Voice> } | null = null;
   /** While the organizer is in a breakout room, the recording hears nothing: the call's recording has the main room's talk. */
   private hushed = false;
+  /** Until then, pieces go straight to `keep`: sending just failed. */
+  private keepUntil = 0;
   /** `onBroken` hears whether this browser can record at all: false once a recorder runs, true if one can't start or fails. */
   constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void,
-    private readonly onBroken: (broken: boolean) => void = () => undefined) {}
+    private readonly onBroken: (broken: boolean) => void = () => undefined, private readonly keep: ((p: AudioPiece) => Promise<void>) | null = null) {}
 
   /** Silence instead of everyone heard while `on`, without stopping: the recording keeps its place in time, so the transcript still lines up with it. */
   hush(on: boolean) {
@@ -967,9 +974,11 @@ export class NotesRecorder {
   /**
    * Stops and waits until every recorded piece has been uploaded, or FLUSH_MS have gone by while the connection is
    * down: whoever's waiting (ending the call, moving) isn't held up for long, and the pieces keep trying meanwhile.
+   * Given `keep` it always waits for the last one: each is soon sent or kept, and the recording stops only after that.
    */
   async flush(): Promise<void> {
     await this.finish();
+    if (this.keep) { await this.queue; return; }
     const late = await Promise.race([this.queue.then(() => false), new Promise<boolean>((r) => setTimeout(() => r(true), FLUSH_MS))]);
     if (late) mlog.warn('notes audio still uploading', { segment: this.segment });
   }
@@ -1037,20 +1046,44 @@ export class NotesRecorder {
   /**
    * Uploads one piece, in order. While the connection is down (or the server is busy) it keeps trying for up to
    * RETRY_MS, so a short drop loses nothing: the recording goes on here meanwhile, and the pieces go up once it's back.
-   * A refusal that trying again won't change gives up at once; discard() stops it trying.
+   * A refusal that trying again won't change gives up at once; discard() stops it trying. Given `keep`, it's tried once
+   * and then kept instead.
    */
   private async send(p: AudioPiece, gen: number) {
+    const where = { segment: p.segment, seq: p.seq, bytes: p.data.size };
+    if (this.keep && (!navigator.onLine || Date.now() < this.keepUntil)) { await this.kept(p, this.keep, navigator.onLine ? 'resting' : 'offline'); return; }
     const since = performance.now();
     for (let attempt = 0; gen === this.gen; attempt++) {
-      try { await this.upload(p); mlog.debug('audio piece uploaded', { segment: p.segment, seq: p.seq, bytes: p.data.size, attempt }); return; } catch (e) {
-        // Expected around changes: notes were paused or turned off, or a new segment began. It isn't kept, by design.
+      try { await this.upload(p); mlog.debug('audio piece uploaded', { ...where, attempt }); return; } catch (e) {
         const code = errorCode(e);
-        if (code === 'conflict') { mlog.debug('audio piece refused: notes are paused, off or moved on', { segment: p.segment, seq: p.seq, err: e }); return; }
+        if (this.keep) {
+          if (code !== 'conflict' && navigator.onLine) {
+            this.keepUntil = Date.now() + KEEP_REST_MS;
+            mlog.warn('audio piece upload failed; keeping it on this device', { ...where, err: e });
+          }
+          await this.kept(p, this.keep, code);
+          return;
+        }
+        // Expected around changes: notes were paused or turned off, or a new segment began. It isn't kept, by design.
+        if (code === 'conflict') { mlog.debug('audio piece refused: notes are paused, off or moved on', { ...where, err: e }); return; }
         const waiting = (code === 'network' || code === 'unavailable' || code === 'unknown') && performance.now() - since < RETRY_MS;
-        mlog.at(waiting ? 'warn' : 'error', waiting ? 'audio piece upload failed; retrying' : 'audio piece lost', { err: e, code, segment: p.segment, seq: p.seq, bytes: p.data.size, attempt });
+        mlog.at(waiting ? 'warn' : 'error', waiting ? 'audio piece upload failed; retrying' : 'audio piece lost', { err: e, code, ...where, attempt });
         if (!waiting) { this.onError(e instanceof Error ? e.message : 'A piece of the recording couldn’t be saved.'); return; }
         await new Promise((r) => setTimeout(r, Math.min(5000, 500 * 2 ** attempt)));
       }
     }
   }
+  /** Keeps a piece that can't be sent now. If even that fails (this device is full), the piece is lost, and said. */
+  private async kept(p: AudioPiece, keep: (p: AudioPiece) => Promise<void>, why: string) {
+    try {
+      await keep(p);
+      mlog.debug('audio piece kept to upload later', { segment: p.segment, seq: p.seq, bytes: p.data.size, why });
+    } catch (e) {
+      mlog.error('audio piece lost: it couldn’t be sent or kept', { segment: p.segment, seq: p.seq, bytes: p.data.size, why, err: e });
+      this.onError(errorMessage(e));
+    }
+  }
 }
+
+/** After a piece is kept because sending failed, how long later pieces go straight to being kept. */
+const KEEP_REST_MS = 15_000;

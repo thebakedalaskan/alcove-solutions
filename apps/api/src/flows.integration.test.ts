@@ -2348,6 +2348,25 @@ describe('room recordings', () => {
     await theirs.discard();
   });
 
+  it('a recording kept for one account is never started in another, even from the same browser', async () => {
+    const a = await account();
+    const b = await account();
+    const startedAt = new Date(Date.now() - 30 * 60_000).toISOString();
+    // A's recording, uploaded while B is the one signed in: refused, and nothing is made in either account.
+    expect(code(await b.api.recordings.start({ title: 'Kept for A', startedAt, owner: a.session.ownerId }).catch((e: unknown) => e))).toBe('forbidden');
+    expect(await b.api.notes.list({ kind: 'room' })).toEqual([]);
+    expect(await a.api.notes.list({ kind: 'room' })).toEqual([]);
+    const made = await h.pool.query<{ n: string }>('SELECT count(*) AS n FROM recordings WHERE owner_id = ANY($1)', [[a.session.ownerId, b.session.ownerId]]);
+    expect(Number(made.rows[0]?.n)).toBe(0);
+    // A's own session starts it, from its own moment, and carries on with it the same way.
+    const mine = await a.api.recordings.start({ title: 'Kept for A', startedAt, owner: a.session.ownerId });
+    expect(mine.getSnapshot()).toMatchObject({ title: 'Kept for A', startedAt });
+    expect((await a.api.recordings.start({ startedAt, owner: a.session.ownerId })).getSnapshot().id).toBe(mine.getSnapshot().id);
+    // Even once it exists, B can't carry on with it by naming A.
+    expect(code(await b.api.recordings.start({ startedAt, owner: a.session.ownerId }).catch((e: unknown) => e))).toBe('forbidden');
+    await mine.discard();
+  });
+
   it('a call’s recording from the same moment isn’t carried on as a room recording', async () => {
     const { api, session } = await account();
     const call = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });

@@ -1,7 +1,10 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { forgetAccount } from '~/features/record/offline';
+import { forgetNotified } from '~/features/shell/notified';
 import { api } from './api';
+import { log } from './log';
 import { weekOn } from './time';
 
 export const qk = {
@@ -96,9 +99,19 @@ export function useSignIn() {
     onSuccess: (r) => { qc.clear(); qc.setQueryData(qk.session, r.session); }
   });
 }
+/**
+ * Signed out (or the account deleted) on this device: whatever it kept for the account goes too, the recordings
+ * waiting to upload among it (features/record/offline.ts; anyone else's stay), and its notifications, those showing too.
+ */
+async function forgetHere(qc: QueryClient) {
+  await forgetNotified();
+  const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+  if (!owner) return;
+  try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
+}
 export function useSignOut() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); } });
+  return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); } });
 }
 /**
  * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
@@ -106,7 +119,7 @@ export function useSignOut() {
  */
 export function useDeleteAccount(onDeleted: () => void) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: () => { qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); } });
+  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); } });
 }
 /*
  * Changes to preferences show at once and reach the server one at a time, in order (two at once would refuse each

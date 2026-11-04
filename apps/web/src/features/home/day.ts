@@ -6,6 +6,7 @@
 import type { CalendarEvent, Meeting, NoteSummary, OpenAction, Person } from '@alcove/api';
 import { callName, sameEmail, someNames } from '~/lib/people';
 import { daysFromToday, shortDay, weekday } from '~/lib/time';
+import { capital, plural } from '~/lib/words';
 
 /** Something ahead: one of your Alcove calls, or another meeting on your calendar. */
 export type Ahead =
@@ -79,8 +80,7 @@ const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eig
 /** A small count in words, a bigger one in digits: "two", "12". */
 export const inWords = (n: number) => WORDS[n] ?? String(n);
 /** "one decision", "four calls" */
-export const counted = (n: number, one: string, many = `${one}s`) => `${inWords(n)} ${n === 1 ? one : many}`;
-export const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const counted = (n: number, one: string, many = `${one}s`) => plural(n, one, many, inWords);
 
 /**
  * The line under the greeting: how many calls are left today, then what waits on you. "Four more calls

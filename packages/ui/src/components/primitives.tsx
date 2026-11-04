@@ -164,14 +164,16 @@ export function Check({ checked, onChange, label }: { checked: boolean; onChange
 /* ---------- Segmented and Tabs ---------- */
 export interface Choice<T extends string> { value: T; label: ReactNode; icon?: IconName | undefined }
 
-/** A choice of two to four modes. The chosen one sits on a surface pill that slides between them. */
-export function Segmented<T extends string>({ value, onChange, options, label, className }: { value: T; onChange: (v: T) => void; options: Choice<T>[]; label: string; className?: string }) {
+/** A choice of two to four modes. The chosen one sits on a surface pill that slides between them. `disabled` shows the choice greyed out. */
+export function Segmented<T extends string>({ value, onChange, options, label, disabled = false, className }: {
+  value: T; onChange: (v: T) => void; options: Choice<T>[]; label: string; disabled?: boolean | undefined; className?: string;
+}) {
   const pill = useId();
   const reduce = useReducedMotion();
   return (
-    <div className={cn('ac-seg', className)} role="group" aria-label={label}>
+    <div className={cn('ac-seg', className)} role="group" aria-label={label} aria-disabled={disabled || undefined}>
       {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" aria-pressed={o.value === value} disabled={disabled} onClick={() => onChange(o.value)}>
           {o.value === value && <motion.span layoutId={pill} className="pill" aria-hidden="true" transition={reduce ? { duration: 0 } : { duration: 0.55, ease: EASE.inOut }} />}
           <span className="lbl">{o.icon && <Icon name={o.icon} size={16} />}{o.label}</span>
         </button>

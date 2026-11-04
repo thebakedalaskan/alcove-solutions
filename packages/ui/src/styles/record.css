@@ -89,6 +89,24 @@
 .rec-tiles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 @container rec-main (min-width: 520px) { .rec-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* ------------------------------------------------------------- on this device */
+/* Recordings kept here until they upload: what each is, how it stands, and its menu. Narrow, the state goes under. */
+.rec-dev-lead { margin: 2px 0 6px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); text-wrap: pretty; }
+.rec-dev { margin: 0; padding: 0; list-style: none; }
+.rec-dev li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; grid-template-areas: "ic what state more"; gap: 4px 14px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); }
+.rec-dev li:first-child { border-top: 0; }
+.rec-dev .ic { grid-area: ic; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--sunk); color: var(--ink-2); }
+.rec-dev .what { grid-area: what; min-width: 0; }
+.rec-dev .what b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.3 var(--font-sans); }
+.rec-dev .what small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.rec-dev .what .why { color: var(--caution); }
+.rec-dev .state { grid-area: state; }
+.rec-dev .more { grid-area: more; }
+@container rec-main (max-width: 560px) {
+  .rec-dev li { grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: "ic what more" ". state more"; align-items: start; }
+  .rec-dev .state { justify-self: start; }
+}
+
 /* --------------------------------------------------------------- how it works */
 .rec-facts { display: grid; gap: 18px; margin: 10px 0 0; padding: 0; list-style: none; }
 .rec-fact { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }

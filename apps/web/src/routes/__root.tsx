@@ -1,8 +1,10 @@
 import { EmptyState, ThemeProvider, buttonClass, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { Arrival } from '~/features/onboarding/Arrival';
+import { useNotifications } from '~/features/shell/notify';
+import { registerServiceWorker } from '~/lib/serviceWorker';
 import css from '~/styles/app.css?url';
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -35,6 +37,8 @@ function Document({ children }: { children: ReactNode }) {
 
 function Root() {
   const { queryClient } = Route.useRouteContext();
+  // Keeps this build in the browser, so Alcove opens without a connection.
+  useEffect(registerServiceWorker, []);
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
@@ -42,11 +46,18 @@ function Root() {
           <ToastProvider>
             <Outlet />
             <Arrival />
+            <Notifications />
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
+}
+
+/** Browser notifications for whoever is signed in, on every page, a call or a recording included (features/shell/notify.ts). */
+function Notifications() {
+  useNotifications();
+  return null;
 }
 
 function NotFound() {

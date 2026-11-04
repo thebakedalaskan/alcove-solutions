@@ -22,6 +22,7 @@ import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
+import { useNotesAskedNotifications } from '~/features/shell/notify';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup, type RoomActivity, type RoomCandidate } from '~/features/call/Rooms';
 import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, type ShareProblem } from '~/features/call/share';
@@ -828,6 +829,7 @@ function InCall({ session }: { session: CallSession }) {
     }
   };
   useCaptureAlerts(state, controls);
+  useNotesAskedNotifications(state);
   const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
   const flip = (v: PanelView) => setPanel((x) => (x === v ? null : v));
 

@@ -72,6 +72,10 @@ function loadCapture(ctx: AudioContext): Promise<void> {
  * Cuts one voice into clips of speech and sends them, in order, while notes are on. The screen hears
  * about trouble through `onProblem` (a sentence to show, or null once clips get through again); the
  * call and the recording carry on regardless.
+ *
+ * Given somewhere to keep clips (`keep`: the stage recorder's, on this device), a clip that can't be sent (no
+ * connection, a failed try, or refused because Alcove's copy of the recording is out of step) is kept there at once,
+ * to be transcribed later, instead of lost; while sending rests, clips are kept rather than skipped.
  */
 export class SpeechClips {
   private graph: Graph | null = null;
@@ -95,12 +99,14 @@ export class SpeechClips {
   private queue: Promise<void> = Promise.resolve();
   private lostInARow = 0;
   private restUntil = 0;
+  /** Set by drain(): what's still waiting is kept rather than sent. */
+  private keepAll = false;
   private shown: string | null = null;
   /** Which sample was heard when (by performance.now()), to say when each clip's speech began. Set from the first chunk after starting or resuming. */
   private wall: { at: number; ms: number } | null = null;
 
   constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void,
-    private readonly shared: Shared | null = null) {}
+    private readonly shared: Shared | null = null, private readonly keep: ((clip: TranscriptClip) => Promise<void>) | null = null) {}
 
   /** Starts (or carries on) listening into `segment`. A new segment counts from 0 again. */
   start(track: MediaStreamTrack, segment: number): void {
@@ -159,6 +165,22 @@ export class SpeechClips {
     const done = await Promise.race([this.queue.then(() => 'done' as const), late]);
     clearTimeout(timer);
     if (done === 'late') slog.warn('the last transcript clips are slow; going on without them', { waitedMs: FLUSH_LIMIT_MS });
+  }
+
+  /**
+   * With somewhere to keep clips: ends the clip in progress and waits up to `ms` for every clip to be sent; whatever is
+   * still waiting then is kept instead. Resolves once every clip heard has been sent or kept, so none is dropped.
+   */
+  async drain(ms: number): Promise<void> {
+    this.cut();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((r) => { timer = setTimeout(() => r('late'), ms); });
+    const first = await Promise.race([this.queue.then(() => 'done' as const), late]);
+    clearTimeout(timer);
+    if (first === 'done' || !this.keep) return;
+    slog.info('the last transcript clips are slow; keeping them to send later', { waitedMs: ms });
+    this.keepAll = true;
+    await this.queue;
   }
 
   /** Stops listening. What hasn't been sent yet is dropped: flush() first to keep it. */
@@ -305,6 +327,7 @@ export class SpeechClips {
 
   private async send(clip: TranscriptClip) {
     const where = { segment: clip.segment, atMs: Math.round(clip.at * 1000), durationMs: Math.round(clip.durationMs), bytes: clip.data.size };
+    if (this.keep && (this.keepAll || !navigator.onLine || Date.now() < this.restUntil)) { await this.kept(clip, this.keep, this.keepAll ? 'finishing' : navigator.onLine ? 'resting' : 'offline'); return; }
     if (Date.now() < this.restUntil) { slog.debug('transcript clip skipped while transcription rests', where); return; }
     for (let attempt = 1; ; attempt++) {
       try {
@@ -314,8 +337,19 @@ export class SpeechClips {
         this.say(null);
         return;
       } catch (e) {
+        const code = errorCode(e);
+        if (this.keep) {
+          const failed = code !== 'conflict' && navigator.onLine;
+          if (failed) {
+            this.restUntil = Date.now() + REST_MS;
+            slog.warn('transcript clip failed; keeping it on this device', { ...where, err: e });
+          }
+          await this.kept(clip, this.keep, code);
+          if (failed) this.say('The live transcript is behind. What’s said is saved on this device and transcribed later.');
+          return;
+        }
         // Expected around changes: notes went off, the recording paused, a new segment began, or the room it was heard in closed.
-        if (errorCode(e) === 'conflict') { slog.debug('transcript clip refused: notes are off, paused or moved on', { ...where, err: e }); return; }
+        if (code === 'conflict') { slog.debug('transcript clip refused: notes are off, paused or moved on', { ...where, err: e }); return; }
         if (attempt < TRIES) {
           slog.debug('transcript clip failed; trying again', { ...where, attempt, err: e });
           await sleep(600 * attempt);
@@ -328,6 +362,18 @@ export class SpeechClips {
         this.say(errorMessage(e));
         return;
       }
+    }
+  }
+
+  /** Keeps a clip that can't be sent now, to transcribe later. If even that fails (this device is full), it's lost. */
+  private async kept(clip: TranscriptClip, keep: (clip: TranscriptClip) => Promise<void>, why: string) {
+    const where = { segment: clip.segment, atMs: Math.round(clip.at * 1000), bytes: clip.data.size, why };
+    try {
+      await keep(clip);
+      slog.debug('transcript clip kept to transcribe later', where);
+    } catch (e) {
+      slog.warn('transcript clip lost: it couldn’t be sent or kept', { ...where, err: e });
+      this.say(errorMessage(e));
     }
   }
 

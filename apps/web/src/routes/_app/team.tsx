@@ -4,12 +4,13 @@
  * here yet, it asks you to bring them; a personal account has no team, only groups.
  */
 import { GroupParamSchema, type NoteSummary, type Person, type Team } from '@alcove/api';
-import { ArchThumb, Button, Card, EmptyState, Icon, Meter, coverFor } from '@alcove/ui';
+import { ArchThumb, Button, Card, EmptyState, Icon, MinutesCard, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { groupShares, knownPeople, meetings } from '~/features/team/data';
 import { Groups } from '~/features/team/Groups';
+import { RouteError } from '~/features/shell/OfflinePage';
 import { FirstHere, InvitePeople, JustYou, NotOnAlcove, PeopleGrid } from '~/features/team/People';
 import { useNow } from '~/lib/live';
 import { callName, sameEmail } from '~/lib/people';
@@ -22,7 +23,14 @@ export const Route = createFileRoute('/_app/team')({
     const g = GroupParamSchema.safeParse(s['group']);
     return { group: g.success ? g.data : undefined };
   },
-  loader: ({ context: { queryClient: qc } }) => Promise.all([qc.ensureQueryData(q.team()), qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.notes())]),
+  /*
+   * The team is the page: if it doesn't load, the page says why (or that you're offline), with Try again. Your groups
+   * and notes load beside it, as Settings' parts do: one that doesn't leaves the rest of the page usable.
+   */
+  loader: async ({ context: { queryClient: qc } }) => {
+    await Promise.all([qc.ensureQueryData(q.team()), Promise.allSettled([qc.ensureQueryData(q.prefs()), qc.ensureQueryData(q.notes())])]);
+  },
+  errorComponent: RouteError,
   component: TeamPage
 });
 
@@ -157,11 +165,9 @@ function Minutes() {
   if (!c) return null;
   const used = c.usedThisMonth / c.perMinute;
   return (
-    <Card title="Your minutes">
-      <div className="tp-big">{hoursAndMinutes(c.balance / c.perMinute)}<small>of notes left</small></div>
-      <Meter value={c.balance / Math.max(1, c.granted)} className="tp-meter" />
-      <p className="tp-lead">{used >= 1 ? `${hoursAndMinutes(used)} used this month.` : 'None used this month.'} Calls without notes are always free.</p>
+    <MinutesCard title="Your minutes" left={hoursAndMinutes(c.balance / c.perMinute)} share={c.balance / Math.max(1, c.granted)}
+      used={`${used >= 1 ? `${hoursAndMinutes(used)} used this month.` : 'None used this month.'} Calls without notes are always free.`}>
       <div className="tp-foot"><Link to="/settings" hash="plan" className="lk tp-go">Usage and credits<Icon name="right" size={14} /></Link></div>
-    </Card>
+    </MinutesCard>
   );
 }

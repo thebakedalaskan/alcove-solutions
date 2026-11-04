@@ -154,7 +154,7 @@ Read `docs/engineering/logging-and-errors.md`.
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
   `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `NoteTile`, `PersonCard`, `Timeline` with
   `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
-  `Segmented`, `SettingsCard` and `SettingRow`, `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
+  `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
   `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
   `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).

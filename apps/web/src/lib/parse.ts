@@ -3,6 +3,7 @@
  * invited, when it is, how long it runs and whether it has notes. Whatever isn't understood stays
  * in the title.
  */
+import { capital } from './words';
 
 /** Someone a first name can stand for: colleagues and people you've had calls with. */
 export interface Known { name: string; email: string }
@@ -26,7 +27,6 @@ const NOT_PEOPLE = new Set(['the', 'a', 'an', 'my', 'our', 'your', 'their', 'tea
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());
 export const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 export const firstOf = (name: string) => name.trim().split(/\s+/)[0] ?? name;
-const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function parseCall(raw: string, now: Date, known: Known[]): ParsedCall {
   let t = ` ${raw} `;

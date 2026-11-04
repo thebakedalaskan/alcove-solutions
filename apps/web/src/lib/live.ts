@@ -1,7 +1,8 @@
-import type { CallParticipant, CallSession, CallState, LiveStore, RoomRecording } from '@alcove/api';
+import type { CallParticipant, CallSession, CallState, LiveStore } from '@alcove/api';
 import { useBlocker } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { LocalMedia } from '~/features/call/media';
+import type { StageRecording } from '~/features/record/stage';
 
 export function useLive<S>(store: LiveStore<S>): S {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -13,7 +14,7 @@ const onConnection = (changed: () => void) => {
   addEventListener('offline', changed);
   return () => { removeEventListener('online', changed); removeEventListener('offline', changed); };
 };
-/** Whether this browser has a connection. Recording and calls need one; everything else waits for it. */
+/** Whether this browser has a connection. Offline, recording still works (when it's on in Settings); everything else waits for it. */
 export const useOnline = (): boolean => useSyncExternalStore(onConnection, onLine, () => true);
 
 /** Whether a media query matches, such as the phone's width, following it as the window changes. */
@@ -37,7 +38,7 @@ export function useNow(every = 30_000): number {
  * Live sessions and local media outlive a single route (pre-join hands both to the call screen). Record hands the
  * stage recorder the name for its next recording the same way, in memory: nothing readable goes in the address.
  */
-export const sessions: { call: { code: string; session: CallSession } | null; recording: RoomRecording | null; media: LocalMedia | null; roomTitle: string | null } = {
+export const sessions: { call: { code: string; session: CallSession } | null; recording: StageRecording | null; media: LocalMedia | null; roomTitle: string | null } = {
   call: null,
   recording: null,
   media: null,

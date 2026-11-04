@@ -58,6 +58,45 @@ the deployment includes no catch-all `_redirects` or top-level `404.html`. Manag
 redirect as a Cloudflare zone Single Redirect. See
 [Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
+**Opening offline.** A service worker, `apps/web/public/sw.js`, keeps the build in the browser, so the app's
+files load without a connection once the browser has opened Alcove online. The web app's `build` script ends with
+`apps/web/scripts/precache.mjs`, which writes the list of every file in `dist/client` (all but `_headers`)
+into `dist/client/sw.js`, with a version hashed from their contents. Nobody maintains the list by hand, and
+the script refuses a build it has already written into. The app registers the worker from its root route
+once the page has loaded, in production builds only (`apps/web/src/lib/serviceWorker.ts`), and logs a failed
+registration or install as a warning.
+
+- **Install** fetches every file in the list, and caches them once all have arrived. The shell is requested
+  as `/`, because Pages redirects `/index.html` there. If any file fails to arrive, nothing is cached, the
+  install fails and the previous worker stays. HTML under any name but the shell's counts as not arriving:
+  Pages answers a name it doesn't have with the shell, as a 200, so a deploy going live during an install
+  can't leave that cached as the asset.
+- **Page loads** go to the network first, with navigation preload. Without a connection they get the
+  cached shell, which opens whichever screen was asked for. Nothing fetched is written back, so the
+  cached shell always matches the assets cached with it.
+- **Hashed files** under `/assets/` are served from the cache first. The build's other files (the
+  favicon, the audio worklet, portraits) go to the network first and fall back to the cache.
+- **Left alone:** `/api`, every other origin (the API's included) and every request but GET go straight
+  to the network. Nothing from the API is cached.
+- **Updates:** a new build's worker takes over as soon as it has cached everything. It deletes the caches
+  of earlier versions (`alcove-app-<version>`).
+- **Notifications:** browser notifications go through the worker's registration (`showNotification`, the only way
+  Chrome on Android shows them), and a click on one reaches the worker. It closes the notification and asks each
+  window where it is (a client's `url` stays the page it loaded, however far the app has moved inside it), brings
+  forward the one already at that page, or else the one used last, and posts it `{ type: 'alcove.notification', open }`
+  (`WorkerMessageSchema`). The page parses that and goes there through the router, so a call or a recording still
+  asks before it's left; the worker never navigates a window. With no window it opens one at that page.
+
+`sw.js` falls under the `/*` rule in `_headers` (`max-age=0, must-revalidate` and the CSP, whose
+`worker-src 'self'` allows it), so the browser finds a new worker on the next page load. A shell served
+from the cache keeps the headers it was cached with, its CSP included. Every screen's route asks the API for
+the session before it opens. When that can't reach the API (no connection, or the request doesn't get through),
+someone signed in on this browser carries on offline (`requireAccount` in `apps/web/src/lib/guards.ts`, from the
+flag in `apps/web/src/lib/device.ts`): Record and the stage recorder work, and every other page shows **You're
+offline** with the way to Record (`OfflinePage`, also the router's error page for any request that didn't get
+through). A 401 still signs out. With no connection at all, queries aren't retried, so a page says so at once.
+See [Calls and recordings › Recording without a connection](calls-and-recordings.md#recording-without-a-connection).
+
 Only the API deployment job can request a GCP OIDC token. Workload Identity Federation restricts the
 immutable repository and owner IDs, main ref, deploy workflow and permitted event types. GCP and
 Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` is a secret in the
@@ -125,6 +164,9 @@ live transcript and written notes.
 | Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
+| The app opens offline: after one visit online, a reload without a connection gets the shell and its assets from the service worker, and a new release's worker replaces the previous cache | Verified by hand with headless Chrome against `wrangler pages dev` of a production build (offline through the DevTools protocol, then with the server stopped); verify for each public release |
+| Recording without a connection: cut the connection mid-recording, keep recording and finish; reload offline (Record lists it under **On this device**); reconnect, and it uploads once, in order, into one note; close the tab mid-upload and reopen it, and it still ends as one note; with the recording's account signed out another way and someone else signed in on the browser, nothing uploads into their account and it stays on the device until its own account signs in | Verified by hand with headless Chrome against a production build served with the API behind `/api` (offline through the DevTools protocol), reading the API log; verify for each public release |
+| Browser notifications: in a production build a reminder, notes ready and a share go through the service worker, one tab shows them (the next takes over when it closes), each once, a burst as one, a reminder survives a sleep, and a click opens the right page in the right window | Verified by hand with headless Chrome against a production build (`notificationclick` dispatched in the worker, since headless Chrome has no notification to click); verify a real click on each release |
 | The model code NEAR AI runs pinned to published provenance | **Not implemented**: the OS image is pinned, but its compose manager starts model code NEAR AI chooses |
 | Multi-party end-to-end encrypted calls: keys only in browsers, commits only from the organizer's browser, a new key with every join and leave, chat unreadable to the server and to later joiners, media unreadable without the key (LiveKit included), asking to join, no names to LiveKit | API integration tests against a real LiveKit server, with MLS clients and encrypted media; verify two browsers on each release |
 | Invitation emails from Alcove | **Not implemented** (with a connected Google Calendar, Google sends the invitations) |

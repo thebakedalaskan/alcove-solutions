@@ -50,10 +50,11 @@ export function PinNote({ noteId }: { noteId: string }) {
   const prefs = useQuery(q.prefs()).data;
   const pinned = (prefs?.pinned ?? []).filter((id) => !all || all.some((n) => n.id === id));
   const on = pinned.includes(noteId);
-  const toggle = () => {
+  // Each press keeps its own answer (mutateAsync), so a quick second press never loses the first one's error.
+  const toggle = async () => {
     if (!prefs) return;
     if (!on && pinned.length >= MAX_PINS) { toast(`${MAX_PINS} notes are pinned, the most there can be. Unpin one to pin these.`, { icon: 'pin' }); return; }
-    pins.mutate(on ? pinned.filter((id) => id !== noteId) : [...pinned, noteId], { onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
+    try { await pins.mutateAsync(on ? pinned.filter((id) => id !== noteId) : [...pinned, noteId]); } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
   return <IconButton icon="pin" label="Pin these notes" title={on ? 'Pinned. Unpin these notes' : 'Pin these notes'} aria-pressed={on} on={on} onClick={toggle} />;
 }

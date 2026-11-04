@@ -7,6 +7,7 @@ import { Avatar, Button, Card, EmptyState, GhostArch, Icon, useToast } from '@al
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { NoteCard } from '~/features/notes/NoteCard';
+import { useCopyInvite } from '~/features/team/People';
 import { someNames } from '~/lib/people';
 import { q, useInviteTeam } from '~/lib/queries';
 import { counted } from './day';
@@ -27,16 +28,6 @@ export function Example() {
 /** "five colleagues", "one colleague" */
 const colleagues = (n: number) => counted(n, 'colleague');
 
-/** Where people sign in: the link to send anyone you'd like on Alcove. */
-const inviteLink = () => `${location.origin}/welcome`;
-
-function useCopyInvite() {
-  const toast = useToast();
-  return () => {
-    void navigator.clipboard?.writeText(inviteLink()).catch(() => undefined);
-    toast(<>Invite link copied <span className="ac-mono opacity-60">{inviteLink().replace(/^https?:\/\//, '')}</span></>, { icon: 'link' });
-  };
-}
 
 /** Your team on your first day, or, with a personal address, the people you'll bring. */
 export function TeamCard() {

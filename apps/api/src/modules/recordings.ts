@@ -9,7 +9,7 @@ import { z } from 'zod';
 import type { Owner } from '../context';
 import { unb64u } from '../crypto';
 import { exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { getItem } from '../vault';
 import { appendPiece, createRecording, progress, setRecordingState, type Piece } from './audio';
 import { NoteManifest, blankNote, createNoteWithRecording, finishRecording, remove, updateNote } from './notes';
@@ -50,6 +50,10 @@ const START_LOCK = 0x52454301;
  * resumes instead of making a second note.
  */
 export async function start(o: Owner, input: RoomRecordingInput): Promise<RoomRecordingState> {
+  // Recorded under another account (a device someone else has signed in on since): never theirs, and nothing is made.
+  if (input.owner !== undefined && input.owner !== o.ownerId) {
+    throw new ForbiddenError('This recording was made under another account. Sign in to that account to upload it.', { context: { reason: 'another account' } });
+  }
   const own = input.startedAt === undefined ? undefined : new Date(input.startedAt);
   const secondsAgo = own ? Math.round((Date.now() - own.getTime()) / 1000) : 0;
   if (Number.isNaN(secondsAgo)) throw new ValidationError('That recording’s start isn’t a real time.');

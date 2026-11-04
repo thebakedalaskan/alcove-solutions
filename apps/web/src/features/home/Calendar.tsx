@@ -4,17 +4,23 @@
  */
 import { Button, Icon } from '@alcove/ui';
 import { useId, useState } from 'react';
+import { log } from '~/lib/log';
 import { calendarConnectUrl } from '~/lib/queries';
 
 const KEY = 'alcove-calendar-not-now';
-const putAway = () => { try { return localStorage.getItem(KEY) === 'yes'; } catch { return false; } };
+const clog = log.child({ component: 'home' });
+/* This browser may keep no storage (a private window, blocked site data): then the card shows each time Home loads. */
+const putAway = () => {
+  try { return localStorage.getItem(KEY) === 'yes'; } catch (e) { clog.warn('calendar card choice not read: no storage here', { err: e }); return false; }
+};
 
 /** Whether the card was put away in this browser, and putting it away. */
 export function useNotNow() {
   const [away, setAway] = useState(putAway);
   const notNow = () => {
     setAway(true);
-    try { localStorage.setItem(KEY, 'yes'); } catch { /* storage unavailable: it stays away until the tab closes */ }
+    // Without storage it stays away until the tab closes.
+    try { localStorage.setItem(KEY, 'yes'); } catch (e) { clog.warn('calendar card choice not kept: no storage here', { err: e }); }
   };
   return { away, notNow };
 }

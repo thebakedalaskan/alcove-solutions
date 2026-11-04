@@ -12,7 +12,8 @@ import { useOpenComposer } from '~/features/shell/context';
 import { useMedia } from '~/lib/live';
 import { q } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, noteDay, shortDay, startsLabel } from '~/lib/time';
-import { capital, counted, peopleOn, seriesIdOf, started, whoOn, type Ahead } from './day';
+import { capital } from '~/lib/words';
+import { counted, peopleOn, seriesIdOf, started, whoOn, type Ahead } from './day';
 import { useMoveToAlcove } from './parts';
 
 /** The next call: when, who, Join (J), its link and changes, and last time's notes when it's part of a series. */

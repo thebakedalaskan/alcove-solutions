@@ -4,16 +4,17 @@
  * side panel, the phone's avatar and its Settings tab open it; the minutes in the side panel open its minutes.
  */
 import { errorMessage } from '@alcove/api';
-import { Button, NavItemContent, Notice, useToast, type IconName } from '@alcove/ui';
+import { Button, NavItemContent, Notice, type IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
+import { createFileRoute, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { arrival } from '~/features/onboarding/store';
 import { AppearanceCard, CalendarCard, NotesCard, NotificationsCard, PROVIDER, PlanCard, ProfileCard, RecordingCard } from '~/features/settings/cards';
 import { DevicesCard } from '~/features/settings/Devices';
 import { PrivacyCard } from '~/features/settings/Privacy';
 import { SavedProvider } from '~/features/settings/save';
-import { q, useSignOut } from '~/lib/queries';
+import { useSignOutStep } from '~/features/settings/SignOut';
+import { q } from '~/lib/queries';
 
 export const Route = createFileRoute('/_app/settings')({
   // A part that doesn't load leaves the rest of the page (and Sign out) usable.
@@ -87,16 +88,13 @@ function Settings() {
   const session = useQuery(q.session()).data;
   const prefs = useQuery(q.prefs());
   const credits = useQuery(q.balance()).data;
-  const signOut = useSignOut();
-  const navigate = useNavigate();
-  const toast = useToast();
+  const signOut = useSignOutStep();
   const has = (p: Part) => (p.needs === 'prefs' ? Boolean(prefs.data) : p.needs === 'credits' ? Boolean(credits) : true);
   const shown = PARTS.filter(has);
   const key = shown.map((p) => p.id).join(' ');
   const ids = useMemo(() => key.split(' '), [key]);
   const [current, pick] = usePartInView(ids);
   if (!session) return null;
-  const out = () => signOut.mutate(undefined, { onSuccess: () => void navigate({ to: '/welcome', replace: true }), onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
   return (
     <SavedProvider>
       <div className="head set-head" style={{ '--d': 0 }}>
@@ -106,8 +104,9 @@ function Settings() {
         </div>
         <div className="set-acts">
           <Button variant="quiet" icon="compass" onClick={() => arrival.askTour()}>Take the tour</Button>
-          <Button variant="secondary" icon="signOut" loading={signOut.isPending} onClick={out}>Sign out</Button>
+          {signOut.button}
         </div>
+        {signOut.step}
       </div>
       <div className="set-layout" style={{ '--d': 1 }}>
         <nav className="ac-nav set-nav" aria-label="Settings">
