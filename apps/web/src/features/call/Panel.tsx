@@ -1,10 +1,11 @@
 /*
  * The side panel: notes as the call goes, the transcript, asking about the call, chat and people,
  * one view at a time. It slides in beside the stage and the stage makes room. Notes, the transcript
- * and answers come from what was really said while notes were on; nothing here is invented.
+ * and answers come from what was really said while notes were on; nothing here is invented. Chat is
+ * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { clock, type AnswerPart, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, TimeChip, cn } from '@alcove/ui';
+import { CALL_CHAT_MAX, clock, errorMessage, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
+import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Switch, TimeChip, cn, useToast } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName, listNames, sameEmail } from '~/lib/people';
@@ -24,6 +25,16 @@ export type Asked =
 
 /** Someone shown in the panel: in the call (and how), or invited and not here. */
 export interface PanelPerson { id: string; person: Person; isMe: boolean; organizer: boolean; mic: boolean; hand: boolean; speaking: boolean; detail: string; tags: string[] }
+
+/** The organizer's controls in People. Mute has no remote unmute; removing only disconnects; a locked call keeps everyone new out. */
+export interface HostControls {
+  admit: (id: string) => Promise<void>;
+  deny: (id: string) => Promise<void>;
+  mute: (id: string) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  locked: boolean;
+  lock: (on: boolean) => Promise<void>;
+}
 
 export function SidePanel({ view, onView, onClose, children, roomsTitle }: { view: PanelView; onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string }) {
   const reduce = useReducedMotion();
@@ -50,8 +61,8 @@ export function SidePanel({ view, onView, onClose, children, roomsTitle }: { vie
   );
 }
 
-const Foot = ({ icon = 'sealed', children, end }: { icon?: 'sealed' | 'lock'; children: ReactNode; end?: ReactNode }) => (
-  <div className="ic-nf"><Icon name={icon} size={15} /><span className="lbl">{children}</span>{end && <span className="end">{end}</span>}</div>
+const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed' | 'lock'; children: ReactNode; end?: ReactNode; wrap?: boolean }) => (
+  <div className={cn('ic-nf', wrap && 'is-wrap')}><Icon name={icon} size={15} /><span className="lbl">{children}</span>{end && <span className="end">{end}</span>}</div>
 );
 
 /* ---------- notes ---------- */
@@ -88,10 +99,10 @@ function Summary({ text }: { text: string }) {
   );
 }
 
-export function NotesView({ state, live, getting, roomPeople, problems, onNotes, onSeek, onTranscript }: {
-  state: CallState; live: LiveNotes; getting: Person[];
-  /** Who was in a room the call held (by when it opened, and which room), given the invited people the server sent there. */
-  roomPeople: (from: number, room: number, invited: Person[]) => Person[];
+export function NotesView({ state, live, getting, problems, onNotes, onSeek, onTranscript }: {
+  state: CallState; live: LiveNotes;
+  /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
+  getting: Person[];
   problems: string[]; onNotes: (on: boolean) => void; onSeek: (at: number) => void; onTranscript: () => void;
 }) {
   const on = state.notes.status === 'on';
@@ -132,10 +143,7 @@ export function NotesView({ state, live, getting, roomPeople, problems, onNotes,
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
                   <div key={h.from} className="ic-rgrp">
-                    {h.rooms.map((r, k) => {
-                      const people = roomPeople(h.from, k, r.people);
-                      return <div key={r.id} className="rn">{r.name}<span>{people.length}</span><Faces people={people} size={16} /></div>;
-                    })}
+                    {h.rooms.map((r) => <div key={r.id} className="rn">{r.name}<span>{r.people.length}</span><Faces people={r.people} size={16} /></div>)}
                     <p className="ic-quiet">{clock(h.from)} to {clock(h.to)}. The rooms go into the notes everyone gets.</p>
                   </div>
                 ))}
@@ -232,29 +240,52 @@ export function AskView({ asks, ready, onAsk, onCatchUp, onSeek }: { asks: Asked
 
 /* ---------- chat ---------- */
 
-export function ChatView({ state, onSend }: { state: CallState; onSend: (text: string) => void }) {
+/**
+ * Chat, decrypted in this browser. Who sent each message comes from the call's encryption; their name, from
+ * the people here. Chat from before you were let in can't be read here, and the view says so.
+ */
+export function ChatView({ chat, missed, ready, who, onSend }: {
+  chat: CallChatMessage[];
+  /** There was chat before you were let in. */
+  missed: boolean;
+  /** This browser holds the call's keys, so it can send. */
+  ready: boolean;
+  who: (id: string) => Person;
+  onSend: (text: string) => Promise<void>;
+}) {
   const [text, setText] = useState('');
+  const toast = useToast();
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [state.chat.length]);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
+  /* A message that isn't sent is taken back: say so, and give the text back. */
+  const send = (t: string) => {
+    setText('');
+    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); setText((now) => now || t); });
+  };
   return (
     <>
       <div className="ic-scroll ic-pad">
-        {state.chat.length ? (
+        {missed && <Notice icon="lock" className="ic-missed">Messages sent before you joined aren’t shown. Only people who were here then can read them.</Notice>}
+        {chat.length ? (
           <div className="ic-chat">
-            {state.chat.map((c) => (
-              <motion.div key={c.id} className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-                <Avatar person={c.from} size={28} />
-                <div><div className="meta"><b>{c.isMe ? `${callName(c.from)} (you)` : callName(c.from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
-              </motion.div>
-            ))}
+            {chat.map((c) => {
+              const from = who(c.from);
+              return (
+                <motion.div key={c.id} className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+                  <Avatar person={from} size={28} />
+                  <div><div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
+                </motion.div>
+              );
+            })}
           </div>
-        ) : <EmptyState title="No messages yet" className="ic-empty">Messages here are seen by everyone in the call.</EmptyState>}
+        ) : !missed && <EmptyState title="No messages yet" className="ic-empty">Messages are encrypted end to end. Only people in the call can read them.</EmptyState>}
         <div ref={end} />
       </div>
-      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) { onSend(t); setText(''); } }}>
+      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t && ready) send(t); }}>
         <div className="inrow">
-          <input className="ac-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Message everyone" aria-label="Message everyone" />
-          <button type="submit" className="ac-btn is-primary" aria-label="Send to everyone" disabled={!text.trim()}><Icon name="sendLine" size={18} /></button>
+          <input className="ac-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready} onChange={(e) => setText(e.target.value)}
+            placeholder={ready ? 'Message everyone' : 'Getting the call’s keys…'} aria-label="Message everyone" />
+          <button type="submit" className="ac-btn is-primary" aria-label="Send to everyone" disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
         </div>
       </form>
     </>
@@ -263,12 +294,61 @@ export function ChatView({ state, onSend }: { state: CallState; onSend: (text: s
 
 /* ---------- people ---------- */
 
-export function PeopleView({ here, invited, organizer, onOptions }: { here: PanelPerson[]; invited: Person[]; organizer: Person | undefined; onOptions?: ((id: string) => ReactNode) | undefined }) {
+/** One person's host controls: mute (they unmute themselves) and remove (they can come back unless the call is locked). */
+function HostMenu({ p, host }: { p: PanelPerson; host: HostControls }) {
+  const [open, setOpen] = useState(false);
+  const toast = useToast();
+  const name = callName(p.person);
+  const run = (f: () => Promise<void>, done: string) => () => {
+    setOpen(false);
+    f().then(() => toast(done, { icon: 'check' }), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu"
+      anchor={<button type="button" className="ac-icon-btn ic-pmore" aria-label={`Options for ${name}`} title={`Options for ${name}`}><Icon name="more" size={18} /></button>}>
+      <div className="mh"><Avatar person={p.person} size={22} /><b>{p.person.name}</b></div>
+      {p.mic && <button type="button" className="mi" onClick={run(() => host.mute(p.id), `${name} is muted. Only they can unmute.`)}><Icon name="micOff" size={17} /><span className="t">Mute their microphone</span></button>}
+      <button type="button" className="mi" onClick={run(() => host.remove(p.id), host.locked ? `${name} is out of the call.` : `${name} is out of the call. They can join again with the link unless you lock it.`)}><Icon name="leave" size={17} /><span className="t">Remove from the call</span></button>
+      <p className="hint">{p.mic ? 'Only they can unmute themselves.' : 'Their microphone is off.'}</p>
+    </Popover>
+  );
+}
+
+export function PeopleView({ here, invited, asking, host, foot }: {
+  here: PanelPerson[]; invited: Person[];
+  /** People asking to join: only the organizer sees them. */
+  asking: CallAsker[];
+  /** The organizer's controls; absent for everyone else. */
+  host?: HostControls | undefined;
+  /** What the footer says: how the call is kept private. */
+  foot: ReactNode;
+}) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)));
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const decide = (id: string, f: (id: string) => Promise<void>) => {
+    setBusy(id);
+    f(id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => setBusy(null));
+  };
   return (
     <>
       <div className="ic-scroll ic-pad">
-        <div className="ac-eyebrow ic-cap-h">In this call · {here.length}</div>
+        {host && asking.length > 0 && (
+          <>
+            <div className="ac-eyebrow ic-cap-h">Asking to join · {asking.length}</div>
+            {asking.map((w) => (
+              <div key={w.id} className="ic-prow is-asking">
+                <Avatar person={w.person} size={36} />
+                <div className="min-w-0"><b>{w.person.name}</b><small>Not invited · joined with the link</small></div>
+                <div className="st">
+                  <IconButton icon="x" label={`Turn ${callName(w.person)} away`} disabled={busy === w.id} onClick={() => decide(w.id, host.deny)} />
+                  <Button size="sm" variant="secondary" loading={busy === w.id} onClick={() => decide(w.id, host.admit)}>Let in</Button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+        <div className={cn('ac-eyebrow ic-cap-h', host && asking.length > 0 && 'mt')}>In this call · {here.length}</div>
         {here.map((p) => (
           <div key={p.id} className="ic-prow">
             <Avatar person={p.person} size={36} />
@@ -277,7 +357,7 @@ export function PeopleView({ here, invited, organizer, onOptions }: { here: Pane
               {p.hand && <Icon name="hand" size={16} />}
               {p.speaking && p.mic && <span className="ac-level" aria-label="Speaking"><i /><i /><i /></span>}
               {!p.mic && <Icon name="micOff" size={16} aria-label="Microphone off" />}
-              {onOptions?.(p.id)}
+              {host && !p.isMe && <HostMenu p={p} host={host} />}
             </div>
           </div>
         ))}
@@ -293,8 +373,15 @@ export function PeopleView({ here, invited, organizer, onOptions }: { here: Pane
             ))}
           </>
         )}
+        {host && (
+          <div className="ic-lock">
+            <Icon name="lock" size={17} />
+            <div className="min-w-0"><b>Lock the call</b><small>{host.locked ? 'Nobody new can join. People who leave can’t come back.' : 'Nobody new can join while it’s locked.'}</small></div>
+            <Switch checked={host.locked} label="Lock the call" onChange={(on) => { host.lock(on).then(() => toast(on ? 'The call is locked. Nobody new can join.' : 'The call is unlocked', { icon: 'lock' }), (e: unknown) => toast(errorMessage(e), { icon: 'x' })); }} />
+          </div>
+        )}
       </div>
-      <Foot icon="lock">{organizer ? `Only people ${callName(organizer)} invited can join` : 'Only people invited can join'}</Foot>
+      <Foot icon="lock" wrap>{foot}</Foot>
     </>
   );
 }

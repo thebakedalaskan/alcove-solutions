@@ -2,18 +2,18 @@
  * Breakout rooms, in the side panel: a board to set them up (how many, how long, who goes where),
  * then an overview while they're open (the shared timer, each room, a message to every room, and
  * bringing everyone back). The rooms themselves are call state on the server; only the organizer
- * opens them, and only people invited to the call are sent to one.
+ * opens them, and only people invited to the call are sent to one. Guests stay in the main room.
  */
 import type { Breakouts, Person } from '@alcove/api';
-import { Avatar, Button, Faces, Icon, IconButton, Segmented, cn } from '@alcove/ui';
+import { Avatar, Button, EmptyState, Faces, Icon, IconButton, Segmented, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { callName } from '~/lib/people';
 
-/** Someone who can be sent to a room. */
+/** Someone who can be sent to a room: an invited person in the call, by their email address. */
 export interface RoomCandidate { id: string; person: Person }
-/** What the preview adds to open rooms: who is talking in each, how many notes, who asked for help. */
-export interface RoomActivity { talking: (string | null)[]; notes: number[]; help: { room: number; id: string } | null; joined: number | null }
+/** What the call says about open rooms: who is talking in each, who in each raised a hand for help, and the room you're in. */
+export interface RoomActivity { talking: (string | null)[]; help: (string | null)[]; joined: number | null }
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 const RING = 169.6;
@@ -25,7 +25,12 @@ function shuffled(ids: string[], n: number): string[][] {
   return Array.from({ length: n }, (_, k) => a.filter((_, i) => i % n === k));
 }
 
-export function RoomsSetup({ people, onOpen }: { people: RoomCandidate[]; onOpen: (rooms: { name: string; ids: string[] }[], minutes: number) => void }) {
+export function RoomsSetup({ people, guests, onOpen }: {
+  people: RoomCandidate[];
+  /** How many people here joined with the link: they stay in the main room. */
+  guests: number;
+  onOpen: (rooms: { name: string; ids: string[] }[], minutes: number) => void;
+}) {
   const [n, setN] = useState<'2' | '3'>('2');
   const [len, setLen] = useState<'5' | '10' | '15'>('5');
   const [names, setNames] = useState(['Room 1', 'Room 2', 'Room 3']);
@@ -38,6 +43,20 @@ export function RoomsSetup({ people, onOpen }: { people: RoomCandidate[]; onOpen
   const roomOf = (id: string) => assign.findIndex((r) => r.includes(id));
   const moveTo = (id: string, to: number) => setAssign((a) => a.map((r, k) => (k === to ? (r.includes(id) ? r : [...r, id]) : r.filter((x) => x !== id))));
   const colAt = (x: number, y: number) => cols.current.findIndex((c) => { const r = c?.getBoundingClientRect(); return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; });
+  // Someone invited joins while the board is open: they go to the room with the fewest people; anyone who left comes off it.
+  const ids = people.map((p) => p.id).join(' ');
+  useEffect(() => {
+    const here = new Set(ids.split(' ').filter(Boolean));
+    setAssign((a) => {
+      const kept = a.map((r) => r.filter((id) => here.has(id)));
+      for (const id of here) {
+        if (kept.some((r) => r.includes(id))) continue;
+        const room = kept.slice(0, Number(n)).reduce((best, r, k, all) => (r.length < (all[best]?.length ?? Infinity) ? k : best), 0);
+        kept[room] = [...(kept[room] ?? []), id];
+      }
+      return kept;
+    });
+  }, [ids, n]);
 
   useEffect(() => {
     if (!move) return;
@@ -50,6 +69,15 @@ export function RoomsSetup({ people, onOpen }: { people: RoomCandidate[]; onOpen
 
   const start = (e: ReactPointerEvent, id: string) => { if (e.button === 0) setMove({ id, x: e.clientX, y: e.clientY, over: null }); };
   const mover = move ? byId.get(move.id) : undefined;
+  if (!people.length) {
+    return (
+      <div className="ic-scroll ic-pad">
+        <EmptyState title="Nobody to send to a room yet" className="ic-empty">
+          Rooms are for people you invited. They appear here once they join.{guests > 0 ? ` ${guests === 1 ? 'The guest here stays' : `The ${guests} guests here stay`} in the main room with you.` : ''}
+        </EmptyState>
+      </div>
+    );
+  }
   return (
     <>
       <div className="ic-scroll ic-pad">
@@ -86,7 +114,7 @@ export function RoomsSetup({ people, onOpen }: { people: RoomCandidate[]; onOpen
             </div>
           ))}
         </div>
-        <div className="ic-rnote"><Icon name="swap" size={15} /><span>Drag people between rooms. Click a name to rename a room. You stay in the main room and can join any room.</span></div>
+        <div className="ic-rnote"><Icon name="swap" size={15} /><span>Drag people between rooms. Click a name to rename a room. You stay in the main room and can join any room.{guests > 0 ? ` ${guests === 1 ? 'The guest who joined with the link stays' : `The ${guests} guests who joined with the link stay`} in the main room with you.` : ''}</span></div>
       </div>
       <div className="ic-foot">
         <Button variant="primary" icon="door" className="w-full" disabled={!people.length}
@@ -103,14 +131,16 @@ export function RoomsSetup({ people, onOpen }: { people: RoomCandidate[]; onOpen
 
 export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin, onMessage, onClose }: {
   open: NonNullable<Breakouts['open']>; elapsed: number;
-  /** Who is in each room: the invited people the server sent there, and anyone else in the call. */
+  /** Who is in each room now: the invited people sent there who are in the call, and you while you're there. */
   members: Person[][];
-  people: Map<string, Person>; activity: RoomActivity | null; me: Person;
+  people: Map<string, Person>; activity: RoomActivity; me: Person;
   onJoin: (room: number | null) => void; onMessage: (text: string) => void; onClose: () => void;
 }) {
   const [text, setText] = useState('');
   const [sent, setSent] = useState<string | null>(null);
   const total = Math.max(1, open.until - open.from);
+  // One primary action in the view: joining the first room that asked for help.
+  const firstHelp = activity.help.findIndex((h, k) => h !== null && activity.joined !== k);
   const left = Math.max(0, open.until - elapsed);
   const soon = left <= 30;
   return (
@@ -125,22 +155,23 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
         </div>
         <div className="ic-rcards">
           {open.rooms.map((r, k) => {
-            const here = activity?.joined === k;
-            const help = activity?.help?.room === k ? activity.help : null;
-            const talking = activity?.talking[k] ?? null;
-            const inRoom = members[k] ?? r.people;
+            const here = activity.joined === k;
+            const help = activity.help[k] ?? null;
+            const talking = activity.talking[k] ?? null;
+            const inRoom = members[k] ?? [];
+            const coming = r.people.length - inRoom.filter((p) => r.people.some((x) => x.email.toLowerCase() === p.email.toLowerCase())).length;
             return (
               <div key={r.id} className={cn('ic-rcard', here && 'is-here', help && 'is-help')}>
                 <div className="top1">
                   <b>{r.name}</b>
                   <Faces people={inRoom} size={22} />
-                  <Button size="sm" variant={help && !here ? 'primary' : 'secondary'} onClick={() => onJoin(here ? null : k)}>{here ? 'Back to main room' : 'Join room'}</Button>
+                  <Button size="sm" variant={k === firstHelp ? 'primary' : 'secondary'} onClick={() => onJoin(here ? null : k)}>{here ? 'Back to main room' : 'Join room'}</Button>
                 </div>
                 <div className="line2">
-                  {help ? <span className="ac-chip"><Icon name="hand" size={13} />{callName(people.get(help.id) ?? { name: 'Someone', email: '' })} asked for help</span>
+                  {help ? <span className="ac-chip"><Icon name="hand" size={13} />{callName(people.get(help) ?? { name: 'Someone', email: '' })} asked for help</span>
                     : talking ? <><span className="ac-level" aria-hidden="true"><i /><i /><i /></span><span>{callName(people.get(talking) ?? { name: 'Someone', email: '' })} is talking</span></>
                       : <span>{inRoom.length ? `${inRoom.length} ${inRoom.length === 1 ? 'person' : 'people'}` : 'Nobody in this room'}</span>}
-                  {activity && <span className="end ac-chip">{activity.notes[k] ?? 0} {(activity.notes[k] ?? 0) === 1 ? 'note' : 'notes'}</span>}
+                  {coming > 0 && <span className="end">{coming} not here yet</span>}
                 </div>
               </div>
             );
@@ -154,7 +185,7 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
           </div>
           {sent && <motion.div className="sent" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={UI}><Icon name="check" size={15} /><span>Sent to {open.rooms.length} rooms: “{sent}”</span></motion.div>}
         </form>
-        <p className="ic-rnote"><Avatar person={me} size={18} /><span>{activity?.joined === null || !activity ? 'You’re in the main room.' : `You’re in ${open.rooms[activity.joined]?.name ?? 'a room'}.`} Rooms with notes on go into the call’s notes.</span></p>
+        <p className="ic-rnote"><Avatar person={me} size={18} /><span>{activity.joined === null ? 'You’re in the main room.' : `You’re in ${open.rooms[activity.joined]?.name ?? 'a room'}.`} Rooms with notes on go into the call’s notes.</span></p>
       </div>
       <div className="ic-foot"><Button variant="secondary" className="w-full" onClick={onClose}>Bring everyone back now</Button></div>
     </>

@@ -79,12 +79,24 @@ jobs:
       # Throwaway test keys; production keys live in Secret Manager.
       KMASTER: ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8
       KSERVICE: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8
+      # Local LiveKit started below with infra/livekit/dev.yaml.
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret-devsecret-devsecret-0123
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      # Service containers can't take a command or mount a file, so LiveKit starts here.
+      - name: Start LiveKit
+        run: |
+          docker run -d --name livekit --add-host=host.docker.internal:host-gateway \
+            -p 7880:7880 -p 7881:7881 -p 7882:7882/udp \
+            -v "$PWD/infra/livekit/dev.yaml:/etc/livekit.yaml:ro" \
+            livekit/livekit-server:v1.13.11 --config /etc/livekit.yaml
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:7880/ && exit 0; sleep 1; done; docker logs livekit; exit 1
       - name: Wait for the object store
         run: for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:9310/ && exit 0; sleep 1; done; exit 1
       - run: pnpm turbo run test

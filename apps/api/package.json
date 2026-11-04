@@ -22,6 +22,7 @@
     "@phala/dcap-qvl": "0.7.0",
     "hono": "^4.13.16",
     "jose": "^6.2.15",
+    "livekit-server-sdk": "^2.19.2",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pino-pretty": "^13.2.0",
@@ -29,6 +30,8 @@
   },
   "devDependencies": {
     "@alcove/api-http": "workspace:*",
+    "@livekit/rtc-ffi-bindings": "0.13.1",
+    "@livekit/rtc-node": "^1.2.1",
     "@peculiar/asn1-schema": "2.11.1",
     "@peculiar/asn1-x509": "2.11.1",
     "@types/node": "^26.6.6",

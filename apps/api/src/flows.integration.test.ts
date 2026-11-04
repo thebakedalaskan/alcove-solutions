@@ -63,9 +63,12 @@ async function account(email = unique()) {
   const r = await b.api.auth.signIn('sso', { email });
   return { ...b, session: r.session, isNew: r.isNew };
 }
+/** The organizer leaving ends the call; anything else is a mistake in the test. */
+async function ended(call: CallSession) { const r = await call.leave(); if (!r) throw new Error('the organizer’s leave ended nothing'); return r; }
 /** Waits until optimistic call actions have been confirmed by the server. */
 async function settle(call: CallSession, pred: (s: CallState) => boolean): Promise<CallState> {
-  for (let i = 0; i < 100 && !pred(call.getSnapshot()); i++) await new Promise((r) => setTimeout(r, 30));
+  // Other people's changes arrive by fetching the call again (in the app, the server's nudge does it).
+  for (let i = 0; i < 100 && !pred(call.getSnapshot()); i++) { await call.refresh(); await new Promise((r) => setTimeout(r, 30)); }
   return call.getSnapshot();
 }
 const SessionReply = z.object({ ownerId: z.string() });
@@ -233,6 +236,22 @@ describe('signing in', () => {
 });
 
 describe('signing in with Google', () => {
+
+  it('shows guests in a call no profile photos, since photos only load signed in', async () => {
+    const b = h.browser();
+    const n = Date.now().toString(36);
+    const ana: GoogleUser = { sub: `photo-host-${n}`, email: `ana.${n}@example.com`, name: 'Ana Ortiz', picture: `${h.google.issuer}/photo/ana-${n}` };
+    expect(landed(await viaGoogle(b, ana))).toBe('/ready');
+    const host = await b.api.calls.join((await b.api.calls.startNow({})).code, { mic: true, cam: false });
+    expect(host.getSnapshot().participants[0]?.person.photoUrl?.startsWith(`${h.baseUrl}/v1/photos/`)).toBe(true);
+    const guest = await h.browser().api.calls.join(host.getSnapshot().code, { mic: true, cam: false, name: 'Sam' });
+    await settle(host, (x) => x.waiting.length === 1);
+    await host.admit(guest.ticket.identity);
+    const seen = await settle(guest, (x) => x.participants.length === 2);
+    expect(seen.participants.find((p) => p.isOrganizer)?.person).toMatchObject({ name: 'Ana Ortiz' });
+    expect(seen.participants.find((p) => p.isOrganizer)?.person.photoUrl).toBeUndefined();
+    await host.leave();
+  });
   it('goes to Google and back, believes only what Google signed, and keeps one account per Google account', async () => {
     // Off to Google with a fresh state, nonce and PKCE challenge, asking for identity and calendar events.
     const b = h.browser();
@@ -536,13 +555,12 @@ describe('calls with notes', () => {
     expect(s.notes.recording.segment).toBe(1);
     await call.appendAudio(piece(audioBytes('segment-one'), 1, 0));
 
-    call.sendChat('CANARY-CHAT agenda link');
-    call.setSharing(true, 'Pilot timeline');
-    call.setMic(false);
-    s = await settle(call, (x) => x.chat.length === 1 && !!x.sharing && x.participants[0]?.mic === false);
-    expect(s.chat[0]?.text).toBe('CANARY-CHAT agenda link');
+    // Chat is end-to-end encrypted in the call's MLS group: this browser keeps what it sent.
+    await call.sendChat('CANARY-CHAT agenda link');
+    expect(call.crypto.getSnapshot().chat[0]?.text).toBe('CANARY-CHAT agenda link');
+    s = call.getSnapshot();
 
-    const end = await call.leave();
+    const end = await ended(call);
     expect(end.pendingNoteId).toBe(s.notes.noteId);
     const noteId = end.pendingNoteId ?? '';
 
@@ -567,7 +585,7 @@ describe('calls with notes', () => {
     const { api } = await account();
     const call = await api.calls.join((await api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
     expect(call.getSnapshot().notes.status).toBe('off');
-    expect((await call.leave()).pendingNoteId).toBeNull();
+    expect((await ended(call)).pendingNoteId).toBeNull();
     expect(await api.notes.list()).toEqual([]);
   });
 
@@ -575,7 +593,11 @@ describe('calls with notes', () => {
     const a = await account();
     const b = await account();
     const { code: c } = await a.api.calls.startNow();
-    expect(code(await b.api.calls.join(c, { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
+    // Another account can only come in by the link, as a guest, once the organizer is there.
+    expect(code(await b.api.calls.join(c, { mic: true, cam: true }).catch((e: unknown) => e))).toBe('conflict');
+    const hosting = await a.api.calls.join(c, { mic: true, cam: true });
+    expect((await b.api.calls.join(c, { mic: true, cam: true })).ticket.role).toBe('guest');
+    await hosting.leave();
     expect(code(await a.api.calls.join('zzz-zzzz-zzz', { mic: true, cam: true }).catch((e: unknown) => e))).toBe('not-found');
 
     const rec = await a.api.recordings.start('Mine');
@@ -621,7 +643,7 @@ describe('live transcript and written notes', () => {
     await call.transcribe(speech('That is everything for today.', 1, 0));
     expect(call.getSnapshot().transcript.at(-1)).toMatchObject({ at: 10, text: 'That is everything for today.' });
 
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await ended(call)).pendingNoteId ?? '';
     const steps = await written(org.api, noteId);
     expect(steps.at(-1)).toMatchObject({ ready: true, steps: expect.arrayContaining([{ label: 'Transcript of 4 lines', done: true }, { label: 'Notes written', done: true }]) });
     const note = await org.api.notes.get(noteId);
@@ -669,7 +691,7 @@ describe('live transcript and written notes', () => {
     const guestEmail = unique('guest');
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
     await call.transcribe(speech('We agreed to sell the old van. // The buyer pays on Monday.', 0, 0));
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const guest = await account(guestEmail);
     /** Asks while the notes model takes its time, and does `meanwhile` once the question has reached it. */
@@ -728,8 +750,9 @@ describe('live transcript and written notes', () => {
 
     // Nobody else can catch up on this call, and nothing about it keeps a receipt.
     const b = await account();
+    // Without this call's pass there's no way in.
     const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/catch-up`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-    expect(steal.status).toBe(404);
+    expect(steal.status).toBe(401);
     expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE owner_id = $1 AND (method LIKE '%catch-up%' OR method LIKE '%/ask')", [a.session.ownerId])).rows[0]?.n).toBe(0);
     await call.leave();
     expect(code(await call.catchUp().catch((e: unknown) => e))).toBe('conflict');
@@ -768,9 +791,10 @@ describe('live transcript and written notes', () => {
     const b = await account();
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
+    // The organizer's browser sends the call's pass with everything about the call; nobody else has it.
     const post = (who: Browser, base: string, path: string, bytes: Uint8Array<ArrayBuffer>, o: { type?: string; ms?: string } = {}) => who.fetch(`${base}/v1${path}`, {
       method: 'POST', body: new Blob([bytes]),
-      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000' }
+      headers: { 'content-type': o.type ?? 'audio/wav', 'x-alcove-segment': '0', 'x-alcove-start-ms': '0', 'x-alcove-duration-ms': o.ms ?? '4000', ...(who === a ? { 'x-alcove-call': call.ticket.pass } : {}) }
     });
     const hello = () => speechWav('Hello there.');
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { type: 'audio/webm' })).status).toBe(400);
@@ -779,7 +803,7 @@ describe('live transcript and written notes', () => {
     const cd = hello(); new DataView(cd.buffer).setUint32(24, 44_100, true);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, cd)).status).toBe(400);
     expect((await post(a, h.baseUrl, `/live/calls/${id}/transcribe`, hello(), { ms: '45000' })).status).toBe(400);
-    expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(404);
+    expect((await post(b, h.baseUrl, `/live/calls/${id}/transcribe`, hello())).status).toBe(401);
     const rec = await a.api.recordings.start('Mine');
     expect((await post(b, h.baseUrl, `/recordings/${rec.getSnapshot().id}/transcribe`, hello())).status).toBe(404);
     expect(code(await rec.transcribe(speech('Hello.', 1, 0)).catch((e: unknown) => e))).toBe('invalid');
@@ -849,9 +873,9 @@ describe('live transcript and written notes', () => {
 });
 
 describe('in the call: hands, spotlight, breakout rooms and captions', () => {
-  /** Sends one call action straight to the API and returns its status (the app's session turns refusals into notices). */
-  const act = async (b: Browser, callId: string, action: unknown) => (await b.fetch(`${h.baseUrl}/v1/live/calls/${callId}/actions`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(action)
+  /** Sends one call action straight to the API, with someone's call pass if they have one, and returns its status (the app's session turns refusals into notices). */
+  const act = async (b: Browser, callId: string, action: unknown, pass?: string) => (await b.fetch(`${h.baseUrl}/v1/live/calls/${callId}/actions`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(pass ? { 'x-alcove-call': pass } : {}) }, body: JSON.stringify(action)
   })).status;
 
   it('raises a hand, spotlights only someone in the call, and keeps both to the organizer’s own call', async () => {
@@ -866,17 +890,27 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(s.participants[0]).toMatchObject({ hand: true, isOrganizer: true });
     expect(s.spotlight).toBe(me);
     // Nobody who isn't in the call can be spotlighted.
-    expect(await act(a, s.callId, { type: 'spotlight', participantId: 'someone-else' })).toBe(400);
+    expect(await act(a, s.callId, { type: 'spotlight', participantId: 'someone-else' }, call.ticket.pass)).toBe(400);
     call.setSpotlight(null);
     s = await settle(call, (x) => x.spotlight === null);
     expect(s.spotlight).toBeNull();
-    // Another account can't raise a hand, spotlight or open rooms in this call.
+    // Someone without the call's pass can't do anything in it.
     const b = await account();
-    expect(await act(b, s.callId, { type: 'spotlight', participantId: null })).toBe(404);
-    expect(await act(b, s.callId, { type: 'hand', up: true })).toBe(404);
-    expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).toBe(404);
+    expect(await act(b, s.callId, { type: 'spotlight', participantId: null })).toBe(401);
+    expect(await act(b, s.callId, { type: 'hand', up: true })).toBe(401);
+    expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).toBe(401);
+    // A guest let in raises their own hand, which everyone sees; spotlight and rooms stay the organizer's.
+    const guestTab = h.browser();
+    const guest = await guestTab.api.calls.join(s.code, { mic: true, cam: false, name: 'Sam' });
+    await settle(call, (x) => x.waiting.some((w) => w.id === guest.ticket.identity));
+    await call.admit(guest.ticket.identity);
+    for (let i = 0; i < 100 && guest.crypto.getSnapshot().status !== 'in'; i++) await new Promise((r) => setTimeout(r, 30));
+    expect(await act(guestTab, s.callId, { type: 'hand', up: true }, guest.ticket.pass)).toBe(200);
+    expect((await settle(call, (x) => x.participants.some((p) => p.id === guest.ticket.identity && p.hand))).participants.find((p) => p.id === guest.ticket.identity)?.hand).toBe(true);
+    expect(await act(guestTab, s.callId, { type: 'spotlight', participantId: guest.ticket.identity }, guest.ticket.pass)).toBe(403);
+    expect(await act(guestTab, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 }, guest.ticket.pass)).toBe(403);
     await call.leave();
-    expect(await act(a, s.callId, { type: 'hand', up: false })).toBe(409);
+    expect(await act(a, s.callId, { type: 'hand', up: false }, call.ticket.pass)).toBe(409);
   });
 
   it('opens breakout rooms for invited people only, messages them, brings them back, and puts the rooms in the notes', async () => {
@@ -888,10 +922,10 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     await call.transcribe(speech('We agreed to split into two rooms.', 0, 0));
 
     // Only people invited to the call, each in one room, in two to eight rooms.
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5 })).toBe(400);
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5 })).toBe(400);
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5 })).toBe(400);
-    expect(await act(org, id, { type: 'rooms-message', text: 'Nobody to tell' })).toBe(409);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5 }, call.ticket.pass)).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5 }, call.ticket.pass)).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5 }, call.ticket.pass)).toBe(400);
+    expect(await act(org, id, { type: 'rooms-message', text: 'Nobody to tell' }, call.ticket.pass)).toBe(409);
 
     call.setSpotlight(call.getSnapshot().participants[0]?.id ?? null);
     await settle(call, (x) => x.spotlight !== null);
@@ -901,7 +935,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(open?.rooms.map((r) => [r.name, r.people.map((p) => p.email)])).toEqual([['Design', [kofi]], ['Support', [lena]]]);
     expect((open?.until ?? 0) - (open?.from ?? 0)).toBe(300);
     expect(s.spotlight).toBeNull(); // opening rooms ends a spotlight: everyone's stage changes
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).toBe(409);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 }, call.ticket.pass)).toBe(409);
 
     call.messageRooms('Two minutes left');
     s = await settle(call, (x) => x.breakouts.open?.message?.text === 'Two minutes left');
@@ -914,7 +948,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     // Rooms still open when the call ends come back too; every room the call held goes into its notes.
     call.openRooms({ rooms: [{ name: 'Pairs A', emails: [lena] }, { name: 'Pairs B', emails: [] }], minutes: 10 });
     await settle(call, (x) => x.breakouts.open !== null);
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     const rooms = note.chapters.filter((c) => c.title === '2 breakout rooms');
@@ -922,6 +956,57 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(rooms[0]?.summary).toBe('Design: Kofi. Support: Lena. 1 min.');
     expect(rooms[1]?.summary).toBe('Pairs A: Lena. Pairs B: nobody invited. 1 min.');
     expect(note.chapters.map((c) => c.at)).toEqual([...note.chapters.map((c) => c.at)].sort((x, y) => x - y));
+  });
+
+  it('says who is in each room, and lets the organizer visit one, where the people in it see and hear them', async () => {
+    const org = await account(unique('organizer'));
+    const kofiEmail = unique('kofi');
+    const call = await org.api.calls.join((await org.api.calls.startNow({ guests: [kofiEmail] })).code, { mic: true, cam: false });
+    const { callId: id, code: callCode } = call.getSnapshot();
+    const me = call.ticket.identity;
+    const kofi = await account(kofiEmail);
+    const kofiCall = await kofi.api.calls.join(callCode, { mic: true, cam: false });
+    const them = kofiCall.ticket.identity;
+    await settle(call, (x) => x.participants.some((p) => p.id === them));
+    expect(await act(org, id, { type: 'rooms-visit', roomId: null }, call.ticket.pass)).toBe(409);
+
+    call.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    let s = await settle(call, (x) => x.breakouts.open !== null);
+    const design = s.breakouts.open?.rooms[0]?.id ?? '';
+    // Who's in each room, by participant ID: the invited people sent there who are in the call. The organizer starts in the main room.
+    expect(s.breakouts.open?.rooms.map((r) => r.members)).toEqual([[them], []]);
+
+    call.visitRoom(design);
+    s = await settle(call, (x) => x.breakouts.open?.rooms[0]?.members.includes(me) === true);
+    expect([...(s.breakouts.open?.rooms[0]?.members ?? [])].sort()).toEqual([me, them].sort());
+    // Kofi's browser learns it from the call, and keeps its media to the people in the room.
+    expect((await settle(kofiCall, (x) => x.breakouts.open?.rooms[0]?.members.includes(me) === true)).breakouts.open?.rooms[0]?.members).toContain(me);
+    call.visitRoom(null);
+    s = await settle(call, (x) => x.breakouts.open?.rooms[0]?.members.length === 1);
+    expect(s.breakouts.open?.rooms.map((r) => r.members)).toEqual([[them], []]);
+
+    // Only a room this call has open, and only the organizer.
+    expect(await act(org, id, { type: 'rooms-visit', roomId: 'not-a-room' }, call.ticket.pass)).toBe(400);
+    expect(await act(kofi, id, { type: 'rooms-visit', roomId: design }, kofiCall.ticket.pass)).toBe(403);
+    const other = await account();
+    const otherCall = await other.api.calls.join((await other.api.calls.startNow()).code, { mic: true, cam: false });
+    otherCall.openRooms({ rooms: [{ name: 'Theirs', emails: [] }, { name: 'Also theirs', emails: [] }], minutes: 5 });
+    const theirs = (await settle(otherCall, (x) => x.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
+    expect(theirs).not.toBe('');
+    expect(await act(org, id, { type: 'rooms-visit', roomId: theirs }, call.ticket.pass)).toBe(400);
+    expect(await act(other, id, { type: 'rooms-visit', roomId: design }, otherCall.ticket.pass)).toBe(401);
+
+    // Closing the rooms brings the organizer back with everyone; rooms opened again start with them in the main room.
+    call.visitRoom(design);
+    await settle(call, (x) => x.breakouts.open?.rooms[0]?.members.includes(me) === true);
+    call.closeRooms();
+    await settle(call, (x) => x.breakouts.open === null);
+    call.openRooms({ rooms: [{ name: 'Again', emails: [kofiEmail] }, { name: 'Empty', emails: [] }], minutes: 5 });
+    s = await settle(call, (x) => x.breakouts.open !== null);
+    expect(s.breakouts.open?.rooms.map((r) => r.members)).toEqual([[them], []]);
+    expect(await kofiCall.leave()).toBeNull();
+    await ended(otherCall);
+    await ended(call);
   });
 
   it('translates live captions for the person asking, once per line and language, and keeps them only while the call records', async () => {
@@ -951,12 +1036,12 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     // Another account can't read this call's captions, even with the line IDs; its own call doesn't have them.
     const b = await account();
     const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: 'es', lines: ids }) });
-    expect(steal.status).toBe(404);
+    expect(steal.status).toBe(401);
     const theirs = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     await theirs.transcribe(speech('Something else entirely.', 0, 0));
     expect(await theirs.translate(ids, 'es')).toEqual([]);
     await theirs.leave();
-    expect((await a.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ language: 'xx', lines: ids }) })).status).toBe(400);
+    expect((await a.fetch(`${h.baseUrl}/v1/live/calls/${id}/translate`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify({ language: 'xx', lines: ids }) })).status).toBe(400);
 
     // When the call ends the captions go with the live transcript.
     await call.leave();
@@ -1185,7 +1270,7 @@ describe('confirming what the notes say', () => {
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
     await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0));
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await ended(call)).pendingNoteId ?? '';
     await written(org.api, noteId);
     let note = await org.api.notes.get(noteId);
     const decision = note.decisions[0]?.id ?? '';
@@ -1292,7 +1377,7 @@ describe('who has the notes', () => {
     const guestEmail = unique('guest');
     const call = await org.api.calls.join((await org.api.calls.startNow({ title: 'Receipt canary', notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
     await call.transcribe(speech('We agreed to ship on Thursday. // Can we test it first? // Someone will write the release notes.', 0, 0));
-    const noteId = (await call.leave()).pendingNoteId ?? '';
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     const guest = await account(guestEmail);
@@ -1394,8 +1479,8 @@ describe('privacy at rest', () => {
     // While the call is on, the live transcript is sealed rows too.
     const liveClips = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
     expect(liveClips).not.toBe('');
-    call.sendChat('CANARY-CHAT private remark');
-    await settle(call, (x) => x.chat.length === 1);
+    await call.sendChat('CANARY-CHAT private remark');
+    expect(call.crypto.getSnapshot().chat.map((m) => m.text)).toEqual(['CANARY-CHAT private remark']);
     // Captions in another language, and breakout room names and messages, are sealed too.
     expect((await call.translate(call.getSnapshot().transcript.map((l) => l.id), 'de'))[0]?.text).toContain('CANARY-SPEECH');
     call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5 });

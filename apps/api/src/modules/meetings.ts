@@ -14,6 +14,7 @@ import { lockOwner } from '../owners';
 import { createItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, preferences } from './account';
 import * as calendar from './calendar';
+import { indexCode } from './codes';
 import { personOf } from './portraits';
 
 const mlog = log.child({ component: 'meetings' });
@@ -91,7 +92,7 @@ export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
     title: input.title.trim() || 'Untitled call', ...validTimes(input.startsAt, input.durationMinutes),
     guests: cleanGuests(input.guests, organizer.email), notes: input.notes, code: makeCode(), status: 'scheduled'
   };
-  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  const { itemId } = await tx(o.pool, async (c) => { const r = await createItem(o, c, 'meeting', manifest); await indexCode(o, c, { ownerId: o.ownerId, meetingId: r.itemId, code: manifest.code }); return r; });
   mlog.info('meeting scheduled', { meetingId: itemId, guests: manifest.guests.length, notes: manifest.notes });
   await placeOnCalendar(o, itemId, manifest);
   return get(o, itemId);
@@ -170,7 +171,10 @@ export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | un
       title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
       notes: setting, code: makeCode(), status: 'scheduled', calendarEventId: eventId, ...(e.url ? { calendarUrl: e.url } : {}), ...series
     };
-    return { itemId: (await createItem(o, c, 'meeting', manifest)).itemId, manifest, created: true };
+    const { itemId } = await createItem(o, c, 'meeting', manifest);
+    // Anyone with the link finds the call by its code.
+    await indexCode(o, c, { ownerId: o.ownerId, meetingId: itemId, code: manifest.code });
+    return { itemId, manifest, created: true };
   });
   if (made.created) {
     await calendar.change(o, eventId, made.itemId, made.manifest, e.description);
@@ -188,7 +192,7 @@ export async function startNow(o: Owner, input: InstantCallInput): Promise<{ cod
     title: input.title?.trim() || `${firstName(organizer.name)}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(),
     guests: cleanGuests(input.guests ?? [], organizer.email), notes, code: makeCode(), status: 'scheduled'
   };
-  const { itemId } = await tx(o.pool, (c) => createItem(o, c, 'meeting', manifest));
+  const { itemId } = await tx(o.pool, async (c) => { const r = await createItem(o, c, 'meeting', manifest); await indexCode(o, c, { ownerId: o.ownerId, meetingId: r.itemId, code: manifest.code }); return r; });
   mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes });
   return { code: manifest.code };
 }
@@ -217,7 +221,10 @@ export async function scheduleNext(o: Owner, id: string, startsAt: string): Prom
     const seriesId = from.seriesId ?? id128();
     if (!from.seriesId) await saveRevision(o, c, id, cur.revisionId, { ...from, seriesId });
     const manifest: MeetingManifest = { title: from.title, ...times, guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId };
-    return { itemId: (await createItem(o, c, 'meeting', manifest)).itemId, manifest, started: !from.seriesId };
+    const { itemId } = await createItem(o, c, 'meeting', manifest);
+    // Anyone with the link finds the call by its code.
+    await indexCode(o, c, { ownerId: o.ownerId, meetingId: itemId, code: manifest.code });
+    return { itemId, manifest, started: !from.seriesId };
   });
   mlog.info('next call in a series scheduled', { meetingId: made.itemId, after: id, seriesStarted: made.started, guests: made.manifest.guests.length, notes: made.manifest.notes });
   await placeOnCalendar(o, made.itemId, made.manifest);

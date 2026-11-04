@@ -1,6 +1,7 @@
 /*
- * Leaving: one calm sheet whose content changes in place. First the choice; once the call has
- * ended, who gets the notes and how they're coming along, until they can be read.
+ * Leaving: one calm sheet whose content changes in place. First the choice: the organizer ends the call
+ * for everyone, anyone else just leaves. Once the organizer has ended it, who gets the notes and how
+ * they're coming along, until they can be read.
  */
 import { errorMessage, minutesLabel, type NoteProgress, type Person } from '@alcove/api';
 import { Button, Dots, Faces, Icon, Modal } from '@alcove/ui';
@@ -15,8 +16,14 @@ const UI = { duration: 0.28, ease: [0.22, 0.8, 0.24, 1] } as const;
 
 export type Ended = { noteId: string | null; duration: number };
 
-export function LeaveSheet({ open, onOpenChange, title, elapsed, others, getting, leaving, ended, onEnd, onRead, onHome }: {
+export function LeaveSheet({ open, onOpenChange, title, elapsed, organizer, notes, locked, others, getting, leaving, ended, onEnd, onRead, onHome }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; elapsed: number;
+  /** You organized the call: leaving ends it for everyone. Anyone else just leaves. */
+  organizer: boolean;
+  /** Notes have been on at some point, so the call has notes. */
+  notes: boolean;
+  /** Nobody new can join, so someone who leaves can't come back. */
+  locked: boolean;
   /** Anyone else in the call. */
   others: number;
   /** Everyone invited besides you: they get the notes too. */
@@ -51,9 +58,14 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, others, getting
             <motion.div key="ask" initial={false} exit={{ opacity: 0 }} transition={UI}>
               <div className="ac-eyebrow">{title} · {minutes} min</div>
               <h2 className="ac-display-s">Leave the call?</h2>
-              <p>{others ? 'You organized this call. Leaving ends it for everyone, and the notes go to everyone invited.' : 'You’re the only one here, so leaving ends the call.'}</p>
+              <p>{!organizer ? (locked ? 'The call goes on without you. It’s locked, so you can’t join again unless the organizer unlocks it.' : 'The call goes on without you. You can join again with the link.')
+                : !others ? 'You’re the only one here, so leaving ends the call.'
+                  : notes ? 'You organized this call. Leaving ends it for everyone, and the notes go to everyone invited.'
+                    : 'You organized this call. Leaving ends it for everyone. No notes were taken.'}</p>
               <div className="acts">
-                <Button variant="primary" loading={leaving} onClick={onEnd} autoFocus>{leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call'}</Button>
+                <Button variant="primary" loading={leaving} onClick={onEnd} autoFocus>
+                  {!organizer ? (leaving ? 'Leaving…' : 'Leave the call') : leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call'}
+                </Button>
                 <Button variant="quiet" disabled={leaving} onClick={() => onOpenChange(false)}>Stay in the call</Button>
               </div>
             </motion.div>

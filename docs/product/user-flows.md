@@ -135,10 +135,9 @@ dock at the bottom.
 - Turning notes off keeps what was recorded and transcribed. Turning them on again records a new part.
 - Changes show as short notices beside the dock, like "Notes are on. Everyone here can see that."
 
-Calls have one participant today. In development builds, five of Alcove's illustrated cast join a call so
-the parts that need other people (their tiles, captions, raised hands, spotlight and rooms) can be seen;
-nothing they "say" reaches the transcript or the notes
-([Calls and recordings › Multi-party preview](../engineering/calls-and-recordings.md#multi-party-preview)).
+Calls are for groups: invited people join with their accounts, anyone else with the link asks and the
+organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
+([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
 ## 6. End the call and get the notes
 
