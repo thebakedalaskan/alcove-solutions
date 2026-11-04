@@ -556,6 +556,10 @@ describe('breakout rooms, each with its own keys', () => {
     expect(said(lena.call)).toEqual([]);
     expect(await kofi.call.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 1 } });
     expect(await lena.call.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 0 } });
+    // Its moments too: Kofi opens the line in Design, and for Lena, in Support, it isn't there.
+    const designLine = kofi.call.getSnapshot().transcript[0]?.id ?? '';
+    expect((await kofi.call.moment(designLine)).lines.map((l) => l.text)).toEqual(['CANARY-HEARD only for Design.']);
+    expect(code(await lena.call.moment(designLine).catch((e: unknown) => e))).toBe('not-found');
     // The organizer's last words in Design, begun while it was there and still on their way when it went back, stay in
     // Design: they're placed where it was when it began saying them, not where it is when they arrive.
     host.visitRoom(null);
@@ -590,6 +594,8 @@ describe('breakout rooms, each with its own keys', () => {
     expect((await h.pool.query('SELECT count(*)::int AS n FROM call_mls WHERE call_id = $1 AND grp = ANY($2::text[])', [host.ticket.callId, [design, support]])).rows[0]?.n).toBe(0);
     await settle(host, (x) => x.breakouts.open === null);
     expect(said(host)).toEqual(['We start together.']);
+    // A moment of Design's goes with the room.
+    expect(code(await again.moment(designLine).catch((e: unknown) => e))).toBe('not-found');
     await expectNotInRows(['calls', 'call_mls', 'transcript_clips'], ['CANARY-ROOMNAME', 'CANARY-HEARD']);
     expect(h.logs.join('').includes('CANARY-ROOMNAME') || h.logs.join('').includes('CANARY-HEARD')).toBe(false);
     // Once the rooms are closed there's nothing to commit to in them.

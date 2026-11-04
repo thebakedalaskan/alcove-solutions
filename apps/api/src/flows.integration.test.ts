@@ -791,8 +791,11 @@ describe('live transcript and written notes', () => {
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
     await call.appendAudio(piece(audioBytes('catch-a'), 0, 0));
-    await call.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0), call.ticket.identity);
-    await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000), call.ticket.identity);
+    // The server places speech by when it began: the first clip as the call starts, the second six seconds in.
+    const heardAt = (s: number) => performance.now() - (Date.now() - (Date.parse(call.getSnapshot().startedAt) + s * 1000));
+    await call.transcribe({ ...speech('We should move the launch. // Can we afford the delay?', 0, 0), heardAt: heardAt(0) }, call.ticket.identity);
+    await new Promise((r) => setTimeout(r, 6200));
+    await call.transcribe({ ...speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000), heardAt: heardAt(6) }, call.ticket.identity);
     const line = (text: string) => call.getSnapshot().transcript.find((l) => l.text === text)?.id ?? `missing: ${text}`;
     const moment = (text: string, said: number) => [{ kind: 'transcript', lineId: line(text), said: expect.closeTo(said, 0) }];
     const sent = h.near.calls.length;
