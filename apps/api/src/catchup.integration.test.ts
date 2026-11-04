@@ -265,6 +265,31 @@ describe('catching up during a call', () => {
     await host.leave();
   });
 
+  it('lets someone signed in whom the organizer lets in from the link read the whole call, once the invite has them', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    await host.appendAudio(piece(audioBytes('invite'), 0, 0));
+    const A = 'We agreed on the budget before anyone else came.';
+    await host.transcribe(speech(A, 0, 0), host.ticket.identity);
+    const ids = await lineIds(host, 1);
+    await sleep(1100);
+    // Not on the invite when they come: they ask from the link under their account, and the organizer lets them in.
+    const lee = await (await account(unique('lee'))).api.calls.join(c, { mic: true, cam: false });
+    expect(lee.ticket.role).toBe('guest');
+    await letIn(host, lee);
+    expect((await settle(lee, (x) => x.role === 'invited')).role).toBe('invited');
+    // On the invite now, so like everyone invited they read the whole call, what was said before they came included.
+    expect((await settle(lee, (x) => x.transcript.length === 1)).transcript.map((l) => l.text)).toEqual([A]);
+    expect((await lee.catchUpWindow()).here).toBeNull();
+    const before = await lee.catchUp({ kind: 'before-joined' });
+    expect(before.read).toMatchObject({ lines: 1, whileHere: false });
+    expect(cited(before).map((e) => e.lineId)).toEqual([id(ids, A)]);
+    expect((await lee.moment(id(ids, A))).lines.map((l) => l.text)).toEqual([A]);
+    await host.leave();
+  });
+
   // The shortest "last N minutes" is one, so this waits for a line to be more than a minute old.
   it('reads only the last few minutes when asked for them, and nothing said before', async () => {
     const org = await account();

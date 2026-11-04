@@ -815,8 +815,8 @@ ranges refused (one that hasn't happened, one that ends before it starts, time a
 away, an unknown kind); what a stretch is missing (before notes came on, while they were off or paused, while the
 organizer's connection was away) and what a stretch too long to read at once skipped; a guest with the link
 reading only what was said while they were here, in the live transcript, catching up, asking, moments and
-captions, and nothing from while they were away, while someone invited, before the call or once in it, reads it
-all; answers withheld from someone removed, gone or past the end of the call while they were written; refusals
+captions, and nothing from while they were away, while someone invited before the call, or added to the invite
+once let in from the link, reads it all; answers withheld from someone removed, gone or past the end of the call while they were written; refusals
 for someone still asking, the same organizer's other call and another account's (a moment of this call is `404`
 there), a pass for another call and a malformed moment; and nothing reaching the call's state (its version
 doesn't move, others see the same call) or any row, object, receipt or log line, with the question sealed on the
