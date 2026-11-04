@@ -211,7 +211,9 @@ sequenceDiagram
    "Thank you." or "Thanks for watching". A reply without segments but with text becomes one line.
 6. **Placing lines.** A line's `at` is seconds into the whole recording as the note's player counts it:
    the earlier segments' recorded seconds, plus where the clip starts, plus where the line starts in the
-   clip, to a tenth of a second.
+   clip, to a tenth of a second. In a call each line also keeps when it was said (`when`): the moment its segment
+   of the recording started, kept in the call's sealed state as each segment begins, plus where the clip and the
+   line start in it. Catching up reads stretches of the call by it.
 7. **Kept sealed.** The lines of one clip (none, if nothing survived the filter) and the evidence of the
    verification it was sent to are one `transcript_clips` row, sealed under the state key
    `transcript:<noteId>` (record kind `transcript-clip`; the header binds the owner, the note and the tag).
@@ -221,8 +223,9 @@ sequenceDiagram
    oldest first. Each call line is said by whoever's voice it was, named from the call's people as
    the viewer may see them (a guest sees names, never email addresses), with the breakout room it was said in,
    by name, if any. A line said in a breakout room is shown only to the people sent there and the organizer
-   (and only those lines go into their catching up, questions and caption translations). Room lines name
-   nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
+   (and only those lines go into their catching up, questions and caption translations). A guest with the link
+   sees only the lines said while they were in the call ([Catching up during a call](#catching-up-during-a-call)).
+   Room lines name nobody. The HTTP client takes only the transcript from a clip's answer, so a slow clip can't undo a
    newer mic or notes change.
 
 ## When the recording stops
@@ -308,21 +311,59 @@ note was deleted or removed from their notes meanwhile, the answer, which may qu
 
 ## Catching up during a call
 
-While a call is on, **Catch up** (top bar, the More menu, and "Catch me up" in the Ask view) reads the live
-transcript for the person asking alone (`apps/api/src/modules/calls.ts`). The Notes view during a call uses
-the same request over the whole call to show what's decided, the follow-ups (with who and when, as said)
-and a summary, refreshed as new lines arrive (at most every 30 seconds, only while it's open):
+While a call is on, anyone let in can catch up and ask about it, for themselves alone
+(`apps/api/src/modules/calls.ts` for the call, `apps/api/src/modules/catchup.ts` for ranges and evidence).
+**Catch up** in the top bar and the More menu catches you up on what you most likely missed: your time away if
+it was in the last ten minutes, what was said before you came if you just joined late, or else the last five
+minutes. The Ask view catches you up on, and answers questions from, a range you pick (the whole call unless you
+pick otherwise). The Notes view during a call reads the whole call to show what's decided, the follow-ups and a
+summary, refreshed when a new line arrives (at most every 30 seconds, only while it's open).
 
-- `POST /v1/live/calls/:id/catch-up` with `{minutes?}` (1 to 600; none means the whole call) reads the lines
-  from `through − minutes` onwards, where `through` is the newest line, and returns a `CatchUp`: a short
-  `summary`, what was `decided`, what was `proposed` and not agreed, what's still `open`, and what's `next`,
-  each item with the second it was said. It also says what it read (`from`, `through`, `lines`), when it was
-  put together (`asOf`, seconds since the call started) and the `gaps`: the stretches of the call with notes
-  off, kept as on/off times in the sealed call state, since nothing said then can be in it.
-- `POST /v1/live/calls/:id/ask` with `{question}` answers from the transcript so far, with cited moments.
-- Both need a live call that has had notes on (`409 conflict` otherwise) and share the 20-a-minute limit
-  with asking about notes. Nothing is stored and neither keeps an operation receipt: an answer goes only to
-  the person who asked. Catch up reads the last 5 minutes; the Notes view reads the whole call.
+- **What to read.** `POST /v1/live/calls/:id/catch-up` with `{range}`, and `POST /v1/live/calls/:id/ask` with
+  `{question, range}`. A range is `recent` (`minutes`, 1 to 600), `since-joined`, `before-joined`, `away`,
+  `between` (`from`, and `to` or null for up to now, in seconds since the call started) or `all`. All but
+  `before-joined`, `away` and a `between` with an end run up to now, lines said while it's read included.
+  `away` is your latest time away, from 30 seconds before you dropped out (a browser that drops without a word
+  is noticed late, and the last thing you heard picks the thread up) until you were back. A stretch that starts
+  after now or ends before it starts is `400 invalid`; `away` for someone who hasn't been away is `409 conflict`.
+- **Who was here when.** Each person's time in the call comes from their connections: when each was let in, and
+  when it stopped being in (left, removed, or replaced by a reload or another device), kept in the call's sealed
+  state. Someone on the invite is one person across devices (by their address), a guest across reloads (by their
+  pass), and the organizer across every connection of theirs. Their latest time away is the latest gap between
+  those stretches. `GET /v1/live/calls/:id/catch-up` gives the person asking their window for choosing a range:
+  now, when they first came in, their latest time away, for a guest the stretches they were here, and the
+  stretches with notes off.
+- **What comes back.** A catch-up (`CatchUp`) is a short `summary` and four lists: `decided`, `proposed` (never
+  counted as decided), `open` questions and `next` steps, with an `owner` and `due` as they were said. An answer
+  (`CallAnswer`) is its `text`. Each point, and each answer, carries its `evidence`: the transcript moments it
+  comes from, each a line's ID and when it was said. `Evidence` is a list of kinds of moment; moments of a
+  shared screen join it once shared screens are read for the notes.
+- **No invented evidence.** The lines go to the notes model numbered (`L12 [03:41] Name: words`), and it says
+  which numbers each point comes from. Only numbers of lines it was sent from the stretch read are kept; any
+  other is dropped, and a point it couldn't tie to any such line is left out (and counted in the log). The
+  moments are the server's lines, never times the model typed.
+- **How complete and how current.** Each says what it read (`read`): the stretch (`from` and `to`), how many lines,
+  when the newest of them was said (`through`) and when it was put together (`asOf`). It names what can't be in
+  it: the stretches with notes off (`gaps`, including before notes first came on), the stretches with notes on
+  and nothing transcribed because the organizer's browser, which sends what's said, wasn't in the call (`missed`,
+  from the organizer's connections; two seconds or more), and whether being a guest left part of the range out
+  (`whileHere`). A stretch with nothing said in it is answered without asking the model.
+- **Opening a moment.** `GET /v1/live/calls/:id/transcript/:lineId` gives that line and up to six either side,
+  each with when it was said. It checks again what the person may read now: a line that isn't in this call's live
+  transcript, and one they may not read, are both `404 not-found`, so nothing is learned by asking. 60 a minute
+  per person.
+- **Who reads what.** The organizer and everyone on the invite read the whole call: they get the notes anyway.
+  A guest with the link isn't on the invite and never gets the notes, so they read only what was said while
+  they were in the call, as with chat from before they came: nothing from before they were let in, or from while
+  they were away. The same rule holds for the live transcript, captions in another language, catching up,
+  asking and moments. A line said in a breakout room is read only by the people sent there and the organizer.
+- **Checked again once written.** An answer can take the model up to a minute. Once it's written the asker's
+  grants are checked again, and it isn't sent if the host removed them (`403 forbidden`), they left the call
+  (`403 forbidden`) or the call ended (`409 conflict`).
+- **Not broadcast, not kept.** Nothing about catching up goes into the call's state or nudges anyone else's
+  browser. Questions and answers aren't stored anywhere, and no operation receipt is kept. Catching up and
+  asking share the 20-a-minute limit with asking about notes. They need a live call that has had notes on
+  (`409 conflict` otherwise).
 
 ## Captions in another language
 
@@ -331,7 +372,7 @@ and a summary, refreshed as new lines arrive (at most every 30 seconds, only whi
 asking. Lines already translated into that language come from their sealed `transcript_translations` row;
 the rest go to the notes model in one request, sealed to its verified key like every request, and are kept
 the same way, until the recording stops. Line IDs
-that aren't in this call's live transcript are left out. 90 requests a minute per account; nothing is
+that aren't in this call's live transcript, or that the person asking may not read, are left out. 90 requests a minute per account; nothing is
 charged, and no operation receipt is kept.
 
 ## Series
@@ -424,13 +465,18 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   note; see [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)).
 - **Answering.** The summary, the asker's name and the question are added. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
-  such as an email), "I" and "me" meaning the asker, answering from what's been said so far when the call is
-  still going on, saying plainly when the transcript doesn't cover it, and up to four seconds the answer
-  comes from.
-- **Catching up.** The transcript so far, told the meeting is still going on. One JSON object: a one- or
-  two-sentence `summary` and four lists, `decided`, `proposed` (never counted as decided), `open` questions
-  and `next` steps, each item a short sentence with the second it was said; a next step also has its
-  `owner` and `due` as said, or null. At most 8 items a list; times must fall within the recording.
+  such as an email), "I" and "me" meaning the asker, saying plainly when the transcript doesn't cover it, and up
+  to four seconds the answer comes from.
+- **Answering during a call.** The lines of the stretch read, numbered (`L12 [mm:ss] Name: words`), with a line
+  saying which stretch it is ("the last 5 minutes", "what was said while the asker was away from the call"), told
+  the meeting is still going on; then the asker's name and the question. One JSON object, `{answer, lines}`: at
+  most four sentences unless the question asks for a draft, answering from those lines and saying plainly when
+  they don't cover it, and the numbers of up to four lines the answer comes from.
+- **Catching up.** The lines of the stretch read, numbered, and the stretch in words, told the meeting is still
+  going on. One JSON object: a one- or two-sentence `summary` and four lists, `decided`, `proposed` (never counted
+  as decided), `open` questions and `next` steps, each item a short sentence with the numbers of the one to three
+  lines it comes from, leaving out anything it can't point to a line for; a next step also has its `owner` and
+  `due` as said, or null. At most 8 items a list.
 - **Translating captions.** The language's English name and the lines as `{id, text}` JSON. One JSON
   object, `{lines: [{id, text}]}`: every line translated, ids kept, names, numbers and dates exact, a line
   already in that language returned as it is, nothing added or left out. Lines with an unknown id or empty
@@ -455,7 +501,8 @@ Replies are checked before anything is kept:
   name. Words such as "unknown" or "the team" mean no owner; anyone else keeps the name the model gave.
 - Lengths are capped: a summary of 1,500 characters; at most 12 decisions, 12 open questions, 20
   follow-ups, 8 chapters and 3 suggested questions. Chapter times are kept within the recording and
-  de-duplicated, and cited moments must fall within it. A series answer's source must be one of the calls
+  de-duplicated, and cited moments must fall within it. During a call, a line number must be one of the lines
+  sent from the stretch read; a point with none is left out. A series answer's source must be one of the calls
   sent, its moment inside that call's recording; repeats are dropped.
 
 ## Models and requests
@@ -518,7 +565,13 @@ never logged. Around it, IDs, attempts, counts and timings: `series read` at deb
 answered`, `question changed`, `next call in a series scheduled`, `notes job dropped`, `nothing was
 transcribed; note finished without notes` and `clip arrived after the recording stopped; dropped` at info;
 `notes not written yet; trying again` at warn; a note finished without a summary after its last attempt at
-error. Speech, transcript lines, prompts, replies and questions are never logged, and neither are the
+error. Catching up during a call logs `caught up during a call` and `question answered during a call` at info
+with the call ID, the kind of range, how many lines were read, the gaps and missed stretches in it, whether a
+guest's window narrowed it, how many points came back, how many the model couldn't tie to a line (`uncited`),
+how many moments an answer cites, and the time taken; a stretch with nothing said in it, `caught up on a stretch
+with nothing said` (or `question about a stretch with nothing said`); and `transcript moment opened` at debug, with
+how many lines came with it. A refusal (removed, left, ended while it was written) is a refused request with the
+call ID, the role and what it was. Speech, transcript lines, prompts, replies and questions are never logged, and neither are the
 asker's time zone or Google's event IDs: an occurrence's ID begins with its recurring event's, so logged
 paths show `/v1/calendar/events/:id`, and a refused adopt's error carries no ID in its context. An answer
 dropped because a note went while it was written is logged at info as a refused request with the series or
@@ -545,8 +598,9 @@ refuse what was sealed to them or seal their replies wrong, and its models' keys
 
 The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a call and
 a room recording, retried and silent clips, notes off and on again, the clip format and access checks, a
-server without a key, writing and charging, asking and catching up (also by someone invited), an answer
-dropped because its note was deleted or removed while it was written, retries up to the third failure, and
+server without a key, writing and charging, asking and catching up (with each point's moments: only lines that
+were read, the model's invented decision and its pointers at lines that aren't there dropped; a stretch picked on
+the call's clock; opening a moment), an answer dropped because its note was deleted or removed while it was written, retries up to the third failure, and
 the evidence the note keeps. `in the call: hands, spotlight, breakout rooms and captions` covers translating
 captions (once per line and language, sealed to the verified notes model, cross-account, gone when the call
 ends) and breakout rooms ending up in the notes' chapters. `verified private inference` covers:
@@ -561,6 +615,18 @@ ends) and breakout rooms ending up in the notes' chapters. `verified private inf
 
 `privacy at rest` checks that no clip, transcript, title, name or question crossed the wire to NEAR AI
 readable, in any encoding, and that nothing went to NEAR AI's plaintext endpoints.
+
+`apps/api/src/catchup.integration.test.ts` covers catching up during a call: before you joined, since you
+joined and while you were away (a page that goes away and comes back), both ends of a stretch in it, a stretch
+with nothing said answered without asking the model, ranges refused (one that hasn't happened, one that ends
+before it starts, time away for someone who hasn't been away, an unknown kind); what a stretch is missing (before
+notes came on, while they were off, while the organizer's connection was away); a guest with the link reading
+only what was said while they were here, in the live transcript, catching up, asking, moments and captions, and
+nothing from while they were away, while someone invited reads it all; answers withheld from someone removed, gone
+or past the end of the call while they were written; refusals for someone still asking, the same organizer's
+other call and another account's (a moment of this call is `404` there), a pass for another call and a malformed
+moment; and nothing reaching the call's state (its version doesn't move, others see the same call) or any row,
+object, receipt or log line, with the question sealed on the wire to NEAR AI.
 
 `apps/api/src/series.integration.test.ts` covers series: scheduling the next call (and the times it
 refuses), what carries over for the organizer and for everyone invited, staleness, decisions that no longer
@@ -609,6 +675,17 @@ answers dropped because a note they read went while they were written.
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't
   transcribed during the recording (NEAR AI down, a clip lost) isn't transcribed again from the stored
   audio afterwards.
+- **Catching up on what was shown.** Shared screens aren't read, so a catch-up's evidence is transcript moments
+  only. When screens are read for the notes, their moments join `Evidence` as a kind of their own.
+- **Time away the server doesn't see.** A connection that blinks and comes back on its own, within LiveKit's
+  departure timeout, never stops being in the call, so it isn't time away; "Last 5 minutes" covers it. A browser
+  that dies without a word is noticed when LiveKit says so (about 20 seconds later), which the 30-second lead-in
+  of a catch-up on time away covers.
+- **When a line was said** is when its segment started on the server plus the browser's own count of the segment,
+  and the browser starts listening a moment after the server starts the segment, so a line can be placed up to
+  about a second early. For a guest that leaves out a line said just as they arrived, never one said before.
+- **No rewind.** Nothing keeps a rolling recording of a call: audio is kept only while notes are on, for the notes,
+  and catching up reads the transcript. Going back to hear or see a moment is a later phase.
 - **Series during the call.** Neither the call screen nor pre-join shows what carries over or answers
   across the series yet; both are being rebuilt for group calls.
 - **Series for people invited.** Someone invited finds a series through its notes. Their own Home doesn't

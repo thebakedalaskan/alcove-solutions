@@ -243,7 +243,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the first
   `x-forwarded-for` entry). Browser reports: 60 a minute per client address. Transcript clips: 120 a minute
   per account, calls and room recordings together. Questions and catch-ups (about notes, a call so far or a
-  series): 20 a minute per account, together. Over a
+  series): 20 a minute per account, together (during a call, per person in it). Opening a moment of a call's live
+  transcript from a catch-up: 60 a minute per person in the call. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB or a transcript clip over 30 seconds of WAV is refused from its
