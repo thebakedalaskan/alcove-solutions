@@ -30,6 +30,7 @@
 .ac-btn.is-quiet { background: transparent; color: var(--ink-2); }
 .ac-btn.is-quiet:hover { background: var(--sunk); color: var(--ink); }
 .ac-btn.is-sm { height: 36px; padding: 0 14px; border-radius: var(--radius-sm); font-size: 13.5px; }
+.ac-btn.is-xs { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; gap: 6px; }
 .ac-btn.is-lg { height: 52px; padding: 0 24px; font-size: 15.5px; }
 .ac-btn[disabled] { opacity: .4; pointer-events: none; box-shadow: none; }
 .ac-btn .kb { margin-left: 2px; opacity: .6; font: 500 11px/1 var(--font-mono); }

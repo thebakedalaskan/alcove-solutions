@@ -7,7 +7,7 @@ import { CheckDraw, EASE } from './motion';
 
 /* ---------- Button ---------- */
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet';
-export type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 /** The button classes, for a link that looks like a button. */
 export function buttonClass({ variant = 'secondary', size = 'md' }: { variant?: ButtonVariant | undefined; size?: ButtonSize | undefined } = {}): string {
@@ -28,7 +28,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', icon, iconRight, loading, kb, className, children, disabled, type = 'button', ...rest }, ref
 ) {
-  const iconSize = size === 'sm' ? 16 : 18;
+  const iconSize = size === 'xs' ? 15 : size === 'sm' ? 16 : 18;
   return (
     <button ref={ref} type={type} disabled={disabled || loading} className={cn(buttonClass({ variant, size }), className)} {...rest}>
       {loading ? <Spinner /> : icon && <Icon name={icon} size={iconSize} />}
