@@ -14,7 +14,7 @@
  * call's join page, the note, Notes or Home itself, so leaving a call or a recording still asks first (public/sw.js).
  */
 import { WorkerMessageSchema, notesAreOn, type CallState, type Meeting, type NoteStatus, type NotificationOpen, type NotificationPrefs, type OpenAction } from '@alcove/api';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { askerOf } from '~/features/call/Capture';
@@ -278,7 +278,18 @@ export function useNotifications() {
   // A switch changed in another tab or on another device, or someone else signing in, reaches this tab within a minute.
   useQuery({ ...q.session(), enabled: allowed, ...KEEP_READING });
   const prefs = useQuery({ ...q.prefs(), enabled: allowed, ...KEEP_READING }).data?.notifications;
-  const want = allowed && prefs ? prefs : NONE;
+  // A tab that takes over asks who's signed in before it shows anything: the tab before it may have just signed out,
+  // which forgets what's been shown, so everything would look new here.
+  const qc = useQueryClient();
+  const [sure, setSure] = useState(false);
+  useEffect(() => {
+    if (!allowed) { setSure(false); return; }
+    let on = true;
+    const done = () => { if (on) setSure(true); };
+    void qc.fetchQuery({ ...q.session(), staleTime: 0 }).then(done, done);
+    return () => { on = false; };
+  }, [allowed, qc]);
+  const want = allowed && sure && prefs ? prefs : NONE;
   const go = useGo();
   const here = useRouterState({ select: (s) => s.location.pathname });
 
