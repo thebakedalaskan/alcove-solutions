@@ -660,6 +660,9 @@ describe('breakout rooms, each with its own keys', () => {
     await settle(kofi.call, (x) => x.capture.mode === 'paused');
     expect(code(await host.transcribe(speech('Support while paused.', 0, 9000), lena.call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await host.pauseRoom(support, true).catch((e: unknown) => e))).toBe('conflict');
+    // Capture times are kept in tenths of a second, and a pause that ends in the tenth it began leaves no gap: let this
+    // one last long enough to measure, or a fast run resumes in the same tenth and Support has nothing to show.
+    await new Promise((r) => setTimeout(r, 300));
     await host.resume();
     const support2 = await settle(lena.call, (x) => x.capture.mode === 'on' && x.capture.room?.mode === 'on');
     expect(support2.capture.room?.gaps.map((g) => g.to === null)).toEqual([false]);
