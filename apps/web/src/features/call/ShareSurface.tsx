@@ -259,7 +259,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe }: {
         <BarButton where={where} icon={held ? 'play' : 'pause'} label={held ? 'Back to live' : 'Freeze the picture'} keys="F" onClick={() => (held ? look.live() : void look.freeze())} />
         {held && <BarButton where={where} icon="stepForward" label={newest ? 'Back to live' : 'Later picture'} keys="." onClick={() => look.later()} />}
         <span className="sep" aria-hidden="true" />
-        <BarButton where={where} icon="zoomOut" label="Zoom out" keys="−" disabled={!zoomed} onClick={() => look.zoomStep(-1)} />
+        <BarButton where={where} icon="zoomOut" label="Zoom out" keys="-" disabled={!zoomed} onClick={() => look.zoomStep(-1)} />
         <BarButton where={where} className="lv" label={zoomed ? `Zoomed to ${zoomLabel(s.framing.zoom)}. Show the whole picture` : 'The whole picture'} keys="0" disabled={!zoomed} onClick={() => look.whole()}>
           {zoomLabel(s.framing.zoom)}
         </BarButton>
