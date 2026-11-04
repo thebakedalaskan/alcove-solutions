@@ -56,6 +56,9 @@ interface Graph { ctx: AudioContext; parts: Promise<{ node: AudioWorkletNode; mu
  */
 export interface Shared { context: AudioContext; origin: number; own: boolean }
 
+/** Whether this browser can listen for the live transcript at all: it needs audio worklets. */
+export const canListen = (): boolean => typeof AudioWorkletNode !== 'undefined';
+
 /** The capture worklet, loaded once in each audio context however many voices it hears. */
 const loaded = new WeakMap<AudioContext, Promise<void>>();
 function loadCapture(ctx: AudioContext): Promise<void> {
@@ -74,6 +77,8 @@ export class SpeechClips {
   private track: MediaStreamTrack | null = null;
   /** Bumped by stop(): a start still loading the worklet gives up, and clips not sent yet are dropped. */
   private gen = 0;
+  /** Set by hold(): nothing more is heard or sent until release() carries on or stop() drops it. */
+  private gate: { wait: Promise<void>; open: () => void } | null = null;
   private segment = -1;
   private paused = false;
   private startedAt = 0;
@@ -102,8 +107,27 @@ export class SpeechClips {
       // The recorder starts now; the first samples arrive a little later and are placed by the clock.
       this.startedAt = performance.now();
     }
-    this.paused = false;
+    // Held while a pause is on its way: it listens again only when release() says so.
+    this.paused = this.gate !== null;
     if (track !== this.track || !this.graph) this.hear(track);
+  }
+
+  /**
+   * Notes are being paused: the clip in progress ends, and it and every clip not sent yet wait, unsent, until the
+   * server answers. release() sends them and listens again (the pause failed); stop() drops them.
+   */
+  hold(): void {
+    if (this.gate) return;
+    let open: () => void = () => undefined;
+    const wait = new Promise<void>((r) => { open = r; });
+    this.gate = { wait, open };
+    this.pause();
+  }
+
+  /** Carries on after hold(): what it held is sent, and it listens again. */
+  release(): void {
+    this.unhold();
+    this.resume();
   }
 
   /** Ends the clip in progress (it's still sent) and stops listening until resume() or start(). */
@@ -131,6 +155,7 @@ export class SpeechClips {
   /** Stops listening. What hasn't been sent yet is dropped: flush() first to keep it. */
   stop(): void {
     this.gen++;
+    this.unhold();
     this.clear();
     this.segment = -1;
     this.paused = false;
@@ -143,6 +168,12 @@ export class SpeechClips {
     void g.parts.then(({ node, mute }) => { node.port.postMessage('stop'); node.port.onmessage = null; node.disconnect(); mute.disconnect(); }, () => undefined);
     // A shared context belongs to whoever shares it.
     if (!this.shared) void g.ctx.close().catch((e: unknown) => slog.debug('audio context did not close', { err: e }));
+  }
+
+  private unhold() {
+    const g = this.gate;
+    this.gate = null;
+    g?.open();
   }
 
   private clear() {
@@ -171,7 +202,7 @@ export class SpeechClips {
   }
 
   private build(): Graph | null {
-    if (typeof AudioWorkletNode === 'undefined') {
+    if (!canListen()) {
       slog.warn('this browser has no audio worklets; no live transcript');
       this.say('The live transcript can’t start in this browser. The recording is still saved.');
       return null;
@@ -254,7 +285,10 @@ export class SpeechClips {
 
   private enqueue(clip: TranscriptClip) {
     const gen = this.gen;
-    this.queue = this.queue.then(() => (gen === this.gen ? this.send(clip) : undefined));
+    this.queue = this.queue.then(async () => {
+      while (this.gate) await this.gate.wait;
+      if (gen === this.gen) await this.send(clip);
+    });
   }
 
   private async send(clip: TranscriptClip) {
@@ -334,7 +368,7 @@ function wav(pcm: Float32Array): Blob {
  * The live transcript of a call, heard in the organizer's browser: its own microphone and everyone else's it plays
  * (the people in its part of the call), each on its own, so every line is said by whoever's voice it was. Every
  * voice counts from the segment's start, so lines fall where they were said. A voice no longer heard stops being
- * listened to at once and sends what it had already heard.
+ * listened to at once and sends what it had already heard. While a pause is on its way, every voice holds still.
  */
 export class CallEars {
   private ctx: AudioContext | null = null;
@@ -344,8 +378,12 @@ export class CallEars {
   private segment = -1;
   private origin = 0;
   private problems = new Map<string, string>();
+  /** Set by hold(), until release() or stop(): voices heard meanwhile start held too. */
+  private holding = false;
 
-  constructor(private readonly upload: (clip: TranscriptClip, speaker: string) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
+  /** `onDeaf` hears whether anyone can be heard at all: true when the capture worklet can't load in this browser. */
+  constructor(private readonly upload: (clip: TranscriptClip, speaker: string) => Promise<void>, private readonly onProblem: (message: string | null) => void,
+    private readonly onDeaf: (deaf: boolean) => void = () => undefined) {}
 
   /**
    * Listens to exactly `voices` (by participant ID) in `segment`. New voices start, a voice on a new track carries
@@ -378,6 +416,7 @@ export class CallEars {
           (m) => { if (this.voices.get(identity) === mine) this.problem(identity, m); },
           { context: this.context(), origin: this.origin, own: v.own });
         clips = mine;
+        if (this.holding) clips.hold();
         this.voices.set(identity, clips);
         added++;
       }
@@ -391,8 +430,24 @@ export class CallEars {
     await Promise.all([...this.voices.values(), ...this.leaving].map((c) => c.flush()));
   }
 
+  /**
+   * Notes are being paused: every voice stops listening and keeps what it heard, unsent, until the server answers.
+   * release() sends it and listens on (the pause failed); stop() drops it.
+   */
+  hold(): void {
+    this.holding = true;
+    for (const clips of this.voices.values()) clips.hold();
+  }
+
+  /** Carries on after hold(): every voice sends what it held and listens again, and those just gone send theirs. */
+  release(): void {
+    this.holding = false;
+    for (const clips of [...this.voices.values(), ...this.leaving]) clips.release();
+  }
+
   /** Stops hearing everyone. What hasn't been sent is dropped: flush() first to keep it. */
   stop(): void {
+    this.holding = false;
     this.drop();
     this.segment = -1;
     const ctx = this.ctx;
@@ -409,7 +464,20 @@ export class CallEars {
   }
 
   private context(): AudioContext {
-    if (!this.ctx) { this.ctx = new AudioContext(); wakeAudio(this.ctx); }
+    if (!this.ctx) {
+      const ctx = new AudioContext();
+      wakeAudio(ctx);
+      this.ctx = ctx;
+      // Every voice listens through the same worklet: if it can't load, nobody can be heard, and everyone is told.
+      if (canListen()) {
+        // A context closed by stop() while loading isn't this browser failing to listen.
+        void loadCapture(ctx).then(() => { if (this.ctx === ctx) this.onDeaf(false); }, (e: unknown) => {
+          if (this.ctx !== ctx) return;
+          slog.warn('the live transcript can’t listen in this browser', { err: e });
+          this.onDeaf(true);
+        });
+      }
+    }
     return this.ctx;
   }
 

@@ -24,6 +24,7 @@ export function exampleNote(me: Person): Note {
       id: 'screens', text: 'Send the new screens', owner: { name: kofi.name, person: kofi }, takenOn: true, due: 'Wed', at: 302, done: false,
       changes: [{ by: { name: kofi.name, email: kofi.email }, at: started.toISOString(), what: 'took-on' }]
     }],
+    gaps: [],
     chapters: [
       { at: 0, title: 'Sign-ups', summary: 'Back up since the fix.' },
       { at: 210, title: 'The launch date', summary: 'Moves to the 18th.' },

@@ -247,6 +247,15 @@ export type ActionItem = z.infer<typeof ActionItemSchema>;
 export const ChapterSchema = z.object({ at: z.number(), title: z.string(), summary: z.string() });
 export type Chapter = z.infer<typeof ChapterSchema>;
 
+/**
+ * A stretch of a call when nothing was captured: notes were off, or the organizer paused them. `from` and `to` are
+ * when it started and ended (`to` is null while it's still going). `at` is where it falls in the recording, in
+ * seconds as transcript lines count them: the lines before it were said before it, and the transcript and its
+ * chapters say "Paused 10:02–10:05" in its place rather than run on as if it was captured.
+ */
+export const CaptureGapSchema = z.object({ kind: z.enum(['off', 'paused']), from: ISODateSchema, to: ISODateSchema.nullable(), at: z.number() });
+export type CaptureGap = z.infer<typeof CaptureGapSchema>;
+
 export const NoteKindSchema = z.enum(['call', 'room']);
 export type NoteKind = z.infer<typeof NoteKindSchema>;
 
@@ -310,6 +319,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   questions: z.array(QuestionSchema),
   actions: z.array(ActionItemSchema),
   chapters: z.array(ChapterSchema),
+  /** The stretches of the call with nothing captured, oldest first. Room recordings have none. */
+  gaps: z.array(CaptureGapSchema),
   screens: z.array(ScreenCaptureSchema),
   /** What was said while notes were on. Null while the recording is still going. */
   transcript: z.array(TranscriptLineSchema).nullable(),

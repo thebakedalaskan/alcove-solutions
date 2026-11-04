@@ -214,7 +214,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} />
                 </Section>
               )}
-              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}><Transcript lines={lines} seconds={note.duration} me={me} onSeek={seek} focus={at} /></section>}
+              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}><Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} /></section>}
             </>
           ) : ready && lines.length ? (
             <>
@@ -223,7 +223,7 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   <b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
                 </Notice>
               </section>
-              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} me={me} onSeek={seek} focus={at} /></Section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} /></Section>
             </>
           ) : ready ? (
             <section className={cn('sec', going && 'going')}>
@@ -243,14 +243,14 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   </ul>
                 )}
               </section>
-              {lines.length > 0 && <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} me={me} onSeek={seek} /></Section>}
+              {lines.length > 0 && <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} /></Section>}
             </>
           )}
           {ready && lines.length > 0 && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} />}
         </article>
         <aside className="rail">
           {player.total > 0 && <div className={cn(going && 'going')} style={{ '--d': 4 }}><Player noteId={note.id} player={player} chapters={note.chapters} room={note.kind === 'room'} /></div>}
-          {note.chapters.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><Chapters chapters={note.chapters} pos={player.pos} onSeek={seek} /></div>}
+          {note.chapters.length > 0 && <div className={cn(going && 'going')} style={{ '--d': 5 }}><Chapters chapters={note.chapters} gaps={note.gaps} pos={player.pos} onSeek={seek} /></div>}
           <div className={cn(going && 'going')} style={{ '--d': 6 }}><Recipients recipients={note.recipients} me={me} fresh={fresh} /></div>
           {!going && <div style={{ '--d': 7 }}><SeriesCard note={note} /></div>}
         </aside>

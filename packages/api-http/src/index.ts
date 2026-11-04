@@ -8,7 +8,7 @@ import {
   NoteSummarySchema, OPERATION_HEADER, OpenActionSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
 SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode,
-  type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CatchUp, type RecordingAction, type RoomRecording,
+  type AlcoveApi, type AnswerPart, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallSession, type CallState, type CallTicket, type LiveStore, type CatchUp, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type TranscriptClip
 } from '@alcove/api';
 import { MlsClient, MlsError, groupName, newIdentity } from './mls';
@@ -627,7 +627,13 @@ class HttpCall extends Live<CallState> implements CallSession {
   };
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
-  setNotes = (on: boolean) => this.act({ type: 'notes', on });
+  setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
+  /* What the call captures: pause and resume are the organizer's; anyone else asks for notes. Each resolves once the server has done it. */
+  pause = async () => { this.take(await this.t.act(this.state.callId, { type: 'pause' })); };
+  resume = async () => { this.take(await this.t.act(this.state.callId, { type: 'resume' })); };
+  requestNotes = async (up: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'request-notes', up })); };
+  declineNotes = async (requestId: string) => { this.take(await this.t.act(this.state.callId, { type: 'decline-notes', requestId })); };
+  setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
   /** They're disconnected at once; the organizer's browser then takes them out of the group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };

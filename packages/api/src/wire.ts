@@ -3,6 +3,7 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
+import { CaptureDevicePartSchema } from './capture';
 import { CaptionLanguageSchema } from './types';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
@@ -27,6 +28,16 @@ export const ShareBodySchema = z.object({ emails: z.array(z.string().trim().toLo
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notes'), on: z.boolean() }),
+  /** The organizer holds every kind of capture, while notes are on, until they resume. */
+  z.object({ type: z.literal('pause') }),
+  /** The organizer carries on after a pause, on a new segment. Nothing else resumes it. */
+  z.object({ type: z.literal('resume') }),
+  /** Anyone in the call but the organizer asks for notes while they're off or paused (up), or takes the ask back. */
+  z.object({ type: z.literal('request-notes'), up: z.boolean() }),
+  /** The organizer says not now to an ask for notes, and whoever asked is told. Saying yes is turning notes on, or resuming. */
+  z.object({ type: z.literal('decline-notes'), requestId: z.string().min(1).max(64) }),
+  /** The organizer's browser says what it can't capture now (none, when it can again): everyone sees it, so nobody is told they're captured when they aren't. */
+  z.object({ type: z.literal('unavailable'), parts: z.array(CaptureDevicePartSchema).max(2) }),
   /** Anyone in the call: a raised hand, which everyone sees. */
   z.object({ type: z.literal('hand'), up: z.boolean() }),
   /** Turns away someone asking to join. Letting someone in is the organizer's browser adding them to the call's MLS group. */
