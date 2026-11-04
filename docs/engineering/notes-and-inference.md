@@ -458,7 +458,7 @@ in `packages/api`, `correctLine` in `apps/api/src/modules/notes.ts`):
 - **Writing the notes again.** `POST /v1/notes/:id/rewrite`, the organizer's alone (`403` for anyone else who
   has the note), for a written note with transcript lines (`409` otherwise): the note goes back to `pending`
   and the same notes job is queued ([The notes worker](#the-notes-worker)). Asking again while it's being
-  written changes nothing. It's never automatic: other people may be confirming decisions meanwhile, and Otter,
+  written changes nothing. It isn't charged, so it shares the 20-a-minute limit with questions. It's never automatic: other people may be confirming decisions meanwhile, and Otter,
   Fireflies and Zoom all leave regenerating to a person. The app offers it as "Write the notes again" once lines
   were corrected since, and as "Try writing them again" when the notes couldn't be written.
 
