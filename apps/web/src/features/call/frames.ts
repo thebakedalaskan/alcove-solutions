@@ -92,6 +92,7 @@ function jpegOf(src: CanvasImageSource, width: number, height: number): Promise<
 
 export class ScreenFrames {
   private share: string | null = null;
+  private track: MediaStreamTrack | null = null;
   private grabber: Grabber | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private looking = false;
@@ -117,13 +118,16 @@ export class ScreenFrames {
     this.grid.height = GRID_H;
   }
 
-  /** Looks at this share of yours (its stream and its share ID) from now on. Another share starts over. */
+  /**
+   * Looks at this share of yours (its stream and its share ID) from now on. Another share starts over, and so does
+   * something else shared in its place (Change keeps the share, with a new picture): it waits its own ten seconds.
+   */
   start(stream: MediaStream, share: string): void {
-    if (this.share === share && this.timer) return;
     const track = stream.getVideoTracks()[0];
-    if (!track) return;
+    if (!track || (this.share === share && this.track === track && this.timer)) return;
     this.stop();
     this.share = share;
+    this.track = track;
     this.grabber = grabberFor(track);
     this.since = Date.now();
     this.timer = setInterval(() => void this.look(), LOOK_MS);
@@ -139,6 +143,7 @@ export class ScreenFrames {
     if (this.queue.length) flog.info('frames not sent were dropped', { frames: this.queue.length });
     this.queue = [];
     this.share = null;
+    this.track = null;
     this.kept = null;
     this.last = null;
     this.steady = 0;
