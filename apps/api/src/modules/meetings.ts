@@ -30,7 +30,12 @@ export const MeetingManifest = z.object({
   /** The series the call is in: a random ID its calls share. */
   seriesId: z.string().optional(),
   /** The recurring Google Calendar event this call is an occurrence of (Google's ID for the whole series). */
-  recurringEventId: z.string().optional()
+  recurringEventId: z.string().optional(),
+  /**
+   * The guests who were added by being let in from the call's link (people signed in, whom the organizer let in),
+   * once there are any. Kept with the meeting, so removing one from any run of the call takes them off the invite.
+   */
+  addedFromLink: z.array(z.string()).optional()
 });
 export type MeetingManifest = z.infer<typeof MeetingManifest>;
 
@@ -42,17 +47,21 @@ function makeCode(): string {
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** The most people a call can have invited, however they were added. */
+export const MAX_GUESTS = 100;
+/** A real address, as invites keep it. */
+export const isGuestAddress = (email: string) => EMAIL.test(email);
 /** Lower-cased, unique, without the organizer, and every one a real address. */
 function cleanGuests(emails: string[], organizerEmail: string): string[] {
   const out = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))].filter((e) => e !== organizerEmail.toLowerCase());
-  const bad = out.filter((e) => !EMAIL.test(e));
+  const bad = out.filter((e) => !isGuestAddress(e));
   if (bad.length) throw new ValidationError('Invite people by their full email address.', { context: { invalid: bad.length } });
-  if (out.length > 100) throw new ValidationError('A call can have at most 100 people invited.', { context: { guests: out.length } });
+  if (out.length > MAX_GUESTS) throw new ValidationError(`A call can have at most ${MAX_GUESTS} people invited.`, { context: { guests: out.length } });
   return out;
 }
 
 export async function toMeeting(o: Owner, m: Loaded<MeetingManifest>): Promise<Meeting> {
-  const { guests, duration, noteId, calendarEventId: _event, calendarUrl, seriesId, recurringEventId: _recurring, ...rest } = m.manifest;
+  const { guests, duration, noteId, calendarEventId: _event, calendarUrl, seriesId, recurringEventId: _recurring, addedFromLink: _added, ...rest } = m.manifest;
   return {
     id: m.itemId, ...rest, organizer: await me(o), isOrganizer: true, guests: guests.map((e) => personOf(e)),
     ...(duration !== undefined ? { duration } : {}), ...(noteId !== undefined ? { noteId } : {}), ...(calendarUrl ? { calendarUrl } : {}), ...(seriesId ? { seriesId } : {})

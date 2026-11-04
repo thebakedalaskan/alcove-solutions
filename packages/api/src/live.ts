@@ -1,6 +1,6 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
-import { CaptureGapSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, TranscriptLineSchema, type AnswerPart, type CaptionLanguage } from './types';
+import { CaptureGapSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type AnswerPart, type CaptionLanguage } from './types';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -13,7 +13,11 @@ export interface LiveStore<S> {
 
 /* ---------- group calls: who's in the call comes from the API; mic, camera and screen are LiveKit's tracks ---------- */
 
-/** The organizer hosts. Invited people join with their accounts; anyone else with the link joins by name. */
+/**
+ * The organizer hosts. Invited people join with their accounts. Anyone else with the link asks to join: signed in, under
+ * their account, or with a typed name. Someone signed in whom the organizer lets in from the link is added to the
+ * invite (when the notes may go to their account), and is invited from then on.
+ */
 export const CallRoleSchema = z.enum(['host', 'invited', 'guest']);
 export type CallRole = z.infer<typeof CallRoleSchema>;
 
@@ -27,7 +31,20 @@ export const CallCardSchema = z.object({
   /** Notes as the call was scheduled: whether they start when it does. */
   notes: NotesSettingSchema,
   /** What's being captured now, without anyone's name; null until the organizer has started the call. */
-  capture: CaptureStateSchema.nullable()
+  capture: CaptureStateSchema.nullable(),
+  /** The call is over and nobody has started it again. */
+  ended: z.boolean(),
+  /**
+   * Where the person asking stands, by their session. `invited` (or the organizer): let in without asking, and gets
+   * the notes. `asks`: signed in with an account the notes may go to, so letting them in adds them to the invite.
+   * `guest`: asks by name and doesn't get the notes (no account, or a demo sign-in on a real organizer's call).
+   */
+  you: z.enum(['invited', 'asks', 'guest']),
+  /**
+   * The ways of signing in that get this call's notes once let in: Google, and Microsoft and single sign-on too when
+   * the organizer's own account is a demo one.
+   */
+  signInForNotes: z.array(SignInProviderSchema)
 });
 export type CallCard = z.infer<typeof CallCardSchema>;
 
@@ -47,6 +64,12 @@ export const CALL_PASS_HEADER = 'x-alcove-call' as const;
 
 /** A call pass as a browser keeps it (sessionStorage) for coming back after a reload: parsed before it's sent anywhere. */
 export const CallPassStoredSchema = z.string().min(20).max(2000).regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+
+/**
+ * The call a browser goes back to after signing in with Google from its join page (sessionStorage, in that tab only):
+ * its code, as a link has it, and until when (ms).
+ */
+export const CallReturnStoredSchema = z.object({ code: z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/), until: z.number() });
 
 /** A LiveKit join token, for someone who's been let in. It only lasts until the browser connects; it carries no name. */
 export const CallRoomTokenSchema = z.object({ token: z.string() });
@@ -112,7 +135,10 @@ export const CallParticipantSchema = z.object({
 });
 export type CallParticipant = z.infer<typeof CallParticipantSchema>;
 
-/** Someone asking to be let in. Only the organizer sees them. */
+/**
+ * Someone asking to be let in. Only the organizer sees them: with their account's address when they're signed in with
+ * one the notes may go to (letting them in adds them to the invite), otherwise by name, without an address.
+ */
 export const CallAskerSchema = z.object({ id: z.string(), person: PersonSchema });
 export type CallAsker = z.infer<typeof CallAskerSchema>;
 
@@ -189,7 +215,12 @@ export const CallStateSchema = z.object({
   transcript: z.array(TranscriptLineSchema),
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
-  isOrganizer: z.boolean()
+  isOrganizer: z.boolean(),
+  /**
+   * Your role in the call as it stands. It can differ from the ticket's: someone signed in whom the organizer let in
+   * from the link joined as a guest and is invited now. A guest sees people by name only.
+   */
+  role: CallRoleSchema
 });
 export type CallState = z.infer<typeof CallStateSchema>;
 
