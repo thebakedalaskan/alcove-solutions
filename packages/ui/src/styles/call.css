@@ -303,6 +303,9 @@
 .ic-prow .ic-pmore { width: 30px; height: 30px; margin-right: -6px; }
 .ic-prow .ic-pmore[data-state="open"] { background: var(--sunk); color: var(--ink); }
 .ic-missed { margin-bottom: 16px; }
+/* Where the conversation moved to another part of the call (a breakout room, or back): a quiet line across it. */
+.ic-chatplace { display: flex; align-items: center; gap: 10px; color: var(--ink-3); }
+.ic-chatplace::before, .ic-chatplace::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 /* The organizer's lock, under the people. */
 .ic-lock { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 20px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--sunk); }
 .ic-lock > .ac-i { color: var(--ink-2); }
@@ -350,6 +353,15 @@
 .ic-rcard .line2 { display: flex; align-items: center; gap: 8px; min-height: 20px; font-size: 12.5px; color: var(--ink-3); }
 .ic-rcard .line2 .ac-level i { background: var(--horizon); }
 .ic-rcard .line2 .ac-chip { height: 20px; padding: 0 7px; font-size: 11.5px; }
+/* An open room's name, edited where it's shown, and the people sent to it: each opens where else they can go. */
+.ic-rcard .top1 .ic-rname.is-live { height: 30px; margin-left: -6px; font-size: 13.5px; }
+.ic-rchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ic-rchip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 28px; padding: 0 8px 0 4px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-1); color: var(--ink); font: 500 12.5px/1 var(--font-sans); transition: box-shadow var(--duration-1); }
+.ic-rchip:hover, .ic-rchip[data-state="open"] { box-shadow: var(--shadow-2); }
+.ic-rchip .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ic-rchip .ac-i { flex: none; color: var(--ink-3); }
+.ic-rchip.is-away { opacity: .6; }
+.ic-rchip .ac-avatar { --ring: var(--surface); }
 .ic-rcard .line2 .end { margin-left: auto; }
 .ic-bc { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .ic-bc .lab { margin-bottom: 8px; font: 600 13px/1.2 var(--font-sans); }

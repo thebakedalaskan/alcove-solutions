@@ -4,6 +4,8 @@
  * natural pauses, clips without a voice in them are dropped, and the rest go to the server one at a
  * time as WAV files to be transcribed. This runs beside NotesRecorder and never touches the
  * encrypted recording: a clip that can't be transcribed costs a line of transcript, nothing more.
+ * In a call, each clip says which part of the call it was heard in (the main room or a breakout
+ * room), and a clip never spans two: moving ends the one in progress.
  */
 import { MAX_TRANSCRIPT_CLIP_MS, errorCode, errorMessage, type TranscriptClip } from '@alcove/api';
 import { log } from '~/lib/log';
@@ -75,6 +77,8 @@ export class SpeechClips {
   private lostInARow = 0;
   private restUntil = 0;
   private shown: string | null = null;
+  /** In a call, the part of the call what's heard now belongs to. */
+  private place: string | undefined = undefined;
 
   constructor(private readonly upload: (clip: TranscriptClip) => Promise<void>, private readonly onProblem: (message: string | null) => void) {}
 
@@ -101,6 +105,13 @@ export class SpeechClips {
   }
 
   resume(): void { this.paused = false; }
+
+  /** In a call: what's heard from now on belongs to `place`. The clip in progress is sent as heard where it was, so no clip spans two parts of the call. */
+  setPlace(place: string): void {
+    if (place === this.place) return;
+    if (this.place !== undefined) this.cut();
+    this.place = place;
+  }
 
   /** Sends what's been heard so far and waits for it to be transcribed. */
   async flush(): Promise<void> {
@@ -231,7 +242,7 @@ export class SpeechClips {
     if (!worthSending(sent)) { slog.debug('clip without speech skipped', { frames: sent.length }); return; }
     const pcm = new Float32Array(sent.length * FRAME);
     sent.forEach((f, i) => pcm.set(f.pcm, i * FRAME));
-    this.enqueue({ data: wav(pcm), segment: this.segment, startMs: (start * 1000) / RATE, durationMs: (pcm.length * 1000) / RATE });
+    this.enqueue({ data: wav(pcm), segment: this.segment, startMs: (start * 1000) / RATE, durationMs: (pcm.length * 1000) / RATE, ...(this.place ? { place: this.place } : {}) });
   }
 
   private enqueue(clip: TranscriptClip) {
@@ -250,7 +261,7 @@ export class SpeechClips {
         this.say(null);
         return;
       } catch (e) {
-        // Expected around changes: notes went off, the recording paused, or a new segment began.
+        // Expected around changes: notes went off, the recording paused, a new segment began, or the room it was heard in closed.
         if (errorCode(e) === 'conflict') { slog.debug('transcript clip refused: notes are off, paused or moved on', { ...where, err: e }); return; }
         if (attempt < TRIES) {
           slog.debug('transcript clip failed; trying again', { ...where, attempt, err: e });

@@ -7,7 +7,7 @@
 import { CALL_CHAT_MAX, clock, errorMessage, type AnswerPart, type CallAsker, type CallChatMessage, type CallState, type CatchUp, type CatchUpItem, type Person } from '@alcove/api';
 import { Avatar, Button, Dots, EmptyState, Faces, Icon, IconButton, NotesSign, Notice, Popover, Switch, TimeChip, cn, useToast } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
@@ -242,14 +242,22 @@ export function AskView({ asks, ready, onAsk, onCatchUp, onSeek }: { asks: Asked
 
 /**
  * Chat, decrypted in this browser. Who sent each message comes from the call's encryption; their name, from
- * the people here. Chat from before you were let in can't be read here, and the view says so.
+ * the people here. Each part of the call (the main room, each breakout room) has its own chat, readable only by
+ * the people in it: the view marks where the conversation moved, and chat sent somewhere before you got there
+ * can't be read here, which the view says.
  */
-export function ChatView({ chat, missed, ready, who, onSend }: {
+export function ChatView({ chat, missed, ready, moving, here, placeName, who, onSend }: {
   chat: CallChatMessage[];
-  /** There was chat before you were let in. */
+  /** There was chat in this part of the call while you weren't in it. */
   missed: boolean;
-  /** This browser holds the call's keys, so it can send. */
+  /** This browser holds the keys of the part of the call it's in, so it can send. */
   ready: boolean;
+  /** On the way to another part of the call: chat is off until it's there. */
+  moving: boolean;
+  /** Where a message goes, while breakout rooms are open: the room's name, or "the main room". Null when rooms aren't open. */
+  here: string | null;
+  /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
+  placeName: (place: string) => string;
   who: (id: string) => Person;
   onSend: (text: string) => Promise<void>;
 }) {
@@ -262,30 +270,41 @@ export function ChatView({ chat, missed, ready, who, onSend }: {
     setText('');
     void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); setText((now) => now || t); });
   };
+  // Marks only matter once the conversation has been in more than one part of the call.
+  const marked = new Set(chat.map((c) => c.place)).size > 1;
+  const to = here ?? 'everyone';
   return (
     <>
       <div className="ic-scroll ic-pad">
-        {missed && <Notice icon="lock" className="ic-missed">Messages sent before you joined aren’t shown. Only people who were here then can read them.</Notice>}
+        {missed && <Notice icon="lock" className="ic-missed">Messages sent here before you came aren’t shown. Only people who were here then can read them.</Notice>}
         {chat.length ? (
           <div className="ic-chat">
-            {chat.map((c) => {
+            {chat.map((c, i) => {
               const from = who(c.from);
+              const moved = marked && chat[i - 1]?.place !== c.place;
               return (
-                <motion.div key={c.id} className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-                  <Avatar person={from} size={28} />
-                  <div><div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
-                </motion.div>
+                <Fragment key={c.id}>
+                  {moved && <div className="ic-chatplace"><span className="ac-eyebrow">In {placeName(c.place)}</span></div>}
+                  <motion.div className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+                    <Avatar person={from} size={28} />
+                    <div><div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
+                  </motion.div>
+                </Fragment>
               );
             })}
           </div>
-        ) : !missed && <EmptyState title="No messages yet" className="ic-empty">Messages are encrypted end to end. Only people in the call can read them.</EmptyState>}
+        ) : !missed && (
+          <EmptyState title="No messages yet" className="ic-empty">
+            {here ? `Messages are encrypted end to end. Only people in ${here} can read them.` : 'Messages are encrypted end to end. Only people in the call can read them.'}
+          </EmptyState>
+        )}
         <div ref={end} />
       </div>
       <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t && ready) send(t); }}>
         <div className="inrow">
           <input className="ac-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready} onChange={(e) => setText(e.target.value)}
-            placeholder={ready ? 'Message everyone' : 'Getting the call’s keys…'} aria-label="Message everyone" />
-          <button type="submit" className="ac-btn is-primary" aria-label="Send to everyone" disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
+            placeholder={ready ? `Message ${to}` : moving ? 'Moving to another room…' : 'Getting the call’s keys…'} aria-label={`Message ${to}`} />
+          <button type="submit" className="ac-btn is-primary" aria-label={`Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
         </div>
       </form>
     </>

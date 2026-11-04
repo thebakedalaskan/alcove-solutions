@@ -295,8 +295,18 @@ export class NotesRecorder {
   private rec: MediaRecorder | null = null;
   private segment = -1;
   private queue: Promise<void> = Promise.resolve();
-  private graph: { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; source: MediaStreamAudioSourceNode | null; track: MediaStreamTrack | null } | null = null;
+  private graph: { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; gain: GainNode; source: MediaStreamAudioSourceNode | null; track: MediaStreamTrack | null } | null = null;
+  /** While the organizer is in a breakout room, the recording hears nothing: what's said in a room stays out of the call's notes. */
+  private hushed = false;
   constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void) {}
+
+  /** Silence instead of the microphone while `on`, without stopping: the recording keeps its place in time, so the transcript still lines up with it. */
+  hush(on: boolean) {
+    if (on === this.hushed) return;
+    this.hushed = on;
+    if (this.graph) this.graph.gain.gain.value = on ? 0 : 1;
+    mlog.info(on ? 'notes recorder hushed' : 'notes recorder hearing again', { segment: this.segment });
+  }
 
   get running() { return this.rec?.state === 'recording'; }
   /** Starts (or continues) recording into `segment`, from `track`, which may be a different microphone than before. */
@@ -348,13 +358,17 @@ export class NotesRecorder {
     if (!this.graph) {
       const ctx = new AudioContext();
       wakeAudio(ctx);
-      this.graph = { ctx, dest: ctx.createMediaStreamDestination(), source: null, track: null };
+      const gain = ctx.createGain();
+      gain.gain.value = this.hushed ? 0 : 1;
+      const dest = ctx.createMediaStreamDestination();
+      gain.connect(dest);
+      this.graph = { ctx, dest, gain, source: null, track: null };
     }
     const g = this.graph;
     if (g.track !== track) {
       g.source?.disconnect();
       g.source = g.ctx.createMediaStreamSource(new MediaStream([track]));
-      g.source.connect(g.dest);
+      g.source.connect(g.gain);
       if (g.track) mlog.info('notes recorder switched microphones', { segment: this.segment });
       g.track = track;
     }

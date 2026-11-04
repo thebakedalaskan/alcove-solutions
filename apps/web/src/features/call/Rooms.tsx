@@ -1,14 +1,15 @@
 /*
  * Breakout rooms, in the side panel: a board to set them up (how many, how long, who goes where),
- * then an overview while they're open (the shared timer, each room, a message to every room, and
- * bringing everyone back). The rooms themselves are call state on the server; only the organizer
- * opens them, and only people invited to the call are sent to one. Guests stay in the main room.
+ * then an overview while they're open (the shared timer, each room, renaming it, moving someone to
+ * another room, a message to every room, and bringing everyone back). The rooms themselves are call
+ * state on the server, each with its own encryption keys; only the organizer opens them, and only
+ * people invited to the call are sent to one. Guests stay in the main room.
  */
 import type { Breakouts, Person } from '@alcove/api';
-import { Avatar, Button, EmptyState, Faces, Icon, IconButton, Segmented, cn } from '@alcove/ui';
+import { Avatar, Button, EmptyState, Icon, IconButton, Popover, Segmented, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { callName } from '~/lib/people';
+import { callName, sameEmail } from '~/lib/people';
 
 /** Someone who can be sent to a room: an invited person in the call, by their email address. */
 export interface RoomCandidate { id: string; person: Person }
@@ -129,12 +130,42 @@ export function RoomsSetup({ people, guests, onOpen }: {
   );
 }
 
-export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin, onMessage, onClose }: {
+/** A room's name, edited where it's shown: Enter or leaving the field keeps it; an empty name puts the old one back. */
+function RoomName({ name, onRename }: { name: string; onRename: (name: string) => void }) {
+  const [draft, setDraft] = useState(name);
+  useEffect(() => { setDraft(name); }, [name]);
+  const keep = () => { const t = draft.trim(); if (!t) setDraft(name); else if (t !== name) onRename(t); };
+  return (
+    <input className="ic-rname is-live" value={draft} maxLength={40} aria-label={`Rename ${name}`}
+      onChange={(e) => setDraft(e.target.value)} onBlur={keep}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setDraft(name); e.currentTarget.blur(); } }} />
+  );
+}
+
+/** Someone sent to a room, and where else they can go: another room, or back to the main room. Their keys move with them. */
+function RoomPerson({ person, here, room, rooms, onMove }: { person: Person; here: boolean; room: number; rooms: string[]; onMove: (room: number | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const go = (to: number | null) => { setOpen(false); onMove(to); };
+  return (
+    <Popover open={open} onOpenChange={setOpen} side="bottom" align="start" label={`Move ${callName(person)}`} className="ic-menu narrow"
+      anchor={<button type="button" className={cn('ic-rchip', !here && 'is-away')} aria-label={`${callName(person)}${here ? '' : ', not here yet'}. Move to another room`}><Avatar person={person} size={18} /><span className="nm">{callName(person)}</span><Icon name="down" size={13} /></button>}>
+      <div className="mh"><Avatar person={person} size={22} /><span className="t">{callName(person)}</span></div>
+      {rooms.map((name, k) => (k === room ? null : <button key={k} type="button" className="mi" onClick={() => go(k)}><Icon name="door" size={17} /><span className="t">Move to {name}</span></button>))}
+      <button type="button" className="mi" onClick={() => go(null)}><Icon name="left" size={17} /><span className="t">Back to the main room</span></button>
+    </Popover>
+  );
+}
+
+export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin, onRename, onMove, onMessage, onClose }: {
   open: NonNullable<Breakouts['open']>; elapsed: number;
   /** Who is in each room now: the invited people sent there who are in the call, and you while you're there. */
   members: Person[][];
   people: Map<string, Person>; activity: RoomActivity; me: Person;
-  onJoin: (room: number | null) => void; onMessage: (text: string) => void; onClose: () => void;
+  onJoin: (room: number | null) => void;
+  onRename: (room: number, name: string) => void;
+  /** Sends someone invited (by email) to another room, or back to the main room (null). */
+  onMove: (email: string, room: number | null) => void;
+  onMessage: (text: string) => void; onClose: () => void;
 }) {
   const [text, setText] = useState('');
   const [sent, setSent] = useState<string | null>(null);
@@ -159,20 +190,24 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
             const help = activity.help[k] ?? null;
             const talking = activity.talking[k] ?? null;
             const inRoom = members[k] ?? [];
-            const coming = r.people.length - inRoom.filter((p) => r.people.some((x) => x.email.toLowerCase() === p.email.toLowerCase())).length;
+            const coming = r.people.length - inRoom.filter((p) => r.people.some((x) => sameEmail(x, p))).length;
             return (
               <div key={r.id} className={cn('ic-rcard', here && 'is-here', help && 'is-help')}>
                 <div className="top1">
-                  <b>{r.name}</b>
-                  <Faces people={inRoom} size={22} />
+                  <RoomName name={r.name} onRename={(name) => onRename(k, name)} />
                   <Button size="sm" variant={k === firstHelp ? 'primary' : 'secondary'} onClick={() => onJoin(here ? null : k)}>{here ? 'Back to main room' : 'Join room'}</Button>
                 </div>
                 <div className="line2">
                   {help ? <span className="ac-chip"><Icon name="hand" size={13} />{callName(people.get(help) ?? { name: 'Someone', email: '' })} asked for help</span>
                     : talking ? <><span className="ac-level" aria-hidden="true"><i /><i /><i /></span><span>{callName(people.get(talking) ?? { name: 'Someone', email: '' })} is talking</span></>
-                      : <span>{inRoom.length ? `${inRoom.length} ${inRoom.length === 1 ? 'person' : 'people'}` : 'Nobody in this room'}</span>}
+                      : <span>{inRoom.length ? `${inRoom.length} ${inRoom.length === 1 ? 'person' : 'people'}${here ? ', you too' : ''}` : 'Nobody in this room'}</span>}
                   {coming > 0 && <span className="end">{coming} not here yet</span>}
                 </div>
+                {r.people.length > 0 && (
+                  <div className="ic-rchips">
+                    {r.people.map((p) => <RoomPerson key={p.email} person={p} here={inRoom.some((x) => sameEmail(x, p))} room={k} rooms={open.rooms.map((x) => x.name)} onMove={(to) => onMove(p.email, to)} />)}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -185,7 +220,7 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
           </div>
           {sent && <motion.div className="sent" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={UI}><Icon name="check" size={15} /><span>Sent to {open.rooms.length} rooms: “{sent}”</span></motion.div>}
         </form>
-        <p className="ic-rnote"><Avatar person={me} size={18} /><span>{activity.joined === null ? 'You’re in the main room.' : `You’re in ${open.rooms[activity.joined]?.name ?? 'a room'}.`} Rooms with notes on go into the call’s notes.</span></p>
+        <p className="ic-rnote"><Avatar person={me} size={18} /><span>{activity.joined === null ? 'You’re in the main room.' : `You’re in ${open.rooms[activity.joined]?.name ?? 'a room'}.`} Each room has its own encryption keys and chat. What’s said in a room stays out of the call’s notes.</span></p>
       </div>
       <div className="ic-foot"><Button variant="secondary" className="w-full" onClick={onClose}>Bring everyone back now</Button></div>
     </>

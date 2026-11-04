@@ -1,6 +1,6 @@
-import { CAPTION_LANGUAGES, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person } from '@alcove/api';
+import { CAPTION_LANGUAGES, MAIN_PLACE, errorMessage, type CallSession, type CallState, type CaptionLanguage, type Person } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Icon, Popover, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -182,6 +182,15 @@ function InCall({ session }: { session: CallSession }) {
     else if (!on || !organizer) { r.stop(); s.stop(); }
   }, [organizer, on, live, segment, micTrack]);
   useEffect(() => () => speech.current?.stop(), []);
+  /*
+   * What the organizer's microphone is heard as follows the part of the call its keys are in: speech is transcribed
+   * as heard there (one room's lines never show in another), and the recording that goes into the notes hears
+   * nothing while it's in a breakout room.
+   */
+  useEffect(() => {
+    speech.current?.setPlace(crypto.place);
+    recorder.current?.hush(crypto.place !== MAIN_PLACE);
+  }, [crypto.place]);
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. */
   const shown = useRef(new Set<string>());
@@ -277,6 +286,9 @@ function InCall({ session }: { session: CallSession }) {
   // The room you're in (for the organizer, the one they're visiting), or -1 for the main room.
   const myRoom = open ? open.rooms.findIndex((r) => r.members.includes(meId)) : -1;
   const roomName = open && myRoom >= 0 ? open.rooms[myRoom]?.name ?? 'a room' : null;
+  /** A part of the call by its ID, as chat names it: "Design", "the main room". */
+  const placeName = (place: string) => place === MAIN_PLACE ? 'the main room'
+    : [...(open?.rooms ?? []), ...state.breakouts.held.flatMap((h) => h.rooms)].find((r) => r.id === place)?.name ?? 'a room';
   const inARoom = (id: string) => !!open && open.rooms.some((r) => r.members.includes(id));
   const mainIds = open ? state.participants.filter((p) => !inARoom(p.id)).map((p) => p.id) : [];
   const unit = open ? (myRoom >= 0 ? open.rooms[myRoom]?.members ?? [] : mainIds) : null;
@@ -361,6 +373,16 @@ function InCall({ session }: { session: CallSession }) {
     candidates.push({ id: email, person: p.person });
   }
   const guestsHere = others.filter((p) => !candidates.some((c) => sameEmail(c.person, p.person))).length;
+  const renameRoom = (k: number, name: string) => {
+    const r = open?.rooms[k];
+    if (r) session.renameRoom(r.id, name);
+  };
+  const moveTo = (email: string, k: number | null) => {
+    const r = k === null ? null : open?.rooms[k] ?? null;
+    session.moveToRoom(email, r ? r.id : null);
+    const who = candidates.find((c) => c.id === email.toLowerCase())?.person ?? open?.rooms.flatMap((x) => x.people).find((p) => sameEmail(p, { email }));
+    toast(`${who ? callName(who) : 'They'} ${r ? `will be in ${r.name}` : 'will be back in the main room'}. Their keys move with them.`, { icon: 'door' });
+  };
   const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number) => {
     session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids })), minutes });
     if (layout.view.pinned) layout.setPinned(null);
@@ -457,8 +479,8 @@ function InCall({ session }: { session: CallSession }) {
     <Popover open={pop === 'cap'} onOpenChange={(o) => setPop(o ? 'cap' : null)} side="top" align="end" label="Caption language" className="ic-dmenu"
       anchor={<button type="button" className="ic-capbtn" aria-label="Choose the caption language"><Icon name="translate" size={14} />{langName(lang)}</button>}>{langMenu}</Popover>
   );
-  // Captions come back when the rooms close: what's said in one room isn't shown in another.
-  const capNode = !cc || open ? null : caption ? (
+  // Captions are the lines of the part of the call you're in: what's said in one room is never shown in another.
+  const capNode = !cc ? null : caption ? (
     <Caption who={<>{caption.line.speaker?.person && <Avatar person={caption.line.speaker.person} size={18} />}<span className="name">{caption.line.speaker ? callName(caption.line.speaker.person ?? { name: caption.line.speaker.name, email: '' }) : ''}</span>{caption.translated && lang && <span className="lang">→ {lang.toUpperCase()}</span>}{capButton}</>}
       original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
   ) : (
@@ -551,9 +573,10 @@ function InCall({ session }: { session: CallSession }) {
     locked: state.locked,
     lock: (v) => session.lock(v)
   } : undefined;
-  const privacyLine = on
-    ? 'Video, audio and chat are encrypted end to end. While notes are on, the organizer’s microphone also goes to Alcove for the notes.'
-    : 'Video, audio and chat are encrypted end to end between the people here.';
+  const privacyLine = [
+    open ? 'Each room has its own encryption keys, so video, audio and chat reach only the people in the same room.' : 'Video, audio and chat are encrypted end to end between the people here.',
+    on ? (open ? 'While notes are on, the organizer’s microphone also goes to Alcove. What’s said in a room stays out of the notes.' : 'While notes are on, the organizer’s microphone also goes to Alcove for the notes.') : ''
+  ].filter(Boolean).join(' ');
 
   /* ---------- the status bar ---------- */
   const spotlight = open ? null : state.spotlight;
@@ -564,14 +587,18 @@ function InCall({ session }: { session: CallSession }) {
       <button type="button" className="sp-btn is-strong" onClick={stopShare}>Stop sharing</button>
     </div>
   );
+  /* On the way to another part of the call: nothing is heard or sent until this browser holds the new part's keys. */
+  const movingBar = crypto.status === 'moving' && (
+    <div className="ic-spill" role="status"><Dots /><span className="tx2">{roomName ? <>Moving you to <b>{roomName}</b></> : <>Moving you back to the <b>main room</b></>}</span></div>
+  );
   /* In a room (or the main room while rooms are open): where you are, how long for, and the organizer's message to every room. */
-  const roomBar = open && !organizer && (message ? (
+  const roomBar = open && !organizer && (movingBar || (message ? (
     <div className="ic-banner">{organizerPerson && <Avatar person={organizerPerson} size={24} />}<span><b>{organizerPerson ? callName(organizerPerson) : 'The organizer'}</b> to all rooms: {message.text}</span></div>
   ) : (
     <div className="ic-spill"><Icon name={left <= 30 ? 'timer' : 'door'} size={15} />
       <span className="tx2">{left <= 30 ? <>Rooms close in <b>{mmss(left)}</b>. Everyone comes back to the main room.</> : <>You’re in <b>{roomName ?? 'the main room'}</b> · everyone comes back in {mmss(left)}</>}</span>
     </div>
-  ));
+  )));
   const alone = others.length === 0 && !open && (
     <div className="ic-spill"><Icon name="link" size={15} /><span className="tx2">Nobody else is here yet</span>
       <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
@@ -579,8 +606,9 @@ function InCall({ session }: { session: CallSession }) {
   );
   const bar = open
     ? (organizer ? null : <>{roomBar}{sharePill}</>)
-    : (m.screen || spotlight || alone) ? (
+    : (m.screen || spotlight || alone || movingBar) ? (
       <>
+        {movingBar}
         {alone}
         {sharePill}
         {spotlight && (
@@ -628,11 +656,12 @@ function InCall({ session }: { session: CallSession }) {
                     onNotes={(v) => void switchNotes(v)} onSeek={seek} onTranscript={() => openPanel('transcript')} />}
                   {shownPanel === 'transcript' && <TranscriptView state={state} me={me?.person.email} hit={hit} />}
                   {shownPanel === 'ask' && <AskView asks={asks} ready={state.notes.everOn && state.transcript.length > 0} onAsk={askQuestion} onCatchUp={catchUp} onSeek={seek} />}
-                  {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} who={personOf} onSend={(t) => session.sendChat(t)} />}
+                  {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
+                    here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
                   {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={organizer ? state.waiting : []} host={host} foot={privacyLine} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
-                      people={byId} activity={activity} me={me.person} onJoin={visit} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
+                      people={byId} activity={activity} me={me.person} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
                     : <RoomsSetup people={candidates} guests={guestsHere} onOpen={openRooms} />)}
                 </SidePanel>
               </motion.aside>
