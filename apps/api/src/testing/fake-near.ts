@@ -10,9 +10,10 @@
  *    (fake-tee.ts), so the API checks the evidence with the code it checks NEAR AI's real evidence with.
  *
  * Speech is "recognised" from a marker a test writes into the WAV samples (see `speechWav`), so a test
- * decides exactly what was said; a clip without one is heard the way Whisper hears silence. The notes
- * model writes from the transcript it was sent, so tests can see the transcript arrived intact and the
- * reply was checked before use. Every request body is kept as it arrived, so tests can show that nothing
+ * decides exactly what was said; a clip without one is heard the way Whisper hears silence. A shared
+ * screen is "read" the same way, from a marker in its JPEG's comment segment (see `screenJpeg`); a frame
+ * without one can't be made out. The notes model writes from the transcript it was sent, screens
+ * included, so tests can see the transcript arrived intact and the reply was checked before use. Every request body is kept as it arrived, so tests can show that nothing
  * readable crossed the wire, and the evidence can be made to lie, so tests can show what Alcove refuses.
  */
 import { gcm } from '@noble/ciphers/aes.js';
@@ -54,8 +55,10 @@ export interface FakeNear {
   calls: { path: string; model: string; bytes: number; encryption: 'ohttp' | 'none' }[];
   /** Every request body exactly as it arrived, before anything was opened. */
   received: { path: string; body: Buffer }[];
-  /** What the notes model was sent (the user message, once opened), oldest first. */
+  /** What the notes model was sent (the user message's text, once opened), oldest first. */
   prompts: string[];
+  /** Every image the notes model was sent, once opened: its size, what a test put on it (null for nothing legible) and the salt that tells it apart. */
+  images: { bytes: number; marker: string | null; salt: string }[];
   /** The models' attested signing keys right now, hex. */
   keys(): Record<Task, string>;
   /** The hashes of the configurations the quotes measure. */
@@ -90,6 +93,46 @@ export function speechWav(words: string, ms = 4000): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(new ArrayBuffer(44 + data.length));
   out.set(head); out.set(data, 44);
   return out;
+}
+
+/** What a test puts on a shared screen: its title, the lines on it, how legible it is, and the parts worth pointing at ([left, top, right, bottom]). */
+export interface ScreenShown { title: string; lines: string[]; legible?: 'clear' | 'partly' | 'unreadable'; regions?: { label: string; box: [number, number, number, number] }[] }
+/**
+ * A frame of a shared screen for the fake: a JPEG's header (start, a comment carrying what's on the screen, the frame
+ * header with its size, end), which is all the server reads of one. Without `shown`, nothing on it can be made out.
+ */
+export function screenJpeg(shown: ScreenShown | null, width = 1280, height = 720, salt = ''): Uint8Array<ArrayBuffer> {
+  const seg = (marker: number, payload: Buffer) => Buffer.concat([Buffer.from([0xff, marker, (payload.length + 2) >> 8, (payload.length + 2) & 255]), payload]);
+  const comment = seg(0xfe, Buffer.from(`${shown ? `SCREEN:${JSON.stringify(shown)}` : 'NOISE'}|${salt}`, 'utf8'));
+  const sof = seg(0xc0, Buffer.from([8, height >> 8, height & 255, width >> 8, width & 255, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]));
+  const all = Buffer.concat([Buffer.from([0xff, 0xd8]), comment, sof, Buffer.from([0xff, 0xd9])]);
+  const out = new Uint8Array(new ArrayBuffer(all.length));
+  out.set(all);
+  return out;
+}
+/** A JPEG's comment segment, as text. */
+function commentOf(jpeg: Buffer): string {
+  for (let i = 2; i + 4 <= jpeg.length && jpeg[i] === 0xff;) {
+    const length = jpeg.readUInt16BE(i + 2);
+    if (jpeg[i + 1] === 0xfe) return jpeg.subarray(i + 4, i + 2 + length).toString('utf8');
+    i += 2 + length;
+  }
+  return '';
+}
+/** What's on a frame, from its comment, or null when nothing can be made out. */
+function shownIn(jpeg: Buffer): ScreenShown | null {
+  const m = /^SCREEN:(\{.*\})\|/s.exec(commentOf(jpeg));
+  if (!m) return null;
+  const v: unknown = JSON.parse(m[1] ?? '{}');
+  if (typeof v !== 'object' || v === null || !('title' in v) || !('lines' in v)) return null;
+  const lines = Array.isArray(v.lines) ? v.lines.map((l: unknown) => str(l)) : [];
+  const legible = 'legible' in v && (v.legible === 'partly' || v.legible === 'unreadable') ? v.legible : 'clear';
+  const regions = 'regions' in v && Array.isArray(v.regions) ? v.regions.flatMap((r: unknown) => {
+    if (typeof r !== 'object' || r === null || !('label' in r) || !('box' in r) || !Array.isArray(r.box)) return [];
+    const [a = 0, b = 0, c = 0, d = 0] = r.box.map((x: unknown) => (typeof x === 'number' ? x : 0));
+    return [{ label: str(r.label), box: [a, b, c, d] satisfies [number, number, number, number] }];
+  }) : [];
+  return { title: str(v.title), lines, legible, regions };
 }
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
@@ -134,19 +177,44 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
   return { status: 200, body: { text: said.join(''), duration: String(seconds), language: 'en', segments, id: `trans-${randomUUID()}` } };
 }
 
-interface Heard { at: number; who: string; text: string }
-/** Reads back "[mm:ss] Name: words" lines from a prompt. */
-function heardIn(prompt: string): Heard[] {
+interface Shown { n: number; at: number; title: string; parts: number }
+/** A line of what was said, and the shared screen up when it was (the last one above it in the transcript). */
+interface Heard { at: number; who: string; text: string; screen: Shown | undefined }
+/** Reads back the "[mm:ss] [screen N from Name, legible] Title. Reads: … Parts: (1) …" lines, in order. */
+function screensIn(prompt: string): Shown[] {
   return prompt.split('\n').flatMap((l) => {
-    const m = /^\[(\d+):(\d\d)\] (?:([^:]+): )?(.*)$/.exec(l);
-    return m ? [{ at: Number(m[1]) * 60 + Number(m[2]), who: m[3] ?? '', text: m[4] ?? '' }] : [];
+    const m = /^\[(\d+):(\d\d)\] \[screen (\d+)[^\]]*\] (.*?)\.(?: Reads:| Parts:|$)/.exec(l);
+    return m ? [{ at: Number(m[1]) * 60 + Number(m[2]), n: Number(m[3]), title: m[4] ?? '', parts: (l.match(/ \(\d+\) /g) ?? []).length }] : [];
   });
 }
+/** Reads back "[mm:ss] Name: words" lines from a prompt, each with the screen above it, as a reader takes them in. */
+function heardIn(prompt: string): Heard[] {
+  let screen: Shown | undefined;
+  return prompt.split('\n').flatMap((l) => {
+    const shown = screensIn(l)[0];
+    if (shown) { screen = shown; return []; }
+    const m = /^\[(\d+):(\d\d)\] (?:([^:]+): )?(.*)$/.exec(l);
+    return m ? [{ at: Number(m[1]) * 60 + Number(m[2]), who: m[3] ?? '', text: m[4] ?? '', screen }] : [];
+  });
+}
+/** What was said about something shown points at the screen up then: plainly ("this chart", "the slide"), or maybe ("that"). */
+const POINTS = /\b(this|that|chart|slide|screen)\b/i;
+const PLAINLY = /\b(this|chart|slide)\b/i;
 
-/** What the notes model writes for a system prompt and a user message. */
-function notesReply(system: string, user: string): unknown {
+/** What the notes model writes for a system prompt, a user message and the images sent with it. */
+function notesReply(system: string, user: string, images: Buffer[]): unknown {
+  if (system.startsWith('You read one frame')) {
+    // Reads what a test wrote on the frame, exactly; a frame without it can't be made out.
+    const shown = images[0] ? shownIn(images[0]) : null;
+    if (!shown) return { title: '', text: '', legible: 'unreadable', regions: [] };
+    return { title: shown.title, text: shown.lines.join('\n'), legible: shown.legible ?? 'clear', regions: shown.regions ?? [] };
+  }
   const heard = heardIn(user);
-  const item = (h: Heard) => ({ text: h.text, at: h.at });
+  const screens = screensIn(user);
+  /** The screen up when a line was said, if the line is about something shown. */
+  const shownAt = (h: Heard) => (POINTS.test(h.text) ? h.screen : undefined);
+  const onScreen = (h: Heard) => { const x = shownAt(h); return x ? { screen: x.n, part: x.parts ? 1 : null, sure: PLAINLY.test(h.text) } : { screen: null, part: null, sure: false }; };
+  const item = (h: Heard) => ({ text: h.text, at: h.at, ...onScreen(h) });
   if (system.startsWith('You help someone catch up')) {
     return {
       summary: `Catching up on ${heard.length} lines.`,
@@ -167,16 +235,18 @@ function notesReply(system: string, user: string): unknown {
   if (system.startsWith('You write the notes')) {
     return {
       summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
-      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map((h) => ({ text: h.text, at: h.at })),
+      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(item),
       questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         if (!m) return [];
         const rest = m[2] ?? '';
-        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at }];
+        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h) }];
       }),
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
-      suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?']
+      suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
+      // Each screen, with what was said while it was up.
+      screens: screens.map((x) => ({ n: x.n, description: `${x.title}, shown while: ${heard.find((h) => h.screen?.n === x.n)?.text ?? 'nothing was said'}` }))
     };
   }
   const question = /\nQuestion: (.*)$/s.exec(user)?.[1] ?? '';
@@ -188,7 +258,8 @@ function notesReply(system: string, user: string): unknown {
     return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, at: found.h.at }] : [] };
   }
   const hit = heard.find((h) => words.some((w) => h.text.toLowerCase().includes(w)));
-  return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', moments: hit ? [hit.at] : [] };
+  const shown = hit && /chart|slide|screen/i.test(question) ? hit.screen : undefined;
+  return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', moments: hit ? [hit.at] : [], screens: shown ? [shown.n] : [] };
 }
 
 /* ---------- the attested machines ---------- */
@@ -296,6 +367,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const calls: FakeNear['calls'] = [];
   const received: FakeNear['received'] = [];
   const prompts: string[] = [];
+  const images: FakeNear['images'] = [];
   let failing = 0;
   let failure: 'down' | 'prose' = 'down';
   let slow = 0;
@@ -373,18 +445,32 @@ export async function startFakeNear(): Promise<FakeNear> {
     const o = typeof parsed === 'object' && parsed !== null ? parsed : {};
     const model = 'model' in o ? str(o.model) : '';
     const messages = 'messages' in o && Array.isArray(o.messages) ? o.messages : [];
-    const text = (role: string) => str(messages.map((m: unknown) => (typeof m === 'object' && m !== null && 'role' in m && m.role === role && 'content' in m ? m.content : '')).find(Boolean));
+    // A message's content: text, or parts of text and images (data URLs), as the OpenAI chat format has them.
+    const parts = (role: string): unknown[] => messages.flatMap((m: unknown) => {
+      if (typeof m !== 'object' || m === null || !('role' in m) || m.role !== role || !('content' in m)) return [];
+      return Array.isArray(m.content) ? m.content : [{ type: 'text', text: m.content }];
+    });
+    const text = (role: string) => parts(role).flatMap((x) => (typeof x === 'object' && x !== null && 'type' in x && x.type === 'text' && 'text' in x ? [str(x.text)] : [])).join('\n');
+    const sent = parts('user').flatMap((x) => {
+      if (typeof x !== 'object' || x === null || !('type' in x) || x.type !== 'image_url' || !('image_url' in x) || typeof x.image_url !== 'object' || x.image_url === null || !('url' in x.image_url)) return [];
+      const m = /^data:image\/jpeg;base64,(.+)$/s.exec(str(x.image_url.url));
+      return m ? [Buffer.from(m[1] ?? '', 'base64')] : [];
+    });
     const system = text('system');
     const user = text('user');
     calls.push({ path, model, bytes: body.length, encryption });
     prompts.push(user);
+    for (const img of sent) {
+      const comment = commentOf(img);
+      images.push({ bytes: img.length, marker: /^SCREEN:(\{.*\})\|/s.exec(comment)?.[1] ?? null, salt: comment.slice(comment.lastIndexOf('|') + 1) });
+    }
     if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
     let content: string;
     if (failing > 0) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
       content = 'Here are your notes! The team talked about a few things.';
-    } else content = JSON.stringify(notesReply(system, user));
+    } else content = JSON.stringify(notesReply(system, user, sent));
     return {
       status: 200,
       body: {
@@ -462,7 +548,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       NEAR_AI_BASE_URL: `${origin}/v1`, NEAR_AI_API_KEY: apiKey, NEAR_AI_STT_URL: `${origin}/direct/whisper`, NEAR_AI_NOTES_URL: `${origin}/direct/glm`,
       INTEL_PCS_URL: i.pcsUrl, INTEL_ROOT_CA: i.rootPem, NVIDIA_NRAS_URL: n.nrasUrl, NVIDIA_ROOT_CA: n.rootPem
     },
-    calls, received, prompts,
+    calls, received, prompts, images,
     keys: () => ({ transcript: hex(models.transcript.key), notes: hex(models.notes.key) }),
     composes: () => ({ transcript: hex(sha256(utf8(models.transcript.compose))), notes: hex(sha256(utf8(models.notes.compose))), gateway: hex(sha256(utf8(gateway.compose))) }),
     tamper(how, of = 'model') {

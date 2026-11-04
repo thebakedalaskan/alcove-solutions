@@ -245,6 +245,19 @@ export interface TranscriptClip {
   durationMs: number;
 }
 
+/**
+ * A frame of the presenter's own shared screen, kept because the screen changed (docs: Calls and recordings › Shared
+ * screens): JPEG bytes, which share it's from (its LiveKit track ID), and when it was taken (`Date.now()` then).
+ */
+export interface ScreenFrame {
+  data: Blob;
+  share: string;
+  takenAt: number;
+}
+/** What the call kept of a frame: its ID, or the ID it already had if the same frame came before (a retry). */
+export const ScreenFrameReceiptSchema = z.object({ id: IDSchema, duplicate: z.boolean() });
+export type ScreenFrameReceipt = z.infer<typeof ScreenFrameReceiptSchema>;
+
 /** A piece of recorded audio, as produced by MediaRecorder every few seconds. */
 export interface AudioPiece {
   data: Blob;
@@ -368,6 +381,18 @@ export interface CallSession extends LiveStore<CallState> {
   declineNotes(requestId: string): Promise<void>;
   /** Organizer only: what this browser can't capture now (no microphone, or no way to record or listen), or none. */
   setUnavailable(parts: CaptureDevicePart[]): Promise<void>;
+  /**
+   * Organizer only: has shared screens read for the notes, or stops it. Only while notes are on or paused; everyone
+   * sees it in `capture.screen`. Resolves once the server has done it.
+   */
+  setScreens(on: boolean): Promise<void>;
+  /**
+   * The presenter's own browser: one frame of its own share, while screen notes are on and not paused. Refused for
+   * anyone else's share, for a camera, and from a breakout room. The same frame sent again is kept once.
+   */
+  shareFrame(frame: ScreenFrame): Promise<ScreenFrameReceipt>;
+  /** The presenter's own browser: one of its shares ended, so what it showed last stops there in the notes. */
+  shareEnded(share: string): Promise<void>;
   /** Raises or lowers your hand; everyone in the call sees it. */
   setHand(up: boolean): void;
   /** Organizer only: puts one participant on everyone's main stage, or nobody (null). */

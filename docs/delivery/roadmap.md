@@ -30,6 +30,10 @@
   off with who changed it and when, in the call and before joining; one pause that stops every kind of capture
   on the server; asking the organizer for notes; and the gaps marked in the transcript, catch-up and notes
   ([Calls and recordings › What's captured](../engineering/calls-and-recordings.md#whats-captured)).
+- Notes from shared screens: the organizer has shared screens read; each presenter's own browser sends what
+  changes on its share, sealed; the verified notes model reads each frame after the call; the note shows what
+  was on screen beside the lines said then, and decisions, follow-ups and answers point at it
+  ([Calls and recordings › Shared screens](../engineering/calls-and-recordings.md#shared-screens)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
@@ -58,5 +62,4 @@
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, account deletion |
-| 10 | Notes from shared screens (stretch) | Sample frames inside the attested service; Scribe autocapture as a reference |
-| 11 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
+| 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |

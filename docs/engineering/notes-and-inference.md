@@ -8,9 +8,10 @@ Notes are written end to end with NEAR AI Cloud (`I01`). While notes are on, the
 of speech (in a call, the organizer's browser, for everyone it hears); Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
 recorder show a live transcript. When the recording stops, the transcript moves into the note, and a
 worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
-chapters and suggested questions. Anyone who has the note can then ask questions about the call. Calls that
-follow on from each other form a series, and what earlier ones settled and left open carries into the next
-([Series](#series)).
+chapters and suggested questions. When the organizer had shared screens read, the notes model reads each frame
+a presenter's browser sent and the notes point at what was on screen ([Shared screens](#shared-screens)).
+Anyone who has the note can then ask questions about the call. Calls that follow on from each other form a
+series, and what earlier ones settled and left open carries into the next ([Series](#series)).
 
 `apps/api/src/inference.ts` and `apps/api/src/evidence.ts` are the only code that uses `NEAR_AI_API_KEY` or
 talks to NEAR AI, and `inference.ts` is the only one that sends it anything with content. Without a key the
@@ -40,7 +41,7 @@ open it, and only whoever opened the request could have sealed it.
 | Request | Model | Endpoint |
 | --- | --- | --- |
 | Transcribe a clip | `openai/whisper-large-v3` | `NEAR_AI_STT_URL`, `https://whisper-large-v3.completions.near.ai` |
-| Write notes, answer a question (about a note, a call so far or a series), catch up, translate captions | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
+| Write notes, read a frame of a shared screen, answer a question (about a note, a call so far or a series), catch up, translate captions | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
 
 These are the endpoints NEAR AI calls "direct completions" and documents as experimental. Its gateway
 also takes chat with end-to-end encrypted fields (E2EE v2), but that protocol encrypts each message to the
@@ -262,8 +263,9 @@ account.
   workers or two instances never write the same note.
 - **Keys.** The worker opens the account's keys through `KMASTER`, as a request does, and zeroes its copies
   when the job ends.
-- **Writing.** A job whose account can't be opened, or whose note was deleted, is dropped. A note without
-  transcript lines is finished straight away, without notes and without a charge. Otherwise `draft` in
+- **Writing.** A job whose account can't be opened, or whose note was deleted, is dropped. The note's
+  shared-screen frames are read first ([Shared screens](#shared-screens)). A note without transcript lines is
+  then finished, with its screens read but without notes and without a charge. Otherwise `draft` in
   `apps/api/src/modules/drafting.ts` asks the notes model, and one transaction writes the note `ready`
   with what it wrote and the model's verification, deletes the job and charges the account. The call's
   breakout rooms join the chapters in that transaction (one chapter per time rooms were open: who was in
@@ -285,6 +287,45 @@ account.
   up to whole minutes, at least one), taken in the same transaction as the note and labelled "Notes, N min".
   Time in a call with notes off isn't charged. Nothing checks the balance first, so a charge can take it below
   zero ([Payments and usage](payments-and-usage.md)).
+
+## Shared screens
+
+Frames come from presenters' own browsers while screen notes are on ([Calls and recordings › Shared
+screens](calls-and-recordings.md#shared-screens)); they're read only by the notes worker, after the call, so
+nothing on a screen goes to the AI during the call, paused or not.
+
+- **The model.** `z-ai/glm-5.3-flash`, the notes model Alcove already verifies, takes images
+  (`input_modalities: ["text","image"]` in NEAR AI's model list, verifiable). Its attested OHTTP endpoint carries
+  OpenAI-style image parts (`{type: "image_url", image_url: {url: "data:image/jpeg;base64,…"}}`) inside the
+  sealed request like any other content: checked on 4 November 2026 with synthetic slides, a 1280×720 frame
+  counting 1,196 image tokens and reading in 1.2 to 2.6 s. Nothing goes to an unverified model, and there's no
+  other way for a frame to leave.
+- **Reading a frame** (`readScreen` in `drafting.ts`). One request per frame, four at a time, each kept in the
+  frame's sealed row as soon as it's made, so a job tried again carries on where it was. The model returns the
+  frame's `title`, the `text` it can read (only that: never guessed or filled in, at most 700 characters), how `legible` it was (`clear`,
+  `partly`, `unreadable`; saying nothing counts as `partly`), and up to four `regions` worth pointing at, as
+  boxes in fractions of the frame (clamped to it, at least 2% a side, labels at most 60 characters). A reply
+  that can't be used twice keeps the frame as `unread`, and so does a frame whose object fails its integrity
+  check, or still can't be fetched on a second try two seconds later (the object store failing, or the object
+  gone): one image never costs the notes. A frame is never described from anything but its image. Evidence that
+  doesn't check out, or a model that doesn't answer, makes the notes wait, as for writing them. When the notes
+  can't be written in the end and the note is finished without them, it still shows what was read on each
+  screen so far.
+- **In the notes.** The notes model reads each screen among the transcript lines where it appeared, as a line
+  `[mm:ss] [screen N from Name, clear] Title. Reads: … Parts: (1) … (2) …` (its text as read, at most 700
+  characters; a guest is marked as one). It describes each screen in a sentence or two, tied to what was said
+  while it was up, and gives any decision, open question, follow-up or chapter that was about something on a
+  screen its `screen` (the screen, the part when one part was meant, and `sure`: whether what was said plainly
+  refers to it, like "this chart", or only seems to). Only screens it was sent, and parts they have, are kept.
+  A screen that's partly legible, unreadable or unread shows only what its line says, and the prompt says
+  never to fill in what couldn't be read.
+- **In answers.** Asking about a note sends the screens the same way; an answer can name up to two screens it
+  comes from, which come back as `{type: "screen", id, at}` parts.
+- **What's kept.** Each `ScreenMoment` in the note: the frame's ID, where it falls in the recording (`at` to
+  `until`), whose screen and which share, its size, how legible it was, its title, text (at most 700 characters),
+  regions and the notes' description (at most 400). The note carries every moment and each edit copies the note,
+  so a moment stays under about 1.7 KB: 240 of them add at most about 0.4 MB. The images stay in the object store
+  under the recording's key. All of it goes when the note is deleted.
 
 ## Progress
 
@@ -419,12 +460,17 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured.
   Every prompt that reads a transcript tells the model never to say or guess what happened in one. A transcript over 120,000
   characters (about 30,000 tokens) keeps its beginning and end, with a marker for the lines left out.
+- **Reading a shared screen.** The frame as an image part, and one JSON object back: `title`, `text` (what can be
+  read, exactly, top to bottom, at most 1,500 characters; never guessed), `legible` (`clear`, `partly`,
+  `unreadable`) and up to four `regions` (`{label, box: [left, top, right, bottom]}` in fractions of the frame).
 - **Writing notes.** One JSON object: `summary` (two to four plain sentences, substance first),
   `decisions` (each with the second it was settled; something only suggested isn't one), `questions` (what
   someone asked that the meeting didn't answer or settle, each with the second it was asked), `actions`
   (text that starts with a verb, an owner as the transcript names them or null, a due date as it was said or
   null, and the second it came up), `chapters` (two to six, each starting at a second read from the
-  `[mm:ss]` marks) and three `suggestedQuestions`. In the transcript's language, using only what it says,
+  `[mm:ss]` marks), three `suggestedQuestions` and `screens` (for each shared screen in the transcript, a
+  sentence or two on what it shows and what was said about it then), with `screen`, `part` and `sure` on any
+  decision, question, follow-up or chapter about something on a screen. In the transcript's language, using only what it says,
   never inventing names, numbers, dates or decisions. What comes back is stored as proposals: decisions
   are `proposed`, questions `open` and follow-ups not `takenOn` until people say so
   (`PATCH /v1/notes/:id/decisions/:id`, `…/questions/:id` and `…/actions/:id`, each answering with the
@@ -432,8 +478,8 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
 - **Answering.** The summary, the asker's name and the question are added. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
   such as an email), "I" and "me" meaning the asker, answering from what's been said so far when the call is
-  still going on, saying plainly when the transcript doesn't cover it, and up to four seconds the answer
-  comes from.
+  still going on, saying plainly when the transcript doesn't cover it, up to four seconds the answer comes
+  from, and up to two shared screens it comes from (`screens`).
 - **Catching up.** The transcript so far, told the meeting is still going on. One JSON object: a one- or
   two-sentence `summary` and four lists, `decided`, `proposed` (never counted as decided), `open` questions
   and `next` steps, each item a short sentence with the second it was said; a next step also has its
@@ -491,6 +537,7 @@ verified against. The measured OS images aren't configuration at all.
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 90 s |
+| Read a frame of a shared screen | The same, with the frame as an image part, `max_tokens` 1,200 | 60 s |
 | Answer a question (about a note, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
 | Catch up | The same, with `max_tokens` 1,500 | 60 s |
 | Translate captions | The same, with `max_tokens` 2,000 | 30 s |
@@ -510,8 +557,11 @@ digital silence with `502`, which Alcove reports as `503 unavailable`; the brows
 
 ## What's logged
 
-`inference.ts` logs only models, byte sizes, durations, segment and line counts, statuses, timings, finish
-reasons and token counts, at debug (`clip transcribed`, `notes model answered`). `evidence.ts` logs every
+`inference.ts` logs only models, byte sizes, durations, segment and line counts, image counts, statuses,
+timings, finish reasons and token counts, at debug (`clip transcribed`, `notes model answered`). Shared screens
+log counts and sizes: `frame kept` and `frame already kept` at debug, `shared screens read` at info (how many
+frames, and how many were clear, partly legible, unreadable or unread), `a frame couldn’t be read; kept as
+unread` at warn; never a frame, its title, its text or what the notes say about it. `evidence.ts` logs every
 verification at info, `model verified` with the model, the task, the code `verified`, the duration, Intel's
 TCB statuses and advisory IDs, the OS images, the GPUs, a short hash of the key, the quote's SHA-256 and the
 compose hashes; a refusal is `model evidence refused` (error, or warn when a service couldn't be reached)
@@ -578,6 +628,18 @@ finished note and the transcript the notes model reads, with a line from before 
 staying paused through breakout rooms, someone coming back and a new organizer connection; and the card and
 someone asking to join seeing the state with nobody's name, nothing said, and nothing readable in logs or rows.
 
+`apps/api/src/screens.integration.test.ts` covers shared screens, with presenters sharing through the real
+LiveKit server: only the organizer turning screen notes on, only with notes on, and everyone (the card and
+someone waiting too, without a name) seeing it; pausing holding it and turning notes off stopping it; frames
+refused while it's off or paused (nothing sent to NEAR AI), when taken before it came on, from someone else's
+share, a camera or a share that doesn't exist, from someone still asking to join, with a pass for another call,
+and when not a JPEG of a sensible size; the same frame kept once; a breakout room's shares kept out and the main
+room's taken; frames read by the notes model (the fake gets each image, sealed), placed and ranged in the
+recording, presenters named, an unreadable frame said to be, decisions and follow-ups pointing at the screen
+and part (plainly or maybe), the screens among the lines the notes model read, and an answer naming its screen;
+the image for the organizer and someone invited and nobody else; maintenance keeping frames, and deleting the
+note deleting every row and object; and no frame or reading readable in rows, objects, logs or on the wire.
+
 `apps/api/src/series.integration.test.ts` covers series: scheduling the next call (and the times it
 refuses), what carries over for the organizer and for everyone invited, staleness, decisions that no longer
 hold and questions answered, someone invited to only the second call (who sees only that one, can't open the
@@ -620,6 +682,12 @@ answers dropped because a note they read went while they were written.
   the organizer's microphone only: without one, nothing is recorded, and lines in later segments are placed
   from the start of the recording. Guests name themselves, so the notes model reads them marked as guests.
   Room recordings have no speaker diarization.
+- **Screens during the call.** Catch-up and questions during a call don't read shared screens yet: frames are
+  read after the call. `screens.framesOf` lists a live call's frames for a catch-up to point at once it does.
+- **Going back to a slide** is a new frame: the browser compares with the last frame it kept, so returning to an
+  earlier slide sends it again as a new moment, rather than pointing at the earlier image.
+- **Regions are the model's word.** A part's box is where the notes model says it is; it's usually close, and
+  the note shows it as the model gave it.
 - **Admission.** Nothing checks credits before recording or transcribing, and a charge can take the
   balance below zero ([Payments and usage](payments-and-usage.md)).
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't

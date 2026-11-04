@@ -109,8 +109,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
   `/v1/live/calls/:id` request, never in a URL or log. The live routes open the organizer's keys for it
   from `KMASTER`, per request. A removed person's pass stops working, and once the call has ended only the
   organizer can read it.
-- **What each role can do.** Everyone let in: read the call, chat, catch up and ask, raise a hand, and ask
-  for notes. Only the organizer (pass role `host`, their own session and their current connection: joining
+- **What each role can do.** Everyone let in: read the call, chat, catch up and ask, raise a hand, ask
+  for notes, and, while screen notes are on, send frames of their own shared screen
+  ([Shared screens](#shared-screens)). Only the organizer (pass role `host`, their own session and their current connection: joining
   from another device takes the powers with it): let people in or turn them away, notes on/off, pause and
   resume, say not now to an ask for notes, say what their browser can't capture, audio and speech uploads,
   mute someone's microphone, remove someone, lock the call, and end it. The recording is the organizer's
@@ -219,10 +220,13 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   `unavailable`, with when it last changed (`since`) and who changed it (`by`: the call's schedule, or the
   organizer by name). Recording and the transcript follow notes. The notes model reads what was transcribed for
   as long as there is some, so `ai` stays `on` while notes are off once they've been on, and only a pause stops
-  it. Nothing reads shared screens yet, so `screen` is always `off` until shared-screen notes arrive. `mode`
-  says it in one word: `on`, `paused`, `off`, or `unavailable` when notes are on but the organizer's browser can
-  neither record nor listen. Capture runs in one place, the organizer's browser, and the server enforces it on
-  the audio and transcribe routes, which only the organizer's current connection may use.
+  it. `screen` is `off` until the organizer has shared screens read, and then follows notes: on, paused with
+  them, off when they're turned off ([Shared screens](#shared-screens)); presenters' own browsers send the
+  frames, so it doesn't depend on what the organizer's browser can capture. `mode` says it in one word: `on`,
+  `paused`, `off`, or `unavailable` when notes are on but the organizer's browser can neither record nor listen.
+  Capture runs in one place, the organizer's browser, and the server enforces it on the audio and transcribe
+  routes, which only the organizer's current connection may use; shared screens come from each presenter's own
+  browser.
 - **Unavailable.** The organizer's browser says what it can't capture (`{type: "unavailable", parts}`, the
   organizer's only): the recording without a microphone (none, refused, or in use elsewhere) or when the
   recorder couldn't start or failed, the transcript when the browser can't run the audio worklet it listens
@@ -236,17 +240,18 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/modules/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
-  them, so nothing new is recorded, transcribed or sent to the AI. The organizer's browser holds everything as
-  it sends the pause: the recorder and every voice stop, and nothing they have is sent. Once the server has
-  paused, what they held is dropped rather than flushed, and a `409` from a later upload is dropped too. If the
-  pause fails, notes are still on, so the same recorder and voices carry on and send what they held: the
-  recorder's pieces stay in order, and no segment restarts from piece 0. While it's on its way, the organizer's
-  sign says **Pausing…**; that's the only in-between state, since the server changes the call's state in one
-  step and everyone else sees it change at once. What the server took before the pause stays: a piece or clip
-  that got through the gate before the pause was saved is kept (a clip still being transcribed lands in the
-  transcript, before the pause). Notes off is the same for audio and speech, but catch-up, questions and
-  captions still read what was transcribed before. Turning notes off sends the last audio and speech first; if
-  it fails, the same recorder carries on.
+  them, so nothing new is recorded, transcribed or sent to the AI; shared-screen frames are refused too. The
+  organizer's browser holds everything as it sends the pause: the recorder and every voice stop, and nothing they
+  have is sent. Once the server has paused, what they held is dropped rather than flushed, and a `409` from a
+  later upload is dropped too; a presenter's browser stops looking at its share and drops its unsent frames as
+  soon as it sees the pause. If the pause fails, notes are still on, so the same recorder and voices carry on and
+  send what they held: the recorder's pieces stay in order, and no segment restarts from piece 0. While it's on
+  its way, the organizer's sign says **Pausing…**; that's the only in-between state, since the server changes the
+  call's state in one step and everyone else sees it change at once. What the server took before the pause
+  stays: a piece or clip that got through the gate before the pause was saved is kept (a clip still being
+  transcribed lands in the transcript, before the pause). Notes off is the same for audio and speech, but
+  catch-up, questions and captions still read what was transcribed before. Turning notes off sends the last
+  audio and speech first; if it fails, the same recorder carries on.
 - **Resume** (`{type: "resume"}`) is the organizer's choice and nothing else's: not a reconnect, not a reload,
   not a breakout room, and not a new organizer connection, which takes over with notes still paused (or off).
   Resuming starts segment `n+1`, and so does turning notes on.
@@ -264,12 +269,88 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   toast and sees them in People, and either turns notes on (or resumes them), which answers every open ask, or
   says not now (`{type: "decline-notes", requestId}`). Whoever asked is told (`capture.asked`). Asks are kept in
   the sealed call state, one per person, by the person's ID across their reconnections.
-- **What it doesn't cover.** Video and chat are never captured: they're encrypted end to end between the
-  browsers. Nothing stops someone recording their own screen or speakers. Retention has one fixed behaviour,
+- **What it doesn't cover.** Cameras and chat are never captured: they're encrypted end to end between the
+  browsers. Shared screens are captured only as the frames a presenter's own browser sends while screen notes
+  are on. Nothing stops someone recording their own screen or speakers. Retention has one fixed behaviour,
   with no settings: the live transcript and caption translations last only until the call ends; the audio,
-  transcript and notes stay in the organizer's vault until someone with the right deletes the note, and
-  deleting is physical ([Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). Paused stretches capture
-  nothing, so there's nothing of them to keep.
+  transcript, shared-screen frames, what was read on them and the notes stay in the organizer's vault until
+  someone with the right deletes the note, and deleting is physical
+  ([Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). Paused stretches capture nothing, so there's
+  nothing of them to keep.
+
+## Shared screens
+
+Call media is end-to-end encrypted, so LiveKit never sees a shared screen, and the API sees only the frames a
+presenter's browser sends for the notes. When the organizer has shared screens read for the notes, each
+presenter's own browser sends frames of its own share to the API, which holds each one in memory only to seal it
+(and later to open it for the notes model and the note's people), and the private notes model reads them after the
+call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`).
+
+- **Turning it on.** Only the organizer (`POST /v1/live/calls/:id/actions` with `{type: "screens", on}`), and
+  only while notes are on or paused (`409 conflict` otherwise: "Turn on notes first"). Pausing holds it with
+  everything else and resuming brings it back; turning notes off turns it off too, and turning them on again
+  doesn't bring it back: that's the organizer's choice each time. Every change is a notice for everyone, and
+  the card, the join page and someone waiting see `capture.screen` like the other parts, without a name. Its
+  changes are kept to a tenth of a second, with the recording's segment, like the notes' own.
+- **In the presenter's browser.** While screen notes are on and not paused, the call is live and the presenter
+  isn't in a breakout room, the browser looks at its own share once a second (`ImageCapture.grabFrame` where the
+  browser has it, which reads the track itself rather than a video on the page, or a hidden video element). It compares each look on
+  a 48×27 grey grid: the screen changed when 2% of the grid moved by more than 24 levels from the last frame
+  kept, which a moving cursor doesn't. A frame is kept once the change has settled (two looks agree), at most
+  one every 4 seconds, and every 15 seconds while a screen never settles (a video playing). A share's first
+  frame waits until it has been up 10 seconds, so a window picked by mistake is gone before anything of it is
+  kept (as Google Meet and Teams do); something else shared in its place with **Change** (the same share, a new
+  picture) waits its own 10 seconds. Frames go up as JPEG (quality 0.72, at most 1600 pixels across), one at a
+  time, three tries each, the newest three waiting. Pausing, screen notes going off or a breakout room stops
+  it at once and drops what wasn't sent. When a share ends (stopped, or swapped for another), the browser says
+  so (`POST /v1/live/calls/:id/frames/ended {share}`), so its last frame's stretch ends there, and the API takes
+  no frame of it taken after that. A presenter's connection leaving the call (they leave, are removed, or a new
+  connection of theirs takes over) ends every share of theirs on the server, so a share whose browser couldn't
+  say so still stops where they left. The share bar says **Read for the notes**, and the share picker says so
+  before anyone chooses (during a pause: that it's read once notes resume).
+- **The request.** `POST /v1/live/calls/:id/frames` with the JPEG as the body (`content-type: image/jpeg`), the
+  share's LiveKit track ID in `x-alcove-share` and how long ago it was taken in `x-alcove-age-ms` (at most 30
+  seconds counts). A body over 1 MiB (`MAX_FRAME_BYTES`) is refused from its `content-length` before it's read;
+  then the JPEG's frame header must give a size between 64 and 4096 pixels a side. 24 frames a minute per
+  person (`503` past that). Then, in order: the sender must be let in (`403`); the capture gate's `screen` path
+  must allow it: the call live, notes on and not paused, screens on, and the sender not in a breakout room
+  (`409`); the frame mustn't be from before notes came on, were resumed, or screens were turned on (`409`); the
+  presenter's browser mustn't have said the share ended (`403`); and LiveKit must list the share as a screen
+  this person is sharing in this call's room now (`403` for someone else's share, a camera or a share that's
+  over; a yes is remembered for 10 seconds, forgotten when the browser says the share ended; `503` when LiveKit
+  can't be asked). The presenter is always the sender's own participant ID, so nobody can add frames to someone
+  else's share. What this proves is that the sender has a screen share up in this call's room: the API can't
+  see what's on it, so which picture is sent is the presenter's browser's word. A modified browser could send
+  any image under its own share, which is no more than it could show everyone on that share.
+- **Kept once, sealed.** A frame is found by a keyed hash of its share and its bytes' SHA-256 (`frame_tag`), so
+  a retried frame is kept once and answers with the ID it has (`{id, duplicate: true}`). The JPEG is sealed
+  under the recording's key, like audio (record kind `screen-frame`, binding the recording, the frame and the
+  object), written under a random object name, read back and checked; then its `screen_frames` row is written
+  with whose share it was, when (seconds since the call started, by the server's clock less the age), the
+  segment, its size and, later, what was read on it, sealed under the note's screen key (`screen-frame-info`,
+  binding the note and the frame). The row is written under a share lock on the recording, so a frame either
+  lands before a pause or stop, or stays out and its object is deleted.
+- **As many as the notes keep.** A call's notes keep at most 240 frames (`SCREEN_FRAMES_MAX`): about one a
+  minute for four hours, or an hour of a screen that keeps changing. The frame after that is refused (`409`:
+  "The notes have kept as many shared screens as they can for this call"), and screen notes turn off for
+  everyone, as if the organizer had turned them off, with a notice saying why; the presenters' browsers stop
+  looking, and the share bar stops saying **Read for the notes**. The organizer can't turn them on again for
+  that call (`409`); what was kept stays.
+- **Into the note.** When the call ends, its frames become the note's screen moments (`Note.screens`): each
+  placed in the recording as transcript lines are (in its segment, counted from when that segment started, kept
+  inside its audio), on screen until its share's next frame, its share ending or its presenter leaving, screen
+  notes stopping, notes pausing or going off, a gap, or the end. A segment with no audio (an organizer without a
+  microphone) places its frames by the call's clock, less the stretches notes were paused or off, so frames after
+  a pause still come after the ones before it. Presenters are named as the call named them. The image is at `GET /v1/notes/:id/screens/:frameId`, for anyone who has
+  the note and only for frames the note shows, decrypted per request with `cache-control: no-store`.
+- **Read and referred to.** The notes worker has the notes model read each frame before the notes are written
+  ([Notes and inference › Shared screens](notes-and-inference.md#shared-screens)), and the notes point at the
+  screen, and the part of it, a decision, question, follow-up, chapter or answer was about.
+- **Breakout rooms.** What's shared in a room stays in the room: the browser doesn't look while its presenter is
+  in one, and the API refuses a frame from anyone in one (the organizer while visiting, anyone sent to one).
+  The main room's shares are read while rooms are open.
+- **For catch-up.** `screens.framesOf` lists a live call's frames (ID, presenter, share, time) for a catch-up to
+  point at; catch-up doesn't read screens yet ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
 
 ## Hands, spotlight, breakout rooms and captions
 
@@ -448,6 +529,9 @@ device pickers.
   ends (the browser's own Stop, or the shared tab or window closing), the whole capture stops, sound included, and
   LiveKit unpublishes it, so it goes for everyone at once; a presenter who leaves or drops takes their share with
   them when LiveKit says they've gone.
+- **Shared screens in the notes.** The organizer has a **Read shared screens** switch under what's captured
+  while notes are on or paused. The presenter's share bar says **Read for the notes**, and the share picker says
+  it before they choose. A frame that can't reach the notes after three tries says so in the Notes panel.
 - **Captions** show the newest live transcript line, under whoever said it, translated for each viewer who
   picks a language. They're hidden while rooms are open, and say so instead of showing an old line while notes
   are paused or off, or while the organizer's browser can't listen.
@@ -601,5 +685,3 @@ never touches the encrypted recording.
 ## Next
 
 - **Host hand-off** when the organizer drops (#30): another member's browser takes over committing.
-- **Screen notes** (the stretch goal) would sample shared-screen frames inside the attested service;
-  Scribe's autocapture is a reference for turning screen activity into a written summary.

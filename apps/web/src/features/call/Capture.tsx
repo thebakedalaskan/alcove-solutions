@@ -6,7 +6,7 @@
  * useLive() by the call screen and never copied here; only the organizer's own pause on its way is this screen's.
  */
 import { errorMessage, notesAreOn, type CallRole, type CallState, type NotesRequest, type Person } from '@alcove/api';
-import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, Switch, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { changedLine } from '~/lib/capture';
 import { callName, listNames } from '~/lib/people';
@@ -19,6 +19,8 @@ export interface CaptureControls {
   /** The organizer: hold all capture, or carry on. */
   pause: () => void;
   resume: () => void;
+  /** The organizer: have shared screens read for the notes, or stop it. */
+  screens: (on: boolean) => void;
   /** Anyone else: ask for notes, or take the ask back. */
   ask: (up: boolean) => void;
 }
@@ -64,6 +66,12 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
       <div className="cap-h"><CaptureSign mode={c.mode} requested={!on && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
       <p className="cap-said">{saidFor(state, name)}</p>
       <CaptureParts capture={c} />
+      {host && c.mode !== 'off' && (
+        <div className="cap-screens">
+          <span><b>Read shared screens</b><small>What anyone shares is read for the notes, from their own browser. Cameras never are.</small></span>
+          <Switch checked={c.screen.mode !== 'off'} label="Read shared screens for the notes" onChange={(on) => controls.screens(on)} />
+        </div>
+      )}
       <div className="cap-facts">
         <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
         <div>
@@ -71,7 +79,7 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
           <span>{host ? 'The notes go to you and everyone invited.' : role === 'invited' ? 'The notes go to everyone invited, you included.' : 'The notes go to the people invited.'}</span>
           {host && getting.length > 0 && <Faces people={getting} size={18} max={4} />}
         </div>
-        <div><Icon name="lock" size={15} /><span>Video and chat are encrypted end to end and never captured.</span></div>
+        <div><Icon name="lock" size={15} /><span>Cameras and chat are encrypted end to end and never captured.</span></div>
       </div>
       {host && askers.length > 0 && !on && (
         <div className="cap-ask"><Faces people={askers} size={22} max={3} /><span className="t">{listNames(askers)} asked for notes.</span></div>

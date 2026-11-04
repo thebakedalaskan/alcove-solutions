@@ -204,6 +204,25 @@ CREATE TABLE recording_pieces (
   FOREIGN KEY (owner_id, recording_id) REFERENCES recordings(owner_id, recording_id) ON DELETE CASCADE
 );
 
+-- Frames of shared screens kept for a call's note (docs: Calls and recordings › Shared screens): the presenter's own
+-- browser sends one when its share changes. The image is a sealed object under a random name, like an audio piece;
+-- the row keeps its object, digest and size, and `info_ciphertext`, sealed: whose share it was, when, its size and,
+-- once the notes model has read it, what it says. `frame_tag` is a keyed hash of the share and the image's digest,
+-- so a retried frame is kept once. Deleting the note removes every row, and its objects after the commit.
+CREATE TABLE screen_frames (
+  owner_id alcove_owner_id NOT NULL,
+  note_item_id alcove_id128 NOT NULL,
+  frame_id alcove_id128 NOT NULL,
+  frame_tag bytea NOT NULL,
+  object_id alcove_id128 NOT NULL UNIQUE,
+  cipher_sha256 bytea NOT NULL,
+  cipher_bytes bigint NOT NULL CHECK (cipher_bytes > 0),
+  info_ciphertext bytea NOT NULL,
+  PRIMARY KEY (owner_id, note_item_id, frame_id),
+  UNIQUE (owner_id, note_item_id, frame_tag),
+  FOREIGN KEY (owner_id, note_item_id) REFERENCES items(owner_id, item_id) ON DELETE CASCADE
+);
+
 -- Who else may read a note: everyone invited to its call and anyone it was shared with, each only
 -- as a keyed hash of their email. Deleting the note removes every row.
 CREATE TABLE note_access (

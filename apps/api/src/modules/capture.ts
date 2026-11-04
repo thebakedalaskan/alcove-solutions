@@ -1,7 +1,8 @@
 /*
  * What a call captures (docs: Calls and recordings › What's captured): how its sealed state keeps it, the one gate
  * every capturing path goes through, the stretches with nothing captured, and the capture state as each person
- * sees it. Only the organizer changes it (calls.ts): notes on and off, pause and resume.
+ * sees it. Only the organizer changes it (calls.ts): notes on and off, pause and resume, and shared screens read
+ * for the notes.
  */
 import { CaptureDevicePartSchema, type AudioSegment, type CaptureActor, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart, type CaptureState, type NotesRequest } from '@alcove/api';
 import { z } from 'zod';
@@ -27,24 +28,38 @@ export type NotesAsk = z.infer<typeof NotesAsk>;
 /** What the organizer's browser can say it can't capture now, kept in the call's sealed state. */
 export const CapturePartName = CaptureDevicePartSchema;
 
+/**
+ * Shared screens read for the notes, or stopped, `at` seconds into the call (to a tenth), while the recording was in
+ * `segment`: the organizer's choice. Turning notes off stops it too, at the same moment, and so does the notes having
+ * kept as many frames as they can.
+ */
+export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int() });
+export type ScreenChange = z.infer<typeof ScreenChange>;
+
 /** The paths that capture something, or send what was captured to the AI. */
-export type CapturePath = 'audio' | 'speech' | 'captions' | 'catch-up' | 'ask';
-/** What the gate needs to know about a call. */
-export interface Capturing { live: boolean; status: CaptureStatus; noteId: string | null; recordingId: string | null }
+export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask';
+/**
+ * What the gate needs to know about a call: whether it's live, notes, the note and recording, whether shared screens
+ * are read (`screens`), and for a frame, whether whoever shares it is in a breakout room (`inRoom`), which stays out.
+ */
+export interface Capturing { live: boolean; status: CaptureStatus; noteId: string | null; recordingId: string | null; screens: boolean; inRoom?: boolean | undefined }
 
 /**
  * The capture gate: whether `path` may capture into this call, or send its transcript to the AI, right now. Every
- * such path asks here first (calls.ts: audio pieces, speech clips, captions, catch-up and questions). Audio and
- * speech need notes on. Captions, catch-up and questions need notes to have been on. While notes are paused nothing
- * goes anywhere. Whatever arrives once capture is paused or off is refused (409), whoever sends it; what got through
- * here before stays. Returns the note and recording to capture into.
+ * such path asks here first (calls.ts: audio pieces, speech clips, shared-screen frames, captions, catch-up and
+ * questions). Audio, speech and frames need notes on; frames also need shared screens read, and never come from a
+ * breakout room. Captions, catch-up and questions need notes to have been on. While notes are paused nothing goes
+ * anywhere. Whatever arrives once capture is paused or off is refused (409), whoever sends it; what got through here
+ * before stays. Returns the note and recording to capture into.
  */
 export function mayCapture(call: Capturing, path: CapturePath, context: Record<string, string | number | null>): { noteId: string; recordingId: string } {
-  const ctx = { ...context, path, notes: call.status };
+  const ctx = { ...context, path, notes: call.status, screens: call.screens ? 'on' : 'off' };
   if (!call.live) throw new ConflictError(path === 'catch-up' || path === 'ask' ? 'This call has ended. Its notes have everything.' : 'This call has ended.', { context: ctx });
   if (call.status === 'paused') throw new ConflictError('Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.', { context: ctx });
-  const captures = path === 'audio' || path === 'speech';
+  const captures = path === 'audio' || path === 'speech' || path === 'screen';
   if (captures && call.status !== 'on') throw new ConflictError('Notes aren’t on right now.', { context: ctx });
+  if (path === 'screen' && !call.screens) throw new ConflictError('Shared screens aren’t read for the notes right now.', { context: ctx });
+  if (path === 'screen' && call.inRoom) throw new ConflictError('What’s shared in a breakout room stays in the room. It isn’t read for the notes.', { context: ctx });
   if (!call.noteId || !call.recordingId) throw new ConflictError('Notes haven’t been on in this call, so nothing has been transcribed.', { context: ctx });
   return { noteId: call.noteId, recordingId: call.recordingId };
 }
@@ -112,11 +127,12 @@ function modes(status: CaptureStatus, everOn: boolean): Record<Part, CaptureMode
 /**
  * The capture state for one person. Each part says when it last changed and who changed it: `organizer` names them,
  * for people in the call; people asking to join get no name, no gaps and no asks. A part the organizer's browser says
- * it can't do is unavailable while notes are on, and so is everything when it can do neither. Screens are always
- * off, since nothing reads them.
+ * it can't do is unavailable while notes are on, and so is everything when it can do neither. Shared screens are read
+ * only once the organizer says so (`screens`), and then follow notes: on, paused with them, or off.
  */
 export function stateFor(c: {
   status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[];
+  screens: { on: boolean; history: ScreenChange[] };
   gaps: CaptureGap[]; requests: NotesRequest[]; asked: CaptureState['asked'];
 }): CaptureState {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
@@ -138,7 +154,34 @@ export function stateFor(c: {
   };
   return {
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
-    recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: { mode: 'off', since: null, by: null },
+    recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
     gaps: c.gaps, requests: c.requests, asked: c.asked
   };
+}
+
+/**
+ * Shared screens as people see them: off until the organizer turns them on (and off again when they, or notes, are
+ * turned off); while on, they're on or paused with notes. The presenters' own browsers send frames, so the organizer's
+ * browser not being able to record or listen doesn't change it. When and who is whichever change last made a
+ * difference: the organizer's choice about screens, or notes being paused, resumed or turned off.
+ */
+function screenPart(c: { status: CaptureStatus; history: CaptureChange[]; screens: { on: boolean; history: ScreenChange[] } }, when: (at: number) => string, actor: (by: CaptureChange['by']) => CaptureActor): CapturePart {
+  const events = [
+    ...c.history.map((h) => ({ at: h.at, by: h.by, status: h.status, on: undefined })),
+    ...c.screens.history.map((s) => ({ at: s.at, by: 'organizer' as const, status: undefined, on: s.on }))
+  ].sort((a, b) => a.at - b.at);
+  let status: CaptureStatus = 'off';
+  let on = false;
+  let mode: CaptureMode = 'off';
+  let last: (typeof events)[number] | undefined;
+  for (const e of events) {
+    status = e.status ?? status;
+    on = e.on ?? on;
+    const now: CaptureMode = on ? status : 'off';
+    if (now !== mode) { mode = now; last = e; }
+  }
+  // A choice the organizer made that changed nothing yet still says who made it (screens off while notes were off).
+  const latest = c.screens.history.at(-1);
+  if (!last && latest) return { mode: 'off', since: when(latest.at), by: actor('organizer') };
+  return { mode: c.screens.on ? c.status : 'off', since: last ? when(last.at) : null, by: last ? actor(last.by) : null };
 }

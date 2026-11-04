@@ -183,8 +183,56 @@ export const TranscriptLineSchema = z.object({
 });
 export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
 
-export const ScreenCaptureSchema = z.object({ at: z.number(), by: z.string(), title: z.string(), text: z.string() });
-export type ScreenCapture = z.infer<typeof ScreenCaptureSchema>;
+/* ---------- shared screens in a note ---------- */
+
+/** A part of a shared screen worth pointing at (a chart, a table, a paragraph): a short label, and where it is as fractions of the frame from its top left. */
+export const ScreenRegionSchema = z.object({ label: z.string(), x: z.number(), y: z.number(), w: z.number(), h: z.number() });
+export type ScreenRegion = z.infer<typeof ScreenRegionSchema>;
+
+/**
+ * How well a frame could be read. clear: all of it. partly: some was too small, blurred or cut off. unreadable: none
+ * of it could be made out. unread: the notes model couldn't read it at all, so nothing is said about it.
+ */
+export const ScreenLegibleSchema = z.enum(['clear', 'partly', 'unreadable', 'unread']);
+export type ScreenLegible = z.infer<typeof ScreenLegibleSchema>;
+
+/**
+ * What was on a shared screen at a moment of the call: one frame the presenter's own browser kept because the screen
+ * changed. `at` to `until` is the stretch of the recording it was on screen, the part of the transcript it belongs
+ * to. The reading (title, text, how legible, the parts worth pointing at) is the private notes model's; its
+ * `description` ties the frame to what was said. The image is at notes.screenUrl(noteId, id).
+ */
+export const ScreenMomentSchema = z.object({
+  id: IDSchema,
+  /** Seconds into the recording, as transcript lines count them, when it appeared. */
+  at: z.number(),
+  /** Until when it stayed: the share's next frame, the share or screen notes stopping, a gap, or the end. */
+  until: z.number(),
+  /** Whose screen it was. Absent when the call can't tell any more. */
+  presenter: SpeakerSchema.optional(),
+  /** Which share it's from: one person can share more than once, and several people can share at once. */
+  share: IDSchema,
+  /** The frame's size in pixels. */
+  width: z.number(),
+  height: z.number(),
+  legible: ScreenLegibleSchema,
+  /** What it is, in a few words: a slide's heading, a document's name, the app shown. Empty when nothing could be read. */
+  title: z.string(),
+  /** The words and numbers read on it, line by line: only what could be read. */
+  text: z.string(),
+  /** What it shows and how it ties in with what was said, once the notes are written. Empty before. */
+  description: z.string(),
+  regions: z.array(ScreenRegionSchema)
+});
+export type ScreenMoment = z.infer<typeof ScreenMomentSchema>;
+
+/**
+ * Where something in the notes was on a shared screen: the moment (`ScreenMoment.id`), the part of it when one
+ * (`region`, an index into its regions), and whether what was said plainly refers to it (`sure`) or the notes only
+ * think it does.
+ */
+export const ScreenRefSchema = z.object({ id: IDSchema, region: z.number().optional(), sure: z.boolean() });
+export type ScreenRef = z.infer<typeof ScreenRefSchema>;
 
 /** Someone changing a note's decisions, open questions or follow-ups: who, when, what, and what it was before. */
 export const ChangeSchema = z.object({
@@ -208,6 +256,8 @@ export const DecisionSchema = z.object({
   /** When it was said, in seconds into the recording, if the notes could tell. */
   at: z.number().optional(),
   state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']),
+  /** What was on a shared screen when it was settled, if it was about something shown. */
+  screen: ScreenRefSchema.optional(),
   /** Who confirmed, rejected, superseded, reopened or reworded it, oldest first. */
   changes: z.array(ChangeSchema)
 });
@@ -223,6 +273,8 @@ export const QuestionSchema = z.object({
   /** When it was asked, in seconds into the recording, if the notes could tell. */
   at: z.number().optional(),
   state: z.enum(['open', 'answered']),
+  /** What was on a shared screen when it was asked, if it was about something shown. */
+  screen: ScreenRefSchema.optional(),
   /** Who said it was answered, reopened or reworded it, oldest first. */
   changes: z.array(ChangeSchema)
 });
@@ -239,12 +291,15 @@ export const ActionItemSchema = z.object({
   /** When it came up, in seconds into the recording, if the notes could tell. */
   at: z.number().optional(),
   done: z.boolean(),
+  /** What was on a shared screen when it came up, if it was about something shown. */
+  screen: ScreenRefSchema.optional(),
   /** Who took it on, gave it to someone, changed it or ticked it, oldest first. */
   changes: z.array(ChangeSchema)
 });
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
-export const ChapterSchema = z.object({ at: z.number(), title: z.string(), summary: z.string() });
+/** A part of the call: where it starts, a few words, a sentence, and what was on a shared screen through it, when something was. */
+export const ChapterSchema = z.object({ at: z.number(), title: z.string(), summary: z.string(), screen: ScreenRefSchema.optional() });
 export type Chapter = z.infer<typeof ChapterSchema>;
 
 /**
@@ -321,7 +376,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   chapters: z.array(ChapterSchema),
   /** The stretches of the call with nothing captured, oldest first. Room recordings have none. */
   gaps: z.array(CaptureGapSchema),
-  screens: z.array(ScreenCaptureSchema),
+  /** What was on shared screens while screen notes were on, oldest first, each with the stretch of the transcript it belongs to. */
+  screens: z.array(ScreenMomentSchema),
   /** What was said while notes were on. Null while the recording is still going. */
   transcript: z.array(TranscriptLineSchema).nullable(),
   suggestedQuestions: z.array(z.string()),
@@ -337,9 +393,11 @@ export type Note = z.infer<typeof NoteSchema>;
 export const OpenActionSchema = ActionItemSchema.extend({ noteId: IDSchema, noteTitle: z.string() });
 export type OpenAction = z.infer<typeof OpenActionSchema>;
 
+/** An answer about a call: its text, the moments it comes from, and the shared screens it read them on (a note's `ScreenMoment`, and the part of it when one). */
 export const AnswerPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('cite'), at: z.number() })
+  z.object({ type: z.literal('cite'), at: z.number() }),
+  z.object({ type: z.literal('screen'), id: IDSchema, at: z.number(), region: z.number().optional() })
 ]);
 export type AnswerPart = z.infer<typeof AnswerPartSchema>;
 

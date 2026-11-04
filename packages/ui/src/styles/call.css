@@ -259,6 +259,8 @@
 .ic-spill .ac-i { flex: none; color: var(--stage-ink); }
 .ic-spill b { color: var(--stage-ink); font-weight: 600; }
 .ic-spill .tx2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Your share is read for the notes: said beside what you share, never cut off by a long name. */
+.ic-spill .sp-read { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--stage-ink); font-weight: 600; }
 .ic-spill .sp-btn { flex: none; height: 28px; padding: 0 10px; border-radius: 8px; background: rgb(255 255 255 / 0.07); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-spill .sp-btn:hover { background: rgb(255 255 255 / 0.14); }
 .ic-spill .sp-btn.is-strong { background: var(--stage-ink); color: var(--stage); }
@@ -534,7 +536,7 @@
 .ic-share .pk-kind p.sub { font-size: 13px; color: var(--ink-3); }
 .ic-share .pk-f { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 20px 18px 24px; border-top: 1px solid var(--line); }
 .ic-share .pk-f .ic-srow { padding: 0; flex-basis: 100%; }
-.ic-share .pk-note { margin-right: auto; font-size: 12.5px; color: var(--ink-3); }
+.ic-share .pk-note { flex: 1 1 220px; min-width: 0; margin-right: auto; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 
 /* leaving */
 .ic-leave .in { padding: 28px 28px 24px; }

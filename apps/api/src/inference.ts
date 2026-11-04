@@ -1,6 +1,6 @@
 /*
- * NEAR AI Cloud (I01): speech to text for the live transcript, and the model that writes notes and
- * answers questions about them. This module and evidence.ts are the only code that talks to NEAR AI, and
+ * NEAR AI Cloud (I01): speech to text for the live transcript, and the model that writes notes,
+ * answers questions about them and reads frames of shared screens. This module and evidence.ts are the only code that talks to NEAR AI, and
  * this is the only one that sends it anything with content. Nothing leaves here except sealed to a model
  * whose evidence checked out (evidence.ts):
  *
@@ -175,7 +175,15 @@ export async function transcribe(cfg: Config, wav: Uint8Array, durationMs: numbe
 
 /* ---------- the notes model ---------- */
 
-export interface Message { role: 'system' | 'user'; content: string }
+/**
+ * What a message says: text, or text and images. An image is a JPEG as a data URL: it travels inside the sealed
+ * request like everything else, so only the model's attested VM sees it.
+ */
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+export interface Message { role: 'system' | 'user'; content: string | ContentPart[] }
+/** A JPEG as a message part. */
+export const jpegPart = (jpeg: Uint8Array): ContentPart => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${Buffer.from(jpeg).toString('base64')}` } });
+const imagesIn = (messages: Message[]) => messages.reduce((n, m) => n + (typeof m.content === 'string' ? 0 : m.content.filter((p) => p.type === 'image_url').length), 0);
 const Chat = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }), finish_reason: z.string().nullable().optional() })).min(1),
   usage: z.object({ prompt_tokens: z.number(), completion_tokens: z.number() }).partial().optional()
@@ -210,7 +218,7 @@ export async function complete(cfg: Config, messages: Message[], o: { what: stri
     const context = { what: o.what, model, ms, finish: choice?.finish_reason ?? null, promptTokens: r.success ? r.data.usage?.prompt_tokens ?? null : null, outputTokens: r.success ? r.data.usage?.completion_tokens ?? null : null };
     const json = jsonIn(choice?.message.content ?? '');
     if (json === null) throw new UnavailableError('The notes service sent back something unexpected.', { context: { ...context, reply: r.success ? 'no-json' : 'unparseable' } });
-    ilog.debug('notes model answered', { ...context, requestBytes: body.length });
+    ilog.debug('notes model answered', { ...context, requestBytes: body.length, images: imagesIn(messages) });
     return { json, evidence: v.evidence };
   });
 }

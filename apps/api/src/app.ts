@@ -1,7 +1,7 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
-  SignInBodySchema, TeamInviteBodySchema
+  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -30,6 +30,7 @@ import * as notes from './modules/notes';
 import * as people from './modules/people';
 import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
+import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
 import type { Clip } from './modules/transcripts';
 
@@ -58,6 +59,10 @@ const NO_RECEIPT = [
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
+/** The one route that takes an image: a frame of someone's own shared screen. */
+const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
+/** IDs in paths are 22 characters of base64url; anything else names nothing. */
+const ID128 = /^[A-Za-z0-9_-]{22}$/;
 
 /**
  * A small fixed-window limiter: at most `max` hits per key in each window. Unauthenticated requests
@@ -114,6 +119,9 @@ export function createApp(d: Deps) {
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
   const captionLimiter = rateLimit(90, 60_000);
+  /** Frames of a shared screen, per person in a call: browsers send one only when the screen changed, at most every few seconds. */
+  const frameLimiter = rateLimit(24, 60_000);
+  const shareEndLimiter = rateLimit(30, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -138,7 +146,7 @@ export function createApp(d: Deps) {
   const body = async <S extends z.ZodType>(c: Context, schema: S): Promise<z.infer<S>> => schema.parse(await c.req.json().catch(() => { throw new ValidationError('Expected a JSON body.'); }));
 
   // Only the web app's own origin may call the API with credentials (matters when they're on different subdomains).
-  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
+  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS), ...Object.values(FRAME_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
@@ -150,7 +158,8 @@ export function createApp(d: Deps) {
     if (origin !== d.cfg.WEB_ORIGIN) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/')) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
+    const image = type.startsWith('image/jpeg') && FRAMES.test(c.req.path);
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 
@@ -278,6 +287,7 @@ export function createApp(d: Deps) {
   app.use('/v1/live/calls/:id/mls/commits', capped(3 * 1024 * 1024));
   app.use('/v1/live/calls/:id/mls/messages', capped(128 * 1024));
   app.use('/v1/live/calls/:id/mls/keypackages', capped(32 * 1024));
+  app.use('/v1/live/calls/:id/frames', capped(MAX_FRAME_BYTES));
   const organizerOnly = (c: Context<Env>) => {
     const v = c.get('viewer');
     if (!v.isOrganizer) throw new ForbiddenError('Only the organizer can do that.', { context: { callId: v.pass.callId, role: v.pass.role } });
@@ -322,6 +332,22 @@ export function createApp(d: Deps) {
     voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
     speechLimiter(v.organizer.ownerId, 'transcribe');
     return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker));
+  });
+  /*
+   * Shared screens: a frame of someone's own share, from their own browser, while screen notes are on. Anyone let in
+   * can be the one sharing; whose share it is, and that it's a screen, is checked with LiveKit.
+   */
+  app.post('/v1/live/calls/:id/frames', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'screen');
+    frameLimiter(v.pass.identity, 'frames');
+    return c.json(await calls.shareFrame(v, c.req.param('id'), await frame(c)));
+  });
+  app.post('/v1/live/calls/:id/frames/ended', async (c) => {
+    const v = c.get('viewer');
+    shareEndLimiter(v.pass.identity, 'share-ended');
+    await calls.shareEnded(v, c.req.param('id'), (await body(c, ShareEndedBodySchema)).share);
+    return c.json({ ended: true });
   });
   /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
@@ -467,6 +493,13 @@ export function createApp(d: Deps) {
     c.header('cache-control', 'no-store');
     return stream(c, async (s) => { for await (const chunk of audioMod.stream(source.owner, source.recordingId, segment)) await s.write(chunk); });
   });
+  /* A note's shared-screen frame, for anyone who has the note: decrypted here, never cached by the browser. */
+  app.get('/v1/notes/:id/screens/:frameId', async (c) => {
+    const frameId = c.req.param('frameId');
+    if (!ID128.test(frameId)) throw new NotFoundError('That frame doesn’t exist.');
+    const jpeg = await notes.screenImage(c.get('owner'), c.req.param('id'), frameId);
+    return new Response(jpeg.slice(), { headers: { 'content-type': 'image/jpeg', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'" } });
+  });
   /* Confirming what the notes say: anyone who has them can, and everyone sees who did. */
   app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(c.get('owner'), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
   app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
@@ -501,6 +534,26 @@ async function piece(c: Context): Promise<audioMod.Piece> {
   const bytes = new Uint8Array(await c.req.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_AUDIO_PIECE_BYTES) throw new ValidationError('That piece of audio is empty or too large.');
   return { segment: num(AUDIO_HEADERS.segment), seq: num(AUDIO_HEADERS.seq), durationMs: num(AUDIO_HEADERS.duration), mimeType, bytes };
+}
+
+/**
+ * Reads a frame of a shared screen: a JPEG of at most MAX_FRAME_BYTES (refused from its declared size before the body
+ * is read), between 64 and 4096 pixels on each side, which share it's from and how long ago it was taken.
+ */
+async function frame(c: Context): Promise<calls.FrameUpload> {
+  if ((c.req.header('content-type') ?? '').toLowerCase().split(';')[0]?.trim() !== 'image/jpeg') throw new ValidationError('A frame must be a JPEG image.');
+  const declared = Number(c.req.header('content-length') ?? 0);
+  if (declared > MAX_FRAME_BYTES) throw new ValidationError('That frame is too large.', { context: { bytes: declared } });
+  const share = ShareIdSchema.safeParse(c.req.header(FRAME_HEADERS.share));
+  if (!share.success) throw new ValidationError('Say which shared screen the frame is from.', { context: { header: FRAME_HEADERS.share } });
+  const age = z.coerce.number().int().min(0).safeParse(c.req.header(FRAME_HEADERS.age) ?? '0');
+  if (!age.success) throw new ValidationError('Say how long ago the frame was taken.', { context: { header: FRAME_HEADERS.age } });
+  const jpeg = new Uint8Array(await c.req.arrayBuffer());
+  if (!jpeg.length || jpeg.length > MAX_FRAME_BYTES) throw new ValidationError('That frame is empty or too large.', { context: { bytes: jpeg.length } });
+  const size = jpegSize(jpeg);
+  if (!size) throw new ValidationError('A frame must be a JPEG image.', { context: { bytes: jpeg.length } });
+  if (Math.min(size.width, size.height) < 64 || Math.max(size.width, size.height) > 4096) throw new ValidationError('That frame is too small or too large.', { context: { width: size.width, height: size.height } });
+  return { share: share.data, ageMs: Math.min(age.data, MAX_FRAME_AGE_MS), jpeg, ...size };
 }
 
 /** True for the WAV the live transcript takes: uncompressed 16-bit PCM, one channel, 16 kHz. */

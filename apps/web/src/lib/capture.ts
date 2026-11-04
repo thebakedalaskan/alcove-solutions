@@ -11,15 +11,18 @@ export function gapLabel(g: CaptureGap): string {
   return from === to ? `${what} at ${from}` : `${what} ${from}–${to}`;
 }
 
-/** Where a stretch with nothing captured falls among transcript lines: before the first line said at or after it. */
-export function gapsBefore<L extends { at: number }>(gaps: CaptureGap[], lines: L[], index: number): CaptureGap[] {
+/**
+ * Where something placed in the recording (a stretch with nothing captured, a shared screen changing) falls among
+ * transcript lines: before the first line said at or after it.
+ */
+export function gapsBefore<G extends { at: number }, L extends { at: number }>(gaps: G[], lines: L[], index: number): G[] {
   const line = lines[index];
   const prev = lines[index - 1];
   if (!line) return [];
   return gaps.filter((g) => g.at <= line.at && (prev === undefined || g.at > prev.at));
 }
-/** The stretches after the last line, such as notes paused right now. */
-export const gapsAfter = <L extends { at: number }>(gaps: CaptureGap[], lines: L[]): CaptureGap[] => {
+/** What comes after the last line, such as notes paused right now. */
+export const gapsAfter = <G extends { at: number }, L extends { at: number }>(gaps: G[], lines: L[]): G[] => {
   const last = lines.at(-1);
   return last ? gaps.filter((g) => g.at > last.at) : gaps;
 };

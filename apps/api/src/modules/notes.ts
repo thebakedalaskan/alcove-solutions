@@ -4,9 +4,9 @@
  * email hashes. Someone else's note is opened with its organizer's keys, and only after that check.
  */
 import {
-  ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenCaptureSchema, TranscriptLineSchema, minutesLabel,
+  ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, ScreenMomentSchema, TranscriptLineSchema, minutesLabel,
   type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient, type Speaker
+  type NoteSummary, type OpenAction, type Question, type QuestionPatch, type Recipient, type ScreenMoment, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -23,6 +23,7 @@ import { queueDelete, recordingObjects, segments } from './audio';
 import { answer, briefOf } from './drafting';
 import { MeetingManifest } from './meetings';
 import { personOf } from './portraits';
+import * as screens from './screens';
 import * as transcripts from './transcripts';
 
 const nlog = log.child({ component: 'notes' });
@@ -54,7 +55,8 @@ export const NoteManifest = z.object({
   summary: z.string(), decisions: z.array(DecisionSchema), questions: z.array(QuestionSchema), actions: z.array(ActionItemSchema), chapters: z.array(ChapterSchema),
   /** The stretches of the call nothing was captured in (notes off or paused), where they fall in the recording. */
   gaps: z.array(CaptureGapSchema),
-  screens: z.array(ScreenCaptureSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string()),
+  /** What was on shared screens while screen notes were on: each frame kept (its image is in screen_frames), read and described once the notes are written. */
+  screens: z.array(ScreenMomentSchema), transcript: z.array(TranscriptLineSchema).nullable(), suggestedQuestions: z.array(z.string()),
   /** Breakout rooms the call held, in seconds into the recording, kept until the notes are written and merged into their chapters. */
   breakouts: z.array(HeldRooms),
   /** The verified models that transcribed the speech and wrote the notes, as they were checked. */
@@ -94,19 +96,19 @@ async function grant(o: Owner, db: Db, noteId: string, emails: string[], role: '
 }
 
 /**
- * The recording is complete: its live transcript moves into the note, with the stretches nothing was captured in,
- * everyone invited gets the note, and it's queued for the notes service (modules/writer.ts). Runs in the stopping
- * transaction.
+ * The recording is complete: its live transcript moves into the note, with the stretches nothing was captured in and
+ * what was on shared screens (`shown`, the call's frames as screen moments), everyone invited gets the note, and it's
+ * queued for the notes service (modules/writer.ts). Runs in the stopping transaction.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
   speakerOf?: ((identity: string) => Speaker | undefined) | undefined, roomOf?: ((id: string) => { id: string; name: string } | undefined) | undefined,
-  gaps: CaptureGap[] = []): Promise<void> {
+  gaps: CaptureGap[] = [], shown: ScreenMoment[] = []): Promise<void> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
   // Each line inside its own segment of the recording, so nothing said before a pause comes after it.
   const heard = transcripts.placed(await transcripts.lines(o, db, noteId), await segments(o, recordingId));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
-    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts, gaps,
+    ...n, status: 'pending', duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
     // In a call, each line keeps whoever said it and the breakout room it was said in, by name; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf, roomOf),
     inference: heardBy
@@ -118,7 +120,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   await exec(db, `INSERT INTO content_jobs (owner_id, job_id, revision_id, kind, state, attempt, job_ciphertext) VALUES ($1,$2,$3,'notes','queued',0,$4)
                   ON CONFLICT (owner_id, revision_id, kind) DO NOTHING`,
     [o.ownerId, id128(), head.revisionId, sealJson(stateKey(o.root, o.ownerId, `job:${noteId}`), { v: 1, kind: 'job', ownerId: o.ownerId, noteId }, toJson(job))]);
-  nlog.info('notes job queued', { noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, invited: next.invited.length });
+  nlog.info('notes job queued', { noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length });
 }
 
 /* ---------- finding a note: your own, or one you have access to ---------- */
@@ -225,6 +227,12 @@ export async function get(o: Owner, id: string): Promise<Note> {
 export async function audioSource(o: Owner, id: string): Promise<{ owner: Owner; recordingId: string }> {
   const l = await locate(o, id);
   return { owner: l.owner, recordingId: l.note.manifest.recordingId };
+}
+/** One of a note's shared-screen frames, decrypted, for anyone who has the note: only frames the note shows. */
+export async function screenImage(o: Owner, id: string, frameId: string): Promise<Uint8Array> {
+  const l = await locate(o, id);
+  if (!l.note.manifest.screens.some((m) => m.id === frameId)) throw notFound('That frame', { noteId: id });
+  return screens.image(l.owner, id, l.note.manifest.recordingId, frameId);
 }
 /** Where a note is on its way to being written, step by step; `ready` once the notes are written. */
 export async function progress(o: Owner, id: string): Promise<NoteProgress> {
@@ -407,10 +415,10 @@ export async function share(o: Owner, id: string, emails: string[]): Promise<Not
 }
 
 /**
- * Deletes your own note for good: every revision, its recording and pieces, its jobs, everyone's
- * access, the link from its meeting, and this owner's operation receipts (which may hold copies of
- * responses). Objects are deleted after the commit; failures are retried by maintenance.
- * Someone else's note is only removed from your notes.
+ * Deletes your own note for good: every revision, its recording and pieces, its shared-screen frames,
+ * its jobs, everyone's access, the link from its meeting, and this owner's operation receipts (which
+ * may hold copies of responses). Objects are deleted after the commit; failures are retried by
+ * maintenance. Someone else's note is only removed from your notes.
  */
 export async function remove(o: Owner, id: string): Promise<void> {
   const l = await locate(o, id);
@@ -423,7 +431,9 @@ export async function remove(o: Owner, id: string): Promise<void> {
   const objects = await tx(o.pool, async (c) => {
     // The note's row first, as the notes worker takes it: deleting while its notes are being written waits instead of deadlocking.
     await lockItem(o, c, id);
-    const objs = await recordingObjects(o, c, recordingId);
+    const audio = await recordingObjects(o, c, recordingId);
+    const frames = await screens.frameObjects(o, c, id);
+    const objs = { ids: [...audio.ids, ...frames.ids], bytes: audio.bytes + frames.bytes };
     await exec(c, `DELETE FROM content_jobs WHERE owner_id = $1 AND revision_id IN (SELECT revision_id FROM revisions WHERE owner_id = $1 AND item_id = $2)`, [o.ownerId, id]);
     for (const m of (await listItems(o, c, 'meeting', MeetingManifest)).filter((x) => x.manifest.noteId === id)) {
       const { noteId: _drop, ...rest } = m.manifest;
@@ -433,8 +443,8 @@ export async function remove(o: Owner, id: string): Promise<void> {
     await exec(c, 'DELETE FROM items WHERE owner_id = $1 AND item_id = $2', [o.ownerId, id]);
     if (objs.bytes) await exec(c, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, objs.bytes]);
     await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
-    return objs.ids;
+    return { ids: objs.ids, frames: frames.ids.length };
   });
-  await queueDelete(o, objects);
-  nlog.info('note deleted', { noteId: id, recordingId, objects: objects.length });
+  await queueDelete(o, objects.ids);
+  nlog.info('note deleted', { noteId: id, recordingId, objects: objects.ids.length, frames: objects.frames });
 }

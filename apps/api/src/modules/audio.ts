@@ -32,7 +32,8 @@ export async function setRecordingState(o: Owner, db: Db, recordingId: string, s
 }
 
 const RecRow = z.object({ key_envelope: bytea, state: z.string() });
-async function krecOf(o: Owner, recordingId: string): Promise<{ krec: Uint8Array; state: string }> {
+/** A recording's key (wipe it after use) and its state. Audio pieces and shared-screen frames are sealed under it. */
+export async function krecOf(o: Owner, recordingId: string): Promise<{ krec: Uint8Array; state: string }> {
   const r = await maybeOne(o.pool, RecRow, 'SELECT key_envelope, state FROM recordings WHERE owner_id = $1 AND recording_id = $2', [o.ownerId, recordingId]);
   if (!r) throw new NotFoundError('That recording doesn’t exist.');
   return { krec: openKey(o.wrapKey, o.ownerId, scope(recordingId), r.key_envelope), state: r.state };

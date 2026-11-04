@@ -74,10 +74,15 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
   limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
   (120 a minute, calls and room recordings together) and `ask` (20 a minute) per account, and
-  `request-notes` (10 a minute) per person in a call. Google sign-in
+  `request-notes` (10 a minute), `frames` (24 a minute) and `share-ended` (30 a minute) per person in a call. Google sign-in
   goes back to the welcome screen with `signin=busy` instead.
-- An audio piece over 2 MiB or a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES` is refused as
-  `400 invalid` from its `content-length`, before the body is read.
+- An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES` or a shared-screen frame over
+  `MAX_FRAME_BYTES` is refused as `400 invalid` from its `content-length`, before the body is read.
+- A frame past a call's `SCREEN_FRAMES_MAX` is refused as `409 conflict` and logged at info (`frame refused: the
+  notes have kept as many as they can`, with the limit), with one more info line when screen notes turn off for
+  it (`screen notes turned off: the notes are full`). A frame whose image still can't be fetched on a second try
+  while the notes are written is a warn (`a frame’s image couldn’t be fetched; kept as unread`), with the note's
+  and the frame's IDs only.
 - NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
   `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
   `5xx`), with the operation, status and timing as context. Evidence that doesn't check out is an
