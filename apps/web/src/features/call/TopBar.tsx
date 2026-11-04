@@ -85,7 +85,7 @@ function Shield() {
   const hide = () => { if (later.current) clearTimeout(later.current); later.current = setTimeout(() => { if (!pinned.current) setOpen(false); }, 160); };
   const verified = trust?.tee === 'dstack' && trust.bound;
   return (
-    <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="end" label="Confidential compute" className="ic-seal"
+    <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="end" label="Confidential compute" className="ic-seal" takeFocus={false}
       anchor={(
         <button type="button" className={cn('ic-sicon', open && 'is-on')} aria-label={verified ? 'Confidential compute, verified' : 'Confidential compute'}
           onPointerEnter={(e) => { if (e.pointerType !== 'touch') show(); }} onPointerLeave={hide} onFocus={show} onBlur={hide}>
