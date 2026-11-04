@@ -31,7 +31,7 @@ import { volumeTag } from '~/features/call/VolumeControl';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q } from '~/lib/queries';
+import { q, qk } from '~/lib/queries';
 
 /* Guests have no account: being in the call (its pass) is what lets them in. */
 export const Route = createFileRoute('/call/$code')({ component: Call });
@@ -249,16 +249,25 @@ function InCall({ session }: { session: CallSession }) {
     }
   }, [state.notices, session, toast]);
 
-  /* Someone asking to join: the organizer hears about it once, and lets them in from the toast or People. */
+  /*
+   * Someone asking to join: the organizer hears about it once. A guest can be let in from the toast; letting in someone
+   * signed in gives them the notes, so their toast opens People, where their address is.
+   */
   const asked = useRef(new Set<string>());
   useEffect(() => {
     if (!organizer) return;
     for (const w of state.waiting) {
       if (asked.current.has(w.id)) continue;
       asked.current.add(w.id);
-      toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action: { label: 'Let in', onClick: () => { void session.admit(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); } } });
+      const action = w.person.email
+        ? { label: 'Review', onClick: () => setPanel('people') }
+        : { label: 'Let in', onClick: () => { void session.admit(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); } };
+      toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action });
     }
   }, [state.waiting, organizer, session, toast]);
+  /* Letting someone signed in in from the link adds them to the invite: the organizer reads who's invited again when someone with an account is here and not on it yet. */
+  const uninvited = organizer && told.participants.some((p) => !p.isOrganizer && p.person.email && !(meeting?.guests ?? []).some((g) => sameEmail(g, p.person)));
+  useEffect(() => { if (uninvited) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) }); }, [uninvited, state.code, qc]);
 
   /* This device's keys fell out of step: joining again (a reload) puts it back in, without anyone letting it in. */
   useEffect(() => {
@@ -348,7 +357,8 @@ function InCall({ session }: { session: CallSession }) {
   const byId = new Map(stagePeople.map((p) => [p.id, p.person]));
   const others = stagePeople.filter((p) => !p.isMe);
   const invited = meeting?.guests ?? [];
-  const viewerGuest = session.ticket.role === 'guest';
+  // As the call stands: someone signed in whom the organizer let in from the link is invited now.
+  const viewerGuest = state.role === 'guest';
   /* Who gets the notes, as far as you can tell: the organizer knows everyone invited; a guest isn't told. */
   const getting: Person[] = organizer
     ? [...(me ? [me.person] : []), ...invited.filter((g) => !me || !sameEmail(g, me.person))]
@@ -773,7 +783,7 @@ function InCall({ session }: { session: CallSession }) {
     const r = roomView.people[p.id];
     const where = roomOf(p.id);
     const detail = p.isMe
-      ? [organizer ? 'Organizer' : session.ticket.role === 'invited' ? 'Invited' : 'Guest', where ? `in ${where}` : '', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : '']
+      ? [organizer ? 'Organizer' : state.role === 'invited' ? 'Invited' : 'Guest', where ? `in ${where}` : '', micLabel, m.screen ? 'sharing' : '', !m.cam ? 'camera off' : '']
       : [roleOf(p), where ? `in ${where}` : '', r?.screenSid ? 'sharing' : ''];
     return {
       id: p.id, person: p.person, isMe: p.isMe, organizer: p.isOrganizer, mic: sp?.mic ?? false, hand: p.hand, speaking: sp?.speaking ?? false, volume: sp?.volume ?? null,
@@ -785,11 +795,14 @@ function InCall({ session }: { session: CallSession }) {
     admit: (id) => session.admit(id),
     deny: (id) => session.deny(id),
     mute: (id) => { const sid = roomView.people[id]?.micSid; return sid ? session.mute(id, sid) : Promise.resolve(); },
-    remove: (id) => {
+    remove: async (id) => {
+      const gone = state.participants.find((p) => p.id === id);
       // Someone removed can't come back, so their pin goes with them (and nobody is told it waits for them).
-      const seat = state.participants.find((p) => p.id === id)?.seat;
+      const seat = gone?.seat;
       if (seat && layout.layout.pins.includes(seat)) layout.setPins(layout.layout.pins.filter((s) => s !== seat));
-      return session.remove(id);
+      await session.remove(id);
+      // Someone let in from the link comes off the invite as they go: who's invited is read again.
+      if (gone?.person.email) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) });
     },
     locked: state.locked,
     lock: (v) => session.lock(v)

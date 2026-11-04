@@ -67,11 +67,12 @@ export interface AlcoveApi {
   calls: {
     /** Creates a call that starts now and returns its code. */
     startNow(input?: InstantCallInput): Promise<{ code: string }>;
-    /** A call link's title and organizer, for anyone, signed in or not. */
+    /** What a call's link says before joining, for anyone, signed in or not: its title and organizer, whether notes are on, and where you stand. */
     card(code: string): Promise<CallCard>;
     /**
-     * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else
-     * needs `name` (1–60 characters). Refused until the organizer is there, and while the call is locked.
+     * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else asks to
+     * join: signed in, under their account, otherwise with `name` (1–60 characters). Refused until the organizer is
+     * there, while the call is locked, and once it has ended.
      */
     join(code: string, opts: { mic: boolean; cam: boolean; name?: string | undefined; previous?: string | undefined }): Promise<CallSession>;
   };

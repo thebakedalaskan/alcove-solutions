@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { forwardRef, useId, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { ProviderMark } from './brand';
 import { Icon, type IconName } from './icon';
@@ -111,6 +111,20 @@ export function Notice({ tone = 'info', icon, children, className }: { tone?: 'i
       <Icon name={icon ?? (tone === 'caution' ? 'clock' : 'lock')} size={18} />
       <div>{children}</div>
     </div>
+  );
+}
+
+/**
+ * A failed request's reference, to quote when reporting the problem: it finds that request's lines in the server's
+ * log, and says nothing about anyone. Pressing it copies it.
+ */
+export function RequestRef({ id, className }: { id: string; className?: string | undefined }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button type="button" className={cn('ac-ref', className)} title={copied ? 'Copied' : 'Copy the reference'}
+      onClick={() => { void navigator.clipboard?.writeText(id).then(() => setCopied(true), () => undefined); }}>
+      <span>Ref</span><code>{id}</code><Icon name={copied ? 'check' : 'copy'} size={13} />
+    </button>
   );
 }
 

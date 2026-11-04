@@ -83,25 +83,37 @@ your name has **Account**, **Take the tour**, the light or dark theme, and **Sig
    off the calendar and tells everyone invited.
 
 Alcove sends no emails of its own yet, so without a connected calendar nobody hears about the call, and calls
-started now don't go on the calendar. People invited can't join the call either: calls have one participant,
-the organizer, for now. Everyone invited still gets the notes (flow 6).
+started now don't go on the calendar: share the link. Everyone invited gets the notes (flow 6).
 
 ## 4. Join
 
-Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title and time, who
-is invited, and whether the call has notes and who gets them. Under the preview you pick a microphone (its
-level moves as you speak), camera and speaker (where the browser allows choosing one; otherwise it says calls
-play through your system's speaker), and **Test microphone** records three seconds and plays them back,
-without uploading or keeping anything. Alcove remembers the choices in this browser and says when one isn't
-plugged in. When the browser or the computer blocks the microphone or camera, or there's none, the picker
-says so ("Microphone blocked", "No camera") and a note under it says how to allow it in this browser, with
-**Try again**; you can still join, with them off, and turn them on later. Allowing them in the browser's
-settings is noticed by itself. In the call, the arrow beside the microphone and camera buttons switches
-devices without leaving the call or interrupting the notes. **Join now** opens the call; **Copy link**
-copies the join link. Someone joining by link, a guest or someone invited, sees what the call captures before
-they ask to join and while they wait: whether notes are on, paused or off, the recording, transcript, AI notes
-and shared screens each with its state, that the notes are written in confidential compute, and that the people
-invited get them. Never anyone's name or anything said.
+Pre-join (`/join/<code>`) shows your camera and a mic level, mic and camera switches, the title, and what the call
+captures and who gets the notes. Under the preview you pick a microphone (its level moves as you speak), camera
+and speaker (where the browser allows choosing one; otherwise it says calls play through your system's speaker),
+and **Test microphone** records three seconds and plays them back, without uploading or keeping anything. Alcove
+remembers the choices in this browser and says when one isn't plugged in. When the browser or the computer blocks
+the microphone or camera, or there's none, the picker says so ("Microphone blocked", "No camera") and a note under
+it says how to allow it in this browser, with **Try again**; you can still join, with them off, and turn them on
+later. Allowing them in the browser's settings is noticed by itself. In the call, the arrow beside the microphone
+and camera buttons switches devices without leaving the call or interrupting the notes.
+
+Everyone sees what the call captures before they join and while they wait: whether notes are on, paused or off,
+the recording, transcript, AI notes and shared screens each with its state, that the notes are written in
+confidential compute, and who gets them. Never anyone's name or anything said.
+
+- **The organizer** sees the time and who is invited, **Join now** and **Copy link**.
+- **Someone invited**, signed in, is told they get the notes, sees **Join now**, and is in as soon as the
+  organizer is there.
+- **Anyone else with the link** sees who's hosting, and asks to join. Without an account they type a name; one
+  line says guests don't get the notes, and **Sign in to get them** offers Google in place (and Microsoft and
+  single sign-on when the organizer signed in with one of those). Signed in that way, they ask under their
+  account, and once the organizer lets them in they're added to the invite and get the notes. While they wait
+  the page says so, with **Stop asking**; if the organizer turns them away, it says that too.
+- **Before the organizer arrives** the page says it's waiting for them and opens joining when they're there. A
+  locked call says nobody new can join. A call that's over says so, and opens again if the organizer starts
+  it. A link that leads nowhere says to check it. The camera and microphone start as soon as there's a call
+  to join, and stop when there isn't.
+- A join that fails says why under the button, with a reference (Ref) to quote if it keeps happening.
 
 ## 5. In the call
 
@@ -192,8 +204,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    ready", then **Read the notes** or **Go to Home**. The note shows the steps so far (call ended, audio
    saved, the transcript's length, the notes being written), playback of the decrypted recording, and who
    has it. Without notes, the sheet says there's nothing to send.
-3. Everyone invited gets the notes as the call ends. They find them under Notes when they sign in with the
-   invited address, marked as from the organizer.
+3. Everyone invited gets the notes as the call ends, including people signed in whom the organizer let in
+   from the link (letting them in added them to the invite; removing them took them off it). They find them
+   under Notes when they sign in with that address, marked as from the organizer. Guests who joined with only
+   a name don't get them.
 4. If the notes service fails three times, the note is finished with its transcript and recording and no
    summary. On a server without NEAR AI, notes wait with "Waiting for the notes service to be connected".
    While the notes model's evidence can't be checked or doesn't check out, nothing is sent; and while it

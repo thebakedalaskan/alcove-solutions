@@ -10,7 +10,7 @@ import { requireAccount } from '~/lib/guards';
 
 /* Everything with the sidebar: Home, Notes, a note, Account. */
 export const Route = createFileRoute('/_app')({
-  beforeLoad: ({ context }) => requireAccount(context.queryClient),
+  beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
   component: Shell
 });
 
