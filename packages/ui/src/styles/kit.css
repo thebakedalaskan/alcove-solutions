@@ -204,9 +204,9 @@
 .ac-seg .lbl { position: relative; display: inline-flex; align-items: center; gap: 6px; }
 
 /* ---- Toast, Notice ---- */
-.ac-toasts { position: fixed; z-index: 90; left: 50%; bottom: 28px; transform: translateX(-50%); display: grid; gap: 8px; justify-items: center; pointer-events: none; }
-/* On the stage, toasts sit left of the dock, so they never cover the status bar, captions or tiles. */
-.ac-toasts.on-stage { top: auto; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 20px; transform: none; justify-items: start; max-width: calc(50% - 300px); }
+.ac-toasts { position: fixed; z-index: 90; left: 50%; bottom: 28px; transform: translateX(-50%); display: grid; gap: 8px; justify-items: center; width: max-content; max-width: calc(100vw - 32px); pointer-events: none; }
+/* On the stage, toasts sit left of the dock and clear of it, so they never cover the status bar, captions or tiles. */
+.ac-toasts.on-stage { top: auto; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 20px; transform: none; justify-items: start; max-width: calc(50% - 340px); }
 .ac-toasts.on-stage .ac-toast { max-width: 100%; border-radius: var(--radius-lg); }
 @media (max-width: 1100px) { .ac-toasts.on-stage { left: 50%; bottom: 96px; transform: translateX(-50%); justify-items: center; max-width: calc(100vw - 32px); } }
 
