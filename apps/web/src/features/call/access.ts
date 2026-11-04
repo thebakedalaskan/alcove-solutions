@@ -20,7 +20,7 @@ function describe(problem: DeviceProblem, kinds: Capture[]): Trouble {
   switch (problem) {
     case 'blocked': return { kinds, problem, title: `Your browser is blocking the ${what}.`, how: howToAllow(kinds), retry: true };
     case 'system': return { kinds, problem, title: `Your computer isn’t letting the browser use the ${what}.`, how: howToAllowSystem(kinds), retry: true };
-    case 'dismissed': return { kinds, problem, title: `Alcove needs your permission to use the ${what}.`, how: 'Your browser asks again when you try again.', retry: true };
+    case 'dismissed': return { kinds, problem, title: `Alcove needs your permission to use the ${what}.`, how: 'Press Try again and allow it when your browser asks.', retry: true };
     case 'busy': return { kinds, problem, title: `Your ${what} didn’t start.`, how: 'Another app may be using it. Close that app, then try again.', retry: true };
     case 'failed': return { kinds, problem, title: `Your ${what} didn’t start.`, how: null, retry: true };
     case 'missing': return { kinds, problem, title: kinds.length > 1 ? 'No camera or microphone found.' : `No ${what} found.`, how: 'Plug one in and Alcove picks it up.', retry: false };
