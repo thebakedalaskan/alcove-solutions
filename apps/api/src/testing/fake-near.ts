@@ -134,12 +134,12 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
   return { status: 200, body: { text: said.join(''), duration: String(seconds), language: 'en', segments, id: `trans-${randomUUID()}` } };
 }
 
-interface Heard { at: number; who: string; text: string }
-/** Reads back "[mm:ss] Name: words" lines from a prompt. */
+interface Heard { at: number; who: string; text: string; ref: number }
+/** Reads back "[mm:ss] Name: words" lines from a prompt, and the number of each one numbered "L12 [mm:ss] …" (0 when it isn't). */
 function heardIn(prompt: string): Heard[] {
   return prompt.split('\n').flatMap((l) => {
-    const m = /^\[(\d+):(\d\d)\] (?:([^:]+): )?(.*)$/.exec(l);
-    return m ? [{ at: Number(m[1]) * 60 + Number(m[2]), who: m[3] ?? '', text: m[4] ?? '' }] : [];
+    const m = /^(?:L(\d+) )?\[(\d+):(\d\d)\] (?:([^:]+): )?(.*)$/.exec(l);
+    return m ? [{ ref: Number(m[1] ?? 0), at: Number(m[2]) * 60 + Number(m[3]), who: m[4] ?? '', text: m[5] ?? '' }] : [];
   });
 }
 
@@ -148,12 +148,16 @@ function notesReply(system: string, user: string): unknown {
   const heard = heardIn(user);
   const item = (h: Heard) => ({ text: h.text, at: h.at });
   if (system.startsWith('You help someone catch up')) {
+    // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
+    // can't back with any line it was sent: what Alcove shows must come only from lines that were read.
+    const nowhere = heard.length + 7;
+    const cited = (h: Heard) => ({ text: h.text, lines: [h.ref, `L${nowhere}`, 0] });
     return {
       summary: `Catching up on ${heard.length} lines.`,
-      decided: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(item),
-      proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(item),
-      open: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
-      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...item(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
+      decided: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(cited), { text: 'Everyone agreed to double the budget.', lines: [nowhere] }],
+      proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(cited),
+      open: heard.filter((h) => h.text.trim().endsWith('?')).map(cited),
+      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...cited(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
     };
   }
   if (system.startsWith('You translate')) {
@@ -188,6 +192,10 @@ function notesReply(system: string, user: string): unknown {
     return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, at: found.h.at }] : [] };
   }
   const hit = heard.find((h) => words.some((w) => h.text.toLowerCase().includes(w)));
+  // A call still going on is asked about with its lines numbered: the answer points at them (and at one that isn't there).
+  if (system.startsWith('You answer a question about a meeting that is still going on')) {
+    return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', lines: hit ? [hit.ref, heard.length + 3] : [] };
+  }
   return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', moments: hit ? [hit.at] : [] };
 }
 

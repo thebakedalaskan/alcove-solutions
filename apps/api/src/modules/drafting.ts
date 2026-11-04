@@ -5,7 +5,7 @@
  * inference.ts and accepts only the JSON shapes below; anything else is refused (docs:
  * notes-and-inference › Prompts).
  */
-import { firstName, type ActionItem, type AnswerPart, type CatchUp, type CatchUpItem, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type Person, type Question, type Speaker, type TranscriptLine } from '@alcove/api';
+import { firstName, type ActionItem, type AnswerPart, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type Person, type Question, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from '../config';
 import { id128 } from '../crypto';
@@ -45,22 +45,28 @@ const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 /** Who said it, as the model reads it: on one line, and marked when it's a guest, who named themselves. */
 const saidBy = (s: Speaker) => `${oneLine(s.name)}${s.person && !s.person.email ? ' (guest)' : ''}`;
 
-/** The transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who spoke. */
-function transcriptText(lines: TranscriptLine[]): string {
-  const all = lines.map((l) => `[${mmss(l.at)}] ${l.speaker ? `${saidBy(l.speaker)}: ` : ''}${oneLine(l.text)}`);
+/** Lines of text that fit: all of them, or a long transcript's beginning and end with a marker between. `kept` are the indices sent. */
+function fit(all: string[]): { text: string; kept: Set<number> } {
   const text = all.join('\n');
-  if (text.length <= MAX_TRANSCRIPT_CHARS) return text;
-  const head: string[] = [];
-  const tail: string[] = [];
+  if (text.length <= MAX_TRANSCRIPT_CHARS) return { text, kept: new Set(all.keys()) };
+  const head: number[] = [];
+  const tail: number[] = [];
   let used = 0;
   for (let i = 0, j = all.length - 1; i <= j && used < MAX_TRANSCRIPT_CHARS;) {
-    const front = all[i] ?? '';
-    head.push(front); used += front.length + 1; i++;
-    const back = all[j] ?? '';
-    if (i <= j) { tail.unshift(back); used += back.length + 1; j--; }
+    head.push(i); used += (all[i] ?? '').length + 1; i++;
+    if (i <= j) { tail.unshift(j); used += (all[j] ?? '').length + 1; j--; }
   }
-  return [...head, `[… ${all.length - head.length - tail.length} lines left out …]`, ...tail].join('\n');
+  const line = (i: number) => all[i] ?? '';
+  return { text: [...head.map(line), `[… ${all.length - head.length - tail.length} lines left out …]`, ...tail.map(line)].join('\n'), kept: new Set([...head, ...tail]) };
 }
+const said = (l: TranscriptLine) => `[${mmss(l.at)}] ${l.speaker ? `${saidBy(l.speaker)}: ` : ''}${oneLine(l.text)}`;
+/** The transcript as the model reads it: "[mm:ss] Name: words", or "[mm:ss] words" when nobody can tell who spoke. */
+const transcriptText = (lines: TranscriptLine[]): string => fit(lines.map(said)).text;
+/**
+ * The transcript numbered for answers that point at the lines they come from: "L12 [mm:ss] Name: words". `kept` are
+ * the indices the model was shown, so it can only point at lines it read.
+ */
+const numberedText = (lines: TranscriptLine[]) => fit(lines.map((l, i) => `L${i + 1} ${said(l)}`));
 
 /** A person as the model needs them: their name, or the name part of an address nobody named. */
 const called = (p: Person) => (p.name === p.email ? p.email.split('@')[0] ?? p.name : p.name);
@@ -157,58 +163,95 @@ export async function draft(cfg: Config, b: Brief): Promise<Written> {
 
 const ASK_PROMPT = `You answer a question about one meeting, using only its transcript and notes. Reply with a single JSON object and nothing else: {"answer": string, "moments": [number]}
 
-answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the meeting is still going on, answer from what has been said so far. If the transcript doesn't cover it, say so plainly.
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the transcript doesn't cover it, say so plainly.
 moments: the seconds the answer comes from, read from the transcript's [mm:ss] marks; at most four, in order. An empty list if there are none.`;
 
 const Answer = z.object({ answer: z.string().min(1), moments: z.array(z.coerce.number()).catch([]) });
 
-/** Answers a question about a call, written up or still going, with the moments in the recording it comes from. */
+/** Answers a question about a written-up call, with the moments in the recording it comes from. */
 export async function answer(cfg: Config, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
   const reply = Answer.safeParse(await completeJson(cfg, [
     { role: 'system', content: ASK_PROMPT },
     { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${transcriptText(b.lines)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
-  ], { what: b.live ? 'ask-live' : 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
+  ], { what: 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: issues(reply.error) } });
   const at = moment(b);
   const moments = [...new Set(reply.data.moments.flatMap((s) => { const m = at(s); return m === undefined ? [] : [m]; }))].sort((x, y) => x - y).slice(0, 4);
   return [{ type: 'text', text: reply.data.answer.trim() }, ...moments.map((m): AnswerPart => ({ type: 'cite', at: m }))];
 }
 
-const CATCH_UP_PROMPT = `You help someone catch up on a meeting that is still going on, from its transcript so far. Reply with a single JSON object and nothing else, in this shape:
-{"summary": string, "decided": [{"text": string, "at": number}], "proposed": [{"text": string, "at": number}], "open": [{"text": string, "at": number}], "next": [{"text": string, "owner": string | null, "due": string | null, "at": number}]}
+/**
+ * The line numbers a model points at, as numbers or as "L12": the indices (from 0) of lines it was shown, in order,
+ * each once, at most `max`. Anything else, a line it wasn't shown or one that doesn't exist, is dropped.
+ */
+const Refs = z.array(z.union([z.number(), z.string()])).catch([]);
+function refsOf(xs: z.infer<typeof Refs>, kept: Set<number>, max: number): number[] {
+  const n = xs.flatMap((x) => { const m = typeof x === 'number' ? x : Number(/^\s*L?(\d+)\s*$/i.exec(x)?.[1] ?? Number.NaN); return Number.isInteger(m) ? [m - 1] : []; });
+  return [...new Set(n.filter((i) => kept.has(i)))].sort((a, b) => a - b).slice(0, max);
+}
 
-summary: one or two plain sentences on where the conversation is now.
+const CATCH_UP_PROMPT = `You help someone catch up on a meeting that is still going on, from part of its transcript. Each transcript line starts with its number, as in "L12 [03:41] Name: words". Reply with a single JSON object and nothing else, in this shape:
+{"summary": string, "decided": [{"text": string, "lines": [number]}], "proposed": [{"text": string, "lines": [number]}], "open": [{"text": string, "lines": [number]}], "next": [{"text": string, "owner": string | null, "due": string | null, "lines": [number]}]}
+
+summary: one or two plain sentences on what was said in these lines and where the conversation is now.
 decided: what the people agreed or settled.
 proposed: what someone suggested that hasn't been agreed yet. Something only suggested is never decided.
 open: questions that were asked and haven't been answered yet.
 next: what someone said they, or someone else, would do. owner is that person's name as the transcript gives it, or null if it doesn't say; due is when, as it was said ("Friday"), or null.
-Each item is one short sentence, and at is the second it was said, read from the transcript's [mm:ss] marks. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions.`;
+Each item is one short sentence. lines are the numbers of the transcript lines it comes from, one to three of them; leave out anything you can't point to a line for. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions.`;
 
 const Items = z.array(z.object({
-  text: z.string(), at: z.coerce.number().nullish().catch(null), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
+  text: z.string(), lines: Refs, owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
 })).catch([]);
 const CatchUpReply = z.object({ summary: z.string().catch(''), decided: Items, proposed: Items, open: Items, next: Items });
-type Sorted = Pick<CatchUp, 'summary' | 'decided' | 'proposed' | 'open' | 'next'>;
+/** A point in a catch-up and the lines it comes from: indices (from 0) into the lines the model was sent. */
+export interface Cited { text: string; owner?: string; due?: string; refs: number[] }
+/** A catch-up as the model sorted it, every point tied to lines it was sent; `uncited` counts the points it couldn't tie to one, which are left out. */
+export interface Sorted { summary: string; decided: Cited[]; proposed: Cited[]; open: Cited[]; next: Cited[]; uncited: number }
 
-/** Where a call in progress has got to, sorted into decided, proposed, still open, and what's next. */
-export async function catchUp(cfg: Config, b: Brief): Promise<Sorted> {
+/**
+ * Where a stretch of a call in progress has got to, sorted into decided, proposed, still open, and what's next, each
+ * point with the lines it comes from. `reading` says which stretch it is ("the last 5 minutes").
+ */
+export async function catchUp(cfg: Config, b: Brief, reading: string): Promise<Sorted> {
+  const sent = numberedText(b.lines);
   const reply = CatchUpReply.safeParse(await completeJson(cfg, [
     { role: 'system', content: CATCH_UP_PROMPT },
-    { role: 'user', content: `${about({ ...b, live: true })}\n\nTranscript so far:\n${transcriptText(b.lines)}` }
+    { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\nTranscript:\n${sent.text}` }
   ], { what: 'catch-up', maxTokens: 1500, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
-  const at = moment(b);
-  const items = (xs: z.infer<typeof Items>, todo = false): CatchUpItem[] => xs.filter((x) => x.text.trim()).slice(0, 8).map((x) => {
-    const m = x.at === null || x.at === undefined ? undefined : at(x.at);
+  let uncited = 0;
+  const items = (xs: z.infer<typeof Items>, todo = false): Cited[] => xs.filter((x) => x.text.trim()).flatMap((x): Cited[] => {
+    const refs = refsOf(x.lines, sent.kept, 3);
+    // A point with no line behind it is the model's word alone: it's left out, never shown without evidence.
+    if (!refs.length) { uncited++; return []; }
     const owner = x.owner?.trim() ?? '';
     const due = x.due?.trim() ?? '';
-    return {
-      text: clip(x.text.trim(), 300), ...(m === undefined ? {} : { at: m }),
+    return [{
+      text: clip(x.text.trim(), 300), refs,
       ...(todo && owner && !NOBODY.has(fold(owner)) ? { owner: clip(owner, 80) } : {}), ...(todo && due ? { due: clip(due, 40) } : {})
-    };
-  });
+    }];
+  }).slice(0, 8);
   const d = reply.data;
-  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true) };
+  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true), uncited };
+}
+
+const ASK_SO_FAR_PROMPT = `You answer a question about a meeting that is still going on, using only part of its transcript. Each transcript line starts with its number, as in "L12 [03:41] Name: words". Reply with a single JSON object and nothing else: {"answer": string, "lines": [number]}
+
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. Answer from what was said in these lines. If they don't cover it, say so plainly.
+lines: the numbers of the transcript lines the answer comes from; at most four, in order. An empty list if there are none.`;
+
+const AnswerSoFar = z.object({ answer: z.string().min(1), lines: Refs });
+
+/** Answers a question from a stretch of a call in progress, with the lines the answer comes from (indices from 0 into the lines sent). */
+export async function answerSoFar(cfg: Config, b: Brief, asker: Person, question: string, reading: string): Promise<{ text: string; refs: number[] }> {
+  const sent = numberedText(b.lines);
+  const reply = AnswerSoFar.safeParse(await completeJson(cfg, [
+    { role: 'system', content: ASK_SO_FAR_PROMPT },
+    { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\nTranscript:\n${sent.text}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
+  ], { what: 'ask-live', maxTokens: 1200, timeoutMs: 60_000 }));
+  if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask-live', issues: issues(reply.error) } });
+  return { text: reply.data.answer.trim(), refs: refsOf(reply.data.lines, sent.kept, 4) };
 }
 
 const TRANSLATE_PROMPT = `You translate live captions of a meeting. You get a JSON object with the language to translate into and the lines, each with an id. Reply with a single JSON object and nothing else: {"lines": [{"id": string, "text": string}]}

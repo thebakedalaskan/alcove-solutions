@@ -713,31 +713,44 @@ describe('live transcript and written notes', () => {
     expect(h.logs.join('')).not.toContain('buyer pays');
   });
 
-  it('catches someone up during a call, for them alone, from what was said while notes were on', async () => {
+  it('catches someone up during a call, for them alone, with the moments each point comes from', async () => {
     const a = await account();
     const call = await a.api.calls.join((await a.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
     const id = call.getSnapshot().callId;
     await call.appendAudio(piece(audioBytes('catch-a'), 0, 0));
     await call.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0), call.ticket.identity);
     await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the screens by Wednesday.', 0, 6000), call.ticket.identity);
+    const line = (text: string) => call.getSnapshot().transcript.find((l) => l.text === text)?.id ?? `missing: ${text}`;
+    const moment = (text: string, said: number) => [{ kind: 'transcript', lineId: line(text), said: expect.closeTo(said, 0) }];
     const sent = h.near.calls.length;
-    const c = await call.catchUp();
-    // It went sealed to the verified notes model, at its own endpoint, like everything else with content.
+    const c = await call.catchUp({ kind: 'all' });
+    // It went sealed to the verified notes model, at its own endpoint, with each line numbered for it to point at.
     expect(h.near.calls.slice(sent).map((x) => [x.path, x.encryption])).toEqual([['/v1/chat/completions', 'ohttp']]);
+    expect(h.near.prompts.at(-1)).toContain(`L3 [00:06] ${a.session.user.name}: We agreed to move the launch to the 18th.`);
+    // Each point carries the line it came from. The model also claimed a decision it couldn't point to a line for,
+    // and pointed at lines that aren't there: none of that is shown.
     expect(c).toMatchObject({
       summary: 'Catching up on 4 lines.',
-      decided: [{ text: 'We agreed to move the launch to the 18th.', at: 6 }], proposed: [{ text: 'We should move the launch.', at: 0 }],
-      open: [{ text: 'Can we afford the delay?', at: 2 }], next: [{ text: 'Kofi will send the screens by Wednesday.', at: 8 }],
-      from: 0, through: 8, lines: 4, gaps: []
+      decided: [{ text: 'We agreed to move the launch to the 18th.', evidence: moment('We agreed to move the launch to the 18th.', 6) }],
+      proposed: [{ text: 'We should move the launch.', evidence: moment('We should move the launch.', 0) }],
+      open: [{ text: 'Can we afford the delay?', evidence: moment('Can we afford the delay?', 2) }],
+      next: [{ text: 'Kofi will send the screens by Wednesday.', owner: 'Kofi', due: 'Wednesday', evidence: moment('Kofi will send the screens by Wednesday.', 8) }],
+      read: { from: 0, lines: 4, through: expect.closeTo(8, 0), gaps: [], missed: [], whileHere: false }
     });
-    expect(c.asOf).toBeGreaterThanOrEqual(0);
+    expect(c.read.asOf).toBeGreaterThanOrEqual(0);
 
-    // Only the last minute: what was said before it isn't read.
-    await call.transcribe(speech('Two minutes later we will look at pricing.', 0, 120_000), call.ticket.identity);
-    expect(await call.catchUp(1)).toMatchObject({ from: 60, through: 120, lines: 1, next: [{ text: 'Two minutes later we will look at pricing.', at: 120 }] });
-
-    // Asking about the call so far answers with the moment it comes from.
-    expect(await call.askSoFar('Who sends the screens?')).toEqual([{ type: 'text', text: 'From the call: Kofi will send the screens by Wednesday.' }, { type: 'cite', at: 8 }]);
+    // Asking about the call answers with the line the answer comes from.
+    expect(await call.askSoFar('Who sends the screens?', { kind: 'all' })).toMatchObject({
+      text: 'From the call: Kofi will send the screens by Wednesday.', evidence: moment('Kofi will send the screens by Wednesday.', 8), read: { lines: 4 }
+    });
+    // A stretch picked on the call's clock reads only what was said in it.
+    expect(await call.catchUp({ kind: 'between', from: 1, to: 7 })).toMatchObject({
+      read: { from: 1, to: 7, lines: 2 }, decided: [{ text: 'We agreed to move the launch to the 18th.' }], proposed: [], open: [{ text: 'Can we afford the delay?' }], next: []
+    });
+    // Opening a moment gives that line and what was said around it.
+    const opened = await call.moment(line('We agreed to move the launch to the 18th.'));
+    expect(opened.lineId).toBe(line('We agreed to move the launch to the 18th.'));
+    expect(opened.lines.map((l) => l.text)).toEqual(['We should move the launch.', 'Can we afford the delay?', 'We agreed to move the launch to the 18th.', 'Kofi will send the screens by Wednesday.']);
 
     // While notes were off nothing was heard, and a catch-up says so.
     call.setNotes(false);
@@ -745,23 +758,23 @@ describe('live transcript and written notes', () => {
     await new Promise((r) => setTimeout(r, 1100));
     call.setNotes(true);
     await settle(call, (x) => x.notes.status === 'on' && x.notes.recording.segment === 1);
-    const gaps = (await call.catchUp()).gaps;
+    const gaps = (await call.catchUp({ kind: 'all' })).read.gaps;
     expect(gaps).toHaveLength(1);
     expect((gaps[0]?.to ?? 0) - (gaps[0]?.from ?? 0)).toBeGreaterThanOrEqual(1);
 
     // Nobody else can catch up on this call, and nothing about it keeps a receipt.
     const b = await account();
     // Without this call's pass there's no way in.
-    const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/catch-up`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const steal = await b.fetch(`${h.baseUrl}/v1/live/calls/${id}/catch-up`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ range: { kind: 'all' } }) });
     expect(steal.status).toBe(401);
     expect((await h.pool.query("SELECT count(*)::int AS n FROM operations WHERE owner_id = $1 AND (method LIKE '%catch-up%' OR method LIKE '%/ask')", [a.session.ownerId])).rows[0]?.n).toBe(0);
     await call.leave();
-    expect(code(await call.catchUp().catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await call.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
 
     // A call that never had notes on has nothing to catch up on.
     const quiet = await a.api.calls.join((await a.api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
-    expect(code(await quiet.catchUp().catch((e: unknown) => e))).toBe('conflict');
-    expect(code(await quiet.askSoFar('Anything?').catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await quiet.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await quiet.askSoFar('Anything?', { kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
     await quiet.leave();
   });
 
@@ -1521,8 +1534,11 @@ describe('privacy at rest', () => {
     await settle(call, (x) => x.breakouts.open !== null);
     call.messageRooms('CANARY-BROADCAST to every room');
     await settle(call, (x) => x.breakouts.open?.message !== null);
-    expect((await call.catchUp()).lines).toBe(1);
-    await call.askSoFar('What closes on Friday?');
+    const caught = await call.catchUp({ kind: 'all' });
+    expect(caught.read.lines).toBe(1);
+    await call.askSoFar('What closes on Friday? CANARY-ASKED', { kind: 'all' });
+    await call.catchUpWindow();
+    await call.moment(call.getSnapshot().transcript[0]?.id ?? '');
     const translations = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_translations x`)).rows[0]?.all ?? '');
     expect(translations).not.toBe('');
     const callRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM calls x`)).rows[0]?.all ?? '');
@@ -1576,7 +1592,7 @@ describe('privacy at rest', () => {
       'CANARY-BREAKOUT', 'CANARY-BROADCAST',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo',
-      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event'
+      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
 

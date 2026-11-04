@@ -225,7 +225,7 @@ describe('end-to-end encryption', () => {
     expect((await settle(host, (s) => s.waiting.length === 1)).waiting).toEqual([expect.objectContaining({ id: sam.ticket.identity, person: expect.objectContaining({ name: 'Sam' }) })]);
     expect(sam.getSnapshot()).toMatchObject({ participants: [], transcript: [], waiting: [], notes: { status: 'on' } });
     expect(code(await sam.room().catch((e: unknown) => e))).toBe('forbidden');
-    for (const attempt of [() => sam.catchUp(), () => sam.askSoFar('What was said?'), () => sam.sendChat('hello?')]) {
+    for (const attempt of [() => sam.catchUp({ kind: 'all' }), () => sam.askSoFar('What was said?', { kind: 'all' }), () => sam.catchUpWindow(), () => sam.sendChat('hello?')]) {
       const e = await attempt().catch((x: unknown) => x);
       if (e !== undefined) expect(code(e)).toBe('forbidden');
     }
@@ -695,7 +695,7 @@ describe('host controls', () => {
     await host.remove(guest.ticket.identity);
     expect(await guestRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
     // Their pass goes with them: no more reading the call, chatting or catching up.
-    for (const attempt of [() => guest.refresh(), () => guest.room(), () => guest.catchUp()]) {
+    for (const attempt of [() => guest.refresh(), () => guest.room(), () => guest.catchUp({ kind: 'all' })]) {
       expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
     }
     await host.lock(false);
@@ -922,16 +922,16 @@ describe('joining by link', () => {
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
     const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
-    expect(code(await guest.catchUp().catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await guest.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('forbidden');
     await letIn(host, guest);
-    expect(code(await guest.catchUp().catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await guest.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
 
     host.setNotes(true);
     await settle(host, (x) => x.notes.status === 'on');
     await host.appendAudio(piece(audioBytes('catch'), 0, 0));
     await host.transcribe(speech('We should move the launch. // Can we afford the delay?', 0, 0), host.ticket.identity);
-    expect(await guest.catchUp()).toMatchObject({ lines: 2 });
-    expect(await guest.askSoFar('What should move?')).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text' })]));
+    expect(await guest.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 2 } });
+    expect(await guest.askSoFar('What should move?', { kind: 'all' })).toMatchObject({ text: 'From the call: We should move the launch.' });
     expect(code(await guest.transcribe(speech('Not mine to send.', 0, 5000), guest.ticket.identity).catch((e: unknown) => e))).toBe('forbidden');
 
     const otherOrg = await account();
@@ -953,10 +953,11 @@ describe('joining by link', () => {
     await settle(host, (x) => x.notes.status === 'on');
     await host.appendAudio(piece(audioBytes('everyone'), 0, 0));
     // The organizer's browser hears its own microphone and Sam's, each on its own: both may start at once, and a
-    // retried clip is kept once.
-    await host.transcribe(speech('Shall we start with the budget?', 0, 0), host.ticket.identity);
-    await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
-    await host.transcribe(speech('Yes, the budget first.', 0, 0), sam.ticket.identity);
+    // retried clip is kept once. (Said once Sam is in: a guest reads only what was said while they were here.)
+    const inTime = Math.round(((await sam.catchUpWindow()).joined + 1) * 1000);
+    await host.transcribe(speech('Shall we start with the budget?', 0, inTime), host.ticket.identity);
+    await host.transcribe(speech('Yes, the budget first.', 0, inTime), sam.ticket.identity);
+    await host.transcribe(speech('Yes, the budget first.', 0, inTime), sam.ticket.identity);
     const organizer = host.getSnapshot().participants.find((p) => p.isOrganizer)?.person.name ?? '';
     const said = (ls: TranscriptLine[]) => ls.map((l) => `${l.speaker?.name ?? '?'}: ${l.text}`).sort();
     const both = [`${organizer}: Shall we start with the budget?`, 'Sam: Yes, the budget first.'];
@@ -964,7 +965,7 @@ describe('joining by link', () => {
     // Sam, a guest, sees the organizer as guests see everyone: a name and an arch, no email.
     expect(sam.getSnapshot().transcript.find((l) => l.speaker?.name === organizer)?.speaker?.person?.email).toBe('');
     // Catching up reads who said what, a guest marked as one.
-    await sam.catchUp();
+    await sam.catchUp({ kind: 'all' });
     expect(h.near.prompts.at(-1)).toContain('Sam (guest): Yes, the budget first.');
     expect(h.near.prompts.at(-1)).toContain(`${organizer}: Shall we start with the budget?`);
 
@@ -1022,7 +1023,7 @@ describe('joining by link', () => {
     expect(where((await settle(kofi, (x) => x.transcript.length === 4)).transcript)).toEqual(all);
     // Sam reads only the main room: not in the live transcript, catching up, or captions in another language.
     expect(where((await settle(sam, (x) => x.transcript.length === 1)).transcript)).toEqual(['Sam, how is support going? @ main']);
-    expect(await sam.catchUp()).toMatchObject({ lines: 1 });
+    expect(await sam.catchUp({ kind: 'all' })).toMatchObject({ read: { lines: 1 } });
     const inDesign = host.getSnapshot().transcript.find((l) => l.text === 'Blue for the buttons.')?.id ?? '';
     expect(await sam.translate([inDesign], 'fr')).toEqual([]);
     // Rooms that have run out are closed, whatever is stored: what's said after is the main room's.

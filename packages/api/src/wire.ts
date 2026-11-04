@@ -3,6 +3,7 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
+import { CatchUpRangeSchema } from './catchup';
 import { CaptionLanguageSchema } from './types';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
@@ -152,8 +153,10 @@ export type ActionPatch = z.infer<typeof ActionPatchSchema>;
 /** Captions in another language: which live transcript lines, and into what. */
 export const TranslateBodySchema = z.object({ language: CaptionLanguageSchema, lines: z.array(z.string().max(64)).min(1).max(20) });
 
-/** Catching up during a call: how far back to read, or the whole call. */
-export const CatchUpBodySchema = z.object({ minutes: z.number().int().min(1).max(600).optional() });
+/** Catching up during a call: which stretch of it to read. */
+export const CatchUpBodySchema = z.object({ range: CatchUpRangeSchema });
+/** Asking about a call so far: the question, and which stretch of the call to answer from. */
+export const AskSoFarBodySchema = AskBodySchema.extend({ range: CatchUpRangeSchema });
 
 /* ---------- logging ---------- */
 /** Every response carries this header; error bodies repeat it as `requestId`. Quote it when reporting a problem. */

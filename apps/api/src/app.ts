@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema, ShareBodySchema,
   SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
@@ -107,6 +107,8 @@ export function createApp(d: Deps) {
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
   const captionLimiter = rateLimit(90, 60_000);
+  /** Opening a moment of the live transcript reads all of it, per person in the call. */
+  const momentLimiter = rateLimit(60, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -314,18 +316,35 @@ export function createApp(d: Deps) {
     speechLimiter(v.organizer.ownerId, 'transcribe');
     return c.json(await calls.transcribe(v, c.req.param('id'), await clip(c), speaker));
   });
-  /* Catching up and asking during a call: answers go to the person who asked, and nothing is kept. */
+  /*
+   * Catching up and asking during a call: answers go to the person who asked, from what they may read, and nothing
+   * is kept. GET says what they can catch up on; a moment of the transcript is opened with their access checked again.
+   */
+  app.get('/v1/live/calls/:id/catch-up', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'catch-up');
+    return c.json(await calls.catchUpWindow(v, c.req.param('id')));
+  });
   app.post('/v1/live/calls/:id/catch-up', async (c) => {
     const v = c.get('viewer');
     calls.requireIn(v, 'catch-up');
     askLimiter(v.pass.identity, 'catch-up');
-    return c.json(await calls.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).minutes));
+    return c.json(await calls.catchUp(v, c.req.param('id'), (await body(c, CatchUpBodySchema)).range));
   });
   app.post('/v1/live/calls/:id/ask', async (c) => {
     const v = c.get('viewer');
     calls.requireIn(v, 'ask');
     askLimiter(v.pass.identity, 'ask');
-    return c.json(await calls.askSoFar(v, c.req.param('id'), (await body(c, AskBodySchema)).question));
+    const { question, range } = await body(c, AskSoFarBodySchema);
+    return c.json(await calls.askSoFar(v, c.req.param('id'), question, range));
+  });
+  app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'moment');
+    momentLimiter(v.pass.identity, 'moment');
+    const line = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).safeParse(c.req.param('line'));
+    if (!line.success) throw new ValidationError('That isn’t a moment of this call.');
+    return c.json(await calls.moment(v, c.req.param('id'), line.data));
   });
   /* The organizer leaving ends the call for everyone; anyone else leaving is taken out of the call's group. */
   /* Captions in someone's own language: translated for them alone, so no receipt keeps a copy. */
