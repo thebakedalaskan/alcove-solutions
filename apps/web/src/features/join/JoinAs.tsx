@@ -29,9 +29,12 @@ export function SignedInAs({ me }: { me: Person }) {
 
 /**
  * The trade-off in one line, and the way to the other side of it: for a guest without an account, and for someone
- * signed in with an account this call's notes can't go to (a demo sign-in on a real organizer's call).
+ * signed in with an account this call's notes can't go to (a demo sign-in on a real organizer's call). While someone
+ * stands in for the organizer (`away`, the organizer's first name), everyone new comes in as a guest, however they
+ * signed in, so there's no other side to offer.
  */
-export function GuestTradeOff({ notesOn, signedIn, onSignIn }: { notesOn: boolean; signedIn: boolean; onSignIn: () => void }) {
+export function GuestTradeOff({ notesOn, signedIn, away, onSignIn }: { notesOn: boolean; signedIn: boolean; away?: string | undefined; onSignIn: () => void }) {
+  if (away) return <p className="pj-trade">While {away} is away, you join as a guest, without the notes.</p>;
   return (
     <p className="pj-trade">
       {signedIn ? 'You join as a guest, without the notes.' : notesOn ? 'Guests don’t get the notes.' : 'If notes go on, guests don’t get them.'}{' '}
