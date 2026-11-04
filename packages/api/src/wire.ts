@@ -177,6 +177,17 @@ export const ActionPatchSchema = z.object({
 }).refine((p) => Object.values(p).some((v) => v !== undefined), 'Nothing to change.');
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
 
+/**
+ * A correction to a line of a written note's transcript: its words, who said it (someone from the call, by their
+ * `Person.id`, or null when nobody can tell), or that it's right as it was heard (`confirm`).
+ */
+export const LinePatchSchema = z.object({
+  text: z.string().trim().min(1).max(1000).optional(),
+  speaker: z.string().min(1).max(254).nullable().optional(),
+  confirm: z.literal(true).optional()
+}).refine((p) => p.text !== undefined || p.speaker !== undefined || p.confirm !== undefined, 'Nothing to change.');
+export type LinePatch = z.infer<typeof LinePatchSchema>;
+
 /** Captions in another language: which live transcript lines, and into what. */
 export const TranslateBodySchema = z.object({ language: CaptionLanguageSchema, lines: z.array(z.string().max(64)).min(1).max(20) });
 

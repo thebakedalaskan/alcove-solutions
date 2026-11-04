@@ -7,9 +7,10 @@
  * third, the note is finished without a summary, so its transcript and audio are still there. When
  * the notes model's evidence doesn't check out, or can't be checked, nothing was sent: the job waits
  * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
- * for each job and wiped after it.
+ * for each job and wiped after it. The organizer can have the notes written again from a corrected
+ * transcript (notes.rewrite): the same job, which keeps what people already settled.
  */
-import type { ScreenMoment } from '@alcove/api';
+import type { Change, InferenceEvidence, ScreenMoment } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { openJson, stateKey } from '../crypto';
@@ -52,24 +53,48 @@ async function claim(d: Deps, ownerId: string | null): Promise<Claimed | undefin
     RETURNING j.owner_id, j.job_id, j.revision_id, j.job_ciphertext, j.attempt, due.attempt AS tried`, [ownerId, LEASE_SECONDS, ATTEMPTS]);
 }
 
+/** The same verification of a model: checking it again is the same one unless its key, OS image or measured configuration changed. */
+const sameCheck = (a: InferenceEvidence, b: InferenceEvidence) =>
+  [a.model, a.key, a.os, a.compose, a.tdx.status, a.gateway.os, a.gateway.compose, a.gateway.status].join('|') === [b.model, b.key, b.os, b.compose, b.tdx.status, b.gateway.os, b.gateway.compose, b.gateway.status].join('|');
+const fold = (s: string) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 /**
- * Writes the notes into the note (or finishes it without them, with its shared screens read when
- * they were), charges for them and closes the job, together. The charge is for the minutes recorded,
- * not the length of the call: time with notes off is free.
+ * What the notes say when they're written again: whatever someone has already confirmed, answered, taken on or changed
+ * stays as it is, and the new proposals take the place of the ones nobody touched (one already kept isn't proposed twice).
+ */
+function keepTouched<T extends { text: string; at?: number | undefined; changes: Change[] }>(was: T[], fresh: T[]): T[] {
+  const kept = was.filter((x) => x.changes.length > 0);
+  const have = new Set(kept.map((x) => fold(x.text)));
+  return [...kept, ...fresh.filter((x) => !have.has(fold(x.text)))].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY));
+}
+
+/**
+ * Writes the notes into the note (or finishes it without them, with its shared screens read when they were), charges
+ * for them and closes the job, together. The charge is for the minutes recorded, not the length of the call: time with
+ * notes off is free. Notes written again (the organizer asked, after correcting the transcript) keep what people
+ * already confirmed or changed, and aren't charged again; when they can't be written, the notes stay as they were.
  */
 async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, notes: Written | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
   const recorded = notes ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
   await tx(o.pool, async (c) => {
+    let first = true;
     // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
     // The notes model's verification joins the ones the transcript went to.
     await updateNote(o, c, noteId, (m) => {
-      const chapters = [...(notes?.chapters ?? m.chapters), ...roomChapters(m.breakouts)].sort((a, b) => a.at - b.at);
-      if (!notes) return { ...m, status: 'ready', chapters, breakouts: [], ...(shown ? { screens: shown } : {}) };
+      first = m.writtenAt === null;
+      const rooms = roomChapters(m.breakouts);
+      const chapters = [...(notes?.chapters ?? m.chapters), ...rooms]
+        .filter((x, i, all) => all.findIndex((y) => y.at === x.at && y.title === x.title && y.summary === x.summary) === i)
+        .sort((a, b) => a.at - b.at);
+      if (!notes) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
       const { evidence, ...written } = notes;
-      return { ...m, status: 'ready', ...written, chapters, breakouts: [], inference: [...m.inference, evidence] };
+      const again = first ? {} : { decisions: keepTouched(m.decisions, written.decisions), questions: keepTouched(m.questions, written.questions), actions: keepTouched(m.actions, written.actions) };
+      return {
+        ...m, status: 'ready', ...written, ...again, chapters, writtenAt: new Date().toISOString(),
+        inference: m.inference.some((e) => sameCheck(e, evidence)) ? m.inference : [...m.inference, evidence]
+      };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
-    if (notes) {
+    if (notes && first) {
       const minutes = Math.max(1, Math.ceil(recorded / 60));
       await billing.charge({ cfg: o.cfg }, c, o.ownerId, { amount: minutes * billing.PER_MINUTE, label: `Notes, ${minutes} min` });
     }
