@@ -8,9 +8,10 @@
 import { AlcoveApiError, type AudioPiece, type CallSession, type CallState, type CatchUp, type Evidence, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { speechWav } from './testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from './testing/harness';
-import { disposeLiveKit, signWebhook } from './testing/livekit';
+import { connect, disposeLiveKit, signWebhook, type TestParticipant } from './testing/livekit';
 
 // Calls set up MLS groups and LiveKit rooms, which a busy runner can be slow to do: every wait says what it waited for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -18,7 +19,9 @@ vi.setConfig({ testTimeout: 90_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(() => { h.closeCalls(); });
+/** Test participants in a call's LiveKit room, gone after each test. */
+const open: TestParticipant[] = [];
+afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 const message = (e: unknown) => (e instanceof AlcoveApiError ? e.message : '');
@@ -48,6 +51,11 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean): Promi
   return call.getSnapshot();
 }
 const inGroup = (call: CallSession) => waitFor(() => call.crypto.getSnapshot().status === 'in' && call.crypto.getSnapshot().media !== null, `${call.ticket.role} in the call’s group`);
+/** Waits until the organizer no longer lists someone in the call: the goodbye their page sent as it went has arrived. */
+async function gone(host: CallSession, who: CallSession) {
+  const s = await settle(host, (x) => !x.participants.some((p) => p.id === who.ticket.identity));
+  expect(s.participants.map((p) => p.id), 'the organizer no longer lists them').not.toContain(who.ticket.identity);
+}
 async function letIn(host: CallSession, who: CallSession) {
   await settle(host, (s) => s.waiting.some((w) => w.id === who.ticket.identity));
   await host.admit(who.ticket.identity);
@@ -66,6 +74,9 @@ const id = (ids: Map<string, string>, text: string) => ids.get(text) ?? `missing
 const cited = (c: CatchUp): Evidence[] => [...c.decided, ...c.proposed, ...c.open, ...c.next].flatMap((x) => x.evidence);
 const texts = (c: CatchUp) => [...c.decided, ...c.proposed, ...c.open, ...c.next].map((x) => x.text);
 const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
+/** The API's log lines since `from`, parsed. */
+const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
+const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 
 describe('catching up during a call', () => {
   it('reads what you missed: before you joined, since you joined, and while you were away, with both ends of a stretch in it', async () => {
@@ -90,7 +101,7 @@ describe('catching up during a call', () => {
     // Before you joined: what was said until you came in, and nothing after.
     const before = await kofi.catchUp({ kind: 'before-joined' });
     let ids = await lineIds(host, 2);
-    expect(before.read).toMatchObject({ from: 0, to: joined, lines: 1, whileHere: false });
+    expect(before.read).toMatchObject({ from: 0, to: joined, lines: 1, whileHere: false, skipped: null });
     expect(before.decided).toEqual([{ text: A, evidence: [{ kind: 'transcript', lineId: id(ids, A), said: expect.closeTo(0, 0) }] }]);
     // Since you joined: the rest.
     const since = await kofi.catchUp({ kind: 'since-joined' });
@@ -99,6 +110,7 @@ describe('catching up during a call', () => {
 
     // Kofi's page goes away and comes back: that's their time away.
     kofi.closing();
+    await gone(host, kofi);
     await sleep(1200);
     const back = await kofiApi.calls.join(c, { mic: true, cam: false, previous: kofi.ticket.pass });
     await inGroup(back);
@@ -231,6 +243,7 @@ describe('catching up during a call', () => {
 
     // Sam's page goes away and comes back: what was said meanwhile goes to the people invited, not to Sam.
     sam.closing();
+    await gone(host, sam);
     await sleep(1200);
     const back = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     await inGroup(back);
@@ -249,6 +262,64 @@ describe('catching up during a call', () => {
     expect((await kofi.catchUp({ kind: 'all' })).read).toMatchObject({ lines: 3, whileHere: false });
     expect((await kofi.moment(id(ids, C))).lines.map((l) => l.text)).toEqual([A, B, C]);
     expect((await settle(kofi, (x) => x.transcript.length === 3)).transcript.map((l) => l.text)).toEqual([A, B, C]);
+    await host.leave();
+  });
+
+  // The shortest "last N minutes" is one, so this waits for a line to be more than a minute old.
+  it('reads only the last few minutes when asked for them, and nothing said before', async () => {
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    await inGroup(host);
+    // The organizer's browser is in the room, as it is in a real call, or the call ends without them meanwhile.
+    open.push(await connect(await host.room(), { sending: host.crypto }));
+    await host.appendAudio(piece(audioBytes('recent'), 0, 0));
+    const OLD = 'We agreed to open with the roadmap.';
+    await host.transcribe(speech(OLD, 0, 0), host.ticket.identity);
+    await sleep(61_500);
+    const NEW = 'We agreed to finish with pricing.';
+    await host.transcribe(speech(NEW, 0, at((await host.catchUpWindow()).now - 2)), host.ticket.identity);
+    const ids = await lineIds(host, 2);
+
+    const recent = await host.catchUp({ kind: 'recent', minutes: 1 });
+    const said = new Map((await host.moment(id(ids, NEW))).lines.map((l) => [l.text, l.said]));
+    expect(recent.read).toMatchObject({ lines: 1, through: said.get(NEW) });
+    expect(recent.read.from).toBeGreaterThan(said.get(OLD) ?? Number.POSITIVE_INFINITY);
+    expect(texts(recent)).toEqual([NEW]);
+    expect(h.near.prompts.at(-1)).not.toContain(OLD);
+    const answer = await host.askSoFar('What did we agree?', { kind: 'recent', minutes: 1 });
+    expect(answer).toMatchObject({ evidence: [{ kind: 'transcript', lineId: id(ids, NEW) }], read: { lines: 1 } });
+    // The whole call still has both.
+    expect((await host.catchUp({ kind: 'all' })).read.lines).toBe(2);
+    await host.leave();
+  }, 120_000);
+
+  it('says what it left out of a stretch too long to read at once, and points only at lines it read', async () => {
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    await inGroup(host);
+    await host.appendAudio(piece(audioBytes('long'), 0, 0));
+    // Eight lines of 25,000 characters: more than the 120,000 the notes model is sent at once.
+    const long = (n: number) => `We agreed on part ${n}. ${Array.from({ length: 3000 }, (_, k) => `w${n}k${k}`).join(' ')}`.slice(0, 25_000);
+    for (let n = 0; n < 8; n++) await host.transcribe(speech(long(n), 0, n * 1000), host.ticket.identity);
+    const lines = (await settle(host, (x) => x.transcript.length >= 8)).transcript;
+    expect(lines).toHaveLength(8);
+    const said = new Map((await host.moment(lines[3]?.id ?? '')).lines.map((l) => [l.id, l.said]));
+    const middle = new Set([lines[3]?.id, lines[4]?.id]);
+
+    const from = h.logs.length;
+    const c = await host.catchUp({ kind: 'all' });
+    // It read the beginning and the end, and says which lines from the middle it left out, and when they were said.
+    expect(c.read).toMatchObject({ lines: 6, skipped: { from: said.get(lines[3]?.id ?? ''), to: said.get(lines[4]?.id ?? ''), lines: 2 } });
+    expect(h.near.prompts.at(-1)).toContain('[… 2 lines left out …]');
+    expect(cited(c).length).toBeGreaterThan(0);
+    for (const e of cited(c)) expect(middle.has(e.lineId), 'a moment from the middle it never read').toBe(false);
+    // An answer says the same.
+    expect((await host.askSoFar('What did we agree?', { kind: 'all' })).read).toMatchObject({ lines: 6, skipped: { lines: 2 } });
+    // The log says how many, never what.
+    const logged = logsSince(from);
+    expect(logged.find((l) => l.msg === 'caught up during a call')).toMatchObject({ lines: 8, cut: 2 });
+    expect(logged.find((l) => l.msg === 'question answered during a call')).toMatchObject({ lines: 8, cut: 2 });
+    expect(h.logs.slice(from).join('')).not.toContain('w3k1');
     await host.leave();
   });
 
