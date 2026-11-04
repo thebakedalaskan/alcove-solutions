@@ -3,7 +3,7 @@
  * API over HTTP via @alcove/api-http (whose call sessions are real MLS clients, so the new device really joins the
  * call's encrypted group with keys it made itself), real Postgres, the object store and the real LiveKit server.
  */
-import { AlcoveApiError, MoveClaimSchema, MoveCodeSchema, type CallMoveIn, type CallSession, type CallState, type MoveDevice } from '@alcove/api';
+import { AlcoveApiError, MoveClaimSchema, MoveCodeSchema, MoveInSchema, type CallMoveIn, type CallSession, type CallState, type MoveDevice } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ORIGIN, startHarness, type Harness } from './testing/harness';
@@ -51,6 +51,30 @@ const asMember = (call: Pick<CallSession, 'ticket'>, method: 'GET' | 'POST' | 'D
 /** A request a new device makes about a move, with the secret in the body as the app sends it. */
 const asDevice = (path: string, body: unknown, f: typeof fetch = fetch) => f(`${h.baseUrl}/v1/moves/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) });
 const callRows = async (table: string, callId: string) => (await h.pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE call_id = $1`, [callId])).rows[0]?.n;
+/** A participant ID of the kind a browser makes for itself. */
+const freshIdentity = () => `p_${randomBytes(16).toString('base64url')}`;
+/** Opens a move's link as a device the test drives by hand: its claim. */
+async function claimOf(c: string): Promise<string> {
+  const r = await asDevice('claim', { code: c });
+  expect(r.status).toBe(200);
+  return MoveClaimSchema.parse(await r.json()).claim;
+}
+/** How long something took, in ms. */
+async function timed<T>(f: () => Promise<T>): Promise<{ ms: number; value: T }> {
+  const t0 = performance.now();
+  const value = await f();
+  return { ms: performance.now() - t0, value };
+}
+/** Waits until the API's own database says the organizer's connection has been gone for at least `seconds`. */
+async function goneFor(callId: string, seconds: number): Promise<void> {
+  const until = Date.now() + 15_000;
+  for (;;) {
+    const r = await h.pool.query<{ gone: boolean }>('SELECT now() - host_left_at >= make_interval(secs => $2) AS gone FROM calls WHERE call_id = $1', [callId, seconds]);
+    if (r.rows[0]?.gone === true) return;
+    if (Date.now() > until) throw new Error('timed out waiting for the organizer’s connection to be gone');
+    await sleep(25);
+  }
+}
 async function hook(event: string, roomName: string, identity: string) {
   const body = JSON.stringify({ event, room: { name: roomName }, participant: { identity } });
   return fetch(`${h.baseUrl}/hooks/livekit`, { method: 'POST', headers: { 'content-type': 'application/webhook+json', authorization: await signWebhook(h.deps.cfg, body) }, body });
@@ -97,9 +121,10 @@ describe('moving to another device', () => {
     await there.ready(PHONE);
     await waitFor(() => out.getSnapshot().stage === 'ready', 'the old device told the new one is ready');
     expect(out.getSnapshot()).toMatchObject({ device: PHONE, sameAccount: false });
-    // Nothing comes in until the old device lets go: no second connection, no second microphone.
-    await sleep(300);
-    expect(there.getSnapshot().session).toBeNull();
+    // Nothing comes in until the old device lets go: coming in is refused, and there's no second connection or microphone.
+    expect((await asDevice('arrive', { claim: there.claim })).status).toBe(409);
+    await there.refresh();
+    expect(there.getSnapshot()).toMatchObject({ stage: 'ready', session: null });
     expect((await settle(host, (s) => s.participants.length === 2)).participants).toHaveLength(2);
 
     // The old device lets go (it stops its microphone and camera and leaves the room), then confirms.
@@ -110,6 +135,12 @@ describe('moving to another device', () => {
     await inGroup(phone);
     expect(phone.ticket.identity).not.toBe(laptop.ticket.identity);
     expect(there.getSnapshot().move.media).toEqual({ mic: false, cam: true });
+    // Its answer lost on the way, the phone asks again: the same connection and role, with a new pass, never a second one.
+    const askedAgain = await asDevice('arrive', { claim: there.claim });
+    expect(askedAgain.status).toBe(200);
+    const reissued = MoveInSchema.parse(await askedAgain.json()).joined?.ticket;
+    expect(reissued).toMatchObject({ identity: phone.ticket.identity, role: 'guest', callId: phone.ticket.callId });
+    expect(reissued?.pass).not.toBe(phone.ticket.pass);
 
     // The same person, once: their name, their raised hand, the spotlight. The old connection is out of the group.
     const seen = await settle(host, (s) => s.participants.length === 2 && s.participants.some((p) => p.id === phone.ticket.identity));
@@ -165,6 +196,8 @@ describe('moving to another device', () => {
 
     laptop.close();
     await out.confirm({ mic: true, cam: false });
+    // The claim alone, without the organizer's session, never brings anyone in as the organizer.
+    expect((await asDevice('arrive', { claim: there.claim })).status).toBe(403);
     const now = await arrived(there);
     await inGroup(now);
     expect(now.ticket.role).toBe('host');
@@ -242,7 +275,7 @@ describe('moving to another device', () => {
 
     // Gone again, and this time the organizer comes back from another device: the time between is a gap.
     expect((await hook('participant_left', room, laptop.ticket.identity)).status).toBe(200);
-    await sleep(1100);
+    await goneFor(laptop.ticket.callId, 1);
     const phone = await (await account(email)).api.calls.join(c, { mic: true, cam: false });
     expect(phone.getSnapshot()).toMatchObject({ capture: { mode: 'on', away: false }, notes: { recording: { segment: 1 } } });
     const [gap, ...more] = phone.getSnapshot().capture.gaps;
@@ -280,11 +313,106 @@ describe('moving to another device', () => {
     await waitFor(() => out.getSnapshot().stage === 'ready', 'the laptop told the phone is ready');
     laptop.close();
     await out.confirm({ mic: true, cam: true });
+    // Coming in needs the account's session again, not only the claim.
+    expect((await asDevice('arrive', { claim: there.claim })).status).toBe(403);
     const now = await arrived(there);
     await inGroup(now);
     expect(now.ticket.role).toBe('invited');
     const seen = await settle(host, (s) => s.participants.length === 2 && s.participants.some((p) => p.id === now.ticket.identity));
     expect(seen.participants.find((p) => p.id === now.ticket.identity)).toMatchObject({ seat: before, person: expect.objectContaining({ email: invitedEmail }) });
+    await host.leave();
+  });
+
+  it('never hands a move someone else’s place: not the organizer’s, not another guest’s, not its own old one', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
+    await letIn(host, kim);
+    // Sam starts a move on Sam's own pass, and drives the "new device" by hand.
+    const out = await sam.startMove({ mic: true, cam: false });
+    const claim = await claimOf(out.getSnapshot().code ?? '');
+    // Naming the organizer's connection, Kim's, or Sam's own: refused, and the move stays where it was.
+    for (const identity of [host.ticket.identity, kim.ticket.identity, sam.ticket.identity]) {
+      expect((await asDevice('ready', { claim, identity, keyPackage: 'AAAA', device: PHONE })).status).toBe(409);
+    }
+    expect(MoveInSchema.parse(await (await asDevice('status', { claim })).json()).stage).toBe('claimed');
+    // So the old device has nothing to let go to, and nothing comes in.
+    expect((await asMember(sam, 'POST', '/moves/confirm', { media: { mic: true, cam: false } })).status).toBe(409);
+    expect((await asDevice('arrive', { claim })).status).toBe(409);
+
+    // A new identity, but one that joins the call some other way before the move comes in: the move still can't hand it over.
+    const x = freshIdentity();
+    expect((await asDevice('ready', { claim, identity: x, keyPackage: 'AAAA', device: PHONE })).status).toBe(200);
+    const asked = await fetch(`${h.baseUrl}/v1/calls/${c}/join`, {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify({ mic: false, cam: false, name: 'Mallory', identity: x, keyPackage: 'AAAA' })
+    });
+    expect(asked.status).toBe(200);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'Sam’s old device told the new one is ready');
+    await out.confirm({ mic: true, cam: false });
+    for (let i = 0; i < 3; i++) {
+      const r = await asDevice('arrive', { claim });
+      expect(r.status).toBe(409);
+      expect(await r.text()).not.toMatch(/"pass"/);
+    }
+    // Nobody got a pass for a place that wasn't theirs: the organizer and Kim are themselves, and Mallory is someone asking.
+    const ids = (v: CallState) => v.participants.map((p) => p.id).sort();
+    const s = await settle(host, (v) => JSON.stringify(ids(v)) === JSON.stringify([host.ticket.identity, kim.ticket.identity].sort()));
+    expect(ids(s)).toEqual([host.ticket.identity, kim.ticket.identity].sort());
+    expect(ids(s)).not.toContain(x);
+    expect(s.participants.find((p) => p.isOrganizer)?.id).toBe(host.ticket.identity);
+    await host.leave();
+  });
+
+  it('answers many requests about one move at once without holding up anything else', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
+    await letIn(host, kim);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const read = () => timed(async () => (await asMember(host, 'GET', '')).status);
+
+    // Twelve "ready"s on one claim at once, each naming its own identity: one wins, the others are told no, and the
+    // organizer's own read of the call meanwhile isn't kept waiting.
+    const kimOut = await kim.startMove({ mic: true, cam: false });
+    const claim = await claimOf(kimOut.getSnapshot().code ?? '');
+    const [readies, during] = await Promise.all([
+      Promise.all(Array.from({ length: 12 }, () => asDevice('ready', { claim, identity: freshIdentity(), keyPackage: 'AAAA', device: PHONE }).then((r) => r.status))),
+      read()
+    ]);
+    expect(readies.filter((st) => st === 200)).toHaveLength(1);
+    expect(readies.every((st) => st === 200 || st === 409)).toBe(true);
+    expect(during.value).toBe(200);
+    expect(during.ms).toBeLessThan(2000);
+    expect((await asDevice('cancel', { claim })).status).toBe(200);
+
+    // Twelve "arrive"s at once once Sam's old device lets go, beside the new device's own: one connection comes in, every
+    // answer that has a ticket has that one, and nothing else waits.
+    const out = await sam.startMove({ mic: true, cam: false });
+    const there = await open(guestBrowser(), out.getSnapshot().code ?? '');
+    await there.ready(PHONE);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'Sam’s old device told the new one is ready');
+    sam.close();
+    await out.confirm({ mic: true, cam: false });
+    const [arrivals, meanwhile] = await Promise.all([
+      Promise.all(Array.from({ length: 12 }, async () => {
+        const r = await asDevice('arrive', { claim: there.claim });
+        return { status: r.status, identity: r.status === 200 ? MoveInSchema.parse(await r.json()).joined?.ticket.identity ?? null : null };
+      })),
+      read()
+    ]);
+    expect(arrivals.every((a) => a.status === 200 || a.status === 409)).toBe(true);
+    const phone = await arrived(there);
+    expect(new Set(arrivals.flatMap((a) => (a.identity ? [a.identity] : [])))).toEqual(new Set(arrivals.some((a) => a.identity) ? [phone.ticket.identity] : []));
+    expect(meanwhile.ms).toBeLessThan(2000);
+    const s = await settle(host, (v) => v.participants.length === 3 && v.participants.some((p) => p.id === phone.ticket.identity));
+    expect(s.participants.filter((p) => p.person.name === 'Sam')).toHaveLength(1);
     await host.leave();
   });
 
