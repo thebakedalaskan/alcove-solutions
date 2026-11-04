@@ -3,7 +3,9 @@
  * same for everyone in it and, without names, for anyone asking to join: what each kind of capture is doing, who
  * changed it and when, the stretches with nothing captured, and who asked for notes. While notes are on, what
  * everyone says goes to the notes, through the organizer's browser. The organizer turns notes on and off, and
- * pauses and resumes all of it; the server refuses whatever arrives while it isn't on.
+ * pauses and resumes all of it; the server refuses whatever arrives while it isn't on. Each breakout room has its
+ * own state too, for the people in it: a room captures at most what the call does, and the organizer can pause one
+ * room on its own.
  */
 import { z } from './zod';
 import { CaptureGapSchema, IDSchema, ISODateSchema } from './types';
@@ -36,6 +38,24 @@ export type CapturePart = z.infer<typeof CapturePartSchema>;
 export const NotesRequestSchema = z.object({ id: IDSchema, participantId: z.string(), at: ISODateSchema });
 export type NotesRequest = z.infer<typeof NotesRequestSchema>;
 
+/**
+ * What's captured in the breakout room you're in (for the organizer, the one it's visiting). A room is never recorded
+ * and nothing said in it goes into the notes: what's said there is transcribed while the organizer is in it, shown
+ * only to the people there and deleted when it closes. It captures while the call's notes are on and the organizer
+ * hasn't paused the room. Each part says when it last changed and who changed it, the call's changes and the room's
+ * together; `gaps` are the stretches since the room opened with nothing captured in it.
+ */
+export const RoomCaptureSchema = z.object({
+  id: IDSchema,
+  mode: CaptureModeSchema,
+  recording: CapturePartSchema,
+  transcript: CapturePartSchema,
+  ai: CapturePartSchema,
+  screen: CapturePartSchema,
+  gaps: z.array(CaptureGapSchema)
+});
+export type RoomCapture = z.infer<typeof RoomCaptureSchema>;
+
 export const CaptureStateSchema = z.object({
   /**
    * All of it at once: on while notes are on, paused while the organizer holds them, off otherwise, and unavailable
@@ -64,6 +84,8 @@ export const CaptureStateSchema = z.object({
   /** Open asks for notes. Empty for people asking to join. */
   requests: z.array(NotesRequestSchema),
   /** Your own latest ask for notes and how it went: still asking, said yes to (notes came on) or said no to. Null if you haven't asked. */
-  asked: z.object({ state: z.enum(['asking', 'accepted', 'declined']), at: ISODateSchema }).nullable()
+  asked: z.object({ state: z.enum(['asking', 'accepted', 'declined']), at: ISODateSchema }).nullable(),
+  /** What's captured in the breakout room you're in, or null in the main room (and for people asking to join). */
+  room: RoomCaptureSchema.nullable()
 });
 export type CaptureState = z.infer<typeof CaptureStateSchema>;

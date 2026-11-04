@@ -75,35 +75,60 @@ export const CallReturnStoredSchema = z.object({ code: z.string().regex(/^[a-z]{
 export const CallRoomTokenSchema = z.object({ token: z.string() });
 
 /**
- * The call's MLS log as this person may see it (docs: Calls and recordings › End-to-end encryption). Bodies
- * are MLS messages, base64url: key packages from people asking to join (for the organizer's browser), the
- * organizer's commits, a welcome for whoever was added, and chat.
+ * The parts of a call (docs: Calls and recordings › Breakout rooms): the main room, and while breakout rooms are
+ * open, each room, by its ID. Each part has its own MLS group, so its own media keys and chat.
+ */
+export const MAIN_PLACE = 'main' as const;
+/** A part of the call as the wire names it: `main`, or a breakout room's ID. */
+export const CallPlaceSchema = z.string().regex(/^(?:main|[A-Za-z0-9_-]{16,64})$/);
+
+/**
+ * The call's MLS log as this person may see it (docs: Calls and recordings › End-to-end encryption). Bodies are MLS
+ * messages, base64url: the organizer's commits, a welcome for whoever was added, and chat, each in one part of the
+ * call's group (`group`). Key packages come with the people the organizer's browser may add (`CallMlsGroup.pending`).
  */
 export const CallMlsItemSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('keypackage'), seq: z.number(), from: z.string(), body: z.string() }),
-  z.object({ kind: z.literal('commit'), seq: z.number(), epoch: z.number(), body: z.string() }),
-  z.object({ kind: z.literal('welcome'), seq: z.number(), epoch: z.number(), body: z.string() }),
-  z.object({ kind: z.literal('message'), seq: z.number(), epoch: z.number(), body: z.string() })
+  z.object({ kind: z.literal('commit'), seq: z.number(), group: z.string(), epoch: z.number(), body: z.string() }),
+  z.object({ kind: z.literal('welcome'), seq: z.number(), group: z.string(), epoch: z.number(), body: z.string() }),
+  z.object({ kind: z.literal('message'), seq: z.number(), group: z.string(), epoch: z.number(), body: z.string() })
 ]);
 export type CallMlsItem = z.infer<typeof CallMlsItemSchema>;
-export const CallMlsSchema = z.object({
-  /** A new generation (a new MLS group) starts when the organizer's connection changes. */
-  generation: z.number(),
+/** One part of the call's MLS group as this browser keeps it: its epoch, and for the organizer's browser whom to add and take out. */
+export const CallMlsGroupSchema = z.object({
+  /** `main`, or a breakout room's ID. */
+  id: z.string(),
   epoch: z.number(),
+  /**
+   * For the organizer's browser: who it may add to this group now, whether they need letting in first, and their latest
+   * key package (base64url), however long ago it came: someone moving sends theirs before they may be added.
+   */
+  pending: z.array(z.object({ id: z.string(), admit: z.enum(['auto', 'ask']), keyPackage: z.string() })),
+  /** For the organizer's browser: people in this group to take out of it (gone, removed, or sent to another part of the call). */
+  departed: z.array(z.string())
+});
+export type CallMlsGroup = z.infer<typeof CallMlsGroupSchema>;
+export const CallMlsSchema = z.object({
+  /** A new generation (new MLS groups for every part of the call) starts when the organizer's connection changes. */
+  generation: z.number(),
   /** Where this person stands: let in, still waiting to be, or not in the call (turned away, removed, or gone). */
   admission: z.enum(['in', 'waiting', 'denied']),
-  /** The organizer's connection in this generation: the group's leaf 0, the only one whose commits count. */
-  organizer: z.string().nullable(),
-  /** This person's part of the log: the organizer's from the start of the generation, anyone else's from their welcome. */
+  /**
+   * The connection that commits for every group in this generation: the organizer's, at leaf 0 of each, the only one whose
+   * commits count. Kept in one place so another connection could take over committing.
+   */
+  committer: z.string().nullable(),
+  /** The part of the call this person is in now (`main`, or the room they're in or the organizer is visiting): their media and chat use its group. */
+  place: z.string(),
+  /** The group this person is in, as the API counts the organizer's commits: `main`, a room's ID, or null (none yet, or between two). The organizer is in every group. */
+  group: z.string().nullable(),
+  /** The groups this browser keeps: the organizer's, every part of the call; anyone else's, the one they're in. */
+  groups: z.array(CallMlsGroupSchema),
+  /** This person's part of the log: the organizer's from the start of the generation (chat only in its part of the call, from when it got there), anyone else's from their welcome into their group. */
   items: z.array(CallMlsItemSchema),
-  /** For the organizer's browser: people who left or were removed but are still in the group, to take out of it. */
-  departed: z.array(z.string()),
-  /** For the organizer's browser: whose key packages it may act on now (asking, or coming back), and whether they need letting in. */
-  pending: z.array(z.object({ id: z.string(), admit: z.enum(['auto', 'ask']) })),
-  /** Whether there was chat before this person was let in, which their browser can't read. */
+  /** Whether there was chat in this person's part of the call while they weren't there, which their browser can't read. */
   earlierChat: z.boolean(),
-  /** Let in before the organizer's connection changed: this browser should send a fresh key package for the new group. */
-  rejoin: z.boolean(),
+  /** This browser should send a fresh key package: it's to be added to a group (a new generation, or a move to another part of the call) and has none unused. */
+  keys: z.boolean(),
   /** How far the log was read (past entries for other people too), to ask from next time. */
   latest: z.number(),
   /** There's more after `latest`: ask again at once. */
@@ -164,7 +189,7 @@ export const BreakoutRoomSchema = z.object({
   id: IDSchema, name: z.string(), people: z.array(PersonSchema),
   /**
    * Who's in it now, by participant ID: the invited people sent there who are in the call, and the organizer
-   * while visiting it. Browsers keep each room's media to the people in it.
+   * while visiting it. Each room has its own MLS group, so its own media keys and chat.
    */
   members: z.array(z.string())
 });
@@ -172,7 +197,8 @@ export type BreakoutRoom = z.infer<typeof BreakoutRoomSchema>;
 export const BreakoutsSchema = z.object({
   /** Rooms that are open now, or null. Times are seconds since the call started. */
   open: z.object({
-    rooms: z.array(BreakoutRoomSchema),
+    /** Each room open now, and whether the organizer has paused notes in it (CaptureState.room says what that holds). */
+    rooms: z.array(BreakoutRoomSchema.extend({ paused: z.boolean() })),
     from: z.number(),
     /** Everyone comes back at this time, unless the organizer brings them back sooner. */
     until: z.number(),
@@ -211,7 +237,10 @@ export const CallStateSchema = z.object({
   waiting: z.array(CallAskerSchema),
   /** The call's MLS group generation; browsers already in the call rejoin when it changes. */
   generation: z.number(),
-  /** What's been said while notes were on, transcribed as the call goes: the latest lines, oldest first. */
+  /**
+   * What's been said while notes were on, transcribed as the call goes: the latest lines, oldest first, from the part
+   * of the call you're in now only. What's said in one breakout room never shows in another, or in the main room.
+   */
   transcript: z.array(TranscriptLineSchema),
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
@@ -243,6 +272,12 @@ export interface TranscriptClip {
   /** Where the clip starts within its segment, not counting pauses. */
   startMs: number;
   durationMs: number;
+  /**
+   * In a call, when the speech began, by this browser's `performance.now()`. The request says how long ago that was
+   * (`AUDIO_HEADERS.ago`), and the server places the speech where its speaker was then: a clip still on its way when
+   * someone moves stays where it was said. A room recording has none.
+   */
+  heardAt?: number | undefined;
 }
 
 /**
@@ -302,45 +337,60 @@ export const CatchUpSchema = z.object({
 });
 export type CatchUp = z.infer<typeof CatchUpSchema>;
 
-/** A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it. */
-export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number }
+/**
+ * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
+ * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it.
+ */
+export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number; place: string }
 
 /** The longest chat message in a call, in characters. */
 export const CALL_CHAT_MAX = 4000;
 /** How many keys LiveKit's frame encryption keeps per sender (its key index is one byte); media key indices are below it. */
 export const CALL_KEYRING = 256;
+/**
+ * The key-ring index a browser sends under while it's between two parts of the call, with a key nobody else has.
+ * No epoch's keys are ever put there, so nobody can decrypt what it sends meanwhile.
+ */
+export const CALL_VOID_KEY_INDEX = CALL_KEYRING - 1;
 
 /**
- * The media keys for LiveKit's frame encryption, from the call's MLS group: one per sender per epoch (a key
- * encrypts only its sender's frames, as SFrame requires), at a key-ring index for that epoch. New ones with
- * every join and leave, and every few minutes besides.
+ * The media keys for LiveKit's frame encryption, from the MLS group of the part of the call this browser is in:
+ * one per sender per epoch (a key encrypts only its sender's frames, as SFrame requires), at a key-ring index for
+ * that epoch. New ones with every join and leave, and every few minutes besides.
  */
 export interface CallMediaKeys {
   /** The latest few epochs, oldest first: everyone's keys, by identity, to decrypt their frames with. */
   epochs: { index: number; keys: Record<string, Uint8Array> }[];
   /**
    * This browser's own key to encrypt with. For a moment after the keys move on it's still the previous
-   * epoch's, so everyone has the new keys before anyone sends with them.
+   * epoch's, so everyone has the new keys before anyone sends with them. Null while it's between two parts of
+   * the call: then it sends under a key nobody else has, so nothing it sends can be heard or seen anywhere.
    */
-  send: { index: number; key: Uint8Array };
+  send: { index: number; key: Uint8Array } | null;
 }
 
 /**
- * This browser's side of the call's end-to-end encryption: the MLS group it's in and what that gives it.
- * Nothing here ever leaves the browser.
+ * This browser's side of the call's end-to-end encryption: the MLS group of the part of the call it's in, and what
+ * that gives it. Nothing here ever leaves the browser.
  */
 export interface CallCrypto {
   /**
-   * joining: making keys, or getting back in; waiting: asked to be let in; in: in the group; denied: turned
-   * away; removed: no longer in the call (removed, or this call went on from another tab or device); failed:
-   * this browser's keys fell out of step, and it has to join again.
+   * joining: making keys, or getting back in; waiting: asked to be let in; in: in the group of the part of the call
+   * it's in; moving: let in, and between two parts of the call (sent to a breakout room, or back from one), so it hears
+   * and sends nothing until it's in the new part's group; denied: turned away; removed: no longer in the call (removed,
+   * or this call went on from another tab or device); failed: this browser's keys fell out of step, and it has to join
+   * again.
    */
-  status: 'joining' | 'waiting' | 'in' | 'denied' | 'removed' | 'failed';
-  /** Who's in the group (LiveKit identities), from MLS itself, not from the server. */
+  status: 'joining' | 'waiting' | 'in' | 'moving' | 'denied' | 'removed' | 'failed';
+  /** The part of the call this browser is in, or is on its way to: `main`, or a breakout room's ID. */
+  place: string;
+  /** Who's in that part's group (LiveKit identities), from MLS itself, not from the server: the people whose media plays here. */
   members: string[];
+  /** Everyone in every group this browser keeps (the organizer's keeps every part of the call's), from MLS. */
+  everyone: string[];
   media: CallMediaKeys | null;
   chat: CallChatMessage[];
-  /** True once there was chat from before this browser was in the group, which it can't read. */
+  /** True once there was chat in this part of the call while this browser wasn't in it, which it can't read. */
   missedChat: boolean;
 }
 
@@ -360,7 +410,7 @@ export interface CallSession extends LiveStore<CallState> {
   room(): Promise<{ serverUrl: string; roomName: string; identity: string; token: string }>;
   /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
-  /** Encrypted in this browser for everyone in the call's group. Nobody who joins later can read it. */
+  /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
   sendChat(text: string): Promise<void>;
   /** Organizer only: lets someone who asked into the call (their browser is added to the group). */
   admit(identity: string): Promise<void>;
@@ -405,6 +455,16 @@ export interface CallSession extends LiveStore<CallState> {
   messageRooms(text: string): void;
   /** Organizer only: goes to one of the open rooms, or back to the main room (null). Everyone in that room sees and hears them. */
   visitRoom(roomId: string | null): void;
+  /** Organizer only: renames an open room. */
+  renameRoom(roomId: string, name: string): void;
+  /** Organizer only: sends an invited person (by email) to another open room, or back to the main room (null). Their keys move with them. */
+  moveToRoom(email: string, roomId: string | null): void;
+  /**
+   * Organizer only: pauses notes in one open room while the call's notes are on, or carries on there (`paused` false).
+   * Nothing said in a paused room is transcribed or sent to the AI, and the server refuses whatever arrives for it.
+   * Resolves once the server has done it.
+   */
+  pauseRoom(roomId: string, paused: boolean): Promise<void>;
   /** Live transcript lines in `language`, for you alone. Each line is translated once and kept sealed until the call ends. */
   translate(lineIds: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** Encrypts and stores one piece of the notes recording. */
