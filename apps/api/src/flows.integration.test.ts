@@ -2481,12 +2481,16 @@ describe('deleting an account', () => {
     const sharedWith = await noteFrom(ann);
     await ann.api.notes.share(sharedWith, { emails: [lena.email] });
     await b.api.notes.share(sharedWith, { emails: [kofi.session.user.email] });
+    // Her own notes, on Ann's note and on hers, and something she added from them to her note's shared notes.
+    await b.api.notes.personal(invitedTo).add({ kind: 'note', text: 'On Ann’s note.' });
+    const own = (await b.api.notes.personal(callNote).add({ kind: 'note', text: 'For everyone with it.' })).entries[0]?.id ?? '';
+    await b.api.notes.addToShared(callNote, own, { text: 'For everyone with it.', seal: (await b.api.notes.previewAddition(callNote, own)).seal });
 
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
-      'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'note_additions', 'object_gc', 'operations', 'owners',
+      'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
     const before = await counts();

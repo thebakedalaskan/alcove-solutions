@@ -12,6 +12,8 @@ import { log } from '~/lib/log';
 import { Moments, callTimes } from './CatchUp';
 
 const plog = log.child({ component: 'own-notes' });
+/** How long what was said can take to be transcribed, at the most: a mark older than this has what it's going to have. */
+const MARK_FILLS_MS = 60_000;
 
 /** Your own notes as this screen has them. `enabled`: you have an account in this call, so you can keep them at all. */
 export interface OwnInCall {
@@ -47,10 +49,16 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
     session.personal.get().then(setNotes, (e: unknown) => plog.info('own notes not read', { err: e }));
   }, [session]);
 
-  const waiting = notes?.entries.some((e) => e.kind === 'bookmark' && !e.moment && e.reach === 'none') ?? false;
   useEffect(() => { if (enabled && o.noteId && o.showing) read(); }, [enabled, o.noteId, o.showing, o.place, read]);
-  // A moment marked just now shows what was said once that's been transcribed: read again when a new line comes.
-  useEffect(() => { if (o.showing && waiting && o.line) read(); }, [o.line, o.showing, waiting, read]);
+  // A moment marked just now shows what was said once that's been transcribed: read again when a new line comes. Only a
+  // recent one: a mark with nothing near it, as while notes are paused, never fills in, and each read opens the transcript.
+  const lines = useRef(o.line);
+  useEffect(() => {
+    if (lines.current === o.line) return;
+    lines.current = o.line;
+    const fresh = notes?.entries.some((e) => e.kind === 'bookmark' && !e.moment && e.reach === 'none' && Date.now() - Date.parse(e.at) < MARK_FILLS_MS);
+    if (o.showing && fresh) read();
+  }, [o.line, o.showing, notes, read]);
 
   const open = useRef(o.onOpen);
   open.current = o.onOpen;
