@@ -1,0 +1,76 @@
+/* The keyboard: what's on the canvas's Keyboard board, and the typed shortcuts that turn a line into a block. */
+import { exitCode, toggleMark } from 'prosemirror-commands';
+import { InputRule } from 'prosemirror-inputrules';
+import type { Attrs } from 'prosemirror-model';
+import { TextSelection, type Command } from 'prosemirror-state';
+import { redoCommand, undoCommand } from 'y-prosemirror';
+import { nudgeBlock, openLinkField, startComment } from './actions';
+import { backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
+import type { EditorRuntime } from './runtime';
+import { newBlockId, schema } from './schema';
+import type { BlockKind } from './types';
+
+const m = schema.marks;
+const n = schema.nodes;
+
+/** Undo that always counts as handled: the browser's own undo would fight the document's. */
+const always = (command: Command): Command => (state, dispatch, view) => { command(state, dispatch, view); return true; };
+
+export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
+  Enter: enter,
+  'Shift-Enter': lineBreak,
+  'Mod-Enter': exitCode,
+  Backspace: backspace,
+  Delete: deleteForward,
+  Tab: indent(1),
+  'Shift-Tab': indent(-1),
+  'Mod-a': selectAll,
+  'Mod-b': toggleMark(m.bold),
+  'Mod-i': toggleMark(m.italic),
+  'Mod-e': toggleMark(m.inlineCode),
+  'Mod-Shift-x': toggleMark(m.strike),
+  'Mod-Shift-h': toggleMark(m.highlight),
+  /* With nothing selected, ⌘K is the call's Find anything. */
+  'Mod-k': () => openLinkField(rt),
+  'Mod-Shift-m': () => startComment(rt),
+  'Mod-z': always(undoCommand),
+  'Mod-Shift-z': always(redoCommand),
+  'Mod-y': always(redoCommand),
+  'Mod-Shift-ArrowUp': () => nudgeBlock(rt, -1),
+  'Mod-Shift-ArrowDown': () => nudgeBlock(rt, 1)
+});
+
+/** A line that starts with one of these becomes that kind of block as you press space. */
+function lineRule(pattern: RegExp, kind: BlockKind): InputRule {
+  return new InputRule(pattern, (state, _, start, end) => {
+    const $start = state.doc.resolve(start);
+    const ref = blockAt($start);
+    if (!ref || $start.depth !== 1) return null;
+    const tr = state.tr.delete(start, end);
+    const line = blockAt(tr.doc.resolve(start));
+    if (!line) return null;
+    turnBlock(tr, line, kind);
+    return tr;
+  });
+}
+
+/** `---` and a space is a divider, with a line to carry on in. */
+const dividerRule = new InputRule(/^---\s$/, (state, _, start, end) => {
+  const $start = state.doc.resolve(start);
+  const ref = blockAt($start);
+  if (!ref || $start.depth !== 1 || ref.node.type !== n.paragraph || end - start !== ref.node.content.size) return null;
+  const attrs: Attrs = { id: ref.id };
+  const tr = state.tr.replaceWith(ref.pos, ref.pos + ref.node.nodeSize, [n.divider.create(attrs), n.paragraph.create({ id: newBlockId() })]);
+  return tr.setSelection(TextSelection.near(tr.doc.resolve(ref.pos + 2)));
+});
+
+export const typedShortcuts: InputRule[] = [
+  lineRule(/^#\s$/, 'h1'),
+  lineRule(/^##\s$/, 'h2'),
+  lineRule(/^###\s$/, 'h3'),
+  lineRule(/^[-*]\s$/, 'bullet'),
+  lineRule(/^1\.\s$/, 'numbered'),
+  lineRule(/^\[ ?\]\s$/, 'todo'),
+  lineRule(/^>\s$/, 'quote'),
+  dividerRule
+];
