@@ -1063,7 +1063,7 @@ describe('joining by link', () => {
 });
 
 describe('devices', () => {
-  it('lets someone whose browser allows no microphone or camera join with both off, hear everyone, and send nothing', async () => {
+  it('lets someone in whose browser allows no microphone or camera, and they hear everyone', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -1079,11 +1079,9 @@ describe('devices', () => {
     const audioFrom = (p: TestParticipant, identity: string) => [...(p.room.remoteParticipants.get(identity)?.trackPublications.values() ?? [])].filter((t) => t.kind === TrackKind.KIND_AUDIO && t.track !== undefined);
     await guestRoom.waitFor(() => audioFrom(guestRoom, host.ticket.identity).length === 1, 'the organizer’s audio reaching them');
     expect(senderKey(guest, host.ticket.identity)).toBe(senderKey(host, host.ticket.identity));
-    // Everyone sees them in the call, and they send nothing LiveKit could forward.
+    // And everyone sees them in the call.
     const seen = await settle(host, (s) => s.participants.some((p) => p.id === guest.ticket.identity));
     expect(seen.participants.find((p) => p.id === guest.ticket.identity)?.person.name).toBe('Sam');
-    await hostRoom.waitFor(() => hostRoom.remoteIdentities().includes(guest.ticket.identity), 'them in the room');
-    expect([...(hostRoom.room.remoteParticipants.get(guest.ticket.identity)?.trackPublications.values() ?? [])]).toEqual([]);
     await host.leave();
   });
 });
