@@ -2,7 +2,8 @@
 
 [Docs home](../README.md) · [System architecture](system-architecture.md) · [Data and storage](data-and-storage.md) · [Deployment and acceptance](deployment-and-acceptance.md)
 
-**Goal.** Readable content (names, emails, titles, guests, chat, audio, transcripts, notes) exists only in
+**Goal.** Readable content (names, emails, titles, guests, chat, audio, transcripts, shared-screen frames,
+notes) exists only in
 the browsers of the people it belongs to and inside the API process while it works on it. The database,
 object store, logs and network edge see ciphertext, opaque IDs, keyed hashes, sizes and timing. NEAR AI
 Cloud transcribes speech and writes notes, but only in confidential VMs whose hardware evidence Alcove checks
@@ -42,8 +43,8 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Root check | `HMAC(HKDF(Kowner, salt=ownerId, "alcove/root-check/v1"), ownerId)` | `owners.root_check`; proves an opened root is this account's, so a wrong key never opens an empty vault |
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
-| `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>` |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `job:<noteId>` (notes jobs) and `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
+| `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -63,6 +64,8 @@ record recomputes the expected header, so a record copied to another row, owner 
 | --- | --- | --- |
 | `manifest` | `Krecord` | item, revision |
 | `audio` | `Krec` | recording, segment, seq, object |
+| `screen-frame` | `Krec` | recording, frame, object (the JPEG of a shared screen) |
+| `screen-frame-info` | state key `screen:<noteId>` | note, frame (whose share, when, its size, what was read on it) |
 | `call-state` | state key `call:<id>` | call |
 | `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
 | `transcript-translation` | state key `transcript:<noteId>` | note, line-and-language tag |
@@ -254,12 +257,14 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
   waits); joining by link: 120. Transcript clips: 120 a minute per account, calls and room recordings together.
-  Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
+  Shared-screen frames: 24 a minute per person in a call, and
+  30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Questions and catch-ups (about notes, a call so far or a
   series): 20 a minute per account, together. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
-- **Sizes.** An audio piece over 2 MiB or a transcript clip over 30 seconds of WAV is refused from its
-  `content-length` (`400 invalid`) before the body is read.
+- **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV or a shared-screen frame over
+  1 MiB is refused from its `content-length` (`400 invalid`) before the body is read; a frame must also be a
+  JPEG between 64 and 4096 pixels a side.
 - **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
   it (`/v1/calls/<code>/card`, `…/join`, `…/meeting`), never in a query string or a sign-in URL: signing in with
@@ -311,27 +316,27 @@ third-party loads.
 
 | Where | Visible |
 | --- | --- |
-| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips were transcribed and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
+| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, so which accounts connected Google); revision, call and recording times; per-piece duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. |
-| Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds |
+| Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
 | Ciphertext lengths | Not padded, so title, guest list, transcript and clip lengths leak approximately |
-| NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, with their dates (in the asker's time zone), decisions, open questions and follow-ups. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
+| NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, with their dates (in the asker's time zone), decisions, open questions and follow-ups. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
 | NEAR AI's gateway and operators | Alcove's API key on attestation requests, which models are verified when, the size and timing of every sealed request, and the server's address; never the content, the request's parameters or the key inside the seal. A deployment NEAR AI chooses to run in an attested VM on a measured dstack image passes. |
 | Intel and NVIDIA | Intel's certification service: which platform (FMSPC) each quote came from, when Alcove verifies. NVIDIA's attestation service: each model's GPU evidence (certificates and measurements). No content. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests. |
 | Cloudflare | As the web app's host: each page load and file request, with its address, path (such as `/notes/<id>`), time and browser. The API's traffic doesn't pass through it. As the object store (R2): what the object store row shows. |
 | LiveKit (Cloud in production) | No media: frames are end-to-end encrypted. Each person's address; room names and identities (random, no names); join and leave times; packet sizes and timing; the audio-level header, so who is speaking when; track kinds and mute state, so who has a camera or screen on |
 | The call's MLS log (`call_mls`) | Sealed MLS messages, while the call runs: how many people asked to join, were added and removed, and how much chat there was, by count and size. Deleted when the call ends |
-| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms; when notes were turned on, off, paused and resumed, and who asked for notes. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
+| The API (calls) | Who's in each call, asking or turned away, and their names, with the addresses of people signed in whom the notes may go to (sealed at rest, opened per request); who sent each chat message and when, by size; raised hands, spotlight and breakout rooms; when notes were turned on, off, paused and resumed, and who asked for notes; when shared screens were turned on and off, who sent frames of which share and when, and when shares ended. Never what's on a screen: frames are sealed as they arrive. It vouches for who's invited: [Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption) |
 | The API process | Everything, for every account: it holds `KMASTER`. It also keeps each account's current Google access token in memory for up to an hour. On Cloud Run, whoever operates the service could read that memory. [In a confidential VM](#moving-to-confidential-computing) the host can't, and the keys go only to builds the app's key policy allows. |
 
 ## Deletion
 
-- **Deleting your own note** removes, in one transaction: every revision, the recording and its pieces, any
-  transcript clips still there, its notes job, every `note_access` row (so everyone loses it), the link from
+- **Deleting your own note** removes, in one transaction: every revision, the recording and its pieces, its
+  shared-screen frames and what was read on them, any transcript clips still there, its notes job, every `note_access` row (so everyone loses it), the link from
   its meeting, and the owner's operation receipts; stored bytes go down to match. Nobody else holds a receipt
-  with the note in it: what others can do to a note keeps none ([Requests](#requests)). Then the audio
-  objects are deleted; failures are queued in `object_gc` and retried.
+  with the note in it: what others can do to a note keeps none ([Requests](#requests)). Then the audio and
+  frame objects are deleted; failures are queued in `object_gc` and retried.
 - **Removing someone else's note** deletes only your own `note_access` row. The organizer and everyone else
   keep it.
 - **Cancelling a meeting** deletes it with every revision and its calls (including chat), and the owner's
@@ -344,7 +349,8 @@ third-party loads.
 - **Google access** stays in the account's `connection` item until the account is deleted (not built yet).
   Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
-  `object_gc`, and removes objects older than 24 hours that no recording piece references.
+  `object_gc`, and removes objects older than 24 hours that no recording piece or shared-screen frame
+  references.
 
 ## Moving to confidential computing
 

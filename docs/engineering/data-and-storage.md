@@ -25,6 +25,7 @@ production) holds immutable ciphertext objects under random IDs (`o/<Id128>`). T
 | `call_mls` | owner, call, `seq`, MLS group generation, kind (`keypackage`, `commit`, `welcome`, `message`), the random identity a key package came from or a welcome is for, epoch | `body_ciphertext` (an MLS message, which the API can't read, sealed again under the call's state key). Deleted when the call ends, and when a new generation starts (waiting people's key packages carry over) |
 | `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start and end, `version` | `key_envelope` (`Krec`) |
 | `recording_pieces` | owner, recording, segment, seq, object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
+| `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
@@ -42,7 +43,7 @@ transcript clips and its `note_access` rows.
 | --- | --- |
 | `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (`notesDefault`), colleagues invited to Alcove |
 | `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), the Google Calendar event ID and link when it's on a calendar, the series it's in (`seriesId`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), and which guests were added by being let in from the call's link (`addedFromLink`), once any were |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens, transcript (lines with time, speaker when known, the breakout room by name when said in one, and text; null while recording), suggested questions, breakout rooms (kept from the end of the call until the notes are written) |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text, regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, and text; null while recording), suggested questions, breakout rooms (kept from the end of the call until the notes are written) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
@@ -63,6 +64,12 @@ item of a kind.
   notes model's, as `inference` ([Notes and inference › What a note keeps](notes-and-inference.md#what-a-note-keeps)).
 - **Caption translations** are sealed under the same transcript key, one row per line and language, and are
   deleted with the transcript clips when the recording stops.
+- **Shared-screen frames** are sealed under the recording's `Krec` like audio pieces, written to the object
+  store, read back and checked, and only then recorded in `screen_frames` under a share lock on the recording;
+  a duplicate or a frame that arrives once the recording paused or stopped queues its object for deletion. When
+  the call ends they become the note's `screens`; the notes worker writes what it read on each into its row,
+  then into the note. They stay with the note and go when it's deleted
+  ([Calls and recordings › Shared screens](calls-and-recordings.md#shared-screens)).
 - **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
 - **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never

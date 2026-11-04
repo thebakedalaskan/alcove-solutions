@@ -124,12 +124,12 @@ dock at the bottom.
   unavailable** when the organizer's browser can't record or listen, **Notes off**, or **Notes requested** while
   someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
-  the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**), or anyone else's
-  **Ask for notes**; your view: **Auto**, **Speaker** or **Grid**, which change only your screen, beside a menu
-  with the same three, two ready-made layouts (**Everyone equal**, **Presenter and me**), where you see
-  yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once you've arranged it;
-  **Catch up**; the shield, whose hover says what confidential compute covers (verified only when the server's
-  hardware check is bound to this browser's request); and who is here, which opens People.
+  the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared
+  screens**, or anyone else's **Ask for notes**; your view: **Auto**, **Speaker** or **Grid**, which change only
+  your screen, beside a menu with the same three, two ready-made layouts (**Everyone equal**, **Presenter and
+  me**), where you see yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once
+  you've arranged it; **Catch up**; the shield, whose hover says what confidential compute covers (verified only
+  when the server's hardware check is bound to this browser's request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
   browser can do it, **Blur my background**. A microphone or camera that can't work has a caution mark, and
@@ -165,7 +165,11 @@ dock at the bottom.
   and when it comes in as a tile a toast says who started sharing, with **Show it**. When the browser or the computer
   won't share (on a Mac, the screen-recording permission), the picker comes back and says what to do, and offers a
   tab, which needs no permission; when the sound you asked for didn't come, a toast says so. Phones and tablets can
-  see shares but can't share. Nothing shared is recorded or transcribed.
+  see shares but can't share. Nothing shared is recorded or transcribed. While the organizer has shared screens read
+  for the notes, your bar also says **Read for the notes**, and your browser sends what changes on your share to the
+  notes: nothing for the first ten seconds of a share, and at most one frame every few seconds. Cameras never. Once
+  the notes have kept as many shared screens as they can for a call (about four hours of slides), screen notes turn
+  off for everyone, with a message saying why, and what was shared stays in the notes.
 - **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.
