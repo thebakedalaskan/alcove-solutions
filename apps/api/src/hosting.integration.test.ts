@@ -5,7 +5,7 @@
  * commits every part of the call's MLS group in a new generation, takes the notes in a new segment, and lets people
  * in; the organizer takes the call back by joining again, or leaves it to someone they choose.
  */
-import { AlcoveApiError, firstName, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, MoveClaimSchema, firstName, type AlcoveApi, type AudioPiece, type CallMoveIn, type CallSession, type CallState, type MoveDevice, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -68,9 +68,9 @@ const audio = (marker: string, segment: number, s: number): AudioPiece => {
   const src = Buffer.concat([Buffer.from(marker), randomBytes(2048)]);
   const bytes = new Uint8Array(new ArrayBuffer(src.length));
   bytes.set(src);
-  return { data: new Blob([bytes]), segment, seq: s, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
+  return { data: new Blob([bytes]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
 };
-const speech = (words: string, segment: number, startMs: number): TranscriptClip => ({ data: new Blob([speechWav(words, 4000)], { type: 'audio/wav' }), segment, startMs, durationMs: 4000 });
+const speech = (words: string, segment: number, atMs: number): TranscriptClip => ({ data: new Blob([speechWav(words, 4000)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: 4000 });
 /** A request about a call with someone's pass and no session, carrying whatever the test wants. */
 const asMember = (call: CallSession, path: string, body: unknown) => fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}${path}`, {
   method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(body)
@@ -85,9 +85,36 @@ const CallRow = z.object({ state: z.string(), host: z.string(), generation: z.co
 const callRow = async (callId: string) => CallRow.parse((await h.pool.query('SELECT state, host_identity AS host, mls_generation AS generation FROM calls WHERE call_id = $1', [callId])).rows[0]);
 async function written(api: AlcoveApi, noteId: string) { const steps = []; for await (const p of api.notes.progress(noteId)) steps.push(p); return steps; }
 
+/** Waits until the API's own database says the connection that hosts has been gone for at least `seconds`. */
+async function goneFor(callId: string, seconds: number): Promise<void> {
+  const until = Date.now() + 15_000;
+  for (;;) {
+    const r = await h.pool.query<{ gone: boolean }>('SELECT now() - host_left_at >= make_interval(secs => $2) AS gone FROM calls WHERE call_id = $1', [callId, seconds]);
+    if (r.rows[0]?.gone === true) return;
+    if (Date.now() > until) throw new Error('timed out waiting for the host’s connection to be gone');
+    await sleep(25);
+  }
+}
+
 /** Rooms a test connected; disconnected after each test so rooms empty out. */
 const open: TestParticipant[] = [];
-afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
+/** Call sessions that came from moves, which the harness doesn't know about: stopped after each test. */
+const moved: CallSession[] = [];
+const incoming: CallMoveIn[] = [];
+afterEach(async () => {
+  await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined)));
+  for (const s of moved.splice(0)) s.close();
+  for (const m of incoming.splice(0)) m.close();
+  h.closeCalls();
+});
+const PHONE: MoveDevice = { kind: 'phone', os: 'ios', browser: 'safari' };
+async function arrived(m: CallMoveIn): Promise<CallSession> {
+  await waitFor(() => m.getSnapshot().session !== null || m.getSnapshot().stage === 'expired', 'the new device in the call');
+  const s = m.getSnapshot().session;
+  if (!s) throw new Error(`the move ended at ${m.getSnapshot().stage}`);
+  moved.push(s);
+  return s;
+}
 /** Into the call's LiveKit room as its browser would be, sending with its own key, or hearing one sender. */
 async function joinRoom(call: CallSession, hearing?: CallSession): Promise<TestParticipant> {
   await inGroup(call);
@@ -110,6 +137,8 @@ async function drop(call: CallSession, room: TestParticipant, closeIt = false) {
 }
 /** Upkeep runs once the host has been gone this long (ms). */
 const upkeepAfter = (ms: number) => reconcile(h.deps, Date.now() + ms + 1_000);
+/** How long a new device has to come in once the device being left has let go (modules/moves.ts). */
+const MOVE_RELEASED_MS = 120_000;
 
 /** A call with notes on, its organizer, and invited people (each with an account), everyone in its group and its LiveKit room. */
 async function hostedCall(names: string[], o: { notes?: 'on' | 'off'; guest?: string } = {}) {
@@ -148,6 +177,7 @@ describe('host hand-off', () => {
     const secs = () => (Date.now() - Date.parse(host.getSnapshot().startedAt)) / 1000;
     await drop(host, hostRoom);
     const droppedAt = secs();
+    await goneFor(host.ticket.callId, 2.1);
     await reconcile(h.deps, Date.now() + HANDOFF_MS / 2);
     expect((await callRow(host.ticket.callId)).host).toBe(host.ticket.identity);
     // Then Priya hosts, in a new generation her browser makes: she's the only committer, at leaf 0 of every group.
@@ -205,14 +235,13 @@ describe('host hand-off', () => {
     const anaCall = await ana.api.calls.join(c, { mic: true, cam: false });
     await letIn(priya.call, anaCall);
     expect((await settle(anaCall, (x) => x.participants.some((p) => p.isMe), 'Ana in')).role).toBe('guest');
-    // Catching up says nothing was transcribed only between the drop and Priya hosting, when that was long enough to
-    // say, and never in her time hosting since: her browser sends what's said.
+    // Catching up says nothing was transcribed only from the drop until Priya hosted, and never in her time hosting
+    // since: her browser sends what's said.
     const missed = (await priya.call.catchUp({ kind: 'all' })).read.missed;
-    expect(missed.length).toBeLessThanOrEqual(1);
-    for (const m of missed) {
-      expect(m.from).toBeGreaterThan(droppedAt - 1);
-      expect(m.to ?? Infinity).toBeLessThan(handedAt + 1);
-    }
+    expect(missed).toHaveLength(1);
+    expect(missed[0]?.from ?? 0).toBeGreaterThan(droppedAt - 1);
+    expect(missed[0]?.to ?? Infinity).toBeLessThan(handedAt + 1);
+    expect((missed[0]?.to ?? 0) - (missed[0]?.from ?? 0)).toBeGreaterThanOrEqual(2);
 
     // Priya ends the call: the notes cover all of it, each line once, and go to everyone invited, the organizer included.
     const end = await priya.call.leave();
@@ -222,6 +251,8 @@ describe('host hand-off', () => {
     const note = await org.api.notes.get(noteId);
     expect(note.transcript?.map((l) => l.text)).toEqual(['We start together.', 'Priya carries on.']);
     expect(note.transcript?.map((l) => l.speaker?.name)).toEqual([org.session.user.name, 'Sam']);
+    // The stretch no host's browser was in the call is marked where it falls: between the two segments.
+    expect(note.gaps.map((g) => g.kind)).toEqual(['offline']);
     expect((await priya.browser.api.notes.get(noteId)).id).toBe(noteId);
     expect(code(await ana.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
   });
@@ -377,7 +408,7 @@ describe('host hand-off', () => {
     // the organizer is back before upkeep hands the call on.
     await drop(priya.call, priya.room, true);
     const priyaGoneAt = secs();
-    await waitFor(() => secs() > priyaGoneAt + 2.2, 'a stretch with nobody hosting', 5_000);
+    await goneFor(host.ticket.callId, 2.1);
     const back = await org.api.calls.join(c, { mic: true, cam: false });
     // Priya is gone at once, from when LiveKit said so: she isn't left in the call for upkeep to find.
     expect(back.getSnapshot().participants.map((p) => p.id)).not.toContain(priya.call.ticket.identity);
@@ -388,6 +419,70 @@ describe('host hand-off', () => {
     const missed = (await back.catchUp({ kind: 'all' })).read.missed;
     expect(missed.some((m) => m.from > priyaGoneAt - 1 && m.from < priyaGoneAt + 1 && (m.to ?? Infinity) <= secs() + 1)).toBe(true);
     await back.leave();
+  });
+
+  it('waits for the host’s move to another device: nobody takes over while it can still arrive, and one that runs out is a host gone like any other', async () => {
+    const { orgEmail, host, hostRoom, people: [priya] } = await hostedCall(['Priya']);
+    if (!priya) throw new Error('Priya expected');
+    const start = (await callRow(host.ticket.callId)).generation;
+    // The organizer starts a move; the new device (driven by hand, so it comes in only when told) is ready; the laptop lets go.
+    const out = await host.startMove({ mic: true, cam: false });
+    const opened = await fetch(`${h.baseUrl}/v1/moves/claim`, { method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify({ code: out.getSnapshot().code ?? '' }) });
+    const { claim } = MoveClaimSchema.parse(await opened.json());
+    const phone = await account(orgEmail);
+    const ready = await phone.fetch(`${h.baseUrl}/v1/moves/ready`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ claim, identity: `p_${randomBytes(16).toString('base64url')}`, keyPackage: 'AAAA', device: PHONE })
+    });
+    expect(ready.status).toBe(200);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'the laptop told the phone is ready');
+    host.close();
+    await hostRoom.disconnect();
+    await out.confirm({ mic: true, cam: false });
+
+    // Past the hand-off and the grace alike, the call waits: the new device can still come in, and nobody has to take over.
+    await upkeepAfter(HANDOFF_MS);
+    await upkeepAfter(HOST_GRACE_MS);
+    expect(await callRow(host.ticket.callId)).toEqual({ state: 'live', host: host.ticket.identity, generation: start });
+    // It never comes. Once the move has run out, the call is handed on as for any host gone.
+    await upkeepAfter(MOVE_RELEASED_MS);
+    expect(await callRow(host.ticket.callId)).toEqual({ state: 'live', host: priya.call.ticket.identity, generation: start + 1 });
+    await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+    await priya.call.leave();
+  });
+
+  it('moves a stand-in as it moves the organizer: their new device hosts on in a new generation, and the old one is out of date', async () => {
+    const { host, hostRoom, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
+    if (!priya || !kofi) throw new Error('Priya and Kofi expected');
+    await drop(host, hostRoom, true);
+    await upkeepAfter(HANDOFF_MS);
+    const standing = await settle(priya.call, (x) => x.isHost, 'Priya hosting');
+
+    // Priya moves to her phone, signed in to the same account.
+    const out = await priya.call.startMove({ mic: true, cam: false });
+    const phone = await account(priya.email);
+    const there = await phone.api.calls.openMove(out.getSnapshot().code ?? '');
+    incoming.push(there);
+    await there.ready(PHONE);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'her laptop told the phone is ready');
+    priya.call.close();
+    await priya.room.disconnect();
+    await out.confirm({ mic: true, cam: false });
+    // Upkeep waits for her new device, however long it's been: Kofi doesn't take over.
+    await upkeepAfter(HANDOFF_MS);
+
+    const now = await arrived(there);
+    await inGroup(now);
+    expect(now.getSnapshot()).toMatchObject({ isHost: true, isOrganizer: false, host: { id: now.ticket.identity, standIn: true }, generation: standing.generation + 1 });
+    expect(await callRow(host.ticket.callId)).toMatchObject({ state: 'live', host: now.ticket.identity });
+    // Kofi rejoins her new groups by himself; her old connection isn't in them, and it's out of date.
+    await waitFor(() => keyOf(kofi.call) === keyOf(now), 'Kofi in her new device’s group');
+    expect(members(now)).toEqual([now.ticket.identity, kofi.call.ticket.identity].sort());
+    expect((await asMember(priya.call, '/mls/commits', { generation: standing.generation, group: 'main', epoch: 0, commit: 'AAAA', added: [], removed: [] })).status).toBe(409);
+    // Her powers and the notes went with her, in the next segment.
+    await now.lock(true);
+    expect((await settle(now, (x) => x.locked, 'locked')).locked).toBe(true);
+    expect(now.getSnapshot().notes.recording.segment).toBe(standing.notes.recording.segment + 1);
+    await now.leave();
   });
 
   it('ends the call as before when nobody can host: guests can’t, and nor can anyone not in the room', async () => {
