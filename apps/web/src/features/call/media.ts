@@ -98,6 +98,10 @@ const granted = (p: Permission): Permission => (p === 'unknown' ? 'unknown' : 'g
 
 interface Opened { audio?: MediaStreamTrack | undefined; video?: MediaStreamTrack | undefined; audioError?: unknown; videoError?: unknown; quick: boolean }
 
+/** A problem fixed since: allowed now (when it was refused or unanswered), or, when none was plugged in, one is. */
+const fixedBy = (problem: DeviceProblem, permission: Permission, plugged: boolean): boolean =>
+  problem === 'missing' ? plugged : (problem === 'blocked' || problem === 'dismissed') && permission === 'granted';
+
 export class LocalMedia {
   private snap: MediaSnapshot = {
     camera: null, screen: null, mic: true, cam: true, micId: null, camId: null, speakerId: null,
@@ -111,7 +115,11 @@ export class LocalMedia {
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private buf: Float32Array<ArrayBuffer> = new Float32Array(new ArrayBuffer(4096));
-  /** What the person asked for last. Before the call, a device that becomes usable starts this way. */
+  /**
+   * What the person asked for last, and what a device that opens starts as. Before the call, a device that becomes
+   * usable starts this way. In the call it's only on because they pressed it: joining sets it from what's on, and
+   * losing every device or failing to start one turns it off.
+   */
   private want = { mic: true, cam: true };
   private inCall = false;
   private stopWatching: (() => void) | null = null;
@@ -120,14 +128,20 @@ export class LocalMedia {
   private queue: Promise<unknown> = Promise.resolve();
   private said = 0;
   private begun = false;
-  /** Moves on at every stop(): a device that opens after it is let go of at once. */
+  /** Moves on at every stop(). Device work carries the value it had when it was asked for, and does nothing after a stop. */
   private gen = 0;
-  /** The devices listed last time, to name one that's just been unplugged. */
+  /** The devices listed last time: to name one that's just been unplugged, and to tell one that's come back. */
   private listed: MediaDeviceInfo[] = [];
+  /** A camera chosen while the camera is off: used when it's turned on, and remembered once it has opened. */
+  private camChoice: string | null = null;
+  /** Tracks whose device went away by itself (their ended event fired), as opposed to ones Alcove stopped. */
+  private gone = new WeakSet<MediaStreamTrack>();
 
   getSnapshot = (): MediaSnapshot => this.snap;
   /** start() has run (and stop() hasn't since): a screen that finds media already started leaves it as it is. */
   get started(): boolean { return this.begun; }
+  /** The device behind this track went away by itself (unplugged, or the browser took it back). */
+  unplugged(t: MediaStreamTrack): boolean { return this.gone.has(t); }
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
   private set(p: Partial<MediaSnapshot>) { this.snap = { ...this.snap, ...p }; this.listeners.forEach((l) => l()); }
   private rebuild() {
@@ -139,7 +153,7 @@ export class LocalMedia {
     this.queue = next.catch(() => undefined);
     return next;
   }
-  /** Media stopped while these were opening: they're let go of, and nothing else happens. */
+  /** Media stopped since this work was asked for: what it opened is let go of, and nothing else happens. */
   private lateFor(gen: number, ...opened: (MediaStreamTrack | undefined)[]): boolean {
     if (gen === this.gen) return false;
     for (const t of opened) t?.stop();
@@ -157,33 +171,39 @@ export class LocalMedia {
    */
   start(opts: { mic: boolean; cam: boolean }): Promise<void> {
     this.begun = true;
+    const gen = this.gen;
     return this.serial(async () => {
+      if (gen !== this.gen) return;
       this.want = { ...opts };
       this.watch();
-      const gen = this.gen;
       const perms = await permissions();
       const got = await this.open({ audio: perms.mic !== 'denied', video: opts.cam && perms.cam !== 'denied' }, perms);
       if (this.lateFor(gen, got.audio, got.video)) return;
       const prefs = readPrefs();
-      this.useAudio(got.audio ?? null, opts.mic);
-      this.useVideo(got.video ?? null);
+      // Pressed while the browser was asking: the latest press decides.
+      if (got.video && !this.want.cam) got.video.stop();
+      this.useAudio(got.audio ?? null, this.want.mic);
+      this.useVideo(got.video && this.want.cam ? got.video : null);
+      this.confirmCam();
       this.rebuild();
       if (prefs.blur) await this.applyBlur(true);
       this.listed = await enumerate().catch(() => []);
       const micId = deviceOf(this.audio);
       const camId = deviceOf(this.video);
-      // A remembered device that isn't plugged in: the browser picked another, and the screen says which.
-      const missing = [prefs.mic && micId && prefs.mic !== micId ? `microphone (now ${plainName(this.audio?.label ?? '') || 'the default'})` : '', prefs.cam && camId && prefs.cam !== camId ? `camera (now ${plainName(this.video?.label ?? '') || 'the default'})` : ''].filter(Boolean);
+      // A remembered device that isn't available: the browser picked another, and the screen says which.
+      const micSub = Boolean(prefs.mic && micId && prefs.mic !== micId);
+      const camSub = Boolean(prefs.cam && camId && prefs.cam !== camId);
+      const missing = [micSub ? `microphone (now ${plainName(this.audio?.label ?? '') || 'the default'})` : '', camSub ? `camera (now ${plainName(this.video?.label ?? '') || 'the default'})` : ''].filter(Boolean);
       const problem = (kind: Capture, has: boolean, asked: boolean, err: unknown): DeviceProblem | null =>
         has ? null : perms[kind] === 'denied' ? 'blocked' : asked ? problemOf(err, perms[kind], got.quick) : null;
       this.set({
-        mic: Boolean(this.audio) && opts.mic, cam: Boolean(this.video), micId, camId, speakerId: this.speakerFor(this.listed),
+        mic: Boolean(this.audio) && this.want.mic, cam: Boolean(this.video), micId, camId, speakerId: this.speakerFor(this.listed),
         access: {
           mic: { permission: this.audio ? granted(perms.mic) : perms.mic, problem: problem('mic', Boolean(this.audio), 'audioError' in got, got.audioError) },
           cam: { permission: this.video ? granted(perms.cam) : perms.cam, problem: problem('cam', Boolean(this.video), 'videoError' in got, got.videoError) }
         },
         ...blurOf(this.video),
-        ...(missing.length ? { changes: this.changed(missing.length > 1 || micId ? 'mic' : 'cam', `The ${missing.join(' and ')} you chose before isn’t connected, so Alcove is using another.`) } : {})
+        ...(missing.length ? { changes: this.changed(micSub ? 'mic' : 'cam', `The ${missing.join(' and ')} you chose before isn’t available, so Alcove is using another.`) } : {})
       });
       mlog.info('devices started', {
         mic: Boolean(this.audio), cam: Boolean(this.video), micProblem: this.snap.access.mic.problem, camProblem: this.snap.access.cam.problem,
@@ -192,15 +212,35 @@ export class LocalMedia {
     });
   }
 
-  /** Opens the microphone, the camera or both. When the pair fails, each is tried alone, so one problem costs one device. */
+  /**
+   * Opens the microphone, the camera or both, the remembered ones first. A remembered one that's listed but won't start
+   * (busy in another app, or not really there) gives way to the system's; when the pair fails, each is tried alone, so
+   * one problem costs one device.
+   */
   private async open(ask: { audio: boolean; video: boolean }, perms: Record<Capture, Permission>): Promise<Opened> {
     const prefs = readPrefs();
-    const audio: MediaTrackConstraints | false = ask.audio ? { ...audioFor(this.snap.noiseReduction), ...(prefs.mic ? { deviceId: { ideal: prefs.mic } } : {}) } : false;
-    const video: MediaTrackConstraints | false = ask.video ? { ...VIDEO, ...(prefs.cam ? { deviceId: { ideal: prefs.cam } } : { facingMode: 'user' }) } : false;
+    const micPick = prefs.mic;
+    const camPick = this.camChoice ?? prefs.cam;
+    const anyMic = audioFor(this.snap.noiseReduction);
+    const anyCam: MediaTrackConstraints = { ...VIDEO, facingMode: 'user' };
+    const audio: MediaTrackConstraints | false = ask.audio ? (micPick ? { ...anyMic, deviceId: { ideal: micPick } } : anyMic) : false;
+    const video: MediaTrackConstraints | false = ask.video ? (camPick ? { ...VIDEO, deviceId: { ideal: camPick } } : anyCam) : false;
     if (!audio && !video) return { quick: false };
+    const gum = async (a: MediaTrackConstraints | false, v: MediaTrackConstraints | false): Promise<MediaStream> => {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: a, video: v });
+      } catch (e) {
+        const plainA = a && micPick ? anyMic : a;
+        const plainV = v && camPick ? anyCam : v;
+        // A refusal isn't about the device, and with nothing remembered there's nothing else to try.
+        if (refused(e) || (plainA === a && plainV === v)) throw e;
+        mlog.info('a remembered device didn’t start; trying the system’s', { err: e });
+        return navigator.mediaDevices.getUserMedia({ audio: plainA, video: plainV });
+      }
+    };
     const asked = performance.now();
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio, video });
+      const s = await gum(audio, video);
       return { audio: s.getAudioTracks()[0], video: s.getVideoTracks()[0], quick: false };
     } catch (e) {
       const quick = performance.now() - asked < QUICK_MS;
@@ -210,10 +250,10 @@ export class LocalMedia {
       const now = refused(e) ? await permissions() : perms;
       const out: Opened = { quick };
       if (!refused(e) || now.mic === 'granted') {
-        try { out.audio = (await navigator.mediaDevices.getUserMedia({ audio })).getAudioTracks()[0]; } catch (ea) { out.audioError = ea; }
+        try { out.audio = (await gum(audio, false)).getAudioTracks()[0]; } catch (ea) { out.audioError = ea; }
       } else out.audioError = e;
       if (!refused(e) || now.cam === 'granted') {
-        try { out.video = (await navigator.mediaDevices.getUserMedia({ video })).getVideoTracks()[0]; } catch (ev) { out.videoError = ev; }
+        try { out.video = (await gum(false, video)).getVideoTracks()[0]; } catch (ev) { out.videoError = ev; }
       } else out.videoError = e;
       return out;
     }
@@ -234,8 +274,17 @@ export class LocalMedia {
     this.video = t;
     if (t && t !== before) t.addEventListener('ended', this.onEnded);
   }
-  /** A device stopped on its own (unplugged, or the browser took it back): look at once. */
-  private onEnded = () => { this.recheckSoon(0); };
+  /** A device stopped on its own (unplugged, or the browser took it back): note it, and look at once. */
+  private onEnded = (e: Event) => {
+    if (e.target instanceof MediaStreamTrack) this.gone.add(e.target);
+    this.recheckSoon(0);
+  };
+  /** A camera chosen while off, now open: remembered if it's the one that opened. */
+  private confirmCam() {
+    if (!this.camChoice || !this.video) return;
+    if (deviceOf(this.video) === this.camChoice) rememberDevice('cam', this.camChoice);
+    this.camChoice = null;
+  }
 
   /**
    * Turns the microphone on or off. With none working, turning it on asks for one, which is when the browser can ask
@@ -248,7 +297,8 @@ export class LocalMedia {
       this.set({ mic: on && Boolean(this.audio) });
       return !on || Boolean(this.audio);
     }
-    return this.serial(() => this.reopenMic(true, null));
+    const gen = this.gen;
+    return this.serial(() => this.reopenMic(gen, null));
   }
   /** Turns the camera on or off. Off lets go of the camera; on asks for it again. Resolves false if it couldn't start. */
   async setCam(on: boolean): Promise<boolean> {
@@ -260,43 +310,60 @@ export class LocalMedia {
       return true;
     }
     if (this.video) return true;
-    return this.serial(() => this.reopenCam(null));
+    const gen = this.gen;
+    return this.serial(() => this.reopenCam(gen, null));
   }
-  /** Tries again whatever isn't working (the pre-join's Try again): each comes back the way the person wanted it. */
+  /** Tries again whatever isn't working (Try again): each starts the way the person wanted it; in a call, muted and off. */
   retry(): Promise<void> {
+    const gen = this.gen;
     return this.serial(async () => {
-      if (!this.audio && this.snap.access.mic.problem) await this.reopenMic(this.want.mic && !this.inCall, null);
-      if (!this.video && this.snap.access.cam.problem && this.want.cam && !this.inCall) await this.reopenCam(null);
+      if (gen === this.gen && !this.audio && this.snap.access.mic.problem) await this.reopenMic(gen, null);
+      if (gen === this.gen && !this.video && this.snap.access.cam.problem && this.want.cam && !this.inCall) await this.reopenCam(gen, null);
     });
   }
   /** From joining on, nothing turns the microphone or camera on by itself: only their buttons do. */
-  setInCall(on: boolean) { this.inCall = on; }
+  setInCall(on: boolean) {
+    this.inCall = on;
+    if (on) this.want = { mic: this.snap.mic, cam: this.snap.cam };
+  }
 
-  private async reopenMic(on: boolean, say: string | null): Promise<boolean> {
-    const gen = this.gen;
+  /** Opens a microphone where none is working. It starts as the latest press says, whatever it was when this was asked. */
+  private async reopenMic(gen: number, say: string | null): Promise<boolean> {
+    if (gen !== this.gen) return false;
+    if (this.audio?.readyState === 'live') { this.audio.enabled = this.want.mic; this.set({ mic: this.want.mic }); return true; }
     const perms = await permissions();
     const got = await this.open({ audio: true, video: false }, perms);
     if (this.lateFor(gen, got.audio)) return false;
     if (!got.audio) {
+      // A press that didn't work leaves nothing waiting to turn on by itself.
+      if (this.inCall) this.want.mic = false;
       this.set({ mic: false, access: this.access('mic', { permission: perms.mic, problem: problemOf(got.audioError, perms.mic, got.quick) }) });
       return false;
     }
+    const on = this.want.mic;
     this.useAudio(got.audio, on);
     this.rebuild();
     this.set({ mic: on, micId: deviceOf(got.audio), access: this.access('mic', { permission: granted(perms.mic), problem: null }), ...(say ? { changes: this.changed('mic', say) } : {}) });
     mlog.info('microphone started', { muted: !on, automatic: Boolean(say) });
     return true;
   }
-  private async reopenCam(say: string | null): Promise<boolean> {
-    const gen = this.gen;
+  /** Opens the camera where none is working, unless it's been turned off meanwhile. */
+  private async reopenCam(gen: number, say: string | null): Promise<boolean> {
+    if (gen !== this.gen) return false;
+    // Already on, or turned off again before this got its turn: nothing to open.
+    if (this.video?.readyState === 'live' || !this.want.cam) return true;
     const perms = await permissions();
     const got = await this.open({ audio: false, video: true }, perms);
     if (this.lateFor(gen, got.video)) return false;
     if (!got.video) {
+      if (this.inCall) this.want.cam = false;
       this.set({ cam: false, access: this.access('cam', { permission: perms.cam, problem: problemOf(got.videoError, perms.cam, got.quick) }) });
       return false;
     }
+    // Turned off while the browser was opening it: off it stays, and nothing went wrong.
+    if (!this.want.cam) { got.video.stop(); return true; }
     this.useVideo(got.video);
+    this.confirmCam();
     if (readPrefs().blur) await this.applyBlur(true);
     this.set({ cam: true, camId: deviceOf(got.video), access: this.access('cam', { permission: granted(perms.cam), problem: null }), ...blurOf(got.video), ...(say ? { changes: this.changed('cam', say) } : {}) });
     this.rebuild();
@@ -306,57 +373,81 @@ export class LocalMedia {
 
   /**
    * Switches to another microphone, keeping it muted or not as it was. The notes recorder and the live
-   * transcript carry on with the new one (they follow micTrack()).
+   * transcript carry on with the new one (they follow micTrack()). It's remembered only once it has opened, so one
+   * that won't start isn't tried again at every look.
    */
-  chooseMic(deviceId: string): Promise<void> {
-    if (deviceId === this.snap.micId) return Promise.resolve();
-    rememberDevice('mic', deviceId);
-    return this.serial(async () => { await this.switchMic({ exact: deviceId }, null); });
+  chooseMic(deviceId: string): Promise<boolean> {
+    // The one in use, picked again: it works, so it's the one to remember, and there's nothing to open.
+    if (deviceId === this.snap.micId && this.audio?.readyState === 'live') { rememberDevice('mic', deviceId); return Promise.resolve(true); }
+    const gen = this.gen;
+    return this.serial(async () => {
+      const ok = await this.switchMic(gen, { exact: deviceId }, null);
+      if (ok) rememberDevice('mic', deviceId);
+      return ok;
+    });
   }
-  /** Switches to another camera. With the camera off it's remembered for when it's turned on. */
-  chooseCam(deviceId: string): Promise<void> {
-    rememberDevice('cam', deviceId);
-    if (!this.video || deviceId === this.snap.camId) { this.set({ camId: deviceId }); return Promise.resolve(); }
-    return this.serial(async () => { await this.switchCam({ exact: deviceId }, null); });
+  /** Switches to another camera. With the camera off it's used when it's turned on, and remembered once it opens. */
+  chooseCam(deviceId: string): Promise<boolean> {
+    if (deviceId === this.snap.camId && this.video?.readyState === 'live') { rememberDevice('cam', deviceId); return Promise.resolve(true); }
+    if (!this.video) { this.camChoice = deviceId; this.set({ camId: deviceId }); return Promise.resolve(true); }
+    const gen = this.gen;
+    return this.serial(async () => {
+      const ok = await this.switchCam(gen, { exact: deviceId }, null);
+      if (ok) rememberDevice('cam', deviceId);
+      return ok;
+    });
   }
   /**
-   * Moves to another microphone (`undefined`: the system's), muted or not as it is by then; with none working, muted in
-   * a call and as wanted before it. `say` names the new one in a change nobody pressed for.
+   * Moves to another microphone (`undefined`: the system's), muted or not as the latest press says (in a call, a mic
+   * found after none was working starts muted). `say` names the new one in a change nobody pressed for.
    */
-  private async switchMic(deviceId: ConstrainDOMString | undefined, say: ((now: string) => string) | null): Promise<boolean> {
-    const gen = this.gen;
+  private async switchMic(gen: number, deviceId: ConstrainDOMString | undefined, say: ((now: string) => string) | null): Promise<boolean> {
+    if (gen !== this.gen) return false;
     let next: MediaStreamTrack | undefined;
     try {
       next = (await navigator.mediaDevices.getUserMedia({ audio: { ...audioFor(this.snap.noiseReduction), ...(deviceId ? { deviceId } : {}) } })).getAudioTracks()[0];
     } catch (e) {
       mlog.warn('could not switch microphones', { err: e, automatic: Boolean(say) });
+      if (gen !== this.gen) return false;
       const perms = await permissions();
       if (this.audio?.readyState === 'live') this.set({ changes: this.changed('mic', `That microphone didn’t start. Still using ${plainName(this.audio.label) || 'the one before'}.`) });
-      else { this.useAudio(null, false); this.rebuild(); this.set({ mic: false, micId: null, access: this.access('mic', { permission: perms.mic, problem: problemOf(e, perms.mic, false) }) }); }
+      else {
+        this.useAudio(null, false);
+        this.rebuild();
+        if (this.inCall) this.want.mic = false;
+        this.set({ mic: false, micId: null, access: this.access('mic', { permission: perms.mic, problem: problemOf(e, perms.mic, false) }) });
+      }
       return false;
     }
     if (!next || this.lateFor(gen, next)) return false;
-    const on = this.audio?.readyState === 'live' || say ? this.snap.mic : this.want.mic && !this.inCall;
+    const on = this.want.mic;
     this.useAudio(next, on);
     this.rebuild();
     this.set({ mic: on, micId: deviceOf(next), access: this.access('mic', { permission: granted(this.snap.access.mic.permission), problem: null }), ...(say ? { changes: this.changed('mic', say(plainName(next.label) || 'another microphone') + (on ? '' : ' You’re still muted.')) } : {}) });
     mlog.info('microphone changed', { muted: !on, automatic: Boolean(say) });
     return true;
   }
-  /** Moves to another camera (`undefined`: the front one), kept on. */
-  private async switchCam(deviceId: ConstrainDOMString | undefined, say: ((now: string) => string) | null): Promise<boolean> {
-    const gen = this.gen;
+  /** Moves to another camera (`undefined`: the front one), kept on unless it's been turned off meanwhile. */
+  private async switchCam(gen: number, deviceId: ConstrainDOMString | undefined, say: ((now: string) => string) | null): Promise<boolean> {
+    if (gen !== this.gen) return false;
     let next: MediaStreamTrack | undefined;
     try {
       next = (await navigator.mediaDevices.getUserMedia({ video: { ...VIDEO, ...(deviceId ? { deviceId } : { facingMode: 'user' }) } })).getVideoTracks()[0];
     } catch (e) {
       mlog.warn('could not switch cameras', { err: e, automatic: Boolean(say) });
+      if (gen !== this.gen) return false;
       const perms = await permissions();
       if (this.video?.readyState === 'live') this.set({ changes: this.changed('cam', `That camera didn’t start. Still using ${plainName(this.video.label) || 'the one before'}.`) });
-      else { this.useVideo(null); this.rebuild(); this.set({ cam: false, access: this.access('cam', { permission: perms.cam, problem: problemOf(e, perms.cam, false) }) }); }
+      else {
+        this.useVideo(null);
+        this.rebuild();
+        if (this.inCall) this.want.cam = false;
+        this.set({ cam: false, access: this.access('cam', { permission: perms.cam, problem: problemOf(e, perms.cam, false) }) });
+      }
       return false;
     }
     if (!next || this.lateFor(gen, next)) return false;
+    if (!this.want.cam) { next.stop(); return false; }
     this.useVideo(next);
     if (this.snap.blur || readPrefs().blur) await this.applyBlur(true);
     this.rebuild();
@@ -399,68 +490,79 @@ export class LocalMedia {
     if (this.soon) clearTimeout(this.soon);
     this.soon = setTimeout(() => {
       this.soon = null;
-      void this.serial(() => this.recheck()).catch((e: unknown) => mlog.warn('checking devices failed', { err: e }));
+      const gen = this.gen;
+      void this.serial(() => this.recheck(gen)).catch((e: unknown) => mlog.warn('checking devices failed', { err: e }));
     }, ms);
   }
-  private async recheck(): Promise<void> {
-    if (!this.stopWatching) return;
+  private async recheck(gen: number): Promise<void> {
+    if (!this.stopWatching || gen !== this.gen) return;
     const [all, perms] = await Promise.all([enumerate().catch((): MediaDeviceInfo[] => []), permissions()]);
+    if (gen !== this.gen) return;
     const before = this.listed;
     this.listed = all;
-    const chosen = readPrefs();
-    await this.recheckMic(all, perms.mic, chosen.mic);
-    await this.recheckCam(all, perms.cam, chosen.cam);
+    const prefs = readPrefs();
+    await this.recheckMic(gen, all, before, perms.mic, prefs.mic);
+    if (gen !== this.gen) return;
+    await this.recheckCam(gen, all, before, perms.cam, prefs.cam);
+    if (gen !== this.gen) return;
     this.recheckSpeaker(all, before);
     // What the browser says now; a device that's working was allowed, whatever an older answer said.
     this.set({ access: { mic: { ...this.snap.access.mic, permission: this.audio ? granted(perms.mic) : perms.mic }, cam: { ...this.snap.access.cam, permission: this.video ? granted(perms.cam) : perms.cam } } });
   }
   /**
    * The microphone: one that's gone gives way to the chosen one or the system's, muted or not as it was (or to none,
-   * said plainly); the chosen one coming back is used again; one left on the system's follows it. With none working,
-   * a fix (allowed again, or one plugged in) starts it before the call, and in the call waits for Unmute.
+   * said plainly); the chosen one coming back after it was gone is used again; one left on the system's follows it
+   * when the system moves. With none working, a fix (allowed again, or one plugged in) starts it before the call, and
+   * in the call waits for Unmute.
    */
-  private async recheckMic(all: MediaDeviceInfo[], permission: Permission, chosen: string | undefined) {
+  private async recheckMic(gen: number, all: MediaDeviceInfo[], before: MediaDeviceInfo[], permission: Permission, chosen: string | undefined) {
     const inputs = all.filter((d) => d.kind === 'audioinput');
     // Browsers give devices real IDs only once something is allowed: until then the list can't say what's gone.
     const known = all.some((d) => d.deviceId);
     const here = (id: string | undefined) => Boolean(id) && inputs.some((d) => d.deviceId === id);
+    const wasHere = (id: string | undefined) => Boolean(id) && before.some((d) => d.kind === 'audioinput' && d.deviceId === id);
     const t = this.audio;
     if (t) {
       const id = t.getSettings().deviceId;
       if (t.readyState === 'ended' || (known && id && !here(id))) {
         const name = plainName(t.label) || 'Your microphone';
         mlog.info('microphone gone', { permission, others: inputs.length, muted: !this.snap.mic });
-        if (permission === 'denied') {
+        if (permission === 'denied' || !inputs.some((d) => d.deviceId)) {
           this.useAudio(null, false);
           this.rebuild();
-          this.set({ mic: false, micId: null, access: this.access('mic', { permission, problem: 'blocked' }), changes: this.changed('mic', 'Your browser stopped letting Alcove use the microphone.') });
-        } else if (!inputs.some((d) => d.deviceId)) {
-          this.useAudio(null, false);
-          this.rebuild();
-          this.set({ mic: false, micId: null, access: this.access('mic', { problem: 'missing' }), changes: this.changed('mic', `${name} isn’t connected any more, and there’s no other microphone. Yours is off.`) });
-        } else await this.switchMic(here(chosen) ? { exact: chosen ?? '' } : undefined, (now) => `${name} isn’t connected any more. Now using ${now}.`);
+          // In a call, a microphone found later starts muted: it never comes back on by itself.
+          if (this.inCall) this.want.mic = false;
+          this.set({
+            mic: false, micId: null, access: this.access('mic', { permission, problem: permission === 'denied' ? 'blocked' : 'missing' }),
+            changes: this.changed('mic', permission === 'denied' ? 'Your browser stopped letting Alcove use the microphone.' : `${name} isn’t connected any more, and there’s no other microphone. Yours is off.`)
+          });
+        } else await this.switchMic(gen, here(chosen) ? { exact: chosen ?? '' } : undefined, (now) => `${name} isn’t connected any more. Now using ${now}.`);
         return;
       }
-      if (chosen && chosen !== 'default' && here(chosen) && id !== chosen) { await this.switchMic({ exact: chosen }, (now) => `Back on ${now}.`); return; }
+      // The chosen one back after it was gone. Only then: one that's listed but won't start isn't tried at every look.
+      if (chosen && chosen !== 'default' && here(chosen) && !wasHere(chosen) && id !== chosen) { await this.switchMic(gen, { exact: chosen }, (now) => `Back on ${now}.`); return; }
       // Left on the system's microphone: when the system moves to another (a headset plugged in), so does the call.
       const def = inputs.find((d) => d.deviceId === 'default');
+      const defBefore = before.find((d) => d.kind === 'audioinput' && d.deviceId === 'default');
       const group = t.getSettings().groupId;
-      if (id === 'default' && def && group && def.groupId && def.groupId !== group) await this.switchMic({ exact: 'default' }, (now) => `Now using ${now}, the microphone your system uses.`);
+      if (id === 'default' && def?.groupId && group && def.groupId !== group && defBefore && defBefore.groupId !== def.groupId) {
+        await this.switchMic(gen, { exact: 'default' }, (now) => `Now using ${now}, the microphone your system uses.`);
+      }
       return;
     }
     const problem = this.snap.access.mic.problem;
     if (!problem) return;
     if (permission === 'denied') { if (problem !== 'blocked') this.set({ access: this.access('mic', { problem: 'blocked' }) }); return; }
-    const fixed = problem === 'missing' ? inputs.length > 0 : (problem === 'blocked' || problem === 'dismissed') && permission === 'granted';
-    if (!fixed) return;
-    if (!this.inCall) { await this.reopenMic(this.want.mic, problem === 'missing' ? 'Microphone connected.' : 'Alcove can use your microphone now.'); return; }
+    if (!fixedBy(problem, permission, inputs.length > 0)) return;
+    if (!this.inCall) { await this.reopenMic(gen, problem === 'missing' ? 'Microphone connected.' : 'Alcove can use your microphone now.'); return; }
     this.set({ access: this.access('mic', { problem: null }), changes: this.changed('mic', problem === 'missing' ? 'A microphone is connected. Unmute when you’re ready.' : 'Alcove can use your microphone now. Unmute when you’re ready.') });
   }
   /** The camera, the same way: on stays on with another camera, or turns off with none; off stays off in a call. */
-  private async recheckCam(all: MediaDeviceInfo[], permission: Permission, chosen: string | undefined) {
+  private async recheckCam(gen: number, all: MediaDeviceInfo[], before: MediaDeviceInfo[], permission: Permission, chosen: string | undefined) {
     const cams = all.filter((d) => d.kind === 'videoinput');
     const known = all.some((d) => d.deviceId);
     const here = (id: string | undefined) => Boolean(id) && cams.some((d) => d.deviceId === id);
+    const wasHere = (id: string | undefined) => Boolean(id) && before.some((d) => d.kind === 'videoinput' && d.deviceId === id);
     const t = this.video;
     if (t) {
       const id = t.getSettings().deviceId;
@@ -470,19 +572,18 @@ export class LocalMedia {
         if (permission === 'denied' || !cams.some((d) => d.deviceId)) {
           this.useVideo(null);
           this.rebuild();
+          if (this.inCall) this.want.cam = false;
           this.set({ cam: false, access: this.access('cam', { problem: permission === 'denied' ? 'blocked' : 'missing' }), changes: this.changed('cam', permission === 'denied' ? 'Your browser stopped letting Alcove use the camera.' : `${name} isn’t connected any more. Your camera is off.`) });
-        } else await this.switchCam(here(chosen) ? { exact: chosen ?? '' } : undefined, (now) => `${name} isn’t connected any more. Now showing ${now}.`);
+        } else await this.switchCam(gen, here(chosen) ? { exact: chosen ?? '' } : undefined, (now) => `${name} isn’t connected any more. Now showing ${now}.`);
         return;
       }
-      if (chosen && here(chosen) && id !== chosen) await this.switchCam({ exact: chosen }, (now) => `Back on ${now}.`);
+      if (chosen && here(chosen) && !wasHere(chosen) && id !== chosen) await this.switchCam(gen, { exact: chosen }, (now) => `Back on ${now}.`);
       return;
     }
     const problem = this.snap.access.cam.problem;
     if (permission === 'denied') { if (problem !== 'blocked') this.set({ access: this.access('cam', { problem: 'blocked' }) }); return; }
-    if (!problem) return;
-    const fixed = problem === 'missing' ? cams.length > 0 : problem === 'blocked' || (problem === 'dismissed' && permission === 'granted');
-    if (!fixed) return;
-    if (!this.inCall && this.want.cam && (permission === 'granted' || problem === 'missing')) { await this.reopenCam(problem === 'missing' ? 'Camera connected.' : 'Alcove can use your camera now.'); return; }
+    if (!problem || !fixedBy(problem, permission, cams.length > 0)) return;
+    if (!this.inCall && this.want.cam) { await this.reopenCam(gen, problem === 'missing' ? 'Camera connected.' : 'Alcove can use your camera now.'); return; }
     this.set({ access: this.access('cam', { problem: null }), ...(this.inCall ? { changes: this.changed('cam', problem === 'missing' ? 'A camera is connected. Turn it on when you’re ready.' : 'Alcove can use your camera now. Turn it on when you’re ready.') } : {}) });
   }
   /** The speaker: the chosen one unplugged plays through the system's until it's back. */

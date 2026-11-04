@@ -2,7 +2,7 @@
  * Choosing a microphone, camera and speaker: on the pre-join screen, and from the call's controls. Each says what it's
  * using and, when one isn't working, what's wrong and how to fix it, without keeping anyone from joining.
  */
-import { CallTile, DockChevron, Icon, Popover, Spinner, Switch, Tooltip, cn, type AvatarPerson, type IconName } from '@alcove/ui';
+import { Button, CallTile, DockChevron, Icon, Notice, Popover, Spinner, Switch, Tooltip, cn, type AvatarPerson, type IconName } from '@alcove/ui';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { stateOf, troubles, type Trouble } from './access';
 import { TEST_SECONDS, canChooseSpeaker, testMicrophone, type Capture, type Device, type DeviceKind, type Devices, type TestPhase } from './devices';
@@ -139,14 +139,11 @@ function MenuTrouble({ trouble, action }: { trouble: Trouble; action: { label: s
   const [busy, setBusy] = useState(false);
   const run = async (f: () => Promise<unknown>) => { setBusy(true); try { await f(); } finally { setBusy(false); } };
   return (
-    <div className="ic-trouble" role="status">
-      <Icon name={OFF[trouble.kinds[0] ?? 'mic']} size={17} />
-      <div>
-        <b>{trouble.title}</b>
-        {trouble.how && <p>{trouble.how}</p>}
-        {action && <button type="button" className="ac-btn is-secondary is-sm" disabled={busy} onClick={() => void run(action.run)}>{busy && <Spinner />}{action.label}</button>}
-      </div>
-    </div>
+    <Notice tone="caution" icon={OFF[trouble.kinds[0] ?? 'mic']} className="ic-dtrouble">
+      <b>{trouble.title}</b>
+      {trouble.how && <p>{trouble.how}</p>}
+      {action && <Button variant="secondary" size="sm" loading={busy} onClick={() => void run(action.run)}>{action.label}</Button>}
+    </Notice>
   );
 }
 
@@ -166,7 +163,7 @@ export function MicOptions({ media, m, devices, live, onSwitched }: MicProps) {
       {(devices.mic.length > 0 || !trouble) && <div className="ac-eyebrow">Microphone</div>}
       {devices.mic.length ? devices.mic.map((d) => (
         <Option key={d.id} on={d.id === mic} label={d.label} extra={d.id === mic && !trouble ? <Level media={media} live={live && m.mic} /> : undefined}
-          onPick={() => { if (d.id !== mic) { void media.chooseMic(d.id); onSwitched('mic', d.label); } }} />
+          onPick={() => { if (d.id !== mic) void media.chooseMic(d.id).then((ok) => { if (ok) onSwitched('mic', d.label); }); }} />
       )) : !trouble && <p className="ic-none">No microphone found.</p>}
       <div className="ac-eyebrow mt">Speaker</div>
       {canChooseSpeaker() && devices.speaker.length ? devices.speaker.map((d) => (
@@ -209,7 +206,7 @@ export function CamOptions({ media, m, devices, me, preview = true, onSwitched }
       )}
       {(devices.cam.length > 0 || !trouble) && <div className={cn('ac-eyebrow', (preview || trouble) && 'mt')}>Camera</div>}
       {devices.cam.length ? devices.cam.map((d) => (
-        <Option key={d.id} on={d.id === cam} label={d.label} onPick={() => { if (d.id !== cam) { void media.chooseCam(d.id); onSwitched(d.label); } }} />
+        <Option key={d.id} on={d.id === cam} label={d.label} onPick={() => { if (d.id !== cam) void media.chooseCam(d.id).then((ok) => { if (ok) onSwitched(d.label); }); }} />
       )) : !trouble && <p className="ic-none">No camera found.</p>}
       {m.canBlur && (
         <>

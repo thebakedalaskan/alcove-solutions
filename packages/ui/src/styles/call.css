@@ -413,12 +413,11 @@
 .ic-opt .ic-meter + .tick { margin-left: 8px; }
 .ic-meter { display: inline-flex; align-items: center; gap: 2px; height: 12px; margin-left: auto; }
 .ic-meter i { width: 3px; border-radius: 2px; background: var(--horizon); transition: height 110ms linear; }
-/* A device that isn't working, at the top of its menu: what's wrong, how to fix it, and one button. */
-.ic-trouble { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; margin: 0 0 10px; padding: 12px; border-radius: var(--radius-md); background: var(--caution-soft); color: var(--caution); }
-.ic-trouble > .ac-i { margin-top: 1px; }
-.ic-trouble b { display: block; font: 600 13.5px/1.35 var(--font-sans); }
-.ic-trouble p { margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
-.ic-trouble .ac-btn { margin-top: 10px; }
+/* A device that isn't working, at the top of its menu (a caution Notice): what's wrong, how to fix it, one button. */
+.ic-dtrouble { margin-bottom: 10px; font-size: 13.5px; }
+.ic-dtrouble b { display: block; }
+.ic-dtrouble p { margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.ic-dtrouble .ac-btn { margin-top: 10px; }
 /* How loud someone is for you: a quick mute, a slider and the level. */
 .ic-vol { padding: 4px 10px 6px; }
 .ic-vol-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; font: 500 13.5px/1 var(--font-sans); color: var(--ink); }
