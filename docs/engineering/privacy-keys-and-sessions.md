@@ -49,7 +49,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
-| Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the organizer's every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
+| Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the host's (the organizer's, or a stand-in's while the organizer is away) every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 
 All derivations are HKDF-SHA-256 with 32-byte outputs. `salt=ownerId` means the ID's 32 decoded bytes; the
 index, sign-in attempt and billing keys use an empty salt.
@@ -466,7 +466,7 @@ Moving, in order:
 4. **End-to-end encrypted call media.** Done ([Calls and recordings › End-to-end
    encryption](calls-and-recordings.md#end-to-end-encryption)): MLS keys made in browsers, frames encrypted
    before they reach an SFU that holds no keys, new keys with every join and leave. While notes are on,
-   the organizer's browser sends what it hears to the notes service, outside the media encryption: everyone's
+   the host's browser sends what it hears to the notes service, outside the media encryption: everyone's
    speech as clips to transcribe, and the recording, which mixes their voices (left: an attested notes
    participant, so no browser sends audio in the clear to the API).
 5. **Key rotation:** `KMASTER` (re-wrapping every root envelope and recomputing every blind index, which needs
