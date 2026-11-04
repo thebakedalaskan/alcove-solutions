@@ -1,12 +1,13 @@
 /*
  * The notes service (docs: notes-and-inference). When a recording stops, its note is queued in
  * content_jobs with the transcript already in it. A worker claims the job with a lease, has the
- * notes model draft the summary, decisions, follow-ups, chapters and questions, and then writes
- * them into the note, charges the recorded minutes and deletes the job in one transaction. A failed
- * attempt is tried again a little later, up to three times; after the third, the note is finished
- * without a summary, so its transcript and audio are still there. When the notes model's evidence
- * doesn't check out, or can't be checked, nothing was sent: the job waits and checks again, as long as it
- * takes, without using up an attempt. The owner's keys are opened for each job and wiped after it.
+ * notes model draft the summary, decisions, open questions, follow-ups, chapters and suggested
+ * questions, and then writes them into the note, charges the recorded minutes and deletes the job
+ * in one transaction. A failed attempt is tried again a little later, up to three times; after the
+ * third, the note is finished without a summary, so its transcript and audio are still there. When
+ * the notes model's evidence doesn't check out, or can't be checked, nothing was sent: the job waits
+ * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
+ * for each job and wiped after it.
  */
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';

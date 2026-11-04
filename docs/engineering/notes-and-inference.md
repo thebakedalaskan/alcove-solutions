@@ -7,8 +7,10 @@
 Notes are written end to end with NEAR AI Cloud (`I01`). While notes are on, the browser sends short clips
 of speech; Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
 recorder show a live transcript. When the recording stops, the transcript moves into the note, and a
-worker inside the API process has the notes model write the summary, decisions, follow-ups, chapters and
-suggested questions. Anyone who has the note can then ask questions about the call.
+worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
+chapters and suggested questions. Anyone who has the note can then ask questions about the call. Calls that
+follow on from each other form a series, and what earlier ones settled and left open carries into the next
+([Series](#series)).
 
 `apps/api/src/inference.ts` and `apps/api/src/evidence.ts` are the only code that uses `NEAR_AI_API_KEY` or
 talks to NEAR AI, and `inference.ts` is the only one that sends it anything with content. Without a key the
@@ -38,7 +40,7 @@ open it, and only whoever opened the request could have sealed it.
 | Request | Model | Endpoint |
 | --- | --- | --- |
 | Transcribe a clip | `openai/whisper-large-v3` | `NEAR_AI_STT_URL`, `https://whisper-large-v3.completions.near.ai` |
-| Write notes, answer a question, catch up, translate captions | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
+| Write notes, answer a question (about a note, a call so far or a series), catch up, translate captions | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
 
 These are the endpoints NEAR AI calls "direct completions" and documents as experimental. Its gateway
 also takes chat with end-to-end encrypted fields (E2EE v2), but that protocol encrypts each message to the
@@ -143,7 +145,7 @@ OHTTP 0.5 to 1.1 s.
 | --- | --- |
 | `recording` | The call's notes or the room recording are still going. Audio pieces and transcript clips are arriving; the live transcript is in `transcript_clips`. |
 | `pending` | The recording stopped. The transcript is in the note, and a `content_jobs` row with kind `notes` is waiting for the notes worker, for the notes model to check out, or being written. |
-| `ready` | Finished: summary, decisions, follow-ups, chapters and suggested questions are in a new revision. They stay empty when nothing was transcribed or the notes model failed three times. The transcript and the audio are kept either way. |
+| `ready` | Finished: summary, decisions, open questions, follow-ups, chapters and suggested questions are in a new revision. They stay empty when nothing was transcribed or the notes model failed three times. The transcript and the audio are kept either way. |
 
 The job has its own state:
 
@@ -288,6 +290,9 @@ the note ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can
 `ready` note with transcript lines (`409 conflict` otherwise) and allows 20 questions a minute per
 account. The answer is one `text` part followed by up to four `cite` parts: seconds into the recording the
 app can play from. Questions and answers are not stored, keep no operation receipt, and cost no credits.
+Writing an answer can take up to a minute, so once it's written the asker's access is checked again: if the
+note was deleted or removed from their notes meanwhile, the answer, which may quote it, isn't sent
+(`409 conflict`).
 
 ## Catching up during a call
 
@@ -317,6 +322,75 @@ the same way, until the recording stops. Line IDs
 that aren't in this call's live transcript are left out. 90 requests a minute per account; nothing is
 charged, and no operation receipt is kept.
 
+## Series
+
+Calls that follow on from each other form a series, and what the earlier ones settled and left open carries
+into the next (`apps/api/src/modules/series.ts`).
+
+- **Joining one.** A series is a random ID (`seriesId`) in its calls' sealed meeting manifests; it has no
+  record of its own. Every occurrence of one recurring Google Calendar event made an Alcove call shares one:
+  adopting an occurrence also keeps Google's ID for the whole recurring event (`recurringEventId`) in its
+  manifest, so later occurrences find the series, and `GET /v1/calendar` marks them with it. Adopts take
+  turns per account (a lock on the account's row), and each reads the account's calls only once it's its
+  turn, so occurrences adopted at the same moment still share one series, and one event adopted twice at
+  once is still one call. Google decides what counts as the same recurring event: editing "this and
+  following events" there ends the recurrence and starts a new recurring event with a new ID, so the
+  occurrences from then on start a new series in Alcove.
+  `POST /v1/meetings/:id/next` with `{startsAt}` schedules the next call after one of the organizer's calls,
+  starting a series if the call isn't in one: the same title, people, length and notes setting, at
+  `startsAt`, placed on the calendar like any scheduled call. The app sends the same clock time a week on in
+  the browser's time zone (the first such time still to come), so a change of the clocks in between doesn't
+  move it an hour. It has to start after the call it follows and still be to come (`400 invalid`). An
+  occurrence of a recurring Google event is refused (`409 conflict`): its next one is on the calendar
+  already. Room recordings have no call, so they're never in a series.
+- **What carries over.** `GET /v1/series/:id` puts the series together for whoever asks, from the calls in
+  it whose notes they can read at that moment: the organizer's own notes; for anyone else, the notes given
+  to them by invitation or sharing, found through `note_access` by their email's index
+  ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). Everyone finds them
+  the same way: the notes they have whose call (`meetingId`) is in the series, once the call has ended. A
+  call whose link is opened again after it ended is held again, with notes of its own each time, and each
+  counts. Only the newest 24 calls are read; `older` says how many more the asker has notes from, which
+  aren't shown and carry nothing over. From the written ones, newest call first, it takes decisions that are
+  confirmed, no longer hold (`superseded`) or are still `proposed` (never ones said not to be decided), open
+  questions, and follow-ups not done yet or ticked since the latest call started. Each question and
+  follow-up says how many later calls it stayed open through (`later`) and is `stale` from two. Each item
+  names its note (`noteId`) and moment (`at`). Only the organizer gets the next call scheduled in Alcove
+  (`next`), whether the series follows a recurring Google event (`recurring`), and the call each note is
+  from (`meetingId`). Someone with no notes from a series gets `404 not-found`, as for one that doesn't exist.
+  Reading the notes others gave the asker opens each organizer's keys once a request, however many of their
+  notes it reads.
+- **Nothing derived is kept.** A series is read afresh on each request and stored nowhere, so a note that's
+  deleted, removed from someone's notes or never given to them isn't in it. Being invited to one call opens
+  nothing from the others.
+- **Settling things.** `PATCH /v1/notes/:id/questions/:id` with `{state?: "open" | "answered", text?}`
+  says an open question was answered, reopens it or rewords it; like decisions and follow-ups, anyone who
+  has the note can, and every change records who and when. A confirmed decision can be said to no longer
+  hold (`superseded`) when a later one replaces it; only a confirmed one (`409 conflict` otherwise). These
+  changes and sharing keep no operation receipt
+  ([Privacy › Requests](privacy-keys-and-sessions.md#requests)).
+- **Asking across a series.** `POST /v1/series/:id/ask` with `{question, timeZone}` reads the asker's
+  written calls in the series, newest first and at most 12: each one's notes, then as much of their
+  transcripts as fits in 120,000 characters, the newest calls' first. They go to the notes model in one
+  request, sealed to its verified key at its own endpoint like every request
+  ([Verified private inference](#verified-private-inference)). `timeZone` is where the asker is, an
+  IANA name such as `Europe/London` (the app sends the browser's); each call's date is given to the model in
+  it, so "Tuesday's call" is the day the asker saw. Anything `Intl.DateTimeFormat` can't use as a time zone
+  is refused (`400 invalid`). The answer is one `text` part and up to four `source` parts: a call's note,
+  title and date, and the second it comes from when the model gives one inside the recording. Once the
+  answer is written, the asker's access to every call it read is checked again: if one of those notes was
+  deleted or removed from theirs meanwhile, the whole answer is dropped, since it may quote it, and the
+  asker is told to ask again (`409 conflict`). It needs a written note in the series (`409 conflict`
+  otherwise), shares the 20-a-minute limit with asking about notes, keeps no operation receipt, stores
+  nothing and costs no credits.
+- **In the app.** Home shows **From earlier calls** under the call that's up next when it's in a series:
+  confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest. A note
+  says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
+  (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under
+  its calls it says how many older ones aren't shown. When a series follows a recurring Google event and
+  Google Calendar isn't connected any more, the series page and the note say so and offer **Connect Google
+  Calendar**, since Home can't show the next occurrence without it. The call screen doesn't show any of it
+  yet ([What's left](#whats-left)).
+
 ## Prompts
 
 The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short:
@@ -327,14 +401,15 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room). A transcript over 120,000
   characters (about 30,000 tokens) keeps its beginning and end, with a marker for the lines left out.
 - **Writing notes.** One JSON object: `summary` (two to four plain sentences, substance first),
-  `decisions` (each with the second it was settled; something only suggested isn't one), `actions` (text
-  that starts with a verb, an owner as the transcript names them or null, a due date as it was said or
+  `decisions` (each with the second it was settled; something only suggested isn't one), `questions` (what
+  someone asked that the meeting didn't answer or settle, each with the second it was asked), `actions`
+  (text that starts with a verb, an owner as the transcript names them or null, a due date as it was said or
   null, and the second it came up), `chapters` (two to six, each starting at a second read from the
   `[mm:ss]` marks) and three `suggestedQuestions`. In the transcript's language, using only what it says,
   never inventing names, numbers, dates or decisions. What comes back is stored as proposals: decisions
-  are `proposed` and follow-ups not `takenOn` until people say so (`PATCH /v1/notes/:id/decisions/:id` and
-  `PATCH /v1/notes/:id/actions/:id`, each answering with the note; see
-  [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)).
+  are `proposed`, questions `open` and follow-ups not `takenOn` until people say so
+  (`PATCH /v1/notes/:id/decisions/:id`, `…/questions/:id` and `…/actions/:id`, each answering with the
+  note; see [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)).
 - **Answering.** The summary, the asker's name and the question are added. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
   such as an email), "I" and "me" meaning the asker, answering from what's been said so far when the call is
@@ -348,6 +423,15 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   object, `{lines: [{id, text}]}`: every line translated, ids kept, names, numbers and dates exact, a line
   already in that language returned as it is, nothing added or left out. Lines with an unknown id or empty
   text are dropped.
+- **Answering across a series** (in `apps/api/src/modules/series.ts`). Each call the asker has, numbered
+  newest first: its title, date (the day it was where the asker is) and length, the organizer's and invited
+  people's names (never addresses), the summary, the decisions with where they stand, the open questions,
+  the follow-ups with who has them, their due dates and whether they're done, then the transcript; after
+  them the asker's name and the question. One JSON object, `{answer, sources}`: plain, at most four
+  sentences unless the question asks for a draft or a list, "I" meaning the asker, saying which call by its
+  date when that matters, saying plainly when these calls don't cover it and never guessing about calls
+  that aren't there, and up to four sources, each a call's number and a second (or null when it comes from
+  the notes rather than a moment).
 
 Replies are checked before anything is kept:
 
@@ -357,9 +441,10 @@ Replies are checked before anything is kept:
 - Malformed optional fields become empty lists instead of failing.
 - Follow-up owners are matched to the organizer and the people invited, by name, by address name or by first
   name. Words such as "unknown" or "the team" mean no owner; anyone else keeps the name the model gave.
-- Lengths are capped: a summary of 1,500 characters; at most 12 decisions, 20 follow-ups, 8 chapters and 3
-  suggested questions. Chapter times are kept within the recording and de-duplicated, and cited moments
-  must fall within it.
+- Lengths are capped: a summary of 1,500 characters; at most 12 decisions, 12 open questions, 20
+  follow-ups, 8 chapters and 3 suggested questions. Chapter times are kept within the recording and
+  de-duplicated, and cited moments must fall within it. A series answer's source must be one of the calls
+  sent, its moment inside that call's recording; repeats are dropped.
 
 ## Models and requests
 
@@ -387,7 +472,7 @@ verified against. The measured OS images aren't configuration at all.
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 90 s |
-| Answer a question | The same, with `max_tokens` 1,200 | 60 s |
+| Answer a question (about a note, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
 | Catch up | The same, with `max_tokens` 1,500 | 60 s |
 | Translate captions | The same, with `max_tokens` 2,000 | 30 s |
 
@@ -415,13 +500,18 @@ with its code, a short reason and the duration, and each refused model report `m
 warn. A reply that won't open is `reply refused` at error, with its code; a key a model no longer takes is
 `model key not accepted; verified again` at info; a notes job that waits for evidence is
 `notes waiting for the notes model to check out` at warn. Evidence itself, keys and anything sent are
-never logged. Around it, IDs, attempts,
-counts and timings: `notes job queued`, `notes written` (with decision, follow-up and chapter counts),
-`question answered`, `notes job dropped`, `nothing was transcribed; note finished without notes` and
-`clip arrived after the recording stopped; dropped` at info; `notes not written yet; trying again` at
-warn; a note finished without a summary after its last attempt at error. Speech, transcript lines, prompts,
-replies and questions are never logged. The privacy test looks for spoken canaries in every table, object
-and debug log line ([Logging and errors](logging-and-errors.md)).
+never logged. Around it, IDs, attempts, counts and timings: `series read` at debug; `notes job queued`,
+`notes written` (with decision, follow-up and chapter counts), `question answered`, `series question
+answered`, `question changed`, `next call in a series scheduled`, `notes job dropped`, `nothing was
+transcribed; note finished without notes` and `clip arrived after the recording stopped; dropped` at info;
+`notes not written yet; trying again` at warn; a note finished without a summary after its last attempt at
+error. Speech, transcript lines, prompts, replies and questions are never logged, and neither are the
+asker's time zone or Google's event IDs: an occurrence's ID begins with its recurring event's, so logged
+paths show `/v1/calendar/events/:id`, and a refused adopt's error carries no ID in its context. An answer
+dropped because a note went while it was written is logged at info as a refused request with the series or
+note ID, the number of calls read and how many went. The privacy test looks for spoken canaries, and the IDs
+of events whose adopt was refused, in every table, object and debug log line
+([Logging and errors](logging-and-errors.md)).
 
 ## Tests
 
@@ -432,20 +522,21 @@ stands in for Intel's certification service and NVIDIA's attestation service, un
 start of the run (`apps/api/src/testing/pki.ts`), so its TDX quotes, collateral and GPU verdicts have the real
 formats and the API checks them with the code it checks NEAR AI's real evidence with; only `INTEL_ROOT_CA`,
 `NVIDIA_ROOT_CA` and the URLs differ. The fake "hears" words a test writes into the WAV samples, answers a
-clip without them with Whisper's favourite hallucination, writes notes from the transcript it was sent,
-"translates" captions by tagging each line with the language, and can fail its next replies (down, or prose
-instead of JSON). It keeps every request body as it arrived; its evidence can be made to lie in each way
-[What is checked](#what-is-checked) refuses (on the gateway's report or a model's), Intel and NVIDIA can be
-made unreachable, out of date or wrongly chained, its endpoints can refuse what was sealed to them or seal
-their replies wrong, and its models' keys can change.
+clip without them with Whisper's favourite hallucination, writes notes (open questions included) from the
+transcript it was sent, answers a question across a series from the calls it was sent, "translates"
+captions by tagging each line with the language, and can fail its next replies (down, or prose instead of
+JSON) or take its time over the next one (`slowNext`). It keeps every request body as it arrived; its
+evidence can be made to lie in each way [What is checked](#what-is-checked) refuses (on the gateway's report
+or a model's), Intel and NVIDIA can be made unreachable, out of date or wrongly chained, its endpoints can
+refuse what was sealed to them or seal their replies wrong, and its models' keys can change.
 
 The `live transcript and written notes` flows in `apps/api/src/flows.integration.test.ts` cover a call and
 a room recording, retried and silent clips, notes off and on again, the clip format and access checks, a
-server without a key, writing and charging, asking and catching up (also by someone invited), retries up to
-the third failure, and the evidence the note keeps. `in the call: hands, spotlight, breakout rooms and
-captions` covers translating captions (once per line and language, sealed to the verified notes model,
-cross-account, gone when the call ends) and breakout rooms ending up in the notes' chapters.
-`verified private inference` covers:
+server without a key, writing and charging, asking and catching up (also by someone invited), an answer
+dropped because its note was deleted or removed while it was written, retries up to the third failure, and
+the evidence the note keeps. `in the call: hands, spotlight, breakout rooms and captions` covers translating
+captions (once per line and language, sealed to the verified notes model, cross-account, gone when the call
+ends) and breakout rooms ending up in the notes' chapters. `verified private inference` covers:
 
 - each of 27 ways the evidence can be wrong or unavailable, each with its own NEAR AI: nothing with content
   reaches NEAR AI, and the refusal is logged with its code;
@@ -457,6 +548,15 @@ cross-account, gone when the call ends) and breakout rooms ending up in the note
 
 `privacy at rest` checks that no clip, transcript, title, name or question crossed the wire to NEAR AI
 readable, in any encoding, and that nothing went to NEAR AI's plaintext endpoints.
+
+`apps/api/src/series.integration.test.ts` covers series: scheduling the next call (and the times it
+refuses), what carries over for the organizer and for everyone invited, staleness, decisions that no longer
+hold and questions answered, someone invited to only the second call (who sees only that one, can't open the
+first, and gets it once it's shared with them and loses it when they remove it), asking across only the
+calls the asker has (sealed to the verified notes model, like every question), someone with no notes from
+it, room recordings, recurring Google events (also adopted all at once), a call held again after it ended
+(every time counts, for everyone, and only the newest 24 are shown), dates in the asker's time zone, and
+answers dropped because a note they read went while they were written.
 
 ## What's left
 
@@ -493,3 +593,12 @@ readable, in any encoding, and that nothing went to NEAR AI's plaintext endpoint
 - **Lost lines stay lost.** Notes are written from the live transcript only. Speech that wasn't
   transcribed during the recording (NEAR AI down, a clip lost) isn't transcribed again from the stored
   audio afterwards.
+- **Series during the call.** Neither the call screen nor pre-join shows what carries over or answers
+  across the series yet; both are being rebuilt for group calls.
+- **Series for people invited.** Someone invited finds a series through its notes. Their own Home doesn't
+  mark the organizer's next call as part of it, because Home lists only their own calls and calendar.
+- **Repeats.** Alcove schedules one next call at a time and has no recurrence rule of its own. Calls that
+  already exist can't be put into one series afterwards.
+- **"This and following events".** Editing a recurring event that way in Google Calendar ends it and
+  creates a new recurring event with a new ID. The occurrences from then on start a new series in Alcove,
+  and what the earlier ones settled and left open doesn't carry into it.

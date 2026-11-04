@@ -19,6 +19,7 @@ export function exampleNote(me: Person): Note {
     recipients: [{ person: me, role: 'organizer' }, { person: theo, role: 'invited' }, { person: priya, role: 'invited' }, { person: kofi, role: 'invited' }],
     summary: 'Sign-ups are back up since Tuesday’s fix, so the launch moves to the 18th. Kofi sends the new screens by Wednesday.',
     decisions: [{ id: 'launch', text: 'The launch moves to the 18th.', at: 252, state: 'confirmed', changes: [{ by: { name: theo.name, email: theo.email }, at: started.toISOString(), what: 'confirmed' }] }],
+    questions: [{ id: 'press', text: 'Do we tell the press before the 18th?', at: 281, state: 'open', changes: [] }],
     actions: [{
       id: 'screens', text: 'Send the new screens', owner: { name: kofi.name, person: kofi }, takenOn: true, due: 'Wed', at: 302, done: false,
       changes: [{ by: { name: kofi.name, email: kofi.email }, at: started.toISOString(), what: 'took-on' }]

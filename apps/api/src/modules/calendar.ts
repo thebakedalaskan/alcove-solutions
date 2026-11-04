@@ -105,6 +105,8 @@ const Attendee = z.object({ email: z.string().optional(), displayName: z.string(
 const GoogleEvent = z.object({
   id: z.string(), status: z.string().optional(), summary: z.string().optional(), description: z.string().optional(), location: z.string().optional(),
   htmlLink: z.string().optional(), start: When.optional(), end: When.optional(), eventType: z.string().optional(),
+  /** Present on each occurrence of a recurring event: Google's ID for the whole series. */
+  recurringEventId: z.string().optional(),
   organizer: z.object({ email: z.string().optional(), displayName: z.string().optional(), self: z.boolean().optional() }).optional(),
   attendees: z.array(Attendee).optional(), hangoutLink: z.string().optional(),
   conferenceData: z.object({
@@ -138,8 +140,11 @@ function joinOf(e: GoogleEvent): CalendarEvent['join'] {
   return undefined;
 }
 
-/** Someone's own events worth showing beside Alcove's calls: timed, not declined, not Alcove's own. */
-function toEvent(e: GoogleEvent): CalendarEvent | null {
+/**
+ * Someone's own events worth showing beside Alcove's calls: timed, not declined, not Alcove's own.
+ * An occurrence of a recurring event they've held in Alcove before says which of their series it continues.
+ */
+function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>): CalendarEvent | null {
   if (e.status === 'cancelled' || !e.start?.dateTime || !e.end?.dateTime) return null;
   if (e.eventType && e.eventType !== 'default') return null;
   if (e.extendedProperties?.private?.[MARK]) return null;
@@ -148,16 +153,21 @@ function toEvent(e: GoogleEvent): CalendarEvent | null {
   const organizerEmail = (e.organizer?.email ?? '').toLowerCase();
   const guests = (e.attendees ?? []).filter((a) => !a.self && !a.resource && a.email && a.email.toLowerCase() !== organizerEmail);
   const join = joinOf(e);
+  const seriesId = e.recurringEventId ? series.get(e.recurringEventId) : undefined;
   return {
     id: e.id, title: e.summary?.trim() || 'Busy', startsAt: new Date(e.start.dateTime).toISOString(), endsAt: new Date(e.end.dateTime).toISOString(),
     organizer: personOf(organizerEmail || 'unknown@calendar.invalid', e.organizer?.displayName), isOrganizer: !!e.organizer?.self,
     guests: guests.map((a) => personOf(a.email ?? '', a.displayName)), ...(join ? { join } : {}),
-    calendarUrl: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : 'https://calendar.google.com/'
+    calendarUrl: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : 'https://calendar.google.com/', ...(seriesId ? { seriesId } : {})
   };
 }
 
-/** The coming week's other events (and the last hour's, for calls already going). */
-export async function view(o: Owner): Promise<Calendar> {
+/**
+ * The coming week's other events (and the last hour's, for calls already going). `series` reads
+ * which of the account's own series follow which recurring events, by Google's IDs for them: only
+ * once the calendar has answered with an occurrence of one, since it opens every call's manifest.
+ */
+export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, string>>): Promise<Calendar> {
   if ((await profile(o)).sample) return { source: 'sample', needsAccess: false, events: [] };
   const conn = await connection(o);
   if (!conn) return { source: 'none', needsAccess: false, events: [] };
@@ -173,7 +183,8 @@ export async function view(o: Owner): Promise<Calendar> {
     if (!usable(await connection(o))) return { source: 'google', needsAccess: true, events: [] };
     throw e;
   }
-  const events = list.items.flatMap((e) => { const x = toEvent(e); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
+  const followed = list.items.some((e) => e.recurringEventId) ? await series() : new Map<string, string>();
+  const events = list.items.flatMap((e) => { const x = toEvent(e, followed); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
   clog.debug('calendar read', { ownerId: o.ownerId, events: events.length });
   return { source: 'google', needsAccess: false, events };
 }
@@ -217,14 +228,17 @@ export async function withdraw(o: Owner, eventId: string, meetingId: string): Pr
 }
 
 /** One of the account's own events, to make it an Alcove call: the organizer's only, and not one already. */
-export async function ownEvent(o: Owner, eventId: string): Promise<{ title: string; startsAt: string; endsAt: string; guests: string[]; description?: string | undefined; url?: string | undefined }> {
+export async function ownEvent(o: Owner, eventId: string): Promise<{
+  title: string; startsAt: string; endsAt: string; guests: string[]; description?: string | undefined; url?: string | undefined; recurringEventId?: string | undefined;
+}> {
+  // Google's event IDs stay out of errors, which are logged with their context: an occurrence's ID names its recurring event.
   const e = await api(o, 'GET', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent);
-  if (!e.organizer?.self) throw new ForbiddenError('Only the organizer can move this call to Alcove.', { context: { eventId } });
-  if (!e.start?.dateTime || !e.end?.dateTime) throw new NotFoundError('That isn’t a call with a start and end time.', { context: { eventId } });
+  if (!e.organizer?.self) throw new ForbiddenError('Only the organizer can move this call to Alcove.');
+  if (!e.start?.dateTime || !e.end?.dateTime) throw new NotFoundError('That isn’t a call with a start and end time.', { context: { allDay: !!e.start?.date } });
   const organizer = (e.organizer.email ?? '').toLowerCase();
   const guests = (e.attendees ?? []).flatMap((a) => (!a.self && !a.resource && a.email && a.email.toLowerCase() !== organizer ? [a.email.toLowerCase()] : []));
   return {
     title: e.summary?.trim() || 'Untitled call', startsAt: new Date(e.start.dateTime).toISOString(), endsAt: new Date(e.end.dateTime).toISOString(),
-    guests, description: e.description, url: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : undefined
+    guests, description: e.description, url: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : undefined, recurringEventId: e.recurringEventId
   };
 }

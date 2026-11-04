@@ -20,6 +20,7 @@ import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
 import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes.$noteId'
+import { Route as AppNotesSeriesSeriesIdRouteImport } from './routes/_app/notes.series.$seriesId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -75,6 +76,11 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
   path: '/notes/$noteId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNotesSeriesSeriesIdRoute = AppNotesSeriesSeriesIdRouteImport.update({
+  id: '/notes/series/$seriesId',
+  path: '/notes/series/$seriesId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/join/$code': typeof JoinCodeRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/notes/': typeof AppNotesIndexRoute
+  '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/join/$code': typeof JoinCodeRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/notes': typeof AppNotesIndexRoute
+  '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/join/$code': typeof JoinCodeRoute
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
   '/_app/notes/': typeof AppNotesIndexRoute
+  '/_app/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/notes/$noteId'
     | '/notes/'
+    | '/notes/series/$seriesId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/notes/$noteId'
     | '/notes'
+    | '/notes/series/$seriesId'
   id:
     | '__root__'
     | '/'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/_app/notes/$noteId'
     | '/_app/notes/'
+    | '/_app/notes/series/$seriesId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -243,6 +255,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNotesNoteIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/notes/series/$seriesId': {
+      id: '/_app/notes/series/$seriesId'
+      path: '/notes/series/$seriesId'
+      fullPath: '/notes/series/$seriesId'
+      preLoaderRoute: typeof AppNotesSeriesSeriesIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -251,6 +270,7 @@ interface AppRouteChildren {
   AppHomeRoute: typeof AppHomeRoute
   AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
   AppNotesIndexRoute: typeof AppNotesIndexRoute
+  AppNotesSeriesSeriesIdRoute: typeof AppNotesSeriesSeriesIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -258,6 +278,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppHomeRoute: AppHomeRoute,
   AppNotesNoteIdRoute: AppNotesNoteIdRoute,
   AppNotesIndexRoute: AppNotesIndexRoute,
+  AppNotesSeriesSeriesIdRoute: AppNotesSeriesSeriesIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

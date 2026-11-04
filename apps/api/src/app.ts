@@ -1,7 +1,7 @@
 import {
   ActionPatchSchema, AUDIO_HEADERS, AskBodySchema, CallActionSchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  MeetingInputSchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, REQUEST_ID_HEADER, RecordingActionSchema, ShareBodySchema,
-  SignInBodySchema, TeamInviteBodySchema
+  MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, SeriesAskBodySchema,
+  ShareBodySchema, SignInBodySchema, TeamInviteBodySchema
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -28,23 +28,31 @@ import * as notes from './modules/notes';
 import * as people from './modules/people';
 import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
+import * as series from './modules/series';
 import type { Clip } from './modules/transcripts';
 
 type Env = { Variables: { owner: Owner; requestId: string } };
 const rlog = log.child({ component: 'http' });
 const clog = log.child({ component: 'client', source: 'browser' });
-/** Call codes are join tokens: keep them out of logs. Every other path segment is a random ID. */
-const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code');
+/**
+ * Call codes are join tokens, and a Google event's ID names its recurring series: keep both out of
+ * logs. Every other path segment is a random ID.
+ */
+const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code').replace(/^\/v1\/calendar\/events\/(?!$)[^/]+/, '/v1/calendar/events/:id');
 const QUIET = new Set(['/health', '/healthz']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /**
- * POSTs that keep no stored receipt: searching and asking only read, and audio pieces and
- * transcript clips are already idempotent by their place in the recording (and their answers carry
- * the live transcript, which shouldn't be copied into receipts).
+ * Mutations that keep no stored receipt. Searching, asking and translating captions only read. Audio
+ * pieces and transcript clips are already idempotent by their place in the recording (and their
+ * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
+ * decisions, open questions and follow-ups, and sharing it, each set an explicit state, so a retry
+ * changes nothing; and their answer is the whole note, which a receipt kept under someone it was given
+ * to would still hold after the organizer deleted it.
  */
 const NO_RECEIPT = [
-  /^\/v1\/notes\/search$/, /^\/v1\/notes\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
-  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/
+  /^\/v1\/notes\/search$/, /^\/v1\/(?:notes|series)\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
+  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions)\/[^/]+|share)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -274,9 +282,10 @@ export function createApp(d: Deps) {
   app.post('/v1/meetings', async (c) => c.json(await meetings.create(c.get('owner'), await body(c, MeetingInputSchema))));
   app.patch('/v1/meetings/:id', async (c) => c.json(await meetings.update(c.get('owner'), c.req.param('id'), await body(c, MeetingInputSchema.partial()))));
   app.delete('/v1/meetings/:id', async (c) => { await meetings.cancel(c.get('owner'), c.req.param('id')); return c.json({ cancelled: true }); });
+  app.post('/v1/meetings/:id/next', async (c) => c.json(await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt)));
 
   /* calendar: someone's other events, and making one of them an Alcove call */
-  app.get('/v1/calendar', async (c) => c.json(await calendar.view(c.get('owner'))));
+  app.get('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.view(o, () => meetings.recurringSeries(o))); });
   app.post('/v1/calendar/events/:id/adopt', async (c) => {
     const { notes } = await body(c, z.object({ notes: NotesSettingSchema.optional() }));
     return c.json(await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
@@ -357,12 +366,21 @@ export function createApp(d: Deps) {
   /* Confirming what the notes say: anyone who has them can, and everyone sees who did. */
   app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(c.get('owner'), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
   app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
+  app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(c.get('owner'), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
   app.post('/v1/notes/:id/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask');
     return c.json(await notes.ask(c.get('owner'), c.req.param('id'), (await body(c, AskBodySchema)).question));
   });
   app.post('/v1/notes/:id/share', async (c) => c.json(await notes.share(c.get('owner'), c.req.param('id'), (await body(c, ShareBodySchema)).emails)));
   app.delete('/v1/notes/:id', async (c) => { await notes.remove(c.get('owner'), c.req.param('id')); return c.json({ deleted: true }); });
+
+  /* series: what carries over between calls, from the notes the person asking has */
+  app.get('/v1/series/:id', async (c) => c.json(await series.get(c.get('owner'), c.req.param('id'))));
+  app.post('/v1/series/:id/ask', async (c) => {
+    askLimiter(c.get('owner').ownerId, 'ask-series');
+    const { question, timeZone } = await body(c, SeriesAskBodySchema);
+    return c.json(await series.ask(c.get('owner'), c.req.param('id'), question, timeZone));
+  });
 
   /* credits */
   app.get('/v1/credits', async (c) => c.json(await billing.balance(d, c.get('owner').ownerId)));

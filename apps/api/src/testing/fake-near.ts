@@ -168,6 +168,7 @@ function notesReply(system: string, user: string): unknown {
     return {
       summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
       decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map((h) => ({ text: h.text, at: h.at })),
+      questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         if (!m) return [];
@@ -180,6 +181,12 @@ function notesReply(system: string, user: string): unknown {
   }
   const question = /\nQuestion: (.*)$/s.exec(user)?.[1] ?? '';
   const words = question.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
+  if (system.startsWith('You answer a question about a series')) {
+    // Answers from the first transcript line, newest meeting first, that shares a word with the question.
+    const found = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => heardIn(block).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), h })))
+      .find(({ h }) => words.some((w) => h.text.toLowerCase().includes(w)));
+    return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, at: found.h.at }] : [] };
+  }
   const hit = heard.find((h) => words.some((w) => h.text.toLowerCase().includes(w)));
   return { answer: hit ? `From the call: ${hit.text}` : 'That wasn’t covered in the call.', moments: hit ? [hit.at] : [] };
 }

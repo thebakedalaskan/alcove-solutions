@@ -39,8 +39,8 @@ transcript clips and its `note_access` rows.
 | Item kind | Manifest fields |
 | --- | --- |
 | `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (`notesDefault`), colleagues invited to Alcove |
-| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID, and the Google Calendar event ID and link when it's on a calendar |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions, action items (text, owner when known, due date as said, done), chapters, screens, transcript (lines with time, speaker when known and text; null while recording), suggested questions, breakout rooms (kept from the end of the call until the notes are written) |
+| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), the Google Calendar event ID and link when it's on a calendar, the series it's in (`seriesId`), and for an occurrence of a recurring Google event, that event's ID (`recurringEventId`) |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, shared emails, summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, screens, transcript (lines with time, speaker when known and text; null while recording), suggested questions, breakout rooms (kept from the end of the call until the notes are written) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
@@ -64,7 +64,10 @@ item of a kind.
 - **Notes jobs** are inserted `queued` by the stopping transaction, claimed with a lease by the notes worker,
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
 - **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never
-  stored. An Alcove call's event ID and link are kept in its meeting manifest.
+  stored. An Alcove call's event ID and link are kept in its meeting manifest, and for an occurrence of a
+  recurring event, the recurring event's ID.
+- **Series** aren't stored: a series is read on each request from the meetings that share its ID and the
+  notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)).
 - **Finding people.** Sign-in looks up `identities` by subject index; people search and the team directory
   check `identities.email_index`; shared notes are found through `note_access.email_index`
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).
