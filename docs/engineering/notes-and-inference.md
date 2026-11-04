@@ -11,6 +11,8 @@ recorder show a live transcript. When the recording stops, the transcript moves 
 worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
 chapters and suggested questions. When the organizer had shared screens read, the notes model reads each frame
 a presenter's browser sent and the notes point at what was on screen ([Shared screens](#shared-screens)).
+While the call is on, everyone in a part of it reads one shared set of live notes, kept sealed and refreshed
+at most every 30 seconds while someone is watching ([Live notes](#live-notes)).
 Anyone who has the note can then ask questions about the call, and anyone can ask a question across every
 note they have. The transcript says what it isn't sure of, words Whisper heard with little confidence and lines
 heard on two microphones at once, and once the notes are written the organizer, and the people who spoke their
@@ -49,7 +51,7 @@ open it, and only whoever opened the request could have sealed it.
 | Request | Model | Endpoint |
 | --- | --- | --- |
 | Transcribe a clip | `openai/whisper-large-v3` | `NEAR_AI_STT_URL`, `https://whisper-large-v3.completions.near.ai` |
-| Write notes, read a frame of a shared screen, answer a question (about a note, across notes, a call so far or a series), catch up, translate captions, compare a call with earlier ones in its series | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
+| Write notes, read a frame of a shared screen, answer a question (about a note, across notes, a call so far or a series), catch up, refresh a call's live notes, translate captions, compare a call with earlier ones in its series | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
 
 These are the endpoints NEAR AI calls "direct completions" and documents as experimental. Its gateway
 also takes chat with end-to-end encrypted fields (E2EE v2), but that protocol encrypts each message to the
@@ -127,8 +129,8 @@ earlier ones is kept ([Series](#series)). `GET /v1/notes/:id` returns them as
 `Note.inference` (`InferenceEvidence` in `packages/api`): the model, the task, when it was verified, the
 model's key, Intel's TCB status and the quote's SHA-256, the dstack image it booted, the GPUs NVIDIA
 confirmed, the SHA-256 of the measured app compose, and the gateway's TCB status, image and compose hash.
-None of it is secret. Questions, catch-ups and caption translations are verified and sealed the same way,
-but nothing of theirs stays with the note, so neither do their verifications.
+None of it is secret. Questions, catch-ups, live notes and caption translations are verified and sealed the same
+way, but nothing of theirs stays with the note, so neither do their verifications.
 
 Under the title the note page says "Written in confidential compute" ("Transcribed in…" while the notes are
 being written, or when they couldn't be), when the hardware was verified (the time today, else the day and
@@ -746,8 +748,8 @@ While a call is on, anyone let in can catch up and ask about it, for themselves 
 **Catch up** in the top bar and the More menu catches you up on what you most likely missed: your time away if
 it was in the last ten minutes, what was said before you came if you just joined late, or else the last five
 minutes. The Ask view catches you up on, and answers questions from, a range you pick (the whole call unless you
-pick otherwise). The Notes view during a call reads the whole call to show what's decided, the follow-ups and a
-summary, refreshed when a new line arrives (at most every 30 seconds, only while it's open).
+pick otherwise). The Notes view during a call shows the call's shared [live notes](#live-notes), which aren't for
+anyone alone.
 
 - **What to read.** `POST /v1/live/calls/:id/catch-up` with `{range}`, and `POST /v1/live/calls/:id/ask` with
   `{question, range}`. A range is `recent` (`minutes`, 1 to 600), `since-joined`, `before-joined`, `away`,
@@ -921,6 +923,111 @@ joins the invite), so a preview couldn't say who reads it.
 - **You delete your account**: everything of yours goes with it, and so does what you added to anyone's shared notes.
 - **Your sign-in's address changes**: you no longer have notes given to the old address, and your own notes on them
   wait, sealed, until you do again or the note goes.
+
+## Live notes
+
+Everyone in a part of a call reads one set of notes on it, kept on the server: what's decided, suggested and still
+open, the follow-ups, and a summary, as a catch-up on the whole of that part gives them
+(`apps/api/src/modules/liveNotes.ts` keeps them, `calls.ts` says when they're refreshed and who reads what). So
+inference runs once instead of once per browser, a reload finds them there, and ticking a follow-up is done for
+everyone. The notes everyone gets are still written when the call ends, from the transcript, by the notes worker: live
+notes only hand on what was ticked.
+
+- **The contract.** `CallState.liveNotes` (`LiveNotes`) comes with the call: `notes` (a `CatchUp` whose `next` are
+  `LiveFollowUp`s, each with an `id` and `done`; null until the first are written), `writing`, and `error`, why the
+  latest refresh didn't work. `CallSession.watchNotes()` says this browser is showing them until the function it
+  returns is called, and `CallSession.tickFollowUp(id, done)` ticks one.
+- **Where they're kept.** In `call_notes`, a row for each part of the call (`main`, or a breakout room's random ID),
+  sealed as a `call-notes` record under the state key `call-notes:<callId>`, whose header binds the owner, the call and
+  the part. Not in the call's sealed state: they run to tens of kilobytes, which every request about the call would
+  open, the state is written again for every chat message and raised hand, and a refresh would hold the call's row
+  through the notes model's answer. A breakout room's row stays until the call ends, for what was ticked there.
+- **Watching.** A browser showing the notes says so every 5 seconds (`POST /v1/live/calls/:id/notes/watch`, 120 a
+  minute per connection, no operation receipt), which is the only thing that refreshes them: nobody watching, nothing
+  runs. A guest watching counts as much as anyone. A look answers `{refreshed}`, and once it has answered true the
+  browser reads the call straight away.
+- **When a refresh runs.** Only while the part of the call the watcher is in has notes on (`mayCapture`, path
+  `live-notes`, as of the call's row held in share mode, so a pause either stops it or comes after it), with clips the
+  last refresh didn't count, at least 30 seconds after the last one began, and with none under way. Turning notes off
+  stops refreshes though catching up still reads what was transcribed: a refresh is nobody's request, so nothing new
+  goes to the AI by itself once the organizer has said off.
+- **One run.** `call_notes.looked_at`, `lease_until` and `clips_seen` are decided under the row's lock, in the same
+  transaction: of any number of watchers, on any number of API instances, one claims the refresh and the others answer
+  false at once. The claiming request runs it, with its own keys, holding no lock and no connection while the model
+  reads, and saves what came back under the lock again, merged with the follow-ups as they are then. The lease lasts 150
+  seconds, so a worker that dies only delays the next refresh, and it names the claim: a refresh that outran its lease
+  keeps nothing. New clips in another part of the call get as far as opening the lines; finding the same lines as last
+  time (a digest of their IDs), the claim is given up and the model isn't asked, and that part isn't looked at again for
+  30 seconds.
+- **What a refresh reads.** Everything said in that part of the call, whoever may read each line, up to the 120,000
+  characters a transcript may have, as `catchUp` over `all`, with up to 20 follow-ups (8 of each other list). The
+  exception is what the main room said while breakout rooms were open, which is for the people who stayed: it's read
+  while those rooms are open, and left out once they've closed, so that everyone back in the main room can read one
+  summary. It stays in the transcript and the catching up of whoever may read it, and goes into the note.
+- **Who reads what.** The one record, read through the call's reading rule (`shownTo`). It's the record of the part of
+  the call you're in now, so what's said in a room stays with that room. Each point keeps who may read every line behind
+  it, and shows only to someone who may read all of them: a guest with the link sees what rests on what was said while
+  they were in the call, someone back from a breakout room doesn't see what rests on the main room's talk while they were
+  away, and the organizer visiting a room sees what rests on what was said once it came in. The summary has no lines of
+  its own, so it shows only to someone who may read every line the notes read (for a guest, every one of them inside
+  one stretch of their time in the call). `read.whileHere` says something was left out, and `read.lines` then counts only
+  the lines behind what's shown. Someone waiting to be let in gets nothing; someone removed can't read the call at all.
+- **While paused or off.** What was written stays readable, nothing is refreshed, and nothing reaches NEAR AI. In a
+  breakout room the organizer has paused, the same, for that room alone. Ticking still works: it reaches no AI.
+- **When it fails.** The notes stay as they were, `error` says why (the error's own message, for everyone there, only
+  while notes are on) and the next look at least 30 seconds later tries again.
+- **What it costs.** Nothing. As for catching up and asking, nobody's credits pay for a refresh, whoever is watching and
+  whoever's call it is: only the notes written at the end charge the organizer ([The notes worker](#the-notes-worker)).
+
+### Follow-ups keep their IDs
+
+A follow-up's ID is random, made the first time it's listed, and stays with it from one refresh to the next while it's
+plainly the same item (`likeness` in `apps/api/src/modules/likeness.ts`). Two follow-ups are the same item when they
+don't name two different people (compared by first name, without accents or case; one naming nobody is fine) and:
+
+1. they come from a line in common and share a word that says something (`keyWords`: three letters or more, without the
+   commonest words or endings), so two things to do said in one sentence stay two; or
+2. most of the shorter one's words are in the other (60%), and they came up within a minute of each other (`alike`,
+   as notes written again compare what's settled).
+
+The plainest pairs are made first: a line in common before words alone, then the larger share of key words. Each is
+used once. A match takes the new words, owner and due date and keeps the ID and the tick. A follow-up the refresh didn't
+list stays in the record, unseen unless it's ticked, so it keeps its ID if it comes back; the record forgets the oldest
+such after 60 follow-ups, never a ticked one. They're listed in the order they were said. A rewording that fits neither
+rule is a new follow-up: if the one before was ticked, both show, that one still ticked.
+
+### Ticking a follow-up
+
+`{type: "follow-up", id, done}` (60 a minute per person) ticks a follow-up, or takes the tick back, for everyone in that
+part of the call, and nudges the room like any change to the call. It's for anyone in the call who gets the notes, the
+organizer and everyone on the invite, as anyone who has a note can tick its follow-ups: a guest with the link gets
+`403 forbidden`. It's found only in the record of the part of the call you're in, among what you may read: an ID from
+another room or call, or one you can't see, is `404 not-found`, like a made-up one. It holds the call's row, so it comes
+before the call ends or is refused (`409 conflict`). A tick is kept under the notes' row with who made it and when, and a
+refresh saves around it, so one made while the notes were being written isn't lost. A ticked follow-up stays listed
+whatever the next refresh says.
+
+### Into the note
+
+When the call ends, in the transaction that ends it, every ticked follow-up goes into the note's sealed manifest
+(`ticked`: its words, owner and due date, the IDs of the lines behind it, the breakout room it was in, who ticked it and
+when), and the `call_notes` rows go. When the notes are written (`doneInNotes`), each tick is matched within its own part
+of the notes, the call's or its room's, against the follow-ups just written, which have new IDs and the notes model's own
+words. The transcript lines keep their IDs from the call into the note, which is what ties them together:
+
+- A written follow-up's lines are the lines of that part of the transcript within two seconds of its moment (`at`): the
+  model reads whole seconds off a line's mark.
+- The tick and the written follow-up are compared by `likeness`, as above: they don't name two different people, and
+  either it points at a line behind the tick and shares a key word, or it came up within a minute of the tick's first
+  line with most of the shorter one's words in the other.
+- The plainest pairs go first, and each written follow-up takes one tick. It's marked done, with a `done` change saying
+  who ticked it and when, as if they'd ticked it in the note.
+- A tick nothing matches is added to that part's follow-ups as it was said, done, at its first line's moment, since
+  someone said it was done and the notes shouldn't lose that. A reworded item with no key word in common with what was
+  ticked therefore shows twice, the notes' wording open and the tick's done: marking the wrong follow-up done would be worse.
+
+A part of the notes that couldn't be written keeps its ticks waiting in `ticked`, and they're done when the organizer has
+them written after all. Writing the notes again keeps them done, as anything with a change is kept (`keepSettled`).
 
 ## Captions in another language
 
@@ -1186,7 +1293,8 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   going on. One JSON object: a one- or two-sentence `summary` and four lists, `decided`, `proposed` (never counted
   as decided), `open` questions and `next` steps, each item a short sentence with the numbers of the one to three
   lines it comes from, leaving out anything it can't point to a line for; a next step also has its `owner` and
-  `due` as said, or null. At most 8 items a list.
+  `due` as said, or null. At most 8 items a list. A call's live notes are asked for the same way, over the whole of
+  its part of the call, and keep up to 20 next steps.
 - **Translating captions.** The language's English name and the lines as `{id, text}` JSON. One JSON
   object, `{lines: [{id, text}]}`: every line translated, ids kept, names, numbers and dates exact, a line
   already in that language returned as it is, nothing added or left out. Lines with an unknown id or empty
@@ -1256,6 +1364,7 @@ verified against. The measured OS images aren't configuration at all.
 | Answer a question (about a note, across notes, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
 | Compare a call with earlier ones in its series | The same, with `max_tokens` 500 | 60 s |
 | Catch up | The same, with `max_tokens` 1,500 | 60 s |
+| Refresh a call's live notes | The same, with `max_tokens` 2,500 | 60 s |
 | Translate captions | The same, with `max_tokens` 2,000 | 30 s |
 
 NEAR AI's answers map onto Alcove's errors: `400`, `413` and `422` become `400 invalid`; `401` and `403`
@@ -1317,7 +1426,12 @@ guest's window narrowed it, how many points came back, how many the model couldn
 how many moments an answer cites, how many lines a stretch too long to read at once skipped (`cut`), and the time
 taken; a stretch with nothing said in it, `caught up on a stretch
 with nothing said` (or `question about a stretch with nothing said`); and `transcript moment opened` at debug, with
-how many lines came with it. A refusal (removed, left, ended while it was written) is a refused request with the
+how many lines came with it. Live notes log `live notes written` at info with the call ID, whether it was a room
+(`part`), how many lines were read, the gaps and missed stretches in them, how many points came back, how many the model
+couldn't tie to a line (`uncited`), how many lines were left out (`cut`) and the time taken; `nothing new for the live
+notes` at debug; `live notes written too late to keep` at info when the call ended or the claim ran out meanwhile; and
+`live notes not refreshed` at warn, with the error. A tick is a `call action` like any other, by its type alone: no point,
+follow-up or summary is ever logged. A refusal (removed, left, ended while it was written) is a refused request with the
 call ID, the role and what it was. Speech, transcript lines, prompts, replies and questions are never logged, and neither are the
 asker's time zone or Google's event IDs: an occurrence's ID begins with its recurring event's, so logged
 paths show `/v1/calendar/events/:id`, and a refused adopt's error carries no ID in its context. An answer
@@ -1447,6 +1561,25 @@ note deleting every row and object; deleting the organizer's account deleting th
 up or still going, rows and objects, and closing the LiveKit room of the one going; and no frame or reading
 readable in rows, objects, logs or on the wire.
 
+`apps/api/src/liveNotes.integration.test.ts` covers a call's shared live notes: two people watching and one run, everyone
+reading the same notes; watchers racing across two API instances; the 30-second limit from both sides of it, nothing
+asked with nothing new or nobody watching, and what was said meanwhile taken up at the next look; the room nudged and told
+when they're being written, and a refresh that failed saying so and being tried again with the notes as they were; nobody
+charged, and the notes at the end charged as ever; Catch up and Ask unchanged; a guest with the link reading only what
+rests on what was said while they were here, no summary of the rest, and no ticking, one there from the start reading all
+of it, and someone added to the invite reading all of it from then on; someone asking to join and someone removed getting
+nothing; each breakout room's notes kept to the room, in what's read and in the prompts, the organizer visiting reading
+what's said once it's there, the main room's talk during rooms for the people who stayed and left out once rooms have
+closed, and a room paused on its own; a tick shared and nudging the room, kept through a refresh that rewords it, taken
+back, and made while the notes were being written; a ticked item the model stops listing kept, one nobody ticked hidden
+and given back its ID when it returns, and something else from the same line told from a rewording; refusals (made-up IDs,
+another call's, someone asking to join, an ended call); what was ticked done in the note, reworded or not, and added when
+the notes don't list it, with who ticked it, through writing the notes again, and waiting for notes that couldn't be
+written; notes off and paused sending nothing to the notes model with what was written readable and ticks still counting;
+a note stored before ticks were kept, and a call with no row yet; the rows going when the call ends, with a refresh on its
+way finding nothing to save into, with the account, and by upkeep; and nothing readable in the row, receipts, objects,
+logs or on the wire, with a record copied to another call not opening.
+
 `apps/api/src/catchup.integration.test.ts` covers catching up during a call: before you joined, since you
 joined and while you were away (a page that goes away and comes back), the last few minutes leaving out what was
 said before them, both ends of a stretch in it, a stretch with nothing said answered without asking the model,
@@ -1532,6 +1665,7 @@ notes start (`NoteManifest.keep`), because it outlives the call and the notes wo
 | The note: notes, decisions and follow-ups with who changed them and the lines they rest on, what people added and disputed, corrections with what they were before | Until the organizer deletes it (for everyone); anyone else removing it removes only their own access | Deleted with every revision |
 | What backs an entry, as a reader sees it (`evidence`) | Never stored: worked out from the note for whoever reads it | |
 | Earlier revisions of a note | With the note: a correction or a change writes a new revision, and the old ones stay, so nothing is quietly rewritten | Deleted with the note, or with the transcript they hold, as above |
+| A call's live notes (`call_notes`) | While the call runs | Deleted in the transaction that ends it: what was ticked goes into the note, and the notes at the end are written from the transcript |
 | Questions, answers and catch-ups | Never stored, unless someone keeps an answer in their own notes | |
 | What carries over in a series | Never stored: read from the notes someone has, each time they look | |
 | What a later call came back to (`revisits`): the random IDs of an earlier item, and a moment | In the later note | Deleted with the later note. An earlier note going leaves its ID there, naming nothing, and it's never shown |
@@ -1652,6 +1786,17 @@ What goes with each choice:
   them. Dates are given to the model in UTC. Each question opens and decrypts every note the person has,
   as the notes list and the inbox do. What was on a note's shared screens, and its open questions, aren't
   sent: the answer comes from summaries, decisions, follow-ups and transcript lines.
+- **A live note's words can lean on more than its lines.** A guest sees a point only if every line the model says it
+  comes from was said while they were here, and the summary only if they were here for all of it. But that's the model's
+  word: a point can draw on what was said earlier without naming that line, as a follow-up's wording might. Giving each
+  guest notes written from their own lines alone would take a run for each of them.
+- **The summary is all or nothing.** It has no lines of its own, so someone who may not read every line the notes read
+  doesn't get it at all: a guest who came late, someone who came late into a breakout room, the organizer visiting one,
+  and anyone in the main room who wasn't there for what it said while rooms are open.
+- **Live notes aren't refreshed for the last words.** Once notes are off or paused nothing more is read, so what was said
+  in the last half minute before stays out of the live notes until they're back on. It's in the transcript and the note.
+- **Live follow-ups don't reach the note by ID.** The notes at the end are written afresh, so a tick finds its follow-up
+  by lines, moment and words ([Into the note](#into-the-note)), and can miss a thoroughly reworded one.
 - **Catching up on what was shown.** Screen moments in catch-up need frames read during the call; shared
   screens are read for the notes after it, so a catch-up's evidence is transcript moments only. `Evidence` is the
   hook: screen moments join it as a kind of their own.

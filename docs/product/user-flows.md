@@ -368,8 +368,10 @@ put them, and one dock at the bottom.
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.
 - **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
-  and a summary, read from the transcript as the call goes; each time opens the transcript at that moment. The organizer's
-  **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
+  and a summary, read from the transcript as the call goes, the same for everyone in that part of the call; each time
+  opens the transcript at that moment. Anyone who gets the notes can tick a follow-up, and it's done for everyone and in
+  the notes at the end. A guest with the link sees only what comes from what was said while they were here. The
+  organizer's **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
 - **Yours** (side panel), beside **Notes**: your own notes on the call, which say **Only you** before you type. Write
   something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark in the dock, or **More**
   on a phone; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
