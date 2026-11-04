@@ -412,6 +412,10 @@ describe('breakout rooms, each with its own keys', () => {
     return s.status === 'in' && s.place === place && Boolean(s.media?.send);
   }, `${call.ticket.role} in ${place === 'main' ? 'the main room' : 'a room'}`);
   const roomIds = async (host: CallSession) => (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
+  /** The scribe of `room` as someone in it is told, once it has one (or once it's `who`): the one browser there that sends what's said. */
+  const scribeIn = async (call: CallSession, room: string, who?: string) =>
+    (await settle(call, (x) => x.capture.room?.id === room && x.capture.room.scribe !== null && (who === undefined || x.capture.room.scribe === who))).capture.room?.scribe ?? null;
+  const clipsOf = async (noteId: string | null) => Number((await h.pool.query<{ n: string }>('SELECT count(*)::text AS n FROM transcript_clips WHERE note_item_id = $1', [noteId])).rows[0]?.n ?? -1);
   const members = (call: CallSession) => [...call.crypto.getSnapshot().members].sort();
   const hex = (k: Uint8Array | undefined) => Buffer.from(k ?? []).toString('hex');
   /** Chat that's in the log, not only on its sender's screen. */
@@ -542,14 +546,17 @@ describe('breakout rooms, each with its own keys', () => {
     await inPlace(lena.call, support);
     host.renameRoom(design, 'CANARY-ROOMNAME');
     await settle(host, (s) => s.breakouts.open?.rooms[0]?.name === 'CANARY-ROOMNAME');
+    // Kofi, the one person in Design, is its scribe: his browser hears Design and sends what's said there.
+    expect(await scribeIn(kofi.call, design)).toBe(kofi.call.ticket.identity);
 
     // The organizer visits Design: what's said there is Design's alone, in the transcript, captions and catching up.
     host.visitRoom(design);
     await inPlace(host, design);
     const inDesign = performance.now();
-    await host.transcribe(speech('CANARY-HEARD only for Design.', 0, 5000), host.ticket.identity);
+    await kofi.call.transcribe(speech('CANARY-HEARD only for Design.', 0, 5000), host.ticket.identity);
     const said = (call: CallSession) => call.getSnapshot().transcript.map((l) => l.text);
     await settle(kofi.call, (s) => s.transcript.length > 0);
+    await settle(host, (s) => s.transcript.length > 0);
     expect(said(kofi.call)).toEqual(['CANARY-HEARD only for Design.']);
     expect(said(host)).toEqual(['CANARY-HEARD only for Design.']);
     await lena.call.refresh();
@@ -564,15 +571,15 @@ describe('breakout rooms, each with its own keys', () => {
     // Design: they're placed where it was when it began saying them, not where it is when they arrive.
     host.visitRoom(null);
     await inPlace(host, 'main');
-    await host.transcribe(speech('CANARY-HEARD still in Design.', 0, 9000, 4000, 'en', true, inDesign), host.ticket.identity);
+    await kofi.call.transcribe(speech('CANARY-HEARD still in Design.', 0, 9000, 4000, 'en', true, inDesign), host.ticket.identity);
+    await settle(host, (s) => s.transcript.length === 1 && s.transcript[0]?.text === 'We start together.');
     expect(said(host)).toEqual(['We start together.']);
     host.visitRoom(design);
     await inPlace(host, design);
     await settle(host, (s) => s.transcript.length === 2);
     expect(said(host)).toEqual(['CANARY-HEARD only for Design.', 'CANARY-HEARD still in Design.']);
     // While the room is open its lines are kept, sealed: nothing said there, nor its name, is readable in any row.
-    const clips = await h.pool.query<{ n: string }>('SELECT count(*)::text AS n FROM transcript_clips WHERE note_item_id = $1', [host.getSnapshot().notes.noteId]);
-    expect(Number(clips.rows[0]?.n ?? 0)).toBeGreaterThanOrEqual(3);
+    expect(await clipsOf(host.getSnapshot().notes.noteId)).toBeGreaterThanOrEqual(3);
     await expectNotInRows(['calls', 'call_mls', 'transcript_clips'], ['CANARY-ROOMNAME', 'CANARY-HEARD']);
 
     // A reload in Design goes straight back into Design's group, without counting Kofi twice.
@@ -582,6 +589,8 @@ describe('breakout rooms, each with its own keys', () => {
     expect(members(host)).toEqual([host.ticket.identity, again.ticket.identity].sort());
     const s = await settle(host, (x) => x.participants.filter((p) => p.person.email === kofi.email).length === 1 && x.breakouts.open?.rooms[0]?.members.includes(again.ticket.identity) === true);
     expect(s.breakouts.open?.rooms[0]?.members.sort()).toEqual([host.ticket.identity, again.ticket.identity].sort());
+    // Design's scribe is Kofi's browser as it is now: a reload hands the room to the new connection.
+    expect(await scribeIn(again, design, again.ticket.identity)).toBe(again.ticket.identity);
 
     // The rooms close: everyone back in the main room's group, on keys that are new to all of them.
     const roomKey = latestKeys(again);
@@ -590,12 +599,13 @@ describe('breakout rooms, each with its own keys', () => {
     await waitFor(() => members(host).length === 3 && keyOf(again) === keyOf(host) && keyOf(lena.call) === keyOf(host), 'everyone on the main room’s keys');
     expect(members(host)).toEqual([host.ticket.identity, again.ticket.identity, lena.call.ticket.identity].sort());
     for (const k of Object.values(latestKeys(host))) expect(Object.values(roomKey).map(hex)).not.toContain(hex(k));
-    // The rooms' MLS logs and what was heard in them are gone; only the main room's lines go on, and into the notes.
+    // The rooms' MLS logs are gone. What was said in them is kept, sealed, for each room's section of the notes, and
+    // nobody reads it live now: the main room shows its own lines, and a moment of Design's isn't there to open.
     expect((await h.pool.query('SELECT count(*)::int AS n FROM call_mls WHERE call_id = $1 AND grp = ANY($2::text[])', [host.ticket.callId, [design, support]])).rows[0]?.n).toBe(0);
     await settle(host, (x) => x.breakouts.open === null);
     expect(said(host)).toEqual(['We start together.']);
-    // A moment of Design's goes with the room.
     expect(code(await again.moment(designLine).catch((e: unknown) => e))).toBe('not-found');
+    expect(await clipsOf(host.getSnapshot().notes.noteId)).toBeGreaterThanOrEqual(3);
     await expectNotInRows(['calls', 'call_mls', 'transcript_clips'], ['CANARY-ROOMNAME', 'CANARY-HEARD']);
     expect(h.logs.join('').includes('CANARY-ROOMNAME') || h.logs.join('').includes('CANARY-HEARD')).toBe(false);
     // Once the rooms are closed there's nothing to commit to in them.
@@ -603,11 +613,16 @@ describe('breakout rooms, each with its own keys', () => {
     const end = await host.leave();
     const noteId = end?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    expect((await org.api.notes.get(noteId)).transcript?.map((l) => l.text)).toEqual(['We start together.']);
+    // The notes have the main room's lines, and each room's as its own section: Design's two, none for Support.
+    const note = await org.api.notes.get(noteId);
+    expect(note.transcript?.map((l) => l.text)).toEqual(['We start together.']);
+    expect(note.rooms.map((r) => [r.name, r.transcript.map((l) => l.text)])).toEqual([['CANARY-ROOMNAME', ['CANARY-HEARD only for Design.', 'CANARY-HEARD still in Design.']], ['Support', []]]);
+    // Moved into the note, sealed: no live row is left.
+    expect(await clipsOf(noteId)).toBe(0);
   });
 
   it('gives each room its own capture: a room the organizer pauses takes nothing, the rest of the call carries on, and only that room is told', async () => {
-    const { host, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena'], { notes: 'on' });
+    const { org, host, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena'], { notes: 'on' });
     if (!kofi || !lena) throw new Error('two people');
     await settle(host, (x) => x.capture.mode === 'on');
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
@@ -615,10 +630,12 @@ describe('breakout rooms, each with its own keys', () => {
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
-    // Each room says what's captured in it, beside the call's own: on, like the call, and never recorded.
-    const opened = await settle(kofi.call, (x) => x.capture.room?.id === design);
+    // Each room says what's captured in it, beside the call's own: on, like the call, never recorded, and heard by
+    // its scribe, the one browser there that sends what's said.
+    const opened = await settle(kofi.call, (x) => x.capture.room?.id === design && x.capture.room.scribe !== null);
     expect(opened.capture.mode).toBe('on');
-    expect(opened.capture.room).toMatchObject({ mode: 'on', recording: { mode: 'off' }, transcript: { mode: 'on', by: { kind: 'schedule' } }, gaps: [] });
+    expect(opened.capture.room).toMatchObject({ mode: 'on', recording: { mode: 'off' }, transcript: { mode: 'on', by: { kind: 'schedule' } }, gaps: [], scribe: kofi.call.ticket.identity });
+    expect(await scribeIn(lena.call, support)).toBe(lena.call.ticket.identity);
     expect(host.getSnapshot().capture.room).toBeNull();
 
     // The organizer pauses Design from inside it: Design is told and shows it, Support and the call's notes carry on.
@@ -634,15 +651,15 @@ describe('breakout rooms, each with its own keys', () => {
     await lena.call.refresh();
     expect(lena.call.getSnapshot().capture.room).toMatchObject({ id: support, mode: 'on' });
     expect(lena.call.getSnapshot().notices.some((n) => n.text.includes('in this room'))).toBe(false);
-    // Nothing said in Design is taken: its speech, captions, catching up and questions are refused, whoever sends them.
-    const refused = await host.transcribe(speech('CANARY-PAUSED said in Design.', 0, 3000), kofi.call.ticket.identity).catch((e: unknown) => e);
+    // Nothing said in Design is taken: its speech, even from its scribe, captions, catching up and questions are refused.
+    const refused = await kofi.call.transcribe(speech('CANARY-PAUSED said in Design.', 0, 3000), kofi.call.ticket.identity).catch((e: unknown) => e);
     expect(code(refused)).toBe('conflict');
     expect(refused instanceof Error ? refused.message : '').toContain('paused in this room');
     expect(code(await kofi.call.catchUp({ kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await kofi.call.askSoFar('What did we decide?', { kind: 'all' }).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await kofi.call.translate(['x'], 'fr').catch((e: unknown) => e))).toBe('conflict');
     // Support's is, and the recording goes on: the call's notes are still on.
-    await host.transcribe(speech('Support is going fine.', 0, 3000), lena.call.ticket.identity);
+    await lena.call.transcribe(speech('Support is going fine.', 0, 3000), lena.call.ticket.identity);
     await settle(lena.call, (x) => x.transcript.some((l) => l.text === 'Support is going fine.'));
     await host.appendAudio(piece(audioBytes('rooms'), 0, 1));
     // Only the organizer pauses a room, and only a room of this call that's open.
@@ -654,7 +671,7 @@ describe('breakout rooms, each with its own keys', () => {
     const resumed = await settle(kofi.call, (x) => x.capture.room?.mode === 'on');
     expect(resumed.notices.map((n) => n.text)).toContain('The organizer resumed notes in this room. Everyone here can see that.');
     expect(resumed.capture.room?.gaps.map((g) => ({ kind: g.kind, open: g.to === null }))).toEqual([{ kind: 'paused', open: false }]);
-    await host.transcribe(speech('Design again.', 0, 6000), kofi.call.ticket.identity);
+    await kofi.call.transcribe(speech('Design again.', 0, 6000), kofi.call.ticket.identity);
     const again = await settle(kofi.call, (x) => x.transcript.some((l) => l.text === 'Design again.'));
     expect(again.transcript.map((l) => l.text)).not.toContain('CANARY-PAUSED said in Design.');
 
@@ -664,7 +681,7 @@ describe('breakout rooms, each with its own keys', () => {
     await host.pause();
     expect((await settle(lena.call, (x) => x.capture.room?.mode === 'paused')).capture.mode).toBe('paused');
     await settle(kofi.call, (x) => x.capture.mode === 'paused');
-    expect(code(await host.transcribe(speech('Support while paused.', 0, 9000), lena.call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await lena.call.transcribe(speech('Support while paused.', 0, 9000), lena.call.ticket.identity).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await host.pauseRoom(support, true).catch((e: unknown) => e))).toBe('conflict');
     // Capture times are kept in tenths of a second, and a pause that ends in the tenth it began leaves no gap: let this
     // one last long enough to measure, or a fast run resumes in the same tenth and Support has nothing to show.
@@ -681,6 +698,20 @@ describe('breakout rooms, each with its own keys', () => {
     const back = await settle(kofi.call, (x) => x.breakouts.open === null);
     expect(back.capture.room).toBeNull();
     expect(back.capture.mode).toBe('on');
+
+    // Each room's section of the notes has what was taken there, and its gaps: Design's two pauses (the second until
+    // it closed) and Support's while the whole call was paused. Nothing said while Design was paused is in it.
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const [inDesign, inSupport] = (await org.api.notes.get(noteId)).rooms;
+    expect(inDesign?.transcript.map((l) => l.text)).toEqual(['Design again.']);
+    expect(inDesign?.gaps.map((g) => [g.kind, g.to === null])).toEqual([['paused', false], ['paused', false]]);
+    expect(inSupport?.transcript.map((l) => l.text)).toEqual(['Support is going fine.']);
+    expect(inSupport?.gaps.map((g) => [g.kind, g.to === null])).toEqual([['paused', false]]);
+    // A note whose only talk was in breakout rooms can be written again too.
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true });
+    await written(org.api, noteId);
+    expect((await org.api.notes.get(noteId)).rooms.map((r) => r.summary)).toEqual([inDesign?.summary, inSupport?.summary]);
   });
 
   it('adds someone sent to another room even when their key package for it arrives before the organizer’s browser takes them out of the old one', async () => {
@@ -772,7 +803,8 @@ describe('breakout rooms, each with its own keys', () => {
     await inPlace(host, design);
     await kofi.call.sendChat('CANARY-EARLIER in Design');
     await logged(host, 'CANARY-EARLIER in Design');
-    await host.transcribe(speech('Design, before the reload.', 0, 2000), kofi.call.ticket.identity);
+    expect(await scribeIn(kofi.call, design)).toBe(kofi.call.ticket.identity);
+    await kofi.call.transcribe(speech('Design, before the reload.', 0, 2000), kofi.call.ticket.identity);
     const kofiKey = senderKey(kofi.call, kofi.call.ticket.identity);
     const lenaKey = senderKey(lena.call, lena.call.ticket.identity);
 
@@ -827,6 +859,177 @@ describe('breakout rooms, each with its own keys', () => {
     // The rooms' log went with them: Design's chat is gone from the server.
     expect(Number((await h.pool.query<{ n: string }>(`SELECT count(*)::text AS n FROM call_mls WHERE call_id = $1 AND grp = ANY($2::text[])`, [host.ticket.callId, [design, support]])).rows[0]?.n ?? -1)).toBe(0);
     await host.leave();
+  });
+
+  it('gives every room its own section of the notes, from what its scribe heard there alone, and everyone the notes go to reads every room’s', async () => {
+    const { org, host, people: [kofi, mia, lena, ade] } = await roomsCall(['Kofi', 'Mia', 'Lena', 'Ade'], { notes: 'on' });
+    if (!kofi || !mia || !lena || !ade) throw new Error('four people');
+    const before = h.near.prompts.length;
+    await host.transcribe(speech('Two rooms, then back here.', 0, 0), host.ticket.identity);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email, ade.email] }], minutes: 10 });
+    const [design = '', support = ''] = await roomIds(host);
+    for (const [who, room] of [[kofi, design], [mia, design], [lena, support], [ade, support]] as const) await inPlace(who.call, room);
+    // One scribe in each room, one of the people sent there, and everyone there is told whose browser it is.
+    const designScribe = await scribeIn(kofi.call, design);
+    const supportScribe = await scribeIn(lena.call, support);
+    expect([kofi.call.ticket.identity, mia.call.ticket.identity]).toContain(designScribe);
+    expect([lena.call.ticket.identity, ade.call.ticket.identity]).toContain(supportScribe);
+    expect(await scribeIn(mia.call, design)).toBe(designScribe);
+    expect(await scribeIn(ade.call, support)).toBe(supportScribe);
+    const inDesign = designScribe === kofi.call.ticket.identity ? kofi.call : mia.call;
+    const inSupport = supportScribe === lena.call.ticket.identity ? lena.call : ade.call;
+
+    // The organizer visits Design only. Design's scribe sends what's said there, the organizer's words included, and
+    // Support's sends Support's, where the organizer never goes.
+    host.visitRoom(design);
+    await inPlace(host, design);
+    await inDesign.transcribe(speech('We agreed on blue buttons.', 0, 2000), kofi.call.ticket.identity);
+    await inDesign.transcribe(speech('Mia will draw the icons by Friday.', 0, 2500), mia.call.ticket.identity);
+    await inDesign.transcribe(speech('Should links be green?', 0, 3000), host.ticket.identity);
+    await inSupport.transcribe(speech('CANARY-ROOMTALK the queue is down to ten.', 0, 2000), lena.call.ticket.identity);
+    await inSupport.transcribe(speech('Ade will call the bank on Monday.', 0, 3000), ade.call.ticket.identity);
+    host.visitRoom(null);
+    await inPlace(host, 'main');
+    // Live, each room's talk stays in it: Design reads Design's, Support Support's, and the main room neither.
+    const texts = (x: CallState) => x.transcript.map((l) => l.text).sort();
+    expect(texts(await settle(mia.call, (x) => x.transcript.length === 3))).toEqual(['Mia will draw the icons by Friday.', 'Should links be green?', 'We agreed on blue buttons.']);
+    expect(texts(await settle(ade.call, (x) => x.transcript.length === 2))).toEqual(['Ade will call the bank on Monday.', 'CANARY-ROOMTALK the queue is down to ten.']);
+    expect(texts(await settle(host, (x) => x.transcript.length === 1))).toEqual(['Two rooms, then back here.']);
+    host.closeRooms();
+    for (const call of [host, kofi.call, mia.call, lena.call, ade.call]) await inPlace(call, 'main');
+    await host.transcribe(speech('Welcome back, everyone.', 0, 20_000), host.ticket.identity);
+    expect(texts(await settle(lena.call, (x) => x.transcript.length === 2))).toEqual(['Two rooms, then back here.', 'Welcome back, everyone.']);
+
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    // The call's own notes are the main room's: its lines, and a summary written from them alone.
+    expect(note.transcript?.map((l) => l.text)).toEqual(['Two rooms, then back here.', 'Welcome back, everyone.']);
+    expect(note.summary).toBe('Heard 2 lines. It ended on: Welcome back, everyone.');
+    // Each room has its section: its name, who was in it (the organizer only in the one it visited), how long it was
+    // open, and notes written from its own lines.
+    expect(note.rooms.map((r) => r.name)).toEqual(['Design', 'Support']);
+    const [d, sp] = note.rooms;
+    const emails = (people: { person?: { email: string } | undefined }[] | undefined) => (people ?? []).map((p) => p.person?.email ?? '?').sort();
+    expect(emails(d?.people)).toEqual([org.session.user.email, kofi.email, mia.email].sort());
+    expect(emails(sp?.people)).toEqual([lena.email, ade.email].sort());
+    expect((d?.to ?? 0) > (d?.from ?? 0)).toBe(true);
+    expect(d?.summary).toBe('Heard 3 lines. It ended on: Should links be green?');
+    expect(d?.decisions.map((x) => x.text)).toEqual(['We agreed on blue buttons.']);
+    expect(d?.questions.map((x) => x.text)).toEqual(['Should links be green?']);
+    expect(d?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Friday', 'Friday']]);
+    expect(d?.chapters.length).toBeGreaterThan(0);
+    expect(sp?.summary).toBe('Heard 2 lines. It ended on: Ade will call the bank on Monday.');
+    expect(sp?.actions.map((x) => x.text)).toEqual(['Call the bank on Monday']);
+    // Each was its own request to the notes model, with that room's lines and nobody else's; the call's had neither.
+    const prompts = h.near.prompts.slice(before);
+    const forRoom = (name: string) => prompts.filter((x) => x.includes(`the breakout room “${name}”`));
+    expect(forRoom('Design')).toHaveLength(1);
+    expect(forRoom('Design')[0]).not.toMatch(/CANARY-ROOMTALK|bank|Welcome back|Two rooms/);
+    expect(forRoom('Support')).toHaveLength(1);
+    expect(forRoom('Support')[0]).not.toMatch(/blue buttons|icons|links|Welcome back|Two rooms/);
+    const forCall = prompts.filter((x) => x.includes('Welcome back, everyone.'));
+    expect(forCall).toHaveLength(1);
+    expect(forCall[0]).not.toMatch(/CANARY-ROOMTALK|bank|blue buttons|icons|links/);
+
+    // Everyone the notes go to reads every room's section, whichever room they were in.
+    for (const who of [kofi, ade]) {
+      expect((await who.browser.api.notes.get(noteId)).rooms.map((r) => [r.name, r.transcript.length])).toEqual([['Design', 3], ['Support', 2]]);
+    }
+    // And asking about the notes reads the rooms' too.
+    const answer: unknown[] = [];
+    for await (const part of ade.browser.api.notes.ask(noteId, 'Who is drawing the icons?')) answer.push(part);
+    expect(answer.length).toBeGreaterThan(0);
+    expect(h.near.prompts.at(-1)).toContain('Mia will draw the icons by Friday.');
+    expect(h.near.prompts.at(-1)).toContain('the queue is down to ten');
+
+    // A room's decisions and follow-ups are settled like the call's, by anyone who has the notes, and a room's
+    // follow-ups are among the organizer's open follow-ups.
+    const blue = d?.decisions[0]?.id ?? '';
+    expect((await kofi.browser.api.notes.updateDecision(noteId, blue, { state: 'confirmed' })).rooms[0]?.decisions[0]?.state).toBe('confirmed');
+    expect((await org.api.notes.openActions()).filter((a) => a.noteId === noteId).map((a) => a.text).sort()).toEqual(['Call the bank on Monday', 'Draw the icons by Friday']);
+    // A room's line is corrected like the call's: its words by whoever said them (or the organizer), nobody else.
+    const balance = (await org.api.credits.balance()).balance;
+    const icons = d?.transcript.find((l) => l.text === 'Mia will draw the icons by Friday.')?.id ?? '';
+    const fixed = await mia.browser.api.notes.correctLine(noteId, icons, { text: 'Mia will draw the icons by Thursday.' });
+    expect(fixed.rooms[0]?.transcript.find((l) => l.id === icons)?.changes?.map((c) => c.what)).toEqual(['reworded']);
+    expect(code(await ade.browser.api.notes.correctLine(noteId, icons, { text: 'Ade will draw them.' }).catch((e: unknown) => e))).toBe('forbidden');
+    // Written again, each room's section is written again from its lines as they are, and nothing is charged again.
+    const sentAgain = h.near.prompts.length;
+    expect(await org.api.notes.rewrite(noteId)).toMatchObject({ status: 'ready', writingAgain: true });
+    await written(org.api, noteId);
+    const again = await org.api.notes.get(noteId);
+    expect(again.writingAgain).toBe(false);
+    // What was settled in the room stays as it was, and the room's notes model was told so; the rest is written again.
+    expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed']]);
+    expect(again.rooms[0]?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
+    const rewritten = h.near.prompts.slice(sentAgain).find((x) => x.includes('the breakout room “Design”')) ?? '';
+    expect(rewritten).toContain('Mia will draw the icons by Thursday.');
+    expect(rewritten).toContain('Already settled (don\'t list these again):\n- Decision (confirmed): We agreed on blue buttons.');
+    expect((await org.api.credits.balance()).balance).toBe(balance);
+
+    // The lines moved into the note, sealed: no live row is left, and nothing said in a room is readable in any row.
+    expect(await clipsOf(noteId)).toBe(0);
+    await expectNotInRows(['calls', 'items', 'revisions', 'transcript_clips', 'content_jobs'], ['CANARY-ROOMTALK']);
+    // Deleting the note deletes every room's section with it, for everyone.
+    await org.api.notes.delete(noteId);
+    expect(code(await ade.browser.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect(Number((await h.pool.query<{ n: string }>('SELECT count(*)::text AS n FROM revisions WHERE item_id = $1', [noteId])).rows[0]?.n ?? -1)).toBe(0);
+  });
+
+  it('takes a room’s speech only from its scribe, for the room its speaker was in, and hands the room on without losing or doubling a line', async () => {
+    const { org, host, people: [kofi, mia, lena] } = await roomsCall(['Kofi', 'Mia', 'Lena'], { notes: 'on' });
+    if (!kofi || !mia || !lena) throw new Error('three people');
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    const [design = '', support = ''] = await roomIds(host);
+    for (const [who, room] of [[kofi, design], [mia, design], [lena, support]] as const) await inPlace(who.call, room);
+    const first = await scribeIn(kofi.call, design);
+    const [scribe, other] = first === kofi.call.ticket.identity ? [kofi, mia] : [mia, kofi];
+    expect(await scribeIn(lena.call, support)).toBe(lena.call.ticket.identity);
+    host.visitRoom(design);
+    await inPlace(host, design);
+    const taken = (p: Promise<unknown>) => p.then(() => 'taken', (e: unknown) => code(e));
+    expect(await taken(scribe.call.transcribe(speech('First, the colours.', 0, 1000), other.call.ticket.identity))).toBe('taken');
+    // Nobody else sends Design's speech: not the other person there, nor the organizer, visiting.
+    expect(await taken(other.call.transcribe(speech('Not the scribe.', 0, 1500), other.call.ticket.identity))).toBe('forbidden');
+    expect(await taken(host.transcribe(speech('Visiting.', 0, 1500), host.ticket.identity))).toBe('forbidden');
+    // A scribe sends only the room it's in: Design's scribe not Support's speech, nor Support's scribe Design's.
+    expect(await taken(scribe.call.transcribe(speech('Support, overheard.', 0, 1500), lena.call.ticket.identity))).toBe('forbidden');
+    expect(await taken(lena.call.transcribe(speech('Design, overheard.', 0, 1500), other.call.ticket.identity))).toBe('forbidden');
+
+    // Mid-sentence, the organizer moves the scribe to Support, and Design passes to the other person there. What the
+    // old scribe heard begin before the move lands in Design, once; the new scribe takes what's said after it.
+    const begun = performance.now();
+    await sleep(150);
+    await host.moveToRoom(scribe.email, support);
+    await inPlace(scribe.call, support);
+    expect(await scribeIn(other.call, design, other.call.ticket.identity)).toBe(other.call.ticket.identity);
+    expect(await taken(scribe.call.transcribe(speech('Last words before the move.', 0, 2000, 4000, 'en', true, begun), other.call.ticket.identity))).toBe('taken');
+    // The new scribe heard the end of it too, but speech that began before its turn is the old scribe's to send.
+    expect(await taken(other.call.transcribe(speech('Last words before the move.', 0, 2000, 4000, 'en', true, begun), other.call.ticket.identity))).toBe('forbidden');
+    expect(await taken(other.call.transcribe(speech('After the move.', 0, 6000), other.call.ticket.identity))).toBe('taken');
+    // The old scribe, now in Support, sends nothing more: Design isn't its room, and Support's scribe is Lena's browser.
+    expect(await taken(scribe.call.transcribe(speech('Still listening.', 0, 7000), other.call.ticket.identity))).toBe('forbidden');
+    expect(await taken(scribe.call.transcribe(speech('Support, from me.', 0, 7000), scribe.call.ticket.identity))).toBe('forbidden');
+    expect(await scribeIn(scribe.call, support)).toBe(lena.call.ticket.identity);
+
+    // When the last of Design's people leaves the call, Design has no scribe: the organizer, visiting, is told nobody
+    // there can transcribe it.
+    await other.call.leave();
+    const deaf = await settle(host, (x) => x.capture.room?.id === design && x.capture.room.scribe === null);
+    expect(deaf.capture.room).toMatchObject({ mode: 'unavailable', transcript: { mode: 'unavailable' }, scribe: null });
+
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const [d, sp] = (await org.api.notes.get(noteId)).rooms;
+    expect(d?.transcript.map((l) => l.text)).toEqual(['First, the colours.', 'Last words before the move.', 'After the move.']);
+    expect(sp?.transcript).toEqual([]);
+    // Someone moved between rooms is among the people of both.
+    const emails = (people: { person?: { email: string } | undefined }[] | undefined) => (people ?? []).map((p) => p.person?.email ?? '?');
+    expect(emails(d?.people)).toContain(scribe.email);
+    expect(emails(sp?.people)).toEqual(expect.arrayContaining([scribe.email, lena.email]));
+    // A room where nothing was said gets its section all the same, with nothing written for it.
+    expect(sp?.summary).toBe('');
   });
 });
 
@@ -1444,7 +1647,7 @@ describe('joining by link', () => {
     expect(said((await org.api.notes.get(noteId)).transcript ?? [])).toEqual([...both, 'Sam: See you all next week.'].sort());
   });
 
-  it('keeps what’s said in a breakout room to the people there when it was said, under the room’s name, and out of the notes', async () => {
+  it('keeps what’s said in a breakout room to the people there when it was said, under the room’s name, and gives it to the notes as the room’s section', async () => {
     const org = await account();
     const kofiEmail = unique('kofi');
     const { code: c } = await org.api.calls.startNow({ guests: [kofiEmail] });
@@ -1460,22 +1663,27 @@ describe('joining by link', () => {
     await host.transcribe(speech('Before the rooms.', 0, 0), host.ticket.identity);
     host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
     const design = (await settle(host, (x) => x.breakouts.open !== null)).breakouts.open?.rooms.find((r) => r.name === 'Design')?.id ?? '';
+    // Kofi, the one person sent to Design, is its scribe: his browser hears Design and sends what's said there.
+    await settle(kofi, (x) => x.capture.room?.id === design && x.capture.room.scribe === kofi.ticket.identity);
     host.visitRoom(design);
     await settle(host, (x) => x.breakouts.open?.rooms.find((r) => r.id === design)?.members.includes(host.ticket.identity) ?? false);
     // In Design: the organizer, visiting, and Kofi, who was sent there. Sam, a guest, stays in the main room.
-    await host.transcribe(speech('Design starts with the colours.', 0, 4000), host.ticket.identity);
-    await host.transcribe(speech('Blue for the buttons.', 0, 4000), kofi.ticket.identity);
-    // The organizer goes back; a clip of Kofi's still on its way is kept where Kofi was.
+    await kofi.transcribe(speech('Design starts with the colours.', 0, 4000), host.ticket.identity);
+    await kofi.transcribe(speech('Blue for the buttons.', 0, 4000), kofi.ticket.identity);
+    // The organizer's browser doesn't send Design's speech, even while it's there, and Kofi's doesn't send the main room's.
+    expect(code(await host.transcribe(speech('Not mine to send.', 0, 5000), kofi.ticket.identity).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await kofi.transcribe(speech('Not Design’s.', 0, 5000), sam.ticket.identity).catch((e: unknown) => e))).toBe('forbidden');
+    // The organizer goes back; Design's scribe carries on hearing Design.
     host.visitRoom(null);
     await settle(host, (x) => !(x.breakouts.open?.rooms.some((r) => r.members.includes(host.ticket.identity)) ?? true));
-    await host.transcribe(speech('And green for links.', 0, 8000), kofi.ticket.identity);
+    await kofi.transcribe(speech('And green for links.', 0, 8000), kofi.ticket.identity);
     // Whisper is told the words said before a clip only in the same part of the call: none of Design's go with a
     // main-room clip, and none of the main room's with Design's, so it can't say them back into the other.
     const told = () => h.near.transcriptions.at(-1) ?? { language: null, prompt: null };
     await host.transcribe(speech('Sam, how is support going?', 0, 8000), host.ticket.identity);
     expect(told().language).toBe('en');
     expect(told().prompt).not.toMatch(/colours|buttons|green/);
-    await host.transcribe(speech('Grey for the borders.', 0, 10_000), kofi.ticket.identity);
+    await kofi.transcribe(speech('Grey for the borders.', 0, 10_000), kofi.ticket.identity);
     expect(told().prompt).toContain('And green for links.');
     expect(told().prompt).not.toContain('support');
     const where = (ls: TranscriptLine[]) => ls.map((l) => `${l.text} @ ${l.room?.name ?? 'main'}`).sort();
@@ -1497,10 +1705,14 @@ describe('joining by link', () => {
     expect(where((await settle(sam, (x) => x.transcript.length === 3)).transcript)).toEqual(['Back together now. @ main', 'Before the rooms. @ main', 'Sam, how is support going? @ main']);
     expect(where((await settle(kofi, (x) => x.transcript.length === 2)).transcript)).toEqual(['Back together now. @ main', 'Before the rooms. @ main']);
 
-    // The notes have the main room's lines, and nothing said in a room.
+    // The notes have the main room's lines, and Design's as its own section; Support, where nobody went, has none.
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    expect(where((await org.api.notes.get(noteId)).transcript ?? [])).toEqual(['Back together now. @ main', 'Before the rooms. @ main', 'Sam, how is support going? @ main']);
+    const note = await org.api.notes.get(noteId);
+    expect(where(note.transcript ?? [])).toEqual(['Back together now. @ main', 'Before the rooms. @ main', 'Sam, how is support going? @ main']);
+    expect(note.rooms.map((r) => [r.name, r.transcript.map((l) => l.text).sort()])).toEqual([
+      ['Design', ['And green for links.', 'Blue for the buttons.', 'Design starts with the colours.', 'Grey for the borders.']], ['Support', []]
+    ]);
   });
 
   it('asks Whisper what each person speaks before sending their clips in the call’s language', async () => {
