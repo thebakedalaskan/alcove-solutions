@@ -48,6 +48,10 @@
   their own words, in revisions that say who changed what; the notes are written again on request; and the notes
   recording mixes everyone the organizer's browser hears
   ([Notes and inference › Correcting the transcript](../engineering/notes-and-inference.md#correcting-the-transcript)).
+- Seamless reconnects and moving a call to another device: someone whose connection dropped comes back in as the
+  same person by themselves, and **Move to another device** hands a place in a call to a phone or another computer
+  (a QR code or link, one use, two minutes), releasing the old device's microphone before the new one's starts
+  ([Calls and recordings › Moving to another device](../engineering/calls-and-recordings.md#moving-to-another-device)).
 - Stand-ins for Microsoft and SSO sign-in, the sample calendar and the company directory
   (`apps/api/src/demo.ts`).
 - Privacy hardening: per-request key copies, keyed hashes instead of stored names and addresses, physical
