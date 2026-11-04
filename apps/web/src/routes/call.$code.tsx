@@ -186,10 +186,11 @@ function InCall({ session }: { session: CallSession }) {
   }, [organizer, on, live, segment, micTrack]);
   // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
   const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
+  // Everyone else is heard whether or not the organizer has a microphone of their own.
   useEffect(() => {
     const e = ears.current;
     if (!e) return;
-    if (organizer && on && live && micTrack) e.follow(segment, [{ identity: self, track: micTrack }, ...room.heard()]);
+    if (organizer && on && live) e.follow(segment, [...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()]);
     else if (!on || !organizer) e.stop();
   }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
   useEffect(() => () => ears.current?.stop(), []);
