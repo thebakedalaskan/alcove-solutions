@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Provenance } from '~/features/notes/Evidence';
 import { Player, usePlayer } from '~/features/notes/Player';
 import { askExample, exampleNote } from '~/features/notes/example';
+import { speakersOf, type Correcting } from '~/features/notes/lines';
 import { AskBar, Chapters, Decisions, DocHead, FollowUps, Questions, Recipients, Section, Transcript, TranscriptLines, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, ScreensCard, useScreenViewer } from '~/features/notes/screens';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
@@ -16,7 +17,7 @@ import { SeriesCard } from '~/features/series/cards';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { listNames, sameEmail } from '~/lib/people';
-import { q, qk, useDeleteNote, useShareNote, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { q, qk, useCorrectLine, useDeleteNote, useRewriteNotes, useShareNote, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
 import { noteWhen } from '~/lib/time';
 
 /** `at`: a moment to open the notes at (seconds into the call), from a link in a series or an answer. */
@@ -110,6 +111,8 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   const updateAction = useUpdateAction();
   const updateDecision = useUpdateDecision();
   const updateQuestion = useUpdateQuestion();
+  const correctLine = useCorrectLine();
+  const rewrite = useRewriteNotes();
   const player = usePlayer(note.id, note.audio);
   // Brought here to a moment: the audio waits there, ready to play. Once per link, so a refresh doesn't move it back.
   const { seek: cue } = player;
@@ -155,6 +158,15 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
   });
   const changeDecision = (d: Decision, patch: DecisionPatch) => updateDecision.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
   const changeQuestion = (x: Question, patch: QuestionPatch) => updateQuestion.mutate({ noteId: note.id, questionId: x.id, patch }, { onError: failed });
+  // The organizer corrects any line; anyone else who has the notes, the words of their own lines (the server's rule too).
+  const correct: Correcting | undefined = ready ? {
+    can: (l) => mine || (!!me && !!l.speaker?.person?.email && sameEmail(l.speaker.person, { email: me })),
+    people: mine && note.kind === 'call' ? speakersOf(note) : null,
+    onCorrect: (l, patch) => correctLine.mutate({ noteId: note.id, lineId: l.id, patch }, { onError: failed })
+  } : undefined;
+  const since = note.writtenAt;
+  const corrected = since ? lines.filter((l) => (l.changes ?? []).some((c) => c.at > since)).length : 0;
+  const writeAgain = () => rewrite.mutate(note.id, { onError: failed });
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
   const stillOpen = note.questions.filter((x) => x.state === 'open').length;
   const part = (i: number) => ({ className: going ? 'going' : undefined, style: { '--d': i } });
@@ -220,7 +232,18 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                   <FollowUps actions={note.actions} me={me} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} shown={onScreen} />
                 </Section>
               )}
-              {lines.length > 0 && <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}><Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} /></section>}
+              {lines.length > 0 && (
+                <section className={cn('sec', going && 'going')} style={{ '--d': 4 }}>
+                  {mine && corrected > 0 && (
+                    <div className="tr-again">
+                      <Icon name="pen" size={16} />
+                      <span>{corrected === 1 ? 'A line was corrected' : `${corrected} lines were corrected`} since these notes were written.</span>
+                      <Button variant="secondary" size="sm" loading={rewrite.isPending} onClick={writeAgain}>Write the notes again</Button>
+                    </div>
+                  )}
+                  <Transcript lines={lines} gaps={note.gaps} seconds={note.duration} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} />
+                </section>
+              )}
             </>
           ) : ready && lines.length ? (
             <>
@@ -228,8 +251,9 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
                 <Notice tone="caution" icon="pen">
                   <b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
                 </Notice>
+                {mine && <Button variant="secondary" size="sm" className="mt-3" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button>}
               </section>
-              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} /></Section>
+              <Section title="Transcript" count={minutesLabel(note.duration)} {...part(1)}><TranscriptLines lines={lines} gaps={note.gaps} me={me} onSeek={seek} focus={at} screens={screens} correct={correct} /></Section>
             </>
           ) : ready ? (
             <section className={cn('sec', going && 'going')}>
@@ -240,9 +264,15 @@ function NoteView({ note, me, at, onGone }: { note: Note; me: string | undefined
           ) : (
             <>
               <section className={cn('sec', going && 'going')}>
-                <Notice tone="info" icon="lock">
-                  <b>{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b> Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.
-                </Notice>
+                {note.status === 'pending' && note.writtenAt ? (
+                  <Notice tone="info" icon="pen">
+                    <b>Writing the notes again.</b> From the transcript as it is now, with its corrections. What people already confirmed or changed stays as it is.
+                  </Notice>
+                ) : (
+                  <Notice tone="info" icon="lock">
+                    <b>{note.status === 'recording' ? 'The recording is still going.' : 'The audio is saved and encrypted.'}</b> Summary, decisions and follow-ups are written by Alcove’s notes service. Everyone here gets them when it has.
+                  </Notice>
+                )}
                 {progress && (
                   <ul className="steps">
                     {progress.steps.map((s) => <li key={s.label} className={cn(s.done && 'done')}><Icon name={s.done ? 'check' : 'clock'} size={15} />{s.label}</li>)}

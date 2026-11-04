@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type InstantCallInput, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { weekOn } from './time';
@@ -171,6 +171,19 @@ export function useUpdateAction() {
     mutationFn: (v: { noteId: string; actionId: string; patch: ActionPatch }) => api.notes.updateAction(v.noteId, v.actionId, v.patch),
     onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.openActions }); }
   });
+}
+/** Corrects a transcript line's words or speaker, or says it's right as heard; the answer is the note as it is now. */
+export function useCorrectLine() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; lineId: string; patch: LinePatch }) => api.notes.correctLine(v.noteId, v.lineId, v.patch),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/** The organizer has the notes written again from the transcript as it is now; the note answers pending until they are. */
+export function useRewriteNotes() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (noteId: string) => api.notes.rewrite(noteId), onSuccess: (n) => changed(qc, n) });
 }
 export function useShareNote() {
   const qc = useQueryClient();
