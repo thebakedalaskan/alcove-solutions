@@ -8,10 +8,14 @@ import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type Ca
 import type { ClientEvent } from '@alcove/api-http';
 import { DisconnectReason } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from './testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from './testing/harness';
 import { connect, deleteRoomDirectly, disposeLiveKit, participantsDirectly, signWebhook, tokenDirectly, type TestParticipant } from './testing/livekit';
+
+// Calls here use real WebRTC through LiveKit, which a busy CI runner can be slow to set up. Every step waits at most
+// 15 s and says what it was waiting for, so a test gets 90 s: slow steps can add up, and a stuck one still fails.
+vi.setConfig({ testTimeout: 90_000 });
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
