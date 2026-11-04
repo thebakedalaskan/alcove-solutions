@@ -3,7 +3,7 @@
  * exactly as a browser would, encrypting media with the call's MLS-derived key as a browser does, and observe
  * media and data from the other side.
  */
-import { CALL_TOPIC, CallNudgeSchema, type CallCrypto, type LiveStore } from '@alcove/api';
+import { CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallCrypto, type LiveStore } from '@alcove/api';
 import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, EncryptionType, KeyProvider, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, dispose, type RemoteTrack
@@ -63,10 +63,18 @@ export type Keys =
   | { sending: LiveStore<CallCrypto> }
   | { hearing: LiveStore<CallCrypto>; from: string; senderSends: LiveStore<CallCrypto> }
   | { key: Uint8Array; index: number };
+/**
+ * The key a test participant uses now, or null to keep the one it has. A sender between two parts of the call has no
+ * key to send with (`send` is null): like a browser, it then sends under a key nobody has.
+ */
 const keyFor = (k: Keys): { key: Uint8Array; index: number } | null => {
   if ('key' in k) return k;
-  if ('sending' in k) return k.sending.getSnapshot().media?.send ?? null;
-  const at = k.senderSends.getSnapshot().media?.send.index;
+  if ('sending' in k) {
+    const media = k.sending.getSnapshot().media;
+    if (!media) return null;
+    return media.send ?? { key: new Uint8Array(randomBytes(32)), index: CALL_VOID_KEY_INDEX };
+  }
+  const at = k.senderSends.getSnapshot().media?.send?.index;
   const epoch = k.hearing.getSnapshot().media?.epochs.find((e) => e.index === at);
   const key = epoch?.keys[k.from];
   return epoch && key ? { key, index: epoch.index } : null;
