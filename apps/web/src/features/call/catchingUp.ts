@@ -96,6 +96,12 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     o.setPanel(o.narrow || was === null || was === 'closed' || was === 'ask' ? null : was);
   };
   const settle = () => { setMoment(null); setBefore(null); };
+  // However the panel moves on (Escape, its own buttons), a moment shows only in the transcript view, and a closed
+  // panel has no way back to offer.
+  useEffect(() => {
+    if (o.panel !== 'transcript') setMoment(null);
+    if (o.panel === null) setBefore(null);
+  }, [o.panel]);
 
   /* Coming back after time away, or joining late: offered once, as a toast. Guests can't read what was said then. */
   const latest = useRef(catchUp);

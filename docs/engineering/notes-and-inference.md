@@ -449,8 +449,8 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
 - **What comes back.** A catch-up (`CatchUp`) is a short `summary` and four lists: `decided`, `proposed` (never
   counted as decided), `open` questions and `next` steps, with an `owner` and `due` as they were said. An answer
   (`CallAnswer`) is its `text`. Each point, and each answer, carries its `evidence`: the transcript moments it
-  comes from, each a line's ID and when it was said. `Evidence` is a list of kinds of moment; moments of a
-  shared screen join it once shared screens are read for the notes.
+  comes from, each a line's ID and when it was said. `Evidence` is a union of kinds of moment, today only
+  transcript lines; moments of a shared screen join it as a kind of their own once shared screens are read.
 - **No invented evidence.** The lines go to the notes model numbered (`L12 [03:41] Name: words`), and it says
   which numbers each point comes from. Only numbers of lines it was sent from the stretch read are kept; any
   other is dropped, and a point it couldn't tie to any such line is left out (and counted in the log). The
