@@ -36,8 +36,11 @@
   ([Calls and recordings › Shared screens](../engineering/calls-and-recordings.md#shared-screens)).
 - Breakout rooms with their own end-to-end encryption: each room is its own MLS group, so its own media keys
   and chat; moving someone between rooms moves their keys; what's said in a room shows only there (transcript,
-  captions, catching up) and is deleted when it closes; and each room has its own capture state, which the
+  captions, catching up) while the call runs; and each room has its own capture state, which the
   organizer can pause ([Calls and recordings › End-to-end encryption](../engineering/calls-and-recordings.md#end-to-end-encryption)).
+- Each breakout room's own notes, as a section of the call's: one browser in each room, its scribe, transcribes
+  it, and the verified notes model writes the room's summary, decisions, open questions, follow-ups and chapters
+  from its lines alone, for everyone who gets the notes ([Notes and inference › Breakout rooms](../engineering/notes-and-inference.md#breakout-rooms)).
 - Catching up during a call, for the person asking alone: what they missed while away or before they joined,
   or any stretch of the call, sorted into decided, proposed, open and next, each point with the transcript moments
   it came from (only real lines), saying what it couldn't have heard and as of when, with Back to live. In a
@@ -90,4 +93,4 @@
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |
 | 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 11 | A breakout room's own notes, for the people who were in it; each room committed by one of its own members | What's said in a room is shown live there and kept out of the call's notes today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |
+| 11 | Each breakout room committed by one of its own members | The host's browser commits for every room's group today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |

@@ -5,7 +5,8 @@
 ## Status
 
 Notes are written end to end with NEAR AI Cloud (`I01`). While notes are on, the browser sends short clips
-of speech (in a call, the host's browser, for everyone it hears: the organizer's, or a stand-in's while the organizer is away); Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
+of speech (in a call, the host's browser for everyone it hears in the main room, the organizer's, or a stand-in's while
+the organizer is away, and each breakout room's scribe for its room); Whisper transcribes each one, and the lines are kept as sealed rows, so the call and the room
 recorder show a live transcript. When the recording stops, the transcript moves into the note, and a
 worker inside the API process has the notes model write the summary, decisions, open questions, follow-ups,
 chapters and suggested questions. When the organizer had shared screens read, the notes model reads each frame
@@ -207,14 +208,21 @@ sequenceDiagram
    speech began, at most ten minutes). A declared `content-length` over the limit is refused before the body is read;
    then the WAV header is checked (RIFF/WAVE, PCM, one channel, 16,000 Hz, 16 bits). Anything else is
    `400 invalid`. Each account may send 240 clips a minute, calls and room recordings together, and in a call
-   each voice 40; past that the answer is `503 unavailable` ("Too many attempts").
+   each voice 40; past that the answer is `503 unavailable` ("Too many attempts"). In a call a clip counts only
+   once the call has taken it as the sender's to send (step 3), so clips it refuses use up nobody's allowance.
 3. **When a clip is taken.** For a call, only while it is live, notes are on (not paused) and the clip's
    segment is the current one; the capture gate, `mayCapture` in `apps/api/src/modules/capture.ts`, decides.
    Then only where the call can place it: in the part of the call its speaker was in when it began (`placeAt`,
-   from where each person has been, and never before they came into the call), which must still be open, and
-   the gate is asked again for that part, so nothing is taken in a breakout room the organizer has paused. A clip
-   from before its speaker's last two moves, for a breakout room that has closed, or for a paused room, is
-   refused (`409`). For a room recording, only while it is recording
+   from where each person has been, and never before they came into the call), and only from the browser that
+   hears that part: the organizer's current connection for the main room, or whoever was a breakout room's scribe
+   when the speech began, even if the room has closed since (`403 forbidden` from anyone else; see
+   [Calls and recordings › Breakout rooms](calls-and-recordings.md#hands-spotlight-breakout-rooms-and-captions)).
+   The gate is asked again for that part, so nothing is taken in a breakout room the organizer has paused, nor
+   speech that began while it was (or while the call's notes were paused or off), when the room is asked as of then.
+   A clip from before its speaker's last two moves, or for a paused room, is refused (`409`). A breakout room's
+   clip is placed in its segment by the server's clock, from when the segment began (`segmentFrom` in the call's
+   state): its scribe's browser counts from when it loaded, so its own start would put the line wherever that was.
+   It's still known by the start its browser gave it (step 4), so a retry is kept once. For a room recording, only while it is recording
    (not paused), and only segment 0.
    Otherwise `409 conflict` (`400 invalid` for a room segment other than 0). Only the account's own calls
    and recordings: anyone else gets `404 not-found`.
@@ -305,10 +313,10 @@ sequenceDiagram
    lines name nobody. The HTTP client takes only the transcript from a clip's answer, merged into the one it has,
    so a slow clip can't undo a newer mic or notes change; an answer from before the browser moved to another part
    of the call adds nothing, and moving clears it.
-10. **A room's lines go with it.** When a breakout room closes, its clips and their translations are deleted, in
-    the transaction that closes it. A clip or translation still being made then is dropped where it would be kept:
-    that transaction holds the call's row, which keeping a clip shares and checks again
-    ([Calls and recordings › Breakout rooms](calls-and-recordings.md#hands-spotlight-breakout-rooms-and-captions)).
+10. **A room's lines wait for its section.** When a breakout room closes, its lines stay sealed in
+    `transcript_clips`, read live by nobody (no part of the call is that room any more), and speech that began
+    there before it closed is still taken from its scribe. When the call ends they go into the note as the room's
+    own section ([Breakout rooms](#breakout-rooms)), and their caption translations are deleted with the rest.
 11. **What it isn't sure of.** Each line says what the transcript can't vouch for (`TranscriptLine.unsure`):
     `words`, Whisper was unsure of them (step 6); `speaker`, the same words were heard on someone else's
     microphone at the same moment. In a call each voice is heard on its own track, so a line is said by whoever's
@@ -334,7 +342,8 @@ sequenceDiagram
    recording, the seconds recorded.
 2. The transcript rows are opened and written into the note's sealed manifest in recording order, each line
    kept inside its own segment (one placed past the end of its segment's audio goes at the segment's end); in
-   a call each line keeps who said it, and only the main room's lines go in; in a room recording nobody is
+   a call each line keeps who said it, and the main room's lines are the note's transcript, while each breakout
+   room's go into that room's section ([Breakout rooms](#breakout-rooms)); in a room recording nobody is
    named; each keeps what the transcript couldn't vouch for; with the verifications they went to as `inference`. A call's gaps go into the manifest too (`gaps`:
    every stretch with notes off or paused, when, and where it falls in the recording). Then the `transcript_clips` rows, and any `transcript_translations` made for captions, are
    deleted. A call's breakout rooms are written into the manifest too, in recording time, and kept with the note,
@@ -361,8 +370,10 @@ account.
 - **Keys.** The worker opens the account's keys through `KMASTER`, as a request does, and zeroes its copies
   when the job ends.
 - **Writing.** A job whose account can't be opened, or whose note was deleted, is dropped. The note's
-  shared-screen frames are read first ([Shared screens](#shared-screens)). A note without transcript lines is
-  then finished, with its screens read but without notes and without a charge. Otherwise `draft` in
+  shared-screen frames are read first ([Shared screens](#shared-screens)), then each breakout room's section
+  with lines, one request each, three at a time, the job's lease renewed before every request (the call's
+  too), so a call with many rooms stays this worker's ([Breakout rooms](#breakout-rooms)). A note without transcript lines is
+  then finished, with its screens and rooms, and charged only when a room's notes were written. Otherwise `draft` in
   `apps/api/src/modules/drafting.ts` asks the notes model, and one transaction writes the note `ready`
   with what it wrote, when it read the transcript (`writtenAt`: the worker reads the note holding its row, as a
   correction does, so a correction made after it is later) and the model's verification (once, by
@@ -398,6 +409,42 @@ account.
   Time in a call with notes off isn't charged. Notes are charged the first time they're written: writing them
   again isn't, and notes that couldn't be written are charged when the organizer has them written after all. Nothing checks the balance first, so a charge can take it below
   zero ([Payments and usage](payments-and-usage.md)).
+
+## Breakout rooms
+
+A call's breakout rooms each get a section of its note (`rooms` in the note's manifest and in `Note`), under the
+call's own notes. Everyone is told so when rooms open with notes on, and in each room's notes sign ([Calls and recordings › Breakout rooms](calls-and-recordings.md#hands-spotlight-breakout-rooms-and-captions)).
+
+- **What's in one.** The room's name; everyone who was in it while it was open (the organizer only if it
+  visited), each once; when it was open, in seconds into the recording; its gaps (the call's notes off or paused,
+  and the room's own pauses, the last one until it closed); what was said there, each line under whoever said it;
+  and its summary, decisions, open questions, follow-ups and chapters, written from those lines alone.
+- **Where it comes from.** Each room's scribe transcribes it during the call. Its lines stay sealed in
+  `transcript_clips` until the call ends, and move into the note's sealed manifest when the recording stops, when
+  the live rows are deleted. Room audio isn't recorded: the notes recording is what the host's browser hears
+  in the main room, silent while the host is in a room, so a section has a room's words, never its sound.
+- **Writing.** One request to the notes model for each room with lines (`writeRooms` in `writer.ts`, the brief
+  from `roomBriefOf` in `drafting.ts`), through the same `draft`, sealed to the same verified model, each request's
+  evidence kept in the note's `inference` with the rest. A room where nothing was said keeps its section, with its
+  name, people and time, and nothing is written for it; the note shows "Nothing was said here while notes were
+  on". An answer that can't be used (it wouldn't open, or came back with the shape and no words in its summary) is
+  asked for again, three tries in all, as the job gives the call's. A room whose notes still couldn't be written keeps
+  its lines, and the note says so, with **Try writing them again** for the organizer; the call's notes and the other
+  rooms' are written all the same. Waiting for the notes model, or a note deleted meanwhile, stops the whole job as
+  it would without rooms.
+- **Who reads it.** Everyone who can read the note reads every room's section, whichever room they were in (or
+  none): the organizer, everyone invited, and anyone it's shared with. During the call, a room's talk stays with
+  the people there ([Catching up during a call](#catching-up-during-a-call)). A room's decisions, questions and
+  follow-ups are settled like the call's (the same `PATCH` routes find an item in either), and a room's follow-ups
+  count among the note's open ones.
+- **Correcting and writing again.** A room's lines are corrected like the call's (`correctLine` finds a line in
+  either), and writing the notes again writes each room's section again from its lines as they are, in the same
+  job, keeping what people settled in it as the call's notes do (`keepSettled`). The rewrite brings only a room's
+  notes (its summary, chapters, and the decisions, questions and follow-ups nobody settled): its lines are taken as
+  they are when the notes are saved, so one corrected meanwhile stays corrected. A note whose only talk was in
+  breakout rooms can be written again too, and the offer to write them again counts the rooms' corrected lines.
+- **Asking and deleting.** Asking about the note reads each room's summary and lines after the call's. A room's
+  section is part of the note: deleting the note deletes it, with every revision.
 
 ## Shared screens
 
@@ -454,9 +501,9 @@ nothing on a screen goes to the AI during the call, paused or not.
 ## Asking
 
 `POST /v1/notes/:id/ask` with `{question}` (1 to 500 characters, in the body) answers anyone who can read
-the note ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). It needs a
-`ready` note with transcript lines (`409 conflict` otherwise) and allows 20 questions a minute per
-account. The answer is one `text` part followed by up to four `cite` parts, each the note's ID and seconds
+the note ([Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). It reads the
+breakout rooms' sections too. It needs a `ready` note with transcript lines, the call's or a room's
+(`409 conflict` otherwise), and allows 20 questions a minute per account. The answer is one `text` part followed by up to four `cite` parts, each the note's ID and seconds
 into its recording the app can play from, and up to two `screen` parts, the note's shared screens it was read
 on (a `ScreenMoment`'s ID and second). Questions and answers are not stored, keep no operation receipt, and
 cost no credits. Writing an answer can take up to a minute, so once it's written the asker's access is checked
@@ -591,12 +638,12 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   - `gaps`: the stretches with nothing captured that touch it, before notes first came on and while they were off
     or paused. They're the call's own `CaptureGap`s (`capture.gapsOf`), the same the transcript marks, and the
     notes model reads each as a `--` line among the lines.
-  - `missed`: stretches of two seconds or more with notes on and nothing transcribed, because no hosting browser,
-    which sends what's said, was in the call: from when each connection hosted (the organizer's, or someone's
-    standing in for them). A host whose connection dropped stopped sending when LiveKit said so, though it hosts
-    until someone else does, so a hand-off leaves only the stretch from the drop until the new host's browser
-    took over ([Calls and recordings › Host hand-off](calls-and-recordings.md#host-hand-off)). A pause is a gap,
-    never this.
+  - `missed`: stretches of two seconds or more with notes on and nothing transcribed, because no browser was there to
+    send what's said. In the main room: no hosting browser was in the call, from when each connection hosted (the
+    organizer's, or someone's standing in for them). A host whose connection dropped stopped sending when LiveKit said
+    so, though it hosts until someone else does, so a hand-off leaves only the stretch from the drop until the new
+    host's browser took over ([Calls and recordings › Host hand-off](calls-and-recordings.md#host-hand-off)). In a
+    breakout room: it had no scribe since it opened (from the room's scribes). A pause is a gap, never this.
   - `whileHere`: being a guest left part of the stretch out.
   - `skipped`: the middle of a stretch too long to read at once. Over 120,000 characters of transcript the model
     reads the beginning and the end; what it skipped is said with its times and how many lines, and those lines
@@ -614,7 +661,7 @@ summary, refreshed when a new line arrives (at most every 30 seconds, only while
   per connection to the call.
 - **Who reads what.** Catching up reads through the call's one reading rule (`readableBy` in
   `apps/api/src/modules/places.ts`): what was said in the part of the call someone is in now, while they were
-  there. In a breakout room that's the room's lines alone, and they go when the room closes; a room the organizer
+  there. In a breakout room that's the room's lines alone, read there only while it's open; a room the organizer
   has paused refuses catching up and asking, like the rest of what reaches the AI there. On top of that rule, the
   organizer and everyone on the invite read all of it: they get the notes anyway. It's the invite that counts,
   read at every request, so someone added to it after coming in with the link reads all of it from then on. A
@@ -752,7 +799,12 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   note; see [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). Notes written
   again list what people already settled before the transcript, under "Already settled (don't list these again)":
   each decision, question and follow-up someone changed, with where it stands, one line each.
-- **Answering.** The summary, the asker's name and the question are added. One JSON object,
+- **A breakout room's notes.** As the call's, with the room's own people, length and lines, and a line saying
+  which breakout room it is and to write the notes of that room alone, from what was said in it; written again,
+  with what was settled in the room's section listed the same way.
+- **Answering.** The summary, each breakout room's summary and transcript (by the room's name and its people,
+  fenced like the call's), the asker's name and the question are added. The call's transcript and the rooms' share
+  one budget (the 120,000 characters a single transcript may have), each in proportion to its length. One JSON object,
   `{answer, moments}`: a direct answer of at most four sentences (longer when the question asks for a draft
   such as an email), "I" and "me" meaning the asker, saying plainly when the transcript doesn't cover it, up to
   four seconds the answer comes from, and up to two shared screens it comes from (`screens`).
@@ -933,7 +985,15 @@ the evidence the note keeps. In `apps/api/src/calls.integration.test.ts`, `asks 
 speaks before sending their clips in the call’s language` covers someone heavily accented (sent it after one
 long clip) and someone speaking Spanish (a short hello and a sentence without it, then nobody's in one
 language), and the breakout-room test checks that no room's words go to Whisper with another part of the
-call's clips. `in the call: hands, spotlight, breakout rooms and captions` covers translating
+call's clips. `breakout rooms, each with its own keys` covers each room's section of the notes: every room gets
+one from its own scribe's clips (four people in two rooms, the organizer visiting one), each written in its own
+request from its lines alone, read by everyone the notes go to and by asking, and gone with the note; speech
+refused from anyone but the room's scribe and for a room its speaker isn't in; a scribe moved mid-sentence handing
+the room on with nothing lost or doubled, and a room left without one; a paused room taking nothing, its gaps in
+its section; a room where nothing was said keeping its section; a room's decision confirmed, and its follow-ups
+among the open ones; and a room's line corrected by whoever said it (nobody else), the rooms' sections written
+again from it without a second charge, keeping the confirmed decision, and a note whose only talk was in rooms
+written again. `in the call: hands, spotlight, breakout rooms and captions` covers translating
 captions (once per line and language, sealed to the verified notes model, cross-account, gone when the call
 ends) and breakout rooms ending up in the notes' chapters.
 `asking your notes` covers an answer from your own note and one from a call you were invited to, citing
@@ -1003,7 +1063,7 @@ joined and while you were away (a page that goes away and comes back), the last 
 said before them, both ends of a stretch in it, a stretch with nothing said answered without asking the model,
 ranges refused (one that hasn't happened, one that ends before it starts, time away for someone who hasn't been
 away, an unknown kind); what a stretch is missing (before notes came on, while they were off or paused, while the
-host's connection was away) and what a stretch too long to read at once skipped; a guest with the link
+host's connection was away, or in a breakout room while it had no scribe) and what a stretch too long to read at once skipped; a guest with the link
 reading only what was said while they were here, in the live transcript, catching up, asking, moments and
 captions, and nothing from while they were away, while someone invited before the call, or added to the invite
 once let in from the link, reads it all; answers withheld from someone removed, gone or past the end of the call while they were written; refusals
@@ -1070,13 +1130,19 @@ has one behaviour, the same for everyone, and says it here.
 - **New images need measuring.** When NEAR AI moves to another dstack release or another machine size,
   verification refuses it (`os-image`) and notes wait until its measurements are added to
   `dstack-images.ts`, computed the same way.
-- **Who said what.** A call line is said by whoever's voice it was, as the host's browser heard each voice
-  on its own; someone in a breakout room the host isn't in isn't heard. The notes recording mixes what the host's
+- **Who said what.** A call line is said by whoever's voice it was, as the browser that heard it (the host's in the
+  main room, a room's scribe in the room) heard each voice on its own. The notes recording mixes what the host's
   browser hears in the main room (the organizer's, or a stand-in's while the organizer is away, each in its own
-  segments), its own microphone with everyone else's, and is silent while the organizer visits a breakout room
+  segments), its own microphone with everyone else's, and is silent while the host is in a breakout room
   ([Calls and recordings › The call screen](calls-and-recordings.md#the-call-screen)). Guests name themselves, so
   the notes model reads them marked as guests. Several people on one device are one voice. Room recordings have no
   speaker diarization.
+- **Rooms in a series, and across notes.** What a series carries into the next call is the call's own decisions,
+  questions and follow-ups, and asking across notes reads each note's own parts: a breakout room's section is in
+  neither yet.
+- **A scribe that can't listen.** A breakout room's scribe whose browser can't listen (no audio worklet, say) keeps
+  the room until it leaves or moves, and the room's speech isn't transcribed meanwhile. The host's browser tells the
+  call when it can't listen; a scribe's doesn't yet, so the call can't pick another.
 - **How sure, per line.** NEAR AI's Whisper gives confidence per segment, not per word, so a whole line is
   marked unsure, never single words. The −0.4 line was measured on synthetic speech; real microphones may need
   it moved.
@@ -1085,9 +1151,10 @@ has one behaviour, the same for everyone, and says it here.
 - **Written again, kept by words.** A new decision, question or follow-up that shares most of a settled one's
   words, near the same moment, is dropped as the same one, even when it says the opposite (a new "Drop the old
   logo" beside a rejected "Keep the old logo"). Telling the notes model what's settled is the main guard.
-- **An attested notes participant.** What the notes are made from leaves the call through the host's
-  browser: it sends what it hears to the API, everyone's speech as clips to transcribe and the recording's
-  pieces, over TLS but outside the media's end-to-end encryption. The API seals both at rest and sends speech on
+- **An attested notes participant.** What the notes are made from leaves the call through the browsers that hear
+  it, the host's for the main room and each breakout room's scribe's for the room: they send what they hear to the
+  API, everyone's speech as clips to transcribe and (the host's) the recording's pieces, over TLS but outside the
+  media's end-to-end encryption. The API seals both at rest and sends speech on
   only sealed to NEAR AI's verified Whisper, but the API itself runs on Cloud Run and isn't attested, so whoever
   operates it could read them ([Privacy › Moving to confidential computing](privacy-keys-and-sessions.md#moving-to-confidential-computing)).
   What's verified today is the inference: NEAR AI's models, before anything is sent to them. An attested notes
