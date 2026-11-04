@@ -127,15 +127,22 @@ function StretchPicker({ w, onPick }: { w: CatchUpWindow; onPick: (r: CatchUpRan
       <div ref={track} className="cu-track" onPointerDown={down} onPointerMove={(e) => { if (dragging.current) move(dragging.current, valueAt(e.clientX)); }}
         onPointerUp={() => { dragging.current = null; }} onPointerCancel={() => { dragging.current = null; }}>
         <span className="rail" />
+        <span className="sel" style={{ left: pct(from), width: pct(to - from) }} />
         {outside.map((x) => <span key={`o${x.from}`} className="out" style={{ left: pct(x.from), width: pct(x.to - x.from) }} />)}
         {w.gaps.map((g) => <span key={`g${g.from}`} className="gap" style={{ left: pct(g.from), width: pct(g.to - g.from) }} />)}
         {w.away && <span className="away" style={{ left: pct(w.away.from), width: pct(w.away.to - w.away.from) }} />}
-        <span className="sel" style={{ left: pct(from), width: pct(to - from) }} />
         {thumb('from', from, 'Start of the stretch')}
         {thumb('to', to, 'End of the stretch')}
       </div>
       <div className="cu-ends"><span>{at(0)}</span><span className="sel">{at(from)} to {to >= end ? 'now' : at(to)}</span><span>now</span></div>
-      <Button size="sm" variant="secondary" className="cu-use" onClick={() => onPick({ kind: 'between', from, to: to >= end ? null : to })}>Read this stretch</Button>
+      {(w.gaps.length > 0 || w.away || outside.length > 0) && (
+        <div className="cu-legend">
+          {w.gaps.length > 0 && <span><i className="gap" />Notes off</span>}
+          {w.away && <span><i className="away" />You were away</span>}
+          {outside.length > 0 && <span><i className="out" />You weren’t here</span>}
+        </div>
+      )}
+      <Button size="sm" variant="secondary" className="cu-use" onClick={() => onPick(from <= 0 && to >= end ? WHOLE_CALL : { kind: 'between', from, to: to >= end ? null : to })}>Read this stretch</Button>
     </div>
   );
 }
