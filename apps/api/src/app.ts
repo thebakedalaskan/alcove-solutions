@@ -1,7 +1,7 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
+  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallHandOffBodySchema, CallJoinBodySchema, CallLeaveBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
-  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema
+  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -100,7 +100,7 @@ export function createApp(d: Deps) {
   const attestLimiter = rateLimit(30, 60_000);
   /*
    * Speech and questions go to NEAR AI. A browser sends a clip every few seconds while someone talks: in a call the
-   * organizer's browser sends one stream of clips per voice it hears, each limited on its own, all within the account's.
+   * host's browser sends one stream of clips per voice it hears, each limited on its own, all within the account's.
    */
   const speechLimiter = rateLimit(240, 60_000);
   const voiceLimiter = rateLimit(40, 60_000);
@@ -333,10 +333,10 @@ export function createApp(d: Deps) {
   const viewerFor = async (c: Context<Env>, next: () => Promise<void>) => {
     const pass = readPass(d.cfg, c.req.header(CALL_PASS_HEADER));
     if (!pass || pass.callId !== c.req.param('id')) throw new AuthError('Join the call again to carry on.', { context: { hasPass: Boolean(pass) } });
-    // The organizer's pass counts as the organizer's only together with the organizer's own session.
-    const owner = pass.role === 'host' ? await optionalOwner(c) : undefined;
+    // The organizer's pass, and the pass of whoever hosts, count as theirs only together with the same account's session,
+    // opened only for them.
     addLogContext({ callId: pass.callId, role: pass.role });
-    c.set('viewer', await calls.viewerOf(d, pass, owner?.ownerId));
+    c.set('viewer', await calls.viewerOf(d, pass, () => optionalOwner(c)));
     await next();
   };
   // Also matches the call itself (/v1/live/calls/:id): the pass is checked once per request.
@@ -346,20 +346,34 @@ export function createApp(d: Deps) {
   app.use('/v1/live/calls/:id/mls/messages', capped(128 * 1024));
   app.use('/v1/live/calls/:id/mls/keypackages', capped(32 * 1024));
   app.use('/v1/live/calls/:id/frames', capped(MAX_FRAME_BYTES));
+  /*
+   * What only the organizer may do (what the notes capture, and planning breakout rooms), and what whoever hosts may do
+   * (the organizer, or someone standing in for them). A connection that hosted before, which the call has gone on from
+   * (another tab or device, or someone else hosting), is told it's out of date (409, as for audio after a pause), so
+   * its last audio, speech and changes stop there quietly rather than retry a refusal; anyone else is refused (403).
+   */
+  const refused = (v: calls.Viewer, only: string) => (v.stale
+    ? new ConflictError('You’re not hosting this call from here any more.', { context: { callId: v.pass.callId, role: v.pass.role, only } })
+    : new ForbiddenError(only === 'host' ? 'Only the host can do that.' : 'Only the organizer can do that.', { context: { callId: v.pass.callId, role: v.pass.role, only } }));
   const organizerOnly = (c: Context<Env>) => {
     const v = c.get('viewer');
-    // The organizer's tab from before they joined from another tab or device: the call has moved past it (409, as for
-    // audio after a pause), so its last audio, speech and changes stop there, quietly, rather than retry a refusal.
-    if (v.elsewhere) throw new ConflictError('You’re in this call from another tab or device now, so this one can’t change it.', { context: { callId: v.pass.callId, role: v.pass.role, reason: 'elsewhere' } });
-    if (!v.isOrganizer) throw new ForbiddenError('Only the organizer can do that.', { context: { callId: v.pass.callId, role: v.pass.role } });
+    if (!v.isOrganizer) throw refused(v, 'organizer');
     return v;
   };
+  const hostOnly = (c: Context<Env>) => {
+    const v = c.get('viewer');
+    if (!v.isHost) throw refused(v, 'host');
+    return v;
+  };
+  /** What whoever hosts may do while standing in for the organizer: keep the call running, but not change its notes or rooms' plan. */
+  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable']);
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/actions', async (c) => {
     const a = await body(c, CallActionSchema);
-    // A raised hand, an ask for notes and whether others may point at your share are anyone's in the call; every other
-    // action is the organizer's.
+    // A raised hand, an ask for notes and whether others may point at your share are anyone's in the call; keeping the
+    // call running is whoever hosts'; the rest is the organizer's.
     if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point') calls.requireIn(c.get('viewer'), a.type);
+    else if (HOST_ACTIONS.has(a.type)) hostOnly(c);
     else organizerOnly(c);
     // Each ask reaches the organizer, so nobody can keep asking.
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
@@ -368,14 +382,14 @@ export function createApp(d: Deps) {
   });
   /*
    * End-to-end encryption: the call's MLS log, which the API orders and relays and can't read. Everyone keeps
-   * up with it; only the organizer's browser commits (adds and removes people); anyone in the group can chat.
+   * up with it; only the host's browser commits (adds and removes people); anyone in the group can chat.
    */
   app.get('/v1/live/calls/:id/mls', async (c) => {
     const after = z.coerce.number().int().nonnegative().safeParse(c.req.query('after') ?? '0');
     if (!after.success) throw new ValidationError('Ask from a position in the log.');
     return c.json(await calls.mlsSync(c.get('viewer'), c.req.param('id'), after.data));
   });
-  app.post('/v1/live/calls/:id/mls/commits', async (c) => c.json(await calls.mlsCommit(organizerOnly(c), c.req.param('id'), await body(c, CallCommitBodySchema))));
+  app.post('/v1/live/calls/:id/mls/commits', async (c) => c.json(await calls.mlsCommit(hostOnly(c), c.req.param('id'), await body(c, CallCommitBodySchema))));
   app.post('/v1/live/calls/:id/mls/messages', async (c) => {
     const v = c.get('viewer');
     chatLimiter(v.pass.identity, 'chat');
@@ -403,12 +417,13 @@ export function createApp(d: Deps) {
     return c.json(await moves.start(v, c.req.param('id'), (await body(c, MoveStartBodySchema)).media, v.role === 'invited' ? await optionalOwner(c) : undefined));
   });
   app.get('/v1/live/calls/:id/moves', async (c) => c.json({ move: await moves.current(c.get('viewer'), c.req.param('id')) }));
-  app.post('/v1/live/calls/:id/moves/confirm', async (c) => { await moves.confirm(c.get('viewer'), c.req.param('id'), (await body(c, MoveConfirmBodySchema)).media); return c.json({ released: true }); });
+  app.post('/v1/live/calls/:id/moves/confirm', async (c) => { await moves.confirm(d, c.get('viewer'), c.req.param('id'), (await body(c, MoveConfirmBodySchema)).media); return c.json({ released: true }); });
   app.delete('/v1/live/calls/:id/moves', async (c) => { await moves.cancelOut(c.get('viewer'), c.req.param('id')); return c.json({ cancelled: true }); });
   app.get('/v1/live/calls/:id/room', async (c) => c.json(await calls.roomToken(c.get('viewer'), c.req.param('id'))));
-  app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(organizerOnly(c), c.req.param('id'), await piece(c))));
+  /* The notes, from the browser of whoever hosts: the recording and the speech it hears. */
+  app.post('/v1/live/calls/:id/audio', async (c) => c.json(await calls.audio(hostOnly(c), c.req.param('id'), await piece(c))));
   app.post('/v1/live/calls/:id/transcribe', async (c) => {
-    const v = organizerOnly(c);
+    const v = hostOnly(c);
     const speaker = speakerOf(c);
     voiceLimiter(`${v.pass.callId}:${speaker}`, 'transcribe');
     speechLimiter(v.organizer.ownerId, 'transcribe');
@@ -462,7 +477,6 @@ export function createApp(d: Deps) {
     if (!line.success) throw new ValidationError('That isn’t a moment of this call.');
     return c.json(await calls.moment(v, c.req.param('id'), line.data));
   });
-  /* The organizer leaving ends the call for everyone; anyone else leaving is taken out of the call's group. */
   /* Captions in someone's own language: translated for them alone, so no receipt keeps a copy. */
   app.post('/v1/live/calls/:id/translate', async (c) => {
     const v = c.get('viewer');
@@ -470,7 +484,13 @@ export function createApp(d: Deps) {
     captionLimiter(v.pass.identity, 'translate');
     return c.json(await calls.translate(v, c.req.param('id'), language, lines));
   });
-  app.post('/v1/live/calls/:id/leave', async (c) => c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id')) }));
+  /* Whoever hosts leaving ends the call for everyone, unless they hand it to someone; anyone else leaving is taken out of the call's group. */
+  app.post('/v1/live/calls/:id/leave', async (c) => c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), (await body(c, CallLeaveBodySchema)).end) }));
+  app.post('/v1/live/calls/:id/hand-off', async (c) => {
+    const v = hostOnly(c);
+    await calls.handOff(v, c.req.param('id'), (await body(c, CallHandOffBodySchema)).to);
+    return c.json({ left: true });
+  });
 
   /* ---------- everything below needs a signed-in owner ---------- */
   app.use('/v1/*', async (c, next) => {

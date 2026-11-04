@@ -27,8 +27,13 @@ export type CallRole = z.infer<typeof CallRoleSchema>;
 export const CallCardSchema = z.object({
   title: z.string(),
   organizerName: z.string(),
-  /** Everyone but the organizer waits until this is true. */
+  /** Someone hosts the call now (the organizer, or someone standing in for them): everyone but the organizer waits until this is true. */
   hostHere: z.boolean(),
+  /**
+   * Someone is hosting while the organizer is away, so they let people in. Their name goes only to the organizer, whose
+   * joining takes the call back; anyone else learns only that someone is standing in.
+   */
+  standIn: z.object({ name: z.string().optional() }).nullable(),
   locked: z.boolean(),
   /** Notes as the call was scheduled: whether they start when it does. */
   notes: NotesSettingSchema,
@@ -38,8 +43,9 @@ export const CallCardSchema = z.object({
   ended: z.boolean(),
   /**
    * Where the person asking stands, by their session. `invited` (or the organizer): let in without asking, and gets
-   * the notes. `asks`: signed in with an account the notes may go to, so letting them in adds them to the invite.
-   * `guest`: asks by name and doesn't get the notes (no account, or a demo sign-in on a real organizer's call).
+   * the notes. `asks`: signed in with an account the notes may go to, so the organizer letting them in adds them to
+   * the invite. `guest`: asks by name and doesn't get the notes (no account, a demo sign-in on a real organizer's
+   * call, or someone standing in for the organizer would let them in).
    */
   you: z.enum(['invited', 'asks', 'guest']),
   /**
@@ -87,7 +93,7 @@ export const CallPlaceSchema = z.string().regex(/^(?:main|[A-Za-z0-9_-]{16,64})$
 /**
  * The call's MLS log as this person may see it (docs: Calls and recordings › End-to-end encryption). Bodies are MLS
  * messages, base64url: the organizer's commits, a welcome for whoever was added, and chat, each in one part of the
- * call's group (`group`). Key packages come with the people the organizer's browser may add (`CallMlsGroup.pending`).
+ * call's group (`group`). Key packages come with the people the host's browser may add (`CallMlsGroup.pending`).
  */
 export const CallMlsItemSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('commit'), seq: z.number(), group: z.string(), epoch: z.number(), body: z.string() }),
@@ -95,41 +101,42 @@ export const CallMlsItemSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('message'), seq: z.number(), group: z.string(), epoch: z.number(), body: z.string() })
 ]);
 export type CallMlsItem = z.infer<typeof CallMlsItemSchema>;
-/** One part of the call's MLS group as this browser keeps it: its epoch, and for the organizer's browser whom to add and take out. */
+/** One part of the call's MLS group as this browser keeps it: its epoch, and for the host's browser whom to add and take out. */
 export const CallMlsGroupSchema = z.object({
   /** `main`, or a breakout room's ID. */
   id: z.string(),
   epoch: z.number(),
   /**
-   * For the organizer's browser: who it may add to this group now, whether they need letting in first, and their latest
+   * For the host's browser: who it may add to this group now, whether they need letting in first, and their latest
    * key package (base64url), however long ago it came: someone moving sends theirs before they may be added.
    */
   pending: z.array(z.object({ id: z.string(), admit: z.enum(['auto', 'ask']), keyPackage: z.string() })),
-  /** For the organizer's browser: people in this group to take out of it (gone, removed, or sent to another part of the call). */
+  /** For the host's browser: people in this group to take out of it (gone, removed, or sent to another part of the call). */
   departed: z.array(z.string())
 });
 export type CallMlsGroup = z.infer<typeof CallMlsGroupSchema>;
 export const CallMlsSchema = z.object({
-  /** A new generation (new MLS groups for every part of the call) starts when the organizer's connection changes. */
+  /** A new generation (new MLS groups for every part of the call) starts whenever the connection that hosts changes. */
   generation: z.number(),
   /**
    * Where this person stands: let in, still waiting to be, out for now (taken out while this connection was away, so it
    * can come back in as it is: `mls/back`), or not in the call (turned away, removed, left, or their place went to
-   * another tab or device).
+   * another tab or device). `away`: an organizer's connection that was gone long enough that someone else hosts now;
+   * joining again takes the call back.
    */
-  admission: z.enum(['in', 'waiting', 'out', 'denied']),
+  admission: z.enum(['in', 'waiting', 'out', 'denied', 'away']),
   /**
-   * The connection that commits for every group in this generation: the organizer's, at leaf 0 of each, the only one whose
-   * commits count. Kept in one place so another connection could take over committing.
+   * The connection that hosts, so commits for every group in this generation: its browser created them all, so it's at
+   * leaf 0 of each, the only one whose commits count. The organizer's, or someone's standing in while the organizer is away.
    */
   committer: z.string().nullable(),
   /** The part of the call this person is in now (`main`, or the room they're in or the organizer is visiting): their media and chat use its group. */
   place: z.string(),
   /** The group this person is in, as the API counts the organizer's commits: `main`, a room's ID, or null (none yet, or between two). The organizer is in every group. */
   group: z.string().nullable(),
-  /** The groups this browser keeps: the organizer's, every part of the call; anyone else's, the one they're in. */
+  /** The groups this browser keeps: the host's, every part of the call; anyone else's, the one they're in. */
   groups: z.array(CallMlsGroupSchema),
-  /** This person's part of the log: the organizer's from the start of the generation (chat only in its part of the call, from when it got there), anyone else's from their welcome into their group. */
+  /** This person's part of the log: the host's from the start of the generation (chat only in its part of the call, from when it got there), anyone else's from their welcome into their group. */
   items: z.array(CallMlsItemSchema),
   /** Whether there was chat in this person's part of the call while they weren't there, which their browser can't read. */
   earlierChat: z.boolean(),
@@ -160,6 +167,7 @@ export const CallParticipantSchema = z.object({
    * Random, and different in every call: it says nothing about who they are.
    */
   seat: z.string(),
+  /** `isOrganizer`: the organizer's connection. Who hosts now is `CallState.host`. */
   person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
   /** A raised hand, which everyone sees. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
   hand: z.boolean(),
@@ -223,6 +231,26 @@ export const BreakoutsSchema = z.object({
 });
 export type Breakouts = z.infer<typeof BreakoutsSchema>;
 
+/**
+ * Who hosts the call (docs: Calls and recordings › Host hand-off): the organizer, or while the organizer is away
+ * (their connection dropped, or they left it to someone), someone invited standing in for them. Whoever hosts lets
+ * people in, keeps the call's keys moving and takes its notes; only the organizer changes what the notes capture.
+ */
+export const CallHostSchema = z.object({
+  /** The participant who hosts now. Null for the moment between a host's connection dropping and someone taking over. */
+  id: z.string().nullable(),
+  /** Whoever hosts is standing in for the organizer, who takes the call back by joining again. */
+  standIn: z.boolean(),
+  /** The organizer, as you see them: whom a stand-in hosts for, even while the organizer isn't in the call. */
+  organizer: PersonSchema,
+  /**
+   * For whoever hosts: who could take over from them, best first. People invited to the call who are in it, never a
+   * guest, the main room before breakout rooms, then whoever came first. Empty for everyone else.
+   */
+  next: z.array(z.string())
+});
+export type CallHost = z.infer<typeof CallHostSchema>;
+
 export const CallStateSchema = z.object({
   callId: IDSchema,
   meetingId: IDSchema,
@@ -251,14 +279,16 @@ export const CallStateSchema = z.object({
     noteId: IDSchema.nullable(),
     recording: RecordingProgressSchema
   }),
-  /** People asking to join, for the organizer to let in or turn away; empty for everyone else. */
+  /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
   /**
-   * Connections that left but are still in the call's group for a moment, while the organizer's browser takes them
+   * Connections that left but are still in the call's group for a moment, while the host's browser takes them
    * out: whose they were, and that person's connection now (`now`) when they're still in the call, back from a reload
    * or moved to another device. Shown as who they are, never as a stranger, and never twice.
    */
   leaving: z.array(z.object({ id: z.string(), seat: z.string(), person: PersonSchema, now: z.string().nullable() })),
+  /** Who hosts now: the organizer, or someone standing in while the organizer is away. */
+  host: CallHostSchema,
   /** The call's MLS group generation; browsers already in the call rejoin when it changes. */
   generation: z.number(),
   /**
@@ -269,6 +299,8 @@ export const CallStateSchema = z.object({
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),
+  /** You host now (the organizer, or standing in for them): you let people in, mute, remove and lock, and can end the call. */
+  isHost: z.boolean(),
   /**
    * Your role in the call as it stands. It can differ from the ticket's: someone signed in whom the organizer let in
    * from the link joined as a guest and is invited now. A guest sees people by name only.
@@ -380,10 +412,11 @@ export interface CallCrypto {
    * joining: making keys, or getting back in; waiting: asked to be let in; in: in the group of the part of the call
    * it's in; moving: let in, and between two parts of the call (sent to a breakout room, or back from one), so it hears
    * and sends nothing until it's in the new part's group; denied: turned away; removed: no longer in the call (removed,
-   * or this call went on from another tab or device); failed: this browser's keys fell out of step, and it has to join
-   * again.
+   * or this call went on from another tab or device); away: the organizer's connection, gone long enough that someone
+   * else hosts now, so joining again takes the call back; failed: this browser's keys fell out of step, and it has to
+   * join again.
    */
-  status: 'joining' | 'waiting' | 'in' | 'moving' | 'denied' | 'removed' | 'failed';
+  status: 'joining' | 'waiting' | 'in' | 'moving' | 'denied' | 'removed' | 'away' | 'failed';
   /** The part of the call this browser is in, or is on its way to: `main`, or a breakout room's ID. */
   place: string;
   /** Who's in that part's group (LiveKit identities), from MLS itself, not from the server: the people whose media plays here. */
@@ -425,9 +458,9 @@ export interface CallSession extends LiveStore<CallState> {
    * when it doesn't open: not sealed by them, for another topic, from too long ago, or changed on the way.
    */
   openData(topic: string, from: string, sealed: Uint8Array): Promise<Uint8Array | null>;
-  /** Organizer only: lets someone who asked into the call (their browser is added to the group). */
+  /** Whoever hosts: lets someone who asked into the call (their browser is added to the group). */
   admit(identity: string): Promise<void>;
-  /** Organizer only: turns someone away. */
+  /** Whoever hosts: turns someone away. */
   deny(identity: string): Promise<void>;
   /** Organizer only. Everyone in the call sees the change. Resolves once it's made, so capture can wait for it. */
   setNotes(on: boolean): Promise<void>;
@@ -442,7 +475,7 @@ export interface CallSession extends LiveStore<CallState> {
   requestNotes(up: boolean): Promise<void>;
   /** Organizer only: says not now to an ask for notes. Whoever asked is told. Saying yes is turning notes on, or resuming. */
   declineNotes(requestId: string): Promise<void>;
-  /** Organizer only: what this browser can't capture now (no microphone, or no way to record or listen), or none. */
+  /** Whoever hosts, whose browser takes the notes: what it can't capture now (no microphone, or no way to record or listen), or none. */
   setUnavailable(parts: CaptureDevicePart[]): Promise<void>;
   /**
    * Organizer only: has shared screens read for the notes, or stops it. Only while notes are on or paused; everyone
@@ -462,11 +495,11 @@ export interface CallSession extends LiveStore<CallState> {
   letOthersPoint(on: boolean): Promise<void>;
   /** Organizer only: whether anyone may point at and mark shared screens in this call. Resolves once the server has it. */
   setPointing(on: boolean): Promise<void>;
-  /** Organizer only: puts one participant on everyone's main stage, or nobody (null). */
+  /** Whoever hosts: puts one participant on everyone's main stage, or nobody (null). */
   setSpotlight(participantId: string | null): void;
   /** Organizer only: splits the invited people into rooms for a while. */
   openRooms(plan: BreakoutPlan): void;
-  /** Organizer only: brings everyone back from the rooms now. */
+  /** Whoever hosts: brings everyone back from the rooms now. */
   closeRooms(): void;
   /** Organizer only: a message every room sees. */
   messageRooms(text: string): void;
@@ -484,12 +517,12 @@ export interface CallSession extends LiveStore<CallState> {
   pauseRoom(roomId: string, paused: boolean): Promise<void>;
   /** Live transcript lines in `language`, for you alone. Each line is translated once and kept sealed until the call ends. */
   translate(lineIds: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
-  /** Encrypts and stores one piece of the notes recording. */
+  /** Whoever hosts: encrypts and stores one piece of the notes recording. */
   appendAudio(piece: AudioPiece): Promise<void>;
   /**
-   * Transcribes a few seconds of speech into the live transcript, under whoever said it. The organizer's browser
-   * hears everyone it plays, each on their own: `speaker` is the participant ID of the person heard (this browser's
-   * own for its microphone). Only while notes are on.
+   * Whoever hosts: transcribes a few seconds of speech into the live transcript, under whoever said it. The host's
+   * browser hears everyone it plays, each on their own: `speaker` is the participant ID of the person heard (this
+   * browser's own for its microphone). Only while notes are on.
    */
   transcribe(clip: TranscriptClip, speaker: string): Promise<void>;
   /** What was said in `range`, for you alone: decided, proposed, still open and next, each with the moments it comes from. */
@@ -500,10 +533,10 @@ export interface CallSession extends LiveStore<CallState> {
   catchUpWindow(): Promise<CatchUpWindow>;
   /** A moment of the live transcript from a catch-up or an answer, with what was said around it. Your access is checked again. */
   moment(lineId: string): Promise<CallMoment>;
-  /* The organizer's host controls (refused for anyone else). */
+  /* Host controls, for whoever hosts (refused for anyone else). */
   /** Mutes one of someone's tracks; they unmute themselves. */
   mute(identity: string, trackSid: string): Promise<void>;
-  /** Disconnects someone. They can come back with the link unless the call is locked. */
+  /** Disconnects someone. They can come back with the link unless the call is locked. Nobody removes the organizer. */
   remove(identity: string): Promise<void>;
   /** While locked, nobody new can join except the organizer. */
   lock(on: boolean): Promise<void>;
@@ -511,14 +544,19 @@ export interface CallSession extends LiveStore<CallState> {
   dismissNotice(id: string): void;
   /** Starts moving your place in the call to another device, with your microphone and camera as they are now. */
   startMove(media: MoveMedia): Promise<CallMoveOut>;
-  /** The organizer leaving ends the call for everyone and returns how it ended; anyone else just leaves (null). */
+  /** Whoever hosts leaving ends the call for everyone and returns how it ended; anyone else just leaves (null). */
   leave(): Promise<CallEndResult | null>;
+  /**
+   * Whoever hosts leaves, and the call goes on with `to` hosting (someone invited who's in the call, among
+   * `CallState.host.next`) until the organizer is back. Refused when they can't host now.
+   */
+  handOff(to: string): Promise<void>;
   /** Stops keeping up with the call here, without leaving it: the call ended, or this person is out of it. */
   close(): void;
   /**
    * The page is going away (closed, reloaded or left for another): stops here and tells the server this connection
-   * has gone, without waiting for an answer, so nobody waits on it. The organizer's doesn't say so: their reload
-   * mustn't end the call, which ends only if they don't come back.
+   * has gone, without waiting for an answer, so nobody waits on it. Whoever hosts doesn't say so: their reload comes
+   * back still hosting, and if they don't come back someone else hosts, or the call ends when nobody can.
    */
   closing(): void;
 }
