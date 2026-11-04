@@ -613,6 +613,9 @@ class HttpCall extends Live<CallState> implements CallSession {
    * (`keys`) as for anyone on their way into a group, and it joins its part of the call's group again.
    */
   private async comeBack(log: CallMls): Promise<void> {
+    // A closed call never comes back by itself, whatever a check it sent before closing says: its page let go (left,
+    // moved or went away), and a slow answer mustn't bring it back in with nobody there.
+    if (this.closed) return;
     const now = Date.now();
     if (now < this.backAfter) return;
     this.backAfter = now + BACK_WAIT_MS;
