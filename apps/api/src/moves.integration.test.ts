@@ -81,6 +81,8 @@ describe('moving to another device', () => {
     host.setSpotlight(laptop.ticket.identity);
     await settle(host, (s) => s.spotlight === laptop.ticket.identity && s.participants.some((p) => p.hand));
 
+    const seat = host.getSnapshot().participants.find((p) => p.id === laptop.ticket.identity)?.seat;
+    expect(seat).toMatch(/^[A-Za-z0-9_-]{22}$/);
     const out = await laptop.startMove({ mic: false, cam: true });
     const first = out.getSnapshot().code ?? '';
     expect(out.getSnapshot().stage).toBe('open');
@@ -112,7 +114,8 @@ describe('moving to another device', () => {
     // The same person, once: their name, their raised hand, the spotlight. The old connection is out of the group.
     const seen = await settle(host, (s) => s.participants.length === 2 && s.participants.some((p) => p.id === phone.ticket.identity));
     expect(seen.participants.map((p) => p.id).sort()).toEqual([host.ticket.identity, phone.ticket.identity].sort());
-    expect(seen.participants.find((p) => p.id === phone.ticket.identity)).toMatchObject({ person: expect.objectContaining({ name: 'Sam' }), hand: true });
+    // Their seat too, so everyone's own layout keeps them where they were.
+    expect(seen.participants.find((p) => p.id === phone.ticket.identity)).toMatchObject({ seat, person: expect.objectContaining({ name: 'Sam' }), hand: true });
     expect(seen.spotlight).toBe(phone.ticket.identity);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(laptop.ticket.identity) && host.crypto.getSnapshot().members.includes(phone.ticket.identity), 'the phone in the group, the laptop out');
     await waitFor(() => keyOf(phone) === keyOf(host), 'the phone on the call’s keys');
@@ -187,6 +190,7 @@ describe('moving to another device', () => {
     const priya = await account(invitedEmail);
     const laptop = await priya.api.calls.join(c, { mic: true, cam: true });
     await inGroup(laptop);
+    const before = (await settle(host, (s) => s.participants.some((p) => p.id === laptop.ticket.identity))).participants.find((p) => p.id === laptop.ticket.identity)?.seat;
     // Moving needs the account's own session on the device being left too, not only the pass.
     expect((await asMember(laptop, 'POST', '/moves', { media: { mic: true, cam: true } })).status).toBe(403);
     const out = await laptop.startMove({ mic: true, cam: true });
@@ -204,7 +208,7 @@ describe('moving to another device', () => {
     await inGroup(now);
     expect(now.ticket.role).toBe('invited');
     const seen = await settle(host, (s) => s.participants.length === 2 && s.participants.some((p) => p.id === now.ticket.identity));
-    expect(seen.participants.find((p) => p.id === now.ticket.identity)?.person.email).toBe(invitedEmail);
+    expect(seen.participants.find((p) => p.id === now.ticket.identity)).toMatchObject({ seat: before, person: expect.objectContaining({ email: invitedEmail }) });
     await host.leave();
   });
 
