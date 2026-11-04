@@ -3,6 +3,7 @@ import { Icon, Popover, Spinner, buttonClass, cn, useRaisedToasts, useToast } fr
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { troubles } from '~/features/call/access';
 import { RoomLines } from '~/features/call/LiveLines';
 import { useLevels } from '~/features/call/Video';
 import { LocalMedia, NotesRecorder } from '~/features/call/media';
@@ -78,6 +79,8 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
   const [heardProblem, setHeardProblem] = useState<string | null>(null);
   const paused = s.status === 'paused' || holding;
   const bars = useLevels(media, 48, !paused && m.mic && !!m.camera, wave);
+  /* A microphone that isn't working: what's wrong and how to fix it, in place of the reminder. */
+  const micTrouble = troubles(m, ['mic'])[0];
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => rec.appendAudio(p), (msg) => toast(msg, { icon: 'x' }));
   const speech = useRef<SpeechClips | null>(null);
@@ -145,7 +148,9 @@ function Recorder({ rec, media }: { rec: RoomRecording; media: LocalMedia }) {
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
             <div className="rm-time ac-mono">{clock(s.elapsed)}</div>
             <div className="rm-wave" aria-hidden="true">{bars.map((h, i) => <i key={i} style={{ height: `${paused ? 6 : h}%` }} />)}</div>
-            {m.error ? <p className="rm-note bad">{m.error}</p> : <p className="rm-note">Let everyone here know before you start talking.</p>}
+            {micTrouble ? (
+              <p className="rm-note bad">{micTrouble.title} {micTrouble.how}{micTrouble.retry && <> <button type="button" className="rm-retry" onClick={() => void media.retry()}>Try again</button></>}</p>
+            ) : <p className="rm-note">Let everyone here know before you start talking.</p>}
             <div className="rm-ctrls">
               <button type="button" className="stage-btn lg" aria-label={paused ? 'Resume' : 'Pause'} disabled={holding} onClick={() => (paused ? rec.resume() : void pause())}><Icon name={paused ? 'dot' : 'pause'} size={paused ? 20 : 24} /></button>
               <button type="button" className="rm-stop" disabled={busy} onClick={() => void finish()}>{busy ? <Spinner /> : <Icon name="stop" size={18} />}Finish and write notes</button>

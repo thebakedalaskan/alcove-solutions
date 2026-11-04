@@ -110,11 +110,10 @@ function PrejoinMain({ media, m, levels, devices, me }: { media: LocalMedia; m: 
     <div className="pj-main">
     <div className={cn('feed', !m.mic && 'muted')}>
       {m.cam && m.camera ? <Video stream={m.camera} /> : <div className="feed-off"><Avatar person={me} size={120} /><span>Your camera is off</span></div>}
-      {m.error && <p className="media-error">{m.error}</p>}
       <span className="lvl" aria-hidden="true">{levels.map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</span>
       <CallDock className="ctrls" label="Microphone and camera">
-        <DockButton icon={m.mic ? 'mic' : 'micOff'} off={!m.mic} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} onClick={() => media.setMic(!m.mic)} />
-        <DockButton icon={m.cam ? 'video' : 'videoOff'} off={!m.cam} label={m.cam ? 'Turn camera off' : 'Turn camera on'} onClick={() => void media.setCam(!m.cam)} />
+        <DockButton icon={m.mic ? 'mic' : 'micOff'} off={!m.mic} alert={!!m.access.mic.problem} label={m.mic ? 'Turn microphone off' : 'Turn microphone on'} onClick={() => void media.setMic(!m.mic)} />
+        <DockButton icon={m.cam ? 'video' : 'videoOff'} off={!m.cam} alert={!!m.access.cam.problem} label={m.cam ? 'Turn camera off' : 'Turn camera on'} onClick={() => void media.setCam(!m.cam)} />
       </CallDock>
     </div>
     <PrejoinDevices media={media} m={m} devices={devices} />

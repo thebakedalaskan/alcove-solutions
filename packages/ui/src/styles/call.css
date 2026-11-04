@@ -38,7 +38,6 @@
 .lvl i { width: 4px; height: 14%; border-radius: 2px; background: var(--speak); transition: height 110ms; }
 .muted .lvl i { background: rgb(255 255 255 / 0.35); }
 .ctrls { position: absolute; z-index: 2; left: 50%; bottom: 16px; transform: translateX(-50%); }
-.media-error { position: absolute; z-index: 2; left: 16px; right: 16px; top: 16px; padding: 10px 14px; border-radius: var(--radius-md); background: rgb(11 10 24 / 0.78); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: #F3B85A; font-size: 13.5px; }
 .pj-side { display: grid; gap: 18px; }
 .pj-side h1 { font-size: 44px; line-height: 1.06; font-weight: 420; letter-spacing: -0.022em; font-variation-settings: 'opsz' 48; color: var(--stage-ink); }
 .pj-time { margin-top: -8px; font-size: 14px; color: var(--stage-ink-2); }
@@ -80,14 +79,34 @@
 .pj-test.on { opacity: 1; background: rgba(227, 53, 84, .16); box-shadow: inset 0 0 0 1px rgba(227, 53, 84, .3); }
 .pj-dev-note { flex-basis: 100%; display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--stage-ink-2); }
 .pj-dev-note .ac-i { flex: none; margin-top: 2px; }
-.pj-dev-note.warn { color: #F3B85A; }
+/* The microphone's level inside its picker: speak and the bars move. Grey while it's off. */
+.dev-pick .ic-meter { flex: none; align-items: flex-end; margin: 0; }
+.dev-pick .ic-meter i { background: var(--speak); }
+.dev-pick .ic-meter.is-quiet i { background: rgb(255 255 255 / 0.3); }
+/* A device that isn't working, in place of its picker; and the system's speaker where a page can't choose one. */
+.dev-pick.is-state, .dev-pick.is-static { padding: 0 12px; font: 500 13px/1 var(--font-sans); white-space: nowrap; }
+.dev-pick.is-state { color: #F3B85A; background: rgb(243 184 90 / 0.08); box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.22); }
+.dev-pick.is-static { color: var(--stage-ink-2); cursor: default; }
+.dev-pick.is-static:focus-visible { outline: 2px solid var(--speak); outline-offset: 2px; }
+/* What isn't working before joining, how to fix it, and that joining works anyway. */
+.pj-trouble { flex-basis: 100%; display: grid; gap: 12px; padding: 14px 16px; border-radius: var(--radius-md); background: rgb(243 184 90 / 0.07); box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.2); animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.pj-trouble .row { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; }
+.pj-trouble .row > .ac-i { margin-top: 1px; color: #F3B85A; }
+.pj-trouble b { display: block; font: 600 14px/1.35 var(--font-sans); color: var(--stage-ink); }
+.pj-trouble p { margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--stage-ink-2); }
+.pj-trouble .foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding-top: 12px; border-top: 1px solid rgb(255 255 255 / 0.07); font-size: 13px; color: var(--stage-ink-2); }
+.pj-trouble .foot .pj-test { flex: none; }
 /* On a phone the pickers sit two to a row, so joining stays in reach. */
 @media (max-width: 640px) {
   .pj-devices { display: grid; grid-template-columns: 1fr 1fr; }
   .dev-pick, .pj-test { width: 100%; max-width: none; min-width: 0; }
   .dev-pick select { flex: 1; max-width: none; }
   .pj-test { justify-content: center; padding: 0 10px; }
-  .pj-dev-note { grid-column: 1 / -1; }
+  .pj-dev-note, .pj-trouble { grid-column: 1 / -1; }
+  /* A short preview: your arch sits above the switches, and the switches say the camera is off. */
+  .pj .feed-off { padding-bottom: 68px; }
+  .pj .feed-off > span:not(.ac-avatar) { display: none; }
+  .dev-pick.is-state, .dev-pick.is-static { justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* ---- in a call ----
@@ -394,6 +413,19 @@
 .ic-opt .ic-meter + .tick { margin-left: 8px; }
 .ic-meter { display: inline-flex; align-items: center; gap: 2px; height: 12px; margin-left: auto; }
 .ic-meter i { width: 3px; border-radius: 2px; background: var(--horizon); transition: height 110ms linear; }
+/* A device that isn't working, at the top of its menu: what's wrong, how to fix it, and one button. */
+.ic-trouble { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; margin: 0 0 10px; padding: 12px; border-radius: var(--radius-md); background: var(--caution-soft); color: var(--caution); }
+.ic-trouble > .ac-i { margin-top: 1px; }
+.ic-trouble b { display: block; font: 600 13.5px/1.35 var(--font-sans); }
+.ic-trouble p { margin-top: 3px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.ic-trouble .ac-btn { margin-top: 10px; }
+/* How loud someone is for you: a quick mute, a slider and the level. */
+.ic-vol { padding: 4px 10px 6px; }
+.ic-vol-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 28px; font: 500 13.5px/1 var(--font-sans); color: var(--ink); }
+.ic-vol-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.ic-vol-row .ac-icon-btn { width: 32px; height: 32px; margin-left: -6px; }
+.ic-vol-row .ac-icon-btn.is-on { color: var(--ink); background: var(--sunk); }
+.ic-vol-row .n { flex: none; min-width: 34px; text-align: right; font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-none { padding: 4px 10px 8px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
 .ic-srow { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .ic-srow .end { margin-left: auto; }
@@ -548,7 +580,8 @@
 .rm-wave { display: flex; align-items: center; gap: 4px; height: 76px; margin: 26px 0 8px; }
 .rm-wave i { width: 5px; height: 10%; border-radius: 3px; background: var(--speak); transition: height 110ms linear; }
 .rm-note { font-size: 14px; color: var(--stage-ink-2); }
-.rm-note.bad { color: #F3B85A; }
+.rm-note.bad { max-width: 46ch; line-height: 1.45; color: #F3B85A; }
+.rm-retry { font-weight: 600; color: var(--stage-ink); text-decoration: underline; text-underline-offset: 3px; }
 .rm-ctrls { display: flex; align-items: center; gap: 14px; margin-top: 34px; }
 .rm-stop { display: inline-flex; align-items: center; gap: 10px; height: 64px; padding: 0 28px; border-radius: var(--radius-pill); background: var(--stage-ink); color: var(--stage); font: 600 16px/1 var(--font-sans); transition: background-color var(--duration-1), transform var(--duration-1); }
 .rm-stop:hover { background: #fff; }
