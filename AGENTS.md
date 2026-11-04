@@ -166,6 +166,12 @@ Read `docs/engineering/logging-and-errors.md`.
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKnock`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
+  The board's parts are in `components/board.tsx`, and take data and handlers with no idea of Yjs: `BoardLayout`, `BoardSheet` and
+  `BoardWorld` (`moveBoardCamera` writes its one transform), `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`,
+  `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardMarquee`, `BoardGuide`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`,
+  `BoardPicture`, `BoardPointer`, `BoardComment`, `BoardLines` with `BoardLine` and `BoardStroke`, `BoardEdit`, `BoardHeard`, `BoardTray`,
+  `BoardMap`, `BoardMenu`, `BoardEmpty`, `BoardTile`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
+  board is `memo`ised and takes no handlers: `data-id`, `data-h` and `data-p` say what was pressed, for one listener on the sheet.
   `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
   `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
@@ -177,7 +183,9 @@ Read `docs/engineering/logging-and-errors.md`.
   `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); the workspace in `styles/workspace.css` (`wt-` the list, `wd-` a document, `wm-` menus, `wv-`
-  popovers, `wp-` presenting, `wh-` history, `wl-` the call's live pages); the other screens in `styles/app.css`,
+  popovers, `wp-` presenting, `wh-` history, `wl-` the call's live pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
+  `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
+  Board menu, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*` and `--line-*`); the other screens in `styles/app.css`,
   `call.css` and `welcome.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
@@ -188,8 +196,9 @@ Read `docs/engineering/logging-and-errors.md`.
 - `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `shadow-sun`, one
   per view. `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
   information and focus use `horizon`. The mark (`Mark`, `Logo`) is branding, never state. No green.
-- Type: Newsreader (`font-display`) for page-level headings only, Hanken Grotesk for everything you read
-  and operate, IBM Plex Mono for times, data and eyebrows. Fonts are served from `packages/ui/src/fonts`.
+- Type: Newsreader (`font-display`) for page-level headings, a board's name and its frame titles, and nothing
+  else; Hanken Grotesk for everything you read and operate, IBM Plex Mono for times, data and eyebrows. Fonts are
+  served from `packages/ui/src/fonts`.
 - The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
   `stage-ink-2`, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
