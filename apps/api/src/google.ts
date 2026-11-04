@@ -27,7 +27,9 @@ const SCOPE = `openid email profile ${CALENDAR_SCOPE}`;
 export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | 'failed' | 'busy';
 /** What Google granted: a short-lived access token, the scopes, and (on consent) a refresh token for later. */
 export interface Grant { accessToken: string; expiresIn: number; refreshToken?: string | undefined; scopes: string[] }
-export type Finish = { ok: true; identity: Identity; grant: Grant; consented: boolean; next?: '/ready' | '/home' | undefined } | { ok: false; reason: Refusal };
+/** Where the app lands after signing in: the account's first screen, Home, or a move to this device that was waiting on it. */
+export type Next = '/ready' | '/home' | '/move';
+export type Finish = { ok: true; identity: Identity; grant: Grant; consented: boolean; next?: Next | undefined } | { ok: false; reason: Refusal };
 
 /** Google's discovery document. Only revoking needs `revocation_endpoint`, so signing in never depends on it. */
 const Discovery = z.object({
@@ -48,7 +50,7 @@ const Claims = z.object({
 const Attempt = z.object({
   state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
   /** A second pass that asked Google for consent again, and where it should land afterwards. */
-  consent: z.boolean().default(false), next: z.enum(['/ready', '/home']).optional()
+  consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional()
 });
 const HEADER = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
 
@@ -106,7 +108,7 @@ function refuse(reason: Refusal, context: Record<string, string | number | boole
  * `consent`, Google asks again even if the person agreed before, which is the only way to get a new
  * refresh token; `hint` picks the account so they aren't asked which one.
  */
-export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: '/ready' | '/home' | undefined } = {}): Promise<{ url: string; attempt: string }> {
+export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: Next | undefined } = {}): Promise<{ url: string; attempt: string }> {
   const cfg = d.cfg;
   if (!configured(cfg)) throw new UnavailableError('Google sign-in isn’t set up on this server.');
   const { endpoints } = await provider(cfg.GOOGLE_ISSUER);
