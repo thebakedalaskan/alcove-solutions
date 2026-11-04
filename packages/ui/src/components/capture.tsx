@@ -42,7 +42,7 @@ export function CaptureModeMark({ mode, stage = false }: { mode: CaptureMode; st
 }
 
 const PARTS: { key: 'recording' | 'transcript' | 'ai' | 'screen'; icon: IconName; label: string; short: string; detail: string }[] = [
-  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: 'The organizer’s microphone, encrypted' },
+  { key: 'recording', icon: 'mic', label: 'Recording', short: 'Recording', detail: 'Everyone the organizer hears, encrypted' },
   { key: 'transcript', icon: 'transcript', label: 'Transcript', short: 'Transcript', detail: 'Everyone the organizer hears, as text' },
   { key: 'ai', icon: 'sealed', label: 'AI notes', short: 'AI notes', detail: 'Written from the transcript' },
   { key: 'screen', icon: 'screen', label: 'Shared screens', short: 'Screens', detail: 'Not read' }
@@ -113,7 +113,7 @@ export function CaptureSummary({ notes, capture, who, className }: {
   const mode: CaptureMode = capture ? capture.mode : notes === 'on' ? 'on' : 'off';
   const shared = capture?.screen.mode === 'on';
   const said: ReactNode = !capture
-    ? notes === 'on' ? 'When the call starts, what everyone says, you included, is transcribed for the notes, and the organizer’s microphone is recorded.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
+    ? notes === 'on' ? 'When the call starts, what everyone says, you included, is recorded and transcribed for the notes.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
     : mode === 'on' ? `${onLine(capture)}${shared ? ' What anyone shares on screen is read for them too.' : ''}`
       : mode === 'unavailable' ? shared ? 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing said is captured. What anyone shares on screen is still read for the notes.'
         : 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing is captured.'
@@ -131,9 +131,9 @@ export function CaptureSummary({ notes, capture, who, className }: {
 
 /** What notes on means for someone about to join, leaving out whatever the organizer's browser can't capture now. */
 function onLine(c: CaptureState): string {
-  if (c.recording.mode === 'on' && c.transcript.mode === 'on') return 'What everyone says, you included, is transcribed for the notes, and the organizer’s microphone is recorded.';
-  if (c.transcript.mode === 'on') return 'What everyone says, you included, is transcribed for the notes. The organizer’s microphone isn’t recorded right now.';
-  return 'The organizer’s microphone is recorded for the notes. Nothing is transcribed right now.';
+  if (c.recording.mode === 'on' && c.transcript.mode === 'on') return 'What everyone says, you included, is recorded and transcribed for the notes.';
+  if (c.transcript.mode === 'on') return 'What everyone says, you included, is transcribed for the notes. It isn’t recorded right now.';
+  return 'What everyone says, you included, is recorded for the notes. Nothing is transcribed right now.';
 }
 
 /** Where nothing was captured, between the lines of a transcript or the chapters of a note: "Paused 10:02–10:05". */

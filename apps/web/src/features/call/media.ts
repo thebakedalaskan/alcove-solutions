@@ -797,6 +797,23 @@ const MIME = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;co
 export const recordingMime = (): string => MIME.find((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
 export const PIECE_MS = 5000;
 
+/** One voice in the recording's mix: its track's source, and the gain it fades in and out on. */
+interface Voice { track: MediaStreamTrack; source: MediaStreamAudioSourceNode; gain: GainNode }
+function fadeIn(ctx: AudioContext, into: AudioNode, track: MediaStreamTrack): Voice {
+  const source = ctx.createMediaStreamSource(new MediaStream([track]));
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(1, ctx.currentTime + FADE_S);
+  source.connect(gain).connect(into);
+  return { track, source, gain };
+}
+function fadeOut(ctx: AudioContext, v: Voice) {
+  v.gain.gain.cancelScheduledValues(ctx.currentTime);
+  v.gain.gain.setValueAtTime(v.gain.gain.value, ctx.currentTime);
+  v.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_S);
+  setTimeout(() => { v.source.disconnect(); v.gain.disconnect(); }, FADE_S * 1000 + 50);
+}
+
 /** A recorder for `stream`, started, or null when this browser can't record it. */
 function recorderFor(stream: MediaStream, mimeType: string, segment: number): MediaRecorder | null {
   try {
@@ -809,12 +826,22 @@ function recorderFor(stream: MediaStream, mimeType: string, segment: number): Me
   }
 }
 
+/** A voice the recording mixes in: whose it is (in a call, a participant ID), and its track as it arrived. */
+export interface RecordedVoice { identity: string; track: MediaStreamTrack }
+
+/** How long a voice takes to fade in or out of the mix, so one joining or leaving mid-sentence doesn't click. */
+const FADE_S = 0.03;
+
 /**
- * Records the microphone in 5-second pieces and uploads them in order. Each piece is retried a few
- * times; the server treats a repeated (segment, seq) as a no-op, so retries never duplicate audio.
- * The server refuses audio once notes are off, so stopping waits for the last piece before anyone
- * switches notes off. The microphone reaches the recorder through a small audio graph, so switching
- * microphones mid-recording carries on in the same recording instead of going silent.
+ * Records in 5-second pieces and uploads them in order. Each piece is retried a few times; the server treats a
+ * repeated (segment, seq) as a no-op, so retries never duplicate audio. The server refuses audio once notes are off,
+ * so stopping waits for the last piece before anyone switches notes off.
+ *
+ * What it records is a mix of voices (a room recording: the microphone; a call: everyone the organizer's browser
+ * hears), through one small audio graph: each voice's own track, as it arrived, faded in when it's heard and out when
+ * it isn't, into a limiter so voices over each other don't clip. A voice on a new track (another microphone) carries
+ * on in the same recording, and voices come and go mid-segment without the recording stopping: MediaRecorder can't
+ * change its input, the graph can. Nobody's volume on this screen, or the speaker chosen, reaches it.
  */
 export class NotesRecorder {
   private rec: MediaRecorder | null = null;
@@ -824,14 +851,14 @@ export class NotesRecorder {
   private gen = 0;
   /** Set by hold(): nothing more is recorded or sent until release() carries on or discard() drops it. */
   private gate: { wait: Promise<void>; open: () => void } | null = null;
-  private graph: { ctx: AudioContext; dest: MediaStreamAudioDestinationNode; gain: GainNode; source: MediaStreamAudioSourceNode | null; track: MediaStreamTrack | null } | null = null;
+  private graph: { ctx: AudioContext; mix: DynamicsCompressorNode; gain: GainNode; dest: MediaStreamAudioDestinationNode; voices: Map<string, Voice> } | null = null;
   /** While the organizer is in a breakout room, the recording hears nothing: what's said in a room stays out of the call's notes. */
   private hushed = false;
   /** `onBroken` hears whether this browser can record at all: false once a recorder runs, true if one can't start or fails. */
   constructor(private readonly upload: (p: AudioPiece) => Promise<void>, private readonly onError: (message: string) => void,
     private readonly onBroken: (broken: boolean) => void = () => undefined) {}
 
-  /** Silence instead of the microphone while `on`, without stopping: the recording keeps its place in time, so the transcript still lines up with it. */
+  /** Silence instead of everyone heard while `on`, without stopping: the recording keeps its place in time, so the transcript still lines up with it. */
   hush(on: boolean) {
     if (on === this.hushed) return;
     this.hushed = on;
@@ -840,17 +867,20 @@ export class NotesRecorder {
   }
 
   get running() { return this.rec?.state === 'recording'; }
-  /** Starts (or continues) recording into `segment`, from `track`, which may be a different microphone than before. */
-  start(track: MediaStreamTrack, segment: number) {
+  /**
+   * Starts (or continues) recording into `segment`, mixing exactly `voices`: new ones fade in, ones no longer there
+   * fade out, and one on a new track carries on with it. None records silence, and the segment goes on.
+   */
+  start(voices: readonly RecordedVoice[], segment: number) {
     if (this.rec && this.segment === segment) {
-      this.listen(track);
+      this.listen(voices);
       // Held while a pause is on its way: it carries on only when release() says so.
       if (this.rec.state === 'paused' && !this.gate) this.rec.resume();
       return;
     }
     this.stop();
     const mimeType = recordingMime();
-    const rec = recorderFor(this.listen(track).stream, mimeType, segment);
+    const rec = recorderFor(this.listen(voices).stream, mimeType, segment);
     if (!rec) { this.onBroken(true); return; }
     // Each recorder numbers its own pieces, so a late last piece keeps the segment it was recorded in.
     let seq = 0;
@@ -920,25 +950,41 @@ export class NotesRecorder {
     this.gate = null;
     g?.open();
   }
-  /** Points the recording at `track`; the recorder keeps the same input throughout. */
-  private listen(track: MediaStreamTrack): MediaStreamAudioDestinationNode {
+  /** Mixes exactly `voices` into the recording; the recorder keeps the same input throughout. */
+  private listen(voices: readonly RecordedVoice[]): MediaStreamAudioDestinationNode {
     if (!this.graph) {
       const ctx = new AudioContext();
       wakeAudio(ctx);
+      // A limiter, not a compressor: it does nothing to one voice at a normal level, and keeps several at once from clipping.
+      const mix = ctx.createDynamicsCompressor();
+      mix.threshold.value = -3;
+      mix.knee.value = 3;
+      mix.ratio.value = 20;
+      mix.attack.value = 0.003;
+      mix.release.value = 0.15;
+      // After the mix, one gain silences the whole recording while hushed.
       const gain = ctx.createGain();
       gain.gain.value = this.hushed ? 0 : 1;
       const dest = ctx.createMediaStreamDestination();
-      gain.connect(dest);
-      this.graph = { ctx, dest, gain, source: null, track: null };
+      mix.connect(gain).connect(dest);
+      this.graph = { ctx, mix, gain, dest, voices: new Map() };
     }
     const g = this.graph;
-    if (g.track !== track) {
-      g.source?.disconnect();
-      g.source = g.ctx.createMediaStreamSource(new MediaStream([track]));
-      g.source.connect(g.gain);
-      if (g.track) mlog.info('notes recorder switched microphones', { segment: this.segment });
-      g.track = track;
+    const want = new Map(voices.map((v) => [v.identity, v.track]));
+    let added = 0;
+    let gone = 0;
+    for (const [identity, v] of g.voices) {
+      if (want.get(identity) === v.track) continue;
+      g.voices.delete(identity);
+      fadeOut(g.ctx, v);
+      gone++;
     }
+    for (const [identity, track] of want) {
+      if (g.voices.has(identity)) continue;
+      g.voices.set(identity, fadeIn(g.ctx, g.mix, track));
+      added++;
+    }
+    if (added || gone) mlog.debug('voices recorded for the notes', { segment: this.segment, voices: g.voices.size, added, gone });
     return g.dest;
   }
   /** Resolves once the recorder has handed over its last piece; its audio graph closes after it. */
@@ -947,7 +993,7 @@ export class NotesRecorder {
     const g = this.graph;
     this.rec = null;
     this.graph = null;
-    const close = () => { g?.source?.disconnect(); void g?.ctx.close().catch(() => undefined); };
+    const close = () => { for (const v of g?.voices.values() ?? []) { v.source.disconnect(); v.gain.disconnect(); } void g?.ctx.close().catch(() => undefined); };
     if (!rec || rec.state === 'inactive') { close(); return Promise.resolve(); }
     return new Promise((resolve) => { rec.addEventListener('stop', () => { close(); resolve(); }, { once: true }); rec.stop(); });
   }

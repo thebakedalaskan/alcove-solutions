@@ -118,14 +118,13 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
 }
 
 /**
- * What's captured right now, in a sentence: what everyone says is transcribed (through the organizer's browser) and
- * the organizer's microphone recorded, less whatever their browser can't do now; nothing while paused; and while
- * notes are off, that what was transcribed before is still read for the notes. In a breakout room (`c` is the
- * room's), what's said is transcribed only while the organizer is there, never recorded, and never goes into the notes.
+ * What's captured right now, in a sentence: what everyone says is recorded and transcribed (through the organizer's
+ * browser, from what it hears), less whatever it can't do now; nothing while paused; and while notes are off, that
+ * what was transcribed before is still read for the notes. In a breakout room (`c` is the room's), what's said is
+ * transcribed only while the organizer is there, never recorded, and never goes into the notes.
  */
 function saidFor(state: CallState, c: CallState['capture'], name: string): string {
   const host = state.isOrganizer;
-  const mic = host ? 'your microphone' : `${name}’s microphone`;
   const browser = host ? 'your browser' : `${name}’s browser`;
   const until = host ? 'you resume' : `${name} resumes`;
   if (c.room) {
@@ -138,9 +137,9 @@ function saidFor(state: CallState, c: CallState['capture'], name: string): strin
   if (c.mode === 'paused') return `Nothing is recorded, transcribed or sent to the AI until ${host ? 'you resume' : `${name} resumes`}.`;
   if (c.mode === 'off') return state.notes.everOn ? 'Nothing new is recorded or transcribed. What was transcribed before is still read for the notes.' : 'Nothing from this call is recorded or written down.';
   if (c.mode === 'unavailable') return `Notes are on, but ${browser} can’t record or listen right now, so nothing is captured.`;
-  if (c.recording.mode === 'on' && c.transcript.mode === 'on') return `What everyone says is transcribed for the notes, and ${mic} is recorded.`;
-  if (c.transcript.mode === 'on') return `What everyone says is transcribed for the notes. ${sentence(mic)} isn’t recorded: ${browser} can’t record it right now.`;
-  return `${sentence(mic)} is recorded for the notes. Nothing is transcribed: ${browser} can’t listen right now.`;
+  if (c.recording.mode === 'on' && c.transcript.mode === 'on') return 'What everyone says, you included, is recorded and transcribed for the notes.';
+  if (c.transcript.mode === 'on') return `What everyone says is transcribed for the notes. It isn’t recorded: ${browser} can’t record right now.`;
+  return `What everyone says is recorded for the notes. Nothing is transcribed: ${browser} can’t listen right now.`;
 }
 
 /** The breakout room you're in, by name. */

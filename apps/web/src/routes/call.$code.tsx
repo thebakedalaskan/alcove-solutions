@@ -205,10 +205,11 @@ function InCall({ session }: { session: CallSession }) {
   }, [session, media, toast]);
 
   /*
-   * The call's notes, in the organizer's browser. The recorder keeps the organizer's microphone; the live transcript
-   * hears everyone this browser plays (its own microphone and the people in its part of the call), each under
-   * their own name. Both run while notes are on; paused or off, they stop and drop whatever wasn't sent: the
-   * server refuses it anyway.
+   * The call's notes, in the organizer's browser, from what it hears: its own microphone and the people in its part of
+   * the call, as their tracks arrived (nobody's volume here, nor the speaker, changes that). The recorder mixes them into
+   * one recording, so playing the notes back sounds like the call; the live transcript hears each on its own, under their
+   * own name. While the organizer visits a breakout room the recording is silent: room talk stays out of the notes. Both
+   * run while notes are on; paused or off, they stop and drop whatever wasn't sent: the server refuses it anyway.
    */
   const recorder = useRef<NotesRecorder | null>(null);
   if (!recorder.current) recorder.current = new NotesRecorder((p) => session.appendAudio(p), setUploadError, setCantRecord);
@@ -217,14 +218,15 @@ function InCall({ session }: { session: CallSession }) {
   const micTrack = media.micTrack();
   const segment = state.notes.recording.segment;
   const live = state.phase === 'in-call';
+  // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
+  const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
   useEffect(() => {
     const r = recorder.current;
     if (!r) return;
-    if (organizer && on && live && micTrack) r.start(micTrack, segment);
+    // In a breakout room it records silence (hush, below): what's said in a room stays out of the notes.
+    if (organizer && on && live) r.start([...(micTrack ? [{ identity: self, track: micTrack }] : []), ...room.heard()], segment);
     else if (!on || !organizer) r.discard();
-  }, [organizer, on, live, segment, micTrack]);
-  // Who's heard changes as people come and go, mute, switch microphones, or move between rooms.
-  const heardKey = room.heard().map((h) => `${h.identity}:${h.track.id}`).join(' ');
+  }, [organizer, on, live, segment, micTrack, room, self, heardKey]);
   // Nothing is heard while this browser is between two parts of the call: it holds neither part's keys.
   const settledHere = crypto.status === 'in';
   // Nobody is heard in a breakout room the organizer paused: what was held is dropped, and the segment carries on.
@@ -239,11 +241,12 @@ function InCall({ session }: { session: CallSession }) {
   }, [organizer, on, live, segment, micTrack, room, self, heardKey, settledHere, roomHeld]);
   useEffect(() => () => ears.current?.stop(), []);
   /*
-   * What this browser can't capture while notes are on, which everyone is told: the recording without a microphone
-   * (none, refused, or in use elsewhere) or with a recorder that failed, the transcript without a way to listen. It's
-   * said again whenever it changes, and after every change to notes, which forgets it.
+   * What this browser can't capture while notes are on, which everyone is told: the recording when the recorder
+   * couldn't start or failed (without a microphone of the organizer's own it still records everyone else), the
+   * transcript without a way to listen. It's said again whenever it changes, and after every change to notes, which
+   * forgets it.
    */
-  const cant = (['recording', 'transcript'] as const).filter((p) => (p === 'recording' ? !micTrack || cantRecord : cantListen));
+  const cant = (['recording', 'transcript'] as const).filter((p) => (p === 'recording' ? cantRecord : cantListen));
   const cantKey = cant.join(' ');
   const toldKey = (['recording', 'transcript'] as const).filter((p) => state.capture[p].mode === 'unavailable').join(' ');
   useEffect(() => {
