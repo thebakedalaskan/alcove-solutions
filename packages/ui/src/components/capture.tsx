@@ -109,6 +109,7 @@ export function CaptureSummary({ notes, capture, who, className }: {
   const said: ReactNode = !capture
     ? notes === 'on' ? 'When the call starts, what everyone says, you included, is transcribed for the notes, and the organizer’s microphone is recorded.' : 'Nothing is recorded. The organizer can turn notes on during the call.'
     : mode === 'on' ? `${onLine(capture)}${shared ? ' What anyone shares on screen is read for them too.' : ''}`
+      : mode === 'unavailable' && capture.away ? `Notes are on, but the organizer’s browser isn’t in the call right now, so nothing ${shared ? 'said ' : ''}is captured until it’s back.${shared ? ' What anyone shares on screen is still read for the notes.' : ''}`
       : mode === 'unavailable' ? shared ? 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing said is captured. What anyone shares on screen is still read for the notes.'
         : 'Notes are on, but the organizer’s browser can’t record or listen right now, so nothing is captured.'
         : mode === 'paused' ? 'The organizer paused notes. Nothing is recorded, transcribed or sent to the AI until they resume.'

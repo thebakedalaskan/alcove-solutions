@@ -34,9 +34,10 @@ const clog = log.child({ component: 'calls' });
  * the request (KMASTER), so guests' catch-up and ask work without an account. `inCall`: let in (the
  * organizer always is); someone still waiting only learns whether they've been let in. `role`: theirs as the
  * call stands, which can be more than their pass says (someone signed in whom the organizer let in from the link
- * is invited now).
+ * is invited now). `elsewhere`: one of the organizer's own connections from before the call went on from another tab
+ * or device, which holds no host powers.
  */
-export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean; inCall: boolean; role: CallRole }
+export interface Viewer { pass: CallPass; organizer: Owner; isOrganizer: boolean; elsewhere: boolean; inCall: boolean; role: CallRole }
 
 const Notice = z.object({ id: z.string(), text: z.string(), kind: z.enum(['notes', 'people', 'info']) });
 /** A breakout room as kept: invited people by email, shown with their names when the call is read. */
@@ -78,7 +79,9 @@ const Stored = z.object({
      * the shares that ended (their presenter's browser said so, or the presenter left), so what a share showed last
      * stops there.
      */
-    screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(screens.ShareEnd) })
+    screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(screens.ShareEnd) }),
+    /** The stretches with notes on but the organizer's browser out of the call, until another of their connections took over. */
+    offline: z.array(capture.OfflineStretch)
   }),
   people: z.array(Joined),
   /** Who the organizer put on everyone's main stage, by identity. */
@@ -121,6 +124,8 @@ const withPerson = (s: Stored, identity: string, change: (j: Joined) => Joined):
 const secondsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((at - startedAt.getTime()) / 1000));
 /** The same, to a tenth of a second: what notes and shared screens do, so even a short change shows where it was. */
 const tenthsIn = (startedAt: Date, at = Date.now()) => Math.max(0, Math.round((at - startedAt.getTime()) / 100) / 10);
+/** The organizer's connection left the room and nothing has taken its place yet: nothing is captured meanwhile. */
+const organizerAway = (r: Pick<Row, 'state' | 'host_identity' | 'host_left_at'>) => r.state === 'live' && r.host_identity !== null && r.host_left_at !== null;
 
 /** Rooms whose time is up have closed, whether or not anyone said so: everyone is back, and the rooms go to the notes. */
 function settleRooms(s: Stored, now: number): Stored {
@@ -203,7 +208,7 @@ export async function viewerOf(d: Deps, pass: CallPass, sessionOwnerId: string |
   const mine = s.people.find((j) => j.identity === pass.identity);
   // Never more than the pass says, except a guest the organizer let in and so added to the invite.
   const role: CallRole = pass.role === 'guest' && mine?.role === 'invited' ? 'invited' : pass.role;
-  return { pass, organizer, isOrganizer, inCall: isOrganizer || mine?.status === 'in', role };
+  return { pass, organizer, isOrganizer, elsewhere: theOrganizer && !isOrganizer, inCall: isOrganizer || mine?.status === 'in', role };
 }
 /** Everything about a call but whether you're let in needs you to be in it. */
 export function requireIn(v: Viewer, what: string): void {
@@ -303,8 +308,8 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
       now: s.people.find((x) => x.person === j.person && x.status === 'in')?.identity ?? null
     })) : [],
     capture: capture.stateFor({
-      status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, screens: s.notes.screens,
-      gaps: capture.gapsOf(s.notes.history, row.started_at, segs, row.ended_at ? secondsIn(row.started_at, row.ended_at.getTime()) : undefined),
+      status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, away: organizerAway(row), screens: s.notes.screens,
+      gaps: capture.gapsOf(s.notes.history, s.notes.offline, row.started_at, segs, row.ended_at ? secondsIn(row.started_at, row.ended_at.getTime()) : undefined),
       // Open asks, from whoever is in the call now: everyone sees them, like raised hands.
       requests: s.notes.asks.flatMap((a) => {
         const j = here.findLast((p) => p.person === a.person);
@@ -320,8 +325,8 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
 }
 
 /** What's captured, for someone who isn't in the call (asking to join, or reading the call's card): no names, no gaps, no asks. */
-function anonymousCapture(s: Stored, row: Pick<Row, 'started_at'>) {
-  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, screens: s.notes.screens, gaps: [], requests: [], asked: null });
+function anonymousCapture(s: Stored, row: Pick<Row, 'started_at' | 'state' | 'host_identity' | 'host_left_at'>) {
+  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: organizerAway(row), screens: s.notes.screens, gaps: [], requests: [], asked: null });
 }
 
 /**
@@ -456,7 +461,7 @@ async function ticketFor(d: Deps, o: Owner, callId: string, who: Pick<Joined, 'i
   const pass = issuePass(d.cfg, { callId, ownerId: o.ownerId, identity, role, name, person });
   const ticket: CallTicket = { callId, serverUrl: d.cfg.LIVEKIT_URL, roomName, identity, role, pass };
   // The role the call has for them (an invited person's, a guest's), as #62's join gave it: what they may see follows it.
-  const viewer: Viewer = { pass: { v: 1, callId, ownerId: o.ownerId, identity, role, name, person, exp: 0 }, organizer: o, isOrganizer: role === 'host', inCall: role === 'host' || who.inCall === true, role };
+  const viewer: Viewer = { pass: { v: 1, callId, ownerId: o.ownerId, identity, role, name, person, exp: 0 }, organizer: o, isOrganizer: role === 'host', elsewhere: false, inCall: role === 'host' || who.inCall === true, role };
   return { ticket, state: await view(viewer, d.pool, callId) };
 }
 
@@ -524,7 +529,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const roomName = `r_${id128()}`;
       let s: Stored = {
         people: [joined], spotlight: null, breakouts: { open: null, held: [] }, removed: [], chatEver: false, notices: [],
-        notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [], asks: [], unavailable: [], screens: { on: false, history: [], ended: [] } }
+        notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, history: [], asks: [], unavailable: [], offline: [], screens: { on: false, history: [], ended: [] } }
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
@@ -561,7 +566,14 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     // Paused notes stay paused, and notes off stay off: only the organizer saying so changes them, never a new connection.
     // What the old connection couldn't capture is its own: the new one says for itself.
     s = { ...s, notes: { ...s.notes, unavailable: [] } };
-    if (live.host_identity && s.notes.status === 'on' && s.notes.recordingId) s = { ...s, notes: { ...s.notes, segment: s.notes.segment + 1 } };
+    if (live.host_identity && s.notes.status === 'on' && s.notes.recordingId) {
+      // If the old connection had already left the room (it dropped, or a reload or move let go of it), nothing was
+      // recorded or heard from then until now: a gap in the notes, after the segment it was recording.
+      const now = tenthsIn(live.started_at);
+      const gone = live.host_left_at ? Math.max(tenthsIn(live.started_at, live.host_left_at.getTime()), s.notes.history.at(-1)?.at ?? 0) : now;
+      const offline = gone < now ? [...s.notes.offline, { from: gone, to: now, segment: s.notes.segment }] : s.notes.offline;
+      s = { ...s, notes: { ...s.notes, segment: s.notes.segment + 1, offline } };
+    }
     await save(o, c, live.call_id, s);
     const roomName = live.room_name ?? `r_${id128()}`;
     await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id]);
@@ -1114,7 +1126,7 @@ async function sofar(v: Viewer, callId: string, what: 'catch-up' | 'ask') {
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
     seconds: asOf, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
   });
-  return { all, asOf, gaps: capture.gapsOf(s.notes.history, row.started_at, segs), person, brief };
+  return { all, asOf, gaps: capture.gapsOf(s.notes.history, s.notes.offline, row.started_at, segs), person, brief };
 }
 
 /** Where the call has got to, from the live transcript: the last `minutes`, or all of it. For the person asking alone. */
@@ -1166,15 +1178,18 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
       if (s.notes.noteId) {
-        const recorded = (at: number) => capture.recorded(s.notes.history, at, duration);
+        // Ending while the organizer's browser is out of the call (it never came back): nothing was captured since it left.
+        const gone = row.host_left_at && s.notes.status === 'on' ? tenthsIn(row.started_at, row.host_left_at.getTime()) : null;
+        const offline = gone !== null && gone < duration ? [...s.notes.offline, { from: gone, to: duration, segment: s.notes.segment }] : s.notes.offline;
+        const recorded = (at: number) => capture.recorded(s.notes.history, offline, at, duration);
         const held = s.breakouts.held.map((h) => ({ ...h, from: recorded(h.from), to: recorded(h.to) }));
         const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
         // The stretches nothing was captured in go into the note, so it says so where they fall.
-        const gaps = capture.gapsOf(s.notes.history, row.started_at, segs, duration);
+        const gaps = capture.gapsOf(s.notes.history, offline, row.started_at, segs, duration);
         // And what was on shared screens, each frame where it was shown and for how long, its presenter named as the call names speakers.
         const speakerOf = speakersIn(s, await me(o));
         const shown = screens.moments(await screens.framesOf(o, c, s.notes.noteId), {
-          history: s.notes.history, screens: s.notes.screens.history, ended: s.notes.screens.ended, gaps, segments: segs, duration, presenterOf: speakerOf
+          history: s.notes.history, offline, screens: s.notes.screens.history, ended: s.notes.screens.ended, gaps, segments: segs, duration, presenterOf: speakerOf
         });
         await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, roomsIn(s), gaps, shown);
       }
@@ -1278,7 +1293,9 @@ export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
     setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer left failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
   } else if (e.event === 'participant_joined') {
     await exec(d.pool, 'UPDATE calls SET host_left_at = NULL WHERE owner_id = $1 AND call_id = $2 AND host_identity = $3', [r.owner_id, r.call_id, e.identity]);
-  }
+  } else return;
+  // Everyone's screen says what's captured: nothing while the organizer's browser is out of the call.
+  await nudge(await openOwner(d, r.owner_id, undefined), e.roomName, r.call_id, { call: true, log: false });
 }
 
 const LiveCall = z.object({ owner_id: z.string(), call_id: z.string(), room_name: z.string(), host_identity: z.string().nullable(), host_joined_at: timestamp.nullable(), host_left_at: timestamp.nullable(), started_at: timestamp });

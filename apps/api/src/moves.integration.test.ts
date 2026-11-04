@@ -141,6 +141,9 @@ describe('moving to another device', () => {
     await letIn(laptop, sam);
     laptop.setHand(true);
     await settle(laptop, (s) => s.participants.some((p) => p.isMe && p.hand));
+    // The laptop can't record (no microphone, say): everyone sees it.
+    await laptop.setUnavailable(['recording']);
+    expect((await settle(sam, (s) => s.capture.recording.mode === 'unavailable')).capture.mode).toBe('on');
 
     const out = await laptop.startMove({ mic: true, cam: false });
     // A device signed in to nobody, or to someone else, can open the link but can't take the organizer's place.
@@ -166,19 +169,92 @@ describe('moving to another device', () => {
     await inGroup(now);
     expect(now.ticket.role).toBe('host');
     expect(now.getSnapshot()).toMatchObject({ isOrganizer: true, generation: 1 });
+    // What the laptop couldn't capture was its own: the new device says for itself.
+    expect(now.getSnapshot().capture).toMatchObject({ mode: 'on', away: false, recording: { mode: 'on' } });
     // Everyone already in rejoins the new device's group without asking, and the organizer's hand stays up.
     await waitFor(() => now.crypto.getSnapshot().members.includes(sam.ticket.identity) && keyOf(sam) === keyOf(now), 'Sam in the new device’s group');
     expect((await settle(sam, (s) => s.participants.some((p) => p.isOrganizer && p.id === now.ticket.identity))).participants.find((p) => p.isOrganizer)?.hand).toBe(true);
-    // Host powers went with the organizer: the new device can lock the call, the laptop can't, nor send audio.
+    // Host powers went with the organizer: the new device can lock the call; the laptop is told the call went on
+    // elsewhere (409, so anything it still had to send stops quietly), and can't send audio either.
     await now.lock(true);
     expect((await settle(now, (s) => s.locked)).locked).toBe(true);
-    expect(code(await laptop.lock(false).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await laptop.lock(false).catch((e: unknown) => e))).toBe('conflict');
     // The recording carries on in a new segment from the new device.
     expect(now.getSnapshot().notes.recording.segment).toBe(1);
     const piece = { data: new Blob([randomBytes(1024)]), segment: 1, seq: 0, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
     await now.appendAudio(piece);
-    expect(code(await laptop.appendAudio({ ...piece, seq: 1 }).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await laptop.appendAudio({ ...piece, seq: 1 }).catch((e: unknown) => e))).toBe('conflict');
     expect((await now.leave())?.duration).toBeGreaterThan(0);
+  });
+
+  it('keeps notes paused across a move: only the organizer resumes them', async () => {
+    const email = unique('organizer');
+    const org = await account(email);
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const laptop = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(laptop);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(laptop, sam);
+    await laptop.pause();
+    expect(laptop.getSnapshot().capture.mode).toBe('paused');
+
+    const out = await laptop.startMove({ mic: true, cam: false });
+    const phone = h.browser();
+    await phone.api.auth.signIn('sso', { email });
+    const there = await open(phone.api, out.getSnapshot().code ?? '');
+    await there.ready(PHONE);
+    await waitFor(() => out.getSnapshot().stage === 'ready', 'the laptop told the phone is ready');
+    laptop.close();
+    await out.confirm({ mic: true, cam: false });
+    const now = await arrived(there);
+    // Still paused on the new device and for everyone: a move resumes nothing, and audio is still refused.
+    expect(now.getSnapshot().capture).toMatchObject({ mode: 'paused', away: false, recording: { mode: 'paused', by: { kind: 'organizer' } } });
+    expect((await settle(sam, (s) => s.participants.some((p) => p.isOrganizer && p.id === now.ticket.identity))).capture.mode).toBe('paused');
+    const piece = { data: new Blob([randomBytes(1024)]), segment: 0, seq: 0, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
+    expect(code(await now.appendAudio(piece).catch((e: unknown) => e))).toBe('conflict');
+    // The organizer resumes from the new device: a new segment, and one gap, the pause, with nothing offline in it.
+    await now.resume();
+    expect(now.getSnapshot()).toMatchObject({ capture: { mode: 'on' }, notes: { recording: { segment: 1 } } });
+    await now.appendAudio({ ...piece, segment: 1 });
+    expect(now.getSnapshot().capture.gaps.map((g) => g.kind)).toEqual(['paused']);
+    await now.leave();
+  });
+
+  it('says nothing is captured while the organizer’s browser is out of the call, and marks the gap when another connection takes over', async () => {
+    const email = unique('organizer');
+    const org = await account(email);
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const laptop = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(laptop);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(laptop, sam);
+    const room = laptop.ticket.roomName;
+
+    // LiveKit says the organizer's connection left: everyone, and the card, are told nothing is captured.
+    expect((await hook('participant_left', room, laptop.ticket.identity)).status).toBe(200);
+    expect((await settle(sam, (s) => s.capture.away)).capture).toMatchObject({
+      mode: 'unavailable', away: true, recording: { mode: 'unavailable' }, transcript: { mode: 'unavailable' }, ai: { mode: 'on' }
+    });
+    expect((await guestBrowser().calls.card(c)).capture).toMatchObject({ mode: 'unavailable', away: true });
+    // The same connection comes back (LiveKit reconnected it): its recording carried on meanwhile, and nothing is marked.
+    expect((await hook('participant_joined', room, laptop.ticket.identity)).status).toBe(200);
+    expect((await settle(sam, (s) => !s.capture.away)).capture).toMatchObject({ mode: 'on', away: false, gaps: [] });
+
+    // Gone again, and this time the organizer comes back from another device: the time between is a gap.
+    expect((await hook('participant_left', room, laptop.ticket.identity)).status).toBe(200);
+    await sleep(1100);
+    const phone = await (await account(email)).api.calls.join(c, { mic: true, cam: false });
+    expect(phone.getSnapshot()).toMatchObject({ capture: { mode: 'on', away: false }, notes: { recording: { segment: 1 } } });
+    const [gap, ...more] = phone.getSnapshot().capture.gaps;
+    expect(more).toEqual([]);
+    expect(gap).toMatchObject({ kind: 'offline', at: 0 });
+    expect(Date.parse(gap?.to ?? '') - Date.parse(gap?.from ?? '')).toBeGreaterThanOrEqual(1000);
+    // The laptop's tab is told the call went on elsewhere (409), so its late audio stops there quietly.
+    const piece = { data: new Blob([randomBytes(1024)]), segment: 0, seq: 0, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
+    expect(code(await laptop.appendAudio(piece).catch((e: unknown) => e))).toBe('conflict');
+    // And the finished note says so where it falls.
+    const noteId = (await phone.leave())?.pendingNoteId ?? '';
+    expect((await org.api.notes.get(noteId)).gaps.map((g) => g.kind)).toEqual(['offline']);
   });
 
   it('moves an invited person only to a device signed in to their account, as the same person', async () => {

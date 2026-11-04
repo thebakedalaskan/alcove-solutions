@@ -2,9 +2,12 @@
 import { firstName, type CaptureGap, type CaptureState } from '@alcove/api';
 import { hm } from './time';
 
-/** "Paused 10:02–10:05", "Notes off 10:10–10:12", "Paused at 10:02" for a short one, or "Paused since 10:02" while it lasts. */
+/**
+ * "Paused 10:02–10:05", "Notes off 10:10–10:12", "Organizer offline 10:20–10:21" (their browser was out of the call),
+ * "Paused at 10:02" for a short one, or "Paused since 10:02" while it lasts.
+ */
 export function gapLabel(g: CaptureGap): string {
-  const what = g.kind === 'paused' ? 'Paused' : 'Notes off';
+  const what = g.kind === 'paused' ? 'Paused' : g.kind === 'offline' ? 'Organizer offline' : 'Notes off';
   if (!g.to) return `${what} since ${hm(g.from)}`;
   const from = hm(g.from);
   const to = hm(g.to);
