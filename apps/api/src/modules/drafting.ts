@@ -54,6 +54,10 @@ const saidBy = (s: Speaker) => `${oneLine(s.name)}${s.person && !s.person.email 
 function gapLine(g: CaptureGap, now: number): string {
   const ms = (g.to ? Date.parse(g.to) : now) - Date.parse(g.from);
   const long = ms < 60_000 ? 'less than a minute' : `${Math.round(ms / 60_000)} min`;
+  if (g.kind === 'offline') {
+    return g.to ? `-- at ${mmss(g.at)} the organizer's browser was out of the call for ${long}: nothing said then was recorded --`
+      : `-- at ${mmss(g.at)} the organizer's browser left the call, ${long} ago: nothing said since was recorded --`;
+  }
   const kind = g.kind === 'paused' ? 'paused' : 'off';
   return g.to ? `-- at ${mmss(g.at)} notes were ${kind} for ${long}: nothing said then was recorded --`
     : `-- at ${mmss(g.at)} notes went ${kind}, ${long} ago: nothing said since was recorded --`;
