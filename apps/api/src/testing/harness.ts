@@ -64,7 +64,7 @@ export interface Harness {
   /** The NEAR AI Cloud the API transcribes speech and writes notes with, and the stand-ins that vouch for it. */
   near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
-  browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
+  browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callNotesMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
   /** Stops every call session and workspace stream this harness's browsers opened from keeping up (nobody leaves). */
   closeCalls(): void;
   /**
@@ -135,8 +135,8 @@ export async function startHarness(): Promise<Harness> {
     baseUrl, pool, objects, deps, logs, google, near,
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
-      // Calls keep up with their keys quickly here; browsers wait 1.5 s between checks while nothing nudges them.
-      const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.ringSilenceMs ? { ringSilenceMs: o.ringSilenceMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
+      // Calls keep up with their keys and notes quickly here; browsers wait 1.5 s between checks while nothing nudges them, and 5 s between looks at the notes.
+      const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, callNotesMs: o.callNotesMs ?? 100, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.ringSilenceMs ? { ringSilenceMs: o.ringSilenceMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
       const join: AlcoveApi['calls']['join'] = async (code, opts) => { const s = await api.calls.join(code, opts); calls.push(s); return s; };
       const live: AlcoveApi['workspaces']['live'] = (id, opts) => { const s = api.workspaces.live(id, opts); streams.push(s); return s; };
       return { api: { ...api, calls: { ...api.calls, join }, workspaces: { ...api.workspaces, live } }, fetch: f };

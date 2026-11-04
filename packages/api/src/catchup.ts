@@ -1,9 +1,10 @@
 /*
  * Catching up during a call (docs: Notes and inference › Catching up during a call): which stretch of the call to
  * read, what a catch-up or an answer says and the moments behind it, and how complete and current it is. For the
- * person asking alone: nothing here goes into the call's state, and nothing is kept. Times are seconds since the
- * call started (stretches with nothing captured are the call's `CaptureGap`s, by time of day); the app shows every
- * time as a time of day.
+ * person asking alone: nothing of that goes into the call's state, and nothing is kept. The call's shared live notes,
+ * which everyone in a part of the call reads, are a catch-up on all of it that is kept (`LiveNotes`). Times are seconds
+ * since the call started (stretches with nothing captured are the call's `CaptureGap`s, by time of day); the app shows
+ * every time as a time of day.
  */
 import { z } from './zod';
 import { CaptureGapSchema, IDSchema, TranscriptLineSchema } from './types';
@@ -92,6 +93,33 @@ export const CatchUpSchema = z.object({
   read: CatchUpReadSchema
 });
 export type CatchUp = z.infer<typeof CatchUpSchema>;
+
+/**
+ * Something to do in a call's shared live notes. `id` stays with it from one refresh to the next, however the notes
+ * model rewords it, for as long as it's plainly the same item; `done` is the same for everyone (CallAction `follow-up`).
+ */
+export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done: z.boolean() });
+export type LiveFollowUp = z.infer<typeof LiveFollowUpSchema>;
+
+/**
+ * A call's live notes (docs: Notes and inference › Live notes): one set for each part of the call, kept sealed on the
+ * server and refreshed at most every 30 seconds while someone is watching (CallSession.watchNotes), whoever is watching.
+ * As a catch-up on the whole of that part of the call, with its follow-ups tickable.
+ */
+export const LiveNotesSchema = z.object({
+  /**
+   * Null until the first are written. Everyone in the part of the call reads the same notes, each of them what they may
+   * read: a point shows only to someone who may read every line behind it, and the summary only to someone who may read
+   * every line the notes read. `read.whileHere` says that left something out, and `read.lines` then counts only the
+   * lines behind what's shown.
+   */
+  notes: CatchUpSchema.extend({ next: z.array(LiveFollowUpSchema) }).nullable(),
+  /** They're being refreshed now. */
+  writing: z.boolean(),
+  /** Why the latest refresh didn't work; the notes stay as they were, and it's tried again. Null otherwise. */
+  error: z.string().nullable()
+});
+export type LiveNotes = z.infer<typeof LiveNotesSchema>;
 
 /** An answer to a question about a call so far, for the person who asked, with the moments it comes from. */
 export const CallAnswerSchema = z.object({ text: z.string(), evidence: z.array(EvidenceSchema), read: CatchUpReadSchema });

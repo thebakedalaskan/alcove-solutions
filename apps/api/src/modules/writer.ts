@@ -27,6 +27,7 @@ import { me, profile } from './account';
 import { purgeAudio, queueDelete, segments } from './audio';
 import * as billing from './billing';
 import { briefOf, draft, revisited, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
+import { doneInNotes } from './liveNotes';
 import { NoteManifest, decisionsOf, roomChapters, updateNote, type Revisit } from './notes';
 import { personOf } from './portraits';
 import * as screens from './screens';
@@ -155,7 +156,8 @@ async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promis
  * changed stays, in the call's notes and each room's, even if the first try never wrote anything; notes written again
  * (the organizer asked, after correcting the transcript) aren't charged again, and when they can't be written, the notes
  * stay as they were. `writtenAt` says when the notes read the transcript, so a correction made since is offered for
- * writing them again.
+ * writing them again. Follow-ups ticked during the call are done in whichever part of the notes is written, and wait for
+ * the ones that aren't.
  *
  * A call set not to keep its transcript loses it here, once notes are written from it, and not before. Each part of
  * the call goes with its own notes, the main room's and each breakout room's: the new revision has none of those, and
@@ -184,15 +186,21 @@ async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | un
       const sections = m.rooms.map((r): RoomNote => {
         const w = wrote.rooms.rooms.find((x) => x.id === r.id);
         if (!w || !('notes' in w)) return r;
-        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...keepSettled(r, w.notes), transcript: m.keep.transcript ? r.transcript : [] };
+        const items = keepSettled(r, w.notes);
+        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items, actions: doneInNotes(items.actions, m.ticked.filter((t) => t.room === r.id), r.transcript), transcript: m.keep.transcript ? r.transcript : [] };
       });
+      const roomsWritten = new Set(wrote.rooms.rooms.flatMap((x) => ('notes' in x ? [x.id] : [])));
+      // What's ticked in a room whose notes weren't written waits for them; the call's, for the call's.
+      const waiting = m.ticked.filter((t) => (t.room === null ? !wrote.notes : !roomsWritten.has(t.room)));
       const evidence = [...(wrote.notes ? [wrote.notes.evidence] : []), ...wrote.rooms.evidence];
       const inference = evidence.reduce((all, e) => (all.some((x) => verificationKey(x) === verificationKey(e)) ? all : [...all, e]), m.inference);
       if (!wrote.notes) {
-        return { ...m, status: 'ready', chapters, rooms: sections, inference, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
+        return { ...m, status: 'ready', chapters, rooms: sections, inference, ticked: waiting, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
       }
       const { evidence: _, ...written } = wrote.notes;
-      return { ...m, status: 'ready', ...written, ...keepSettled(m, written), chapters, rooms: sections, writtenAt: wrote.readAt, transcript: m.keep.transcript ? m.transcript : [], inference };
+      const items = { ...written, ...keepSettled(m, written) };
+      const actions = doneInNotes(items.actions, m.ticked.filter((t) => t.room === null), m.transcript ?? []);
+      return { ...m, status: 'ready', ...items, actions, chapters, rooms: sections, writtenAt: wrote.readAt, transcript: m.keep.transcript ? m.transcript : [], inference, ticked: waiting };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (any && first) {

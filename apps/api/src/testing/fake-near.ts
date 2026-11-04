@@ -92,6 +92,11 @@ export interface FakeNear {
   failNext(n: number, how: Failure, only?: string | undefined): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number, only?: string | undefined): void;
+  /**
+   * From now on the notes model writes the follow-up it hears in `line` as `text`, in catch-ups and in the notes, as a
+   * model words a thing afresh each time; '' and it no longer lists it; null and it goes back to the words it hears.
+   */
+  reword(line: string, text: string | null): void;
   close(): Promise<void>;
 }
 
@@ -247,7 +252,7 @@ function notesIn(prompt: string): { n: number; heard: Heard[] }[] {
 const wordsAsked = (user: string) => (/\nQuestion: (.*)$/s.exec(user)?.[1] ?? '').toLowerCase().split(/\W+/).filter((w) => w.length > 3);
 
 /** What the notes model writes for a system prompt, a user message and the images sent with it. */
-function notesReply(system: string, user: string, images: Buffer[]): unknown {
+function notesReply(system: string, user: string, images: Buffer[], reworded: ReadonlyMap<string, string>): unknown {
   if (system.startsWith('You read one frame')) {
     // Reads what a test wrote on the frame, exactly; a frame without it can't be made out.
     const shown = images[0] ? shownIn(images[0]) : null;
@@ -281,7 +286,7 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
       decided: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(cited), { text: 'Everyone agreed to double the budget.', lines: [nowhere] }],
       proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(cited),
       open: heard.filter((h) => h.text.trim().endsWith('?')).map(cited),
-      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...cited(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
+      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...cited(h), text: reworded.get(h.text) ?? h.text, owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
     };
   }
   if (system.startsWith('You translate')) {
@@ -316,7 +321,7 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         if (!m) return [];
         const rest = m[2] ?? '';
-        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }];
+        return [{ text: reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }];
       }),
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
@@ -479,6 +484,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let failingOnly: string | undefined;
   let slow = 0;
   let slowOnly: string | undefined;
+  const reworded = new Map<string, string>();
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
@@ -583,7 +589,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       else content = failure === 'stub'
         ? JSON.stringify({ summary: '...', decisions: [], questions: [], actions: [], chapters: [], suggestedQuestions: [], screens: [] })
         : 'Here are your notes! The team talked about a few things.';
-    } else content = JSON.stringify(notesReply(system, user, sent));
+    } else content = JSON.stringify(notesReply(system, user, sent, reworded));
     return {
       status: 200,
       body: {
@@ -683,6 +689,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
+    reword(line, text) { if (text === null) reworded.delete(line); else reworded.set(line, text); },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }

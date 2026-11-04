@@ -26,6 +26,7 @@ import * as additions from './additions';
 import { noteObjects, purgeAudio, queueDelete, segments } from './audio';
 import { entriesOf } from './backing';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
+import { Ticked } from './liveNotes';
 import { MeetingManifest } from './meetings';
 import * as personal from './personal';
 import { nameOf, personOf } from './portraits';
@@ -115,7 +116,12 @@ export const NoteManifest = z.object({
    */
   recorded: z.number().nullable().default(null),
   /** What this call came back to from earlier calls in its series, once the notes are written. */
-  revisits: z.array(Revisit).default([])
+  revisits: z.array(Revisit).default([]),
+  /**
+   * Follow-ups ticked during the call, waiting for the notes they go in: each is done in the call's notes or its room's
+   * when those are written (liveNotes.doneInNotes), and leaves this list then. Empty in a note stored before calls kept them.
+   */
+  ticked: z.array(Ticked).default([])
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 /** A note's follow-ups: the call's, then each breakout room's. */
@@ -132,7 +138,7 @@ export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; r
     kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, rooms: [], suggestedQuestions: [], writtenAt: null,
-    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, revisits: []
+    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, revisits: [], ticked: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -165,14 +171,15 @@ export interface HeldRoom { id: string; name: string; people: Speaker[]; from: n
 
 /**
  * The recording is complete: its live transcript moves into the note, the main room's lines into the transcript and
- * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in and what was on
- * shared screens (`shown`, the call's frames as screen moments). Everyone invited gets the note, and it's queued for
- * the notes service (modules/writer.ts), which writes each room's notes too. Runs in the stopping transaction, once the
- * recording has stopped. A call set not to keep its recording loses its audio here, after everything worked out from it
- * (where lines fall, and the seconds billed) is in the note. Returns the objects to delete once that transaction commits.
+ * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in, what was on
+ * shared screens (`shown`, the call's frames as screen moments) and the follow-ups ticked during the call. Everyone
+ * invited gets the note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
+ * Runs in the stopping transaction, once the recording has stopped. A call set not to keep its recording loses its audio
+ * here, after everything worked out from it (where lines fall, and the seconds billed) is in the note. Returns the
+ * objects to delete once that transaction commits.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = []): Promise<string[]> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = []): Promise<string[]> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
   const audio = await segments(o, recordingId, db);
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
@@ -189,7 +196,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
     recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf), rooms: sections,
-    inference: heardBy
+    inference: heardBy, ticked
   }));
   await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');
@@ -197,7 +204,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   await queueNotes(o, db, noteId, next.recordingId);
   nlog.info('notes job queued', {
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
-    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0)
+    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length
   });
   return next.keep.recording ? [] : purgeAudio(o, db, next.recordingId);
 }

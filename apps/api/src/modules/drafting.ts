@@ -100,7 +100,7 @@ const roomsText = (rooms: RoomNote[], texts: string[]): string => rooms.map((r, 
 const MAX_TRANSCRIPT_CHARS = 120_000;
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+export const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
 /** Never the fence the transcript is sent in, so nothing said or shown can end it early. */
@@ -457,8 +457,8 @@ const COMMON = new Set([
 ]);
 /** A word without the commonest endings, so "launch", "launches" and "launched" are one word. */
 const stem = (w: string) => { const s = w.replace(/(?:ing|ed|es|e|s)$/, ''); return s.length > 2 ? s : w; };
-/** The words of a text a question is matched on: folded, of three letters or more, without the commonest. */
-const wordsOf = (text: string) => fold(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && !COMMON.has(w)).map(stem);
+/** The words of a text that say what it's about, as a question is matched on them: folded, of three letters or more, without the commonest. */
+export const keyWords = (text: string) => fold(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && !COMMON.has(w)).map(stem);
 /** A transcript line's words with whoever said it, for matching. */
 const heard = (l: TranscriptLine) => `${l.speaker?.name ?? ''} ${l.text}`;
 /** A note's date, for questions about "last week" or "yesterday". */
@@ -547,8 +547,8 @@ const NoteCite = z.object({ note: z.coerce.number().int(), at: z.coerce.number()
  * transcript lines.
  */
 export async function answerFromNotes(cfg: Config, notes: NoteBrief[], asker: Person, question: string): Promise<{ parts: AnswerPart[]; sent: string[]; lines: number }> {
-  const terms = new Set(wordsOf(question));
-  const shared = (text: string) => new Set(wordsOf(text).filter((w) => terms.has(w)));
+  const terms = new Set(keyWords(question));
+  const shared = (text: string) => new Set(keyWords(text).filter((w) => terms.has(w)));
   const found = notes.map((n) => ({
     n,
     words: shared([n.brief.title, n.brief.summary ?? '', ...roomSummaries(n.brief), ...n.decisions.map((d) => d.text), ...n.actions.map((a) => `${a.text} ${a.owner?.name ?? ''} ${a.due ?? ''}`), ...n.brief.lines.map(heard)].join('\n'))
@@ -636,19 +636,22 @@ export interface Cited { text: string; owner?: string; due?: string; refs: numbe
  */
 export interface Sorted { summary: string; decided: Cited[]; proposed: Cited[]; open: Cited[]; next: Cited[]; uncited: number; cut: Cut | null }
 
+/** The most points kept from each list of a catch-up. */
+const POINTS = 8;
 /**
  * Where a stretch of a call in progress has got to, sorted into decided, proposed, still open, and what's next, each
- * point with the lines it comes from. `reading` says which stretch it is ("the last 5 minutes").
+ * point with the lines it comes from. `reading` says which stretch it is ("the last 5 minutes"). `followUps`: the most
+ * next steps kept, when more matter than the points in a short stretch (a whole call's live notes), with room to say them.
  */
-export async function catchUp(cfg: Config, b: Brief, reading: string): Promise<Sorted> {
+export async function catchUp(cfg: Config, b: Brief, reading: string, followUps = POINTS): Promise<Sorted> {
   const sent = numberedText(b.lines, b.gaps);
   const reply = CatchUpReply.safeParse(await completeJson(cfg, [
     { role: 'system', content: CATCH_UP_PROMPT },
     { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\nTranscript:\n${fenced(sent.text)}` }
-  ], { what: 'catch-up', maxTokens: 1500, timeoutMs: 60_000 }));
+  ], { what: 'catch-up', maxTokens: followUps > POINTS ? 2500 : 1500, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
   let uncited = 0;
-  const items = (xs: z.infer<typeof Items>, todo = false): Cited[] => xs.filter((x) => x.text.trim()).flatMap((x): Cited[] => {
+  const items = (xs: z.infer<typeof Items>, todo = false, most = POINTS): Cited[] => xs.filter((x) => x.text.trim()).flatMap((x): Cited[] => {
     const refs = refsOf(x.lines, sent.kept, 3);
     // A point with no line behind it is the model's word alone: it's left out, never shown without evidence.
     if (!refs.length) { uncited++; return []; }
@@ -658,9 +661,9 @@ export async function catchUp(cfg: Config, b: Brief, reading: string): Promise<S
       text: clip(x.text.trim(), 300), refs,
       ...(todo && owner && !NOBODY.has(fold(owner)) ? { owner: clip(owner, 80) } : {}), ...(todo && due ? { due: clip(due, 40) } : {})
     }];
-  }).slice(0, 8);
+  }).slice(0, most);
   const d = reply.data;
-  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true), uncited, cut: sent.cut };
+  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true, followUps), uncited, cut: sent.cut };
 }
 
 const ASK_SO_FAR_PROMPT = `You answer a question about a meeting that is still going on, using only part of its transcript. Each transcript line starts with its number, as in "L12 [03:41] Name: words". Reply with a single JSON object and nothing else: {"answer": string, "lines": [number]}

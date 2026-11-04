@@ -4,7 +4,7 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
@@ -29,6 +29,8 @@ export interface HttpOptions {
   onEvent?: (e: ClientEvent) => void;
   /** How often a call checks for keys and people while nothing nudges it, in ms (default 1500). Tests go faster. */
   callPollMs?: number | undefined;
+  /** How often a browser showing the live notes says so, in ms (default 5000). Tests go faster. */
+  callNotesMs?: number | undefined;
   /** How long a browser waits after the call's keys move on before it sends with its new one, in ms (default 2000). */
   callKeySwitchMs?: number | undefined;
   /** How often the host's browser moves the call's keys on when nobody comes or goes, in ms (default 10 minutes). */
@@ -160,7 +162,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     // Every request about the call carries its pass; guests have no session, so this is all they have.
     const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
     const live = (id: string) => `/live/calls/${id}`;
-    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
+    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
       get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
@@ -170,6 +172,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
       })).json(), 'frame receipt'),
       shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
+      watchNotes: async (id) => (await req(NotesWatchedSchema, 'POST', `${live(id)}/notes/watch`, {}, p)).refreshed,
       catchUp: (id, range) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, { range }, p),
       askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
@@ -364,6 +367,8 @@ interface CallTransport {
   transcribe(id: string, c: TranscriptClip, speaker: string): Promise<CallState>;
   frame(id: string, f: ScreenFrame): Promise<ScreenFrameReceipt>;
   shareEnded(id: string, share: string): Promise<void>;
+  /** Says this browser is looking at the live notes. True when that refreshed them. */
+  watchNotes(id: string): Promise<boolean>;
   catchUp(id: string, range: CatchUpRange): Promise<CatchUp>;
   askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
   catchUpWindow(id: string): Promise<CatchUpWindow>;
@@ -410,10 +415,10 @@ class Live<S extends { elapsed: number }> {
 }
 
 /**
- * How a call keeps up: how often it checks while nothing nudges it, how long a new send key waits, how often the keys
- * move on anyway, and how often a move to another device is checked on.
+ * How a call keeps up: how often it checks while nothing nudges it, how often it says it's showing the live notes, how
+ * long a new send key waits, how often the keys move on anyway, and how often a move to another device is checked on.
  */
-interface CallTiming { pollMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
+interface CallTiming { pollMs: number; notesMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
 /** Epoch keys use 127 indices in each half of LiveKit's ring, all below the void index, which stays free for sending between two parts of the call. */
 const RING_HALF = Math.floor(CALL_VOID_KEY_INDEX / 2);
 /** Asking to come back in after being taken out waits at least this long between tries (the keys move on first). */
@@ -507,6 +512,10 @@ class HttpCall extends Live<CallState> implements CallSession {
   private closed = false;
   /** When this connection may next ask to come back in, after being taken out while it was away. */
   private backAfter = 0;
+  /** How many things here are showing the live notes, the next time this browser says so, and whether it's saying so now. */
+  private notesWatchers = 0;
+  private notesTimer: ReturnType<typeof setTimeout> | null = null;
+  private notesLook: Promise<void> | null = null;
   /**
    * This connection hosts the call (the organizer's, or standing in for them), as the log last said: its browser makes
    * and commits for every part of the call's group in this generation (CallMls.committer). Anyone else is in one group.
@@ -562,6 +571,32 @@ class HttpCall extends Live<CallState> implements CallSession {
       } finally { this.fetching = null; }
     })();
     return this.fetching;
+  }
+
+  /**
+   * Says this browser is showing the live notes, and goes on saying so while anything here is. It's what keeps them up
+   * to date; when a look refreshed them, the call is fetched straight away, as a nudge would have it.
+   */
+  watchNotes = () => {
+    if (++this.notesWatchers === 1) this.lookAtNotes();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      if (--this.notesWatchers === 0 && this.notesTimer) { clearTimeout(this.notesTimer); this.notesTimer = null; }
+    };
+  };
+  private lookAtNotes() {
+    if (this.closed || this.notesLook) return;
+    this.notesLook = this.t.watchNotes(this.state.callId).then((refreshed) => (refreshed ? this.fetchState() : undefined))
+      // Notes that don't refresh say why in the call. A look that doesn't arrive is only one look.
+      .catch((e: unknown) => this.emit('debug', 'live notes not looked at', { code: errorCode(e) }))
+      .finally(() => {
+        this.notesLook = null;
+        if (this.closed || !this.notesWatchers) return;
+        this.notesTimer = setTimeout(() => this.lookAtNotes(), this.timing.notesMs);
+        unref(this.notesTimer);
+      });
   }
 
   /** Keeps up with the call's MLS log: one run at a time, and another straight after if something asked meanwhile. */
@@ -972,6 +1007,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   declineNotes = async (requestId: string) => { this.take(await this.t.act(this.state.callId, { type: 'decline-notes', requestId })); };
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
+  tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
   shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
   shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
@@ -1024,6 +1060,8 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.notesTimer) clearTimeout(this.notesTimer);
+    this.notesTimer = null;
     for (const h of this.groups.values()) { if (h.switchTimer) clearTimeout(h.switchTimer); h.switchTimer = null; }
   };
   /**
