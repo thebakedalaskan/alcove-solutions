@@ -370,7 +370,7 @@ export type Chapter = z.infer<typeof ChapterSchema>;
 
 /**
  * A stretch of a call when nothing was captured: notes were off, the organizer paused them, or (`offline`) notes were
- * on but the organizer's browser was out of the call until another of their connections took over or the call ended.
+ * on but the host's browser was out of the call until another connection hosted or the call ended.
  * `from` and `to` are when it started and ended (`to` is null while it's still going). `at` is where it falls in the
  * recording, in seconds as transcript lines count them: the lines before it were said before it, and the transcript
  * and its chapters say "Paused 10:02–10:05" in its place rather than run on as if it was captured.
