@@ -462,9 +462,9 @@ type Earlier = Pick<CallPass, 'callId' | 'identity' | 'person'>;
  * Lets a new connection into the call (joining, or coming back from a reload or another device), and hands back its
  * ticket. The organizer's takes over from their previous connection; anyone else's asks, or comes back as `earlier`.
  */
-async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, who: { mic: boolean; cam: boolean; keyPackage: string; earlier?: Earlier | undefined; host?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
+async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, who: { mic: boolean; cam: boolean; keyPackage: string; earlier?: Earlier | undefined; moving?: boolean | undefined; host?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
   const { identity, role, name } = joined;
-  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier);
+  const j = role === 'host' ? await hostJoin(o, meeting, joined, who) : await guestJoin(o, meeting, joined, who.keyPackage, who.earlier, who.moving === true);
   // If the organizer's browser never reaches the room, the call doesn't carry on without them.
   if (role === 'host') setTimeout(() => { reconcile(d).catch((err: unknown) => clog.warn('reconcile after the organizer joined failed', { err })); }, HOST_GRACE_MS + 1_000).unref();
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous organizer connection already gone', { callId: j.callId, err: e }));
@@ -522,7 +522,7 @@ export async function moveIn(d: Deps, o: Owner, callId: string, from: { identity
     status: host ? 'in' : 'waiting', admit: 'auto', keysFor: 0, group: host ? MAIN_PLACE : null, from: 0,
     placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, earlier: [], hand: was.hand
   };
-  return enter(d, o, meeting, joined, { ...media, keyPackage: to.keyPackage, ...(host ? { host: from.identity } : { earlier: { callId, identity: from.identity, person: from.person } }) });
+  return enter(d, o, meeting, joined, { ...media, keyPackage: to.keyPackage, ...(host ? { host: from.identity } : { earlier: { callId, identity: from.identity, person: from.person }, moving: true }) });
 }
 
 /** The ticket of a move's new connection again, if its answer was lost on the way: a new pass for the same connection. */
@@ -622,7 +622,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
   });
 }
 
-async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: Earlier | undefined): Promise<Joining> {
+async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joined, keyPackage: string, earlier: Earlier | undefined, moving = false): Promise<Joining> {
   return tx(o.pool, async (c) => {
     const live = await liveCall(o, c, meeting.itemId, true);
     // Over and not started again: only the organizer can start it.
@@ -636,6 +636,9 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     const before = earlier && earlier.callId === live.call_id && !state.removed.includes(earlier.person)
       ? state.people.find((j) => j.identity === earlier.identity && j.person === earlier.person && !j.replaced && j.role !== 'host' && (j.status === 'in' || j.status === 'left')
         && (j.email ?? '') === (joined.email ?? '')) : undefined;
+    // A move brings in only the person whose place it was, as they are now: removed or replaced since it was checked
+    // (that read held no lock), it brings nobody in, rather than letting them in as someone new without asking.
+    if (moving && !before) throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId: live.call_id, reason: 'moved-from' } });
     // A lock keeps new people out, not someone coming back to the place they had.
     if (live.locked && !before) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
     // Coming back keeps their raised hand, and the spotlight if it was theirs.
@@ -1091,7 +1094,8 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     const people = new Map(s.people.map((j) => [j.identity, j]));
     for (const id of b.added) {
       const j = people.get(id);
-      if (!j || !may(j)) throw new ValidationError('Someone in that commit isn’t waiting to join.', { context: ctx });
+      // Nobody the organizer removed is added again, whichever connection of theirs is asking.
+      if (!j || !may(j) || s.removed.includes(j.person)) throw new ValidationError('Someone in that commit isn’t waiting to join.', { context: ctx });
     }
     if (new Set(b.added).size !== b.added.length) throw new ValidationError('Someone is in that commit twice.', { context: ctx });
     if (b.added.length && !b.welcome) throw new ValidationError('Adding people needs a welcome for them.', { context: ctx });
@@ -1306,12 +1310,14 @@ function mayRead(v: Viewer, s: Stored, mine: Joined | undefined, startedAt: Date
 function gapsFor(row: Row, s: Stored, place: string, segs: Parameters<typeof capture.gapsOf>[3]): CaptureGap[] {
   const open = s.breakouts.open;
   const room = place === MAIN_PLACE ? undefined : open?.rooms.find((r) => r.id === place);
-  if (!open || !room) return capture.gapsOf(s.notes.history, s.notes.offline, row.started_at, segs);
-  return capture.roomStateFor({
+  const all = !open || !room ? capture.gapsOf(s.notes.history, s.notes.offline, row.started_at, segs) : capture.roomStateFor({
     status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable,
     away: organizerAway(row), offline: s.notes.offline,
     room: { id: room.id, from: open.from, pauses: room.pauses }, now: secondsIn(row.started_at)
   }).gaps;
+  // The organizer's browser out of the call is told once, as `missed` (catchup.missedOf, from the organizer's own
+  // connections), never also as a gap.
+  return all.filter((g) => g.kind !== 'offline');
 }
 /** What a viewer can catch up on: their time in the call, their latest time away, what they may read, and the gaps. */
 function windowFor(v: Viewer, row: Row, s: Stored, mine: Joined | undefined, invited: Set<string>, gaps: CaptureGap[]): catchup.Window {
