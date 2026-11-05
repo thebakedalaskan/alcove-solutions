@@ -16,10 +16,10 @@ export { bounds, centre, colourIn, contains, fit, frameAt, hit, inside } from '.
 export type { Camera, Pad } from './geometry';
 export { freeRoute, route, shapePath, sides } from './routes';
 export type { Route } from './routes';
+export { stackObjects } from './write';
 export {
   addObject, addReply, addTableLine, addThread, applyThemes, duplicateObjects, makeUndo, moveObjects, removeObjects, removeTableLine, resizeObject, setObjects, sizeTableLine, tableCell, tidyObjects
 } from './write';
-export { stackObjects } from './write';
 export type { Move, ObjectPatch, TableAxis } from './write';
 export { TEMPLATES, fillTemplate } from './templates';
 export type { TemplateName } from './templates';
