@@ -41,12 +41,10 @@ export function tidySelected(board: Board): void {
   board.settle(() => board.write(() => tidyObjects(board.doc, sel, board.origin)));
 }
 
-/** Brings what's picked in front of everything else, or sends it behind, keeping its own order. `at` orders objects within their layer. */
+/** Brings what's picked in front of everything else, or sends it behind. `at` orders objects within their layer. */
 export function stackSelected(board: Board, edge: 'front' | 'back'): void {
   const { sel, view } = board.getSnapshot();
-  const picked = new Set(sel);
   const ats = view.objects.map((o) => o.at);
-  const list = view.objects.filter((o) => picked.has(o.id));
-  const start = edge === 'front' ? Math.max(...ats) + 1 : Math.min(...ats) - list.length;
-  board.write(() => list.forEach((o, i) => setObjects(board.doc, [o.id], { at: start + i }, board.origin)));
+  const at = edge === 'front' ? Math.max(...ats) + 1 : Math.min(...ats) - 1;
+  board.write(() => setObjects(board.doc, sel, { at }, board.origin));
 }

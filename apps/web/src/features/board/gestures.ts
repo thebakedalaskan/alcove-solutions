@@ -1,7 +1,8 @@
 /*
- * What a pointer does on the sheet. One set of listeners serves the whole board: objects take no handlers, and `data-id`
- * and `data-h` say what was pressed. A press becomes a `Gesture`, which lasts until the pointer lets go. Its moves are
- * batched to one a frame, so a drag writes to the doc at most once a frame, and everyone else sees it happen.
+ * What a pointer does on the sheet. One set of listeners serves the whole board: objects take no handlers, and `data-id`,
+ * `data-h` and `data-p` say what was pressed. A press becomes a `Gesture`, which lasts until the pointer lets go. Its moves are
+ * batched to one a frame, so a drag writes to the doc at most once a frame, and everyone else sees it happen. What a press
+ * means with a tool picked is that tool's, in `tools/`.
  *
  * The wheel: a pinch on a trackpad arrives as ctrl and a wheel, and ⌘ with a mouse wheel means the same, so both zoom.
  * Everything else, which is two fingers on a trackpad and a mouse wheel alone, moves the board. Safari reports a pinch as
@@ -130,7 +131,8 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
 }
 
 function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: string): Gesture {
-  const side = (n: number): number => Math.min(BOARD_LIMITS.maxSide, Math.max(LEAST_SIDE, n));
+  // A line of text or a flat stroke starts smaller than that, and mustn't jump to it.
+  const side = (n: number, was: number): number => Math.min(BOARD_LIMITS.maxSide, Math.max(Math.min(LEAST_SIDE, was), n));
   board.beginStep();
   const stop = (): void => {
     if (o.k === 'frame') settleFrame(board, o.id);
@@ -139,8 +141,8 @@ function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: s
   return {
     move(at) {
       const dx = at.x - start.x, dy = at.y - start.y;
-      const w = corner.includes('e') ? side(o.w + dx) : corner.includes('w') ? side(o.w - dx) : o.w;
-      const h = corner.includes('s') ? side(o.h + dy) : corner.includes('n') ? side(o.h - dy) : o.h;
+      const w = corner.includes('e') ? side(o.w + dx, o.w) : corner.includes('w') ? side(o.w - dx, o.w) : o.w;
+      const h = corner.includes('s') ? side(o.h + dy, o.h) : corner.includes('n') ? side(o.h - dy, o.h) : o.h;
       resizeObject(board.doc, o.id, { x: corner.includes('w') ? o.x + o.w - w : o.x, y: corner.includes('n') ? o.y + o.h - h : o.y, w, h }, board.origin);
       board.read();
     },
@@ -232,7 +234,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     const ending = gesture;
     gesture = null;
     held = null;
-    board.set({ pressing: false });
+    board.set({ pressing: false, hover: null });
     return ending;
   };
 
