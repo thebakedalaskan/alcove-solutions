@@ -32,6 +32,7 @@
 .wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
 .wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
 .wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
+.wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
 .wt-space .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1 var(--font-sans); color: var(--ink); }
 .wt-mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--horizon-soft); color: var(--horizon); }
 .wt-ib { width: 30px; height: 30px; border-radius: 8px; color: var(--ink-3); }
@@ -44,6 +45,9 @@
 .wt-r.is-cur { background: var(--sunk); color: var(--ink); }
 .wt-r.is-into { background: var(--horizon-soft); color: var(--horizon); box-shadow: inset 0 0 0 1.5px var(--horizon); }
 .wt-r.is-flash { animation: ws-flash 1.4s var(--ease-out); }
+/* The keyboard's ring goes round the row, with the buttons that show on it. */
+.wt-r:has(.wt-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.wt-open:focus-visible { outline: none; }
 .wt-tw { flex: none; display: grid; place-items: center; width: 20px; height: 32px; color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
 .wt-tw.is-open { transform: rotate(90deg); }
 .wt-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 0; text-align: left; font: 500 13.5px/1 var(--font-sans); color: inherit; }
@@ -67,6 +71,11 @@
 .wt-line { position: absolute; right: 8px; height: 2px; margin-top: -1px; background: var(--horizon); border-radius: 2px; pointer-events: none; }
 .wt-line::before { content: ""; position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--horizon); }
 .wt-empty { padding: 10px 14px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.wt-bin { flex: none; padding: 0 8px 6px; }
+.wt-trash { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border-radius: 9px; color: var(--ink-3); font: 500 13px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.wt-trash:hover, .wt-trash.is-cur { background: var(--sunk); color: var(--ink-2); }
+.wt-trash .n { min-width: 0; line-height: 1.3; }
+.wt-trash.is-into { background: var(--caution-soft); color: var(--caution); box-shadow: inset 0 0 0 1.5px var(--caution); }
 .wt-foot { flex: none; display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-top: 1px solid var(--line); color: var(--ink-3); font: 500 12px/1 var(--font-sans); white-space: nowrap; overflow: hidden; }
 .wt-foot .ac-i { color: var(--sun-text); }
 
@@ -74,9 +83,12 @@
 .wd { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--surface); container-type: inline-size; }
 .wd-head { flex: none; display: flex; align-items: center; gap: 6px; height: 52px; padding: 0 10px; }
 .wd-ib { width: 32px; height: 32px; color: var(--ink-3); }
-.wd-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-3); font: 500 13px/1 var(--font-sans); white-space: nowrap; }
-.wd-crumbs .c { flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
-.wd-crumbs .c.is-last { color: var(--ink); flex: 0 1 auto; min-width: 0; }
+/* Laid out from the document back: a folder that doesn't fit whole wraps onto a line that's cut off, so nothing is ever squeezed to a letter. */
+.wd-crumbs { flex: 1; min-width: 0; height: 17px; display: flex; flex-flow: row-reverse wrap; justify-content: flex-end; align-content: flex-start; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-3); font: 500 13px/1 var(--font-sans); white-space: nowrap; }
+.wd-crumbs .cw { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+/* A long path gives up its folders first: where you are stays readable. */
+.wd-crumbs .c { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+.wd-crumbs .is-last .c { color: var(--ink); max-width: none; }
 .wd-save { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
 .wd-save.is-offline, .wd-save.is-failed { color: var(--caution); }
 .wd-save.is-live { color: var(--rec); gap: 6px; }
@@ -109,11 +121,15 @@
 .wd-tpl:hover { background: var(--sunk); }
 .wd-tpl b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
 .wd-tpl small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.wd.is-bare > .wd-head { display: none; }
 .wd-none svg { animation: ws-fade var(--duration-3) var(--ease-out); }
 .wd-none { height: 100%; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 32px; text-align: center; color: var(--ink-3); }
 .wd-none b { margin-top: 10px; font: 480 24px/1.2 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
-.wd-none p { max-width: 34ch; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); }
+.wd-none p { max-width: 34ch; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); text-wrap: balance; }
 .wd-none .ac-empty-act { margin-top: 10px; flex-wrap: nowrap; gap: 8px; }
+
+.ws-dragging, .ws-dragging * { cursor: grabbing; }
+.ws-dragging .wt-acts { display: none; }
 
 /* ------------------------------------------------------------ popovers */
 .ws-pop { z-index: 60; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); outline: none; font: 400 15px/22px var(--font-sans); animation: ws-pop var(--duration-1) var(--ease-out); transform-origin: var(--radix-popover-content-transform-origin, top left); }
@@ -138,7 +154,7 @@
 .wu-p img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
 .wu-p:hover { outline: 2px solid var(--horizon); outline-offset: 1px; }
 .wm.is-upload { width: 268px; }
-.wm.is-role { width: 180px; }
+.wm.is-role { width: max-content; min-width: 216px; max-width: 300px; }
 .wv-person { width: 264px; display: grid; gap: 8px; padding: 12px; }
 .wv-person .hd { display: flex; align-items: center; gap: 10px; }
 .wv-person .hd span { min-width: 0; overflow-wrap: anywhere; }
@@ -169,10 +185,13 @@
 .wv-f input { flex: 1; min-width: 0; height: 30px; border: 0; padding: 0; background: none; color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
 .wv-f input::placeholder { color: var(--ink-3); }
 .wv-f:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+/* A person the field found lines up with the people under it, and its hover reaches past them. */
+.wv-share > .wm-r { width: calc(100% + 20px); margin: 0 -10px; }
+.wv-rows { display: grid; gap: 8px; max-height: 280px; overflow: auto; scrollbar-width: thin; }
 .wv-pr { display: flex; align-items: center; gap: 10px; min-height: 40px; }
-.wv-pr .m { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wv-pr b { display: block; font: 600 14px/1.25 var(--font-sans); }
-.wv-pr small { font-size: 12.5px; color: var(--ink-3); }
+.wv-pr .m { flex: 1; min-width: 0; }
+.wv-pr b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.25 var(--font-sans); }
+.wv-pr small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 .wv-pr .role { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
 .wv-pr button.role { border-radius: 6px; }
 .wv-pr button.role:hover { color: var(--ink); }
@@ -215,6 +234,13 @@
 .ac-toast.ws-toast button { flex: none; height: 30px; padding: 0 11px; border-radius: var(--radius-pill); font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) 10%, transparent); white-space: nowrap; }
 .ac-toast.ws-toast button:hover { background: color-mix(in srgb, var(--stage) 18%, transparent); }
 
+/* In the app, toasts sit in the corner of the page beside the list, clear of the side panel and the sealed line. */
+@media (min-width: 641px) {
+  .main.is-full .ws-toasts { left: calc(var(--side) + var(--pane-left) + 260px); bottom: 36px; max-width: 420px; }
+  .main.is-full:has(.ws-pane.tree-off) .ws-toasts { left: calc(var(--side) + var(--pane-left) + 16px); }
+}
+@media (min-width: 641px) and (max-width: 860px) { .main.is-full .ws-toasts { bottom: 108px; } }
+
 /* ------------------------------------------------------------ history and presenting */
 .wh { flex: none; width: 260px; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); animation: ws-side var(--duration-2) var(--ease-out); }
 .wh-h { flex: none; display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 8px 0 14px; }
@@ -242,7 +268,7 @@
 .ws-pane.is-reading .wb.is-h2 .wb-t { font: 450 34px/1.15 var(--font-display); letter-spacing: -.02em; }
 .ws-pane.is-reading .wb.is-h2 { margin: 0 0 12px; }
 .ws-pane.is-reading .wb-box { margin-top: 7px; pointer-events: none; }
-.ws-pane.is-reading .wb-th, .ws-pane.is-reading .rc { display: none; }
+.ws-pane.is-reading .wb-th { display: none; }
 .ws-pane.is-reading .wb-cap { pointer-events: none; }
 .ws-pane.is-reading .wn, .ws-pane.is-reading .wdt { font-size: 15px; height: 26px; vertical-align: -6px; }
 .wp { flex: none; width: 288px; display: flex; flex-direction: column; gap: 14px; padding: 14px; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); }
@@ -287,6 +313,15 @@
 .ws-ndoc span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .ws-ndoc b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
 .ws-ndoc small { display: block; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+
+/* ------------------------------------------------------------ Trash */
+.wx-l { margin: 18px -8px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wx-r { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 4px 6px 4px 0; border-radius: 10px; transition: background-color var(--duration-1); }
+.wx-r:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
+.wx-o { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px 8px; text-align: left; color: var(--ink-3); border-radius: 9px; }
+.wx-o .m { min-width: 0; }
+.wx-o b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
+.wx-o small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 
 /* ------------------------------------------------------------ the call's live pages */
 .wl { max-width: 760px; margin: 0 auto; padding: 22px 72px 40px; }
@@ -343,8 +378,8 @@
 /* A narrow document: the page gives up its margins first, then the path. */
 @container (max-width: 640px) {
   .wd-page { padding-left: 46px; padding-right: 22px; }
-  .wd-crumbs .c:not(.is-last), .wd-crumbs .ac-i { display: none; }
-  .wd-save { display: none; }
+  .wd-crumbs .cw:not(.is-last) { display: none; }
+  .wd-save:not(.is-failed) { display: none; }
   .wl { padding-left: 24px; padding-right: 22px; }
   .wl-due { display: none; }
 }
@@ -372,6 +407,10 @@
 @media (max-width: 640px) {
   .ws-pane { border-radius: 22px 22px 0 0; }
   .ws-pane.in-app { border-radius: 0; box-shadow: none; }
+  .main.is-full, .shell.is-bare .main.is-full { padding: 0 0 calc(82px + env(safe-area-inset-bottom, 0px)); }
+  .main.is-full .ws-toasts { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+  /* Record stands up out of the tab bar, into the foot of the list. */
+  .main.is-full .wt { padding-bottom: 24px; }
   .wt, .ws-pane.tree-off .wt { position: absolute; z-index: 5; inset: 0; width: 100%; margin-left: 0; border-right: 0; background: var(--surface); visibility: visible; transform: translateX(-100%); transition: transform var(--duration-2) var(--ease-out); }
   .ws-pane.phone-tree .wt { transform: none; }
   .wt-r { height: 44px; }
@@ -379,9 +418,11 @@
   .wt-tw { height: 44px; }
   .wt-foot { height: 34px; }
   .wd-head { height: 48px; padding: 0 6px; }
-  .wd-head .ac-btn, .wd-save { display: none; }
-  .wd-crumbs .c:not(.is-last), .wd-crumbs .ac-i { display: none; }
+  .wd.is-bare > .wd-head { display: flex; }
+  .wd-head .ac-btn, .wd-save:not(.is-failed) { display: none; }
+  .wd-crumbs .cw:not(.is-last) { display: none; }
   .wd-page { padding: 6px 22px 12px; }
+  .wd:has(> .wd-off, > .wd-gone, > .wd-ro) .wd-page { padding-top: 18px; }
   .wd-title { font-size: 31px; }
   .wl { padding: 6px 22px 12px; }
   .wl-t { font-size: 31px; }
@@ -390,8 +431,9 @@
   .wd-stop kbd { display: none; }
   .wd-tpls { grid-template-columns: minmax(0, 1fr); }
   .wh { left: 0; width: auto; border-left: 0; }
-  [data-radix-popper-content-wrapper]:has(> .ws-pop) { inset: auto 8px 8px !important; min-width: 0 !important; transform: none !important; }
-  .ws-pop { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
+  /* A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. */
+  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px 8px !important; min-width: 0 !important; transform: none !important; }
+  .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .ws-pop > * { width: auto; }
   .wm-r.is-phone { display: flex; }
   .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }

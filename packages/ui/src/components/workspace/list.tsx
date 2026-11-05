@@ -16,7 +16,7 @@ import { useMove } from './shared';
  * `page` is outside a call.
  */
 export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, reading = false, zen = false, away = false, page = false, className }: {
-  children: ReactNode; label?: string | undefined; listOff?: boolean | undefined; listPeek?: boolean | undefined; phoneList?: boolean | undefined;
+  children?: ReactNode; label?: string | undefined; listOff?: boolean | undefined; listPeek?: boolean | undefined; phoneList?: boolean | undefined;
   following?: boolean | undefined; reading?: boolean | undefined; zen?: boolean | undefined; away?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
 }) {
   return (
@@ -54,8 +54,12 @@ function moveInList(e: KeyboardEvent<HTMLDivElement>) {
  * cross-fades, 240 ms. Rows that leave close up, and ones that arrive open in place, so give each a key. The list is one
  * tab stop: arrow keys move through it, Left and Right close and open a folder.
  */
-export function WsList({ head, children, empty = false, listKey, label = 'Documents' }: {
+export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, onKeyDown }: {
   head?: ReactNode; children?: ReactNode; empty?: boolean | undefined; listKey?: string | undefined; label?: string | undefined;
+  /** What stays at the foot, above the sealed line, however long the list is: `WsTrashRow`. */
+  foot?: ReactNode;
+  /** Keys pressed on a row, before the list's own: stop one to keep it from moving through the rows. */
+  onKeyDown?: ((e: KeyboardEvent<HTMLDivElement>) => void) | undefined;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const move = useMove();
@@ -63,26 +67,56 @@ export function WsList({ head, children, empty = false, listKey, label = 'Docume
   return (
     <aside className="wt" aria-label={label}>
       {head}
-      <motion.div key={listKey} ref={scroll} className="wt-scroll" role="tree" aria-label={label} onKeyDown={moveInList} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
+      <motion.div key={listKey} ref={scroll} className="wt-scroll" role="tree" aria-label={label} onKeyDown={(e) => { onKeyDown?.(e); if (!e.isPropagationStopped()) moveInList(e); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
         <AnimatePresence initial={false}>{Children.toArray(children)}</AnimatePresence>
         {empty && <p className="wt-empty">Documents and folders you make show up here.</p>}
       </motion.div>
+      {foot}
       <div className="wt-foot"><Icon name="sealed" size={14} /><span>Sealed. Alcove can’t read this.</span></div>
     </aside>
   );
 }
 
-/** The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`). */
-export function WsListHead({ name, picker, onFind, create }: { name: string; picker: WsPop; onFind: () => void; create: WsPop }) {
+/** Naming a workspace, in the head of the list: Enter or leaving the field keeps it, Esc goes back. */
+export interface WsNaming { name: string; placeholder: string; onCommit: (name: string) => void; onCancel: () => void }
+
+/** The field that takes the place of the workspace's name while it's being named. The name's selected when it opens. */
+function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
+  const cancelled = useRef(false);
+  return (
+    <div className="wt-space is-edit">
+      <span className="wt-mark"><Icon name="folders" size={15} /></span>
+      <input className="wt-in" type="text" aria-label="Name this workspace" placeholder={placeholder} defaultValue={name} maxLength={120} autoFocus onFocus={(e) => e.currentTarget.select()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === 'Escape') { cancelled.current = true; onCancel(); }
+        }}
+        onBlur={(e) => { if (!cancelled.current) onCommit(e.currentTarget.value); }} />
+    </div>
+  );
+}
+
+/**
+ * The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`). `naming`
+ * swaps the name for a field. Whatever isn't given isn't shown: someone who can only read makes nothing.
+ */
+export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, naming }: {
+  name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; naming?: WsNaming | null | undefined;
+}) {
   return (
     <div className="wt-head">
-      <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label="This call’s workspace" anchor={
-        <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n">{name}</span><Icon name="chevronsUpDown" size={14} /></button>
-      }>{picker.content}</WsPopover>
-      <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />
-      <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={
-        <IconButton icon="plus" size={17} className="wt-ib" label="New document or folder" title="New" />
-      }>{create.content}</WsPopover>
+      {naming ? <SpaceName {...naming} /> : (
+        <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label={pickerLabel} anchor={
+          <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n">{name}</span><Icon name="chevronsUpDown" size={14} /></button>
+        }>{picker.content}</WsPopover>
+      )}
+      {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}
+      {create && (
+        <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={
+          <IconButton icon="plus" size={17} className="wt-ib" label="New document or folder" title="New" />
+        }>{create.content}</WsPopover>
+      )}
     </div>
   );
 }
@@ -178,17 +212,32 @@ export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tr
 export function WsRenameRow({ name, kind = 'document', depth = 0, placeholder = 'Name this folder', onCommit, onCancel }: {
   name: string; kind?: 'document' | 'folder' | undefined; depth?: number | undefined; placeholder?: string | undefined; onCommit: (name: string) => void; onCancel: () => void;
 }) {
+  const move = useMove();
   const cancelled = useRef(false);
   return (
-    <div className="wt-r is-edit" style={{ '--d': depth }}>
+    <motion.div className="wt-r is-edit" style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1, transition: move(1) }}>
       <Icon name={kind === 'folder' ? 'folder' : 'fileText'} size={16} />
-      <input className="wt-in" type="text" aria-label="Name" placeholder={placeholder} defaultValue={name} autoFocus onFocus={(e) => e.currentTarget.select()}
+      <input className="wt-in" type="text" aria-label="Name" placeholder={placeholder} defaultValue={name} maxLength={200} autoFocus onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
           if (e.key === 'Escape') { cancelled.current = true; onCancel(); }
         }}
         onBlur={(e) => { if (!cancelled.current) onCommit(e.currentTarget.value); }} />
+    </motion.div>
+  );
+}
+
+/**
+ * The quiet way to Trash, at the foot of the list, with how much is in it. A row dragged onto it goes to Trash (`into`:
+ * one's over it). `data-trash` is what a drag looks for.
+ */
+export function WsTrashRow({ count, current = false, into = false, onOpen }: { count: number; current?: boolean | undefined; into?: boolean | undefined; onOpen: () => void }) {
+  return (
+    <div className="wt-bin">
+      <button type="button" data-trash="" className={cn('wt-trash', current && 'is-cur', into && 'is-into')} aria-current={current ? 'page' : undefined} onClick={onOpen}>
+        <Icon name="trash" size={15} /><span className="n">Trash</span>{count > 0 && <span className="wt-c">{count}</span>}
+      </button>
     </div>
   );
 }
