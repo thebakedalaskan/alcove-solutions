@@ -46,6 +46,9 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
 | `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
+| `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
+| `workspace_media_pieces` | owner, media, `seq`, object ID, the object's SHA-256 and length | (the object: a sealed piece of the file) |
+| `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -60,9 +63,10 @@ address; on the same condition, what it answered in `meeting_access` is cleared,
 organizer. The `call_rings` rows to its address, in other people's calls, go by their own hash and without that
 exception. `object_gc` keeps a plain owner ID with no foreign key, so a failed object delete is still retried after its
 account is gone. A workspace's tables hang off its `workspaces` row, which
-hangs off its `owners` row, so deleting that owner deletes all of it; `document_access` rows go with their document.
-Its `call_id` has no foreign key, because a call belongs to its organizer, a different owner. `presenter_notes` belongs to
-both an account and a document, so it goes with either: by `owner_id`, or by its foreign key to `documents`.
+hangs off its `owners` row, so deleting that owner deletes all of it; `document_access` and `workspace_media_uses` rows go
+with their document, and a file's pieces and uses with its `workspace_media` row. `document_access.call_id` has no foreign
+key, because a call belongs to its organizer, a different owner. `presenter_notes` belongs to both an account and a
+document, so it goes with either: by `owner_id`, or by its foreign key to `documents`.
 
 ## Manifests (encrypted)
 
@@ -342,6 +346,76 @@ does anything Alcove refuses outright. A browser shouldn't ever see that, and wh
 still be offline with words for one, and nothing in this release prunes them or limits how long someone can stay offline.
 `document()` is async, because Yjs loads with the first document someone opens and stays out of everything else.
 
+### Media
+
+A file is anything someone puts in a document or on a board: a picture, video, audio or anything else. It belongs to the
+workspace, as a row in `workspace_media`, and is reached only through a document that has it, a row in
+`workspace_media_uses`, because a guest's seat covers one document: a seat reaches that document's files and no others
+([Privacy › Files](privacy-keys-and-sessions.md#files)). The API seals uploads, as it seals everything: a file reaches the
+process readable and is sealed there (`apps/api/src/modules/media.ts`).
+
+- **What's kept.** A `workspace-media` record: its name, type, size, and its width and height where the browser knew them.
+  And its bytes, in pieces of exactly 4 MiB but the last, each a `media-piece` binary record in an object under a random name,
+  a couple of hundred bytes over its own size ([Privacy › Records](privacy-keys-and-sessions.md#records-and-envelopes)). All of
+  it is sealed under the file's own state key, `media:<id>`. At most 512 MiB a file.
+- **Its type.** What a browser calls a file is kept only if it can be shown in place: JPEG, PNG, WebP, GIF and AVIF
+  pictures, MP4 and WebM video, and MP3, M4A, WebM and Ogg audio, by any of the names browsers use for them. Anything else is
+  kept as `application/octet-stream`, and only ever downloads, under the name it came with. SVG and HTML are in that group:
+  nothing shown in place can run.
+- **Going up.** `POST /v1/workspaces/:id/documents/:doc/media` says what's coming, for someone with `edit` on the document,
+  and makes the row and its use. Each piece goes to `…/media/:media/pieces/:seq` as bytes, exactly its own length: sealed,
+  written to the object store, read back and checked (length and SHA-256), and only then recorded, under the workspace's
+  lock with access asked again, so someone who lost the document while a piece was on its way keeps nothing and its object
+  goes. A piece is kept by its place in the file, so sending it again changes nothing. `…/finish` makes the file readable
+  once every piece is there; until then nobody can read, list or reuse it. Every piece counts towards the workspace's
+  `stored_bytes`, once, however many documents have the file.
+- **Going wrong.** The client tries a piece again: for up to 5 minutes through a lost connection or a busy server, which
+  pass by themselves, picking up as soon as the browser says it's back online, so a Wi-Fi handover doesn't start 500 MiB
+  over; and 3 times more after a failure on the server. Past that, or if the browser gives up, it takes back what got there
+  (`DELETE …/media/:media`). An upload whose browser went stays `uploading` until maintenance takes it, a day on.
+- **Reuse.** `attach` puts a file in another document of the workspace, for someone who can edit that document and can
+  already reach the file, and a copy of a document has what the original has, in the transaction that makes it. It's still one
+  file: nothing more is stored.
+- **Reading.** `GET …/media/:media/token` gives whoever can open the document a token, and `GET /v1/media/:token` reads the
+  file, because a picture or a player can't send a header ([Privacy › Files](privacy-keys-and-sessions.md#files)). Pieces are
+  read in order, each digest checked before it's opened, with `Range`, `nosniff`, `no-store` and the type from the sealed
+  info, never the request. An answer to a range sends at most four pieces (16 MiB), stopping where a piece does, and says
+  so with its `Content-Range`: a browser asks again for the rest, and access is asked about again each time. Read without a
+  range, a file over 16 MiB streams without a length, because Cloud Run refuses an HTTP/1 response that says it's over 32
+  MiB, and asks again every four pieces. The first piece is read before anything is sent, so its failure is an ordinary
+  answer; a later one breaks the connection, so a file that couldn't be read is never taken for whole.
+- **Pictures.** A board or a document shows a picture through `api.workspaces.media.picture`, which reads it into an object
+  URL: at most 4 at once for a browser, trying again for minutes when the server's busy. A room of people opening the same
+  board at once would otherwise overrun what the process takes on, and an `<img>` can't try again. Video and audio use the URL,
+  which a player reads by range.
+- **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
+  (`MEDIA_LIMITS` in `modules/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
+  their bodies are read; past that they're refused with `503 unavailable` and the client tries again. A piece has to keep
+  coming: one that brings less than 256 KiB in 10 seconds, stopped or only trickling, is cut, and the client tries again. At
+  most 32 reads are open, 8 for any one person, from when they start until their response has gone, whether it finished or the
+  browser left. A piece goes out in slices of 256 KiB and the next is opened only when the last has gone, so a reader who stops
+  holds one piece at most. A read past that waits in line, holding nothing: at most 48 of them, 24 for one person, for 10
+  seconds, and then it's refused too. A read that waited asks who's asking again, and opens nothing if its browser has gone.
+- **A read that stops.** While someone's in line, a read that has taken nothing for 5 seconds gives way to them, the longest
+  stopped first, and someone at their own limit gets one of their own back. Being cut costs a paused video nothing: it asks
+  again from where it got to when it plays. With nobody in line a stopped read is left alone. Every read ends at 280 seconds
+  (`MEDIA_READ_MS`) whatever it's doing, under Cloud Run's timeout, so nothing holds a place for good.
+- **The core.** Reading and writing share one budget, however many people are doing it. 4 pieces are in hand at once, and
+  their sealing, opening and hashing take turns, one at a time, each followed by a pause of seven times what it took: an eighth
+  of the core, and about a third of what a piece costs the process, so a call keeps more than half of it. A piece's cost is
+  timed, so this holds on a slower core. Past that, pieces wait, and reads run into the limits above. Each piece opened also
+  counts against someone's 240 reads a minute, because a byte costs a whole piece.
+- **Going away.** Taking a block out of a document leaves its file there, for a version or for reuse: a use goes only when
+  its document is deleted for good, so a version or something in Trash keeps its pictures. A file nothing uses any more goes
+  in the same transaction: its rows go, stored bytes fall to match, and its objects are queued in `object_gc` there too, so
+  a process that stops straight after the commit strands nothing. They're deleted straight after it, and what the store
+  refuses stays queued for maintenance. Use rows only change under the workspace's lock: adding one shares the lock and
+  taking one away holds it alone, so a file can't be given out as it goes.
+- **Deleting one.** `DELETE …/media/:media` deletes a file for good, the same way, for anyone who can edit a document that has
+  it: every use goes with it. They have to be able to edit every document that has it that they can open, or it's `forbidden`,
+  so reusing a picture doesn't make it yours to delete. A version or another document that still shows it gets `not-found` from
+  then on, as for any file that isn't there, and the app shows it as removed.
+
 ### Live traffic
 
 Live traffic is NDJSON down and `POST` up: a guest authenticates with a header, which a browser's WebSocket can't send,
@@ -491,6 +565,7 @@ and this way it runs through the same auth, origin check and tests as everything
   counted as having been on the call, both worked out from the same recipients. Someone who removed the note from
   theirs has no row, so isn't listed, and a share to a group nobody still holds drops out; sharing with them again
   gives it back.
+- **Files in a workspace** are in [Media](#media).
 - **Deleting** is physical, whether it's a note, a meeting or a whole account: rows, receipts and objects
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
@@ -531,6 +606,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   until the document does, or until newer ones push them out past 64 MiB.
 - **Carets and presence** are never stored: they're in Postgres's notice queue for as long as it takes to deliver them, sealed,
   and in the API process's memory.
+- **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
+  included, and an upload nobody finished for a day.
 - **Seats** in `document_access` last while their call does.
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
   call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a

@@ -130,6 +130,33 @@ export async function purgeAudio(o: Owner, db: Db, recordingId: string): Promise
   return gone.map((p) => p.object_id);
 }
 
+/** Objects queued at most this many at a time: upkeep comes back every few minutes for the rest. */
+const QUEUE_BATCH = 500;
+/** How many deletes go to the object store at once. */
+const QUEUE_AT_ONCE = 25;
+/**
+ * Deletes what's queued in object_gc, the oldest first: everything, or for upkeep, or only these owners', straight after
+ * the commit that queued it, so something deleted goes now rather than at the next run. What the store refuses stays
+ * queued, with why. Returns how many went.
+ */
+export async function deleteQueued(d: Pick<Owner, 'pool' | 'objects'>, ownerIds?: string[] | undefined): Promise<number> {
+  const due = await rows(d.pool, z.object({ object_id: z.string() }), `SELECT object_id FROM object_gc${ownerIds ? ' WHERE owner_id = ANY($2::text[])' : ''} ORDER BY queued_at LIMIT $1`, [QUEUE_BATCH, ...(ownerIds ? [ownerIds] : [])]);
+  let deleted = 0;
+  for (let i = 0; i < due.length; i += QUEUE_AT_ONCE) {
+    await Promise.all(due.slice(i, i + QUEUE_AT_ONCE).map(async (g) => {
+      try {
+        await d.objects.delete(g.object_id);
+        await exec(d.pool, 'DELETE FROM object_gc WHERE object_id = $1', [g.object_id]);
+        deleted++;
+      } catch (e) {
+        alog.warn('object delete failed; it stays queued', { objectId: g.object_id, err: e });
+        await exec(d.pool, 'UPDATE object_gc SET attempts = attempts + 1, last_error = $2 WHERE object_id = $1', [g.object_id, errorMessage(e).slice(0, 200)]);
+      }
+    }));
+  }
+  return deleted;
+}
+
 const Seg = z.object({ segment: z.number(), pieces: z.coerce.number(), ms: z.coerce.number(), mime_type: z.string() });
 /** `db`: a transaction reads on its own connection. */
 export async function segments(o: Owner, recordingId: string, db: Db = o.pool): Promise<AudioSegment[]> {

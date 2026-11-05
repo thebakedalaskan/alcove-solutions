@@ -26,6 +26,7 @@ import {
 import { profile } from './account';
 import { nudgeCall } from './calls';
 import { noteOpened, noteUsed } from './callWorkspace';
+import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from './portraits';
 import { copyContent, kindOf, moveClientTags, startContent } from './workspaceDocuments';
 
@@ -208,8 +209,11 @@ export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
 const addDocuments = async (w: Pick<Workspace, 'owner'>, db: Db, ids: string[]): Promise<void> => {
   if (ids.length) await exec(db, 'INSERT INTO documents (owner_id, document_id) SELECT $1, unnest($2::text[])', [w.owner.ownerId, ids]);
 };
+/** Documents going for good, with the files only they had: the caller collects those once its transaction commits. */
 const removeDocuments = async (o: Owner, db: Db, ids: string[]): Promise<void> => {
-  if (ids.length) await exec(db, 'DELETE FROM documents WHERE owner_id = $1 AND document_id = ANY($2::text[])', [o.ownerId, ids]);
+  if (!ids.length) return;
+  await releaseDocuments(o, db, ids);
+  await exec(db, 'DELETE FROM documents WHERE owner_id = $1 AND document_id = ANY($2::text[])', [o.ownerId, ids]);
 };
 function requireRoom(w: Pick<Workspace, 'state' | 'workspaceId'>, adding: number): void {
   if (Object.keys(w.state.items).length + adding > MAX_ITEMS) throw new ConflictError('This workspace is full. Delete something from it first.', { context: { workspaceId: w.workspaceId, items: Object.keys(w.state.items).length } });
@@ -253,13 +257,21 @@ export async function rename(d: Deps, reader: Reader, workspaceId: string, name:
     w.state = { ...w.state, name };
   });
 }
-/** Deletes a workspace and everything it holds, in the caller's transaction: its owner row goes, and the rest with it. */
-const deleteOwner = (db: Db, ownerId: string): Promise<number> => exec(db, 'DELETE FROM owners WHERE owner_id = $1', [ownerId]);
+/**
+ * Deletes a workspace and everything it holds, in the caller's transaction: its owner row goes, and the rest with it. Only
+ * its files' objects outlive that, queued for the caller to collect once it commits.
+ */
+async function deleteOwner(db: Db, ownerId: string): Promise<void> {
+  await releaseWorkspace(db, ownerId);
+  await exec(db, 'DELETE FROM owners WHERE owner_id = $1', [ownerId]);
+}
 export async function remove(d: Deps, reader: Reader, workspaceId: string): Promise<void> {
-  await change(d, reader, workspaceId, async (w, c) => {
+  const ownerId = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'admin');
     await deleteOwner(c, w.owner.ownerId);
+    return w.owner.ownerId;
   });
+  await collect(d, [ownerId]);
   wlog.info('workspace deleted', { workspaceId });
 }
 
@@ -445,6 +457,7 @@ export async function duplicateItem(d: Deps, reader: Reader, workspaceId: string
     const content = out.filter((x) => holdsContent(x.item.kind));
     await addDocuments(w, c, content.map((x) => x.id));
     await startContent(w, c, content.filter((x) => x.item.kind === 'document').map((x) => x.id));
+    await copyUses(w.owner, c, content.map((x) => ({ from: x.from, to: x.id })));
     await noteAuthor(w, c, makerOf(reader).email);
     wlog.info('item duplicated', { workspaceId, itemId, copy: id, items: out.length });
     return { place: w, id, content };
@@ -504,7 +517,7 @@ function nearestInTree(s: WorkspaceState, parent: string | null): string | null 
   return chain[chain.findLastIndex((x) => s.items[x]?.trashedAt) + 1] ?? null;
 }
 export async function deleteItem(d: Deps, reader: Reader, workspaceId: string, itemId: string): Promise<void> {
-  await change(d, reader, workspaceId, async (w, c) => {
+  const ownerId = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'edit');
     const { item: it } = requireEditable(reader, w, itemId, 'fine');
     if (!trashOf(w.state, itemId)) throw new ConflictError('Move it to Trash first.', { context: { workspaceId, itemId } });
@@ -513,7 +526,9 @@ export async function deleteItem(d: Deps, reader: Reader, workspaceId: string, i
     await removeDocuments(w.owner, c, gone);
     w.state = withoutItems(w.state, gone);
     wlog.info('item deleted for good', { workspaceId, itemId, items: gone.length });
+    return w.owner.ownerId;
   });
+  await collect(d, [ownerId]);
 }
 
 /* ---------- sharing ---------- */
@@ -641,6 +656,7 @@ export async function sweepTrash(d: Deps, ageMs: number = TRASH_MS): Promise<num
         wlog.warn('workspace’s Trash not swept', { workspaceId, err: e });
       }
     }
+    await collect(d, due.map((x) => x.owner_id));
     after = due.at(-1);
     if (due.length < TRASH_BATCH) return deleted;
   }
@@ -695,9 +711,10 @@ export async function sweepSeats(d: Deps): Promise<number> {
  * deleted; one left with no admin gets its longest-standing person as its admin; a restricted document only it could open
  * goes, and anything else left with nobody to open it goes to Trash; and what it made keeps its name and no longer its
  * address. Every row is touched under its workspace's lock, the order every change takes, and locks go in order of owner,
- * so two accounts leaving together never deadlock.
+ * so two accounts leaving together never deadlock. `owners` are the workspaces it touched, for the caller to collect their
+ * files' objects once the transaction commits.
  */
-export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number }> {
+export async function forgetAccount(o: Owner, db: Db, email: string, callIds: string[]): Promise<{ workspaces: number; deleted: number; owners: string[] }> {
   const address = email.trim().toLowerCase();
   const index = blindIndex(masterKey(o), 'email', address);
   const elsewhere = await maybeOne(db, z.object({ n: z.number() }), 'SELECT 1 AS n FROM identities WHERE email_index = $1 AND owner_id <> $2 LIMIT 1', [index, o.ownerId]);
@@ -728,7 +745,7 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
     await trashStranded(w, db);
     await saveState(w, db);
   }
-  return { workspaces: found.length, deleted };
+  return { workspaces: found.length, deleted, owners: found.map((f) => f.owner_id) };
 }
 
 const RANK: Record<WorkspaceRole, number> = { read: 0, edit: 1, admin: 2 };

@@ -472,7 +472,9 @@ describe('what a guest’s pass reaches', () => {
     const seriesIds: Record<string, string> = { id: next.seriesId ?? '' };
     // A real workspace, so what a pass gets from one isn't just what it gets from an ID nobody has.
     const workspace = await org.api.workspaces.create('Standup workspace');
-    const workspaceIds: Record<string, string> = { id: workspace.id, item: (await org.api.workspaces.items.create(workspace.id, { kind: 'document', name: 'Standup agenda' })).id };
+    const agenda = (await org.api.workspaces.items.create(workspace.id, { kind: 'document', name: 'Standup agenda' })).id;
+    const picture = await org.api.workspaces.media.upload(workspace.id, agenda, new File([new Uint8Array(8)], 'standup.png', { type: 'image/png' }));
+    const workspaceIds: Record<string, string> = { id: workspace.id, item: agenda, doc: agenda, media: picture.id, seq: '0' };
 
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -483,7 +485,8 @@ describe('what a guest’s pass reaches', () => {
     // Every route of the API, from its own route table: anything outside the call routes and the public ones needs an account.
     // The new device's side of a move is public too: it has no account, and the move's secret in the body is what it holds.
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
-    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/calls/:code/pick', ...MOVES]);
+    // A file's URL is public too: its token says who's asking, and it answers for nobody else, a pass included.
+    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/media/:token', '/v1/calls/:code/pick', ...MOVES]);
     const table = createApp(h.deps).routes.filter((r) => r.method !== 'ALL');
     // A pass is nothing to them: without a move's secret, they find no move.
     for (const path of MOVES) {
@@ -497,7 +500,9 @@ describe('what a guest’s pass reaches', () => {
       'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
       'GET /v1/workspaces/:id/documents/:doc/live', 'POST /v1/workspaces/:id/documents/:doc/updates', 'POST /v1/workspaces/:id/documents/:doc/awareness', 'GET /v1/workspaces/:id/documents/:doc/versions',
       'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore',
-      'GET /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/ask'
+      'GET /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/ask',
+      'GET /v1/workspaces/:id/media', 'POST /v1/workspaces/:id/documents/:doc/media', 'GET /v1/workspaces/:id/documents/:doc/media/:media/token', 'POST /v1/workspaces/:id/documents/:doc/media/:media/pieces/:seq',
+      'POST /v1/workspaces/:id/documents/:doc/media/:media/finish', 'POST /v1/workspaces/:id/documents/:doc/media/:media/attach', 'DELETE /v1/workspaces/:id/documents/:doc/media/:media'
     ]);
     const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);
     const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
@@ -525,6 +530,10 @@ describe('what a guest’s pass reaches', () => {
       expect(await res.text()).not.toContain('Standup');
     }
     expect((await org.api.workspaces.items.get(workspace.id, workspaceIds['item'] ?? '')).name).toBe('Standup agenda');
+    expect((await org.api.workspaces.media.list(workspace.id)).map((m) => m.name)).toEqual(['standup.png']);
+    const noToken = await send('GET', '/v1/media/nothing');
+    expect(noToken.status).toBe(404);
+    expect(await noToken.text()).not.toContain('Standup');
     for (const r of routes) {
       const res = await send(r.method, fill(r.path));
       expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 401`);

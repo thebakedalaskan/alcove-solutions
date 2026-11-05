@@ -120,9 +120,24 @@ Before the limits were set from real blocks, a document at its item limit and an
 limited to. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
 checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
 connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
+Files in a workspace are shaped by the same limits. Cloud Run refuses an HTTP/1 request or a response that says its length
+over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at most 16 MiB, and a whole file over that
+streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
+(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and a download starts again. Files pass through
+this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `modules/media.ts`),
+and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
+for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for documents' worker threads. Measured on the built
+server with a 1,120 MiB heap and nothing else running, 920 pieces sent at once and 80 readers who stopped took it from 150 MiB
+to at most 840 MiB. With 20 people reading all their limits allow, a call's poll took 25 ms at the median, against 8 ms with
+nobody reading. Change the limits with the instance's memory, and measure again.
 CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
 cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
 signs nobody out, and notes jobs left behind by a restart are picked up by the next maintenance run.
+
+**Rolling back past the release that added files deletes them.** The release before it doesn't know
+`workspace_media_pieces`, so its maintenance takes every object of a file older than 24 hours for an orphan, and deletes it at its
+next run, within 5 minutes of starting. Nothing brings an object back. Fix forward instead. If a rollback can't be avoided, copy the
+object store first, and restore it once a release that knows files is back: the rows stay, so they'd find their objects again.
 
 NEAR AI has its own deployment switch. `NEAR_AI_ENABLED=true` binds `NEAR_AI_API_KEY` from
 `alcove-near-ai-api-key` into the API service (the migration job doesn't need it); the service is deployed
@@ -176,6 +191,7 @@ live transcript and written notes.
 | Cross-owner isolation (calls, notes, audio, transcripts, recordings, asking) and origin checks | API integration tests |
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
 | Deletion of a note, a meeting or a whole account removes rows, receipts and objects; a call set not to keep its transcript or recording leaves no revision, row, receipt or object of it; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
+| Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, and a room opening one board all seeing it | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
 | Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
