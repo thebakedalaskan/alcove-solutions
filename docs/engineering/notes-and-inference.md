@@ -1065,7 +1065,8 @@ them written after all. Writing the notes again keeps them done, as anything wit
 A call's follow-ups are also the to-dos with a mention and a date in the documents worked on in it, for whoever can open
 each ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). They're the document's
 own: ticking one writes to the document, they aren't kept anywhere else, and they don't go into the note, whose
-follow-ups are what was said. The note says which documents were worked on (`workedOn`), for whoever can open them.
+follow-ups are what was said. The note says which documents were worked on (`workedOn`), for whoever can open them, and
+by whom, with the reader told which of them is them (`isMe`).
 
 ## Asking about a selection
 

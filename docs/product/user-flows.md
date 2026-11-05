@@ -465,8 +465,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-Opening it, sharing beside it, arranging it and going to just the document work on screen. The rest of this list comes from
-the server today, and its screens are being built.
+Opening it, sharing beside it, arranging it, going to just the document, changing it, asking for it, and what the note says
+about it afterwards work on screen. The rest of this list comes from the server today, and its screens are being built.
 
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
    column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
@@ -492,11 +492,20 @@ the server today, and its screens are being built.
      document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
    - **An organizer taken out of the workspace** the call uses is told so, and **New workspace** moves the call to one of
      their own. Everyone else carries on.
-2. **Only the organizer changes it**, to a workspace they can edit in. One question says who can't open it, and
-   nobody is interrupted: they stay in the call and see that it's private. **New workspace** makes one with just them in it.
-3. **Someone who can't open it** is told it's private, and nothing else: no names, no folders, nobody's whereabouts. They can
-   **Ask** the organizer, who shares one document, to read or edit, or says not now. It opens by itself, and it ends
-   with the call, or from Share.
+2. **Only the organizer changes it**, from the name at the top of the list: their workspaces they can edit in, with who's in
+   each, and **New workspace**. Picking one asks once, in place, and says who in the call can't open it; **Switch to …**
+   changes the list for everyone at once, and **Back** on the toast changes it back. Nobody is interrupted and nothing is
+   moved or copied: sound and video carry on, and whoever can't open it stays in the call and sees that it's private, not
+   what's in it. What was brought to the call from the workspace before stays with that one. **New workspace** makes one
+   with just the organizer in it, named after the call, and opens a blank document in it; it's still there after the
+   call. Everyone else sees the name, and that the organizer chooses.
+3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
+   names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
+   with the call. The organizer sees who's asking at the top of the call, and shares the document in front of them:
+   **Let … read**, **Let … edit**, or **Not now** (with nothing open, **Open the workspace** finds one). Only that document
+   opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
+   is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
+   ends with the call.
 4. **Follow-ups** are what the notes heard and the to-dos with a person and a date in the documents worked on in this
    call, each for whoever can open it. Ticking one ticks it in the document. With notes off they come from documents alone, and
    say so.
@@ -505,9 +514,10 @@ the server today, and its screens are being built.
    yours alone.
 6. **Play for everyone** plays a video in a document at the same moment for everyone who can open it, late joiners too.
    Losing the document, a new workspace, another room or the call ending stops it, and the video stays where it is.
-7. **After the call**, the note says what was worked on and by whom, for each person only what they can open, and each
-   document keeps a version of how the call left it. **The next call in a series** finds a new agenda beside the last one,
-   holding only what was left open.
+7. **After the call**, the note has **Worked on in this call** under the follow-ups: each document worked on and by whom
+   ("Priya and you edited this"), for each person only what they can open. Each opens in the app, in your theme: the same
+   document, nothing copied. Each document keeps a version of how the call left it. **The next call in a series** finds a
+   new agenda beside the last one, at the top of This call, holding only what was left open.
 8. **Make this shorter** and **Turn this into a checklist** work on what's selected, in confidential compute, for anyone who
    can edit the document. Nothing is kept.
 
@@ -614,7 +624,9 @@ the server today, and its screens are being built.
   beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
   so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
   keep its recording has the line and no player.
-- A written note shows the summary, **Decided**, **Still open**, **Follow-ups**, the transcript (its first five lines,
+- A written note shows the summary, **Decided**, **Still open**, **Follow-ups**, **Worked on in this call** (each document
+  worked on in the call that you can open, who changed it, and a row that opens it; there whether or not the notes are
+  written yet), the transcript (its first five lines,
   then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
   notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
   going to a moment never takes the note away. It takes questions about the call: a suggested question or your own, in

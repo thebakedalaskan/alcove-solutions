@@ -1024,7 +1024,9 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   who) in the transaction that ends it, and the call lets go of it. Once the room has gone, with nobody waiting, each document
   keeps a version with reason `call`, filed under the call: a worker can take as long as it has on each, and nothing about
   the call's end depends on it, so a failure is logged and costs only that version. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
-  the note is told what they can open now, by the name it has now, and nothing else is listed or counted.
+  the note is told what they can open now, by the name it has now, and nothing else is listed or counted, and which of the
+  people who changed it they are (`by[].isMe`): who changed it is kept as the workspace knows them (`personIn`, a keyed
+  hash), so the reader is found among them the same way, on each read, and nothing stored says who's reading.
 - **Presenting.** `present-start` needs the document open to whoever starts it, and to be in the call's workspace; `kind` is
   `document` or `board`, and the state is `{ kind, id, section, by }`, one for each part of the call. It's moved and stopped
   by whoever started it or the organizer, and nobody can start over someone who's presenting there. Sections are the
@@ -1192,6 +1194,17 @@ share picker, the leave sheet and the device pickers.
   says goes through the call's one place for toasts, one at a time, and a share's offer stays beside that until it's taken
   up some other way. The list is the panels' to give way, so the call tells it (`WorkspaceCall.list`): one that gave way comes
   over the page (`peek`), one you put away comes back.
+- **Switching it and asking for it.** For the organizer, the name at the top of the list is the call's picker
+  (`SpacePicker.tsx`, as `WorkspaceCall.picker`): their workspaces they can write in, the workspace's people, and New
+  workspace, which makes one with `newWorkspace` and opens a blank document in it. Picking another asks first, in place of
+  the menu, with `previewWorkspace` saying who can't open it; Switch is `setWorkspace`, and Back on the toast switches back.
+  The panel shows only the workspace the call uses now, so what was brought from another stays with that one, and anyone
+  who can't open this one is told it's private (`WsNoAccess`, whose Ask is `askForWorkspace`). When which it shows changes,
+  what was there stays over what's coming, as it was and out of reach, until that has drawn its list and page (or says
+  it's private), then fades, 240 ms. The organizer answers asks at the top of the call (`WsKnock`, `WorkspaceAsks.tsx`) with
+  the document in front of them, else the agenda or the first thing brought: `grantWorkspaceAsk` to read or edit,
+  `declineWorkspaceAsk` for not now, and only a document they can share is offered. Whoever asked sees the workspace open by
+  itself on the document (on a phone too, which otherwise shows the list first), or hears not now and can ask again.
 - **Just the document** isn't a new layout: `PanelFacts.zen` says what's left (`adapt` hides the rest, the people go to
   the horizon) and is a box past the call's area, where the bars were (`zenRoom`), so the page glides there like any other
   panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc is taken in the
