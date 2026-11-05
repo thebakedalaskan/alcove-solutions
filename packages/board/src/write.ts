@@ -129,14 +129,20 @@ export function tidy({ objects, places }: Board): void {
   });
 }
 
-/** The one way into a board: a transaction under the caller's origin, or `refused` if the doc holds no board. */
+/**
+ * The one way into a board: a transaction under the caller's origin, or `refused` if the doc holds no board. Its places are
+ * written at the end, even if the change stops part way, as what it did write stays in the doc.
+ */
 export function writing<T>(doc: Y.Doc, origin: unknown, refused: T, change: (board: Board) => T): T {
   const objects = rootMap(doc, BOARD_OBJECTS), places = rootList(doc, BOARD_PLACES);
   if (!objects || !places) return refused;
   return doc.transact(() => {
-    const board = { objects, places }, result = change(board);
-    tidy(board);
-    return result;
+    const board = { objects, places };
+    try {
+      return change(board);
+    } finally {
+      tidy(board);
+    }
   }, origin);
 }
 

@@ -2,16 +2,21 @@
  * Where each object is: one shared Y.Array of `{ k, x, y, w, h }`, `k` being the object's id. It's a list rather than keys of each
  * object's Y.Map because of how Yjs keeps what's superseded: a Y.Map keeps every value a key has ever had, so a busy board's `x`
  * and `y` would reach the document's ceiling on structures through dragging alone, while on a list a run of one browser's deleted
- * entries collapses into one. So a move pushes a new entry and deletes the ones it replaced, and when two browsers push for one key
- * at once, the later entry in the list wins on every browser.
+ * entries, each inserted right after the one before, collapses into one. So each browser keeps its own run: a write puts all its
+ * places, as one block, right after the last entry this browser wrote, and deletes the entries they replace. One person's writes,
+ * of one thing or a thousand, then stay side by side whatever anyone else writes meanwhile, instead of interleaving with theirs at
+ * the end of the list. A browser's first write goes at the end. When two browsers write one key at once, the later entry in the
+ * list wins on every browser.
  *
  * An entry is only ever deleted by a write that has seen it and replaces it with a newer one for its key, or that finds it's for
  * nothing on the board, or isn't a place. So whoever has to know about a move does: a delete of someone's entry comes with that
  * newer entry, or with its object gone. The one that lost to a move at the same moment stays until its key is next moved.
  *
- * A read goes through the list once and is kept until the list changes. A write here forgets it as it writes, so a read in the
- * middle of a transaction sees what that transaction has written; any other change is forgotten before any observer hears of it,
- * so nobody reads where things were. What a peer put in the list is `unknown` until it parses, and an entry that doesn't is ignored.
+ * A write's places go into the list together at its end, from one read of the list. Until then a read takes them from the write
+ * itself, so a write that reads the board again part way, as Sort into themes does after it grows a frame, sees where it has put
+ * things. A read of the list itself goes through it once and is kept until the list changes: writing here forgets it, and any
+ * other change is forgotten before any observer hears of it, so nobody reads where things were. What a peer put in the list is
+ * `unknown` until it parses, and an entry that doesn't is ignored.
  */
 import * as Y from 'yjs';
 import { PlaceSchema, type Place } from './shape';
@@ -25,8 +30,10 @@ export function rootList(doc: Y.Doc, name: string): Y.Array<unknown> | null {
 
 /** What each entry parsed to. An entry is the same object each time the list is read, so each one is parsed once. */
 const parsed = new WeakMap<object, Place | null>();
-/** The keys each list has had pushed since it was last tidied, whose older entries are to go. */
-const moved = new WeakMap<Y.Array<unknown>, Set<string>>();
+/** Where the write under way has put things in each list, by key, until `tidyPlaces` writes it there. */
+const pending = new WeakMap<Y.Array<unknown>, Map<string, Place>>();
+/** The entries this browser wrote, which are the same objects in the list for as long as the doc is open. */
+const mine = new WeakSet<object>();
 /** Each list's places as last read, until it changes. */
 const known = new WeakMap<Y.Array<unknown>, ReadonlyMap<string, Place>>();
 /** Docs that forget their lists' places whenever a transaction changes them. */
@@ -43,8 +50,17 @@ export function asPlace(entry: unknown): Place | null {
   return place;
 }
 
-/** Each key's place: the last entry for it in the list that parses. */
+/** Each key's place: where the write under way has put it, or else the last entry for it in the list that parses. */
 export function placesIn(list: Y.Array<unknown>): ReadonlyMap<string, Place> {
+  const read = readList(list), waiting = pending.get(list);
+  if (!waiting?.size) return read;
+  const now = new Map(read);
+  for (const [k, place] of waiting) now.set(k, place);
+  return now;
+}
+
+/** The list's places, from the last read of it if nothing has changed it since. */
+function readList(list: Y.Array<unknown>): ReadonlyMap<string, Place> {
   const kept = known.get(list);
   if (kept) return kept;
   const places = new Map<string, Place>();
@@ -66,42 +82,54 @@ export function placesIn(list: Y.Array<unknown>): ReadonlyMap<string, Place> {
   return places;
 }
 
-/** Puts something somewhere: a new entry at the end, which wins over any before it. `tidyPlaces` deletes the ones it replaced. */
+/** Puts something somewhere. It goes into the list when the write ends, in `tidyPlaces`, and replaces every entry for it there. */
 export function setPlace(list: Y.Array<unknown>, place: Place): void {
-  const keys = moved.get(list) ?? new Set<string>();
-  moved.set(list, keys);
-  keys.add(place.k);
-  known.delete(list);
-  // Yjs's push walks to the end from the furthest entry it has looked up by index, or from the start after a peer's change. Looking
-  // up the last entry first keeps that walk short when one write puts many things somewhere, as undoing a big delete does.
-  if (list.length > 0) list.get(list.length - 1);
-  list.push([{ k: place.k, x: place.x, y: place.y, w: place.w, h: place.h }]);
+  const waiting = pending.get(list) ?? new Map<string, Place>();
+  pending.set(list, waiting);
+  waiting.set(place.k, { k: place.k, x: place.x, y: place.y, w: place.w, h: place.h });
+}
+
+/** Whether this browser wrote an entry. */
+function isMine(entry: unknown): boolean {
+  return typeof entry === 'object' && entry !== null && mine.has(entry);
 }
 
 /**
- * Deletes what nobody needs: for each key this write moved, every entry but its last, so a move is a delete and a push; an entry
- * that doesn't parse; and one for something `keep` says isn't on the board. Each write runs it at the end, in its transaction.
+ * The end of every write, in its transaction. Writes what it put somewhere, in the order it was put, as one block right after the
+ * last entry this browser wrote, or at the end if it has none. Then deletes what nobody needs: every other entry for a key it wrote,
+ * an entry that doesn't parse, and one for something `keep` says isn't on the board. A place for something that isn't is never written.
  */
 export function tidyPlaces(list: Y.Array<unknown>, keep: (k: string) => boolean): void {
-  const keys = moved.get(list) ?? new Set<string>(), entries = list.toArray(), places = entries.map(asPlace), last = new Map<string, number>();
-  moved.delete(list);
-  places.forEach((place, at) => {
-    if (place) last.set(place.k, at);
-  });
+  const waiting = pending.get(list);
+  pending.delete(list);
+  const entries = list.toArray(), places = entries.map(asPlace);
+  const written = [...(waiting?.values() ?? [])].filter((place) => keep(place.k)), keys = new Set(written.map((place) => place.k));
+  // The block goes right after this browser's last entry, so the entries after that index move along by its length.
+  let after = entries.length - 1;
+  if (written.length) {
+    const last = entries.findLastIndex(isMine);
+    known.delete(list);
+    for (const entry of written) mine.add(entry);
+    if (last >= 0) {
+      after = last;
+      list.insert(last + 1, written);
+    } else list.push(written);
+  }
   const dead = (at: number): boolean => {
     const place = places[at];
-    return !place || !keep(place.k) || (keys.has(place.k) && last.get(place.k) !== at);
+    return !place || !keep(place.k) || keys.has(place.k);
   };
-  // From the end, so the rest stay where they are, and each run at once.
+  const now = (at: number): number => (at > after ? at + written.length : at);
+  // From the end, so the rest stay where they are, and each run at once, never across the block just written.
   for (let end = entries.length; end > 0;) {
     if (!dead(end - 1)) {
       end -= 1;
       continue;
     }
     let start = end - 1;
-    while (start > 0 && dead(start - 1)) start -= 1;
+    while (start > 0 && dead(start - 1) && start - 1 !== after) start -= 1;
     known.delete(list);
-    list.delete(start, end - start);
+    list.delete(now(start), end - start);
     end = start;
   }
 }

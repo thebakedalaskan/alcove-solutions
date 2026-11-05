@@ -391,7 +391,7 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
     const waiting: Entry[] = [];
     doc.transact((transaction) => {
       walking = transaction;
-      // Where things are as this walk leaves them: what it puts back is pushed to `places` and kept here, for what it reads after.
+      // Where things are as this walk leaves them: what it puts back is kept here for what it reads after, and written at the end.
       const where = new Map<string, Place>(things ? things.places() : []);
       const copyNow = (at: Root, id: string): Copy | null => copyOf(at.map.get(id), at === things ? where.get(id) : undefined);
       const moveTo = (place: Place | null): void => {
@@ -400,25 +400,28 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
         where.set(place.k, place);
       };
       const added: Entry[] = [];
-      for (const entry of [...step].reverse()) {
-        const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyNow(at, id);
-        const notes = (of: Map<string, number>) => (part: unknown): boolean => (of.get(`${id}/${String(part)}`) ?? 0) > entry.others;
-        if (!before) added.push(entry);
-        else if (!after) {
-          if (now || !untouched(entry)) continue;
-          at.make(id, before);
-          const place = at === things ? placeFrom(id, before) : null;
-          if (place) where.set(id, place);
-        } else if (m && now) {
-          const away = cellsAway(before, after, now);
-          const only = (copy: Copy): Copy => ({ ...after, cells: Object.fromEntries(Object.entries(recordOf(copy['cells'])).filter(([key]) => away.has(key))) });
-          const box = fieldsBack(m, before, after, now, { back: notes(at.back), wrote: notes(at.wrote), away });
-          if (Object.keys(box).length) moveTo(placeFrom(id, { ...now, ...box }));
-          if (away.size) waiting.unshift({ ...entry, before: only(before), after: only(after) });
-        } else waiting.unshift(entry);
+      try {
+        for (const entry of [...step].reverse()) {
+          const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyNow(at, id);
+          const notes = (of: Map<string, number>) => (part: unknown): boolean => (of.get(`${id}/${String(part)}`) ?? 0) > entry.others;
+          if (!before) added.push(entry);
+          else if (!after) {
+            if (now || !untouched(entry)) continue;
+            at.make(id, before);
+            const place = at === things ? placeFrom(id, before) : null;
+            if (place) where.set(id, place);
+          } else if (m && now) {
+            const away = cellsAway(before, after, now);
+            const only = (copy: Copy): Copy => ({ ...after, cells: Object.fromEntries(Object.entries(recordOf(copy['cells'])).filter(([key]) => away.has(key))) });
+            const box = fieldsBack(m, before, after, now, { back: notes(at.back), wrote: notes(at.wrote), away });
+            if (Object.keys(box).length) moveTo(placeFrom(id, { ...now, ...box }));
+            if (away.size) waiting.unshift({ ...entry, before: only(before), after: only(after) });
+          } else waiting.unshift(entry);
+        }
+        takeAway(added, copyNow);
+      } finally {
+        if (board) tidy(board);
       }
-      takeAway(added, copyNow);
-      if (board) tidy(board);
     }, applying);
     return waiting;
   };
