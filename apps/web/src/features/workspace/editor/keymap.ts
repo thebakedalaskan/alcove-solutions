@@ -1,4 +1,5 @@
 /* The keyboard: what's on the canvas's Keyboard board, and the typed shortcuts that turn a line into a block. */
+import { newBlockId } from '@alcove/api/retire';
 import { exitCode, toggleMark } from 'prosemirror-commands';
 import { InputRule } from 'prosemirror-inputrules';
 import type { Attrs } from 'prosemirror-model';
@@ -7,7 +8,6 @@ import { redoCommand, undoCommand } from 'y-prosemirror';
 import { leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
 import { arrow, backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
 import type { EditorRuntime } from './runtime';
-import { newBlockId } from './names';
 import { isPlainLine, schema } from './schema';
 import type { BlockKind } from './types';
 

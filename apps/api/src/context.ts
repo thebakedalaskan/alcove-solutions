@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { Config } from './config';
+import type { DocPool } from './live/docPool';
 import type { Hub } from './live/hub';
 import type { LiveKit } from './livekit';
 import type { ObjectStore } from './objects';
@@ -12,6 +13,8 @@ export interface Deps {
   livekit: LiveKit;
   /** This instance's end of what API instances tell each other. */
   hub: Hub;
+  /** The workers that open documents, so nothing in one can stop the event loop. */
+  docs: DocPool;
 }
 /** Everything an owner-scoped handler needs: the account and its keys, opened for this request. */
 export interface Owner extends Deps {

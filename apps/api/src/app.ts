@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -10,7 +10,7 @@ import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
 import { z, ZodError } from 'zod';
 import type { Deps, Owner } from './context';
-import { b64u, equalBytes, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, utf8 } from './crypto';
+import { b64u, equalBytes, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, unb64u, utf8 } from './crypto';
 import { bytea, exec, maybeOne } from './db';
 import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound, toAppError, type AppError } from './errors';
 import { addLogContext, log, withLogContext } from './log';
@@ -38,6 +38,7 @@ import * as recordings from './modules/recordings';
 import * as rings from './modules/rings';
 import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
+import * as workspaceDocuments from './modules/workspaceDocuments';
 import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
@@ -78,6 +79,7 @@ const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 /** The one route that takes an image: a frame of someone's own shared screen. */
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
+const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/updates$/;
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 
@@ -87,11 +89,11 @@ const ID128 = /^[A-Za-z0-9_-]{22}$/;
  */
 function rateLimit(max: number, windowMs: number) {
   const hits = new Map<string, { n: number; until: number }>();
-  return (key: string, what = 'request') => {
+  return (key: string, what = 'request', cost = 1) => {
     const now = Date.now();
     const h = hits.get(key);
-    if (!h || h.until < now) { hits.set(key, { n: 1, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
-    if (++h.n > max) throw new UnavailableError('Too many attempts. Wait a minute and try again.', { context: { limit: what, max, windowMs } });
+    if (!h || h.until < now) { hits.set(key, { n: cost, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
+    if ((h.n += cost) > max) throw new UnavailableError('Too many attempts. Wait a minute and try again.', { context: { limit: what, max, windowMs } });
   };
 }
 /**
@@ -196,6 +198,20 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const workspaceLimiter = rateLimit(20, 60_000);
   /** Reading your list of workspaces, per account: it opens every one you're in. */
   const workspaceListLimiter = rateLimit(120, 60_000);
+  /** Opening a document's stream, per person: clicking through a list opens one each. */
+  const documentLiveLimiter = rateLimit(240, 60_000);
+  /** Updates to documents, per person: a browser sends at most about seven a second, and someone may have two or three open. */
+  const updateLimiter = rateLimit(1200, 60_000);
+  /** How much of them, in KiB: a long paste is megabytes, and nobody pastes one every second. */
+  const updateBytesLimiter = rateLimit(64 * 1024, 60_000);
+  /** Reading a version, per person: History reads one at a time, as someone clicks through them. */
+  const versionLimiter = rateLimit(60, 60_000);
+  /** Where a caret or pointer is, per person: a browser sends at most ten a second. */
+  const awarenessLimiter = rateLimit(1800, 60_000);
+  /** Where someone is in a workspace, per person: every 10 seconds and whenever they move or start typing. */
+  const presenceLimiter = rateLimit(600, 60_000);
+  /** Reading every document someone can open, for searching: once when search opens. */
+  const searchLimiter = rateLimit(12, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -233,7 +249,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
     const image = type.startsWith('image/jpeg') && FRAMES.test(c.req.path);
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
+    const update = type.startsWith(DOC_UPDATE_TYPE) && DOC_UPDATES.test(c.req.path);
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !update) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 
@@ -629,7 +646,71 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.get('/v1/workspaces/:id/live', async (c) => {
     const r = await readerOf(c);
     liveLimiter(access.limitKey(r), 'workspace stream');
-    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'));
+    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'), clientAddress(c));
+    c.header('content-type', 'application/x-ndjson');
+    c.header('cache-control', 'no-store');
+    return stream(c, run);
+  });
+  /* Where someone is in the workspace, for whoever may know. A guest in a call is here too, in what they've been given. */
+  app.use('/v1/workspaces/:id/presence', capped(1024));
+  app.post('/v1/workspaces/:id/presence', async (c) => {
+    const r = await readerOf(c);
+    presenceLimiter(access.limitKey(r), 'presence');
+    await workspaces.present(d, r, c.req.param('id'), await body(c, PresenceBodySchema));
+    return c.json({ said: true });
+  });
+  /*
+   * A document or board: its stream down, its updates and carets up, and its versions. An update that arrives twice changes
+   * nothing, and a receipt would hold a copy of it, so none of this keeps one.
+   */
+  app.use('/v1/workspaces/:id/documents/:doc/updates', capped(MAX_DOC_UPDATE_BYTES));
+  app.use('/v1/workspaces/:id/documents/:doc/awareness', capped(Math.ceil((MAX_DOC_AWARENESS_BYTES * 4) / 3) + 1024));
+  app.get('/v1/workspaces/:id/documents/:doc/live', async (c) => {
+    const r = await readerOf(c);
+    documentLiveLimiter(access.limitKey(r), 'document stream');
+    const after = z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).safeParse(c.req.query('after') ?? '0');
+    if (!after.success) throw new ValidationError('Ask from a place in the document.');
+    const run = await workspaceDocuments.open(d, credentials(c), r, c.req.param('id'), c.req.param('doc'), after.data, clientAddress(c));
+    c.header('content-type', 'application/x-ndjson');
+    c.header('cache-control', 'no-store');
+    return stream(c, run);
+  });
+  app.post('/v1/workspaces/:id/documents/:doc/updates', async (c) => {
+    const r = await readerOf(c);
+    updateLimiter(access.limitKey(r), 'document update');
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(Number(c.req.header('content-length') ?? 0) / 1024) || 1);
+    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), () => c.req.arrayBuffer()));
+  });
+  app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
+    const r = await readerOf(c);
+    awarenessLimiter(access.limitKey(r), 'document awareness');
+    await workspaceDocuments.awareness(d, r, c.req.param('id'), c.req.param('doc'), unb64u((await body(c, DocAwarenessBodySchema)).update));
+    return c.json({ said: true });
+  });
+  app.get('/v1/workspaces/:id/documents/:doc/versions', async (c) => {
+    const r = await readerOf(c);
+    versionLimiter(access.limitKey(r), 'document versions');
+    return c.json(await workspaceDocuments.versions(d, r, c.req.param('id'), c.req.param('doc')));
+  });
+  app.get('/v1/workspaces/:id/documents/:doc/versions/:version', async (c) => {
+    const r = await readerOf(c);
+    versionLimiter(access.limitKey(r), 'document version');
+    const run = await workspaceDocuments.version(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
+    c.header('content-type', 'application/x-ndjson');
+    c.header('cache-control', 'no-store');
+    return stream(c, run);
+  });
+  app.post('/v1/workspaces/:id/documents/:doc/versions/:version/restore', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await workspaceDocuments.restoreVersion(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
+    return c.json({ restored: true });
+  });
+  /* The words of everything a reader can open: for searching in the browser, one document a line. */
+  app.get('/v1/workspaces/:id/search', async (c) => {
+    const r = await readerOf(c);
+    searchLimiter(access.limitKey(r), 'workspace search');
+    const run = await workspaceDocuments.searchText(d, r, c.req.param('id'));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
