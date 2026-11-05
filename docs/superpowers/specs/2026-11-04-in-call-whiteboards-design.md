@@ -63,10 +63,8 @@ Two roots.
 | `table` | `rows`, `cols`: each a `Y.Array` of `{ id, size }` | `cells`, a `Y.Map` of `Y.Text` keyed `<rowId>:<colId>` |
 | `node` | a mind map's node: `parent` | `t` |
 
-`at` orders objects within a layer (frames, then lines, then everything else); `f` is the frame an object sits in, or `''`. A frame sits in
-another only when the other holds its whole box, so dropping one frame beside another never turns a slide into a child. A frame held by another
-draws after it, whatever their `at`s, so nesting writes no `at`: top-level frames are the slides, in order by `at`, and nesting or un-nesting one
-never reorders them. Something lands in the innermost frame that holds it. `x y w h` are board units, absolute: moving a frame moves what's in it, in
+`at` orders objects within a layer (frames, then lines, then everything else); `f` is the frame an object sits in, or `''`.
+A frame's order on the board is its order as slides. `x y w h` are board units, absolute: moving a frame moves what's in it, in
 one transaction. `t` and `title` are `Y.Text`, so two people typing in one sticky merge. Everything else is last-write-wins per
 key, which is what "move" and "recolour" should mean: whoever let go last. Deleting wins over a concurrent edit, and undo brings
 the object back.
