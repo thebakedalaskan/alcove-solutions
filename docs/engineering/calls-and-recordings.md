@@ -980,7 +980,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
 
 - **Which one.** The meeting's `workspaceId`, sealed in its manifest, default null. With none, the first time anyone opens
   Workspace (`workspace-open`, anyone let in), the call settles on its organizer's most recently used, if they can still
-  edit in it, else a new one in their name. It's settled under the call's row, so people opening it at once get one, and
+  edit in it, else a new one in their name. Which one they used last is asked first, by who's in it, without opening it;
+  then it's settled under the call's row, so people opening it at once get one, and
   it's the organizer's whoever opened it: a guest's click can make it, and tells the guest nothing. "Most recently used" is
   sealed in the account's profile (`recentWorkspace`): making one, opening one they can edit in, or a call moving to one
   uses it. Opening one counts once every ten minutes for each workspace, because every change to a profile is a revision,
@@ -1063,6 +1064,14 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   minutes first ([Data and storage › Documents](data-and-storage.md#documents)), and filling in one that's filled changes
   nothing. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays in its
   workspace, so a call that moved to another gets none.
+
+A live call comes first, so nothing under the call's row waits on a workspace's lock, opens a workspace, or works through its
+documents. Each action is two steps (`prepare` in `callWorkspace.ts`): everything that reads a workspace, and a grant, which
+changes one under that workspace's row in a transaction of its own, with nothing of the call held; then the call's row, held
+only to check again what that went by, from the call's own state, and to save. A call that moved on in between is asked
+afresh, three times at most before a `409`. So a big change to a workspace, such as duplicating a folder of thousands of
+documents, can make a grant wait for it, and never a hand going up, nor anyone else's request for a connection. A grant to
+someone removed while it was being made is taken back, as their removal takes everything else.
 
 Actions are rate limited per person: 240 a minute for what goes on in the workspace, as each makes every browser read the
 call again. Following a change to who can open what, the state is right on the next read; only what's shared with a seat

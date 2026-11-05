@@ -190,19 +190,20 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
 /** Who an account is to a workspace, without a call. */
 const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)] });
 
-/** The workspace a call settles on when nobody has chosen: its organizer's most recently used, if they can still edit in it, else a new one in their name. */
-export async function chooseFor(o: Owner, c: Db): Promise<string> {
-  const me = await profile(o, c);
-  if (me.recentWorkspace) {
-    try {
-      const w = await workspaceFor(o, accountWho(o, me.email), me.recentWorkspace, c);
-      if (w.role === 'admin' || w.role === 'edit') return me.recentWorkspace;
-    } catch (e) {
-      if (!(e instanceof NotFoundError)) throw e;
-    }
-  }
-  return (await createIn(o, c, `${firstName(me.name)}’s workspace`)).id;
+/**
+ * The workspace a call settles on when nobody has chosen, if it's one there already: its organizer's most recently used, if
+ * they can still edit in it. Asked with nothing held, from who's in it, without opening it.
+ */
+export async function recentFor(o: Owner): Promise<string | undefined> {
+  const me = await profile(o);
+  const ownerId = me.recentWorkspace ? await workspaceOwner(o.pool, me.recentWorkspace) : undefined;
+  if (!me.recentWorkspace || !ownerId) return undefined;
+  const who = accountWho(o, me.email);
+  const { role } = standingIn(await holdersOf(o.pool, ownerId, who.principals), who);
+  return role === 'admin' || role === 'edit' ? me.recentWorkspace : undefined;
 }
+/** Otherwise a new one in the organizer's name, in the caller's transaction: nobody else can reach it yet, so nothing waits on it. */
+export const newFor = async (o: Owner, c: Db): Promise<string> => (await createIn(o, c, `${firstName((await profile(o, c)).name)}’s workspace`)).id;
 /** Remembers the workspace someone used last, when that's changed. */
 export async function noteUsed(o: Owner, workspaceId: string): Promise<void> {
   try {
@@ -284,9 +285,9 @@ export async function mayPlay(o: Owner, reader: Reader, workspaceId: string | nu
   });
 }
 
-/** What's needed to change what a call keeps, in its transaction, which holds its row. */
+/** What a call is when someone does something about its workspace: read with nothing held, and read again under its row. */
 export interface Changing<S extends Spaced> {
-  v: Viewer; reader: Reader; c: Db; callId: string;
+  v: Viewer; reader: Reader; callId: string;
   meeting: Loaded<MeetingManifest>;
   s: S;
   /** Where whoever's asking is in the call. */
@@ -294,23 +295,37 @@ export interface Changing<S extends Spaced> {
   now: number;
   seatOf: (j: Joined) => string;
 }
-/** What came of it: the call as it is now, and the workspace it left and moved to, if it moved. */
-export interface Changed<S> { s: S; moved?: { from: string | null; to: string } | undefined }
+/**
+ * What came of it: the call as it is now; the workspace it left and moved to, if it moved; and the seat a grant gave someone
+ * who was removed meanwhile, for the caller to take back once the call's row is let go, as their removal does.
+ */
+export interface Changed<S> { s: S; moved?: { from: string | null; to: string } | undefined; ended?: string | undefined }
+/**
+ * The change to what the call keeps, in the transaction that holds its row (`c`). What it went by is checked again there, from
+ * the call's own state alone; `again` when that's moved on, for it all to be asked afresh with nothing held.
+ */
+export type Apply<S extends Spaced> = (x: Changing<S> & { c: Db }) => Promise<Changed<S> | 'again'>;
 
 const withSpace = <S extends Spaced>(s: S, workspace: CallSpace): S => ({ ...s, workspace });
 const notYours = (callId: string, what: string) => new ForbiddenError('Only whoever started this, or the organizer, can do that.', { context: { callId, what } });
-/** Whether someone can open a document in a workspace. */
-async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string, db: Db): Promise<boolean> {
+/** Whether someone can open a document in a workspace, read with nothing held. */
+async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string): Promise<boolean> {
   try {
-    requireDocument(reader, await workspaceFor(d, reader, workspaceId, db), documentId, 'read');
+    requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'read');
     return true;
   } catch (e) {
     if (e instanceof NotFoundError) return false;
     throw e;
   }
 }
+/** What's presented or playing in one part of the call, as a start over it goes by: who, what, and whether it shows. */
+const presentSlot = (s: Placing, p: Presenting | undefined): string => (p ? `${p.by.person}:${p.workspaceId}:${p.id}:${String(showing(s, p))}` : '');
+const playSlot = (s: Placing, p: Playing | undefined): string => (p ? `${p.by.person}:${p.workspaceId}:${p.documentId}:${p.mediaId}:${String(showing(s, p))}` : '');
+/** Where a document brought or taken off is from: what's brought, from the workspace in use; what's taken off can have come from one the call used before. */
+const broughtFrom = (m: Pick<MeetingManifest, 'workspaceId' | 'documents'>, a: { documentId: string; brought: boolean }): string | null =>
+  a.brought ? m.workspaceId : m.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? m.workspaceId;
 
-async function moveTo<S extends Spaced>(x: Changing<S>, workspaceId: string): Promise<Changed<S>> {
+async function moveTo<S extends Spaced>(x: Changing<S> & { c: Db }, workspaceId: string): Promise<Changed<S>> {
   const from = x.meeting.manifest.workspaceId;
   if (from === workspaceId) return { s: x.s };
   await updateManifest(x.v.organizer, x.c, x.meeting.itemId, (m) => ({ ...m, workspaceId }));
@@ -318,85 +333,112 @@ async function moveTo<S extends Spaced>(x: Changing<S>, workspaceId: string): Pr
   return { s: withSpace(x.s, stopped(x.s.workspace)), moved: { from, to: workspaceId } };
 }
 
-/** Whatever someone does about the call's workspace. Who may is checked here, under the call's row, and again by access. */
-export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): Promise<Changed<S>> {
-  const { v, reader, c, s, callId, place, now } = x;
+/**
+ * Whatever someone does about the call's workspace, in two steps, because a live call comes first: nothing under the call's
+ * row waits on a workspace's lock, opens a workspace or works through its documents. This is the first, with nothing of the
+ * call held: who may, whether what's asked for opens, and a grant, which changes the workspace under that row in a
+ * transaction of its own. What it returns is the second (`Apply`). Access is asked on every read of the call, so whatever
+ * changes in between is found there.
+ */
+export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction): Promise<Apply<S>> {
+  const { v, reader, s, callId, place } = x;
   const o = v.organizer;
   const w = s.workspace;
   const inUse = x.meeting.manifest.workspaceId;
   const control = (p: { by: Controller }) => p.by.person === v.pass.person || v.isOrganizer;
   switch (a.type) {
     case 'workspace-set': {
-      const target = await workspaceFor(o, reader, a.workspaceId, c, 'hold');
-      requireRole(target, 'edit');
-      return moveTo(x, a.workspaceId);
+      requireRole(await workspaceFor(o, reader, a.workspaceId), 'edit');
+      return (y) => moveTo(y, a.workspaceId);
     }
-    case 'workspace-new': return moveTo(x, (await createIn(o, c, a.name ?? (x.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled'))).id);
+    // A workspace made now is one nobody else can reach yet, so making it under the call's row waits on nobody.
+    case 'workspace-new': return async (y) => moveTo(y, (await createIn(o, y.c, a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled'))).id);
     case 'workspace-bring': {
-      // What's brought comes from the workspace in use; what's taken off can have been brought from one the call used before.
-      const from = a.brought ? inUse : x.meeting.manifest.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? inUse;
+      const from = broughtFrom(x.meeting.manifest, a);
       if (!from) throw noDocument(a.documentId);
-      await reached(a.documentId, async () => requireDocument(reader, await workspaceFor(o, reader, from, c), a.documentId, 'read'));
-      const id = broughtId(from, a.documentId);
-      await updateManifest(o, c, x.meeting.itemId, (m) => {
-        if (a.brought === m.documents.includes(id)) return m;
-        if (!a.brought) return { ...m, documents: m.documents.filter((d) => d !== id) };
-        if (m.documents.length >= MAX_BROUGHT) throw new ConflictError('This call has as many documents as it can bring. Take one off first.', { context: { callId, documents: m.documents.length } });
-        return { ...m, documents: [...m.documents, id] };
-      });
-      return { s };
+      await reached(a.documentId, async () => requireDocument(reader, await workspaceFor(o, reader, from), a.documentId, 'read'));
+      return async (y) => {
+        if (broughtFrom(y.meeting.manifest, a) !== from) return 'again';
+        const id = broughtId(from, a.documentId);
+        await updateManifest(o, y.c, y.meeting.itemId, (m) => {
+          if (a.brought === m.documents.includes(id)) return m;
+          if (!a.brought) return { ...m, documents: m.documents.filter((d) => d !== id) };
+          if (m.documents.length >= MAX_BROUGHT) throw new ConflictError('This call has as many documents as it can bring. Take one off first.', { context: { callId, documents: m.documents.length } });
+          return { ...m, documents: [...m.documents, id] };
+        });
+        return { s: y.s };
+      };
     }
     case 'workspace-ask': {
       if (v.isOrganizer) throw new ValidationError('You choose the workspace for this call.', { context: { callId } });
-      const others = w.asks.filter((q) => q.person !== v.pass.person);
-      if (!a.up) return { s: withSpace(s, { ...w, asks: others }) };
-      if (w.asks.some((q) => q.person === v.pass.person && q.state === 'asking')) return { s };
-      return { s: withSpace(s, { ...w, asks: [...others, { id: id128(), person: v.pass.person, at: now, state: 'asking' }] }) };
+      return async (y) => {
+        const now = y.s.workspace;
+        const others = now.asks.filter((q) => q.person !== v.pass.person);
+        if (!a.up) return { s: withSpace(y.s, { ...now, asks: others }) };
+        if (now.asks.some((q) => q.person === v.pass.person && q.state === 'asking')) return { s: y.s };
+        return { s: withSpace(y.s, { ...now, asks: [...others, { id: id128(), person: v.pass.person, at: y.now, state: 'asking' }] }) };
+      };
     }
     case 'workspace-grant': {
       const ask = w.asks.find((q) => q.id === a.askId && q.state === 'asking');
       const j = ask && here(s, ask.person);
       if (!ask || !j) throw new ValidationError('That ask isn’t open.', { context: { callId } });
       if (!inUse) throw noDocument(a.documentId);
-      const held = await workspaceFor(o, reader, inUse, c, 'change');
-      requireSharing(reader, held, a.documentId);
-      await grant(held, c, a.documentId, [{ kind: 'seat', callId, seat: x.seatOf(j), name: j.name, role: a.role }]);
+      const seat = x.seatOf(j);
+      await tx(o.pool, async (c) => {
+        const held = await workspaceFor(o, reader, inUse, c, 'change');
+        requireSharing(reader, held, a.documentId);
+        await grant(held, c, a.documentId, [{ kind: 'seat', callId, seat, name: j.name, role: a.role }]);
+      });
       wlog.info('document opened to someone in a call', { callId, workspaceId: inUse, documentId: a.documentId, role: a.role });
-      return { s: withSpace(s, { ...w, asks: w.asks.filter((q) => q.id !== ask.id) }) };
+      return async (y) => ({ s: withSpace(y.s, { ...y.s.workspace, asks: y.s.workspace.asks.filter((q) => q.id !== ask.id) }), ended: y.s.removed.includes(ask.person) ? seat : undefined });
     }
-    case 'workspace-decline': {
-      if (!w.asks.some((q) => q.id === a.askId && q.state === 'asking')) throw new ValidationError('That ask isn’t open.', { context: { callId } });
-      return { s: withSpace(s, { ...w, asks: w.asks.map((q) => (q.id === a.askId ? { ...q, state: 'declined' as const } : q)) }) };
-    }
+    case 'workspace-decline': return async (y) => {
+      const now = y.s.workspace;
+      if (!now.asks.some((q) => q.id === a.askId && q.state === 'asking')) throw new ValidationError('That ask isn’t open.', { context: { callId } });
+      return { s: withSpace(y.s, { ...now, asks: now.asks.map((q) => (q.id === a.askId ? { ...q, state: 'declined' as const } : q)) }) };
+    };
     case 'present-start': {
       if (!inUse) throw noDocument(a.id);
-      const held = await workspaceFor(o, reader, inUse, c);
+      const held = await workspaceFor(o, reader, inUse);
       const { item } = requireDocument(reader, held, a.id, 'read');
       if (item.kind !== a.kind) throw noDocument(a.id);
       if (trashOf(held.state, a.id)) throw new ConflictError('This is in Trash. Restore it to present it.', { context: { callId, documentId: a.id } });
       const there = w.present.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.id, c)) throw new ConflictError('Someone else is presenting here.', { context: { callId } });
-      const next: Presenting = { place, workspaceId: inUse, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
-      return { s: withSpace(s, { ...w, present: [...w.present.filter((p) => p.place !== place), next] }) };
+      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.id)) throw new ConflictError('Someone else is presenting here.', { context: { callId } });
+      const slot = presentSlot(s, there);
+      return async (y) => {
+        const now = y.s.workspace;
+        if (y.meeting.manifest.workspaceId !== inUse || y.place !== place || presentSlot(y.s, now.present.find((p) => p.place === place)) !== slot) return 'again';
+        const next: Presenting = { place, workspaceId: inUse, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
+        return { s: withSpace(y.s, { ...now, present: [...now.present.filter((p) => p.place !== place), next] }) };
+      };
     }
     case 'present-move':
-    case 'present-stop': {
-      const p = w.present.find((q) => q.place === place && showing(s, q));
+    case 'present-stop': return async (y) => {
+      const now = y.s.workspace;
+      const p = now.present.find((q) => q.place === y.place && showing(y.s, q));
       if (!p) throw new ConflictError('Nothing is being presented here.', { context: { callId, what: a.type } });
       if (!control(p)) throw notYours(callId, a.type);
-      const rest = w.present.filter((q) => q !== p);
-      return { s: withSpace(s, { ...w, present: a.type === 'present-stop' ? rest : [...rest, { ...p, section: a.section }] }) };
-    }
+      const rest = now.present.filter((q) => q !== p);
+      return { s: withSpace(y.s, { ...now, present: a.type === 'present-stop' ? rest : [...rest, { ...p, section: a.section }] }) };
+    };
     case 'play-start': {
       if (!inUse) throw noDocument(a.documentId);
+      await mayPlay(o, reader, inUse, a.documentId, a.mediaId);
       const there = w.play.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId, c)) {
+      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId)) {
         // Someone who can't open what's playing isn't told it is: what they try reads as their own video not being there.
-        if (!await opens(o, reader, there.workspaceId, there.documentId, c)) throw noDocument(a.documentId);
+        if (!await opens(o, reader, there.workspaceId, there.documentId)) throw noDocument(a.documentId);
         throw new ConflictError('Someone else is playing something here.', { context: { callId } });
       }
-      const next: Playing = { place, workspaceId: inUse, documentId: a.documentId, mediaId: a.mediaId, by: controllerOf(v, reader), playing: true, positionMs: a.positionMs, atMs: now };
-      return { s: withSpace(s, { ...w, play: [...w.play.filter((p) => p.place !== place), next] }) };
+      const slot = playSlot(s, there);
+      return async (y) => {
+        const now = y.s.workspace;
+        if (y.meeting.manifest.workspaceId !== inUse || y.place !== place || playSlot(y.s, now.play.find((p) => p.place === place)) !== slot) return 'again';
+        const next: Playing = { place, workspaceId: inUse, documentId: a.documentId, mediaId: a.mediaId, by: controllerOf(v, reader), playing: true, positionMs: a.positionMs, atMs: y.now };
+        return { s: withSpace(y.s, { ...now, play: [...now.play.filter((p) => p.place !== place), next] }) };
+      };
     }
     case 'play-pause':
     case 'play-resume':
@@ -404,12 +446,18 @@ export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): 
     case 'play-stop': {
       const p = w.play.find((q) => q.place === place && showing(s, q));
       // What someone can't open is never said to be playing, so it reads the same as nothing playing.
-      if (!p || !(await opens(o, reader, p.workspaceId, p.documentId, c))) throw new ConflictError('Nothing is playing here.', { context: { callId, what: a.type } });
+      if (!p || !(await opens(o, reader, p.workspaceId, p.documentId))) throw new ConflictError('Nothing is playing here.', { context: { callId, what: a.type } });
       if (!control(p)) throw notYours(callId, a.type);
-      const rest = w.play.filter((q) => q !== p);
-      if (a.type === 'play-stop') return { s: withSpace(s, { ...w, play: rest }) };
-      const at = a.type === 'play-pause' ? { playing: false, positionMs: a.positionMs } : a.type === 'play-seek' ? { positionMs: a.positionMs } : { playing: true };
-      return { s: withSpace(s, { ...w, play: [...rest, { ...p, ...at, atMs: now }] }) };
+      const slot = playSlot(s, p);
+      return async (y) => {
+        const now = y.s.workspace;
+        const q = now.play.find((x2) => x2.place === place && showing(y.s, x2));
+        if (y.place !== place || playSlot(y.s, q) !== slot || !q) return 'again';
+        const rest = now.play.filter((x2) => x2 !== q);
+        if (a.type === 'play-stop') return { s: withSpace(y.s, { ...now, play: rest }) };
+        const at = a.type === 'play-pause' ? { playing: false, positionMs: a.positionMs } : a.type === 'play-seek' ? { positionMs: a.positionMs } : { playing: true };
+        return { s: withSpace(y.s, { ...now, play: [...rest, { ...q, ...at, atMs: y.now }] }) };
+      };
     }
   }
 }
