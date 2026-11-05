@@ -25,7 +25,7 @@ import {
 } from './workspaceAccess';
 import { profile } from './account';
 import { nudgeCall, seated } from './calls';
-import { noteUsed } from './callWorkspace';
+import { noteOpened, noteUsed } from './callWorkspace';
 import { personOf, portraitFor } from './portraits';
 import { copyContent, kindOf, startContent } from './workspaceDocuments';
 import { waitingFor } from './workspaceMentions';
@@ -906,8 +906,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
   const release = d.hub.admit('workspace', limitKey(reader), address);
   try {
     const known = await workspaceFor(d, reader, workspaceId);
-    // Someone who can work in it is using it: their next call starts here unless they say otherwise.
-    if (reader.account && (known.role === 'admin' || known.role === 'edit')) await noteUsed(reader.account.owner, workspaceId);
+    if (reader.account && (known.role === 'admin' || known.role === 'edit')) await noteOpened(reader.account.owner, workspaceId);
     const room = roomFor(d, workspaceId);
     const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), { role: known.role, grants: known.grants }, known.version, release, reader.seat?.callId ?? null);
     room.join(stream);

@@ -127,6 +127,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const speechLimiter = rateLimit(240, 60_000);
   const voiceLimiter = rateLimit(40, 60_000);
   const askLimiter = rateLimit(20, 60_000);
+  /** Asking about a selection, for every demo account together on this instance. */
+  const askDemoLimiter = rateLimit(60, 60_000);
   /** Changing what a note says: each change writes a whole new revision of it, so nobody can churn one, or its history. */
   const noteChangeLimiter = rateLimit(120, 60_000);
   /** Joining by link: public, so limited per client address. */
@@ -511,7 +513,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
-    if (a.type === 'follow-up') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
+    if (a.type === 'follow-up' || a.type === 'follow-up-add') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
     else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
@@ -662,7 +664,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json(await calls.translate(v, c.req.param('id'), language, lines));
   });
   /* Whoever hosts leaving ends the call for everyone, unless they hand it to someone; anyone else leaving is taken out of the call's group. */
-  app.post('/v1/live/calls/:id/leave', async (c) => c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), (await body(c, CallLeaveBodySchema)).end) }));
+  app.post('/v1/live/calls/:id/leave', async (c) => {
+    const { end, onPurpose } = await body(c, CallLeaveBodySchema);
+    return c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), end, onPurpose) });
+  });
   app.post('/v1/live/calls/:id/hand-off', async (c) => {
     const v = hostOnly(c);
     await calls.handOff(v, c.req.param('id'), (await body(c, CallHandOffBodySchema)).to);
@@ -789,6 +794,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/documents/:doc/ask', async (c) => {
     const r = await readerOf(c);
     askLimiter(access.limitKey(r), 'ask-selection');
+    // Demo accounts cost nothing to make, so a limit for each of them is no limit: they share one.
+    if (r.account?.sample) askDemoLimiter('demo accounts', 'ask-selection');
     return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
   });
   /* The words of everything a reader can open: for searching in the browser, one document a line. */

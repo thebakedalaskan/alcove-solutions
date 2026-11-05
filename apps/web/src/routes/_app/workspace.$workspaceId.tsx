@@ -20,7 +20,8 @@ function WorkspacePage() {
     const replace = how?.replace === true;
     if (to.kind === 'trash') void navigate({ to: '/workspace/$workspaceId/trash', params: { workspaceId }, replace });
     else if (to.kind === 'home') void navigate({ to: '/workspace/$workspaceId', params: { workspaceId }, replace });
-    else void navigate({ to: '/workspace/$workspaceId/$documentId', params: { workspaceId, documentId: to.id }, ...(to.block ? { hash: to.block } : {}), replace });
+    /* A call's own pages are only in a call, and nothing here goes to them. */
+    else if (to.kind === 'document') void navigate({ to: '/workspace/$workspaceId/$documentId', params: { workspaceId, documentId: to.id }, ...(to.block ? { hash: to.block } : {}), replace });
   }, [navigate, workspaceId]);
   const onSwitch = useCallback((id: string) => { void navigate({ to: '/workspace/$workspaceId', params: { workspaceId: id } }); }, [navigate]);
   const onLeave = useCallback(() => { void navigate({ to: '/workspace', replace: true }); }, [navigate]);

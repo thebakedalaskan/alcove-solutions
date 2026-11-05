@@ -57,7 +57,7 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Series | Working on a call's card, the notes, the series page, at pre-join and in the call: calls scheduled to repeat, recurring Google events held in Alcove and calls scheduled as the next one |
 | Notes for everyone invited, sharing by email | Working |
 | Notes from shared screens | Working: frames from the presenter's own browser, sealed, read by the verified notes model after the call, linked to the transcript and referred to by the notes and answers. Catch-up during the call doesn't read screens yet |
-| Workspace | Working in the app: the list, documents written by several people at once, starting points, Trash, sharing, people and roles, and writing offline. Not in a call yet, and without search, version history, photos and files in documents, or export |
+| Workspace | Working in the app and beside a call: the list, documents written by several people at once, starting points, Trash, sharing, people and roles, writing offline, and a call's notes, follow-ups and transcript as pages, panels and blocks in a document. Without search, version history, comments, faces in the list, photos and files in documents, or export |
 | Browser notifications | Working while Alcove is open in a tab, shown through the app's service worker. Nothing is pushed when no tab is open |
 | Credits and payments | Notes are charged 25 credits a minute when they're written; nothing checks the balance first, and USDC top-ups aren't connected |
 | Confidential compute (TEE, attestation, master key release) | Required before real users; see [Privacy › Production requirements](../engineering/privacy-keys-and-sessions.md#production-requirements) |

@@ -88,7 +88,8 @@ export interface Who { email: string | undefined; principals: Uint8Array[] }
 export interface Seat { callId: string; seat: string; name: string; viewer: Viewer }
 /** Who's asking, for this request: the account with its keys, their seat, or both. */
 export interface Reader extends Who {
-  account: { owner: Owner; name: string } | undefined;
+  /** `sample`: an account anyone can make for nothing (`demo.ts`). */
+  account: { owner: Owner; name: string; sample: boolean } | undefined;
   seat: Seat | undefined;
 }
 
@@ -111,7 +112,7 @@ async function seatFrom(d: Deps, token: string | undefined, account: Owner | und
 async function readerWith(d: Deps, owner: Owner | undefined, seat: Seat | undefined): Promise<Reader> {
   const me = owner && await profile(owner);
   return {
-    account: owner && me ? { owner, name: me.name } : undefined, seat, email: me?.email,
+    account: owner && me ? { owner, name: me.name, sample: me.sample } : undefined, seat, email: me?.email,
     principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])]
   };
 }

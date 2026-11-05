@@ -21,13 +21,17 @@
  *   tick still goes to the note.
  * - When the call ends, what was ticked goes into the note (`ticked` in its manifest), and the rows go. The notes model,
  *   writing the notes, is told what was ticked and says which follow-up each one is (`doneInNotes`).
+ * - Someone who gets the notes can add a follow-up nobody said (`add`). It's kept beside what the notes model wrote, not in
+ *   it, as there may be no notes yet, and everyone who gets the notes reads it, in their words, whatever the model says. The
+ *   model is told it as it's told the rest, so it can say it heard the same thing, and it stops showing where what's ticked
+ *   does. It's its adder's in the note, as if they'd proposed it there (`toNote`).
  */
-import { CatchUpReadSchema, ChangerSchema, EvidenceSchema, MAIN_PLACE, type ActionItem, type CatchUpRead, type LiveFollowUp, type LiveNotes, type TranscriptLine } from '@alcove/api';
+import { CatchUpReadSchema, ChangerSchema, EvidenceSchema, MAIN_PLACE, SpeakerSchema, type ActionItem, type AddedFollowUp, type CatchUpRead, type LiveFollowUp, type LiveNotes, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { b64u, id128, openJson, sealJson, sha, stateKey, toJson, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { notFound } from '../errors';
+import { ConflictError, ForbiddenError, notFound } from '../errors';
 import { covers, evidenceOf, readable, type Open } from './catchup';
 import type { Cited, Known, Sorted } from './drafting';
 
@@ -63,8 +67,14 @@ const Written = z.object({
   first: z.number(), last: z.number(), readers: z.array(z.string()).optional()
 });
 type Written = z.infer<typeof Written>;
-/** The record: the notes, null until they're written, and whether the latest refresh didn't work. */
-const Stored = z.object({ notes: Written.nullable(), failed: z.boolean() });
+/**
+ * A follow-up someone added: its words, who it's for, who added it and when (`at`, as a note's changes say it, and `said`,
+ * seconds since the call started). `tick` and `shown` are as on one the notes wrote.
+ */
+const Added = Tick.extend({ id: z.string(), text: z.string(), owner: SpeakerSchema, said: z.number(), tick: Tick.nullable(), shown: z.boolean() });
+type Added = z.infer<typeof Added>;
+/** The record: the notes, null until they're written, whether the latest refresh didn't work, and what people added. Rows written before people could add have none. */
+const Stored = z.object({ notes: Written.nullable(), failed: z.boolean(), added: z.array(Added).default([]) });
 type Stored = z.infer<typeof Stored>;
 /** A line a row left out: when it was said, and who may read it, if not everyone there. */
 const Barred = z.object({ said: z.number(), readers: z.array(z.string()).optional() });
@@ -114,9 +124,9 @@ const WHERE = 'owner_id = $1 AND call_id = $2 AND place = $3';
 /**
  * What's kept for someone in a part of the call. `view` is what they read, null when there's nothing of theirs yet, and
  * `own` their own row, if they have one, whether or not it's what they read: it's what a look at the notes refreshes, so
- * `writing` and `failed` go by it too.
+ * `writing` and `failed` go by it too. `added` is what people added here, for someone who gets the notes and may read everyone's.
  */
-export interface Found { view: string | null; own: string | null; stored: Stored | null; writing: boolean; failed: boolean }
+export interface Found { view: string | null; own: string | null; stored: Stored | null; added: Added[]; writing: boolean; failed: boolean }
 
 /**
  * The row someone reads in a part of the call: of the rows that are theirs, the one that read what was said most
@@ -137,9 +147,10 @@ export async function find(o: Owner, db: Db, callId: string, place: string, r: R
   const written = mine.filter((x) => x.stored?.notes);
   const newest = written.reduce<(typeof mine)[number] | undefined>((best, x) => ((x.stored?.notes?.last ?? 0) > (best?.stored?.notes?.last ?? -1) ? x : best), undefined);
   const shown = newest ?? ownRow ?? mine[0];
-  if (shown) return { view: shown.view, own: ownRow?.view ?? null, stored: shown.stored, writing: shown.writing || ownRow?.writing === true, failed: shown.stored?.failed === true || ownRow?.stored?.failed === true };
+  const added = r.here === null ? mine.find((x) => x.view === ALL)?.stored?.added ?? [] : [];
+  if (shown) return { view: shown.view, own: ownRow?.view ?? null, stored: shown.stored, added, writing: shown.writing || ownRow?.writing === true, failed: shown.stored?.failed === true || ownRow?.stored?.failed === true };
   // Notes they can't read, and none of their own yet: nothing to show, and nothing here says when there's more for them.
-  return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, writing: false, failed: false };
+  return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, added, writing: false, failed: false };
 }
 
 const plain = ({ text, owner, due, evidence }: Point) => ({ text, ...(owner === undefined ? {} : { owner }), ...(due === undefined ? {} : { due }), evidence });
@@ -147,7 +158,8 @@ const plain = ({ text, owner, due, evidence }: Point) => ({ text, ...(owner === 
 /** The notes as they're shown. `capturing`: refreshes can run here now, so that the last one failed is worth saying. */
 export function shownTo(found: Found, capturing: boolean): LiveNotes {
   const n = found.stored?.notes ?? null;
-  const out = { writing: found.writing, error: capturing && found.failed ? NOT_UPDATED : null };
+  const added = found.added.filter((a) => a.shown).map((a): AddedFollowUp => ({ text: a.text, owner: a.owner.name, evidence: [], id: a.id, done: a.tick !== null, at: a.said }));
+  const out = { added, writing: found.writing, error: capturing && found.failed ? NOT_UPDATED : null };
   if (!n) return { ...out, notes: null };
   const next = n.next.filter((f) => f.shown).map((f): LiveFollowUp => ({ ...plain(f), id: f.id, done: f.tick !== null }));
   return { ...out, notes: { summary: n.summary, decided: n.decided.map(plain), proposed: n.proposed.map(plain), open: n.open.map(plain), next, read: n.read } };
@@ -172,8 +184,8 @@ export async function due(o: Owner, db: Db, callId: string, place: string, view:
   return r?.due ?? false;
 }
 
-/** A refresh's hold on a row: when its lease runs out, which names it, and what the notes it may replace read and listed. */
-export interface Claim { lease: Date; heard: string | null; read: string[]; next: FollowUp[] }
+/** A refresh's hold on a row: when its lease runs out, which names it, what the notes it may replace read and listed, and what people added. */
+export interface Claim { lease: Date; heard: string | null; read: string[]; next: FollowUp[]; added: Added[] }
 const Claimable = z.object({ notes_ciphertext: bytea.nullable(), lines_ciphertext: bytea.nullable(), free: z.boolean() });
 const Leased = z.object({ lease_until: timestamp });
 /**
@@ -190,8 +202,9 @@ export async function claim(o: Owner, c: Db, callId: string, place: string, view
   const leased = await maybeOne(c, Leased, `UPDATE call_notes SET clips_seen = $5, looked_at = now(), lease_until = date_trunc('milliseconds', now() + make_interval(secs => $6)), lines_ciphertext = COALESCE(lines_ciphertext, $7)
     WHERE ${WHERE} AND view = $4 RETURNING lease_until`, [o.ownerId, callId, place, view, clips, LEASE_SECONDS, sealedLines(o, callId, place, view, lines, barred)]);
   if (!leased) return null;
-  const n = opened(o, callId, place, view, r.notes_ciphertext)?.notes;
-  return { lease: leased.lease_until, heard: n?.heard ?? null, read: n ? linesOf(o, callId, place, view, r.lines_ciphertext).read : [], next: n?.next ?? [] };
+  const s = opened(o, callId, place, view, r.notes_ciphertext);
+  const n = s?.notes;
+  return { lease: leased.lease_until, heard: n?.heard ?? null, read: n ? linesOf(o, callId, place, view, r.lines_ciphertext).read : [], next: n?.next ?? [], added: s?.added ?? [] };
 }
 
 /** Nothing new in this view after all: the claim is given up, and the notes stay as they are. */
@@ -205,11 +218,13 @@ function readsOn(c: Claim, lines: Pick<Read, 'id'>[]): boolean {
   return c.read.every((id) => now.has(id));
 }
 /**
- * The follow-ups so far, for the notes model to say which of what it writes each is. None for a refresh that reads less
- * than they did: their words may come from any line that was read then, which aren't for it to see.
+ * The follow-ups so far, what people added among them, for the notes model to say which of what it writes each is. None
+ * for a refresh that reads less than they did: their words may come from any line that was read then, which aren't for it to see.
  */
-export const knownTo = (c: Claim, lines: Pick<Read, 'id'>[]): Known[] =>
-  (readsOn(c, lines) ? c.next.filter((f) => f.shown).map(({ id, text, owner }) => ({ id, text, ...(owner === undefined ? {} : { owner }) })) : []);
+export const knownTo = (c: Claim, lines: Pick<Read, 'id'>[]): Known[] => (!readsOn(c, lines) ? [] : [
+  ...c.next.filter((f) => f.shown).map(({ id, text, owner }) => ({ id, text, ...(owner === undefined ? {} : { owner }) })),
+  ...c.added.filter((a) => a.shown).map(({ id, text, owner }) => ({ id, text, owner: owner.name }))
+]);
 
 /** What a refresh read and wrote, before it's merged with what's kept, and what it left out. `same` on a follow-up is the one the notes model says it is. */
 export interface Run { notes: Omit<Written, 'next'>; next: (Point & { same?: string | undefined })[]; lines: Read[]; barred: Read[] }
@@ -242,10 +257,11 @@ const saidAt = (f: Point) => f.evidence[0]?.said ?? 0;
  * The follow-ups after a refresh. Each it listed has the ID, and the tick, of the one the notes model says it is, in its
  * new words, and anything else is new. One it no longer lists goes, unless it's ticked: then it stays, and shows as long
  * as the notes read everything they read when it was written (`whole`), since nobody may read more than these notes do.
+ * One it says is what someone added isn't listed twice: that stays, in their words.
  */
-function nextOf(was: FollowUp[], run: Run, whole: boolean): FollowUp[] {
+function nextOf(was: FollowUp[], run: Run, whole: boolean, added: Added[]): FollowUp[] {
   const byId = new Map(was.map((f) => [f.id, f]));
-  const listed = run.next.map(({ same, ...f }): FollowUp => { const w = same === undefined ? undefined : byId.get(same); return { ...f, id: w?.id ?? id128(), tick: w?.tick ?? null, shown: true }; });
+  const listed = run.next.filter(({ same }) => !added.some((a) => a.id === same)).map(({ same, ...f }): FollowUp => { const w = same === undefined ? undefined : byId.get(same); return { ...f, id: w?.id ?? id128(), tick: w?.tick ?? null, shown: true }; });
   const carried = new Set(listed.map((f) => f.id));
   const left = was.filter((f) => f.tick !== null && !carried.has(f.id)).map((f) => ({ ...f, shown: f.shown && whole }));
   return [...left, ...listed].sort((a, b) => saidAt(a) - saidAt(b));
@@ -276,10 +292,13 @@ export async function keep(o: Owner, callId: string, place: string, view: string
   return tx(o.pool, async (db) => {
     const row = await held(db, o, callId, place, view);
     if (!row || !stands(row, c)) return false;
-    const was = opened(o, callId, place, view, row.notes_ciphertext)?.notes?.next ?? [];
-    const notes: Written = { ...run.notes, next: nextOf(was, run, readsOn(c, run.lines)) };
+    const stored = opened(o, callId, place, view, row.notes_ciphertext);
+    const whole = readsOn(c, run.lines);
+    // What people added may say anything they'd heard, so it stops showing where what's ticked does.
+    const added = (stored?.added ?? []).map((a) => ({ ...a, shown: a.shown && whole }));
+    const notes: Written = { ...run.notes, next: nextOf(stored?.notes?.next ?? [], run, whole, added) };
     await exec(db, `UPDATE call_notes SET notes_ciphertext = $5, lines_ciphertext = $6, lease_until = NULL WHERE ${WHERE} AND view = $4`,
-      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes, failed: false }), sealedLines(o, callId, place, view, run.lines, run.barred)]);
+      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes, failed: false, added }), sealedLines(o, callId, place, view, run.lines, run.barred)]);
     await letGo(o, db, callId, place, view, r);
     return true;
   });
@@ -295,26 +314,50 @@ export async function failed(o: Owner, callId: string, place: string, view: stri
     if (!r || !stands(r, c)) return false;
     const s = opened(o, callId, place, view, r.notes_ciphertext);
     await exec(db, `UPDATE call_notes SET notes_ciphertext = $5, clips_seen = -1, lease_until = NULL WHERE ${WHERE} AND view = $4`,
-      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes: s?.notes ?? null, failed: true })]);
+      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes: s?.notes ?? null, failed: true, added: s?.added ?? [] })]);
     return true;
   });
 }
 
-/* ---------- ticking a follow-up ---------- */
+/* ---------- ticking and adding a follow-up ---------- */
+
+/** Whether someone may change a part of the call's shared follow-ups: its notes are ones they may read all of, or there are none yet that read what they may not. */
+const mayChange = (r: Reader, s: Stored, lines: Lines) => (s.notes ? readsAll(r, s.notes, lines) : theirs(r, s, lines));
+const saveAll = (o: Owner, c: Db, callId: string, place: string, s: Stored) =>
+  exec(c, `UPDATE call_notes SET notes_ciphertext = $4 WHERE ${WHERE} AND view = '${ALL}'`, [o.ownerId, callId, place, sealed(o, callId, place, ALL, s)]);
 
 /**
- * Ticks a follow-up of a part of the call, or takes the tick back, in the caller's transaction. Only the notes everyone
- * shares are ticked, by someone who may read all of them, in the part of the call they're in: anything else isn't found,
- * whether or not it exists.
+ * Ticks a follow-up of a part of the call, or takes the tick back, in the caller's transaction. Only what everyone shares
+ * is ticked, the notes and what people added, by someone who may read all of it, in the part of the call they're in:
+ * anything else isn't found, whether or not it exists.
  */
 export async function tick(o: Owner, c: Db, callId: string, place: string, id: string, done: boolean, by: Tick['by'], r: Reader): Promise<void> {
   const row = await held(c, o, callId, place, ALL);
   const s = opened(o, callId, place, ALL, row?.notes_ciphertext);
-  const f = s?.notes?.next.find((x) => x.id === id);
-  if (!s?.notes || !f?.shown || !readsAll(r, s.notes, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw notFound('That follow-up', { callId, room: place !== MAIN_PLACE });
+  const f = s?.notes?.next.find((x) => x.id === id) ?? s?.added.find((x) => x.id === id);
+  if (!s || !f?.shown || !mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw notFound('That follow-up', { callId, room: place !== MAIN_PLACE });
   if ((f.tick !== null) === done) return;
-  const next = s.notes.next.map((x) => (x.id === id ? { ...x, tick: done ? { by, at: new Date().toISOString() } : null } : x));
-  await exec(c, `UPDATE call_notes SET notes_ciphertext = $4 WHERE ${WHERE} AND view = '${ALL}'`, [o.ownerId, callId, place, sealed(o, callId, place, ALL, { ...s, notes: { ...s.notes, next } })]);
+  const change = <T extends { id: string; tick: Tick | null }>(x: T): T => (x.id === id ? { ...x, tick: done ? { by, at: new Date().toISOString() } : null } : x);
+  await saveAll(o, c, callId, place, { ...s, notes: s.notes && { ...s.notes, next: s.notes.next.map(change) }, added: s.added.map(change) });
+}
+
+/** The most follow-ups people can add in a part of the call. */
+const MOST_ADDED = 40;
+/** A follow-up someone's adding: what they typed, who it's for, who they are, and when, in seconds since the call started. */
+export interface Adding { text: string; owner: Speaker; by: Tick['by']; said: number }
+/**
+ * Adds a follow-up nobody said to what a part of the call shares, in the caller's transaction, written or not: there may be no
+ * notes yet. Only by someone who may read all of what's there, and the same words again add nothing, so a retry is safe.
+ */
+export async function add(o: Owner, c: Db, callId: string, place: string, a: Adding, r: Reader): Promise<void> {
+  await exec(c, 'INSERT INTO call_notes (owner_id, call_id, place, view) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING', [o.ownerId, callId, place, ALL]);
+  const row = await held(c, o, callId, place, ALL);
+  const s = opened(o, callId, place, ALL, row?.notes_ciphertext) ?? { notes: null, failed: false, added: [] };
+  const ctx = { callId, room: place !== MAIN_PLACE };
+  if (!mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw new ForbiddenError('You can add follow-ups here once you can read all of the notes.', { context: ctx });
+  if (s.added.some((x) => x.shown && x.text === a.text)) return;
+  if (s.added.length >= MOST_ADDED) throw new ConflictError('There are too many follow-ups here to add another.', { context: ctx });
+  await saveAll(o, c, callId, place, { ...s, added: [...s.added, { ...a, id: id128(), at: new Date().toISOString(), tick: null, shown: true }] });
 }
 
 /* ---------- into the note ---------- */
@@ -328,15 +371,30 @@ export const Ticked = Tick.extend({ id: z.string(), text: z.string(), owner: z.s
 export type Ticked = z.infer<typeof Ticked>;
 
 const Ending = z.object({ place: z.string(), notes_ciphertext: bytea.nullable() });
-/** The call is ending, in the caller's transaction, which holds the call's row: what was ticked, for the note, and every row goes. */
-export async function finish(o: Owner, c: Db, callId: string): Promise<Ticked[]> {
+/** Something someone added, on its way into the note: the breakout room it was added in, null for the main room. */
+export type AddedIn = Added & { room: string | null };
+/** The call is ending, in the caller's transaction, which holds the call's row: what was ticked and what was added, for the note, and every row goes. */
+export async function finish(o: Owner, c: Db, callId: string): Promise<{ ticked: Ticked[]; added: AddedIn[] }> {
   const found = await rows(c, Ending, `SELECT place, notes_ciphertext FROM call_notes WHERE owner_id = $1 AND call_id = $2 AND view = '${ALL}' FOR UPDATE`, [o.ownerId, callId]);
   await exec(c, 'DELETE FROM call_notes WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
-  return found.flatMap((r) => (opened(o, callId, r.place, ALL, r.notes_ciphertext)?.notes?.next ?? []).flatMap((f): Ticked[] => (f.tick ? [{
-    ...f.tick, id: f.id, text: f.text, ...(f.owner === undefined ? {} : { owner: f.owner }), ...(f.due === undefined ? {} : { due: f.due }), lines: f.evidence.map((e) => e.lineId),
-    room: r.place === MAIN_PLACE ? null : r.place
-  }] : [])));
+  const parts = found.map((r) => ({ room: r.place === MAIN_PLACE ? null : r.place, s: opened(o, callId, r.place, ALL, r.notes_ciphertext) }));
+  return {
+    ticked: parts.flatMap(({ room, s }) => (s?.notes?.next ?? []).flatMap((f): Ticked[] => (f.tick ? [{
+      ...f.tick, id: f.id, text: f.text, ...(f.owner === undefined ? {} : { owner: f.owner }), ...(f.due === undefined ? {} : { due: f.due }), lines: f.evidence.map((e) => e.lineId), room
+    }] : []))),
+    added: parts.flatMap(({ room, s }) => (s?.added ?? []).map((a) => ({ ...a, room })))
+  };
 }
+
+/**
+ * What someone added as a follow-up in the note, as if they'd proposed it there: for them, in their words, taken on, and done if
+ * it was ticked. `at` is where in the recording. So it stays through every writing of the notes, and the notes model is told
+ * not to list it again (`settledOf`).
+ */
+export const toNote = (a: Added, at: number): ActionItem => ({
+  id: a.id, text: a.text, owner: a.owner, takenOn: true, at, done: a.tick !== null, lines: [], against: [],
+  changes: [{ by: a.by, at: a.at, what: 'proposed' }, ...(a.tick ? [{ ...a.tick, what: 'done' as const }] : [])]
+});
 
 /**
  * Follow-ups as written for a part of a note, with what was ticked in that part of the call done. `said` is which tick

@@ -86,7 +86,7 @@
 @keyframes ws-blink { 50% { opacity: 0; } }
 
 /* inline pieces */
-.wn, .wdt, .wdl { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px 0 3px; border-radius: 7px; vertical-align: -4px; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; user-select: none; cursor: pointer; }
+.wn, .wdt, .wdl { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px 0 3px; border-radius: 7px; vertical-align: middle; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; user-select: none; cursor: pointer; }
 .wn b, .wdt b, .wdl b { font-weight: 600; }
 .wn { background: var(--horizon-soft); color: var(--horizon); }
 .wn .ac-avatar { --ring: transparent; }

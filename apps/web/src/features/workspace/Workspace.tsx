@@ -20,6 +20,9 @@ import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { useFollow } from './follow';
 import { List } from './List';
+import { LiveHostContext } from './live/host';
+import { LivePage } from './live/LivePage';
+import { useSending } from './live/useSending';
 import { placesOf, rememberPlaces } from './places';
 import { othersIn } from './presence';
 import { TrashPage } from './TrashPage';
@@ -156,6 +159,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
   useTagToasts(store, view.mentions, tree, at, say, go);
   const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, change, go, say, openFolders: openAll, justMade, openDoc });
+  const { put, lastDocument } = useSending({
+    live: call?.live, workspaceId, pass, owner, tree, at, member: view.tree?.role != null, here: view.here, closed: call?.closed ?? false, go, say, openDoc
+  });
   const role = view.tree?.role ?? null;
   const canChange = role === 'admin' || role === 'edit';
   const documentId = at.kind === 'document' ? at.id : null;
@@ -281,13 +287,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument
   };
+  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen } : null;
   return (
     <WsContext value={ws}>
+     <LiveHostContext value={host}>
       <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null}>
         <List drags={{ drag, arm, ended }} />
-        {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
+        {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
             <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
@@ -295,7 +303,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
               back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
-          <WsDoc className="is-bare">
+          /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
+          <WsDoc className={listOff ? undefined : 'is-bare'}>
             <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
             {empty
               ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
@@ -305,6 +314,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
       </WsPane>
       {!call && <WsToasts toasts={toasts} />}
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
+     </LiveHostContext>
     </WsContext>
   );
 }

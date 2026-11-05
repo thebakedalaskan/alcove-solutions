@@ -190,7 +190,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       personal: (id) => personal(`${live(id)}/personal`, p),
       askEarlier: (id, question, timeZone) => req(z.array(SeriesAnswerPartSchema), 'POST', `${live(id)}/series/ask`, { question, timeZone }, p),
       translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
-      leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, { end: o.end }, p, o.keepalive ?? false)).ended,
+      leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, { end: o.end, onPurpose: o.onPurpose ?? false }, p, o.keepalive ?? false)).ended,
       handOff: async (id, to) => { await req(z.object({ left: z.literal(true) }), 'POST', `${live(id)}/hand-off`, { to }, p); },
       mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
       commit: (id, c) => req(z.object({ epoch: z.number() }), 'POST', `${live(id)}/mls/commits`, c, p),
@@ -455,7 +455,7 @@ interface CallTransport {
   askEarlier(id: string, question: string, timeZone: string): Promise<SeriesAnswerPart[]>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** `end`: whoever hosts ends the call for everyone; otherwise this connection just leaves (refused for whoever hosts). */
-  leave(id: string, o: { end: boolean; keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
+  leave(id: string, o: { end: boolean; onPurpose?: boolean | undefined; keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
   handOff(id: string, to: string): Promise<void>;
   mls(id: string, after: number): Promise<CallMls>;
   commit(id: string, c: { generation: number; group: string; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
@@ -1114,6 +1114,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
+  addFollowUp = async (text: string) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', text })); };
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
   openWorkspace = () => this.space({ type: 'workspace-open' });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
@@ -1207,7 +1208,7 @@ class HttpCall extends Live<CallState> implements CallSession {
    */
   leave = async () => {
     this.close();
-    const r = await this.t.leave(this.state.callId, { end: this.state.isHost });
+    const r = await this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true });
     this.set({ ...this.state, phase: 'ended' });
     return r;
   };

@@ -41,7 +41,7 @@ export interface Brief {
   summary?: string | undefined;
   /** The meeting is still going on. */
   live?: boolean | undefined;
-  /** For notes written again: what people already settled, which the model is told not to list again (settledOf). */
+  /** What people already settled, or added during the call, which the model is told not to list again (settledOf). */
   settled?: string[] | undefined;
   /** What was ticked during the call in the part these notes are for, for the model to say which follow-up each is. */
   ticks?: Known[] | undefined;
@@ -57,7 +57,7 @@ export interface Brief {
 /** A finished note, as the model reads it: the main room's transcript, and each breakout room's section. */
 export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief => ({
   title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary,
-  settled: m.writtenAt === null ? [] : settledOf(m), written: { decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters },
+  settled: settledOf(m), written: { decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters },
   deleted: !m.keep.transcript && m.writtenAt !== null, rooms: m.rooms
 });
 
@@ -65,10 +65,10 @@ export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): B
 export type Settled = Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>;
 const DECIDED: Record<Decision['state'], string> = { proposed: 'proposed', confirmed: 'confirmed', rejected: 'said not to be decided', superseded: 'no longer holds' };
 /**
- * What people have already settled in a part of notes written before: each decision, open question and follow-up
- * someone proposed, confirmed, answered, took on, turned down, reworded or otherwise changed, with where it stands. Notes written again keep
- * these as they are (keepSettled in modules/writer.ts), so the model is told not to list them again, even in other
- * words. Any part with its own decisions, questions and follow-ups is listed the same way.
+ * What people have already settled in a part of notes: each decision, open question and follow-up someone proposed,
+ * confirmed, answered, took on, turned down, reworded or otherwise changed, with where it stands, and on notes not written
+ * yet what they added during the call. Notes keep these as they are (keepSettled in modules/writer.ts), so the model is told
+ * not to list them again, even in other words. Any part with its own decisions, questions and follow-ups is listed the same way.
  */
 export function settledOf(m: Settled): string[] {
   return [
@@ -88,7 +88,7 @@ export function settledOf(m: Settled): string[] {
  */
 export const roomBriefOf = (m: NoteManifest, room: RoomNote, organizer: Person): Brief => ({
   title: m.title, kind: m.kind, organizer, people: room.people.flatMap((x) => (x.person && x.person.id !== organizer.id ? [x.person] : [])),
-  seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: m.writtenAt === null ? [] : settledOf(room)
+  seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: settledOf(room)
 });
 
 /**
@@ -108,8 +108,14 @@ const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${St
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
+/** Takes a tag out of words someone else wrote, until none is left: taking one out closes up what was either side of it, which can make another. */
+const without = (tag: RegExp) => (s: string): string => {
+  let out = s;
+  for (let was = ''; was !== out;) { was = out; out = out.replace(tag, ''); }
+  return out;
+};
 /** Never the fence the transcript is sent in, so nothing said or shown can end it early. */
-const unfenced = (s: string) => s.replace(/<\/?transcript>/gi, '');
+const unfenced = without(/<\s*\/?\s*transcript\s*>/gi);
 /** On one line, and never the fence. */
 export const oneLine = (s: string) => unfenced(s).replace(/\s+/g, ' ').trim();
 /** Who said it, as the model reads it: on one line, and marked when it's a guest, who named themselves. */
@@ -752,7 +758,7 @@ const SELECTION_ASKS: Record<DocAskAction, string> = {
 const MAX_CHECKLIST = 40;
 const Shorter = z.object({ text: z.string().regex(/[\p{L}\p{N}]/u) });
 const Checklist = z.object({ items: z.array(z.string()).min(1) });
-const unselected = (s: string) => s.replace(/<\/?selection>/gi, '');
+const unselected = without(/<\s*\/?\s*selection\s*>/gi);
 
 /** What the notes model makes of a selection, in parts to put in the document. A reply that isn't what was asked for fails, and nothing is made of it. */
 export async function editSelection(cfg: Config, action: DocAskAction, text: string): Promise<DocAskPart[]> {

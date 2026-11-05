@@ -408,7 +408,8 @@ account.
   shows are written afresh (frames already read aren't read again); of the decisions, open questions and
   follow-ups, whatever someone has added, confirmed, answered, taken on or otherwise changed stays as it is, and the new
   ones take the place of the ones nobody touched (`keepSettled` in `writer.ts`, which merges any part of the notes
-  with its own decisions, questions and follow-ups the same way). The notes model is told what's settled
+  with its own decisions, questions and follow-ups the same way). The notes model is told what's settled, the first time
+  it writes them too, when that's what people added during the call
   ("Already settled (don't list these again)", each with where it stands, from `settledOf`), and a new item
   that's still a kept one in other words is dropped anyway: most of the shorter one's words (60%) in the other,
   pointing at moments within a minute of each other. With no moment to go on, which is any proposal made from memory,
@@ -934,10 +935,11 @@ read, as catching up always has. The notes everyone gets are still written when 
 the notes worker: live notes only hand on what was ticked.
 
 - **The contract.** `CallState.liveNotes` (`LiveNotes`) comes with the call: `notes` (a `CatchUp` whose `next` are
-  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `writing`, and `error`, saying the
-  latest refresh of them didn't work. `read.whileHere` says they were written from only part of what was said there.
-  `CallSession.watchNotes()` says this browser is showing them until the function it returns is called, and
-  `CallSession.tickFollowUp(id, done)` ticks one.
+  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `added` (what people added by hand,
+  [Adding a follow-up](#adding-a-follow-up)), `writing`, and `error`, saying the latest refresh of them didn't work.
+  `read.whileHere` says they were written from only part of what was said there. `CallSession.watchNotes()` says this
+  browser is showing them until the function it returns is called, `CallSession.tickFollowUp(id, done)` ticks one, and
+  `CallSession.addFollowUp(text)` adds one.
 - **Where they're kept.** In `call_notes`, a row for each view of each part of the call (`main`, or a breakout room's
   random ID), sealed as a `call-notes` record under the state key `call-notes:<callId>`, whose header binds the owner, the
   call, the part and the view. Beside it, as a `call-notes-lines` record, the lines it read, by ID and when each was said,
@@ -1041,7 +1043,34 @@ call they're in: an ID from another room or call, from notes for a narrower view
 holds the call's row, so it comes before the call ends or is refused (`409 conflict`). A tick is kept under the notes' row
 with who made it and when, and a refresh saves around it, so one made while the notes were being written isn't lost.
 
+### Adding a follow-up
+
+`{type: "follow-up-add", text}`, sharing the 60 a minute of ticking, adds a follow-up nobody said to the part of the call
+someone is in, in their words (one line, at most 300 characters, at most 40 in a part of the call), for themselves. It's for
+whoever can tick there: anyone who gets the notes, reading the notes everyone shares. A guest with the link gets `403
+forbidden`, and so does someone on a narrower view, who can't tick either. It needs a note for it to go in, so a call that
+has never had notes on answers `409 conflict`. Once one exists it works however notes stand, paused and off too: it reaches no AI.
+The same words again add nothing, so a retry is safe.
+
+- **Where it's kept.** Beside the notes, in the same sealed record of the `all` row (`added`), not among `next`: there may be
+  no notes yet, and these aren't the notes model's. A record from before this reads as having none. The row is made if there
+  isn't one, with no notes in it, and everything else about it stays as for a row nobody has refreshed.
+- **Who reads it.** `added`, with the call, for people who get the notes and may read everyone's: a guest with the link is
+  sent none, whatever they were there for, as the note doesn't go to them. `GET .../follow-ups` lists them as `from: 'added'`.
+- **Ticking** is the same `{type: "follow-up", id, done}`.
+- **The notes model** is told them with the follow-ups so far, by label, and can say something it heard is one of them. Then
+  it's left out of `next`, and what was added stays in its adder's words. It can't change or drop one: what it says about one
+  goes no further than that, as for what's ticked. Nothing else about it reaches the model.
+- **What reads less.** As for what's ticked, and for the same reason: someone may have put anything they'd heard into it. A
+  refresh that reads less than the last one did isn't told them, and they stop showing for good. They still go to the note.
+
 ### Into the note
+
+What people added goes in as it stands when the call ends, whatever happens to the notes: a follow-up in that part of the
+note, the call's or a breakout room's, as if its adder had proposed it there. It's for them and taken on, its first change is
+`proposed` (with `done` after, if it was ticked), and it has no lines behind it, so it's flagged as having nothing to back it,
+as any proposal is. `at` is where it was added, as seconds into the recording. So it stays through every writing of the
+notes (`keepSettled`), and the notes model is told it's settled, the first time too, and doesn't list it again.
 
 When the call ends, in the transaction that ends it, every ticked follow-up goes into the note's sealed manifest
 (`ticked`: its ID, words, owner and due date, the lines behind it, the breakout room it was in, who ticked it and when),
@@ -1078,8 +1107,11 @@ document: nothing is written to it from here, nothing is kept, and it has no rec
 
 It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an
 `AsyncIterable`, as `notes.ask`); nobody's credits pay for it; and it has the same limit, 20 a minute per person. Asked from
-inside a call, it waits while notes, or the room someone's in, are paused, as everything that reaches the AI does: outside
-a call, nothing holds it. Access is checked again once the model has answered, so whoever lost the document meanwhile isn't sent
+inside a call, it needs what catching up needs: the call is live, nothing's paused where this person is, and its notes have
+been on, so a call with notes off sends the AI nothing. Outside a call there's no call to rest on, so it needs an account that
+can edit the document. Demo accounts cost nothing to make, so a limit for each is no limit: they share one, 60 a minute on
+each instance, on top of their own. They aren't refused outright, because the shared demo is how people try Alcove.
+Access is checked again once the model has answered, so whoever lost the document meanwhile isn't sent
 what came back. A reply that isn't the shape asked for is refused, and nothing is made of it.
 
 ## Captions in another language

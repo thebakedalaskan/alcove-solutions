@@ -564,6 +564,12 @@ export interface CallSession extends LiveStore<CallState> {
    */
   tickFollowUp(id: string, done: boolean): Promise<void>;
   /**
+   * Anyone in the call who gets the notes: adds a follow-up nobody said, in your own words, for you, for everyone in that
+   * part of the call. It's ticked with `tickFollowUp`, comes with the call (`CallState.liveNotes.added`), and is yours in
+   * the note when the call ends. The same words again add nothing. Refused where ticking is, and where notes have never been on.
+   */
+  addFollowUp(text: string): Promise<void>;
+  /**
    * Opening Workspace, for anyone in the call: the first time, it settles which workspace the call uses (the meeting's, else
    * the organizer's most recently used, else a new one in their name), and the next call in a series finds its new agenda.
    * Resolves with `workspace` up to date, which for someone who can't open it says it's private.

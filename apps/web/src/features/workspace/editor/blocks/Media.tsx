@@ -12,6 +12,7 @@ import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
 import type { EditorRuntime } from '../runtime';
 import { captionsOf, numberAttr, textAttr } from '../schema';
+import { clockOf, liveWhen } from '../../live/dates';
 import { galleryItems, liveLines, type GalleryItem } from './attrs';
 
 export const RuntimeContext = createContext<EditorRuntime | null>(null);
@@ -244,7 +245,7 @@ function Live({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const decided = textAttr(node, 'what') !== 'followups';
   const lines = liveLines(node);
-  const inCall = rt.props.call !== undefined;
+  const inCall = rt.props.call !== undefined && textAttr(node, 'call') === rt.props.call.id;
   return (
     <div className="wb-live">
       <div className="wb-lh">
@@ -257,7 +258,7 @@ function Live({ node }: { node: PMNode }) {
         <div key={`${l.at}-${i}`} className="wb-lr">
           {(l.person || l.name) && <PersonFace id={l.person ?? ''} name={l.name ?? ''} size={18} />}
           <span className="tx">{l.text}</span>
-          <span className="ac-time">{l.due || l.at}</span>
+          <span className="ac-time">{liveWhen(l)}</span>
         </div>
       ))}
     </div>
@@ -268,15 +269,16 @@ function Moment({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const name = textAttr(node, 'name') ?? '';
   const at = textAttr(node, 'at') ?? '';
-  const hear = rt.props.call?.onHear;
+  const note = textAttr(node, 'note');
+  const line = textAttr(node, 'line');
   return (
     <div className="wb-mom">
       <PersonFace id={textAttr(node, 'person') ?? ''} name={name} size={26} />
       <div>
         <p>“{textAttr(node, 'text')}”</p>
         <span className="m">
-          <span>{firstName(name)} · {at}</span>
-          {hear && <button type="button" className="pl" onClick={() => hear({ line: textAttr(node, 'line'), at })}><Icon name="play" size={11} />Hear it</button>}
+          <span>{firstName(name)} · {clockOf(at)}</span>
+          {note && line && rt.props.hear?.({ note, line })}
         </span>
       </div>
     </div>

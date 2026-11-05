@@ -18,6 +18,8 @@ import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlo
 import { Rescue, type CopyTo } from './Rescue';
 import { PersonCard } from './People';
 import { facesIn } from './presence';
+import { HearIt } from './live/HearIt';
+import { useEditorCall } from './live/useEditorCall';
 import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
@@ -64,9 +66,6 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   const now = useNow(60_000);
   const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
-  /* Whose face goes on a caret, a tag or a comment: people here last, who may know more about themselves than the list does. */
-  const faces = useMemo(() => [...tagged, ...ws.here.map((h) => h.person)], [tagged, ws.here]);
-  const byId = useMemo(() => new Map(faces.map((p) => [p.id, p])), [faces]);
   const [comment, setComment] = useState<CommentOpen | null>(null);
   const [named, setNamed] = useState<{ person: Person; rect: Rect } | null>(null);
   // A session that's ended takes nothing more: anything typed there would have nowhere to go.
@@ -74,11 +73,19 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
-  /* Naming it in the list reaches the title on this page. */
+  /* Naming it in the list reaches the title on this page, and what's sent from a call lands on it. */
   useEffect(() => {
-    ws.openDoc.current = { id: item.id, doc: session.doc };
+    ws.openDoc.current = { id: item.id, doc: session.doc, editor };
     return () => { if (ws.openDoc.current?.doc === session.doc) ws.openDoc.current = null; };
-  }, [ws.openDoc, item.id, session.doc]);
+  }, [ws.openDoc, item.id, session.doc, editor]);
+  const { call: fromCall, people: inCall } = useEditorCall(ws, editor, session.doc, readOnly);
+  /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
+  /* Whose face goes on a caret, a tag or a comment: people here last, who may know more about themselves than the list does. */
+  const faces = useMemo(() => [...tagged, ...inCall, ...ws.here.map((h) => h.person)], [tagged, inCall, ws.here]);
+  const byId = useMemo(() => new Map(faces.map((p) => [p.id, p])), [faces]);
+  /* Hearing a quote takes the notes, which take an account. */
+  const signedIn = ws.owner !== null;
+  const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} />, []);
 
   /* What the title says is what the list says: a name that didn't get through, offline say, goes when it can. */
   const reachable = status.status !== 'offline';
@@ -208,7 +215,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     <WsFade id={item.id}>
       <WsPage onKeyDown={leave}>
         <Suspense>
-          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
+          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces} call={fromCall} hear={signedIn ? hear : undefined}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={sections} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onOpenPerson={openPerson} onTagged={(person, block, rect) => { void onTagged(person, block, tagRect(person.id, block, rect)); }}

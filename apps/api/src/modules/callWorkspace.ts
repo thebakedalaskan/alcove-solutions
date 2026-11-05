@@ -14,6 +14,7 @@ import type { Deps, Owner } from '../context';
 import { id128 } from '../crypto';
 import { tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
+import type { Hub } from '../live/hub';
 import { log } from '../log';
 import { findItem, getItem, type Loaded } from '../vault';
 import { profile, updateProfile } from './account';
@@ -63,6 +64,16 @@ function showing(s: Placing, x: { place: string; by: Controller }): boolean {
 function over(s: Spaced, x: { place: string; by: Controller }): boolean {
   const j = here(s, x.by.person);
   return !placesOf(s).includes(x.place) || s.removed.includes(x.by.person) || (j !== undefined && placeOf(s, j) !== x.place);
+}
+/**
+ * Someone chose to leave on this connection: what they started stops for good, so it doesn't come back if they do. A reload
+ * isn't this, and nor is one device of two: they're still here.
+ */
+export function leftForGood<S extends Spaced>(s: S, person: string, identity: string): S {
+  if (s.people.some((j) => j.person === person && j.status === 'in' && j.identity !== identity)) return s;
+  const w = s.workspace;
+  const others = (x: { by: Controller }) => x.by.person !== person;
+  return w.present.every(others) && w.play.every(others) ? s : { ...s, workspace: { ...w, present: w.present.filter(others), play: w.play.filter(others) } };
 }
 /** The call as it stands, with what's over gone from what it keeps. */
 export function tidied<S extends Spaced>(s: S): S {
@@ -201,6 +212,25 @@ export async function noteUsed(o: Owner, workspaceId: string): Promise<void> {
   }
 }
 
+/** How often opening a workspace in the app says so, for each person and workspace: tabs come and go, and every change to a profile is a revision. */
+const OPENED_EVERY_MS = 10 * 60_000;
+const MAX_OPENED = 4096;
+const openedByHub = new WeakMap<Hub, Map<string, number>>();
+/** Someone who can work in a workspace opened it: their next call starts there unless they say otherwise. */
+export async function noteOpened(o: Owner, workspaceId: string): Promise<void> {
+  const opened = openedByHub.get(o.hub) ?? new Map<string, number>();
+  openedByHub.set(o.hub, opened);
+  const key = `${o.ownerId}:${workspaceId}`;
+  if (Date.now() - (opened.get(key) ?? 0) < OPENED_EVERY_MS) return;
+  opened.delete(key);
+  opened.set(key, Date.now());
+  for (const oldest of opened.keys()) {
+    if (opened.size <= MAX_OPENED) break;
+    opened.delete(oldest);
+  }
+  await noteUsed(o, workspaceId);
+}
+
 /** What changing the call's workspace would mean: refused as changing it is. It goes only by who's in the workspace, which the organizer can see: what's been given to anyone beyond that isn't theirs to know. */
 export async function preview(v: Viewer, reader: Reader, people: Joined[], workspaceId: string): Promise<CallWorkspaceSwitch> {
   const o = v.organizer;
@@ -298,8 +328,8 @@ export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): 
       requireDocument(reader, await workspaceFor(o, reader, from, c), a.documentId, 'read');
       const id = broughtId(from, a.documentId);
       await updateManifest(o, c, x.meeting.itemId, (m) => {
+        if (a.brought === m.documents.includes(id)) return m;
         if (!a.brought) return { ...m, documents: m.documents.filter((d) => d !== id) };
-        if (m.documents.includes(id)) return m;
         if (m.documents.length >= MAX_BROUGHT) throw new ConflictError('This call has as many documents as it can bring. Take one off first.', { context: { callId, documents: m.documents.length } });
         return { ...m, documents: [...m.documents, id] };
       });
@@ -412,10 +442,11 @@ async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]):
   }
   return out;
 }
-/** The call's follow-ups: the live notes' as this person reads them, then the documents'. */
+/** The call's follow-ups: the live notes' as this person reads them, what people added, then the documents'. */
 export async function followUps(d: Deps, reader: Reader, notes: LiveNotes, status: CallFollowUps['notes'], worked: WorkedDocument[]): Promise<CallFollowUps> {
   const said: CallFollowUp[] = (notes.notes?.next ?? []).map((f) => ({ ...f, from: 'notes' }));
-  return { items: [...said, ...await fromDocuments(d, reader, worked)], notes: status };
+  const added: CallFollowUp[] = notes.added.map((f) => ({ ...f, from: 'added' }));
+  return { items: [...said, ...added, ...await fromDocuments(d, reader, worked)], notes: status };
 }
 /**
  * A follow-up ticked from the call, or the tick taken back: the to-do's own `done`, as the editor sets it, so a tick here and
@@ -449,15 +480,26 @@ async function agendaOf(o: Owner, documents: string[], worked: WorkedDocument[])
     const item = w?.state.items[x.documentId];
     if (!w || !item || item.kind !== 'document' || trashOf(w.state, x.documentId)) continue;
     if (looksLikeAgenda(item.name)) return x;
-    if (await readDocument(w, x.documentId, 'readsAsAgenda', { kind: kindOf(item) })) return x;
+    // One that won't open isn't the agenda as far as anyone can tell, and says nothing about the rest.
+    if (await readDocument(w, x.documentId, 'readsAsAgenda', { kind: kindOf(item) }).catch(() => false)) return x;
   }
   return undefined;
 }
 /**
- * After a call ends, with nothing held: a version with reason `call` of everything worked on, and for a call in a series,
- * which document was its agenda, so the next one can carry on from it. None of this is worth failing the end of a call.
+ * Once a call has ended and everyone's gone, with nothing held and nobody waiting: for a call in a series, which document was
+ * its agenda, so the next one can carry on from it, and then a version with reason `call` of everything worked on. It never
+ * throws: whatever doesn't work is logged, and costs only what it was keeping.
  */
 export async function afterCall(o: Owner, callId: string, meetingId: string, worked: WorkedDocument[]): Promise<void> {
+  try {
+    const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
+    if (m?.manifest.seriesId && !m.manifest.agenda) {
+      const agenda = await agendaOf(o, m.manifest.documents, worked);
+      if (agenda) await tx(o.pool, (c) => updateManifest(o, c, meetingId, (x) => (x.agenda ? x : { ...x, agenda })));
+    }
+  } catch (e) {
+    wlog.warn('a call’s agenda not kept', { callId, err: e });
+  }
   try {
     for (const [workspaceId, documents] of byWorkspace(worked)) {
       const w = await serverWorkspace(o, workspaceId);
@@ -467,10 +509,6 @@ export async function afterCall(o: Owner, callId: string, meetingId: string, wor
         await keepVersion(w, documentId, { reason: 'call', callId }).catch((e: unknown) => wlog.warn('version not kept for a call', { callId, workspaceId, documentId, err: e }));
       }
     }
-    const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
-    if (!m?.manifest.seriesId || m.manifest.agenda) return;
-    const agenda = await agendaOf(o, m.manifest.documents, worked);
-    if (agenda) await tx(o.pool, (c) => updateManifest(o, c, meetingId, (x) => (x.agenda ? x : { ...x, agenda })));
   } catch (e) {
     wlog.warn('what a call worked on not kept', { callId, err: e });
   }
@@ -486,7 +524,8 @@ function dayOf(iso: string, timeZone: string): string {
   let parts: Intl.DateTimeFormatPart[];
   try {
     parts = formatted(timeZone);
-  } catch {
+  } catch (e) {
+    wlog.warn('an agenda’s title fell back to UTC', { err: e });
     parts = formatted('UTC');
   }
   return `${parts.find((p) => p.type === 'day')?.value ?? ''} ${parts.find((p) => p.type === 'month')?.value ?? ''}`;

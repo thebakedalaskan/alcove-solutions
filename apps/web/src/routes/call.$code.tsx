@@ -48,11 +48,13 @@ import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
 import { volumeTag } from '~/features/call/VolumeControl';
+import { useLiveCall } from '~/features/call/liveCall';
 import { WorkspacePanel, useWorkspacePanel } from '~/features/call/WorkspacePanel';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
+import { tickEverywhere } from '~/features/workspace/live/useFollowUps';
 import { overlayOpen, typing, withModShift } from '~/lib/keys';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
@@ -1277,6 +1279,13 @@ function InCall({ session }: { session: CallSession }) {
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
   const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
   const seats = staged.shareSeats;
+  // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
+  const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
+  const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
+    // A list over the page goes, or it would cover what the panel opens beside.
+    notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); layout.arrange((p) => showView(p, v)); },
+    reveal: () => { work.act.reveal(); if (phone) layout.arrange(closeAll); }, covered: () => phone && showing.length > 0
+  });
   const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const wasBig = useRef(new Set(seats.keys()));
   useEffect(() => {
@@ -1336,12 +1345,13 @@ function InCall({ session }: { session: CallSession }) {
     : <RoomsSetup people={candidates} guests={guestsHere} onOpen={openRooms} />);
   const panelBody = (v: PanelView) => {
     switch (v) {
-      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
-        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { session.tickFollowUp(id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
+      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)} put={put}
+        onPage={() => { work.act.reveal(); work.act.go({ kind: 'live', page: 'notes' }); }}
+        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { tickEverywhere(session, id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
       case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} />;
+        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} put={put} />;
       case 'ask': return <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
         catching={cu.catching} draft={drafts.current.ask} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
@@ -1412,7 +1422,7 @@ function InCall({ session }: { session: CallSession }) {
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
             <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
-              listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
+              listOff={!solved.A.list} listPeek={work.peek} live={liveCall} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>

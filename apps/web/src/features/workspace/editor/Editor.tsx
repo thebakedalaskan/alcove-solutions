@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
 import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
+import { hasLive, insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
@@ -235,6 +235,7 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
       return before ? { after: before } : 'start';
     },
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
+    hasLive: () => hasLive(rt),
     openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
     openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
     tag: (person) => tagAtEnd(rt, person),

@@ -1,14 +1,16 @@
 /**
  * A call's shared live notes: one set for each part of the call, kept sealed on the server and refreshed at most every
  * 30 seconds while someone is watching, in one run however many are; who may read what of them (guests, rooms); ticking
- * a follow-up for everyone, through refreshes that reword it and into the note; what stops them (notes off, paused); and
- * that nothing readable is left anywhere. The real API over HTTP via @alcove/api-http, real Postgres, the object store,
+ * a follow-up for everyone, through refreshes that reword it and into the note; adding one nobody said; what stops them
+ * (notes off, paused); and that nothing readable is left anywhere. The real API over HTTP via @alcove/api-http, real Postgres, the object store,
  * the local LiveKit server, and the stand-in NEAR AI, which says which follow-up is which as the real one is asked to,
  * can reword what it wrote before, and can get that wrong.
  */
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AudioPiece, type CallSession, type CallState, type LiveFollowUp, type LiveNotes, type Note, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { openJson, sealJson, stateKey, toJson } from './crypto';
 import { maintain } from './maintenance';
 import { NoteManifest } from './modules/notes';
 import { openOwner } from './owners';
@@ -173,7 +175,7 @@ describe('one set of live notes for the call', () => {
     // Nobody is watching: nothing goes to the notes model, and nothing is kept.
     await sleep(300);
     await host.refresh();
-    expect(host.getSnapshot().liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect(host.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     expect(runs()).toBe(before);
     expect(await notesRows(host.ticket.callId)).toBe(0);
 
@@ -610,7 +612,7 @@ describe('who reads what of them', () => {
     h.near.failNext(1, 'prose');
     const stop = sam.watchNotes();
     const failed = await settle(sam, (s) => s.liveNotes.error !== null);
-    expect(failed.liveNotes).toEqual({ notes: null, writing: false, error: NOT_UPDATED });
+    expect(failed.liveNotes).toEqual({ notes: null, added: [], writing: false, error: NOT_UPDATED });
     await later(sam);
     expect(texts((await notesOf(sam)).decided)).toEqual([SAID]);
     await settle(sam, (s) => s.liveNotes.error === null);
@@ -626,7 +628,7 @@ describe('who reads what of them', () => {
     await notesOf(host);
     stop();
     const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
-    expect(kim.getSnapshot().liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect(kim.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     expect((await look(h.baseUrl, kim)).status).toBe(403);
     await letIn(host, kim);
     await host.remove(kim.ticket.identity);
@@ -1094,6 +1096,300 @@ describe('ticking a follow-up', () => {
   });
 });
 
+describe('adding a follow-up', () => {
+  const MINE = 'Send the pricing sheet to Lena';
+  const DECK = 'Kofi will send the deck to legal by Friday.';
+  const addedOf = (call: CallSession) => call.getSnapshot().liveNotes.added;
+
+  it('is everyone’s at once, before any notes are written, and ticked like the rest', async () => {
+    const { host, kofi, email } = await twoInCall();
+    open.push(await connect(await host.room(), { sending: host.crypto }));
+    const nudged = open[0]?.nextNudge();
+    await kofi.addFollowUp(`  ${MINE}\n`);
+    await nudged;
+    // For whoever added it, under their name, with nothing behind it, and no notes have been written for it to go in.
+    const name = kofi.getSnapshot().participants.find((p) => p.isMe)?.person.name;
+    expect(addedOf(kofi)).toEqual([{ id: expect.any(String), text: MINE, owner: name, evidence: [], done: false, at: expect.any(Number) }]);
+    const seen = await settle(host, (s) => s.liveNotes.added.length === 1);
+    expect(seen.liveNotes).toMatchObject({ notes: null, writing: false, error: null, added: addedOf(kofi) });
+    expect(email).toContain('kofi');
+
+    // The same words again add nothing, however they're spaced: a retry is safe.
+    await kofi.addFollowUp(MINE.replace(' ', '   '));
+    await host.addFollowUp('Book the room');
+    expect(texts((await settle(kofi, (s) => s.liveNotes.added.length === 2)).liveNotes.added)).toEqual([MINE, 'Book the room']);
+
+    // Anyone who gets the notes ticks it, or takes the tick back, for everyone.
+    const id = addedOf(kofi)[0]?.id ?? '';
+    await host.tickFollowUp(id, true);
+    expect((await settle(kofi, (s) => s.liveNotes.added[0]?.done === true)).liveNotes.added[1]?.done).toBe(false);
+    await kofi.tickFollowUp(id, false);
+    await settle(host, (s) => s.liveNotes.added[0]?.done === false);
+
+    // It's among the call's follow-ups, for whoever's reading them.
+    const stop = kofi.watchFollowUps();
+    await waitFor(() => kofi.followUps.getSnapshot() !== null, 'the follow-ups');
+    stop();
+    expect(kofi.followUps.getSnapshot()?.items.map((f) => [f.from, f.text])).toEqual([['added', MINE], ['added', 'Book the room']]);
+    await host.leave();
+  });
+
+  it('stays through refreshes in the words it was added, and the notes model is told it as it’s told the rest', async () => {
+    const { host, kofi } = await twoInCall();
+    await kofi.addFollowUp(MINE);
+    const id = addedOf(kofi)[0]?.id ?? '';
+    await say(host, DECK);
+    const before = runs();
+    const stop = host.watchNotes();
+    const first = await notesOf(host);
+    expect(texts(first.next)).toEqual([DECK]);
+    const told = sentSince(before)[0];
+    expect(told).toContain(`(${String(host.getSnapshot().participants.find((p) => !p.isMe)?.person.name)}) ${MINE}`);
+    expect(told).not.toContain(id);
+    await host.tickFollowUp(id, true);
+
+    // A refresh that lists it as what it heard keeps it once, as it was typed, ticked. What the notes wrote stays beside it.
+    const SAID = 'Kofi will send the pricing sheet to Lena.';
+    h.near.identify(SAID, MINE);
+    await say(host, SAID, 4000);
+    await later(host);
+    const second = await notesOf(host, (n) => n.read.lines === 2);
+    expect(texts(second.next)).toEqual([DECK]);
+    expect((await settle(kofi, (s) => s.liveNotes.notes?.read.lines === 2)).liveNotes.added).toEqual([expect.objectContaining({ id, text: MINE, done: true })]);
+
+    // Listed as nothing it knows, it's something the notes wrote, and what was added doesn't go anywhere.
+    h.near.identify(SAID, 'new');
+    await say(host, 'Should we cut the travel line?', 8000);
+    await later(host);
+    const third = await notesOf(host, (n) => n.read.lines === 3);
+    expect(texts(third.next)).toEqual([DECK, SAID]);
+    expect(addedOf(host)).toEqual([expect.objectContaining({ id, text: MINE, done: true })]);
+    h.near.identify(SAID, null);
+    stop();
+    await host.leave();
+  });
+
+  it('survives a refresh that failed, and one written as it was added', async () => {
+    const { host, kofi } = await twoInCall();
+    await say(host, DECK);
+    h.near.failNext(1, 'prose');
+    const stop = host.watchNotes();
+    await settle(host, (s) => s.liveNotes.error !== null);
+    await kofi.addFollowUp(MINE);
+    await later(host);
+    await notesOf(host);
+    await settle(host, (s) => s.liveNotes.added.length === 1);
+    expect(texts(addedOf(host))).toEqual([MINE]);
+
+    // Added while the notes model reads: what it wrote is saved around it.
+    h.near.slowNext(900);
+    const before = runs();
+    await say(host, 'We agreed to start with the budget.', 4000);
+    await later(host);
+    await waitFor(() => runs() > before, 'a refresh under way');
+    await kofi.addFollowUp('Book the room');
+    await notesOf(host, (n) => n.read.lines === 2);
+    expect(texts((await settle(host, (s) => s.liveNotes.added.length === 2)).liveNotes.added)).toEqual([MINE, 'Book the room']);
+    stop();
+    await host.leave();
+  });
+
+  it('is for people who get the notes, in a call that has some: nobody else adds or reads it', async () => {
+    const { org, host, kofi, code: c } = await twoInCall();
+    await kofi.addFollowUp(MINE);
+    await say(host, DECK);
+    const stop = kofi.watchNotes();
+    await notesOf(kofi);
+    stop();
+
+    // A guest with the link, here for all of it or not: the note doesn't go to them, so nor does this.
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    expect(code(await sam.addFollowUp('Waiting to be let in').catch((e: unknown) => e))).toBe('forbidden');
+    await letIn(host, sam);
+    expect(code(await sam.addFollowUp('Added by a guest').catch((e: unknown) => e))).toBe('forbidden');
+    await sam.refresh();
+    expect(sam.getSnapshot().liveNotes.added).toEqual([]);
+    expect(JSON.stringify(sam.getSnapshot().liveNotes)).not.toContain('pricing');
+    expect(code(await sam.tickFollowUp(addedOf(kofi)[0]?.id ?? '', true).catch((e: unknown) => e))).toBe('forbidden');
+
+    // Words that aren't there, or are too many.
+    expect(code(await kofi.addFollowUp('   ').catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await kofi.addFollowUp('x'.repeat(301)).catch((e: unknown) => e))).toBe('invalid');
+
+    // Nobody else's call: what's added here isn't there, and its ID finds nothing.
+    const sameOrganizer = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    expect(sameOrganizer.getSnapshot().liveNotes.added).toEqual([]);
+    expect(code(await sameOrganizer.tickFollowUp(addedOf(kofi)[0]?.id ?? '', true).catch((e: unknown) => e))).toBe('not-found');
+    await sameOrganizer.leave();
+
+    // A call that has never had notes has nowhere for it to go; one that has, however they stand now, does.
+    const quiet = await twoInCall('off');
+    expect(code(await quiet.kofi.addFollowUp(MINE).catch((e: unknown) => e))).toBe('conflict');
+    await quiet.host.leave();
+    await host.pause();
+    await settle(kofi, (s) => s.capture.mode === 'paused');
+    await kofi.addFollowUp('Added while paused');
+    await host.setNotes(false);
+    await settle(kofi, (s) => s.capture.mode === 'off');
+    await kofi.addFollowUp('Added with notes off');
+    expect(texts(addedOf(kofi))).toEqual([MINE, 'Added while paused', 'Added with notes off']);
+
+    await host.leave();
+    expect(code(await host.addFollowUp('Too late').catch((e: unknown) => e))).toBe('conflict');
+  });
+
+  it('stops at a limit', async () => {
+    const { host, kofi } = await twoInCall();
+    for (let i = 0; i < 40; i++) await (i % 2 ? kofi : host).addFollowUp(`Thing ${i}`);
+    expect(code(await kofi.addFollowUp('One too many').catch((e: unknown) => e))).toBe('conflict');
+    await host.addFollowUp('Thing 3');
+    await host.leave();
+  });
+
+  it('is its adder’s in the note, done if it was ticked, and stays through every writing of the notes', async () => {
+    const { org, host, kofi, invited, email } = await twoInCall();
+    await say(host, DECK);
+    await kofi.addFollowUp(MINE);
+    await host.addFollowUp('Book the room');
+    await kofi.tickFollowUp(addedOf(kofi)[0]?.id ?? '', true);
+    const before = h.near.prompts.length;
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+
+    // The notes model is told it's settled, so it doesn't list it again.
+    const asked = h.near.prompts.slice(before).find((p) => p.includes('Already settled'));
+    expect(asked).toContain(`for ${String(note.actions.find((a) => a.text === MINE)?.owner?.name)}, taken on, done): ${MINE}`);
+
+    const mine = note.actions.find((a) => a.text === MINE);
+    expect(mine).toMatchObject({ takenOn: true, done: true, lines: [], owner: { person: { email } } });
+    expect(mine?.changes).toEqual([
+      { by: { id: null, name: expect.any(String), email, as: 'invited' }, at: expect.any(String), what: 'proposed' },
+      { by: { id: null, name: expect.any(String), email, as: 'invited' }, at: expect.any(String), what: 'done' }
+    ]);
+    const room = note.actions.find((a) => a.text === 'Book the room');
+    expect(room).toMatchObject({ takenOn: true, done: false, owner: { person: { id: org.session.ownerId } } });
+    expect(room?.changes).toEqual([{ by: { id: org.session.ownerId, name: expect.any(String), email: expect.any(String), as: 'organizer' }, at: expect.any(String), what: 'proposed' }]);
+    expect(note.actions.map((a) => a.text)).toContain('Send the deck to legal by Friday');
+    expect(await notesRows(host.ticket.callId)).toBe(0);
+
+    // It's Kofi's to change, and waits on Kofi like anything they took on.
+    expect((await invited.api.notes.inbox()).followUps.map((f) => f.text)).not.toContain(MINE);
+    await invited.api.notes.updateAction(note.id, mine?.id ?? '', { done: false });
+    expect((await invited.api.notes.inbox()).followUps.map((f) => f.text)).toContain(MINE);
+
+    await org.api.notes.correctLine(note.id, note.transcript?.[0]?.id ?? '', { text: DECK.replace('deck', 'slides') });
+    await org.api.notes.rewrite(note.id);
+    await settleNote(org.api, note.id, (n) => !n.writingAgain);
+    expect((await org.api.notes.get(note.id)).actions.map((a) => a.text)).toEqual(expect.arrayContaining([MINE, 'Book the room']));
+  });
+
+  it('reaches the note when the notes can’t be written, and a breakout room’s section when it was added in one', async () => {
+    const org = await account();
+    const [kofiEmail, lenaEmail] = [unique('kofi'), unique('lena')];
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail, lenaEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    const lena = await (await account(lenaEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(lena);
+    await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
+    await host.addFollowUp('Added in the main room');
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    const [design = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
+    await inPlace(kofi, design);
+
+    // Each part of the call has its own: what's added in a room stays there.
+    await kofi.refresh();
+    expect(texts(addedOf(kofi))).toEqual([]);
+    await kofi.addFollowUp('Added in Design');
+    await settle(host, (s) => s.liveNotes.added.length === 1);
+    expect(texts(addedOf(host))).toEqual(['Added in the main room']);
+    expect(texts(addedOf(kofi))).toEqual(['Added in Design']);
+    expect(code(await host.tickFollowUp(addedOf(kofi)[0]?.id ?? '', true).catch((e: unknown) => e))).toBe('not-found');
+
+    // Nothing to write notes from, and the model isn't asked, but what was added goes in all the same.
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    expect(note.actions.map((a) => a.text)).toEqual(['Added in the main room']);
+    expect(note.rooms.find((r) => r.name === 'Design')?.actions.map((a) => a.text)).toEqual(['Added in Design']);
+  });
+
+  it('stops showing once the notes stop reading what it may have been written from, and goes to the note', async () => {
+    const org = await account();
+    const [kofiEmail, lenaEmail] = [unique('kofi'), unique('lena')];
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail, lenaEmail] });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    const lena = await (await account(lenaEmail)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(lena);
+    await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
+    await say(host, 'Kofi will book the hall by Friday.');
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    const [design = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
+    await inPlace(kofi, design);
+    await say(host, 'The hall is for Kofi’s surprise party.', 3000);
+    const stop = host.watchNotes();
+    await notesOf(host, (n) => n.read.lines === 2);
+    stop();
+    // Someone who stayed adds what only those who stayed heard.
+    await host.addFollowUp('Order the surprise cake');
+    host.closeRooms();
+    await inPlace(kofi, 'main');
+    await later(kofi);
+    const before = runs();
+    const back = kofi.watchNotes();
+    const after = await notesOf(kofi);
+    back();
+    expect(after.read.lines).toBe(1);
+    expect(addedOf(kofi)).toEqual([]);
+    expect(sentSince(before)[0]).not.toContain('surprise');
+    await host.refresh();
+    expect(addedOf(host)).toEqual([]);
+    // Saying it again adds it for everyone, in full view, as anyone can.
+    await kofi.addFollowUp('Order the surprise cake');
+    await settle(host, (s) => s.liveNotes.added.length === 1);
+    expect(texts(addedOf(host))).toEqual(['Order the surprise cake']);
+    const ended = await host.leave();
+    expect((await written(org.api, ended?.pendingNoteId)).actions.filter((a) => a.text === 'Order the surprise cake')).toHaveLength(2);
+  });
+
+  it('opens a row written before anyone could add, and adds to it', async () => {
+    const { org, host, kofi } = await twoInCall();
+    await say(host, DECK);
+    const stop = kofi.watchNotes();
+    await notesOf(kofi);
+    stop();
+    const callId = host.ticket.callId;
+    const o = await openOwner(h.deps, org.session.ownerId, undefined);
+    const key = stateKey(o.root, o.ownerId, `call-notes:${callId}`);
+    const header = { v: 1 as const, kind: 'call-notes', ownerId: o.ownerId, callId, place: 'main', view: 'all' };
+    const { notes_ciphertext: sealed } = (await h.pool.query<{ notes_ciphertext: Buffer }>(`SELECT notes_ciphertext FROM call_notes WHERE call_id = $1`, [callId])).rows[0] ?? {};
+    if (!sealed) throw new Error('no row of notes');
+    const before = openJson(key, header, sealed, z.object({ notes: z.unknown(), failed: z.boolean() }));
+    expect(Object.keys(before)).toEqual(['notes', 'failed']);
+    await h.pool.query(`UPDATE call_notes SET notes_ciphertext = $2 WHERE call_id = $1`, [callId, sealJson(key, header, toJson(before))]);
+    await kofi.refresh();
+    expect(texts(kofi.getSnapshot().liveNotes.notes?.next ?? [])).toEqual([DECK]);
+    expect(addedOf(kofi)).toEqual([]);
+    await kofi.addFollowUp(MINE);
+    expect(texts(addedOf(kofi))).toEqual([MINE]);
+    await host.leave();
+  });
+
+  async function settleNote(api: Awaited<ReturnType<typeof account>>['api'], id: string, pred: (n: Note) => boolean): Promise<Note> {
+    const until = Date.now() + 30_000;
+    for (;;) {
+      const n = await api.notes.get(id);
+      if (pred(n)) return n;
+      if (Date.now() > until) throw new Error('timed out waiting for the note');
+      await sleep(40);
+    }
+  }
+});
+
 describe('into the note', () => {
   const DECK = 'Kofi will send the deck to legal by Friday.';
   const ROOM = 'Kofi will book the room by Monday.';
@@ -1311,7 +1607,7 @@ describe('when notes are off or paused', () => {
     expect(runs()).toBe(before);
     expect(await look(h.baseUrl, kofi)).toEqual({ status: 200, body: { refreshed: false } });
     await kofi.refresh();
-    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: seen, writing: false, error: null });
+    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: seen, added: [], writing: false, error: null });
     await kofi.tickFollowUp(id, true);
     await notesOf(host, (n) => n.next[0]?.done === true);
 
@@ -1342,7 +1638,7 @@ describe('when notes are off or paused', () => {
     expect((await look(h.baseUrl, kofi)).body).toEqual({ refreshed: false });
     expect(await notesRows(host.ticket.callId)).toBe(0);
     await kofi.refresh();
-    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     expect(code(await kofi.tickFollowUp('AAAAAAAAAAAAAAAAAAAAAA', true).catch((e: unknown) => e))).toBe('not-found');
     expect(runs()).toBe(before);
     await host.leave();
@@ -1362,7 +1658,7 @@ describe('what stays', () => {
     await saveRevision(o, h.pool, noteId, item.revisionId, before);
     expect(await notesRows(host.ticket.callId)).toBe(0);
     await say(host, 'Kofi will send the deck by Friday.');
-    expect((await settle(kofi, (s) => s.transcript.length === 1)).liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect((await settle(kofi, (s) => s.transcript.length === 1)).liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     // The first look makes its row, and everything carries on from there.
     const stop = kofi.watchNotes();
     const seen = await notesOf(kofi);
@@ -1442,13 +1738,14 @@ describe('what stays', () => {
     stop();
     await kofi.tickFollowUp(seen.next[0]?.id ?? '', true);
     expect(seen.next[0]?.text).toContain('CANARY-FOLLOWUP');
+    await kofi.addFollowUp('CANARY-ADDED paint the harbour wall');
 
     const dump = String((await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
       SELECT row_to_json(x)::text AS t FROM call_notes x UNION ALL SELECT row_to_json(x)::text FROM calls x UNION ALL
       SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM transcript_clips x) q`)).rows[0]?.all ?? '');
     expect(dump).toContain(host.ticket.callId);
     const logs = h.logs.slice(from).join('');
-    const canaries = ['CANARY-LIVENOTE', 'CANARY-FOLLOWUP', 'lighthouse', 'Friday'];
+    const canaries = ['CANARY-LIVENOTE', 'CANARY-FOLLOWUP', 'CANARY-ADDED', 'harbour', 'lighthouse', 'Friday'];
     for (const canary of canaries) {
       for (const enc of encodings(canary)) {
         expect(dump.includes(enc), `${canary} as ${enc} in rows`).toBe(false);
@@ -1480,6 +1777,6 @@ describe('what stays', () => {
     const ended = await host.leave();
     await written(org.api, ended?.pendingNoteId);
     const after = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM revisions x`)).rows[0]?.all ?? '');
-    for (const enc of encodings('CANARY-FOLLOWUP')) expect(after.includes(enc)).toBe(false);
+    for (const canary of ['CANARY-FOLLOWUP', 'CANARY-ADDED']) for (const enc of encodings(canary)) expect(after.includes(enc)).toBe(false);
   });
 });
