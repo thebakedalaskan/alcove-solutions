@@ -126,14 +126,15 @@ export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 const LIVE_ROWS = <LiveRows />;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, open, zen, listOff, listPeek, live, act, onToggleList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, zen, listOff, listPeek, live, act, onToggleList, onToggleZen }: {
   workspace: CallWorkspace;
   /** You're the call's organizer. */
   organizer: boolean;
   pass: string;
   at: WorkspacePlace;
   settled: boolean;
-  open: boolean;
+  /** It's open and in sight: something taking turns with it can be in front. */
+  showing: boolean;
   /** Just the document: on or off, if it's on offer at all. */
   zen: boolean | null;
   listOff: boolean;
@@ -147,10 +148,10 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
-    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open,
+    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
-  }), [live, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  }), [live, documents, act, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */

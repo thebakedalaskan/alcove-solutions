@@ -1209,8 +1209,9 @@ share picker, the leave sheet and the device pickers.
   line or its handle, and something let go about where it was picked up stays put. What's typed in Chat and Ask is kept
   above the panels, so a tab moved to another panel has its words.
 - **When room runs out** panels give way in one fixed order (`adapt`): tiles fold to arches, the workspace's list tucks
-  away, side panels float in one column over the right of the screen (the stage makes room for the column when it
-  can), then the workspace, the board and the shares take turns, with a switcher in the top bar. Anything dragged
+  away, side panels float in one column over the right of the screen (whatever's under it makes room when enough is
+  left to be any use), then the workspace, the board and the shares take turns, with a switcher in the top bar, which
+  they also do when the column would otherwise sit on one of them. Anything dragged
   wider gives that back before any of this. Under 600 px it's a phone: one thing at a time, nothing to drag, and the
   panel in front has every tab. A panel can't run off the screen: `solve` shares out whatever room there is, and
   floors never beat a line, so a line keeps up with the pointer down to its minimum. A floating panel with no room in
