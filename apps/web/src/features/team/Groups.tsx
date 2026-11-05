@@ -113,7 +113,7 @@ export function Groups({ open, onOpen, notes, person, shown, draft, onDraft }: {
         <div className="tp-gg">
           {listedGroups.map((g) => (open === g.id
             ? <OpenGroup key={g.id} group={g} groups={groups} calls={groupCalls(g, notes)} person={person} shown={shown} change={change} onDelete={() => remove(g)}
-              onClose={() => { setToTile(g.id); onOpen(undefined); }} />
+              onClose={() => { if (openAt >= SHOWN) setAll(true); setToTile(g.id); onOpen(undefined); }} />
             : <GroupTile key={g.id} group={g} calls={groupCalls(g, notes)} person={person} shown={shown} take={toTile === g.id} onTaken={focused} onOpen={() => onOpen(g.id)} />))}
           {making && (
             <NewGroup groups={groups} draft={draft} onDraft={onDraft} shown={shown} onClose={leave}
