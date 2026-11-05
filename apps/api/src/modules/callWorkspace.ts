@@ -7,7 +7,9 @@
  * about it at once, and what they were presenting or playing stops. What's in a workspace is read with the server's keys
  * here only to work out what each person may be told, and someone who can open nothing is told nothing that names it.
  *
- * `calls.ts` holds the call's row and says when to do what; this is what's done.
+ * `calls.ts` holds the call's row and says when to do what; this is what's done. A live call comes first, so nothing done here
+ * under the call's row waits on a workspace's lock, opens a workspace or works through its documents: that's done before the
+ * row is taken (`prepare`, `makeAgenda`), and reading a call opens a workspace once a version for everyone (`seenAt`).
  */
 import { firstName, type CallAction, type CallBrought, type CallFollowUp, type CallFollowUps, type CallPlay, type CallPresent, type CallWorkspace, type CallWorkspaceAsk, type CallWorkspaceSwitch, type DocFollowUp, type DocFollowUpTick, type LiveNotes, type Person } from '@alcove/api';
 import type { Deps, Owner } from '../context';
