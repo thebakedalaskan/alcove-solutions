@@ -6,7 +6,7 @@
  * the limit. Only two browsers merging can pass it, which is why `readBoard` cuts text rather than leaving it out.
  */
 import * as Y from 'yjs';
-import { bounds, centre, contains, frameAt } from './geometry';
+import { bounds, centre, contains, frameAt, holds } from './geometry';
 import { mapOf, readBoard, rootMap, same } from './read';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardObjectSchema, LineEndSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
@@ -145,15 +145,28 @@ function spotOf(o: NewObject | BoardObject): { x: number; y: number } | null {
   return { x: free.reduce((n, end) => n + end.x, 0) / free.length, y: free.reduce((n, end) => n + end.y, 0) / free.length };
 }
 
+/**
+ * Whether something sits in a frame: by its middle, or for a frame, only if all of it fits. Otherwise a frame dropped
+ * beside another would vanish into it and stop being a slide, and one drawn round a smaller frame would nest inside it.
+ */
+function sitsIn(o: NewObject | BoardObject, f: Box): boolean {
+  if (o.k === 'frame') return holds(f, o);
+  const spot = spotOf(o);
+  return spot !== null && contains(f, spot.x, spot.y);
+}
+
+/** The frame on top that something sits in, leaving out any it can't be in. */
+function frameFor(o: NewObject | BoardObject, frames: readonly FrameObject[], ruledOut: ReadonlySet<string> = new Set()): string {
+  return frames.findLast((f) => !ruledOut.has(f.id) && sitsIn(o, f))?.id ?? '';
+}
+
 /** Adds an object and returns its id, or null if the board is full or the object can't be on it. */
 export function addObject(doc: Y.Doc, input: NewObject, origin: unknown): string | null {
   return writing<string | null>(doc, origin, null, (objects) => {
     if (objects.size >= BOARD_LIMITS.objects) return null;
     const view = viewOf(doc);
     if (input.k === 'line' && !(joins(view, input.from) && joins(view, input.to))) return null;
-    const spot = spotOf(input);
-    const f = input.f ?? (spot ? (frameAt(view, spot.x, spot.y)?.id ?? '') : '');
-    return insert(objects, { ...input, id: newId(), at: stack(view)(input.k), f })?.id ?? null;
+    return insert(objects, { ...input, id: newId(), at: stack(view)(input.k), f: input.f ?? frameFor(input, view.frames) })?.id ?? null;
   });
 }
 
@@ -191,11 +204,11 @@ function startOf(o: BoardObject | undefined): { x: number; y: number } | null {
   return isAttached(o.to) ? null : o.to;
 }
 
-/** The frame something lands in: the one it was carried in if it's still there, or else the one on top at its spot. */
-function landing(o: BoardObject, spot: { x: number; y: number }, frames: readonly FrameObject[], carried: ReadonlySet<string>, inner: ReadonlySet<string>): string {
+/** The frame something lands in: the one it was carried in if it still sits there, or else the one on top it sits in. */
+function landing(o: BoardObject, frames: readonly FrameObject[], carried: ReadonlySet<string>, inner: ReadonlySet<string>): string {
   const home = frames.find((f) => f.id === o.f);
-  if (home && carried.has(home.id) && contains(home, spot.x, spot.y)) return home.id;
-  return frames.findLast((f) => f.id !== o.id && !inner.has(f.id) && contains(f, spot.x, spot.y))?.id ?? '';
+  if (home && carried.has(home.id) && sitsIn(o, home)) return home.id;
+  return frameFor(o, frames, new Set([o.id, ...inner]));
 }
 
 /** Moves objects, takes each frame's contents along, and settles `f` by where what was moved landed. */
@@ -240,8 +253,8 @@ function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move
   });
   const carried = new Set(shifts.keys());
   for (const id of wanted.keys()) {
-    const o = moved.get(id), m = mapOf(objects.get(id)), spot = o ? spotOf(o) : null;
-    if (o && m && spot) change(m, 'f', landing(o, spot, frames, carried, o.k === 'frame' ? within(held, [o.id]) : new Set()));
+    const o = moved.get(id), m = mapOf(objects.get(id));
+    if (o && m) change(m, 'f', landing(o, frames, carried, o.k === 'frame' ? within(held, [o.id]) : new Set()));
   }
 }
 
@@ -330,8 +343,7 @@ export function duplicateObjects(doc: Y.Doc, ids: readonly string[], by: { x: nu
     const movedEnd = (end: LineEnd): LineEnd => (isAttached(end) ? { ...end, on: copies.get(end.on) ?? end.on } : { x: reach(end.x + by.x), y: reach(end.y + by.y) });
     for (const o of list) {
       const moved = o.k === 'line' ? { ...o, from: movedEnd(o.from), to: movedEnd(o.to) } : { ...o, x: reach(o.x + by.x), y: reach(o.y + by.y) };
-      const spot = spotOf(moved);
-      const f = copies.get(o.f) ?? (spot ? (frameAt(view, spot.x, spot.y)?.id ?? '') : '');
+      const f = copies.get(o.f) ?? frameFor(moved, view.frames);
       const parent = o.k === 'node' ? { parent: copies.get(o.parent) ?? o.parent } : {};
       insert(objects, { ...moved, ...parent, id: copies.get(o.id), at: at(o.k), f });
     }

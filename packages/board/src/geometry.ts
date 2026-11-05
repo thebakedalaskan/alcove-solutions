@@ -25,6 +25,7 @@ const LEAST_ZOOM = 0.001;
 
 export const contains = (b: Box, x: number, y: number): boolean => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 export const centre = (b: Box): { x: number; y: number } => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+export const holds = (outer: Box, inner: Box): boolean => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
 
 /** The box round all of these. Nothing at all has an empty box at the origin. */
 export function bounds(boxes: readonly Box[]): Box {
