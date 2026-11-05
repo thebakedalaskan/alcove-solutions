@@ -7,6 +7,7 @@
  *     and synthesised tracks, enumerateDevices lists made-up devices, and the browser says they're allowed (or not)
  *   - notifications that go nowhere: Notification asks and shows, and what it showed is kept in `shown`
  *   - no service worker: the app's registration never happens, so nothing is cached between stories
+ *   - a page that goes when the story does: recorders and audio it started stop when the next story opens
  */
 import { onlineManager } from '@tanstack/react-query';
 
@@ -30,9 +31,11 @@ export const shown: { title: string; body: string }[] = [];
  * offline event, so nothing is dispatched; the query layer starts out thinking it's online, as it does in a real tab.
  */
 export function openBrowser(setup: Partial<BrowserSetup>): void {
+  closePage();
   Object.assign(state, DEFAULT_BROWSER, setup);
   shown.length = 0;
   onlineManager.setOnline(true);
+  talking(true);
 }
 
 /** The connection comes or goes while the story is open, with the event the browser sends. */
@@ -74,14 +77,29 @@ function as(track: MediaStreamTrack, device: Made): MediaStreamTrack {
   return track;
 }
 
+/** The browser's own AudioContext, for the made-up devices: what a story's page makes is stopped when the next story opens (below). */
+const RealAudioContext = AudioContext;
 let audio: AudioContext | null = null;
 /** Sound the browser holds back until the page is used: a click anywhere in a story lets it play. */
 function audioContext(): AudioContext {
   if (audio) return audio;
-  const ctx = new AudioContext();
+  const ctx = new RealAudioContext();
   audio = ctx;
   addEventListener('pointerdown', () => { void ctx.resume(); }, { capture: true });
   return ctx;
+}
+
+/** The made-up microphones open now, and whether they murmur as a voice does or stay quiet, as while you listen. */
+const voices = new Set<{ level: GainNode; depth: GainNode }>();
+let loud = true;
+const tune = (v: { level: GainNode; depth: GainNode }) => { v.level.gain.value = loud ? 0.05 : 0.012; v.depth.gain.value = loud ? 0.045 : 0.008; };
+/**
+ * Whether you're talking: the microphone murmurs (its meters move, and a call hears you speaking), or it's quiet, as
+ * while you listen. A scripted call keeps it quiet except while you say your lines; every story starts talking.
+ */
+export function talking(on: boolean): void {
+  loud = on;
+  for (const v of voices) tune(v);
 }
 
 /** A microphone that hears a low murmur, rising and falling, so meters move the way a voice moves them. Nothing plays it aloud. */
@@ -91,18 +109,22 @@ function microphone(device: Made): MediaStreamTrack {
   const voice = ctx.createOscillator();
   voice.frequency.value = 170;
   const level = ctx.createGain();
-  level.gain.value = 0.05;
   const breath = ctx.createOscillator();
   breath.frequency.value = 0.6;
   const depth = ctx.createGain();
-  depth.gain.value = 0.045;
+  const tuned = { level, depth };
+  voices.add(tuned);
+  tune(tuned);
   breath.connect(depth).connect(level.gain);
   voice.connect(level).connect(out);
   voice.start();
   breath.start();
   const track = out.stream.getAudioTracks()[0];
   if (!track) throw new DOMException('The microphone didn’t start.', 'NotReadableError');
-  track.addEventListener('ended', () => { voice.stop(); breath.stop(); });
+  const quiet = () => { voices.delete(tuned); voice.stop(); breath.stop(); };
+  track.addEventListener('ended', quiet);
+  const stop = track.stop.bind(track);
+  track.stop = () => { quiet(); stop(); };
   return as(track, device);
 }
 
@@ -159,8 +181,16 @@ async function getUserMedia(c?: MediaStreamConstraints): Promise<MediaStream> {
   if (c?.video) stream.addTrack(drawn(1280, 720, room, chosen('videoinput', c.video)));
   return stream;
 }
-async function getDisplayMedia(): Promise<MediaStream> {
-  return new MediaStream([drawn(1920, 1080, slide, { kind: 'videoinput', id: 'screen', label: 'screen:0:0' })]);
+/** What the browser's picker shares: the drawn slide, as the kind of thing asked for, with its sound (silence) when that's asked for too. */
+async function getDisplayMedia(o?: DisplayMediaStreamOptions): Promise<MediaStream> {
+  const video = drawn(1920, 1080, slide, { kind: 'videoinput', id: 'screen', label: 'screen:0:0' });
+  const asked = typeof o?.video === 'object' ? o.video.displaySurface : undefined;
+  if (typeof asked === 'string') {
+    const settings = video.getSettings.bind(video);
+    video.getSettings = () => ({ ...settings(), displaySurface: asked });
+  }
+  const sound = o?.audio ? audioContext().createMediaStreamDestination().stream.getAudioTracks()[0] : undefined;
+  return new MediaStream(sound ? [video, sound] : [video]);
 }
 /** What's plugged in. Like a real browser, names only once the camera or microphone has been allowed. */
 async function enumerateDevices(): Promise<MediaDeviceInfo[]> {
@@ -199,6 +229,31 @@ class StubNotification extends EventTarget {
   close(): void { this.dispatchEvent(new Event('close')); }
 }
 
+/* ---------- what a page leaves running ---------- */
+
+/**
+ * Recorders and audio the story's page started (a call's notes recorder, a recording's): a page that goes away stops
+ * them, so the next story starts quiet, as a page opened afresh would.
+ */
+const leftRunning = new Set<() => void>();
+class PageRecorder extends MediaRecorder {
+  constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+    super(stream, options);
+    leftRunning.add(() => { if (this.state !== 'inactive') this.stop(); });
+  }
+}
+class PageAudio extends RealAudioContext {
+  constructor(options?: AudioContextOptions) {
+    super(options);
+    leftRunning.add(() => { if (this.state !== 'closed') void this.close().catch(() => undefined); });
+  }
+}
+/** The last story's page has gone: what it left recording or playing stops. */
+function closePage(): void {
+  for (const stop of leftRunning) stop();
+  leftRunning.clear();
+}
+
 let installed = false;
 /** Puts the stand-ins in place. Once, before any story renders. */
 export function installBrowser(): void {
@@ -220,6 +275,8 @@ export function installBrowser(): void {
   };
 
   Object.defineProperty(window, 'Notification', { configurable: true, writable: true, value: StubNotification });
+  Object.defineProperty(window, 'MediaRecorder', { configurable: true, writable: true, value: PageRecorder });
+  Object.defineProperty(window, 'AudioContext', { configurable: true, writable: true, value: PageAudio });
 
   const workers = navigator.serviceWorker;
   workers.register = () => new Promise<ServiceWorkerRegistration>(() => undefined);

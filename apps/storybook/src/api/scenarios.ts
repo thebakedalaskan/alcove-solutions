@@ -208,6 +208,8 @@ export function begin(name: ScenarioName, over: Partial<Opening> = {}): Scenario
   forgetDocuments();
   sessions.call = null;
   sessions.recording = null;
+  // The last story's microphone and camera (a call's, or a pre-join's) stop with it.
+  sessions.media?.stop();
   sessions.media = null;
   sessions.roomTitle = null;
   const { world, opening } = SCENARIOS[name].make();
