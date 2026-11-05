@@ -1042,6 +1042,34 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
     everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
     tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never
     waits on a nudge that isn't coming.
+- **Presenting, in the browser** (`apps/web/src/features/call/presenting.ts`, `features/workspace/Presentation.tsx`).
+  - *Sections* are one rule, in the editor's reading plugin (`editor/plugins/reading.ts`): a first- or second-level heading
+    starts one, named for what it says; what comes before the first is a section named for the title; one with nothing in
+    it doesn't count, and only what's on the page does. Whoever presents and everyone watching read it from the same
+    document, so `section` means the same blocks everywhere. A section past the last shows the last.
+  - *The audience's view* is drawn over each person's own page, from a second session of the document opened only to read
+    (`openToRead`: no kept-edits store, so it never sends anything). The editor's reading mode leaves out, with decorations,
+    everything outside the section, the title after the first, and empty lines; nothing in the document changes. The page
+    underneath waits as it was, `inert`, and counts as out of sight, so following stops quietly and presence says you've left
+    it. When it ends, the overlay goes and your own page is there.
+  - *What's yours alone*: Work on my own (the presentation lifts off your own page, or, if the workspace was opened for the
+    presentation, it goes to the document itself), and whether the workspace was opened for it, so it's put away again when
+    it ends with you watching. Next and Back show at once for whoever presses them, then follow the call's answer.
+  - *Presenter notes* are read and kept through `api.workspaces.presenterNotes`, 600 ms after the last key and on leaving.
+    Someone in the call without an account isn't offered any: the API refuses a guest's.
+- **Playing together, in the browser** (`features/call/sharedVideo.ts`, `PlayTogether.tsx`).
+  - *One player per call*, playing whatever's open. A video block on screen borrows its `<video>`, which moves into the block
+    and is never copied, so nothing is heard twice; with none on screen it plays out of sight and is still heard.
+  - *In step*: it reads the call itself, and works out where everyone is with `playPosition(play, ms since this browser heard
+    it)`, four times a second. More than 500 ms off, it moves there; held, it holds the same frame (within 40 ms). A late
+    joiner does the same on arriving. Whoever started it says when it's reached the end, which stops it for everyone.
+  - *Here alone*: a browser that refuses to play (autoplay) shows Play here, and anything pressed tries again; the system's
+    pause key holds it for you with Back to everyone; loading, a file this browser can't play and one that didn't arrive each
+    say so. Your volume is the player's own. None of it reaches anyone else.
+  - *What it plays* comes from `videoSource.ts`: the workspace's media, read by range. Media isn't in this build yet, so the
+    source is empty, nothing is offered to play, and Play for everyone doesn't show. When it lands, the source is
+    `api.workspaces.media.url`, asked again once if the file stops arriving after it had played (a URL is good for 12 hours);
+    a URL is never logged. The bar's title is the video block's, read from its document (`videoAbout.ts`).
 - **The next agenda.** When a call in a series first opens Workspace, it looks once for an agenda to make: the call before
   it that had one (kept on its meeting, as IDs, when that call ended: whatever it brought or worked on that's named Agenda,
   or says what the Agenda template says), still in the tree of the workspace this call uses. What was left open, every
