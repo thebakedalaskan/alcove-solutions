@@ -304,6 +304,42 @@ export function setObjects(doc: Y.Doc, ids: readonly string[], patch: ObjectPatc
   });
 }
 
+/** Hands out `at`s below everything in each layer. */
+function beneath(view: BoardView): (k: BoardObject['k']) => number {
+  const lows = new Map<number, number>();
+  for (const o of view.objects) lows.set(layerOf(o.k), Math.min(lows.get(layerOf(o.k)) ?? o.at, o.at));
+  return (k) => {
+    const next = (lows.get(layerOf(k)) ?? 0) - 1;
+    lows.set(layerOf(k), next);
+    return next;
+  };
+}
+
+/** Whether what's picked already stands at this edge of each of its layers, where stacking it would change nothing. */
+function atEdge(view: BoardView, picked: ReadonlySet<string>, edge: 'front' | 'back'): boolean {
+  const passed = new Set<number>();
+  for (const o of edge === 'front' ? view.objects.toReversed() : view.objects) {
+    if (!picked.has(o.id)) passed.add(layerOf(o.k));
+    else if (passed.has(layerOf(o.k))) return false;
+  }
+  return true;
+}
+
+/** Brings objects in front of everything else in their layer, or sends them behind it, keeping their order among themselves. What's already there stays as it is, with nothing to undo. */
+export function stackObjects(doc: Y.Doc, ids: readonly string[], edge: 'front' | 'back', origin: unknown): void {
+  writing(doc, origin, undefined, (objects) => {
+    const view = viewOf(doc);
+    const picked = new Set(ids);
+    if (atEdge(view, picked, edge)) return;
+    const list = view.objects.filter((o) => picked.has(o.id));
+    const next = edge === 'front' ? stack(view) : beneath(view);
+    for (const o of edge === 'front' ? list : list.reverse()) {
+      const m = mapOf(objects.get(o.id));
+      if (m) change(m, 'at', next(o.k));
+    }
+  });
+}
+
 function pointsAt(value: unknown, gone: ReadonlySet<string>): boolean {
   const end = LineEndSchema.safeParse(value);
   return end.success && isAttached(end.data) && gone.has(end.data.on);

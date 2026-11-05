@@ -2,7 +2,7 @@
  * What's selected and what follows from it: what a press picks, what travels with it, the ring round it and what a move
  * lines up with. Plain arithmetic on a `BoardView` in board units, with the canvas's numbers.
  */
-import { bounds, contains, hasBox, inside, isAttached, type BoardObject, type BoardView, type Box, type Camera, type LineEnd, type LineObject, type PlacedObject } from '@alcove/board';
+import { bounds, contains, hasBox, inside, isAttached, type BoardObject, type BoardView, type Box, type Camera, type LineEnd, type LineObject, type Move, type PlacedObject } from '@alcove/board';
 import type * as Y from 'yjs';
 
 /** A line something has been lined up with, in board units. `axis` is the axis it marks a place on. */
@@ -15,6 +15,10 @@ export const NO_GUIDES: readonly Guide[] = [];
 
 /** Past this many objects, only those near the view are mounted. */
 export const MOUNT_ALL = 500;
+/** What floats over the sheet. It has its own controls, so the board leaves a press on it alone. */
+export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit';
+/** How far a press can wander, in screen pixels, and still be a click. */
+export const CLICK_SLOP = 3;
 
 export const sameIds = (a: readonly string[], b: readonly string[]): boolean => a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
 
@@ -35,6 +39,23 @@ export const everything = (view: BoardView): string[] => view.objects.flatMap((o
 export const placed = (view: BoardView, ids: readonly string[]): PlacedObject[] => ids.flatMap((id) => {
   const o = view.byId.get(id);
   return o && hasBox(o) ? [o] : [];
+});
+
+/** The free ends of a line, as boxes with no size. */
+const freeEnds = (o: LineObject): Box[] => [o.from, o.to].flatMap((end) => (isAttached(end) ? [] : [{ x: end.x, y: end.y, w: 0, h: 0 }]));
+
+/** The space everything on the board takes up, as boxes. A line takes up only what its free ends do: the rest of it runs between objects. */
+export const drawn = (view: BoardView, ids?: Iterable<string>): Box[] => {
+  const list = ids ? [...ids].flatMap((id) => view.byId.get(id) ?? []) : view.objects;
+  return list.flatMap((o) => (hasBox(o) ? [o] : freeEnds(o)));
+};
+
+/** Where each thing selected would be moved from: an object's corner, or a line's first free end. A line attached at both ends goes where they go. */
+export const movable = (view: BoardView, ids: readonly string[]): Move[] => ids.flatMap((id) => {
+  const o = view.byId.get(id);
+  if (!o) return [];
+  if (hasBox(o)) return [{ id, x: o.x, y: o.y }];
+  return freeEnds(o).slice(0, 1).map(({ x, y }) => ({ id, x, y }));
 });
 
 /** What travels with a selection: the selection, and everything inside any frames in it. */
@@ -101,10 +122,10 @@ export function reachHolds(near: Box, seen: Box): boolean {
   return contains(near, seen.x - m, seen.y - m) && contains(near, seen.x + seen.w + m, seen.y + seen.h + m) && near.w < reachOf(seen).w * 1.5;
 }
 
-/** Whether anything hangs off an object: a line attached to it, or a comment pinned to it. */
-export function hangsOff(view: BoardView, comments: Y.Map<unknown>, id: string): boolean {
-  const pinned = Object.values<unknown>(comments.toJSON()).some((thread) => typeof thread === 'object' && thread !== null && 'on' in thread && thread.on === id);
-  return pinned || view.objects.some((o) => o.k === 'line' && [o.from, o.to].some((end) => isAttached(end) && end.on === id));
+/** Whether anything hangs off an object: a line attached to it, or a comment pinned to it. `own` is the line it was made on the end of, which goes with it unless someone has commented on that. */
+export function hangsOff(view: BoardView, comments: Y.Map<unknown>, id: string, own: string | null): boolean {
+  const pinned = Object.values<unknown>(comments.toJSON()).some((thread) => typeof thread === 'object' && thread !== null && 'on' in thread && (thread.on === id || thread.on === own));
+  return pinned || view.objects.some((o) => o.k === 'line' && o.id !== own && [o.from, o.to].some((end) => isAttached(end) && end.on === id));
 }
 
 /** Where a line's end is, or nothing if what it's attached to isn't on the board. */

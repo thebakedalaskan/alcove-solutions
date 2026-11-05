@@ -4,7 +4,7 @@
  * one sticky. It always shows the Y.Text, never the view, because the view cuts text past the limit and this is where
  * someone can see and fix all of it. Keys stop here: letters are letters, and nothing on the call or the board hears them.
  */
-import { BOARD_LIMITS, difference, objectText, observeBoard, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
+import { BOARD_LIMITS, difference, objectText, observeBoard, type BoardObject, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
 import { BoardEdit } from '@alcove/ui';
 import { useLayoutEffect, useRef } from 'react';
 import type * as Y from 'yjs';
@@ -153,17 +153,20 @@ export function holdKeys(then: () => void): void {
   carryOn();
 }
 
-/** The textarea for one object, focused with the caret at the end, as it opens. */
-export function BoardTyping({ board, id, label }: { board: Board; id: string; label: string }) {
+/** Which of an object's fields is typed in: a frame has a title. */
+export const textField = (o: BoardObject | undefined): 't' | 'title' => (o?.k === 'frame' ? 'title' : 't');
+
+/** The textarea for one object, focused with the caret at the end, as it opens. `field` says what it writes in, and a `title` keeps to one line. */
+export function BoardTyping({ board, id, label, field = 't' }: { board: Board; id: string; label: string; field?: 't' | 'title' | undefined }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
-    let text = objectText(board.doc, id);
+    let text = objectText(board.doc, id, field);
     if (!el || !text) return undefined;
     let binding = bindText(el, text, board.origin);
     // Undo makes a deleted object again with a new Y.Text. Someone can be typing in it, and a reconnect can bring the delete and the undo at once, so nothing closes this field: without following, what they type next would go nowhere.
     const follow = (): void => {
-      const now = objectText(board.doc, id);
+      const now = objectText(board.doc, id, field);
       if (!now || now === text) return;
       binding.stop();
       text = now;
@@ -175,13 +178,19 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       // ⌘ and Ctrl shortcuts aren't typing, so they're the app's as usual. Anything else goes no further than this field.
       if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
       if (e.isComposing) return;
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || (e.key === 'Enter' && field === 'title')) {
+        e.preventDefault();
         board.finishEdit();
         board.focusSheet();
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        board.nextSticky();
+        if (field === 'title') {
+          board.finishEdit();
+          board.focusSheet();
+        } else {
+          board.nextSticky();
+        }
       }
     };
     // A press moves focus in the same task as its mousedown, so that's what makes a blur the press's doing, however long the page took or
@@ -228,8 +237,8 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
     };
-  }, [board, id]);
-  return <BoardEdit ref={ref} label={label} maxLength={BOARD_LIMITS.text} />;
+  }, [board, id, field]);
+  return <BoardEdit ref={ref} label={label} rows={1} maxLength={BOARD_LIMITS.text} />;
 }
 
 /** Where Tab puts the next sticky: to the right, or at the start of the next row when the frame it's in runs out. */

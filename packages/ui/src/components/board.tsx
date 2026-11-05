@@ -41,6 +41,15 @@ export function moveBoardCamera(sheet: HTMLElement, world: HTMLElement, { x, y, 
   sheet.style.setProperty('--dy', `${y}px`);
 }
 
+/**
+ * Keeps what takes a press on a line one width on screen, whatever the zoom, through its own `--iz`. That restyles every line and
+ * stroke, so it's for when the camera has come to rest: nobody presses a line in the middle of a zoom.
+ */
+export function restBoardCamera(world: HTMLElement, { z }: BoardCamera): void {
+  const lines = world.querySelector('.bd-svg');
+  if (lines instanceof SVGElement) lines.style.setProperty('--iz', String(Math.round(1000 / z) / 1000));
+}
+
 /** The board and its rail, side by side. `page`: on its own page, with day around it. `phone`: the whole space between the faces and the dock. */
 export function BoardLayout({ page = false, phone = false, className, children }: { page?: boolean | undefined; phone?: boolean | undefined; className?: string | undefined; children: ReactNode }) {
   return <div className={cn('bz', page && 'is-page', phone && 'is-phone', className)}>{children}</div>;
@@ -88,15 +97,15 @@ export function BoardLines({ children }: { children?: ReactNode }) {
   return <svg className="bd-svg" aria-hidden="true">{children}</svg>;
 }
 
-/** A line, with its arrowhead. `draft`: the one being drawn, as dots. */
-export const BoardLine = memo(function BoardLine({ d, head, selected = false, draft = false }: { d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined }) {
-  const state = cn(selected && 'is-sel', draft && 'is-draft');
-  return <><path className={state} d={d} />{head && <path className={cn('head', state)} d={head} />}</>;
+/** A line, with its arrowhead. `id` lets it be pressed, through a wider path that isn't drawn. `draft`: the one being drawn, as dots. `settle`: it's just been let go. */
+export const BoardLine = memo(function BoardLine({ id, d, head, selected = false, draft = false, settle = false }: { id?: string | undefined; d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined; settle?: boolean | undefined }) {
+  const state = cn(selected && 'is-sel', draft && 'is-draft', settle && 'is-settle');
+  return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={state} d={d} />{head && <path className={cn('head', state)} d={head} />}</>;
 });
 
-/** A stroke of the pen. `marker` is the highlighter: wide, and see-through. */
-export const BoardStroke = memo(function BoardStroke({ d, colour = 'horizon', marker = false, selected = false }: { d: string; colour?: 'horizon' | 'sun' | 'rose' | undefined; marker?: boolean | undefined; selected?: boolean | undefined }) {
-  return <path className={cn('ink', `c-${colour}`, marker && 'is-marker', selected && 'is-sel')} d={d} />;
+/** A stroke of the pen. `marker` is the highlighter: wide, and see-through. `id` lets it be pressed, as `BoardLine`'s does. */
+export const BoardStroke = memo(function BoardStroke({ id, d, colour = 'horizon', marker = false, selected = false }: { id?: string | undefined; d: string; colour?: 'horizon' | 'sun' | 'rose' | undefined; marker?: boolean | undefined; selected?: boolean | undefined }) {
+  return <>{id && <path className={cn('bd-hit', marker && 'is-marker')} data-id={id} d={d} />}<path className={cn('ink', `c-${colour}`, marker && 'is-marker', selected && 'is-sel')} d={d} /></>;
 });
 
 /* ---------- The rail and the bar ---------- */
@@ -211,13 +220,15 @@ export interface BoardPopProps {
   items?: { icon: IconName; label: string; small?: string | undefined; onPick: () => void }[] | undefined;
   /** The one button at the bottom. */
   action?: { label: string; onPick: () => void } | undefined;
+  /** Moves it from where `left` puts it, as `BoardSelectionBar` does to keep its menu on the sheet. */
+  translate?: string | undefined;
   className?: string | undefined;
 }
 
 /** A small menu on the sheet, opened from the bar. Say where with `left` or `right`, and `top`. */
-export const BoardPop = forwardRef<HTMLDivElement, BoardPopProps>(function BoardPop({ left, right, top, title, sub, label, rows, options, items, action, className }, ref) {
+export const BoardPop = forwardRef<HTMLDivElement, BoardPopProps>(function BoardPop({ left, right, top, title, sub, label, rows, options, items, action, translate, className }, ref) {
   return (
-    <div ref={ref} className={cn('bp', className)} style={{ left, right, top }} role="dialog" aria-label={title ?? label}>
+    <div ref={ref} className={cn('bp', className)} style={{ left, right, top, translate }} role="dialog" aria-label={title ?? label}>
       {title && <div className="hd">{title}</div>}
       {sub && <div className="sub">{sub}</div>}
       {rows && <div className="rows">{rows.map((r) => <div key={r.text}><Icon name={r.icon} size={15} /><span>{r.text}</span></div>)}</div>}
@@ -300,45 +311,63 @@ export function BoardFlyout(props: BoardFlyoutProps) {
 export interface BoardSelectionBarProps {
   /** Where it sits on the sheet, in screen pixels: `x` is its middle. */
   x: number; y: number;
-  /** How many are selected. Above one, it offers Sort into themes and Tidy. */
+  /** The sheet's width. The bar stays on the sheet, however near its edge the selection is. */
+  room?: number | undefined;
+  /** How many are selected. Above one, it says so. */
   count?: number | undefined;
+  /** What it says they are. */
+  things?: string | undefined;
   /** The colour shown. `null` for what has none, such as a picture of a screen. */
   colour?: BoardColour | null | undefined;
   textSize?: boolean | undefined;
   /** The row of colours under the bar is open. */
   picking?: boolean | undefined;
+  /** How a selected line runs, to change it. */
+  lineStyle?: BoardLineStyle | undefined;
   onColour: () => void; onPick: (colour: BoardColour) => void;
-  onTextSize?: (() => void) | undefined; onLine: () => void; onDuplicate: () => void; onDelete: () => void; onMore: () => void;
+  onTextSize?: (() => void) | undefined; onLineStyle?: ((style: BoardLineStyle) => void) | undefined;
+  /** What More holds, while it's open. */
+  moreItems?: BoardPopProps['items'];
+  onDelete: () => void;
+  /** A button shows only if it's given something to do: nothing is offered that can't be done to what's picked. */
+  onLine?: (() => void) | undefined; onDuplicate?: (() => void) | undefined; onMore?: (() => void) | undefined;
   onSort?: (() => void) | undefined; onTidy?: (() => void) | undefined;
   className?: string | undefined;
 }
 
-/** A small bar that only appears on what you've picked, with its row of colours under it. */
-export function BoardSelectionBar({ x, y, count = 1, colour, textSize = false, picking = false, onColour, onPick, onTextSize, onLine, onDuplicate, onDelete, onMore, onSort, onTidy, className }: BoardSelectionBarProps) {
+/** Centres something on `x`, and keeps it `gap` inside a sheet `room` wide. */
+const centredOn = (x: number, room: number | undefined, gap = 8): string => (room === undefined ? '-50% 0' : `clamp(${gap - x}px, -50%, calc(${room - gap - x}px - 100%)) 0`);
+/** How far below where the bar starts its row of colours and its menu sit. */
+const UNDER_BAR = 48;
+const POP_GAP = 12;
+
+/** A small bar that only appears on what you've picked, with its row of colours and its menu under it. */
+export function BoardSelectionBar({ x, y, room, count = 1, things = 'stickies', colour, textSize = false, picking = false, lineStyle, moreItems, onColour, onPick, onTextSize, onLineStyle, onLine, onDuplicate, onDelete, onMore, onSort, onTidy, className }: BoardSelectionBarProps) {
   return (
     <>
-      <div className={cn('bx', className)} style={{ left: x, top: y, translate: '-50% 0' }} role="toolbar" aria-label="Selected">
-        {count > 1 && (
+      <div className={cn('bx', className)} style={{ left: x, top: y, translate: centredOn(x, room) }} role="toolbar" aria-label="Selected">
+        {count > 1 && <><span className="n">{count} {things}</span><span className="bd-sep" /></>}
+        {count > 1 && (onSort || onTidy) && (
           <>
-            <span className="n">{count} stickies</span>
-            <span className="bd-sep" />
-            <button type="button" className="wide" title="Written in confidential compute" onClick={onSort}><Icon name="group" size={17} />Sort into themes</button>
-            <button type="button" className="wide" onClick={onTidy}><Icon name="grid" size={16} />Tidy</button>
+            {onSort && <button type="button" className="wide" title="Written in confidential compute" onClick={onSort}><Icon name="group" size={17} />Sort into themes</button>}
+            {onTidy && <button type="button" className="wide" onClick={onTidy}><Icon name="grid" size={16} />Tidy</button>}
             <span className="bd-sep" />
           </>
         )}
+        {lineStyle && LINES.map((l) => <IconButton key={l.id} className="bt" icon={l.icon} size={17} label={l.label} aria-pressed={lineStyle === l.id} onClick={() => onLineStyle?.(l.id)} />)}
         {colour && <button type="button" className={cn('sw', `c-${colour}`)} aria-label="Colour" title="Colour" onClick={onColour}><i /></button>}
         {textSize && <IconButton className="bt" icon="textSize" size={18} label="Text size" onClick={onTextSize} />}
-        <IconButton className="bt" icon="line" size={17} label="Draw a line from this" onClick={onLine} />
-        <IconButton className="bt" icon="copy" size={17} label="Duplicate" title="Duplicate · ⌘D" onClick={onDuplicate} />
+        {onLine && <IconButton className="bt" icon="line" size={17} label="Draw a line from this" onClick={onLine} />}
+        {onDuplicate && <IconButton className="bt" icon="copy" size={17} label="Duplicate" title="Duplicate · ⌘D" onClick={onDuplicate} />}
         <IconButton className="bt" icon="trash" size={17} label="Delete" onClick={onDelete} />
-        <IconButton className="bt" icon="more" size={18} label="More" onClick={onMore} />
+        {onMore && <IconButton className="bt" icon="more" size={18} label="More" onClick={onMore} />}
       </div>
       {picking && (
-        <div className="bx-sw" style={{ left: x, top: y + 48, translate: '-50% 0' }}>
+        <div className="bx-sw" style={{ left: x, top: y + UNDER_BAR, translate: centredOn(x, room) }}>
           {BOARD_COLOURS.map((c) => <button key={c} type="button" className={`c-${c}`} aria-label={colourName(c)} title={colourName(c)} aria-pressed={colour === c} onClick={() => onPick(c)}><i className="swatch" /></button>)}
         </div>
       )}
+      {moreItems && <BoardPop left={x} top={y + UNDER_BAR} translate={centredOn(x, room, POP_GAP)} label="More" items={moreItems} />}
     </>
   );
 }
@@ -409,7 +438,7 @@ export const BoardFrame = memo(function BoardFrame({ id, x, y, w, h, title, sub,
 }) {
   return (
     <div className={cn('bf', land && 'is-land', dim && 'is-dim', theme && 'is-theme')} data-id={id} style={{ ...place({ x, y, w, h }), ...(delay ? { '--d': `${delay}ms` } : {}) }}>
-      <div className="bf-h">{editor ?? <span className="t">{title}</span>}{sub && <span className="sub">{sub}</span>}</div>
+      <div className="bf-h">{editor ?? <span className="t">{title.trim()}</span>}{sub && <span className="sub">{sub}</span>}</div>
       {hint && <p className="bf-hint">{hint}</p>}
     </div>
   );
