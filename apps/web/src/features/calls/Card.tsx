@@ -80,6 +80,14 @@ export function CallCard({ open, onClose, meeting, onGone }: { open: boolean; on
   useSmoothHeight(box, `${view}:${widened}`, widened ? 420 : 240);
 
   const step = (v: View) => { setBack(v === 'card'); setFailed(null); setView(v); };
+  /*
+   * Puts a change back. The card has gone by then, and a mutation's own callbacks go with it, so a refusal is said from the
+   * promise. There can be one: a document the organizer has lost and has just taken off can't go back on.
+   */
+  const undo = (input: Patch<MeetingInput>, applied: ChangeScope | undefined) => update.mutateAsync({ id: m.id, input: undoOf(m, input), scope: applied }).catch((e: unknown) => {
+    clog.warn('undoing a change to a call failed', { err: e, meetingId: m.id });
+    toast(`Couldn’t undo that. ${errorMessage(e)}`, { icon: 'x', ms: 6000 });
+  });
   /* Everything saved here is said the same way: what happened, who heard, and Undo while there's one to give. */
   const save = async (input: Patch<MeetingInput>, said: string) => {
     if (update.isPending) return;
@@ -90,7 +98,7 @@ export function CallCard({ open, onClose, meeting, onGone }: { open: boolean; on
       const next = await update.mutateAsync({ id: m.id, input, scope: applied });
       onClose();
       const told = reachesEvent(input) ? toldLine(next, calendar?.source) : '';
-      toast(`${said}${told ? ` ${told}` : ''}`, { icon: 'cal', ms: 6000, action: scope === 'this' && !input.repeat ? { label: 'Undo', onClick: () => update.mutate({ id: m.id, input: undoOf(m, input), scope: applied }) } : undefined });
+      toast(`${said}${told ? ` ${told}` : ''}`, { icon: 'cal', ms: 6000, action: scope === 'this' && !input.repeat ? { label: 'Undo', onClick: () => void undo(input, applied) } : undefined });
     } catch (e) {
       setFailed(e);
     }
