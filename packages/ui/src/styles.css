@@ -8,7 +8,7 @@
  * night: .stage and .ac-stage take the dark values, and while a .stage is on screen so does the whole document,
  * because its menus, sheets and tooltips are portalled out of it. Components are styled in
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
- * styles/shell.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes and a note in
+ * styles/shell.css; the evening behind each page in styles/horizon.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes and a note in
  * styles/library.css (`lib-`, `pv-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
@@ -19,6 +19,7 @@
 @import "./styles/welcome.css";
 @import "./styles/shell.css";
 @import "./styles/app.css";
+@import "./styles/horizon.css";
 @import "./styles/home.css";
 @import "./styles/team.css";
 @import "./styles/record.css";

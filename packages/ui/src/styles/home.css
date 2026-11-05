@@ -1,63 +1,8 @@
 /*
- * Home: the page is a sunset, with starting a call in the middle of it. The sky and the sea meet at --hz; under
- * the water sit what's yours to answer, what's coming up and your recent notes. Classes: hz- the scene, hm- the page.
+ * Home: the page is a sunset, with starting a call in the middle of it. Under the water sit what's yours to answer,
+ * what's coming up and your recent notes.
  */
-.hm { --hz: clamp(352px, 45vh, 540px); position: relative; isolation: isolate; min-height: 100vh; min-height: 100dvh; }
-.main:has(> .main-in > .hm) { padding: 0; }
-.main:has(> .main-in > .hm) .main-in { max-width: none; }
-.main:has(> .main-in > .hm) .main-top { max-width: calc(1480px + 2 * var(--page-x)); }
-.main:has(> .main-in > .hm) .top-acts { top: 30px; right: var(--page-x); }
-/* The notice's region is always there; only with something to say does it take room above the sky. */
-.main:has(> .main-in > .hm) .main-offline:not(:empty) { padding: 30px var(--page-x) 0 max(72px, var(--page-x)); }
-.main-in.enter > .hm { animation: ac-fade var(--duration-3) var(--ease-out) both; }
-.hm-in { position: relative; max-width: calc(1480px + 2 * var(--page-x)); margin: 0 auto; padding: 30px var(--page-x) 72px; }
-.hm-in > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
-
-/* ------------------------------------------------------------ the sunset */
-.hz {
-  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.872 0.042 275) 58%, oklch(0.916 0.051 9.412) 100%);
-  --hz-sea: linear-gradient(to bottom in oklch, oklch(0.872 0.042 275) 0%, oklch(0.825 0.055 252.105) 46%, oklch(0.816 0.058 251.316) 100%);
-  --hz-sun: oklch(0.92 0.1 78); --hz-glow: oklch(0.93 0.08 45 / 0.55); --hz-rim: oklch(0.9 0.09 60);
-  --hz-cloud: oklch(0.86 0.04 330); --hz-chop: oklch(0.8 0.062 250);
-  --hz-near: oklch(0.86 0.1 66); --hz-far: oklch(0.76 0.09 10);
-  position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
-}
-.dark .hz {
-  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.307 0.067 270.769) 58%, oklch(0.445 0.085 317.368) 100%);
-  --hz-sea: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408) 0%, oklch(0.24 0.052 258) 46%, oklch(0.205 0.046 258) 100%);
-  --hz-sun: oklch(0.86 0.085 74); --hz-glow: oklch(0.66 0.12 22 / 0.55); --hz-rim: oklch(0.8 0.1 50);
-  --hz-cloud: oklch(0.343 0.07 285.385); --hz-chop: oklch(0.835 0.022 250);
-  --hz-near: oklch(0.84 0.09 72); --hz-far: oklch(0.58 0.09 355);
-}
-.hz i { position: absolute; display: block; }
-.hz-sky { position: absolute; inset: 0 0 auto; height: var(--hz); background: var(--hz-sky); }
-.hz-sea { position: absolute; inset: var(--hz) 0 0; background: var(--hz-sea); }
-.hz-up { position: absolute; inset: 0 0 auto; height: var(--hz); overflow: hidden; }
-.hz-at { position: absolute; left: 50%; top: var(--hz); width: 0; height: 0; }
-
-.hz-glow { left: -760px; top: -230px; width: 1520px; height: 460px; background: radial-gradient(closest-side, var(--hz-glow), transparent); animation: hz-breathe 11s ease-in-out infinite; }
-.hz-sun { left: -48px; top: -48px; width: 96px; height: 96px; border-radius: 50%; background: var(--hz-sun); animation: hz-rise 1.5s cubic-bezier(.16, .8, .24, 1) backwards; transition: transform .6s var(--ease-out); }
-.hz-cloud { height: 3px; border-radius: 2px; background: var(--hz-cloud); animation: hz-cloud 70s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -22s); }
-.hz-rim { left: -560px; width: 1120px; height: 1.5px; background: linear-gradient(to right, transparent, var(--hz-rim), transparent); }
-.hz-chop { position: absolute; inset: 0; animation: hz-drift 13s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -4.6s); }
-.hz-chop i { height: 1.6px; border-radius: 1px; background: var(--hz-chop); }
-.hz-glint { height: 2.6px; opacity: var(--o); }
-.hz-glint::before { content: ""; position: absolute; inset: 0; border-radius: 2px; background: color-mix(in oklch, var(--hz-near), var(--hz-far) calc(var(--far) * 100%)); animation: hz-glint var(--every) ease-in-out var(--after) infinite; }
-
-@keyframes hz-rise { from { transform: translateY(34px); } }
-@keyframes hz-breathe { 50% { opacity: .82; transform: scale(1.03); } }
-@keyframes hz-cloud { to { transform: translateX(44px); } }
-@keyframes hz-drift { from { transform: translateX(-9px); } to { transform: translateX(9px); } }
-/* Several uneven pulses in one long cycle: it looks as restless as short cycles, and the browser wakes a tenth as often. */
-@keyframes hz-glint {
-  6% { opacity: .35; transform: scaleX(.72); } 12% { opacity: 1; transform: none; }
-  19% { opacity: .6; transform: scaleX(.86); } 26% { opacity: 1; transform: none; }
-  32% { opacity: .4; transform: scaleX(.76); } 39% { opacity: 1; transform: none; }
-  47% { opacity: .7; transform: scaleX(.9); } 54% { opacity: 1; transform: none; }
-  61% { opacity: .35; transform: scaleX(.72); } 68% { opacity: 1; transform: none; }
-  76% { opacity: .55; transform: scaleX(.82); } 84% { opacity: 1; transform: none; }
-  92% { opacity: .45; transform: scaleX(.78); }
-}
+.hm { --hz: clamp(352px, 45vh, 540px); }
 
 /* Going to start: the sun lifts a little. */
 @media (prefers-reduced-motion: no-preference) {
@@ -194,10 +139,8 @@ button.hm-row:hover { background: color-mix(in oklch, var(--ink) 6%, transparent
   .hm-side { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
 }
 @media (max-width: 860px) {
-  .main:has(> .main-in > .hm) { padding: 0 0 calc(70px + env(safe-area-inset-bottom, 0px)); }
-  .hm { --hz: 372px; min-height: 0; }
+  .hm { --hz: 372px; }
   .hm[data-soon] { --hz: 472px; }
-  .hm-in { padding: 6px 20px 28px; }
   .hm-top { min-height: 44px; }
   .hm-start { height: calc(var(--hz) - 50px); padding-bottom: 72px; }
   .hm-grid { margin-top: 56px; }

@@ -91,8 +91,11 @@ closes the palette, and focus goes back where it was. It never opens over anothe
 
 Home is for starting a call and for what's yours. The page is a sunset: the sky meets the water behind **Start a
 call**, and the rest sits on the water. It moves a little so it feels awake: the sun rises as the page opens and lifts
-when you point at **Start now**, its glitter shimmers, the chop drifts and the clouds creep. With reduced motion on,
-it's a still picture.
+when you point at **Start now**, its glitter shimmers, the chop drifts and the clouds cross the sky on the wind. Once in a
+while something passes through: gulls; a fish, a shoal, a flying fish, a marlin or dolphins leaping; a whale's tail far out; a
+balloon in the corner; and, slowly along the horizon, boats and ships of six kinds, sometimes out there already when Home
+opens. Every other page is a later moment of the same evening, with less sky the less it's about one action, and quieter
+visitors: a boat far out, stars after dark and now and then a shooting star. With reduced motion on, it's a still picture and nothing passes through.
 
 - The date, top left. On a phone or with the side panel hidden, a **Confidential compute** badge (with the time the
   hardware was verified when this browser could check it) shows on Home too, since the panel's check isn't there.

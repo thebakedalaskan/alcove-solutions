@@ -4,7 +4,7 @@
  * lead: people join from their calendar, so a call only comes near the top in its last few minutes.
  */
 import type { Inbox } from '@alcove/api';
-import { Horizon, SealedBadge } from '@alcove/ui';
+import { Evening, SealedBadge } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
@@ -68,24 +68,21 @@ function Home() {
   }, [navigate]);
 
   return (
-    <div className="hm" data-soon={soon ? true : undefined}>
-      <Horizon />
-      <div className="hm-in">
-        <header className="hm-top" style={{ '--d': 0 }}><h1 className="hm-date">{longDay(new Date(now))}</h1></header>
-        <Start first={firstDay} soon={soon} me={me} now={now} />
-        <div className="hm-grid" style={{ '--d': 2 }}>
-          {firstDay ? <GetSetUp /> : <ForYou inbox={inbox} notes={notes} now={now} />}
-          <div className="hm-side">
-            {/* On the first day, Get set up offers this already. */}
-            {!firstDay && calendar?.needsAccess && !later.away && <ConnectCalendar onNotNow={later.notNow} />}
-            <Coming ahead={items} me={me} now={now} />
-            <Recent notes={notes} me={me} />
-          </div>
+    <Evening moment="home" className="hm" data-soon={soon ? true : undefined}>
+      <header className="hm-top" style={{ '--d': 0 }}><h1 className="hm-date">{longDay(new Date(now))}</h1></header>
+      <Start first={firstDay} soon={soon} me={me} now={now} />
+      <div className="hm-grid" style={{ '--d': 2 }}>
+        {firstDay ? <GetSetUp /> : <ForYou inbox={inbox} notes={notes} now={now} />}
+        <div className="hm-side">
+          {/* On the first day, Get set up offers this already. */}
+          {!firstDay && calendar?.needsAccess && !later.away && <ConnectCalendar onNotNow={later.notNow} />}
+          <Coming ahead={items} me={me} now={now} />
+          <Recent notes={notes} me={me} />
         </div>
-        {/* The side panel shows the same check on wide screens; this one is for phones and a hidden panel. */}
-        <div className="hm-seal" style={{ '--d': 3 }}><Compute /></div>
       </div>
-    </div>
+      {/* The side panel shows the same check on wide screens; this one is for phones and a hidden panel. */}
+      <div className="hm-seal" style={{ '--d': 3 }}><Compute /></div>
+    </Evening>
   );
 }
 
