@@ -1,5 +1,5 @@
 /* Catching up during a call (apps/web/src/features/call/CatchUp.tsx): what to read, what came back with the moments
-   behind it, and the transcript at one of them. In the side panel, which follows the app's theme. */
+   behind it, and the transcript at one of them. In the side panel. */
 
 /* Moments, and every time chip in the panel: the panel's own colours, not the night stage's. */
 .ac-stage .ic-side .ac-time-chip { background: var(--sunk); color: var(--ink-2); }
@@ -38,7 +38,7 @@
 .cu-track .thumb { width: 18px; height: 18px; translate: -50% -50%; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--horizon), var(--shadow-1); pointer-events: auto; cursor: grab; transition: box-shadow var(--duration-1); }
 .cu-track .thumb:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--horizon), 0 0 0 3px var(--horizon-soft), 0 0 0 5px var(--focus); }
 .cu-track .thumb:active { cursor: grabbing; }
-.cu-ends { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 500 11.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.cu-ends { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .cu-ends .sel { color: var(--ink); font-size: 12.5px; }
 .cu-use { justify-self: start; }
 .cu-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-3); }
@@ -53,7 +53,7 @@
 .cu-ev { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: 1px; }
 .ic-qa .a .cu-grp .cu-ev .ac-time-chip { height: 20px; padding: 0 6px; font-size: 11px; }
 .cu-read { display: grid; gap: 6px; margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
-.cu-when { font: 500 11.5px/1.4 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.cu-when { font: 500 11.5px/1.4 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-qa .a .cu-read .cu-note { align-items: flex-start; line-height: 1.45; }
 .ic-qa .a .cu-read .cu-note .ac-i { flex: none; margin-top: 2px; }
 

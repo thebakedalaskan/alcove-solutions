@@ -2,14 +2,17 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import viteReact from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+
+// The API's port from the repository's .env, so worktrees can run side by side.
+const apiPort = loadEnv('development', '../..', 'API_')['API_PORT'] ?? '8787';
 
 export default defineConfig({
   envDir: '../..',
   server: {
     port: 3000,
     // Same origin for the app and the API, so the session cookie just works.
-    proxy: { '/api': { target: 'http://127.0.0.1:8787', rewrite: (p) => p.replace(/^\/api/, '') } }
+    proxy: { '/api': { target: `http://127.0.0.1:${apiPort}`, rewrite: (p) => p.replace(/^\/api/, '') } }
   },
   resolve: { alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) } },
   plugins: [

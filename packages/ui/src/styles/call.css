@@ -1,9 +1,9 @@
 /*
  * Calls happen on the stage: night in both themes. Faces first, chrome quiet, controls in one dock.
  * The notes sign sits in the same place for everyone; crimson only ever means notes or recording, and
- * whoever is speaking gets the periwinkle speak ring. Raw colours here are the stage's own overlays.
+ * whoever is speaking gets the speak ring. Raw colours here are the stage's own overlays.
  */
-.stage { position: fixed; inset: 0; z-index: 20; color-scheme: dark; background: radial-gradient(80% 45% at 50% 118%, rgb(255 122 69 / 0.1), transparent 62%), var(--stage); color: var(--stage-ink); }
+.stage { position: fixed; inset: 0; z-index: 20; color-scheme: dark; background: radial-gradient(80% 45% at 50% 118%, color-mix(in srgb, var(--dawn-3) 16%, transparent), transparent 62%), var(--stage); color: var(--stage-ink); }
 .stg { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden auto; transition: opacity var(--duration-3) var(--ease-out), transform var(--duration-3) var(--ease-out); animation: ac-fade var(--duration-3) var(--ease-out) both; }
 .stg.ending { opacity: 0; transform: scale(0.985); }
 .stg-top { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; height: 68px; padding: 0 22px; }
@@ -77,7 +77,7 @@
 .pj .ac-notice.is-caution { background: rgb(243 184 90 / 0.1); color: #F3B85A; box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.16); }
 /* Information on the stage (someone hosting while the organizer is away): horizon, as the night draws it. */
 .pj .ac-notice.is-info { background: rgb(169 159 255 / 0.1); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(169 159 255 / 0.18); }
-.pj .ac-notice.is-info > .ac-i { color: #A99FFF; }
+.pj .ac-notice.is-info > .ac-i { color: var(--horizon); }
 .pj-refused > div { display: grid; gap: 4px; justify-items: start; }
 .pj-refused > div > span { color: var(--stage-ink); }
 .pj-refused .ac-ref { margin-left: -7px; }
@@ -98,7 +98,7 @@
 .wait-in p { max-width: 30ch; font-size: 14px; margin-bottom: 8px; }
 .stage .ac-btn.is-secondary { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14); }
 .stage .ac-btn.is-secondary:hover { background: rgb(255 255 255 / 0.14); }
-/* The call's side panel follows the app's theme, so its buttons do too. */
+/* The call's side panel is a surface on the stage, so its buttons are the surface's. */
 .stage .ic-side .ac-btn.is-secondary { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .stage .ic-side .ac-btn.is-secondary:hover { background: var(--sunk); }
 
@@ -148,8 +148,8 @@
 }
 
 /* ---- in a call ----
- * Top bar, the stage with the side panel beside it, and the dock. The stage is night in both themes;
- * the panel, menus and sheets follow the app's theme. Tiles are placed in stage pixels by the layout
+ * Top bar, the stage with the side panel beside it, and the dock. All of it is night in both themes,
+ * the panel, menus and sheets included. Tiles are placed in stage pixels by the layout
  * engine (apps/web features/call/stageLayout.ts) and glide there with motion.
  */
 .ic-call { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); overflow: hidden; animation: ac-fade var(--duration-3) var(--ease-out) both; }
@@ -176,7 +176,7 @@
 .ic-top .ic-catch:hover { background: rgb(255 255 255 / 0.07); }
 .ic-sicon { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .ic-sicon:hover, .ic-sicon.is-on { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); }
-.ic-faces { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; border-radius: 12px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-mono); transition: background-color var(--duration-1); }
+.ic-faces { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; border-radius: 12px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1); }
 .ic-faces:hover, .ic-faces.is-on { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
 .ic-faces .ac-faces .ac-avatar { --ring: var(--stage); }
 .ic-faces .badge { position: absolute; top: -2px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--speak); color: var(--stage); font: 700 11px/18px var(--font-sans); text-align: center; box-shadow: 0 0 0 2px var(--stage); }
@@ -215,17 +215,17 @@
 .ac-tile-name .you { color: var(--stage-ink-2); }
 .ic-tstate { position: absolute; z-index: 3; left: 8px; top: 8px; right: 44px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; pointer-events: none; }
 .ic-tstate > * { pointer-events: auto; }
-.ic-tch { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 3px 0 9px; border-radius: 8px; background: rgba(11, 10, 24, .72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
+.ic-tch { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 3px 0 9px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 72%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
 .ic-tch.is-spot { background: var(--stage-ink); color: var(--stage); }
 .ic-tch .tx { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: inherit; }
 .ic-tch .tx:hover { background: rgb(255 255 255 / 0.16); }
-.ic-tch.is-spot .tx:hover { background: rgba(11, 10, 24, .12); }
-.ic-more { position: absolute; z-index: 4; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(11, 10, 24, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
-.ic-more:hover { background: rgba(11, 10, 24, .85); }
+.ic-tch.is-spot .tx:hover { background: color-mix(in srgb, var(--stage) 12%, transparent); }
+.ic-more { position: absolute; z-index: 4; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
+.ic-more:hover { background: color-mix(in srgb, var(--stage) 85%, transparent); }
 .ac-tile:hover .ic-more, .ic-more:focus-visible, .ic-more.is-on, .ic-more[data-state="open"], .ic-slot:focus-visible .ic-more, .ic-scr:hover .ic-more, .ic-scr:focus-visible .ic-more { opacity: 1; }
 .ac-tile.is-hand .ic-more, .ac-tile:has(.ac-tile-mic) .ic-more { top: 40px; }
 .ic-slot:focus-visible .ic-rs { opacity: 1; }
-.ic-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgba(11, 10, 24, .62); color: var(--stage-ink); cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity var(--duration-1); }
+.ic-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity var(--duration-1); }
 .ac-tile:hover .ic-rs, .is-sizing .ic-rs { opacity: 1; }
 .ic-scr { position: absolute; overflow: hidden; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06); }
 .ic-scr video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
@@ -236,7 +236,7 @@
 .ic-scr .ac-tile-name .snd { flex: none; color: var(--stage-ink-2); }
 /* A share shown as a tile: a click shows it big. */
 .ic-scr.is-tile { cursor: pointer; }
-.ic-sgrow { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(11, 10, 24, .66); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity var(--duration-1), transform var(--duration-1) var(--ease-out); pointer-events: none; }
+.ic-sgrow { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 66%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity var(--duration-1), transform var(--duration-1) var(--ease-out); pointer-events: none; }
 .ic-scr.is-tile:hover .ic-sgrow, .ic-scr.is-tile:focus-visible .ic-sgrow { opacity: 1; transform: translate(-50%, -50%); }
 /* A share that just started: a soft ring that fades once, wherever the layout put it. */
 .ic-scr.is-new { animation: ic-arrive var(--duration-5) var(--ease-out) both; }
@@ -258,22 +258,22 @@
 .ic-sv-pic video, .ic-sv-pic canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 /* Held still: a ring that says it isn't live, over the picture. */
 .ic-sv.is-held::after { content: ""; position: absolute; z-index: 2; inset: 0; border-radius: var(--radius-md); box-shadow: inset 0 0 0 2px rgba(169, 159, 255, .9); pointer-events: none; }
-.ic-svbar { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; background: rgba(11, 10, 24, .74); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
+.ic-svbar { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--stage) 74%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
 .ic-scr:hover .ic-svbar, .ic-scr:focus-visible .ic-svbar, .ic-sv.is-on .ic-svbar, .ic-svbar:focus-within { opacity: 1; pointer-events: auto; }
 .ic-svbar button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--stage-ink); transition: background-color var(--duration-1); }
 .ic-svbar button:hover { background: rgb(255 255 255 / 0.12); }
 .ic-svbar button[disabled] { opacity: .36; pointer-events: none; }
-.ic-svbar .lv { width: auto; min-width: 50px; padding: 0 6px; font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.ic-svbar .lv { width: auto; min-width: 50px; padding: 0 6px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .ic-svbar .lv[disabled] { opacity: .7; }
 .ic-svbar .sep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: rgb(255 255 255 / 0.14); }
 /* Where you are in the picture while zoomed in. */
-.ic-svmap { position: absolute; z-index: 3; right: 10px; bottom: 52px; border-radius: 6px; background: rgba(11, 10, 24, .62); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3); cursor: pointer; touch-action: none; }
+.ic-svmap { position: absolute; z-index: 3; right: 10px; bottom: 52px; border-radius: 6px; background: color-mix(in srgb, var(--stage) 62%, transparent); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3); cursor: pointer; touch-action: none; }
 .ic-svmap i { position: absolute; min-width: 4px; min-height: 4px; border-radius: 3px; background: rgb(255 255 255 / 0.2); box-shadow: inset 0 0 0 1.5px var(--stage-ink); }
 /* A picture held still: how far behind live, and the way back. */
-.ic-svheld { position: absolute; z-index: 4; left: 50%; top: 10px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; height: 36px; max-width: calc(100% - 96px); padding: 0 4px 0 11px; border-radius: 12px; background: rgba(11, 10, 24, .84); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgba(169, 159, 255, .55), 0 12px 28px -12px rgba(0, 0, 0, .8); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: ic-held var(--duration-2) var(--ease-out) both; }
-.ic-svheld .ac-i { flex: none; color: #A99FFF; }
+.ic-svheld { position: absolute; z-index: 4; left: 50%; top: 10px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; height: 36px; max-width: calc(100% - 96px); padding: 0 4px 0 11px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 84%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgba(169, 159, 255, .55), 0 12px 28px -12px rgba(0, 0, 0, .8); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: ic-held var(--duration-2) var(--ease-out) both; }
+.ic-svheld .ac-i { flex: none; color: var(--horizon); }
 .ic-svheld .when { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ic-svheld .ct { flex: none; color: var(--stage-ink-2); font: 500 12px/1 var(--font-mono); }
+.ic-svheld .ct { flex: none; color: var(--stage-ink-2); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .ic-svheld button, .ic-svaway button, .ic-poph button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-svheld button:hover, .ic-svaway button:hover, .ic-poph button:hover { background: #fff; }
 @keyframes ic-held { from { opacity: 0; translate: -50% -6px; } to { opacity: 1; translate: -50% 0; } }
@@ -285,7 +285,7 @@
 @container (max-width: 340px) { .ic-svbar .lv { display: none; } }
 /* A share open in its own window keeps its place here. */
 .ic-svaway { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 12px; background: radial-gradient(70% 60% at 50% 40%, rgba(169, 159, 255, .1), transparent 70%), var(--stage-tile); color: var(--stage-ink-2); font: 500 13px/1.3 var(--font-sans); text-align: center; }
-.ic-svaway .ac-i { color: #A99FFF; }
+.ic-svaway .ac-i { color: var(--horizon); }
 .ic-svaway b { color: var(--stage-ink); font-weight: 600; }
 .ic-scr.is-away { cursor: default; }
 /* The share's own window: its own page, night like the call. */
@@ -298,7 +298,7 @@
 .ic-popbox { position: relative; margin: 0 10px 10px; }
 .ic-popbox.ic-scr { position: relative; }
 .ic-sv.in-window:focus-visible { outline: 2px solid var(--speak); outline-offset: -2px; border-radius: var(--radius-md); }
-.ic-popwait { position: absolute; z-index: 5; left: 50%; bottom: 56px; translate: -50% 0; max-width: calc(100% - 24px); margin: 0; padding: 9px 12px; border-radius: 10px; background: rgba(11, 10, 24, .86); color: var(--stage-ink); font: 500 13px/1.4 var(--font-sans); text-align: center; }
+.ic-popwait { position: absolute; z-index: 5; left: 50%; bottom: 56px; translate: -50% 0; max-width: calc(100% - 24px); margin: 0; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--stage) 86%, transparent); color: var(--stage-ink); font: 500 13px/1.4 var(--font-sans); text-align: center; }
 @media (max-width: 520px) { .ic-poph .sub { display: none; } }
 
 /*
@@ -331,7 +331,7 @@
   .ic-mdraw .ac-ptag .n { display: none; }
 }
 .ic-spoint { right: 42px; }
-.ic-pointing { position: absolute; z-index: 5; left: 50%; top: 10px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 11px; border-radius: 12px; background: rgba(11, 10, 24, .8); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12), 0 10px 24px -12px rgb(0 0 0 / .8); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.ic-pointing { position: absolute; z-index: 5; left: 50%; top: 10px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 11px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 80%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12), 0 10px 24px -12px rgb(0 0 0 / .8); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; animation: ac-fade var(--duration-2) var(--ease-out) both; }
 .ic-pointing > .ac-i { color: var(--stage-point); filter: drop-shadow(0 0 1px #fff); }
 .ic-pointing .t { margin: 0 4px 0 2px; }
 .ic-pointing .pb { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--stage-ink); transition: background-color var(--duration-1); }
@@ -399,9 +399,8 @@
 .ic-banner { display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 7px 16px 7px 7px; border-radius: 999px; background: var(--stage-ink); color: var(--stage); font-size: 13.5px; line-height: 1.3; box-shadow: 0 18px 40px -14px rgba(0, 0, 0, .7); }
 .ic-banner span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* the side panel: the app's own theme on the night stage */
-.ic-side { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; color-scheme: light; }
-.dark .ic-side { color-scheme: dark; }
+/* the side panel: a surface on the night stage */
+.ic-side { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; }
 .ic-side-head { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 .ic-side-head .ac-tabs { border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ic-side-head .ac-tabs::-webkit-scrollbar { display: none; }
@@ -421,7 +420,7 @@
 .ic-nb { display: grid; gap: 20px; padding: 16px 16px 20px; }
 .ic-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ic-sh .ac-eyebrow { color: var(--ink-2); }
-.ic-sh .n { padding: 3px 6px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-sh .n { padding: 3px 6px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-nr { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; margin: 0 -6px; padding: 6px; border-radius: 8px; font: 500 14px/1.4 var(--font-sans); color: var(--ink); }
 .ic-nr .mk { display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; background: var(--sun-soft); color: var(--sun-text); }
 .ic-nr .mk.av { background: none; }
@@ -435,7 +434,7 @@
 .ic-rgrp { display: grid; gap: 4px; }
 .ic-rgrp + .ic-rgrp { margin-top: 10px; }
 .ic-rgrp .rn { display: flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
-.ic-rgrp .rn span { font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-rgrp .rn span { font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-writing { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-3); }
 .ic-problems { display: grid; gap: 8px; padding: 0 16px 16px; }
 .ic-nf { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-top: 1px solid var(--line); flex: none; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; }
@@ -469,7 +468,7 @@
 .ic-qa .a .txt { font-size: 14.5px; line-height: 1.55; color: var(--ink); }
 .ic-qa .a .txt.bad { color: var(--caution); }
 .ic-qa .a .cites { display: flex; flex-wrap: wrap; gap: 6px; }
-.ic-qa .a .cu-grp b { display: block; margin: 4px 0 4px; font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.ic-qa .a .cu-grp b { display: block; margin: 4px 0 4px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .ic-qa .a ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; line-height: 1.5; }
 .ic-qa .a .cu-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); }
 .ic-qa .a.is-catch { padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
@@ -512,7 +511,7 @@
 .ic-col.is-drop { background: var(--horizon-soft); box-shadow: inset 0 0 0 1.5px var(--horizon); }
 .ic-col .ch { display: flex; align-items: center; gap: 4px; height: 28px; margin-bottom: 4px; }
 .ic-col .ch .ac-i { flex: none; color: var(--ink-3); }
-.ic-col .cnt { padding-right: 4px; font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-col .cnt { padding-right: 4px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-rname { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 600 13px/1 var(--font-sans); text-overflow: ellipsis; }
 .ic-rname:hover { background: var(--surface); }
 .ic-rname:focus { outline: none; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--focus); }
@@ -530,7 +529,7 @@
 .ic-rtimer .trk { stroke: var(--sunk); }
 .ic-rtimer .prg { stroke: var(--ink-2); transition: stroke var(--duration-2), stroke-dashoffset 1s linear; }
 .ic-rtimer.is-soon .prg { stroke: var(--caution); }
-.ic-rtimer .t { font: 500 26px/1 var(--font-mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ic-rtimer .t { font: 500 26px/1 var(--font-sans); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .ic-rtimer .s { margin-top: 5px; font-size: 12.5px; color: var(--ink-3); }
 .ic-rtimer.is-soon .s { color: var(--caution); }
 .ic-rcards { display: grid; gap: 8px; margin-top: 16px; }
@@ -588,7 +587,7 @@
 .ic-vol-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .ic-vol-row .ac-icon-btn { width: 32px; height: 32px; margin-left: -6px; }
 .ic-vol-row .ac-icon-btn.is-on { color: var(--ink); background: var(--sunk); }
-.ic-vol-row .n { flex: none; min-width: 34px; text-align: right; font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ic-vol-row .n { flex: none; min-width: 34px; text-align: right; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-none { padding: 4px 10px 8px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
 .ic-srow { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .ic-srow .end { margin-left: auto; }
@@ -826,7 +825,7 @@
 .mv-link { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 4px 4px 12px; border-radius: var(--radius-md); background: var(--sunk); }
 .mv-link .ac-mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-2); }
 .mv-carry { color: var(--ink-3) !important; font-size: 13px !important; }
-.mv-left { justify-self: start; font-size: 12px; letter-spacing: .02em; color: var(--ink-3); }
+.mv-left { justify-self: start; font-size: 12px; color: var(--ink-3); }
 .mv-hidden { display: grid; justify-items: center; align-content: center; gap: 10px; width: 196px; height: 196px; padding: 18px; border-radius: var(--radius-md); background: var(--sunk); text-align: center; color: var(--ink-2); }
 .mv-hidden p { font-size: 13px; line-height: 1.4; }
 .mv-there { display: flex; gap: 18px; align-items: flex-start; }
@@ -872,7 +871,7 @@
 .mv-card.is-plain { justify-items: center; text-align: center; }
 .mv-plain { display: grid; justify-items: center; gap: 12px; max-width: 34ch; }
 .mv-plain p { font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
-.stage .mv-ic { background: rgb(255 122 69 / 0.14); color: var(--sun-glow); }
+.stage .mv-ic { background: var(--sun-soft); color: var(--sun-text); }
 .stage .mv-ic.is-quiet { background: rgb(255 255 255 / 0.07); color: var(--stage-ink-2); }
 .stage .mv-ic.is-caution { background: rgb(243 184 90 / 0.14); color: #F3B85A; }
 .mv-done { flex: 1; display: grid; place-content: center; justify-items: center; gap: 14px; max-width: 440px; margin: 0 auto; padding: 8px 16px 72px; text-align: center; }

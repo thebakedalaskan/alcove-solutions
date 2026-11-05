@@ -273,7 +273,7 @@ const THEME_NAME: Record<ThemeChoice, string> = { system: 'Match system', light:
 
 /** A small window drawn in one theme's own colours, whatever the page's theme is. */
 function ThemeWindow({ theme }: { theme: 'light' | 'dark' }) {
-  return <span className={cn('pane', theme)}><span className="w-side"><i /><i /><i /></span><span className="w-main"><i /><i /></span></span>;
+  return <span className={cn('pane', theme)}><span className="w-side dark"><i /><i /><i /></span><span className="w-main"><i /><i /></span></span>;
 }
 
 /**

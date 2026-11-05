@@ -44,12 +44,12 @@
 .hm-ring .bg { stroke: var(--sunk); }
 .hm-ring .fg { stroke: var(--sun); transition: stroke-dashoffset var(--duration-4) var(--ease-out); }
 .hm-ring b { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; font: 480 26px/1 var(--font-display); letter-spacing: -0.015em; }
-.hm-ring b small { display: block; margin-top: 3px; font: 500 11px/1 var(--font-mono); color: var(--ink-3); letter-spacing: 0; }
+.hm-ring b small { display: block; margin-top: 3px; font: 500 11px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); letter-spacing: 0; }
 
 /* Last time: the latest earlier note in the call's series. */
 .hm-last { grid-area: last; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; margin-top: 24px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunk); color: var(--ink); transition: background-color var(--duration-1); }
 .hm-last > .ac-arch-thumb { --w: 26px; box-shadow: none; }
-.hm-last .k { display: block; font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.hm-last .k { display: block; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .hm-last p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin-top: 5px; font-size: 14px; line-height: 1.4; text-wrap: pretty; }
 .hm-last p span { color: var(--ink-3); }
 .hm-last .ac-btn { pointer-events: none; }
@@ -112,7 +112,7 @@
 .hm-wait-item { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 14px; padding: 15px 0; border-top: 1px solid var(--line); outline: none; }
 .hm-wait-item:first-child { border-top: 0; padding-top: 10px; }
 .hm-wait-item:focus-visible { box-shadow: -10px 0 0 -8px var(--focus); }
-.hm-wait-k { font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.hm-wait-k { font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .hm-wait-t { margin-top: 6px; font: 500 14.5px/1.4 var(--font-sans); color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; transition: color var(--duration-2); }
 .hm-wait-from { margin-top: 3px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
 .hm-wait-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 9px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
@@ -125,7 +125,7 @@
 .hm-src:hover { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-control); }
 
 /* ------------------------------------------------------- Your follow-ups */
-.hm-grp { margin: 0; padding: 16px 0 6px; font: 500 12px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.hm-grp { margin: 0; padding: 16px 0 6px; font: 500 13px/16px var(--font-sans); color: var(--ink-3); }
 .hm-fu-group:first-of-type .hm-grp { padding-top: 10px; }
 .hm-todo { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 13px 0; border-top: 1px solid var(--line); }
 .hm-todo:first-child { border-top: 0; }
@@ -134,7 +134,7 @@
 .hm-todo .from { margin-top: 4px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
 .hm-todo.is-done .txt { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
 .hm-todo.is-new { animation: hm-arrive 1400ms var(--ease-out) both; }
-.hm-due { flex: none; max-width: calc(16ch + 14px); padding: 5px 7px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-due { flex: none; max-width: calc(16ch + 14px); padding: 5px 7px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hm-due.is-now { color: var(--ink); font-weight: 600; }
 .hm-due.is-late { background: var(--caution-soft); color: var(--caution); }
 .hm-todo.is-done .hm-due { opacity: .55; }

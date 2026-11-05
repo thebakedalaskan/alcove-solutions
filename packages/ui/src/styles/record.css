@@ -28,7 +28,7 @@
 .rec-orb i { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #FF7A8E, #E33554 60%, #B5243F); box-shadow: 0 0 60px 6px rgb(227 53 84 / 0.4); }
 .rec-body { min-width: 0; }
 .rec-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.rec-k { display: flex; align-items: center; gap: 8px; font: 500 12px/16px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--stage-ink-2); }
+.rec-k { display: flex; align-items: center; gap: 8px; font: 500 13px/16px var(--font-sans); color: var(--stage-ink-2); }
 .rec-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: var(--radius-pill); background: rgb(255 255 255 / 0.08); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
 .rec-pill .ac-i { color: var(--gold); }
 .rec-name {
@@ -63,7 +63,7 @@
 .rec-go:hover { background: #fff; }
 .rec-go:active { transform: scale(0.98); }
 .rec-go i { width: 14px; height: 14px; border-radius: 50%; background: #E33554; }
-.rec-go .ac-kbd { margin-left: 4px; background: rgb(11 10 24 / 0.08); color: var(--stage); box-shadow: none; }
+.rec-go .ac-kbd { margin-left: 4px; background: color-mix(in srgb, var(--stage) 8%, transparent); color: var(--stage); box-shadow: none; }
 .rec-note { max-width: 30ch; font-size: 13.5px; line-height: 1.45; color: var(--stage-ink-2); }
 @media (hover: none), (max-width: 600px) { .rec-go .ac-kbd { display: none; } }
 
