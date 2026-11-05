@@ -196,8 +196,10 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 
   Measured in a worker with its real limits, building, encoding and proving a state: the worst shape, 300,000 live items that
   are each a map, peaks at 530 MiB of 640 (`DOC_HEAP_MB`); lines peak at 377; 1,000,000 structs with 320,000 of them live at
-  547. 1,490,000 structs run a worker out of memory, which is why the ceiling is where it is. A real block holds about 700 to
-  1,000 bytes an item once it's open.
+  547. 1,490,000 structs run a worker out of memory, which is why the ceiling is where it is. A real block holds about 650 to
+  1,000 bytes an item once it's open. Through the real pipeline, decrypting and sealing, a document at each ceiling folds with
+  a version, opens, is searched and is copied: the heaviest, a board churned to 905,000 structs, folds in 4.5 seconds, and its
+  copy holds 80,001.
 - **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
   'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
   so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
