@@ -61,6 +61,7 @@ function pressedId(board: Board, target: Element): string | null {
 }
 
 function panGesture(board: Board, start: SheetPoint): Gesture {
+  // Stopping a follow puts the camera back, so what the drag starts from is read after it.
   board.stopFollow();
   board.stopGlide();
   const from = board.camera.getSnapshot();
@@ -175,6 +176,7 @@ function pinchGesture(board: Board, a: ClientPoint, b: ClientPoint): (a: ClientP
   const { camera } = board;
   const middle = (p: ClientPoint, q: ClientPoint): SheetPoint => camera.point({ clientX: (p.clientX + q.clientX) / 2, clientY: (p.clientY + q.clientY) / 2 });
   const apart = (p: ClientPoint, q: ClientPoint): number => Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY) || 1;
+  // As for a drag: stopping a follow puts the camera back, so what's under the fingers is read after it.
   board.stopFollow();
   board.stopGlide();
   const { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b);
