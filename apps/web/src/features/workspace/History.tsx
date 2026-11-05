@@ -15,6 +15,7 @@ import { sessions, useNow } from '~/lib/live';
 import { q, useRestoreVersion } from '~/lib/queries';
 import { daysFromToday, dayMonth, hm, shortDay } from '~/lib/time';
 import type { Ws } from './context';
+import { useMediaView } from './DocumentMedia';
 import { Editor } from './editor/lazy';
 import type { EditorHandle } from './editor/types';
 import type { OpenVersion } from './editor/version';
@@ -156,6 +157,8 @@ function Version({ ws, item, row }: { ws: Ws; item: WorkspaceItem; row: Row }) {
   const earlier = before.isError ? null : before.data?.update ?? (row.before === null ? null : undefined);
   const [open, setOpen] = useState<OpenVersion | null>(null);
   const [editor, setEditor] = useState<EditorHandle | null>(null);
+  /* Its photos, videos and files as they are now: one deleted for good since says so, here too. */
+  const { media } = useMediaView(ws, item.id);
   /* What changed may be a long way down, and it's what someone came to see. */
   const firstChange = open ? [...open.changed][0] : undefined;
   useEffect(() => { if (editor && firstChange) editor.scrollToBlock(firstChange); }, [editor, firstChange]);
@@ -178,7 +181,7 @@ function Version({ ws, item, row }: { ws: Ws; item: WorkspaceItem; row: Row }) {
         <WsPage>
           {open && (
             <Suspense>
-              <Editor ref={setEditor} doc={open.doc} awareness={open.awareness} readOnly titleHint={item.name} changed={open.changed} documentName={documentName}
+              <Editor ref={setEditor} doc={open.doc} awareness={open.awareness} readOnly titleHint={item.name} changed={open.changed} documentName={documentName} media={media}
                 byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={row.from ? `As it was ${asOf(row.from)}` : ''} /> : undefined} />
             </Suspense>
           )}
