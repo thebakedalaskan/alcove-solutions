@@ -983,7 +983,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   edit in it, else a new one in their name. It's settled under the call's row, so people opening it at once get one, and
   it's the organizer's whoever opened it: a guest's click can make it, and tells the guest nothing. "Most recently used" is
   sealed in the account's profile (`recentWorkspace`): making one, opening one they can edit in, or a call moving to one
-  uses it. A workspace deleted since it was chosen is settled again.
+  uses it. Opening one counts once every ten minutes for each workspace, because every change to a profile is a revision,
+  and tabs come and go. A workspace deleted since it was chosen is settled again.
 - **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
   starts with it. A call that settles on a workspace or moves to one takes the later calls that were using the old one along,
   once the call's row is let go. A later call someone gave a workspace of its own keeps it.
