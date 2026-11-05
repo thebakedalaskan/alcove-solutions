@@ -11,7 +11,7 @@ import { addBelow, movingBlock, removeBlock } from '../actions';
 import { allBlocks, findBlock, scrollerOf } from '../commands';
 import { useStore } from '../menus/Menus';
 import { decorChange } from '../plugins/decor';
-import { moveBlock } from '../plugins/reconcile';
+import { moveBlock } from '../plugins/retire';
 import type { DragState, EditorRuntime } from '../runtime';
 import { headingLevel, indentAttr, isListLine, lineKind, schema } from '../schema';
 import type { MovingBlock, Point } from '../types';

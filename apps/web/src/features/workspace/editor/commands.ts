@@ -1,12 +1,12 @@
 /*
- * What keys and menus do to blocks. Everything works on one top-level block at a time, found by position or ID:
- * the flat document means a block's neighbours are simply the ones beside it.
+ * What keys and menus do to blocks. Everything works on one top-level block at a time, found by position or ID: the flat
+ * document means a block's neighbours are simply the ones beside it, leaving out what isn't on the page (see retire.ts).
  */
 import { Fragment, type Attrs, type Node as PMNode, type NodeType, type ResolvedPos } from 'prosemirror-model';
 import { NodeSelection, Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { addRowAfter, CellSelection, goToNextCell, isInTable, selectedRect, TableMap } from 'prosemirror-tables';
 import { newBlockId } from './names';
-import { blockIdOf, headingLevel, indentAttr, isListLine, isPlainLine, lineKind, MAX_INDENT, schema, textAttr } from './schema';
+import { blockIdOf, headingLevel, indentAttr, isGone, isListLine, isPlainLine, lineKind, MAX_INDENT, schema, textAttr } from './schema';
 import type { BlockKind } from './types';
 
 const n = schema.nodes;
@@ -14,11 +14,16 @@ const n = schema.nodes;
 /** A top-level block: the title isn't one. */
 export interface BlockRef { node: PMNode; pos: number; index: number; id: string | null }
 
+/** Every block on the page, in order. */
 export function allBlocks(doc: PMNode): BlockRef[] {
   const out: BlockRef[] = [];
-  doc.forEach((node, pos, index) => { if (index > 0) out.push({ node, pos, index, id: blockIdOf(node) }); });
+  doc.forEach((node, pos, index) => { if (index > 0 && !isGone(node)) out.push({ node, pos, index, id: blockIdOf(node) }); });
   return out;
 }
+
+/** The block on the page before or after the one at `index`. */
+const blockBefore = (doc: PMNode, index: number): BlockRef | null => allBlocks(doc).filter((b) => b.index < index).at(-1) ?? null;
+const blockAfter = (doc: PMNode, index: number): BlockRef | null => allBlocks(doc).find((b) => b.index > index) ?? null;
 
 export function findBlock(doc: PMNode, id: string): BlockRef | null {
   return allBlocks(doc).find((b) => b.id === id) ?? null;
@@ -164,10 +169,11 @@ export const caretInto = (tr: Transaction, pos: number): Transaction => tr.setSe
 
 /* -------- Enter */
 function exitTitle(state: EditorState, dispatch: ((tr: Transaction) => void) | undefined): boolean {
-  if (dispatch) {
-    const title = state.doc.child(0);
-    dispatch(caretInto(state.tr, title.nodeSize + 1).scrollIntoView());
-  }
+  if (!dispatch) return true;
+  const first = allBlocks(state.doc)[0];
+  if (first) { dispatch(caretInto(state.tr, first.pos + 1).scrollIntoView()); return true; }
+  const end = state.doc.content.size;
+  dispatch(caretInto(state.tr.insert(end, n.line.create({ id: newBlockId() })), end + 1).scrollIntoView());
   return true;
 }
 
@@ -279,6 +285,16 @@ export const lineBreak: Command = (state, dispatch) => {
 };
 
 /* -------- Backspace and Delete */
+/** A line's words go onto the end of what's above it, which for a toggle is what folds away under it. */
+function joinLines(tr: Transaction, upper: BlockRef, lower: BlockRef): Transaction {
+  const toggle = upper.node.type === n.toggle;
+  const end = upper.pos + upper.node.nodeSize - (toggle ? 2 : 1);
+  if (toggle && upper.node.attrs['open'] !== true) tr.setNodeAttribute(upper.pos, 'open', true);
+  tr.delete(lower.pos, lower.pos + lower.node.nodeSize);
+  tr.insert(end, upper.node.type === n.code ? codeContent(lower.node.content) : lower.node.content);
+  return tr.setSelection(TextSelection.create(tr.doc, end)).scrollIntoView();
+}
+
 export const backspace: Command = (state, dispatch) => {
   const sel = state.selection;
   if (!(sel instanceof TextSelection) || !sel.empty) return false;
@@ -307,39 +323,46 @@ export const backspace: Command = (state, dispatch) => {
     if (dispatch) { turnBlock(tr, ref, 'paragraph'); dispatch(tr.scrollIntoView()); }
     return true;
   }
-  const title = state.doc.child(0);
-  if (ref.index === 1) {
+  const before = blockBefore(state.doc, ref.index);
+  if (!before) {
     if (dispatch) {
       /* An empty first line goes, unless it's the only one; the caret goes up to the title. */
-      if (isBlank(parent) && state.doc.childCount > 2) tr.delete(ref.pos, ref.pos + parent.nodeSize);
-      dispatch(tr.setSelection(TextSelection.create(tr.doc, title.nodeSize - 1)).scrollIntoView());
+      if (isBlank(parent) && blockAfter(state.doc, ref.index)) tr.delete(ref.pos, ref.pos + parent.nodeSize);
+      dispatch(tr.setSelection(TextSelection.create(tr.doc, state.doc.child(0).nodeSize - 1)).scrollIntoView());
     }
     return true;
   }
-  const before = state.doc.child(ref.index - 1);
-  if (before.isTextblock) return false;
-  if (before.type === n.toggle) {
-    /* It joins the toggle's body, so that has to be showing. */
-    if (before.attrs['open'] !== true && dispatch) dispatch(tr.setNodeAttribute(ref.pos - before.nodeSize, 'open', true));
-    return false;
+  if (before.node.isTextblock || before.node.type === n.toggle) {
+    if (dispatch) dispatch(joinLines(tr, before, ref));
+    return true;
   }
   if (dispatch) {
-    const start = ref.pos - before.nodeSize;
     if (isBlank(parent)) tr.delete(ref.pos, ref.pos + parent.nodeSize);
-    if (before.type === n.table) dispatch(tr.setSelection(Selection.near(tr.doc.resolve(ref.pos), -1)).scrollIntoView());
-    else dispatch(tr.setSelection(NodeSelection.create(tr.doc, start)).scrollIntoView());
+    if (before.node.type === n.table) dispatch(tr.setSelection(Selection.near(tr.doc.resolve(before.pos + before.node.nodeSize), -1)).scrollIntoView());
+    else dispatch(tr.setSelection(NodeSelection.create(tr.doc, before.pos)).scrollIntoView());
   }
   return true;
 };
 
-export const deleteForward: Command = (state) => {
+export const deleteForward: Command = (state, dispatch) => {
   const sel = state.selection;
   if (!(sel instanceof TextSelection) || !sel.empty) return false;
   const $c = sel.$from;
   if ($c.parentOffset < $c.parent.content.size) return false;
   const name = $c.parent.type.name;
   /* The title and a toggle's two halves always stay separate. */
-  return name === 'title' || name === 'toggleSummary' || isInTable(state);
+  if (name === 'title' || name === 'toggleSummary' || isInTable(state)) return true;
+  const ref = blockAt($c);
+  const after = ref ? blockAfter(state.doc, ref.index) : null;
+  if (!ref || !after) return true;
+  if (after.node.isTextblock) {
+    if (dispatch) dispatch(joinLines(state.tr, ref, after));
+    return true;
+  }
+  /* What isn't text gets selected, or entered: the same with what isn't on the page in between. */
+  if (after.index === ref.index + 1) return false;
+  if (dispatch) dispatch(state.tr.setSelection(after.node.isAtom ? NodeSelection.create(state.doc, after.pos) : Selection.near(state.doc.resolve(after.pos + 1), 1)).scrollIntoView());
+  return true;
 };
 
 /* -------- Tab */
@@ -354,7 +377,7 @@ export const indent = (dir: 1 | -1): Command => (state, dispatch, view) => {
   const tr = state.tr;
   state.doc.nodesBetween(from, to, (node, pos, parent) => {
     if (parent !== state.doc) return false;
-    if (isListLine(node)) {
+    if (isListLine(node) && !isGone(node)) {
       const next = Math.max(0, Math.min(MAX_INDENT, indentAttr(node) + dir));
       if (next !== indentAttr(node)) tr.setNodeAttribute(pos, 'indent', next > 0 ? next : null);
     }
@@ -386,9 +409,10 @@ export const selectAll: Command = (state, dispatch) => {
   const whole = $from.parent.isTextblock && sel.from === $from.start() && sel.to === $from.end();
   if (!whole && $from.parent.isTextblock && ($from.parent.type === n.title || $from.parent.type.spec.code || isInTable(state))) return select($from.start(), $from.end());
   if (!dispatch) return true;
-  const first = doc.child(1), last = doc.lastChild;
+  const blocks = allBlocks(doc);
+  const first = blocks[0], last = blocks.at(-1);
   /* Text at both ends can be an ordinary selection, which is one the format bar can sit on. */
-  dispatch(state.tr.setSelection(first.isTextblock && last?.isTextblock ? TextSelection.create(doc, doc.child(0).nodeSize + 1, doc.content.size - 1) : new BlocksSelection(doc)));
+  dispatch(state.tr.setSelection(first?.node.isTextblock && last?.node.isTextblock ? TextSelection.create(doc, first.pos + 1, last.pos + last.node.nodeSize - 1) : new BlocksSelection(doc)));
   return true;
 };
 

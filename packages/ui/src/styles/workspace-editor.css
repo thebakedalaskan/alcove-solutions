@@ -33,6 +33,8 @@
 .wb.is-flash { animation: wb-flash 1.6s var(--ease-out); }
 @keyframes wb-flash { 0%, 35% { background: var(--horizon-soft); box-shadow: 0 0 0 4px var(--horizon-soft); } 100% { background: transparent; box-shadow: 0 0 0 4px transparent; } }
 .wb.is-ghosted { opacity: .35; }
+/* A block that has left the page stays in the document until nobody could still be writing in it. */
+.wb.is-gone { display: none; }
 /* What isn't text opens in place; a template's blocks arrive together. */
 .wb.is-new { animation: wb-open var(--duration-2) var(--ease-out); }
 @keyframes wb-open { from { max-height: 0; opacity: 0; overflow: hidden; } to { max-height: 640px; opacity: 1; overflow: hidden; } }

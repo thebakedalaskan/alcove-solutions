@@ -13,12 +13,13 @@ import { tableEditing } from 'prosemirror-tables';
 import { EditorView } from 'prosemirror-view';
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { initProseMirrorDoc, ySyncPlugin, yUndoPlugin } from 'y-prosemirror';
+import { defaultDeleteFilter, initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
+import * as Y from 'yjs';
 import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
-import { cleanPastedHTML, cleanSerializer, handlePaste, sliceText, textToSlice, transformPasted } from './clipboard';
+import { cleanPastedHTML, cleanSerializer, handlePaste, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
 import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
@@ -27,7 +28,7 @@ import { blockIds } from './plugins/blockIds';
 import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
-import { reconcilePlugin } from './plugins/reconcile';
+import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
 import { newBlockId } from './names';
@@ -38,6 +39,20 @@ import { contentOf, seedDocument } from './ydoc';
 const SCROLL_MARGIN = 110;
 const SCROLL_TIME = 420;
 
+/**
+ * y-prosemirror's own, but undo may put back an attribute someone else has changed since. Without that, undoing the delete of
+ * a block someone else moved can't give it its ID back, and the block and its copy can't be told to be the same block.
+ */
+function undoManagerFor(fragment: Y.XmlFragment): Y.UndoManager {
+  const kept = new Set(TEXT_NODES);
+  return new Y.UndoManager(fragment, {
+    trackedOrigins: new Set([ySyncPluginKey]),
+    deleteFilter: (item) => defaultDeleteFilter(item, kept),
+    captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
+    ignoreRemoteMapChanges: true
+  });
+}
+
 function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
   const { doc, awareness } = rt.props;
   seedDocument(doc);
@@ -47,10 +62,11 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
   let fits = true;
   try { start.doc.check(); } catch { fits = false; }
   const plugins: Plugin[] = [
+    /* Before ySyncPlugin: a block's element is retired just before y-prosemirror writes the rest of the change. */
+    retirePlugin(rt),
     ySyncPlugin(fragment, fits ? { mapping: start.mapping } : {}),
-    yUndoPlugin({ protectedNodes: new Set(TEXT_NODES) }),
+    yUndoPlugin({ undoManager: undoManagerFor(fragment) }),
     caretsPlugin(rt, awareness),
-    reconcilePlugin(),
     tableEditing(),
     inputRules({ rules: typedShortcuts }),
     keymap(editorKeys(rt)),
@@ -69,6 +85,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     markViews: markViews(rt),
     attributes: { class: 'ws-text', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Document', spellcheck: 'true' },
     clipboardSerializer: cleanSerializer(rt),
+    transformCopied: (slice) => transformCopied(slice),
     clipboardTextSerializer: (slice) => sliceText(rt, slice),
     clipboardTextParser: (text, $context, plain) => textToSlice(text, $context, plain),
     transformPastedHTML: (html) => cleanPastedHTML(html),
@@ -127,8 +144,11 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
       const { doc } = view.state;
       const title = doc.child(0);
       if (where === 'title') focusAt(view, TextSelection.create(doc, title.nodeSize - 1));
-      else if (where === 'start') focusAt(view, Selection.near(doc.resolve(title.nodeSize), 1));
-      else focusAt(view, Selection.atEnd(doc));
+      else {
+        const blocks = allBlocks(doc);
+        const block = where === 'start' ? blocks[0] : blocks.at(-1);
+        if (block) focusAt(view, where === 'start' ? Selection.near(doc.resolve(block.pos), 1) : Selection.near(doc.resolve(block.pos + block.node.nodeSize), -1));
+      }
     }),
     focusBlock: (id, at = 'start') => put((view) => {
       const ref = findBlock(view.state.doc, id);

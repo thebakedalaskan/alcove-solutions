@@ -11,7 +11,7 @@ import { startThread } from './comments';
 import { galleryItems } from './blocks/attrs';
 import type { SlashId } from './menus/rows';
 import { appear, decorChange, flash, heldRange, type HeldRange } from './plugins/decor';
-import { moveBlock } from './plugins/reconcile';
+import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, OpenMenu } from './runtime';
 import { newBlockId } from './names';
 import { hasBlockId, safeHref, schema } from './schema';
@@ -198,7 +198,7 @@ export function duplicateBlock(rt: EditorRuntime, id: string): void {
   if (!view || !ref) return;
   const copyId = newBlockId();
   const at = ref.pos + ref.node.nodeSize;
-  const tr = view.state.tr.insert(at, ref.node.type.create({ ...ref.node.attrs, id: copyId }, ref.node.content, ref.node.marks));
+  const tr = view.state.tr.insert(at, ref.node.type.create({ ...ref.node.attrs, id: copyId, gone: null }, ref.node.content, ref.node.marks));
   tr.removeMark(at, at + ref.node.nodeSize, m.comment);
   view.dispatch(tr);
   flash(view, copyId);
@@ -280,7 +280,7 @@ export function setLiveLines(rt: EditorRuntime, what: LiveWhat, lines: LiveLine[
 }
 
 /* -------- adding blocks from outside */
-const withFreshId = (node: PMNode): PMNode => (hasBlockId(node) ? node.type.create({ ...node.attrs, id: newBlockId() }, node.content, node.marks) : node);
+const withFreshId = (node: PMNode): PMNode => (hasBlockId(node) ? node.type.create({ ...node.attrs, id: newBlockId(), gone: null }, node.content, node.marks) : node);
 
 function insertSpan(state: EditorState, at: InsertAt): { from: number; to: number } {
   const { doc } = state;

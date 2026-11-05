@@ -18,7 +18,11 @@ type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highligh
 /** Lists go no deeper than this. */
 export const MAX_INDENT = 2;
 
-const id = { id: { default: null } };
+/*
+ * What every block has. `gone` is set on a block that has left the page: it says which block took its words, and it's ''
+ * if none did. See retire.ts.
+ */
+const block = { id: { default: null }, gone: { default: null } };
 
 const clampIndent = (n: number) => Math.max(0, Math.min(MAX_INDENT, Number.isFinite(n) ? Math.round(n) : 0));
 const indentOf = (el: HTMLElement) => clampIndent(Number(el.getAttribute('data-indent') ?? 0));
@@ -47,7 +51,7 @@ const listOf = (node: PMNode, key: string, field: string): string[] => {
  * a document. Not its ID: a pasted copy is a new block.
  */
 function copied(node: PMNode, tag: string, words: string): DOMOutputSpec {
-  const { id: _id, ...attrs } = node.attrs;
+  const { id: _id, gone: _gone, ...attrs } = node.attrs;
   return [tag, { 'data-alcove-block': node.type.name, 'data-attrs': JSON.stringify(attrs) }, words];
 }
 
@@ -89,7 +93,7 @@ const nodes: Record<NodeName, NodeSpec> = {
    */
   line: {
     group: 'block', content: 'inline*',
-    attrs: { ...id, kind: { default: null }, level: { default: null }, indent: { default: null }, done: { default: null }, icon: { default: null } },
+    attrs: { ...block, kind: { default: null }, level: { default: null }, indent: { default: null }, done: { default: null }, icon: { default: null } },
     parseDOM: [
       { tag: 'p' },
       { tag: 'h1', attrs: { kind: 'heading', level: 1 } }, { tag: 'h2', attrs: { kind: 'heading', level: 2 } }, { tag: 'h3', attrs: { kind: 'heading', level: 3 } },
@@ -101,46 +105,46 @@ const nodes: Record<NodeName, NodeSpec> = {
     toDOM: lineDOM
   },
   toggle: {
-    group: 'block', content: 'toggleSummary toggleBody', defining: true, attrs: { ...id, open: { default: true } },
+    group: 'block', content: 'toggleSummary toggleBody', defining: true, attrs: { ...block, open: { default: true } },
     parseDOM: [{ tag: 'details', getAttrs: (el) => ({ open: el.hasAttribute('open') }) }],
     toDOM: (node) => ['details', node.attrs['open'] === true ? { open: '' } : {}, 0]
   },
   toggleSummary: { content: 'inline*', defining: true, parseDOM: [{ tag: 'summary' }], toDOM: () => ['summary', 0] },
   toggleBody: { content: 'inline*', parseDOM: [{ tag: 'div[data-alcove="body"]' }], toDOM: () => ['div', { 'data-alcove': 'body' }, 0] },
-  divider: { group: 'block', atom: true, attrs: id, parseDOM: [{ tag: 'hr' }], toDOM: () => ['hr'] },
+  divider: { group: 'block', atom: true, attrs: block, parseDOM: [{ tag: 'hr' }], toDOM: () => ['hr'] },
   /* Words a comment hangs on stay on them here too. */
-  code: { group: 'block', content: 'text*', marks: 'comment', code: true, defining: true, attrs: id, parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }], toDOM: () => ['pre', ['code', 0]] },
+  code: { group: 'block', content: 'text*', marks: 'comment', code: true, defining: true, attrs: block, parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }], toDOM: () => ['pre', ['code', 0]] },
 
-  table: { ...tables.table, attrs: id },
+  table: { ...tables.table, attrs: block },
   table_row: tables.table_row,
   table_cell: tables.table_cell,
   table_header: tables.table_header,
 
   /* What can't be typed: drawn from attributes by React, with handlers from the Editor's props. */
   gallery: {
-    group: 'block', atom: true, attrs: { ...id, items: { default: [] }, up: { default: null }, failed: { default: null }, width: { default: 100 } },
+    group: 'block', atom: true, attrs: { ...block, items: { default: [] }, up: { default: null }, failed: { default: null }, width: { default: 100 } },
     parseDOM: wholeBlock('gallery'), toDOM: (node) => copied(node, 'p', listOf(node, 'items', 'cap').join(' · '))
   },
   file: {
-    group: 'block', atom: true, attrs: { ...id, media: { default: null }, name: { default: '' }, size: { default: null }, up: { default: null }, failed: { default: null } },
+    group: 'block', atom: true, attrs: { ...block, media: { default: null }, name: { default: '' }, size: { default: null }, up: { default: null }, failed: { default: null } },
     parseDOM: wholeBlock('file'), toDOM: (node) => copied(node, 'p', textAttr(node, 'name') ?? '')
   },
   video: {
     group: 'block', atom: true,
-    attrs: { ...id, media: { default: null }, title: { default: '' }, poster: { default: null }, dur: { default: 0 }, width: { default: null }, height: { default: null }, up: { default: null }, failed: { default: null } },
+    attrs: { ...block, media: { default: null }, title: { default: '' }, poster: { default: null }, dur: { default: 0 }, width: { default: null }, height: { default: null }, up: { default: null }, failed: { default: null } },
     parseDOM: wholeBlock('video'), toDOM: (node) => copied(node, 'p', textAttr(node, 'title') ?? '')
   },
-  doclink: { group: 'block', atom: true, attrs: { ...id, doc: { default: '' } }, parseDOM: wholeBlock('doclink'), toDOM: (node) => copied(node, 'p', '') },
+  doclink: { group: 'block', atom: true, attrs: { ...block, doc: { default: '' } }, parseDOM: wholeBlock('doclink'), toDOM: (node) => copied(node, 'p', '') },
   live: {
-    group: 'block', atom: true, attrs: { ...id, what: { default: 'decided' }, lines: { default: [] } },
+    group: 'block', atom: true, attrs: { ...block, what: { default: 'decided' }, lines: { default: [] } },
     parseDOM: wholeBlock('live'), toDOM: (node) => copied(node, 'p', listOf(node, 'lines', 'text').join(' · '))
   },
   moment: {
-    group: 'block', atom: true, attrs: { ...id, person: { default: null }, name: { default: '' }, at: { default: '' }, text: { default: '' }, line: { default: null } },
+    group: 'block', atom: true, attrs: { ...block, person: { default: null }, name: { default: '' }, at: { default: '' }, text: { default: '' }, line: { default: null } },
     parseDOM: wholeBlock('moment'), toDOM: (node) => copied(node, 'blockquote', `${textAttr(node, 'text') ?? ''} (${textAttr(node, 'name') ?? ''}, ${textAttr(node, 'at') ?? ''})`)
   },
   /* A block from a newer Alcove. Kept as it is, because a browser that can't read a block must never delete it. */
-  unsupported: { group: 'block', atom: true, attrs: { ...id, name: { default: '' } }, toDOM: () => ['p'] },
+  unsupported: { group: 'block', atom: true, attrs: { ...block, name: { default: '' } }, toDOM: () => ['p'] },
 
   text: { group: 'inline' },
   hardBreak: { inline: true, group: 'inline', selectable: false, linebreakReplacement: true, parseDOM: [{ tag: 'br' }], toDOM: () => ['br'] },
@@ -201,7 +205,7 @@ const marks: Record<MarkName, MarkSpec> = {
  */
 class BlockSchema extends Schema<NodeName, MarkName> {
   override node(type: string | NodeType, attrs?: Attrs | null, content?: Fragment | PMNode | readonly PMNode[], marks?: readonly Mark[]): PMNode {
-    if (typeof type === 'string' && !Object.hasOwn(this.nodes, type)) return super.node('unsupported', { id: attrs?.['id'] ?? null, name: type });
+    if (typeof type === 'string' && !Object.hasOwn(this.nodes, type)) return super.node('unsupported', { id: attrs?.['id'] ?? null, gone: attrs?.['gone'] ?? null, name: type });
     return super.node(type, attrs, content, marks);
   }
 
@@ -225,6 +229,9 @@ export const blockIdOf = (node: PMNode): string | null => textOf(node.attrs['id'
 export const lineKind = (node: PMNode): string | null => (node.type === schema.nodes.line ? textAttr(node, 'kind') : null);
 /** Plain text: what Enter makes, and what Backspace turns any other line into before joining it to the one above. */
 export const isPlainLine = (node: PMNode): boolean => node.type === schema.nodes.line && lineKind(node) === null;
+
+/** A block that has left the page and has no words of anyone's in it: it stays in the document, drawn as nothing. */
+export const isGone = (node: PMNode): boolean => textAttr(node, 'gone') !== null && node.textContent === '';
 
 /** Only links that are safe to open. A document's text comes from other people. */
 export function safeHref(href: unknown): string | null {

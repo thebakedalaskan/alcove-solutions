@@ -13,7 +13,7 @@ export const fromSync = (tr: Transaction): boolean => tr.getMeta(ySyncPluginKey)
 export const blockIds = new Plugin({
   key: new PluginKey('block-ids'),
   appendTransaction(transactions, before, after) {
-    if (!transactions.some((t) => t.docChanged) || transactions.every(fromSync)) return null;
+    if (!transactions.some((t) => t.docChanged) || transactions.some(fromSync)) return null;
 
     /* Where each block that was already here has gone. */
     const moved = new Map<string, number>();

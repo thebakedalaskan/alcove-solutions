@@ -8,7 +8,7 @@ import type { Mark, Node as PMNode } from 'prosemirror-model';
 import type { Decoration, EditorView, MarkView, MarkViewConstructor, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { createElement } from 'react';
 import type { EditorRuntime } from '../runtime';
-import { blockIdOf, headingLevel, indentAttr, lineKind, numberAttr, textAttr, textOf } from '../schema';
+import { blockIdOf, headingLevel, indentAttr, isGone, lineKind, numberAttr, textAttr, textOf } from '../schema';
 import { dateLabel } from './dates';
 import { CALLOUT_ICONS, iconNode } from './icons';
 import { MediaBlock, PersonFace } from './Media';
@@ -167,7 +167,7 @@ class TextBlock extends BlockFrame implements NodeView {
   }
 
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
-    if (node.type !== this.node.type) return false;
+    if (node.type !== this.node.type || isGone(node)) return false;
     const was = textClass(this.node), now = textClass(node);
     if (was !== now) {
       this.dom.classList.replace(was, now);
@@ -243,7 +243,7 @@ class ToggleBlock extends BlockFrame implements NodeView {
   }
 
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
-    if (node.type !== this.node.type) return false;
+    if (node.type !== this.node.type || isGone(node)) return false;
     this.frame(node, decorations);
     this.paint();
     return true;
@@ -269,7 +269,7 @@ class TableBlock extends BlockFrame implements NodeView {
   }
 
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
-    if (node.type !== this.node.type) return false;
+    if (node.type !== this.node.type || isGone(node)) return false;
     this.frame(node, decorations);
     return true;
   }
@@ -283,7 +283,7 @@ class DividerBlock extends BlockFrame implements NodeView {
     this.dom.prepend(el('hr', 'wb-hr'));
   }
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
-    if (node.type !== this.node.type) return false;
+    if (node.type !== this.node.type || isGone(node)) return false;
     this.frame(node, decorations);
     return true;
   }
@@ -324,7 +324,7 @@ class AtomBlock extends BlockFrame implements NodeView {
   }
 
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
-    if (node.type !== this.node.type) return false;
+    if (node.type !== this.node.type || isGone(node)) return false;
     this.frame(node, decorations);
     const next = atomClass(node);
     if (next !== this.classes) {
@@ -438,17 +438,25 @@ function commentMark(rt: EditorRuntime): MarkViewConstructor {
   };
 }
 
+/** A block that has left the page: as little as ProseMirror will take, since a document can gather a lot of these. */
+function goneBlock(node: PMNode): NodeView {
+  const dom = el('div', 'wb is-gone');
+  return { dom, contentDOM: node.isLeaf ? null : dom, update: (next) => next.type === node.type && isGone(next), ignoreMutation: () => true };
+}
+
+const onPage = (view: NodeViewConstructor): NodeViewConstructor => (node, editor, getPos, decorations, inner) => (isGone(node) ? goneBlock(node) : view(node, editor, getPos, decorations, inner));
+
 export function nodeViews(rt: EditorRuntime): Record<string, NodeViewConstructor> {
-  const text: NodeViewConstructor = (node, view, getPos, decorations) => new TextBlock(node, view, getPos, rt, decorations);
-  const atom: NodeViewConstructor = (node, _, getPos, decorations) => new AtomBlock(node, rt, getPos, decorations);
+  const text = onPage((node, view, getPos, decorations) => new TextBlock(node, view, getPos, rt, decorations));
+  const atom = onPage((node, _, getPos, decorations) => new AtomBlock(node, rt, getPos, decorations));
   return {
     title: () => { const dom = el('h1', 'wd-title'); dom.setAttribute('data-ph', 'Untitled'); return { dom, contentDOM: dom }; },
     line: text, code: text,
-    toggle: (node, view, getPos, decorations) => new ToggleBlock(node, view, getPos, rt, decorations),
+    toggle: onPage((node, view, getPos, decorations) => new ToggleBlock(node, view, getPos, rt, decorations)),
     toggleSummary: toggleText('wb-t', ''),
     toggleBody: toggleText('wb-t wb-body', 'Write inside this toggle'),
-    divider: (node, _, __, decorations) => new DividerBlock(node, rt, decorations),
-    table: (node, _, __, decorations) => new TableBlock(node, rt, decorations),
+    divider: onPage((node, _, __, decorations) => new DividerBlock(node, rt, decorations)),
+    table: onPage((node, _, __, decorations) => new TableBlock(node, rt, decorations)),
     gallery: atom, file: atom, video: atom, doclink: atom, live: atom, moment: atom, unsupported: atom,
     mention: (node) => new MentionChip(node, rt),
     dateChip: (node) => dateChip(node),

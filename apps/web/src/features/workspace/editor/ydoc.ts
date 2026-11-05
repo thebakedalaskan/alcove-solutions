@@ -5,7 +5,7 @@
  */
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
-import { initProseMirrorDoc, updateYFragment, ySyncPluginKey } from 'y-prosemirror';
+import { initProseMirrorDoc, updateYFragment, ySyncPluginKey, type absolutePositionToRelativePosition } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { FRAGMENT } from './names';
 import { schema } from './schema';
@@ -13,12 +13,15 @@ import type { BlockJSON } from './types';
 
 export const contentOf = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment(FRAGMENT);
 
+/** y-prosemirror's record of which node each element is. */
+type ProsemirrorMapping = Parameters<typeof absolutePositionToRelativePosition>[2];
+
 /** How y-prosemirror follows the fragment. */
 export type FollowChange = (events: Y.YEvent<Y.XmlFragment>[], tr: Y.Transaction) => void;
 
 /** The parts of y-prosemirror's binding used here. Its version is pinned for these: they aren't its public surface. */
 export interface SyncBinding {
-  mapping: Map<Y.AbstractType<unknown>, PMNode | PMNode[]>;
+  mapping: ProsemirrorMapping;
   mux: (run: () => void) => void;
   _forceRerender: () => void;
   _observeFunction: FollowChange;

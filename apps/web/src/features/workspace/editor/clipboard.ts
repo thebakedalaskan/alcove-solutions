@@ -11,7 +11,7 @@ import { dateLabel } from './blocks/dates';
 import { allBlocks, countLine, isBlank, selectedBlock } from './commands';
 import type { EditorRuntime } from './runtime';
 import { newBlockId } from './names';
-import { headingLevel, indentAttr, lineKind, MAX_INDENT, safeHref, schema, textAttr } from './schema';
+import { headingLevel, indentAttr, isGone, lineKind, MAX_INDENT, safeHref, schema, textAttr } from './schema';
 import type { InsertAt } from './types';
 
 const n = schema.nodes;
@@ -74,6 +74,13 @@ export function cleanSerializer(rt: EditorRuntime): DOMSerializer {
   };
   const { comment: _comment, ...marks } = DOMSerializer.marksFromSchema(schema);
   return new CleanSerializer(nodes, marks);
+}
+
+/** What's copied is what's on the page. */
+export function transformCopied(slice: Slice): Slice {
+  const nodes: PMNode[] = [];
+  slice.content.forEach((node) => { if (!isGone(node)) nodes.push(node); });
+  return nodes.length === slice.content.childCount ? slice : new Slice(Fragment.fromArray(nodes), slice.openStart, slice.openEnd);
 }
 
 /* -------- out, as text */
