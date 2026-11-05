@@ -257,22 +257,16 @@ export const ThemePreview = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttribu
     );
   });
 
-/** The night recorder's waveform: each bar's height at full voice. */
-const WAVE = [0.35, 0.65, 1, 0.73, 0.47, 0.82, 0.33];
-
 /**
  * How loud the microphone is, from `level` (0 to 1): eight bars that fill with horizon, beside a
- * microphone choice. `stage` draws the night recorder's waveform in speak instead. It doesn't open the
- * microphone: pass it the level you measure, as often as you like.
+ * microphone choice. It doesn't open the microphone: pass it the level you measure, as often as you like.
  */
-export function MicLevel({ level, stage = false, label = 'Microphone level', className }: { level: number; stage?: boolean | undefined; label?: string | undefined; className?: string | undefined }) {
+export function MicLevel({ level, label = 'Microphone level', className }: { level: number; label?: string | undefined; className?: string | undefined }) {
   const v = Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0;
   const lit = Math.round(v * 8);
   return (
-    <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className={cn('ac-mic-level', stage && 'is-stage', className)}>
-      {stage
-        ? WAVE.map((h, i) => <i key={i} style={{ height: `${Math.round(Math.max(0.14, h * v) * 100)}%` }} />)
-        : Array.from({ length: 8 }, (_, i) => <i key={i} className={i < lit ? 'on' : undefined} />)}
+    <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className={cn('ac-mic-level', className)}>
+      {Array.from({ length: 8 }, (_, i) => <i key={i} className={i < lit ? 'on' : undefined} />)}
     </span>
   );
 }

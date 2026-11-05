@@ -6,7 +6,8 @@
  * radius and easing comes from here. Light values live on :root, dark values on .dark (set on <html> by
  * ThemeProvider); .light and .dark on any element scope one theme to that part of the page. A call is always
  * night: .stage and .ac-stage take the dark values, and while a .stage is on screen so does the whole document,
- * because its menus, sheets and tooltips are portalled out of it. Components are styled in
+ * because its menus, sheets and tooltips are portalled out of it. Record is night too (.rec), and takes the document
+ * with it the same way, with search and the phone's bars, which sit outside the page. Components are styled in
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
  * styles/shell.css; the evening behind each page in styles/horizon.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes and a note in
  * styles/library.css (`lib-`, `pv-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
@@ -142,7 +143,7 @@
   color-scheme: light;
 }
 
-.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage) {
+.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.rec) {
   --ground: #0F1F38;
   --surface: #172944;
   --surface-raised: #203350;

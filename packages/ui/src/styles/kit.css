@@ -383,9 +383,11 @@ a.ac-note-tile:active { transform: none; }
 .ac-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .ac-option[aria-selected="true"] { font-weight: 600; }
 .ac-option[aria-selected="true"] > .ac-i { color: var(--sun-text); }
+.ac-option > .ac-i.lead { color: var(--ink-3); }
 .ac-pop.is-stage .ac-option { color: var(--stage-ink); }
 .ac-pop.is-stage .ac-option:focus { background: rgba(255, 255, 255, .07); }
 .ac-pop.is-stage .ac-option[aria-selected="true"] > .ac-i { color: var(--sun); }
+.ac-pop.is-stage .ac-option > .ac-i.lead { color: var(--stage-ink-2); }
 .ac-tip { z-index: 80; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ink); color: var(--ground); font: 600 12px/1.2 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-pop-in 160ms var(--ease-out) both; }
 
 /* ---- EmptyState ---- */
@@ -446,12 +448,10 @@ a.ac-note-tile:active { transform: none; }
 .ac-theme .w-main i { display: block; height: 26px; border-radius: 7px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .ac-theme .w-main i + i { width: 80%; height: 18px; }
 
-/* ---- MicLevel: eight bars in horizon; on the stage, the recorder's waveform in speak ---- */
+/* ---- MicLevel: eight bars in horizon ---- */
 .ac-mic-level { display: inline-flex; flex: none; align-items: center; gap: 3px; height: 18px; vertical-align: middle; }
 .ac-mic-level i { width: 4px; height: 100%; border-radius: 2px; background: var(--sunk); transition: background-color 80ms linear; }
 .ac-mic-level i.on { background: var(--horizon); }
-.ac-mic-level.is-stage { height: 22px; }
-.ac-mic-level.is-stage i { background: var(--speak); transition: height 90ms linear; }
 
 /* ---- GroupChip: the size of a person in the people picker, so the two sit together ---- */
 .ac-group-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 30px; padding: 0 10px 0 8px; border-radius: var(--radius-sm); background: var(--sunk); color: var(--ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; vertical-align: middle; }
