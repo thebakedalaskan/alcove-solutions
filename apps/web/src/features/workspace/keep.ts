@@ -5,8 +5,8 @@
  *
  * As with recordings kept on this device (features/record/offline.ts), nothing readable is kept in the clear. An update is
  * sealed with AES-GCM under a key made on this device that can't be exported, with a fresh IV each time and the update's
- * place bound in (which account, workspace and document, and its order), so nothing can pass for something else. In the
- * clear: opaque IDs, the order and sizes. It's its own database and key: an old tab that has the recordings' database open
+ * place bound in (which account, workspace and document, its order and when it was made), so nothing can pass for something
+ * else. In the clear: opaque IDs, the order, the time and sizes. It's its own database and key: an old tab that has the recordings' database open
  * never has to give way to this one. Signing out or deleting the account here deletes what was kept for it; another
  * account's stays sealed until it signs in here again, and the key goes with the last.
  */
@@ -81,7 +81,7 @@ async function deviceKey(): Promise<CryptoKey> {
   });
   return key;
 }
-const placeOf = (owner: string, workspace: string, document: string, key: number) => new TextEncoder().encode(`alcove/kept-edit/v1\n${owner}\n${workspace}\n${document}\n${key}`);
+const placeOf = (owner: string, workspace: string, document: string, key: number, at: number) => new TextEncoder().encode(`alcove/kept-edit/v1\n${owner}\n${workspace}\n${document}\n${key}\n${at}`);
 
 /* ---------- keeping ---------- */
 
@@ -99,10 +99,10 @@ export function keptUpdates(owner: string, workspace: string, document: string):
       for (const row of rows) {
         const edit = KeptEditSchema.safeParse(row);
         if (!edit.success) { klog.error('a kept edit is damaged', { workspace, document, err: edit.error }); continue; }
-        const { sealed, key: place, at } = edit.data;
+        const { sealed, key: order, at } = edit.data;
         try {
-          const bytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: sealed.iv, additionalData: placeOf(owner, workspace, document, place) }, key, sealed.data);
-          out.push({ key: place, update: new Uint8Array(bytes), at });
+          const bytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: sealed.iv, additionalData: placeOf(owner, workspace, document, order, at) }, key, sealed.data);
+          out.push({ key: order, update: new Uint8Array(bytes), at });
         } catch (e) {
           klog.error('a kept edit didn’t open', { workspace, document, err: e });
         }
@@ -110,12 +110,12 @@ export function keptUpdates(owner: string, workspace: string, document: string):
       return out;
     },
     add: async (update, at) => {
-      const place = nextKey();
+      const order = nextKey();
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: placeOf(owner, workspace, document, place) }, await deviceKey(), new Uint8Array(update));
-      const edit: KeptEdit = { owner, workspace, document, key: place, at, sealed: { iv: iv.buffer, data } };
+      const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: placeOf(owner, workspace, document, order, at) }, await deviceKey(), new Uint8Array(update));
+      const edit: KeptEdit = { owner, workspace, document, key: order, at, sealed: { iv: iv.buffer, data } };
       await change([EDITS], (tx) => { tx.objectStore(EDITS).put(edit); });
-      return place;
+      return order;
     },
     remove: async (keys) => {
       await change([EDITS], (tx) => { for (const k of keys) tx.objectStore(EDITS).delete([owner, workspace, document, k]); });

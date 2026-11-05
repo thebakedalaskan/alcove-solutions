@@ -51,44 +51,48 @@ function Lingering({ later, stale, what }: { later: number; stale: boolean; what
   return stale ? <Chip tone="caution" icon="clock">{text}</Chip> : <span>{text}</span>;
 }
 
-function Row({ glyph, noteId, room, at, meta, later, className, children }: { glyph: ReactNode; noteId: string; room?: RoomRef | undefined; at?: number | undefined; meta: ReactNode; later?: ReactNode; className?: string | undefined; children: ReactNode }) {
+function Row({ glyph, noteId, room, at, meta, later, actions, page, className, children }: { glyph: ReactNode; noteId: string; room?: RoomRef | undefined; at?: number | undefined; meta: ReactNode; later?: ReactNode; actions?: ReactNode; page?: boolean | undefined; className?: string | undefined; children: ReactNode }) {
   return (
     <div className={cn('carry', className)}>
       <span className="g">{glyph}</span>
       <div className="carry-b"><span className="t">{children}</span><span className="m">{meta}</span>{later}</div>
-      {at !== undefined ? <MomentLink noteId={noteId} at={at} room={room} /> : <span />}
+      {at !== undefined ? <MomentLink noteId={noteId} at={at} room={room} chip={page} /> : <span />}
+      {actions && <div className="carry-a">{actions}</div>}
     </div>
   );
 }
 
 const DECIDED_GLYPH = { confirmed: 'check', superseded: 'swap' } as const;
+/** As a row of the series' own page, where a decision looks as it does on a note. */
+const PAGE_GLYPH = { confirmed: 'badgeCheck', proposed: 'badgeCheck', rejected: 'x', superseded: 'swap' } as const;
 
 /**
  * A decision from an earlier call: confirmed, no longer holding, or not confirmed yet, and the later decision that seems
  * to replace it. `actions` are what the reader can change; `laterActions`, what they can say about that. `saidWrong`
- * shows a later call someone said the notes got wrong too: everywhere else it's as if it was never suggested.
+ * shows a later call someone said the notes got wrong too: everywhere else it's as if it was never suggested. `page`:
+ * it's a row of the series' own page.
  */
-export function CarriedDecisionRow({ d, calls, me, actions, laterActions, saidWrong = false }: { d: CarriedDecision; calls: SeriesCalls; me: string | undefined; actions?: ReactNode; laterActions?: ReactNode; saidWrong?: boolean | undefined }) {
-  const glyph = d.state === 'confirmed' || d.state === 'superseded' ? <Icon name={DECIDED_GLYPH[d.state]} size={15} /> : <span className="pend" />;
+export function CarriedDecisionRow({ d, calls, me, actions, laterActions, saidWrong = false, page = false }: { d: CarriedDecision; calls: SeriesCalls; me: string | undefined; actions?: ReactNode; laterActions?: ReactNode; saidWrong?: boolean | undefined; page?: boolean | undefined }) {
+  const glyph = page ? <Icon name={PAGE_GLYPH[d.state]} size={16} /> : d.state === 'confirmed' || d.state === 'superseded' ? <Icon name={DECIDED_GLYPH[d.state]} size={15} /> : <span className="pend" />;
   const by = d.replacedBy;
   const later = by && (by.dismissed ? saidWrong && <Later later={by} calls={calls} before={whoSaid(by, me)} after={` didn’t replace this: ${by.text}`} actions={laterActions} />
     : d.state === 'superseded' ? <Later later={by} calls={calls} before="Replaced on " after={`: ${by.text}`} actions={laterActions} />
       : <Later later={by} calls={calls} after={` may have replaced this: ${by.text}`} actions={laterActions} />);
-  return <Row className={d.state} glyph={glyph} noteId={d.noteId} room={d.room} at={d.at} later={later} meta={<><From note={calls.get(d.noteId)} room={d.room} /><span>{decisionLine(d, me)}</span>{actions}</>}>{d.text}</Row>;
+  return <Row className={cn(d.state, 'is-decide')} glyph={glyph} noteId={d.noteId} room={d.room} at={d.at} later={later} actions={actions} page={page} meta={<><From note={calls.get(d.noteId)} room={d.room} /><span>{decisionLine(d, me)}</span></>}>{d.text}</Row>;
 }
 
 /**
  * A question an earlier call left: how many calls it has stayed open through, and where a later call seems to answer it.
  * Once someone says it was, the later call is where. `laterActions` are what the reader can say about that. `saidWrong`
- * shows a later call someone said the notes got wrong too, as for a decision.
+ * shows a later call someone said the notes got wrong too, as for a decision. `page`: it's a row of the series' own page.
  */
-export function CarriedQuestionRow({ x, calls, me, actions, laterActions, saidWrong = false }: { x: CarriedQuestion; calls: SeriesCalls; me: string | undefined; actions?: ReactNode; laterActions?: ReactNode; saidWrong?: boolean | undefined }) {
+export function CarriedQuestionRow({ x, calls, me, actions, laterActions, saidWrong = false, page = false }: { x: CarriedQuestion; calls: SeriesCalls; me: string | undefined; actions?: ReactNode; laterActions?: ReactNode; saidWrong?: boolean | undefined; page?: boolean | undefined }) {
   const by = x.answeredIn;
   const later = by && (by.dismissed ? saidWrong && <Later later={by} calls={calls} before={whoSaid(by, me)} after=" didn’t answer this" actions={laterActions} />
     : x.state === 'answered' ? <Later later={by} calls={calls} before="Answered on " after="" actions={laterActions} />
       : <Later later={by} calls={calls} after=" may have answered this" actions={laterActions} />);
-  const glyph = <Icon name={x.state === 'answered' ? 'check' : 'ask'} size={15} />;
-  return <Row className={x.state === 'answered' ? 'answered' : undefined} glyph={glyph} noteId={x.noteId} room={x.room} at={x.at} later={later} meta={<><From note={calls.get(x.noteId)} room={x.room} />{x.state === 'open' && <Lingering later={x.later} stale={x.stale} what="Still open" />}{actions}</>}>{x.text}</Row>;
+  const glyph = <Icon name={x.state === 'answered' ? 'check' : 'ask'} size={page ? 16 : 15} />;
+  return <Row className={cn(x.state === 'answered' && 'answered', 'is-ask')} glyph={glyph} noteId={x.noteId} room={x.room} at={x.at} later={later} actions={actions} page={page} meta={<><From note={calls.get(x.noteId)} room={x.room} />{x.state === 'open' && <Lingering later={x.later} stale={x.stale} what="Still open" />}</>}>{x.text}</Row>;
 }
 
 /** Who a follow-up is with, briefly: taken on, only suggested, or nobody's yet. Until it's taken on, who and when are only what the notes heard. */
@@ -103,13 +107,13 @@ const dueLine = (a: CarriedAction) => (a.takenOn ? `Due ${a.due}` : `Suggested d
 
 /**
  * A follow-up from an earlier call: who it's with, when it's due, and whether it has stayed undone
- * through later calls. `check` takes the owner's place when the reader can tick it.
+ * through later calls. `check` takes the owner's place when the reader can tick it. `page`: it's a row of the series' own page.
  */
-export function CarriedActionRow({ a, calls, me, check, actions }: { a: CarriedAction; calls: SeriesCalls; me: string | undefined; check?: ReactNode; actions?: ReactNode }) {
+export function CarriedActionRow({ a, calls, me, check, actions, page = false }: { a: CarriedAction; calls: SeriesCalls; me: string | undefined; check?: ReactNode; actions?: ReactNode; page?: boolean | undefined }) {
   const glyph = check ?? (a.owner ? <Avatar person={a.owner.person ?? { name: a.owner.name }} size={20} /> : <span className="pend" />);
   return (
-    <Row className={cn('act-row', a.done && 'done', !a.takenOn && 'maybe')} glyph={glyph} noteId={a.noteId} room={a.room} at={a.at}
-      meta={<><From note={calls.get(a.noteId)} room={a.room} /><span>{a.done ? 'Done' : owned(a, me)}</span>{a.due && !a.done && <span>{dueLine(a)}</span>}{!a.done && <Lingering later={a.later} stale={a.stale} what="Not done" />}{actions}</>}>
+    <Row className={cn('act-row', a.done && 'done', !a.takenOn && 'maybe')} glyph={glyph} noteId={a.noteId} room={a.room} at={a.at} actions={actions} page={page}
+      meta={<><From note={calls.get(a.noteId)} room={a.room} /><span>{a.done ? 'Done' : owned(a, me)}</span>{a.due && !a.done && <span>{dueLine(a)}</span>}{!a.done && <Lingering later={a.later} stale={a.stale} what="Not done" />}</>}>
       {a.text}
     </Row>
   );
@@ -125,8 +129,8 @@ export function NextOnCalendar({ children }: { children: ReactNode }) {
   if (!calendar || (!calendar.needsAccess && calendar.source !== 'none')) return children;
   return (
     <>
-      <p className="ser-p">This series follows a repeating event on your Google Calendar, which isn’t connected now. Connect it again to see the next one on Home and make it an Alcove call.</p>
-      <Button icon="cal" className="ser-btn" onClick={() => location.assign(calendarConnectUrl())}>Connect Google Calendar</Button>
+      <p className="nd-c-open">This series follows a repeating event on your Google Calendar, which isn’t connected now. Connect it again to see the next one on Home and make it an Alcove call.</p>
+      <Button size="sm" icon="cal" className="nd-meet" onClick={() => location.assign(calendarConnectUrl())}>Connect Google Calendar</Button>
     </>
   );
 }

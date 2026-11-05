@@ -21,21 +21,27 @@ export const DOC_COMMENTS = 'comments';
  * no real client gets (theirs are random 32-bit numbers). A document's title is the first element of its fragment, so two
  * browsers each making their own would merge into two titles, and a browser that can only read mustn't write. So the API
  * writes these bytes when a document is made, and the first `sync` always carries them. They merge into one, whoever
- * applies them and however often. They're fixed for good: every document holds them.
+ * applies them and however often. Each of the two has an empty text in it, so whoever types there first types in the text
+ * that's there: two people each making one would sit side by side, and y-prosemirror merges those by deleting one. They're
+ * fixed for good: every document holds them.
  */
 export const DOC_SEED: Uint8Array = new Uint8Array([
-  1, 3, 1, 0, 7, 1, 7, 99, 111, 110, 116, 101, 110, 116, 3, 5, 116, 105, 116, 108, 101, 135, 1, 0, 3, 4, 108, 105, 110, 101, 40, 0, 1, 1, 2, 105, 100, 1, 119, 5, 102, 105, 114, 115, 116, 0
+  1, 5, 1, 0, 7, 1, 7, 99, 111, 110, 116, 101, 110, 116, 3, 5, 116, 105, 116, 108, 101, 7, 0, 1, 0, 6, 135, 1, 0, 3, 4, 108, 105, 110, 101, 7, 0, 1, 2, 6, 40, 0, 1, 2, 2, 105, 100, 1, 119, 5, 102, 105, 114, 115, 116, 0
 ]);
 
-/**
- * The most one update can be, which is thousands of pages of pasted text. A browser that has more waiting sends it in several;
- * one change bigger than this can't be saved, and waits to be undone.
- */
-export const MAX_DOC_UPDATE_BYTES = 4 * 1024 * 1024;
-/** The most what's on one browser's cursor can be: it travels sealed in a Postgres notice, which is small. */
-export const MAX_DOC_AWARENESS_BYTES = 4 * 1024;
 /** How big a document's state can grow: every reader is sent it whole when they open it. */
 export const MAX_DOC_BYTES = 16 * 1024 * 1024;
+/**
+ * How many separate pieces what's on a document's page can be made of, which is what its memory follows: about 37,500 lines,
+ * far past any meeting's notes. A line is about four pieces, and each run of words with its own formatting one more, which is
+ * enough to work out whether a paste fits before it's made (`DocSession.size`). What a document keeps of what's left its page
+ * doesn't count here, and has a ceiling of its own, at twice this, which is where its memory was measured.
+ */
+export const MAX_DOC_ITEMS = 150_000;
+/** The most one update can be: whatever fits in a document can arrive in one go. A browser with more waiting sends it in several. */
+export const MAX_DOC_UPDATE_BYTES = MAX_DOC_BYTES;
+/** The most what's on one browser's cursor can be: it travels sealed in a Postgres notice, which is small. */
+export const MAX_DOC_AWARENESS_BYTES = 4 * 1024;
 
 const CHUNK = 0x8000;
 /** Bytes as they go in JSON. Updates can be large, so they go through `btoa` a piece at a time. */
@@ -88,9 +94,10 @@ export type DocLiveEvent = z.infer<typeof DocLiveEventSchema>;
 
 /**
  * Why what's typed here isn't reaching Alcove, though there's a connection: you can only read this, it's in Trash, or it's
- * too much, whether in one go or for the document, which counts its size and how many separate pieces it's made of. What was
- * typed stays here, and goes once that changes: undoing a paste, or deleting something, is enough. `rejected`: Alcove can
- * never take it, which no browser should see. What's on screen stays until it's reloaded, and goes then.
+ * too much, whether in one go or for the document, which counts its size and how many separate pieces are on its page. What
+ * was typed stays here, and goes once that changes: undoing a paste, or deleting something, is enough. `rejected`: Alcove
+ * won't take it as it stands, which no browser should see. Whatever doesn't depend on it still goes. A refusal never lets go
+ * of anything: what's refused stays kept, through reloads, for someone to take out with `localCopy`.
  */
 export type DocRefusal = 'read-only' | 'trashed' | 'too-large' | 'rejected';
 
@@ -107,6 +114,11 @@ export interface DocStatus {
   trashed: boolean;
   /** Why it ended, if it has: nothing is sent or heard after this. */
   closed: DocClosed | null;
+  /**
+   * Something here hasn't reached Alcove. It stays kept until Alcove has it or someone chooses to let it go, whatever else
+   * this says. With `refused` or `closed`, it may not get there by itself: that's when to offer `localCopy`.
+   */
+  unsent: boolean;
 }
 
 /** An edit this browser is keeping until Alcove has it, and when it was made, in ms since the epoch: nothing reads that yet. */
@@ -120,10 +132,15 @@ export interface KeptUpdates {
   load(): Promise<KeptUpdate[]>;
   /** Keeps an update, made at `at`. Resolves once it's kept, with what `remove` knows it by. */
   add(update: Uint8Array, at: number): Promise<number>;
-  /** Forgets updates Alcove has now. */
+  /** Forgets updates Alcove has now, or that someone chose to let go. A refusal never comes here. */
   remove(keys: number[]): Promise<void>;
 }
 export interface DocSessionOptions extends WorkspaceReadOptions { keep?: KeptUpdates | undefined }
+
+/** Everything in a document as it stands here, whether or not Alcove has it. `text`: to read or copy, a line to a block. `state`: for `saveCopy`, to make a new document of it. */
+export interface DocLocalCopy { text: string; state: Uint8Array }
+/** How much a document holds as it stands here, to set beside `MAX_DOC_BYTES` and `MAX_DOC_ITEMS`. `items`: what's on its page. */
+export interface DocSize { bytes: number; items: number }
 
 /**
  * A document being worked on: a `Y.Doc` kept in step with everyone else's, whatever the connection does. Whatever changes
@@ -137,6 +154,15 @@ export interface DocSession extends LiveStore<DocStatus> {
   readonly ready: Promise<void>;
   /** Sends what's waiting, says this browser's caret is gone, and stops. */
   close(): void;
+  /** What's here now, for someone whose words aren't reaching Alcove. It holds every word this browser has, and works however the session ended, until `close()`. */
+  localCopy(): DocLocalCopy;
+  /** What this document comes to here, for an editor to check a paste against the limits before it goes in. */
+  size(): DocSize;
+  /**
+   * Lets go of everything unsent, here and in `keep`, for good, and closes the session: only for someone who chose to, once
+   * they've had the chance of `localCopy`. Open the document again to carry on from what Alcove has.
+   */
+  discardUnsaved(): Promise<void>;
 }
 
 /* ---------- versions ---------- */

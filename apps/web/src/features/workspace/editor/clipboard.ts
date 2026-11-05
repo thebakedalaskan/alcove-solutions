@@ -3,10 +3,12 @@
  * shortcuts, so a list stays a list wherever it lands. In: what comes from Word, Google Docs, Notion and the web is
  * turned into plain HTML first (nested lists flattened, paragraphs in a cell joined), and the schema's rules read that.
  */
-import { newBlockId } from '@alcove/api/retire';
+import { MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES } from '@alcove/api';
+import { itemsOnPage, newBlockId } from '@alcove/api/retire';
 import { DOMSerializer, Fragment, Slice, type DOMOutputSpec, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import * as Y from 'yjs';
 import { galleryItems, liveLines, mediaIn } from './blocks/attrs';
 import { dateLabel } from './blocks/dates';
 import { allBlocks, countLine, isBlank, selectedBlock } from './commands';
@@ -387,6 +389,58 @@ export function textToSlice(text: string, $context: ResolvedPos, plain: boolean)
   return Slice.maxOpen(Fragment.fromArray(blocks));
 }
 
+/* -------- too much to take in */
+
+/**
+ * The most one paste or drop can bring. It goes up as one change, and the API takes as much in one as a document can hold. A
+ * line is about 4 items and a cell 5, and undoing a paste is half that again, so these leave room for what's typed around it.
+ */
+const MAX_PASTE_BLOCKS = 20_000;
+const MAX_PASTE_CHARS = 1_000_000;
+const MAX_PASTE_BYTES = MAX_DOC_UPDATE_BYTES - 512 * 1024;
+/** What a line or a cell comes to besides its words, measured. */
+const ITEMS_PER_BLOCK = 5;
+const BYTES_PER_BLOCK = 80;
+
+const TOO_MUCH = 'That’s too much to add to this document, so nothing was added. Try a smaller part of it.';
+
+/** Whether a document has room for this much, counted as the API counts it: what's on its page. The API has the last word. */
+function hasRoom(doc: Y.Doc, blocks: number, bytes: number): boolean {
+  return itemsOnPage(doc) + blocks * ITEMS_PER_BLOCK <= MAX_DOC_ITEMS && Y.encodeStateAsUpdate(doc).length + bytes <= MAX_DOC_BYTES;
+}
+
+function fits(rt: EditorRuntime, slice: Slice): boolean {
+  const encoder = new TextEncoder();
+  let blocks = 0, chars = 0, words = 0;
+  slice.content.descendants((node) => {
+    if (node.isText) {
+      chars += node.text?.length ?? 0;
+      words += encoder.encode(node.text).length;
+    } else if (node.isTextblock || node.isAtom) blocks += 1;
+    return true;
+  });
+  const bytes = words + blocks * BYTES_PER_BLOCK;
+  return blocks <= MAX_PASTE_BLOCKS && chars <= MAX_PASTE_CHARS && bytes <= MAX_PASTE_BYTES && hasRoom(rt.props.doc, blocks, bytes);
+}
+
+/** What's been read from the clipboard and doesn't fit. It goes no further: nothing about it reaches the document. */
+const refused = new WeakSet<Slice>();
+
+/** Says so, if a paste or a drop was refused, and returns whether it was. What was copied is still on the clipboard. */
+export function refuseSlice(rt: EditorRuntime, slice: Slice): boolean {
+  if (!refused.delete(slice)) return false;
+  rt.props.onToast?.({ icon: 'alert', text: TOO_MUCH });
+  return true;
+}
+
+/** Refuses what's far too long to be worth reading at all, before reading it. */
+export function refuseText(rt: EditorRuntime, event: Event, data: DataTransfer | null): boolean {
+  if ((data?.getData('text/plain').length ?? 0) <= MAX_PASTE_CHARS) return false;
+  event.preventDefault();
+  rt.props.onToast?.({ icon: 'alert', text: TOO_MUCH });
+  return true;
+}
+
 /* -------- in, whatever it was */
 
 /** Where something pasted goes when it isn't text: under the line, or in its place if it's empty. */
@@ -409,7 +463,8 @@ function pasteLink(view: EditorView, url: string): boolean {
   return true;
 }
 
-export function handlePaste(rt: EditorRuntime, view: EditorView, event: ClipboardEvent): boolean {
+export function handlePaste(rt: EditorRuntime, view: EditorView, event: ClipboardEvent, slice: Slice): boolean {
+  if (refuseSlice(rt, slice)) return true;
   const data = event.clipboardData;
   if (!data) return false;
   const text = data.getData('text/plain').trim();
@@ -444,6 +499,10 @@ function asOneText(content: Fragment): Slice | null {
 
 /** A pasted copy of a block is a new block. A title can't be anywhere but first. A file from elsewhere needs attaching here. */
 export function transformPasted(rt: EditorRuntime, slice: Slice, view: EditorView): Slice {
+  if (!fits(rt, slice)) {
+    refused.add(slice);
+    return slice;
+  }
   const known = new Set(allBlocks(view.state.doc).flatMap((b) => mediaIn(b.node)));
   const reached = new Set<string>();
   const nodes: PMNode[] = [];

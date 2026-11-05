@@ -14,6 +14,7 @@
  * of its own, `@alcove/api/retire`, because importing the contract mustn't load Yjs.
  */
 import * as Y from 'yjs';
+import { DOC_FRAGMENT } from './workspaceDocuments';
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -107,6 +108,37 @@ export function holdsNothing(type: Y.XmlFragment): boolean {
 export function isGone(element: Y.XmlElement): boolean {
   const gone: unknown = element.getAttribute('gone');
   return typeof gone === 'string' && holdsNothing(element);
+}
+
+/** How many items something is, with what's in it, leaving out what's deleted. Walked with a list: nothing says how deep it goes. */
+function liveItems(top: Y.Item): number {
+  let count = 0;
+  const waiting = [top];
+  for (let item = waiting.pop(); item; item = waiting.pop()) {
+    if (item.deleted) continue;
+    count += 1;
+    if (!(item.content instanceof Y.ContentType)) continue;
+    const { type } = item.content;
+    for (let child = type._start; child; child = child.right) waiting.push(child);
+    waiting.push(...type._map.values());
+  }
+  return count;
+}
+
+/**
+ * How many items a document's page comes to: everything it holds but what's deleted and what's in a retired block. That's
+ * what its limit is on, so a page someone emptied has room again, whatever it cost to empty it, and however much of that
+ * Yjs has to keep. For a board, it's everything that hasn't been deleted.
+ */
+export function itemsOnPage(doc: Y.Doc): number {
+  let count = 0;
+  for (const structs of doc.store.clients.values()) for (const struct of structs) if (struct instanceof Y.Item && !struct.deleted) count += 1;
+  for (let item = doc.share.get(DOC_FRAGMENT)?._start ?? null; item; item = item.right) {
+    if (item.deleted || !(item.content instanceof Y.ContentType)) continue;
+    const { type } = item.content;
+    if (type instanceof Y.XmlElement && isGone(type)) count -= liveItems(item);
+  }
+  return count;
 }
 
 /** What holds text directly. */

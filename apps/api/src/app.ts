@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -78,9 +78,12 @@ const NO_RECEIPT = [
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
+/** The most audio one range carries, under Cloud Run's 32 MiB for a reply of a known length. A browser asks again for the rest. */
+const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 /** The one route that takes an image: a frame of someone's own shared screen. */
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
-const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/updates$/;
+/** What holds a document's content, as it is: a paste can be megabytes, and it has a limit of its own. */
+const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/(?:updates|adopt)$/;
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 
@@ -249,8 +252,9 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
-  // Audio pieces (2 MiB) are the largest bodies; call commits and chat have their own, tighter caps below.
-  app.use('/v1/*', capped(4 * 1024 * 1024));
+  // Audio pieces (2 MiB) are the largest bodies; call commits and chat have their own, tighter caps below. A document's updates can be as big as a document, and are capped where they arrive.
+  const anyBody = capped(4 * 1024 * 1024);
+  app.use('/v1/*', (c, next) => (DOC_UPDATES.test(c.req.path) ? next() : anyBody(c, next)));
   app.use('/v1/*', async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
     const origin = c.req.header('origin');
@@ -699,6 +703,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
    * nothing, and a receipt would hold a copy of it, so none of this keeps one.
    */
   app.use('/v1/workspaces/:id/documents/:doc/updates', capped(MAX_DOC_UPDATE_BYTES));
+  app.use('/v1/workspaces/:id/documents/:doc/adopt', capped(MAX_DOC_BYTES));
   app.use('/v1/workspaces/:id/documents/:doc/awareness', capped(Math.ceil((MAX_DOC_AWARENESS_BYTES * 4) / 3) + 1024));
   app.get('/v1/workspaces/:id/documents/:doc/live', async (c) => {
     const r = await readerOf(c);
@@ -713,8 +718,17 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/documents/:doc/updates', async (c) => {
     const r = await readerOf(c);
     updateLimiter(access.limitKey(r), 'document update');
-    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(Number(c.req.header('content-length') ?? 0) / 1024) || 1);
-    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), () => c.req.arrayBuffer()));
+    const length = Number(c.req.header('content-length') ?? MAX_DOC_UPDATE_BYTES);
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
+    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
+  });
+  /* Words that couldn't reach the document they were written in, as a new one's first state. */
+  app.post('/v1/workspaces/:id/documents/:doc/adopt', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
+    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
   app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
     const r = await readerOf(c);
@@ -937,18 +951,29 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       }
     });
   });
+  /*
+   * The first `pieces` of a segment, which stay the same file however much more is recorded. A range is for the
+   * browser's own player; all of it, chunked, is for one that can't seek by range and fetches it whole.
+   */
   app.get('/v1/notes/:id/audio/:segment', async (c) => {
+    const gone = c.req.raw.signal;
     const o = c.get('owner');
     const segment = z.coerce.number().int().min(0).parse(c.req.param('segment'));
+    const pieces = z.coerce.number().int().min(1).parse(c.req.query('pieces'));
     const n = await notes.get(o, c.req.param('id'));
     const seg = n.audio.find((a) => a.index === segment);
     if (!seg) throw new NotFoundError('No audio in that part of the recording.');
     const source = await notes.audioSource(o, n.id);
+    const file = await audioMod.file(source.owner, source.recordingId, segment, pieces);
     const mime = seg.mimeType.split(';')[0] ?? '';
-    c.header('content-type', AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream');
-    c.header('x-content-type-options', 'nosniff');
-    c.header('cache-control', 'no-store');
-    return stream(c, async (s) => { for await (const chunk of audioMod.stream(source.owner, source.recordingId, segment)) await s.write(chunk); });
+    const headers = { 'content-type': AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' };
+    if (c.req.method === 'HEAD') return c.body(null, 200, { ...headers, 'content-length': String(file.bytes) });
+    const range = byteRange(c.req.header('range'), file.bytes);
+    if (range === null) return c.body(null, 416, { ...headers, 'content-range': `bytes */${file.bytes}` });
+    if (!range) return c.body(await audioMod.body(file.read(0, file.bytes - 1), gone), 200, headers);
+    const { from } = range;
+    const to = Math.min(range.to, from + MOST_AUDIO_PER_REPLY - 1);
+    return c.body(await audioMod.body(file.read(from, to), gone), 206, { ...headers, 'content-length': String(to - from + 1), 'content-range': `bytes ${from}-${to}/${file.bytes}` });
   });
   /* A note's shared-screen frame, for anyone who has the note: decrypted here, never cached by the browser. */
   app.get('/v1/notes/:id/screens/:frameId', async (c) => {
@@ -1075,6 +1100,22 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
 
 /** A position header: a whole number that fits the integer columns it's stored in. */
 const position = (c: Context, name: string) => z.coerce.number().int().min(0).max(2_147_483_647).parse(c.req.header(name));
+
+/**
+ * What a Range header asks for in `size` bytes: one stretch, `null` if it starts past the end, or `undefined` for the
+ * whole file, which is the answer to no header and to one this doesn't take, such as several ranges.
+ */
+function byteRange(header: string | undefined, size: number): { from: number; to: number } | null | undefined {
+  const asked = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? '');
+  if (!asked) return undefined;
+  const [, first = '', last = ''] = asked;
+  if (!first && !last) return undefined;
+  if (!first) return Number(last) > 0 && size > 0 ? { from: Math.max(0, size - Number(last)), to: size - 1 } : null;
+  const from = Number(first);
+  if (from >= size) return null;
+  const to = last ? Math.min(Number(last), size - 1) : size - 1;
+  return to >= from ? { from, to } : undefined;
+}
 
 /** Reads a raw audio piece and its position headers. */
 async function piece(c: Context): Promise<audioMod.Piece> {

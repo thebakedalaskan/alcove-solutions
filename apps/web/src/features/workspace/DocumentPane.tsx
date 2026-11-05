@@ -1,9 +1,10 @@
 /*
  * A document beside the list: its head, the bars that say how things stand, and the editor, which loads when a document
- * first opens and mounts once the document's first sync is in. Someone who loses a document mid-sentence is told so in place.
+ * first opens and mounts once the document's first sync is in. Someone who loses a document mid-sentence is told so in place,
+ * and whatever they wrote that didn't reach Alcove stays theirs to copy, save as a new document, or let go.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFullBar, WsGoneBar, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsReadOnlyBar, WsScroll, WsTemplates, Button, wsToast, type WsPop } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsGoneBar, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsReadOnlyBar, WsScroll, WsTemplates, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
@@ -15,16 +16,22 @@ import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
+import { Rescue, type CopyTo } from './Rescue';
 import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
 
 const dlog = log.child({ component: 'workspace' });
 
-/** A session for one document, once its first sync is in. `refused`: it wouldn't open at all. */
+/** A session for one document, and whether its first sync is in. Why it ended, if it has, is in its status. */
+interface Opened { session: DocSession; ready: boolean; round: number }
+
+/** One session at a time for a document. `reopen`: a fresh one, from what Alcove has and anything kept here. */
 function useSession(ws: Ws, documentId: string) {
   const { workspaceId, pass, owner } = ws;
-  const [opened, setOpened] = useState<{ session: DocSession; ready: boolean; refused: boolean } | null>(null);
+  const [round, setRound] = useState(0);
+  const reopen = useCallback(() => setRound((r) => r + 1), []);
+  const [opened, setOpened] = useState<Opened | null>(null);
   useEffect(() => {
     let left = false;
     let held: DocSession | null = null;
@@ -32,11 +39,9 @@ function useSession(ws: Ws, documentId: string) {
       openDocument(workspaceId, documentId, owner, pass).then((session) => {
         if (left) { session.close(); return; }
         held = session;
-        setOpened({ session, ready: false, refused: false });
-        session.ready.then(
-          () => { if (!left) setOpened({ session, ready: true, refused: false }); },
-          () => { if (!left) setOpened({ session, ready: false, refused: true }); }
-        );
+        setOpened({ session, ready: false, round });
+        // A session that never opens says why in its status.
+        session.ready.then(() => { if (!left) setOpened({ session, ready: true, round }); }, () => undefined);
       }, (e: unknown) => {
         dlog.warn('a document didn’t open', { workspaceId, documentId, err: e });
         addEventListener('online', open, { once: true });
@@ -44,9 +49,12 @@ function useSession(ws: Ws, documentId: string) {
     };
     open();
     return () => { left = true; removeEventListener('online', open); held?.close(); };
-  }, [workspaceId, documentId, pass, owner]);
-  return opened;
+  }, [workspaceId, documentId, pass, owner, round]);
+  return { opened, reopen };
 }
+
+/** How long a document that can't be opened right now waits before it's opened again, a little longer each time. */
+const UNAVAILABLE_WAITS = [2_000, 5_000, 15_000, 30_000];
 
 /** The dates `@` offers: today, tomorrow and the next Friday. */
 function dateChoices(now: number): { label: string; date: string }[] {
@@ -65,7 +73,8 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const persons = useMemo(() => (people ?? []).map((p) => p.person), [people]);
   /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
   const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
-  const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
+  // A session that's ended takes nothing more: anything typed there would have nowhere to go.
+  const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed' || status.closed !== null;
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -199,10 +208,10 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
 
 export function DocumentPane({ item }: { item: WorkspaceItem }) {
   const ws = useWs();
-  const opened = useSession(ws, item.id);
+  const { opened, reopen } = useSession(ws, item.id);
   const online = useOnline();
   if (!opened) return <WsDoc><Blank ws={ws} item={item} />{!online && <WsOfflineEmpty />}</WsDoc>;
-  return <Opened ws={ws} item={item} opened={opened} />;
+  return <OpenedPane ws={ws} item={item} opened={opened} reopen={reopen} />;
 }
 
 /** The head with nothing to do yet. */
@@ -212,8 +221,16 @@ function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
 
 const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
 
-function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { session: DocSession; ready: boolean; refused: boolean } }) {
-  const { session, ready, refused } = opened;
+/** Why what's written here isn't reaching Alcove, as the bar says it, if it says anything. */
+function unsavedOf(status: DocStatus, ready: boolean, guest: boolean): WsUnsaved | null {
+  if (status.closed === 'unavailable') return ready ? 'unavailable' : null;
+  if (status.closed === 'session') return guest ? 'call-ended' : 'signed-out';
+  if (status.refused === 'too-large' || status.refused === 'rejected') return status.refused;
+  return status.refused === 'read-only' && status.unsent ? 'read-only' : null;
+}
+
+function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem; opened: Opened; reopen: () => void }) {
+  const { session, ready } = opened;
   const status = useLive(session);
   const [more, setMore] = useState<'menu' | 'move' | null>(null);
   const [share, setShare] = useState(false);
@@ -221,10 +238,29 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   const canShare = member && item.role === 'edit';
   const changing = ws.canChange && item.role === 'edit' && item.trashedAt === null;
   const trashed = item.trashedAt !== null || status.trashed || status.refused === 'trashed';
-  const closed = status.closed === 'access' || status.closed === 'deleted';
+  const gone = status.closed === 'access' || status.closed === 'deleted';
   /* The browser knows before the document's stream does, which only finds out when it next tries to say something. */
   const online = useOnline();
   const offline = status.status === 'offline' || (!online && status.status !== 'failed');
+  const unsaved = unsavedOf(status, ready, ws.owner === null);
+  /* Where words may not get there by themselves, they're offered. In Trash, Restore it is the way. */
+  const stuck = status.unsent && !trashed && (status.refused !== null || status.closed !== null);
+  const folder = item.parent === null ? undefined : ws.tree.all.get(item.parent);
+  const copyTo: CopyTo | undefined = ws.canChange && ws.owner !== null && status.closed !== 'session' ? {
+    workspaceId: ws.workspaceId, name: () => nameOf(item), parent: folder && folder.trashedAt === null ? folder.id : null, go: (id) => ws.go({ kind: 'document', id })
+  } : undefined;
+  const rescue = stuck ? <Rescue session={session} say={ws.say} copyTo={copyTo} onLetGo={reopen} /> : null;
+
+  /* A document that can't be opened right now opens again by itself, a little later each time. */
+  const tries = useRef(0);
+  useEffect(() => { if (ready) tries.current = 0; }, [ready]);
+  useEffect(() => {
+    if (status.closed !== 'unavailable') return undefined;
+    const wait = UNAVAILABLE_WAITS[Math.min(tries.current, UNAVAILABLE_WAITS.length - 1)] ?? 30_000;
+    tries.current += 1;
+    const timer = setTimeout(reopen, wait);
+    return () => clearTimeout(timer);
+  }, [status.closed, reopen]);
 
   /* Back from being offline, and everything's in. */
   const wasOffline = useRef(false);
@@ -233,11 +269,12 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
     else if (wasOffline.current && status.status === 'saved') { wasOffline.current = false; ws.say(wsToast.backOnline()); }
   }, [offline, status.status, ws.say]);
 
-  if (refused || closed) {
+  if (gone) {
     return (
       <WsDoc>
         <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
-        <WsCantOpen what="document" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
+        <WsCantOpen what="document" unsent={rescue !== null}
+          action={rescue ?? <Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );
   }
@@ -257,16 +294,19 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
     )
   };
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
+  const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
   return (
     <WsDoc>
-      <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList}
+      <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
         zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
-      <WsOfflineBar show={offline && ready} />
-      <WsFullBar show={status.refused === 'too-large'} />
+      <WsOfflineBar show={offline && ready && status.closed === null} />
+      <WsUnsavedBar why={unsaved}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
-      <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
-      {ready ? <WsScroll><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
+      <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
+      {ready
+        ? <WsScroll><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
+        : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}
     </WsDoc>
   );
 }

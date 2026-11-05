@@ -15,12 +15,13 @@ import { useTreeActions } from './actions';
 import { useLaidOver } from './changes';
 import { WsContext, type FolderDraft, type Ws, type WorkspaceProps } from './context';
 import { DocumentPane } from './DocumentPane';
+import { KeptHere } from './Rescue';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { List } from './List';
 import { placesOf, rememberPlaces } from './places';
 import { TrashPage } from './TrashPage';
-import { arrivals, documentsIn, foldersAbove, treeOf, type Tree } from './tree';
+import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
 
 const GLOW_MS = 1400;
 
@@ -108,6 +109,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
   const justMade = useRef<string | null>(null);
   const openDoc = useRef<Ws['openDoc']['current']>(null);
+  /* What the list last called each document, for a copy of someone's words in one that's gone. */
+  const known = useRef(new Map<string, string>());
+  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, nameOf(it)); }, [items]);
   const spaceName = view.tree?.name ?? 'Shared with you';
   /* Going anywhere puts a phone's list away, even to what's already open behind it. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo]);
@@ -142,6 +146,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
   }, [view.tree, at.kind, phone, owner, workspaceId, tree, onGo]);
 
+  /* A document just made is only opening while it's the one open. */
+  useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
+
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
     rememberPlaces(owner, (p) => ({ ...p, workspace: workspaceId, documents: documentId ? { ...p.documents, [workspaceId]: documentId } : p.documents }));
@@ -157,13 +164,16 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     else if (listOff) toggleInCall();
   }, [toggleInCall, listOff]);
 
-  /* N and ⇧N make something outside any folder, and sleep while you're typing. ⌘\ shows or hides the list. */
+  /*
+   * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
+   * typed then was meant for its title. ⌘\ shows or hides the list.
+   */
   const asleep = call?.closed ?? false;
   useEffect(() => {
     if (asleep) return;
     const keys = (e: KeyboardEvent) => {
       if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || e.key.toLowerCase() !== 'n') return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
       else actions.newDocument(null);
@@ -181,7 +191,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   const page = mode === 'page';
   if (view.status === 'closed') {
-    return <WsPane page={page}><WsDoc><WsCantOpen what={at.kind === 'document' ? 'document' : 'workspace'} action={<Button size="sm" onClick={onLeave}>{page ? 'Back to your workspaces' : 'Back to the call'}</Button>} /></WsDoc></WsPane>;
+    const back = <Button size="sm" onClick={onLeave}>{page ? 'Back to your workspaces' : 'Back to the call'}</Button>;
+    return (
+      <>
+        <WsPane page={page}>
+          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
+        </WsPane>
+        {!call && <WsToasts toasts={toasts} />}
+      </>
+    );
   }
   if (!view.tree) return <WsPane page={page}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty /></WsDoc>}</WsPane>;
 
@@ -196,7 +214,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
-            <WsCantOpen what="document" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
+            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
+              copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id) ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
+              back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
           <WsDoc className="is-bare">

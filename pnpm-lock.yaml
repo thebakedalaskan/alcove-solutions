@@ -129,6 +129,9 @@ importers:
       '@tanstack/react-start':
         specifier: ^1.169.4
         version: 1.169.4(esbuild@0.28.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(rolldown@1.2.16)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+      lib0:
+        specifier: ^0.2.109
+        version: 0.2.119
       livekit-client:
         specifier: ^2.23.0
         version: 2.23.0(@types/dom-mediacapture-record@1.0.22)
@@ -227,6 +230,9 @@ importers:
       '@alcove/api':
         specifier: workspace:*
         version: link:../api
+      lib0:
+        specifier: ^0.2.119
+        version: 0.2.119
       ts-mls:
         specifier: 1.6.4
         version: 1.6.4(@noble/ciphers@2.1.1)
