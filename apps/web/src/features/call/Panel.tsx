@@ -1,11 +1,13 @@
 /*
- * The side panel: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
- * people, one view at a time. It slides in beside the stage and the stage makes room. Notes, the transcript
- * and answers come from what was really said while notes were on; nothing here is invented. Chat is
- * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
+ * The side panels: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
+ * people, one tab at a time in each panel. A panel slides in and the stage makes room; any tab can be pulled out to
+ * be a panel of its own, and panels sit wherever you put them (panels.ts, PanelHost.tsx). Notes, the transcript
+ * and answers come from what was really said while notes were on; nothing here is invented. The notes are the
+ * call's shared live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone
+ * there. Chat is end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallState, type CatchUpItem, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, cn, useToast, type IconName } from '@alcove/ui';
+import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { rungWords } from '~/features/calls/RingWords';
@@ -15,14 +17,11 @@ import { hm } from '~/lib/time';
 import { notesBrowser, organizerName, roomScribe, type CaptureControls } from './Capture';
 import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
-import type { LiveNotes } from './liveNotes';
+import { tabName, useDraft, type Draft } from './PanelHost';
 import type { VolumeActions } from './volume';
 import { VolumeControl } from './VolumeControl';
 
-export type PanelView = 'notes' | 'yours' | 'transcript' | 'ask' | 'chat' | 'people' | 'rooms';
-const TABS: { v: PanelView; label: string }[] = [
-  { v: 'notes', label: 'Notes' }, { v: 'yours', label: 'Yours' }, { v: 'transcript', label: 'Transcript' }, { v: 'ask', label: 'Ask' }, { v: 'chat', label: 'Chat' }, { v: 'people', label: 'People' }
-];
+export type PanelView = CallPanelView;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
 /** Someone shown in the panel: in the call (and how), or invited and not here. `volume`: how loud they are for you, null for yourself. */
@@ -43,22 +42,25 @@ export interface HostControls {
   setPointing: (on: boolean) => Promise<void>;
 }
 
-export function SidePanel({ view, onView, onClose, children, roomsTitle, own }: {
-  view: PanelView; onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string;
-  /** You have an account in this call, so you can keep your own notes on it. */
-  own: boolean;
+export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }: {
+  view: PanelView;
+  /** The tabs in this panel: dragging one out makes it a panel of its own, and one on its own has its name instead. */
+  tabs: CallPanelTab[];
+  onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string;
 }) {
   const reduce = useReducedMotion();
+  const [only] = tabs;
+  const name = view === 'rooms' ? roomsTitle : tabName(only ?? 'notes');
   return (
     <>
-      {view === 'rooms' ? (
-        <div className="ic-side-head"><span className="ttl">{roomsTitle}</span><IconButton icon="x" label="Close the panel" onClick={onClose} /></div>
+      {view === 'rooms' || tabs.length < 2 ? (
+        <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={view === 'rooms' ? 'Close the panel' : `Close ${name}`} onClick={onClose} /></div>
       ) : (
         <div className="ic-side-head">
           <div className="ac-tabs" role="tablist" aria-label="Call panel">
-            {TABS.filter((t) => own || t.v !== 'yours').map((t) => <button key={t.v} type="button" role="tab" className="ac-tab" aria-selected={view === t.v} onClick={() => onView(t.v)}>{t.label}</button>)}
+            {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
           </div>
-          <IconButton icon="x" label="Close the panel" onClick={onClose} />
+          <IconButton icon="x" label={`Close ${tabName(view)}`} onClick={onClose} />
         </div>
       )}
       <div className="ic-views">
@@ -78,15 +80,32 @@ const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed
 
 /* ---------- notes ---------- */
 
-function NoteRows({ items, kind, times, onSeek }: { items: CatchUpItem[]; kind: 'decided' | 'next'; times: CallTimes; onSeek: (e: TranscriptMoment) => void }) {
+function DecidedRows({ items, times, onSeek }: { items: CatchUpItem[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void }) {
   return (
     <>
       {items.map((it) => (
         <motion.div key={`${it.evidence[0]?.lineId ?? 'x'}-${it.text}`} className="ic-nr" layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-          {kind === 'next' && it.owner ? <span className="mk av"><Avatar person={{ name: it.owner }} size={18} /></span> : <span className="mk"><Icon name="check" size={12} /></span>}
+          <span className="mk"><Icon name="check" size={12} /></span>
+          <div className="nr-text">{it.text}</div>
+          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
+        </motion.div>
+      ))}
+    </>
+  );
+}
+
+/** What people said they'd do. `onTick`: done for everyone in this part of the call; absent for a guest, who doesn't get the notes, and in notes written for what someone may read of it. */
+function FollowUpRows({ items, times, onSeek, onTick }: { items: LiveFollowUp[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; onTick: ((id: string, done: boolean) => void) | undefined }) {
+  return (
+    <>
+      {items.map((it) => (
+        <motion.div key={it.id} className={cn('ic-nr', it.done && 'is-done')} layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+          {onTick ? <Check checked={it.done} onChange={(on) => onTick(it.id, on)} label={`Mark done: ${it.text}`} />
+            : it.done ? <span className="mk"><Icon name="check" size={12} /></span>
+              : it.owner ? <span className="mk av"><Avatar person={{ name: it.owner }} size={18} /></span> : <span className="mk" />}
           <div>
-            {it.text}
-            {kind === 'next' && (it.owner || it.due) && (
+            <span className="nr-text">{it.text}</span>
+            {(it.owner || it.due) && (
               <div className="meta">{it.owner}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
             )}
           </div>
@@ -114,8 +133,8 @@ function Summary({ text }: { text: string }) {
 const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right now, so nothing new is transcribed.';
 const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
 
-export function NotesView({ state, live, getting, problems, controls, carried, onSeek, onTranscript }: {
-  state: CallState; live: LiveNotes;
+export function NotesView({ state, getting, problems, controls, carried, onSeek, onTick, onTranscript }: {
+  state: CallState;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
   problems: string[];
@@ -123,7 +142,7 @@ export function NotesView({ state, live, getting, problems, controls, carried, o
   controls: CaptureControls;
   /** What carries over from earlier calls, for you alone, when there's anything of yours. */
   carried?: ReactNode;
-  onSeek: (e: TranscriptMoment) => void; onTranscript: () => void;
+  onSeek: (e: TranscriptMoment) => void; onTick: (id: string, done: boolean) => void; onTranscript: () => void;
 }) {
   // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
   // sign says: in a breakout room, the room can be heard while the main room can't, and the other way round.
@@ -138,6 +157,7 @@ export function NotesView({ state, live, getting, problems, controls, carried, o
   const asking = !host && c.asked?.state === 'asking';
   const organizer = organizerName(state);
   const [menu, setMenu] = useState(false);
+  const live = state.liveNotes;
   const n = live.notes;
   const held = state.breakouts.held;
   const item = (icon: IconName, label: string, f: () => void) => (
@@ -175,6 +195,9 @@ export function NotesView({ state, live, getting, problems, controls, carried, o
         {pausedHere && n && (
           <div className="ic-problems is-top"><Notice icon="pause">{roomHeld ? ROOM_PAUSED : <>Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</>}</Notice></div>
         )}
+        {(problems.length > 0 || live.error) && (
+          <div className="ic-problems is-top">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
+        )}
         {roomHeld && !n ? (
           <EmptyState title="Notes are paused in this room" className="ic-empty">Nothing said here is transcribed until the organizer resumes.</EmptyState>
         ) : paused && !n ? (
@@ -199,9 +222,9 @@ export function NotesView({ state, live, getting, problems, controls, carried, o
         ) : (
           <div className="ic-nb">
             <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n.decided.length}</span></div>
-              {n.decided.length ? <NoteRows items={n.decided} kind="decided" times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
+              {n.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
             <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{n.next.length}</span></div>
-              {n.next.length ? <NoteRows items={n.next} kind="next" times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
+              {n.next.length ? <FollowUpRows items={n.next} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' || n.read.whileHere ? undefined : onTick} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
             {held.length > 0 && (
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
@@ -213,11 +236,13 @@ export function NotesView({ state, live, getting, problems, controls, carried, o
               </div>
             )}
             <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
-            {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+            {(n.read.whileHere || on) && (
+              <div className="ic-about">
+                {n.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
+                {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+              </div>
+            )}
           </div>
-        )}
-        {(problems.length > 0 || live.error) && (
-          <div className="ic-problems">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
         )}
       </div>
       <Foot end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>Confidential compute · everyone with the notes</Foot>
@@ -264,7 +289,7 @@ export function TranscriptView({ state, me, onMark }: { state: CallState; me: st
  * the people in it: the view marks where the conversation moved, and chat sent somewhere before you got there
  * can't be read here, which the view says.
  */
-export function ChatView({ chat, missed, ready, moving, here, placeName, who, onSend }: {
+export function ChatView({ chat, missed, ready, moving, here, placeName, who, draft, onSend }: {
   chat: CallChatMessage[];
   /** There was chat in this part of the call while you weren't in it. */
   missed: boolean;
@@ -277,16 +302,17 @@ export function ChatView({ chat, missed, ready, moving, here, placeName, who, on
   /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
   placeName: (place: string) => string;
   who: (id: string) => Person;
+  draft: Draft;
   onSend: (text: string) => Promise<void>;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useDraft(draft);
   const toast = useToast();
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
   /* A message that isn't sent is taken back: say so, and give the text back. */
   const send = (t: string) => {
     setText('');
-    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); setText((now) => now || t); });
+    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); draft.text ||= t; setText((now) => now || t); });
   };
   // Marks only matter once the conversation has been in more than one part of the call.
   const marked = new Set(chat.map((c) => c.place)).size > 1;

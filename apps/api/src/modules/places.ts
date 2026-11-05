@@ -7,7 +7,7 @@
 import { MAIN_PLACE } from '@alcove/api';
 import { z } from 'zod';
 import { RoomPause } from './capture';
-import { HeldRooms } from './notes';
+import { HeldRooms } from './heldRooms';
 
 /**
  * Everyone who has joined, by LiveKit identity, so the call can show account names and photos. Sealed: LiveKit

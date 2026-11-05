@@ -7,23 +7,34 @@ import type { Following, StopFollowing } from './follow';
 import type { Someone } from './presence';
 import type { Tree } from './tree';
 
+/** Where in the list something was opened from, in a call: a document brought to it is in both. */
+export type WorkspaceArea = 'pins' | 'tree';
 /**
  * What's on the page beside the list. `home`: nothing chosen, so the workspace picks. `block` lands on a line, and comes
  * from the link's hash.
  */
-export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined } | { kind: 'trash' };
+export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined; area?: WorkspaceArea | undefined } | { kind: 'trash' };
 
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
-  /** Rows above Documents: This call, and the live pages. */
+  /** The first rows under This call: the live pages. */
   top?: ReactNode;
-  /** Whether a document is in this call, which puts Bring to this call in its menu. */
-  brought?: ((id: string) => boolean) | undefined;
-  onBring?: ((id: string, brought: boolean) => void) | undefined;
-  /** What the name at the top of the list opens, in place of the app's picker. */
+  /** What's been brought to the call, in order, by its ID in this workspace. */
+  documents: readonly string[];
+  /** Brings a document to the call, or takes it off. It's in every document's menu. */
+  onBring: (id: string, brought: boolean) => void;
+  /** What the name at the top of the list opens. Left out, it says which workspace this is, and who chooses it (`chooser`). */
   picker?: ReactNode;
+  /** The first name of who chooses the workspace, for anyone else. */
+  chooser?: string | undefined;
   /** Just the document, at the far right of a document's head. */
   zen?: { on: boolean; onToggle: () => void } | undefined;
+  /** Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). */
+  list: { off: boolean; peek: boolean; onToggle: () => void };
+  /** Where what the workspace says goes: a call has one place for toasts. */
+  say: (toast: WsToastData) => void;
+  /** Closed, and kept as it was for next time: its keys sleep. */
+  closed: boolean;
 }
 
 export interface WorkspaceProps {

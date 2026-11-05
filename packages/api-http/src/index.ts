@@ -4,18 +4,18 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocAppendedSchema, DocLiveEventSchema, DocumentShareSchema, DocVersionSummarySchema, DocVersionWireSchema, MentionNoticeSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
-  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema,
+  NoteFoundSchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
-  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
+  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
+import type { DocVersionSummary } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
-import { HttpDocSession } from './workspaceDocuments';
 import { HttpWorkspaceLive, PRESENCE_BEAT_MS, QUIET_MS } from './workspaces';
 import { z } from 'zod';
 
@@ -30,6 +30,8 @@ export interface HttpOptions {
   onEvent?: (e: ClientEvent) => void;
   /** How often a call checks for keys and people while nothing nudges it, in ms (default 1500). Tests go faster. */
   callPollMs?: number | undefined;
+  /** How often a browser showing the live notes says so, in ms (default 5000). Tests go faster. */
+  callNotesMs?: number | undefined;
   /** How long a browser waits after the call's keys move on before it sends with its new one, in ms (default 2000). */
   callKeySwitchMs?: number | undefined;
   /** How often the host's browser moves the call's keys on when nobody comes or goes, in ms (default 10 minutes). */
@@ -166,7 +168,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     // Every request about the call carries its pass; guests have no session, so this is all they have.
     const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
     const live = (id: string) => `/live/calls/${id}`;
-    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
+    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
       get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
@@ -176,6 +178,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
       })).json(), 'frame receipt'),
       shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
+      watchNotes: async (id) => (await req(NotesWatchedSchema, 'POST', `${live(id)}/notes/watch`, {}, p)).refreshed,
+      followUps: (id) => req(CallFollowUpsSchema, 'GET', `${live(id)}/follow-ups`, undefined, p),
+      tickDocument: (id, t) => req(CallFollowUpsSchema, 'POST', `${live(id)}/follow-ups`, t, p),
+      previewWorkspace: (id, workspaceId) => req(CallWorkspaceSwitchSchema, 'GET', `${live(id)}/workspace/${encodeURIComponent(workspaceId)}`, undefined, p),
       catchUp: (id, range) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, { range }, p),
       askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
@@ -281,7 +287,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     },
     notes: {
       // Search terms go in the body so they never appear in URLs or access logs.
-      list: (q) => req(z.array(NoteSummarySchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}) }),
+      list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}) }),
       get: (id) => req(NoteSchema, 'GET', `/notes/${encodeURIComponent(id)}`),
       progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
       audioUrl: (id, segment) => `${base}/notes/${encodeURIComponent(id)}/audio/${segment}`,
@@ -352,22 +358,44 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS,
         (mention) => req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mention)}`, undefined, withPass(w))
       ),
-      document: (id, documentId, opts) => {
+      // Yjs comes with the first document anyone opens, and stays out of everything else.
+      document: async (id, documentId, opts) => {
         const at = `${space(id)}/documents/${encodeURIComponent(documentId)}`;
         const headers = withPass(opts);
+        const { HttpDocSession } = await import('./workspaceDocuments');
         return new HttpDocSession({
           open: (after, signal) => ndjson(DocLiveEventSchema, `${at}/live?after=${after}`, signal, headers),
-          update: (update) => req(DocAppendedSchema, 'POST', `${at}/updates`, { update }, headers),
+          update: async (update) => parse(DocAppendedSchema, await (await send('POST', `${at}/updates`, new Uint8Array(update), { 'content-type': DOC_UPDATE_TYPE, ...headers })).json(), `response from POST ${at}/updates`),
           awareness: (update, keepalive) => req(z.unknown(), 'POST', `${at}/awareness`, { update }, headers, keepalive)
         }, opts?.keep, o.liveQuietMs ?? QUIET_MS);
       },
       versions: (id, documentId, w) => req(z.array(DocVersionSummarySchema), 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions`, undefined, withPass(w)),
       version: async (id, documentId, versionId, w) => {
-        const { update, ...version } = await req(DocVersionWireSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}`, undefined, withPass(w));
-        return { ...version, update: fromBase64Url(update) };
+        const parts: Uint8Array[] = [];
+        let about: DocVersionSummary | null = null;
+        let expected = 0;
+        for await (const line of ndjson(DocVersionLineSchema, `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}`, undefined, withPass(w))) {
+          if (line.type === 'part') { parts.push(fromBase64Url(line.update)); continue; }
+          const { type: _, parts: count, ...summary } = line;
+          about = summary;
+          expected = count;
+        }
+        if (!about || parts.length !== expected) throw new AlcoveApiError('network', 'That version didn’t arrive whole. Try again.');
+        const update = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+        let at = 0;
+        for (const p of parts) { update.set(p, at); at += p.length; }
+        return { ...about, update };
       },
       restoreVersion: async (id, documentId, versionId, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/restore`, {}, withPass(w)); },
-      searchText: (id, w) => ndjson(SearchDocSchema, `${space(id)}/search`, undefined, withPass(w))
+      searchText: (id, w) => ndjson(SearchDocSchema, `${space(id)}/search`, undefined, withPass(w)),
+      presenterNotes: {
+        get: (id, documentId, w) => req(PresenterNotesSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, undefined, withPass(w)),
+        set: async (id, documentId, text, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, { text }, withPass(w)); }
+      },
+      // What's selected goes in the body, so it's never in a URL or an access log.
+      ask: async function* (id, documentId, body, w) {
+        yield* await req(z.array(DocAskPartSchema), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/ask`, body, withPass(w));
+      }
     },
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits')
@@ -393,6 +421,11 @@ interface CallTransport {
   transcribe(id: string, c: TranscriptClip, speaker: string): Promise<CallState>;
   frame(id: string, f: ScreenFrame): Promise<ScreenFrameReceipt>;
   shareEnded(id: string, share: string): Promise<void>;
+  /** Says this browser is looking at the live notes. True when that refreshed them. */
+  watchNotes(id: string): Promise<boolean>;
+  followUps(id: string): Promise<CallFollowUps>;
+  tickDocument(id: string, t: DocFollowUpTick): Promise<CallFollowUps>;
+  previewWorkspace(id: string, workspaceId: string): Promise<CallWorkspaceSwitch>;
   catchUp(id: string, range: CatchUpRange): Promise<CatchUp>;
   askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
   catchUpWindow(id: string): Promise<CatchUpWindow>;
@@ -439,10 +472,10 @@ class Live<S extends { elapsed: number }> {
 }
 
 /**
- * How a call keeps up: how often it checks while nothing nudges it, how long a new send key waits, how often the keys
- * move on anyway, and how often a move to another device is checked on.
+ * How a call keeps up: how often it checks while nothing nudges it, how often it says it's showing the live notes, how
+ * long a new send key waits, how often the keys move on anyway, and how often a move to another device is checked on.
  */
-interface CallTiming { pollMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
+interface CallTiming { pollMs: number; notesMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
 /** Epoch keys use 127 indices in each half of LiveKit's ring, all below the void index, which stays free for sending between two parts of the call. */
 const RING_HALF = Math.floor(CALL_VOID_KEY_INDEX / 2);
 /** Asking to come back in after being taken out waits at least this long between tries (the keys move on first). */
@@ -536,6 +569,14 @@ class HttpCall extends Live<CallState> implements CallSession {
   private closed = false;
   /** When this connection may next ask to come back in, after being taken out while it was away. */
   private backAfter = 0;
+  /** How many things here are showing the live notes, the next time this browser says so, and whether it's saying so now. */
+  private notesWatchers = 0;
+  private notesTimer: ReturnType<typeof setTimeout> | null = null;
+  private notesLook: Promise<void> | null = null;
+  /** How many things here are showing the call's follow-ups, and when this browser next reads them. */
+  private followUpWatchers = 0;
+  private followUpsTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly followUps = new Box<CallFollowUps | null>(null);
   /**
    * This connection hosts the call (the organizer's, or standing in for them), as the log last said: its browser makes
    * and commits for every part of the call's group in this generation (CallMls.committer). Anyone else is in one group.
@@ -593,6 +634,51 @@ class HttpCall extends Live<CallState> implements CallSession {
     return this.fetching;
   }
 
+  /**
+   * Says this browser is showing the live notes, and goes on saying so while anything here is. It's what keeps them up
+   * to date; when a look refreshed them, the call is fetched straight away, as a nudge would have it.
+   */
+  watchNotes = () => {
+    if (++this.notesWatchers === 1) this.lookAtNotes();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      if (--this.notesWatchers === 0 && this.notesTimer) { clearTimeout(this.notesTimer); this.notesTimer = null; }
+    };
+  };
+  private lookAtNotes() {
+    if (this.closed || this.notesLook) return;
+    this.notesLook = this.t.watchNotes(this.state.callId).then((refreshed) => (refreshed ? this.fetchState() : undefined))
+      // Notes that don't refresh say so in the call. A look that doesn't arrive is only one look.
+      .catch((e: unknown) => this.emit('debug', 'live notes not looked at', { code: errorCode(e) }))
+      .finally(() => {
+        this.notesLook = null;
+        if (this.closed || !this.notesWatchers) return;
+        this.notesTimer = setTimeout(() => this.lookAtNotes(), this.timing.notesMs);
+        unref(this.notesTimer);
+      });
+  }
+
+  /** Says this browser is showing the follow-ups: they're read now and every few seconds until nothing here is. */
+  watchFollowUps = () => {
+    if (++this.followUpWatchers === 1) void this.readFollowUps();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      if (--this.followUpWatchers === 0 && this.followUpsTimer) { clearTimeout(this.followUpsTimer); this.followUpsTimer = null; }
+    };
+  };
+  private async readFollowUps(): Promise<void> {
+    if (this.closed) return;
+    // A read that doesn't arrive is only one read, and what it would have said is still here.
+    await this.t.followUps(this.state.callId).then((f) => this.followUps.set(f), (e: unknown) => this.emit('debug', 'follow-ups not read', { code: errorCode(e) }));
+    if (this.closed || !this.followUpWatchers) return;
+    this.followUpsTimer = setTimeout(() => { void this.readFollowUps(); }, this.timing.notesMs);
+    unref(this.followUpsTimer);
+  }
+
   /** Keeps up with the call's MLS log: one run at a time, and another straight after if something asked meanwhile. */
   private sync(): Promise<void> {
     if (this.closed) return Promise.resolve();
@@ -619,7 +705,12 @@ class HttpCall extends Live<CallState> implements CallSession {
     // apart, so many browsers asking at once don't check in step. Rejoining a new group keeps the usual pace.
     this.waits = st === 'waiting' ? this.waits + 1 : 0;
     const quick = Math.min(this.timing.pollMs, WAIT_FIRST_MS * 2 ** (this.waits - 1)) * (0.8 + Math.random() * 0.4);
-    this.timer = setTimeout(() => { void this.sync(); }, st === 'in' ? this.timing.pollMs * 4 : st === 'waiting' ? quick : this.timing.pollMs);
+    this.timer = setTimeout(() => {
+      void this.sync();
+      // Losing a document says nothing to the call, so while something's presented or playing, the call is read as well.
+      const { present, play } = this.state.workspace;
+      if (present || play) this.fetchState().catch((e: unknown) => this.emit('debug', 'call not read', { code: errorCode(e) }));
+    }, st === 'in' ? this.timing.pollMs * 4 : st === 'waiting' ? quick : this.timing.pollMs);
     unref(this.timer);
   }
   /** Out of the call (turned away, removed, this call went on elsewhere, or someone else hosts while this organizer's connection was away) or out of step: stop keeping up. */
@@ -1001,6 +1092,25 @@ class HttpCall extends Live<CallState> implements CallSession {
   declineNotes = async (requestId: string) => { this.take(await this.t.act(this.state.callId, { type: 'decline-notes', requestId })); };
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
+  tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
+  private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
+  openWorkspace = () => this.space({ type: 'workspace-open' });
+  previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
+  setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId });
+  newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}) });
+  bringDocument = (documentId: string, brought: boolean) => this.space({ type: 'workspace-bring', documentId, brought });
+  askForWorkspace = (up: boolean) => this.space({ type: 'workspace-ask', up });
+  grantWorkspaceAsk = (askId: string, documentId: string, role: DocumentRole) => this.space({ type: 'workspace-grant', askId, documentId, role });
+  declineWorkspaceAsk = (askId: string) => this.space({ type: 'workspace-decline', askId });
+  startPresenting = (kind: PresentKind, id: string, section = 0) => this.space({ type: 'present-start', kind, id, section });
+  movePresenting = (section: number) => this.space({ type: 'present-move', section });
+  stopPresenting = () => this.space({ type: 'present-stop' });
+  startPlaying = (documentId: string, mediaId: string, positionMs = 0) => this.space({ type: 'play-start', documentId, mediaId, positionMs });
+  pausePlaying = (positionMs: number) => this.space({ type: 'play-pause', positionMs });
+  resumePlaying = () => this.space({ type: 'play-resume' });
+  seekPlaying = (positionMs: number) => this.space({ type: 'play-seek', positionMs });
+  stopPlaying = () => this.space({ type: 'play-stop' });
+  tickDocumentFollowUp = async (tick: DocFollowUpTick) => { this.followUps.set(await this.t.tickDocument(this.state.callId, tick)); };
   shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
   shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
@@ -1053,6 +1163,10 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.notesTimer) clearTimeout(this.notesTimer);
+    this.notesTimer = null;
+    if (this.followUpsTimer) clearTimeout(this.followUpsTimer);
+    this.followUpsTimer = null;
     for (const h of this.groups.values()) { if (h.switchTimer) clearTimeout(h.switchTimer); h.switchTimer = null; }
   };
   /**

@@ -22,6 +22,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `transcript_translations` | owner, note item | `line_tag` (keyed hash of the line and the caption language), `translation_ciphertext` (the line in that language) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version`, LiveKit room name (random), the LiveKit identity (random) of the connection that hosts (`host_identity`, `host_joined_at` and `host_left_at`, named before hand-off and kept so: the organizer's connection, or a stand-in's while the organizer is away), when that connection joined and left, locked | `state_ciphertext` (what the call captures: notes off, on or paused, every change with who made it and when, what the host's browser says it can't capture now, the stretches it was out of the call while notes were on, and asks for notes; which connection hosts, when each hosted, and how long a host who let go to move to another device has for its new device to come in; who joined (with the addresses of people signed in whom the notes may go to), when each connection was let in and when it left, whose hand is up, who was removed, spotlight, breakout rooms, who's in which, where each person was before their last move and when they moved, the rooms' messages, each room's MLS epoch and when the organizer paused it or carried on there, when the recording's current segment began, each room's scribes (which connection, from when until when) and everyone who was in it, which the rooms' sections of the note are made from when the call ends, and which stay in the ended call's state, like the rest of it, until its meeting is deleted, whether pointing at shared screens is on and who doesn't let others point at what they share, notices, each for everyone, one room, one connection or everyone but one), and where its MLS groups have got to (counters only: the generation, which starts new groups whenever the connection that hosts changes; the main room's epoch, as the API takes one commit per epoch, in order; and the last seq in its log) |
+| `call_notes` | owner, call, part of the call (`place`: `main` or a breakout room's random ID), `view` (`all`, or a digest of the random IDs of the lines this view can't read), how many of the note's clips the last refresh counted, when the last refresh began (`looked_at`), and until when one is under way (`lease_until`) | `notes_ciphertext` (that view's live notes as a catch-up gives them, what they read, who may read all of it, and each follow-up's ID, the lines behind it, and who ticked it and when; null until the first are written) and `lines_ciphertext` (the IDs of the lines it read and when each was said, and when each line it left out was said and who may read it), sealed under the call's notes key, bound to the call, the part and the view. Deleted when the call ends |
 | `call_codes` | owner, the item the code leads to (a meeting, or for a series' own link its `series` item) | `code_hash` (keyed hash of the code, so anyone with the link finds the call) |
 | `call_moves` | owner, call, move, when it runs out | `secret_hash` (SHA-256 of the move's current secret: the code in the new device's link, then the claim that replaces it), `body_ciphertext` (who's moving, the stage, whether their microphone and camera are on, and the new device's identity, key package and kind, sealed under the call's moves key). Deleted when it runs out, and when the call ends |
 | `call_rings` | owner (the organizer), ring, meeting item, when the ring next shows (`deliver_at`), when it stops (`expires_at`) | `email_index` (keyed hash of the address rung, its own purpose), `ring_ciphertext` (the address and what they said, sealed under the call's rings key). Deleted when the person is let in, when the organizer stops ringing them, when the call ends, and a day after it ran out |
@@ -36,11 +37,14 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, and their name if the workspace was made by them) |
-| `documents` | owner (the workspace), `document_id`, `next_seq`, `updates_since_snapshot`, `bytes_since_snapshot`, `snapshot_bytes`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), created. One row for each document or board in the tree; a folder has none | — |
-| `document_updates` | owner (the workspace), document, `seq`, created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
+| `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
+| `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
+| `document_clients` | owner (the workspace), document, `client_id` (a Yjs client: a random number), `next_clock` (how far it's written). Kept as long as the document | `people`: keyed hashes of who it belongs to, each bound to this client and document, so no two rows can be linked. Empty for what the server wrote |
 | `document_snapshots` | owner (the workspace), document, `through_seq`. One row a document | `snapshot_ciphertext` (its Yjs state through that seq), `editors_ciphertext` (who has edited it since the last version) |
-| `document_versions` | owner (the workspace), document, `version_id`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept), `state_ciphertext` (its whole Yjs state) |
+| `document_versions` | owner (the workspace), document, `version_id`, `bytes`, how many `parts`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept) |
+| `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
+| `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
@@ -57,15 +61,16 @@ organizer. The `call_rings` rows to its address, in other people's calls, go by 
 exception. `object_gc` keeps a plain owner ID with no foreign key, so a failed object delete is still retried after its
 account is gone. A workspace's tables hang off its `workspaces` row, which
 hangs off its `owners` row, so deleting that owner deletes all of it; `document_access` rows go with their document.
-Its `call_id` has no foreign key, because a call belongs to its organizer, a different owner.
+Its `call_id` has no foreign key, because a call belongs to its organizer, a different owner. `presenter_notes` belongs to
+both an account and a document, so it goes with either: by `owner_id`, or by its foreign key to `documents`.
 
 ## Manifests (encrypted)
 
 | Item kind | Manifest fields |
 | --- | --- |
-| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
-| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link, whether the event was the organizer's own before it became an Alcove call (adopted), and for a call in a series that repeats, the recurring event it's an occurrence of (`master`), the series it's in (`seriesId`), when that series repeats its link's code (`seriesCode`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), which guests were added by being let in from the call's link (`addedFromLink`), once any were, whether it was started now rather than scheduled (`instant`), what the notes keep (`choices`), whether everyone joins muted (`joinMuted`), the documents brought to it by ID, the times offered, until someone picks one (`offer`: the start and end are then those of the first), and while Google is being asked for its event, until when it's claimed for that (`placing`) |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
+| `profile` | name, email, photo URL, whether it's a demo account (`sample`), the workspace it used last (`recentWorkspace`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
+| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), the workspace it uses and its agenda there (`workspaceId`, `agenda`: IDs only), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link, whether the event was the organizer's own before it became an Alcove call (adopted), and for a call in a series that repeats, the recurring event it's an occurrence of (`master`), the series it's in (`seriesId`), when that series repeats its link's code (`seriesCode`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), which guests were added by being let in from the call's link (`addedFromLink`), once any were, whether it was started now rather than scheduled (`instant`), what the notes keep (`choices`), whether everyone joins muted (`joinMuted`), the documents brought to it by ID, the times offered, until someone picks one (`offer`: the start and end are then those of the first), and while Google is being asked for its event, until when it's claimed for that (`placing`) |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), what was worked on in the call (`workedOn`: document IDs, `kind` and who, read for each person by what they can open), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), and follow-ups ticked during the call whose notes aren't written yet (`ticked`: each one's ID, words, owner and due date, the IDs of the lines behind it, the room it was in, who ticked it and when; empty in a note stored before calls kept them), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 | `series` | a series that was scheduled to repeat: title (the one its calls last got together), how it repeats (`repeat`: the rule, the last day and the organizer's time zone), its link's code, and the recurring Google Calendar event that carries its latest calls, when there is one. Its item ID is the `seriesId` its calls share |
 
@@ -123,16 +128,20 @@ with the same thing. Browsers exchange binary updates through the API, which sea
 everything else below is the same for anything that holds a Y.Doc. A document's blocks are the root fragment `content`,
 its comment threads the root map `comments`, and the editor's schema decides the rest.
 
+Yjs trusts what it's given, and what's in a document comes from browsers. So nothing here is taken on trust: an update is
+checked before it's stored ([what gets in](#what-gets-into-a-document)), a document is only ever opened in a worker
+([opening one](#opening-a-document)), and nothing is deleted until what replaces it is proved to open.
+
 - **Starting.** A new document has its title and first line before anyone opens it: the seed, one fixed Yjs update that
   browsers and the API share (`DOC_SEED` in `@alcove/api`), is written as its snapshot when the item is made. A browser that
   can only read never has to write, and two people opening a new document find one title. A board starts with nothing. A
   copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
   outside it, one document at a time, with a document's title changed to say what the tree calls the copy.
-- **Updates** are sealed and appended in one transaction, under the workspace's row lock for reading (so nothing lands after
-  someone loses access) and the `documents` row's lock. `seq` comes from `next_seq` under that lock, so rows commit in
-  order, and whoever has read past a `seq` has missed nothing before it. `pg_notify` goes out on commit. Yjs updates can arrive
-  twice and in any order, so a retried request does no harm and nothing keeps a receipt. Each is checked to be an update
-  before it goes in the log: at most 1 MiB, and what every browser will apply.
+- **Updates** go up as bytes (`application/octet-stream`), at most 4 MiB each, and are sealed and appended in one
+  transaction, under the workspace's row lock for reading (so nothing lands after someone loses access) and the `documents`
+  row's lock. `seq` comes from `next_seq` under that lock, so rows commit in order, and whoever has read past a `seq` has
+  missed nothing before it. `pg_notify` goes out on commit. An update that arrives twice is known by its clocks and stored
+  once, so a retried request does no harm and nothing keeps a receipt.
 - **What's sent to whoever opens it** is a state, not the history: the log goes through a Y.Doc, which keeps only that
   something was deleted, so a word someone took out isn't sent to the next person who opens the document. That's also why
   compaction doesn't use `Y.mergeUpdates`, which keeps deleted content. A browser that's been here before says how far it got
@@ -141,29 +150,102 @@ its comment threads the root map `comments`, and the editor's schema decides the
 - **Compaction.** Past 200 updates or 1 MiB since the last snapshot, the log folds into `document_snapshots` and the rows
   it covers go. All but the newest update: streams are reading that one. The work happens after the update commits and
   outside any lock, because what's in the log up to a `seq` never changes; the row's lock is taken only to swap the snapshot
-  in, and only if the snapshot is still the one it started from, so two instances folding at once write one. A failure is
-  logged with its IDs, and the next update tries again: nothing about compaction can fail an update.
+  in, and only if the snapshot is still the one it started from, so two instances folding at once write one. What it made is
+  opened again in the worker, and has to reach everything the log did, before a row is deleted. A row that won't decrypt stops
+  it: that may be a key that's wrong, not a row that's bad, and folding past it could lose it for good. A failure is logged
+  with its IDs and tried again a minute later: nothing about compaction can fail an update.
 - **Versions.** The first update after ten minutes of editing keeps what was there before it, so a version closes a stretch
-  of work: a whole state, which opens whatever happens to the log afterwards, with who changed the document since the
-  last one. One is kept when a call ends too (`keepVersion`, labelled with the call, for History to group by), unless nothing
+  of work: a whole state, which opens whatever happens to the log afterwards, sealed in parts of 256 KiB, with who changed the
+  document since the last one. Reading one streams those parts in order, so a reader holds one at a time however slowly they
+  take them: 8 reads at once on an instance (`DOC_VERSION_READS`), 60 a minute per person, and whoever hasn't taken a part
+  within a ping is let go of. One is kept when a call ends too (`keepVersion`, labelled with the call, for History to group by), unless nothing
   changed, and before a restore. A document keeps its newest 200, and no more than 64 MiB of them, though always its newest.
-- **Restoring** makes the document what it was, for everyone, as one update like any other. What it says now is kept as a
-  version first. Yjs only moves forward, so going back means writing again what was deleted and deleting what was added:
-  what happened since the version is replayed onto it and undone, which works for anything a Y.Doc holds. Anyone typing at
-  the time merges with it. The tree's name follows the title, because a browser renames only what it types.
-- **Size.** A document's state stops at 16 MiB: past that, updates that add anything are refused (`400 invalid`, and the
-  browser's status says `failed`, `too-large`). Taking things out still works, and compacts at once, so whoever hit the
-  limit can get back under it. Nobody's words are lost: they stay in the browser that typed them.
-- **Reading it on the server.** `readDocument` gives other modules the Y.Doc and `writeDocument` changes one, through the same
-  log, so what the server writes reaches browsers as an update. `documentTodos` and `documentText` read what's in it, and
-  `searchText` streams everything someone can open as blocks of words, one document a line, for searching in their browser.
-  Text is one element, `line`, with a `kind`; the editor retires a block instead of deleting it, so an edit landing in one
-  is never lost, and a retired block (`gone` set) with no words isn't on the page.
-- **Memory.** A Y.Doc takes many times the size of what it's read from, so documents past 256 KiB are read two at a time on
-  an instance, and at most 64 MiB of states can be on their way to browsers at once: past that, opening another is refused
-  with `503` and the browser tries again.
-- **What won't open** stops only itself: search leaves it out, a copy of a folder leaves its copy as it started, and
-  compaction logs it and carries on, each with a warning naming the IDs.
+- **Restoring** makes the document what it was, for everyone, as one update like any other. Yjs only moves forward, so going
+  back means writing again what was deleted and taking out what was added: what happened since the version is replayed onto
+  it and undone, which works for anything a Y.Doc holds, roots included. A block added since is emptied and left, not deleted,
+  the way the editor retires one (`@alcove/api/retire`), so words someone typed in it offline bring it back when they arrive.
+  What it says now is kept as a version first, and nothing lands between that and the restore: a mark on the row (`held_until`)
+  turns updates away with `503` until it's done, and browsers try again, so whatever's undone is in a version. It's a mark and
+  not the row's lock because a big document takes a while, and everyone typing would each hold a connection. A restore that
+  would leave the document past its limit is refused. The tree's name follows the title, because a browser renames only what
+  it types.
+- **Size.** A document stops at 16 MiB or 500,000 items (`DOC_ITEMS_MAX`), whichever comes first: a Y.Doc's memory follows how
+  many separate pieces it's made of, about 210 bytes each, whatever they come to in bytes. Past either, what's refused is what
+  adds to it: new text and new elements, past what the same update takes out (`413 too-large`, and the browser's status says
+  `failed`, `too-large`). So a full document can always be made smaller: deleting words, a block leaving the page, which
+  writes two small attributes, and joining two lines all go through. A move adds an element, so it waits with everything else
+  that adds one. It isn't free of limits, because a new attribute is an item too: at twice either figure only deletes are taken, which nothing but someone doing it on purpose comes near. These
+  figures are what could be there, not what is, so a refusal compacts the document, which finds out, and a browser tries
+  again by itself. Nobody's words are lost: they stay in the browser that typed them. Deleting always goes through, but only
+  frees what Yjs lets go of: words and items go once what holds them does, and a run typed in one go merges, but items
+  deleted one by one inside something that stays are tombstones, and still count. Nothing prunes retired blocks in this
+  release either, so a document's size follows what's been written to it: see [In a browser](#in-a-browser) for what's kept with
+  an eye to that.
+- **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
+  'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
+  so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
+  plain function of the document and plain data, one line each, which a worker can import. `searchText` streams everything
+  someone can open as blocks of words, one document a line, for searching in their browser, and stops as soon as they can't
+  read what's next. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
+  is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server alike:
+  a retired block still holding something reads like any other.
+- **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
+  is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
+  minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
+  stream says `closed`, `unavailable`, as its only line. Its versions still read, and restoring one replaces what won't open
+  and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
+  document that may only be slow.
+
+### What gets into a document
+
+`apps/api/src/modules/documentFirewall.ts` reads every update before it's stored, byte by byte, and builds nothing from it.
+It goes by Yjs's structs and never by what a document means, so a board goes through the same door as a page. Whoever can't
+write there hears so first, before anything of it is read. Refused means `400 invalid`, a reason in the log, and no row.
+
+What can be told from the update alone is checked with nothing held, in a worker past 32 KiB:
+
+- Nothing of zero length, no `Skip`, no sub-documents, nothing after the end, values at most 64 deep, and only JSON that
+  Yjs can write back. Yjs's own decoder lets several of these past, and a zero-length struct applies, then makes a snapshot
+  nobody can read. A `GC` is fine as long as it holds something: a browser sends one when something's made and deleted in
+  one transaction.
+- At most 200,000 structs, from 256 clients, and 1,024 items with the same left neighbour, which is what makes Yjs's conflict
+  scan quadratic. The cap can't be on a shared right neighbour: every key typed mid-line shares one.
+- Everything in it can be placed: it's worked through as Yjs would, and anything that waits for what it can't ever have is
+  refused, because Yjs would carry it pending for ever, in every snapshot.
+
+What depends on the log is checked under the document's lock, against `document_clients`, without opening the document:
+
+- Structs only for clients this person owns. The first to write as a client has it, and a person is known by every way
+  access knows them, so someone who signs in during a call keeps theirs. Nobody can write as someone else, which is what
+  a forged clock would need: Yjs would believe it, and everything that client wrote next would vanish.
+- Clocks carry on from where a client got to, with no gap, or go over what's there, as a retry does.
+- Origins, right origins and parents are clocks that exist, or arrive with this. Deletes reach only clocks that exist.
+- A running count of items and of how deep types nest: deleting a type recurses into it, in every browser, so nesting stops
+  at 1,024. Depth can't be seen from an update, so it's counted as if everything nested below the deepest thing there, and a
+  compaction, which walks the document, puts the figure right.
+
+### Opening a document
+
+Yjs has no limit on what opening a document can cost, and a shape that takes minutes can't always be told from one that
+doesn't without the whole document. So every Y.Doc on the server is in a worker thread (`live/docPool.ts`, `modules/documentWork.ts`):
+loading, merging, compacting, encoding a `sync`, restoring, searching, and anything `readDocument` or `writeDocument` asks.
+Sealed rows go in with the document's key, which is wiped when the job ends, and sealed bytes and plain data come out, so big
+records are opened and sealed there too.
+
+There are 2 workers (`DOC_WORKERS`), each job has 20 seconds (`DOC_WORK_MS`), and the first worker, which takes documents past
+256 KiB or 50,000 items one at a time, has 320 MiB (`DOC_HEAP_MB`) and the others 96. A worker that runs out of either fails
+that one job. It's replaced when it's next needed, and the event loop never noticed. A worker with nothing to do for 30
+seconds goes, which gives its memory back, and one that's held a big document goes after a second. At most 256 jobs and 128 MiB can wait, and at most 64 MiB of states can be on their
+way to browsers, known from the row before anything's opened: past either, the browser is told to try again.
+
+### Presenter notes
+
+What someone keeps beside a document for presenting it: one `presenter_notes` row for each account and document, sealed
+under the account's own keys (state key `presenter-notes:<documentId>`, record kind `presenter-notes`, whose header binds
+the account, the workspace and the document), so nobody else who can open the document can read them, and a record copied to
+another row doesn't open. `GET` and `POST /v1/workspaces/:id/documents/:doc/presenter-notes`, for anyone who can open the
+document and has an account: someone in a call by its link has nowhere to keep them (`403`). Empty text deletes the row. At
+most 20,000 characters.
 
 ### In a browser
 
@@ -172,8 +254,19 @@ one request at a time, the oldest first, as much as fits in one; a retry only ev
 Nothing typed is let go of until the API has it, and with a `keep` store (the app's is sealed under the device key) that
 survives a reload: what's kept is applied when the session starts and sent when there's a connection. The stream picks up from
 the last `seq` it heard, however it ended, and never moves on from what this browser sent, only from what the stream
-said. A refusal stops sending until what caused it changes: an `access` line saying it can be edited again sends what
-was waiting.
+said. Being able to only read, or it going to Trash, stops sending until an `access` line says otherwise.
+
+An update that's refused for its size can't hold up what's behind it. A client's clocks have to reach the API in order, so
+everything written as that client is stuck with it: the session moves to a new client, and what's written next goes as
+usual, unless it builds on what's stuck, which waits too. What's stuck is worked out afresh in a scratch document, a second
+after anything changes and every 30 seconds: nothing's keeping what was deleted for undo there, so a paste that's been undone
+or cut down is a small thing now, and goes in place of everything that was waiting. That holds through a reload. An update
+Alcove refuses outright (`rejected`) is worked out afresh once, in case it's a gap in what was kept, and then let go of: what's on
+screen stays for someone to copy, and a reload starts from what Alcove has. A browser shouldn't ever see this.
+
+`KeptUpdate` says when each edit was made (`at`). Nothing reads that yet: retired blocks can't be pruned while someone may
+still be offline with words for one, and nothing in this release prunes them or limits how long someone can stay offline.
+`document()` is async, because Yjs loads with the first document someone opens and stays out of everything else.
 
 ### Live traffic
 
@@ -189,8 +282,9 @@ and this way it runs through the same auth, origin check and tests as everything
   and everyone subscribed hears `missed`, because notices sent meanwhile are gone. It needs a direct connection to
   Postgres: `LISTEN` doesn't work through a transaction-mode pooler.
 - **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
-  of a workspace and 16 of documents. Everyone's together stop at 300 an instance (`LIVE_STREAMS_MAX`), because each holds one
-  of the requests an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
+  of a workspace and 8 of documents. All of them from one client address stop at 64 (`LIVE_STREAMS_PER_ADDRESS`), because
+  accounts are free, which is about 32 people behind one office's address with a workspace and a document open, and everyone's together at 500 an instance (`LIVE_STREAMS_MAX`), because each holds one of the requests
+  an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
@@ -204,15 +298,19 @@ and this way it runs through the same auth, origin check and tests as everything
   memory. A slow browser skips to the latest.
 - **A document's stream** (`GET /v1/workspaces/:id/documents/:doc/live?after=<seq>`). First `sync`: what this browser
   doesn't have as one update, the `seq` that reaches, and what they can do. Then `update`, in order; `awareness`; `access`,
-  when their role changes or it goes to Trash or comes back; `ping`; and `closed`, saying why it's over: `access`, `deleted` or
-  `session`. Up: `POST …/updates` and `POST …/awareness`. A notice is `<document>:<seq>`, and each is read once on each instance,
-  by the document's room, which keeps the lines not everyone has been told. A stream keeps only its place: nothing of
+  when their role changes or it goes to Trash or comes back; `ping`; and `closed`, saying why it's over: `access`, `deleted`,
+  `session` or `unavailable`. Up: `POST …/updates` and `POST …/awareness`. A notice is `<document>:<seq>`, and each is read once on
+  each instance, by the document's room, which keeps the lines not everyone has been told, each made once. Rows are read before
+  how far the snapshot reaches, and it's the rows that say what a compaction took: seqs have no gaps until one makes them, and
+  anyone who hadn't been told what's gone starts again from where they got to. A stream keeps only its place: nothing of
   the document stays with it once its `sync` is written, so 500 of them cost little. A stream that falls more than 256
   updates or 1 MiB behind is let go of, and its browser picks up from its last `seq`. Hearing that the hub missed something
   reads again from there too. Someone who loses a document hears nothing written after that: a change to who has what
   that was heard first is settled before the update behind it is read.
 - **Carets** (awareness) are never stored. A browser's state goes up at most every 100 ms and travels through a notice sealed
-  under the workspace's key, at most 4 KiB, and every instance passes it on. The server writes who it is over `user` in the
+  under the workspace's key, at most 4 KiB, and every instance passes it on. It takes having the document open on that
+  instance: a stream hears of every change to who has what, so a caret needs no looking up of its own, and opens no tree. Anyone
+  else gets the same `404` as for a document that isn't there, except that someone's own caret can always say it's going. The server writes who it is over `user` in the
   state: `{ id, name, callIdentity }`, an `id` that's a keyed hash, the same for that person everywhere in the workspace, and never
   an address. Nothing a browser says about itself survives that, and a client someone else has been using is refused, so
   nobody can take over another person's caret. Nothing keeps carets for whoever arrives, so someone arriving says so, and
@@ -251,6 +349,11 @@ and this way it runs through the same auth, origin check and tests as everything
   notes model's, as `inference` ([Notes and inference › What a note keeps](notes-and-inference.md#what-a-note-keeps)).
 - **Caption translations** are sealed under the same transcript key, one row per line and language, and are
   deleted with the transcript clips when the recording stops.
+- **Live notes** are sealed in `call_notes`, one row for each view of each part of the call that has had some, opened with
+  every read of the call and written at most every 30 seconds and with each tick. A refresh is claimed and saved under the row's
+  lock and runs with nothing held, so the model's answer never holds up the call. When the call ends, what was ticked
+  moves into the note's manifest and the rows go, in the same transaction
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Shared-screen frames** are sealed under the recording's `Krec` like audio pieces, written to the object
   store, read back and checked, and only then recorded in `screen_frames` under a share lock on the recording;
   a duplicate or a frame that arrives once the recording paused or stopped queues its object for deletion. When
@@ -266,8 +369,13 @@ and this way it runs through the same auth, origin check and tests as everything
 - **Busy times** (`POST /v1/calendar/busy`) are read when the app asks, from Google, from the account's own calls,
   or for a demo account from `apps/api/src/demo.ts`, and go nowhere else: no row, no receipt, and in the logs only
   how many ([Privacy › Google sign-in and calendar access](privacy-keys-and-sessions.md#google-sign-in-and-calendar-access)).
-- **Documents** brought to a call are IDs in its meeting manifest, checked against the organizer's own library. There
-  are no real workspaces yet: a demo account's library is a catalog in `apps/api/src/demo.ts`, and anyone else's is empty.
+- **Documents** brought to a call are IDs in its meeting manifest, checked against the organizer's own library when it's
+  scheduled, or against what the person bringing one can open in the call. A demo account's library is a catalog in
+  `apps/api/src/demo.ts`, and anyone else's is empty until the library reads workspaces.
+- **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
+  during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, and what's been
+  worked on and by whom), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
+  ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
   came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to
@@ -312,7 +420,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **Speech clips** are never stored: each lives in the API process's memory while it's transcribed.
 - **`transcript_clips` and `transcript_translations`** last while the recording runs and are deleted in the
   transaction that stops it; the lines move into the note.
-- **`call_mls`** lasts while the call runs and is deleted when it ends.
+- **`call_mls`** lasts while the call runs and is deleted when it ends. **`call_notes`** too, once what was ticked is in
+  the note, and upkeep deletes any left by a call a release from before them ended.
 - **`meeting_access`** lasts until a call is over: its rows go in the transaction that ends it, and for a call nobody
   held, the first time its organizer or someone invited reads it after it's an hour past its time. They go with the
   call too if it's cancelled or its organizer's account is deleted. A call started again has its rows back.
@@ -338,6 +447,10 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **Carets and presence** are never stored: they're in Postgres's notice queue for as long as it takes to deliver them, sealed,
   and in the API process's memory.
 - **Seats** in `document_access` last while their call does.
+- **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
+  call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a
+  selection keeps nothing.
+- **Presenter notes** last until their author empties them, or the document, the workspace or the account goes.
 
 ## Operations
 

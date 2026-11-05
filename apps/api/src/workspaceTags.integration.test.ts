@@ -403,10 +403,8 @@ describe('where people are', () => {
       expect(frame).not.toContain('CANARY-SECRET-DOC');
     }
     // Saying you're in something you can't open is refused, and says nothing of it.
-    expect(await code(art.fetch(`${h.baseUrl}/v1/workspaces/${id}/presence`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connection: madeUp(), document: secret, block: null, typing: false }) }).then((r) => {
-      if (r.status === 404) throw new AlcoveApiError('not-found', 'nope', 404);
-      return r;
-    }))).toBe('not-found');
+    const said = await art.fetch(`${h.baseUrl}/v1/workspaces/${id}/presence`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ connection: madeUp(), document: secret, block: null, typing: false }) });
+    expect(said.status).toBe(404);
     p.close();
     a.close();
   });

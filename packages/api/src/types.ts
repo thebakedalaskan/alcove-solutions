@@ -248,6 +248,8 @@ export const MeetingSchema = z.object({
   joinMuted: z.boolean(),
   /** What was brought to the call. */
   documents: z.array(CallDocumentSchema),
+  /** The workspace the call uses, for its organizer: null until there is one, and for everyone else, who find out in the call what they can open. */
+  workspaceId: IDSchema.nullable(),
   /** How everyone invited has answered. */
   rsvps: RsvpCountsSchema,
   /** Your own answer, when you're invited; null when you haven't answered, and for the organizer. */
@@ -338,6 +340,8 @@ export const MeetingInputSchema = z.object({
   joinMuted: z.boolean().optional(),
   /** Documents brought to the call, by ID. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
+  /** The workspace the call uses, one the organizer can edit in. Null: the organizer's most recently used, when someone first opens it. */
+  workspaceId: IDSchema.nullable().optional(),
   /** Schedules a call for each occurrence, as one series with one link. */
   repeat: RepeatInputSchema.optional(),
   /**
@@ -668,6 +672,13 @@ export const NoteSummarySchema = z.object({
 });
 export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 
+/** A line of what was said that a search found: where it is, who said it, the room it was said in, and the words. */
+export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true });
+export type NoteSaid = z.infer<typeof NoteSaidSchema>;
+/** A note as a search finds it: what was said that matched, the lines with most of its words first (empty without a search), and how many lines did in all. */
+export const NoteFoundSchema = NoteSummarySchema.extend({ said: z.array(NoteSaidSchema), saidCount: z.number() });
+export type NoteFound = z.infer<typeof NoteFoundSchema>;
+
 /**
  * A breakout room's section of a call's notes: its name, who was in it (the organizer too, if it came in), when it was
  * open (seconds into the recording), what was said in it while notes were on, and its own notes, written from that
@@ -727,6 +738,15 @@ export const NoteAdditionSchema = z.object({
 });
 export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 
+/**
+ * A document or board worked on in the call, for someone who can open it now: anything else isn't listed, so nobody learns
+ * from a note what they couldn't open. `by`: who changed it during the call.
+ */
+export const NoteWorkedOnSchema = z.object({
+  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema }))
+});
+export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
+
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
@@ -766,7 +786,9 @@ export const NoteSchema = NoteSummarySchema.extend({
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
   inference: z.array(InferenceEvidenceSchema),
   /** The series its call is in, when it's in one: see series.get. */
-  seriesId: IDSchema.optional()
+  seriesId: IDSchema.optional(),
+  /** What was worked on in the call that you can open now. */
+  workedOn: z.array(NoteWorkedOnSchema).default([])
 });
 export type Note = z.infer<typeof NoteSchema>;
 
@@ -1009,10 +1031,66 @@ export const CallLayoutSchema = z.object({
    * big are big (as many as fit) and every other share is a tile; with none, shares follow the layout.
    */
   shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(CALL_LAYOUT_MAX.shares),
+  /** Whether the workspace is open, and the document on it, so a reload finds you where you were. */
+  workspace: z.object({ open: z.boolean(), document: z.string().max(200).nullable() }).default({ open: false, document: null }),
   /** How the space splits between two shares side by side (CALL_SHARE_SPLIT). */
   split: z.number().min(CALL_SHARE_SPLIT.min).max(CALL_SHARE_SPLIT.max)
 });
 export type CallLayout = z.infer<typeof CallLayoutSchema>;
+
+/*
+ * How someone likes the call's panels: remembered for their account in this browser, so tomorrow's call starts the way
+ * they left it. It says where kinds of things go and never names a person, a call or anything said or shared: shares are
+ * seats (`share:1`, `share:2`) that whoever shares takes for the length of a share.
+ */
+/** What a side panel can show as a tab. */
+export const CallPanelTabSchema = z.enum(['notes', 'yours', 'transcript', 'ask', 'chat', 'people']);
+export type CallPanelTab = z.infer<typeof CallPanelTabSchema>;
+/** What a side panel can show: a tab, or the organizer's breakout rooms, which are never torn off or kept. */
+export const CallPanelViewSchema = z.enum([...CallPanelTabSchema.options, 'rooms']);
+export type CallPanelView = z.infer<typeof CallPanelViewSchema>;
+/** A panel of tabs: the side panel, or a panel made by tearing a tab off, called after that tab. */
+export const CallPanelGroupIdSchema = z.enum(['side', ...CallPanelTabSchema.options]);
+export type CallPanelGroupId = z.infer<typeof CallPanelGroupIdSchema>;
+/** Everything that can have a place: the stage, people, each seat for a share, the workspace, the board and a panel of tabs. */
+export const CallPanelLeafIdSchema = z.enum(['stage', 'people', 'ws', 'board', 'share:1', 'share:2', 'g:side', 'g:notes', 'g:yours', 'g:transcript', 'g:ask', 'g:chat', 'g:people']);
+export type CallPanelLeafId = z.infer<typeof CallPanelLeafIdSchema>;
+/** How you see people while something else is on the stage. */
+export const CallPeopleModeSchema = z.enum(['tiles', 'arches', 'hidden']);
+export type CallPeopleMode = z.infer<typeof CallPeopleModeSchema>;
+export const CALL_PANEL_SIZE_MAX = 100_000;
+const PanelSizeSchema = z.number().positive().max(CALL_PANEL_SIZE_MAX);
+/** A place in the tree: its share of the room (`flex`), or a size you gave it by dragging (`px` wide, `pxh` tall). */
+const PanelPlace = { flex: PanelSizeSchema.optional(), px: PanelSizeSchema.optional(), pxh: PanelSizeSchema.optional() };
+const CallPanelLeafSchema = z.object({ id: CallPanelLeafIdSchema, ...PanelPlace });
+export type CallPanelLeaf = z.infer<typeof CallPanelLeafSchema>;
+export interface CallPanelBranch { dir: 'row' | 'col'; kids: CallPanelNode[]; flex?: number | undefined; px?: number | undefined; pxh?: number | undefined }
+export type CallPanelNode = CallPanelLeaf | CallPanelBranch;
+/** Rows and columns: a row of panels side by side, a column of them one above the other. Twelve leaves, so a small tree. */
+export const CallPanelNodeSchema: z.ZodType<CallPanelNode> = z.lazy(() => z.union([
+  CallPanelLeafSchema,
+  z.object({ dir: z.enum(['row', 'col']), kids: z.array(CallPanelNodeSchema).min(1).max(12), ...PanelPlace })
+]));
+export const CallPanelGroupSchema = z.object({
+  id: CallPanelGroupIdSchema,
+  tabs: z.array(CallPanelTabSchema).min(1).max(CallPanelTabSchema.options.length),
+  /** The tab it shows. */
+  active: CallPanelViewSchema,
+  open: z.boolean()
+});
+export type CallPanelGroup = z.infer<typeof CallPanelGroupSchema>;
+export const CallPanelsSchema = z.object({
+  tree: CallPanelNodeSchema,
+  groups: z.array(CallPanelGroupSchema).min(1).max(CallPanelTabSchema.options.length),
+  /** The panel you last brought up: the one a phone shows, and the one Escape closes. */
+  front: CallPanelGroupIdSchema.nullable(),
+  people: CallPeopleModeSchema,
+  /** Whether the workspace shows its list of documents. */
+  list: z.boolean(),
+  /** You moved a share or the people yourself, or picked a layout: while something is shared they stand as panels of their own rather than share the stage. */
+  apart: z.boolean()
+});
+export type CallPanels = z.infer<typeof CallPanelsSchema>;
 
 /** That someone finished or closed the tour of Home. Kept in their browser for their account, never sent anywhere. */
 export const HomeTourSchema = z.object({ seenAt: ISODateSchema });

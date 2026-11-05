@@ -42,8 +42,11 @@ export interface CatchingUp {
   settle(): void;
 }
 
-/** `room`: the breakout room you're in, if any, whose lines alone catching up reads there. */
-export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
+/**
+ * `panel` is the view you last brought up and `showing` everything the side panels show now; `room` is the breakout room
+ * you're in, if any, whose lines alone catching up reads there.
+ */
+export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; showing: PanelView[]; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
   const toast = useToast();
   const [asks, setAsks] = useState<Asked[]>([]);
   const [range, setRange] = useState<CatchUpRange>(WHOLE_CALL);
@@ -72,7 +75,7 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     session.catchUp(r).then((c) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'catch-up' ? { ...x, c } : x))), failed('catch-up', n));
   };
   const catchUp = (r?: CatchUpRange | undefined) => {
-    if (o.panel !== 'ask') leaving();
+    if (!o.showing.includes('ask')) leaving();
     setMoment(null);
     o.setPanel('ask');
     if (r) { run(r); return; }
@@ -111,10 +114,12 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
   const settle = () => { setMoment(null); setBefore(null); };
   // However the panel moves on (Escape, its own buttons), a moment shows only in the transcript view, and a closed
   // panel has no way back to offer.
+  const transcript = o.showing.includes('transcript');
+  const anyOpen = o.showing.length > 0;
   useEffect(() => {
-    if (o.panel !== 'transcript') setMoment(null);
-    if (o.panel === null) setBefore(null);
-  }, [o.panel]);
+    if (!transcript) setMoment(null);
+    if (!anyOpen) setBefore(null);
+  }, [transcript, anyOpen]);
 
   /*
    * Coming back after time away, or joining late: offered once, as a toast, decided by the first window read when the

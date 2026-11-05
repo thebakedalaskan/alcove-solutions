@@ -268,10 +268,19 @@ export function WsTrash({ items }: { items: WsTrashItem[] }) {
 }
 
 /** The call's workspace, for someone who can't open it: it says it's private and nothing more. `organizer` is their first name. */
-export function WsNoAccess({ organizer, asked, onAsk }: { organizer: string; asked: boolean; onAsk: () => void }) {
+export function WsNoAccess({ organizer, asked, onAsk }: { organizer: string; asked: boolean; onAsk?: (() => void) | undefined }) {
   return (
-    <EmptyState className="wd-none" title={asked ? `You asked ${organizer}` : 'This call’s workspace is private'} art={<LockedArch />} action={asked ? undefined : <Button variant="primary" size="sm" onClick={onAsk}>Ask {organizer}</Button>}>
-      {asked ? 'This opens by itself as soon as they share something with you.' : `Ask ${organizer} and they can share what you need. You stay in the call either way.`}
+    <EmptyState className="wd-none" title={asked ? `You asked ${organizer}` : 'This call’s workspace is private'} art={<LockedArch />} action={asked || !onAsk ? undefined : <Button variant="primary" size="sm" onClick={onAsk}>Ask {organizer}</Button>}>
+      {asked ? 'This opens by itself as soon as they share something with you.' : onAsk ? `Ask ${organizer} and they can share what you need. You stay in the call either way.` : `${organizer} can share what you need. You stay in the call either way.`}
+    </EmptyState>
+  );
+}
+
+/** The call's organizer, taken out of the workspace it uses: the call keeps it for everyone else until they give it another. */
+export function WsLostSpace({ onNew }: { onNew: () => void }) {
+  return (
+    <EmptyState className="wd-none" title="You’re not in this call’s workspace any more" art={<LockedArch />} action={<Button variant="primary" size="sm" icon="plus" onClick={onNew}>New workspace</Button>}>
+      Make a new one and this call uses it. Nobody is disconnected.
     </EmptyState>
   );
 }

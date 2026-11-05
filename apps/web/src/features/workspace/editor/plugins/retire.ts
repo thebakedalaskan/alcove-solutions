@@ -12,14 +12,14 @@
  * - If two people move one block, two elements end up with one ID. Every browser retires the same one, unless someone has
  *   typed in it since: then it stays too.
  */
+import { KEPT_ATTRS, newBlockId, retire, settleUndone } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { allBlocks, blockAt, findBlock } from '../commands';
-import { newBlockId } from '../names';
-import { followUndo, gatherWords, holdsNothing, KEPT_ATTRS, retire, settleCopies, strayWords, type StrayWords } from '../retire';
+import { followUndo, gatherWords, settleCopies, strayWords, type StrayWords } from '../retire';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, isGone, schema, textAttr } from '../schema';
 import { elementOf, syncOf, type SyncBinding, type SyncState } from '../ydoc';
@@ -294,11 +294,7 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
                 const offset = into ? gatherWords(stray, into.element) : null;
                 if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
               }
-              /* An undo took back a block's arrival, ID and all, and left its element (see `undoMayDelete`): on the page only if someone's words are in it. */
-              for (const element of unnamed) {
-                element.setAttribute('id', newBlockId());
-                if (holdsNothing(element)) element.setAttribute('gone', '');
-              }
+              for (const element of unnamed) settleUndone(element);
               /* And what a redo puts back is on the page again, even a blank line. */
               for (const element of redone) element.removeAttribute('gone');
             }, TIDYING);

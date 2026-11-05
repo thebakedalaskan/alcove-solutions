@@ -3,11 +3,13 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
+import { PlayMediaSchema, PlayPositionSchema, PresentKindSchema, PresentSectionSchema } from './callWorkspace';
 import { CaptureDevicePartSchema } from './capture';
 import { CallPlaceSchema } from './live';
 import { CatchUpRangeSchema } from './catchup';
 import { CaptionLanguageSchema, ISODateSchema, RsvpSchema, isTimeZone } from './types';
 import { RingReplySchema } from './rings';
+import { DocumentRoleSchema, ItemIdSchema } from './workspaces';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
  * Vandelay, and single sign-on is whoever's work email is typed. Google is real: the browser goes
@@ -54,6 +56,8 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hand'), up: z.boolean() }),
   /** Anyone in the call: whether others may point at and mark what they share. On until they turn it off. */
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
+  /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
+  z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /**
@@ -84,7 +88,33 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   /** Sends an invited person to another open room, or back to the main room (null). Their keys move with them: out of the old room's group, into the new one's. */
   z.object({ type: z.literal('rooms-move'), email: z.string().trim().toLowerCase().max(254), roomId: z.string().max(64).nullable() }),
   /** The organizer pausing notes in one open room while the call's are on, or carrying on there: the call's notes are unchanged. */
-  z.object({ type: z.literal('rooms-pause'), roomId: z.string().max(64), paused: z.boolean() })
+  z.object({ type: z.literal('rooms-pause'), roomId: z.string().max(64), paused: z.boolean() }),
+  /** Anyone in the call, opening Workspace: the first time, which workspace the call uses is settled, and the next call in a series gets its agenda. */
+  z.object({ type: z.literal('workspace-open') }),
+  /** The organizer moves the call to a workspace they can edit in. Being organizer opens nothing, so anyone not in it sees that it's private. */
+  z.object({ type: z.literal('workspace-set'), workspaceId: ItemIdSchema }),
+  /** The organizer makes a workspace, with just them in it, and moves the call to it. It's named after the call unless it's given a name. */
+  z.object({ type: z.literal('workspace-new'), name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(120)).optional() }),
+  /** Anyone who can open it brings a document in the call's workspace to the call, or takes it off. */
+  z.object({ type: z.literal('workspace-bring'), documentId: ItemIdSchema, brought: z.boolean() }),
+  /** Anyone in the call but the organizer asks to see the workspace, or takes the ask back. It names nothing. */
+  z.object({ type: z.literal('workspace-ask'), up: z.boolean() }),
+  /** The organizer answers an ask by opening one document to whoever asked: a seat entry, until the call ends or Share takes it back. */
+  z.object({ type: z.literal('workspace-grant'), askId: z.string().min(1).max(64), documentId: ItemIdSchema, role: DocumentRoleSchema }),
+  /** The organizer says not now to an ask, and whoever asked is told. */
+  z.object({ type: z.literal('workspace-decline'), askId: z.string().min(1).max(64) }),
+  /** Anyone who can open it presents a document or board in the call's workspace to the part of the call they're in. */
+  z.object({ type: z.literal('present-start'), kind: PresentKindSchema, id: ItemIdSchema, section: PresentSectionSchema.default(0) }),
+  /** Whoever started it, or the organizer. */
+  z.object({ type: z.literal('present-move'), section: PresentSectionSchema }),
+  z.object({ type: z.literal('present-stop') }),
+  /** Anyone who can open the document plays a video in it for the part of the call they're in. */
+  z.object({ type: z.literal('play-start'), documentId: ItemIdSchema, mediaId: PlayMediaSchema, positionMs: PlayPositionSchema.default(0) }),
+  /** Whoever started it, or the organizer: it holds where it says, for everyone. */
+  z.object({ type: z.literal('play-pause'), positionMs: PlayPositionSchema }),
+  z.object({ type: z.literal('play-resume') }),
+  z.object({ type: z.literal('play-seek'), positionMs: PlayPositionSchema }),
+  z.object({ type: z.literal('play-stop') })
 ]);
 export type CallAction = z.infer<typeof CallActionSchema>;
 
@@ -104,6 +134,8 @@ export const CallJoinBodySchema = z.object({
   /** The pass from this browser's last connection to the call, if it had one: someone let in before is let in again without asking. */
   previous: z.string().max(2000).optional()
 });
+/** What watching the live notes did: true when this look refreshed them, so a browser reads the call again straight away. */
+export const NotesWatchedSchema = z.object({ refreshed: z.boolean() });
 /** The host's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
 export const CallCommitBodySchema = z.object({
   generation: z.number().int().nonnegative(),

@@ -4,12 +4,12 @@
  * the list writes straight to that document. A document's first title and line come from the server, which makes every
  * document from the same fixed bytes (`DOC_SEED` in `@alcove/api`), so nothing here or in the editor ever makes them.
  */
+import { newBlockId, retire } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import { initProseMirrorDoc, updateYFragment, ySyncPluginKey, type absolutePositionToRelativePosition } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { FRAGMENT, newBlockId } from './names';
-import { retire } from './retire';
+import { FRAGMENT } from './names';
 import { blockFromJSON, inDocument, schema } from './schema';
 import type { BlockJSON } from './types';
 

@@ -16,6 +16,7 @@ import { log } from '../log';
 import {
   TREE_NOTICE, canOpen, holdersOf, openState, peopleIn, roleOf, standingIn, workspaceKey, type Holders, type Reader, type Standing, type Who, type WorkspaceState
 } from '../modules/workspaceAccess';
+import { portraitFor } from '../modules/portraits';
 import { findOwner } from '../owners';
 import { publish, type Hub, type HubEvent } from './hub';
 
@@ -237,7 +238,8 @@ export class Room {
       const colleagues = viewer.standing.role !== null && e.member;
       if (!isMe && !opens && !inCall && !colleagues) return [];
       return [{
-        person: { ...e.person, email: isMe || colleagues ? e.person.email : '' }, connection: e.connection, callIdentity: inCall ? e.callIdentity : null,
+        // A face comes from an address, so whoever isn't told the address gets one from the keyed ID, which tells them nothing.
+        person: isMe || colleagues ? e.person : { ...e.person, email: '', portrait: portraitFor(e.person.id) }, connection: e.connection, callIdentity: inCall ? e.callIdentity : null,
         document: opens ? e.document : null, block: opens ? e.block : null, typing: opens && e.typing, elsewhere: e.document !== null && !opens, isMe
       }];
     });

@@ -53,7 +53,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 }
 export const PopoverClose = RPopover.Close;
 
-export interface SelectOption<T extends string> { value: T; label: string }
+export interface SelectOption<T extends string> { value: T; label: string; icon?: IconName | undefined }
 
 /**
  * Picks one of a list: a button showing the current choice opens a listbox, placed like a Popover (it
@@ -178,6 +178,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
             <div key={o.value} role="option" tabIndex={-1} aria-selected={i === chosen} className="ac-option"
               onClick={() => choose(i)}
               onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
+              {o.icon && <Icon name={o.icon} size={16} className="lead" />}
               <span>{o.label}</span>
               {i === chosen && <Icon name="check" size={15} />}
             </div>

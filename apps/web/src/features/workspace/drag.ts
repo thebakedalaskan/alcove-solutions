@@ -17,17 +17,20 @@ const SCROLL_PX = 7;
 /** Where a drag would land, and what shows it. */
 export type DropSpot =
   | { kind: 'place'; to: ItemPlace; line: { top: number; left: number } | null; into: string | null }
-  | { kind: 'trash' };
+  | { kind: 'trash' }
+  | { kind: 'bring' };
 
 export interface RowDrag { id: string; icon: IconName; label: string; x: number; y: number; spot: DropSpot | null }
 
 interface Armed { id: string; x: number; y: number }
 
 /** What's under the pointer, for a row that's moving. */
-function spotAt(t: Tree, moving: string, x: number, y: number): DropSpot | null {
+function spotAt(t: Tree, moving: string, x: number, y: number, canBring: boolean): DropSpot | null {
   const under = document.elementFromPoint(x, y);
   if (!under) return null;
   if (under.closest('[data-trash]')) return { kind: 'trash' };
+  // This call's part of the list is what's brought to it, in the order it came: a document dropped there comes to the call.
+  if (canBring && under.closest('[data-sec="pins"], [data-row][data-area="pins"]')) return t.all.get(moving)?.kind === 'document' ? { kind: 'bring' } : null;
   const row = under.closest<HTMLElement>('[data-row]');
   if (!row) {
     const list = under.closest('.wt-scroll');
@@ -51,16 +54,18 @@ function spotAt(t: Tree, moving: string, x: number, y: number): DropSpot | null 
   return { kind: 'place', to: landing(t, moving, target.id, side), line: { top, left: 12 + depth * 16 }, into: null };
 }
 
-export function useRowDrag({ tree, canDrag, onDrop, onOpenFolder }: {
+export function useRowDrag({ tree, canDrag, canBring = false, onDrop, onOpenFolder }: {
   tree: Tree; canDrag: (id: string) => boolean;
+  /** In a call: a row can be dropped on This call. */
+  canBring?: boolean | undefined;
   onDrop: (id: string, spot: DropSpot) => void; onOpenFolder: (id: string) => void;
 }) {
   const [drag, setDrag] = useState<RowDrag | null>(null);
   const armed = useRef<Armed | null>(null);
   const moving = useRef<RowDrag | null>(null);
   const justDropped = useRef(false);
-  const said = useRef({ tree, onDrop, onOpenFolder });
-  said.current = { tree, onDrop, onOpenFolder };
+  const said = useRef({ tree, canBring, onDrop, onOpenFolder });
+  said.current = { tree, canBring, onDrop, onOpenFolder };
 
   useEffect(() => {
     let pause: { id: string; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -78,7 +83,7 @@ export function useRowDrag({ tree, canDrag, onDrop, onOpenFolder }: {
     const place = (x: number, y: number) => {
       const d = moving.current;
       if (!d) return;
-      const spot = spotAt(said.current.tree, d.id, x, y);
+      const spot = spotAt(said.current.tree, d.id, x, y, said.current.canBring);
       const into = spot?.kind === 'place' ? spot.into : null;
       if (pause?.id !== into) {
         stopPause();

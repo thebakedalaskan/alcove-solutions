@@ -1,6 +1,6 @@
 /* The live transcript as it's written, on the call stage and in the room: the newest line at the bottom. */
 import type { CaptureGap, Speaker, TranscriptLine } from '@alcove/api';
-import { Avatar, CaptureGapMark, Icon, IconButton, TimeChip, Unsure, UnsureKey, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, IconButton, Unsure, UnsureKey, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
@@ -10,8 +10,10 @@ import { position } from '~/lib/time';
 /**
  * Keeps a list scrolled to its newest line, unless the person has scrolled up to read. Only scrolling
  * up counts as reading back: new lines, a resized window and the glide after "Latest" never do.
+ * `newest` changes with every new line: a count wouldn't, once the list has reached its cap and the oldest line goes as
+ * each new one comes. `glide`: each new line slides the list up, instead of the list jumping to it.
  */
-function useFollow(count: number) {
+function useFollow(newest: string, glide = false) {
   const ref = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const last = useRef(0);
@@ -19,8 +21,8 @@ function useFollow(count: number) {
   const reduce = useReducedMotion();
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [count]);
+    if (el && pinned.current) el.scrollTo({ top: el.scrollHeight, behavior: glide && !reduce ? 'smooth' : 'auto' });
+  }, [newest, glide, reduce]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -83,7 +85,7 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
  * explained once at the top. `onMark` bookmarks a line for the reader alone.
  */
 export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined }) {
-  const { ref, onScroll, away, jump } = useFollow(lines.length + gaps.length);
+  const { ref, onScroll, away, jump } = useFollow(`${lines.length}:${lines.at(-1)?.id}:${gaps.length}`);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
   return (
@@ -120,15 +122,22 @@ export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptL
   );
 }
 
-/** A room recording's transcript: nobody is named, so each line has its time. */
+/**
+ * A room recording's transcript under the voice: nobody is named. The last three lines show, fading as they get older, and
+ * scrolling up reads back the rest. A line's time is on it for anyone who wants it.
+ */
 export function RoomLines({ lines }: { lines: TranscriptLine[] }) {
-  const { ref, onScroll, away, jump } = useFollow(lines.length);
+  const { ref, onScroll, away, jump } = useFollow(`${lines.length}:${lines.at(-1)?.id}`, true);
   const arrived = useArrivals(lines);
   return (
     <div className="tx-wrap">
-      <div ref={ref} className="rm-lines" onScroll={onScroll} role="log" aria-label="What’s been said">
+      <div ref={ref} className={cn('rec-lines', away && 'is-back')} onScroll={onScroll} role="log" aria-label="What’s been said">
         <UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={false} className="tx-key" />
-        {lines.map((l) => <div key={l.id} className={cn('rm-line', arrived(l.id) && 'tx-in')}><TimeChip seconds={l.at} /><p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p></div>)}
+        {lines.map((l, i) => (
+          <p key={l.id} title={position(l.at)} className={cn('rec-l', `a${Math.min(lines.length - 1 - i, 3)}`, arrived(l.id) && 'is-in')}>
+            {l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}
+          </p>
+        ))}
       </div>
       {away && <Latest onClick={jump} />}
     </div>

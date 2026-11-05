@@ -4,7 +4,8 @@
  * them, so Reopen and History need nothing brought back. This works on a plain Y.Doc: the thread UI needs no editor.
  */
 import * as Y from 'yjs';
-import { COMMENTS, newBlockId } from './names';
+import { newBlockId } from '@alcove/api/retire';
+import { COMMENTS } from './names';
 
 /** Someone a message tags: their words are in its text, as `@` and their first name. */
 export interface MessageTag { id: string; name: string }

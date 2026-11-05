@@ -140,14 +140,17 @@ The call itself stays in the API: who's let in, notes and the transcript.
   from `KMASTER`, per request. A removed person's pass stops working, and once the call has ended only the
   organizer can read it.
 - **What each role can do.** Everyone let in: read the call, chat, catch up and ask, for themselves alone
-  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), raise a hand, ask for notes,
+  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), read the live notes of the part of
+  the call they're in, written only from what they may read ([Live notes](notes-and-inference.md#live-notes)), and keep
+  them up to date by watching them, raise a hand, ask for notes,
   point at and mark shared screens and say whether others may point at what they share
   ([Pointing at shared screens](#pointing-at-shared-screens)), and, while screen notes are on, send frames of their own
   shared screen ([Shared screens](#shared-screens)).
   Everyone reads the live transcript of the part of the call they're in, as said while they were there; a guest
   with the link, who doesn't get the notes, reads only what was said while they were in the call as well (the
   live transcript, captions, catching up, asking and moments), while the organizer and everyone on the invite
-  (people signed in whom the organizer let in included) read all of it. Whoever hosts (the organizer, or someone
+  (people signed in whom the organizer let in included) read all of it, and can tick follow-ups in the live notes.
+  Whoever hosts (the organizer, or someone
   standing in while the organizer is away: [Host hand-off](#host-hand-off)), with their current connection and
   their own session: let people in or turn them away, mute someone's microphone, remove someone (never the
   organizer), lock the call, spotlight someone, bring everyone back from breakout rooms, say what their browser
@@ -413,7 +416,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
 - **Its parts.** `recording` (what the host's browser hears in the main room, mixed: its own
   microphone and everyone else's, encrypted; silent while the host is in a breakout room), `transcript`
   (everyone the host's browser plays in the main room, or a breakout room's scribe's browser in the room, turned into text by the private speech model, each line under whoever
-  said it), `ai` (the private notes model reading the transcript: the notes at the end, catch-up, questions and
+  said it), `ai` (the private notes model reading the transcript: the notes at the end, live notes, catch-up, questions and
   captions during the call) and `screen` (shared screens read for the notes). Each is `on`, `paused`, `off` or
   `unavailable`, with when it last changed (`since`) and who changed it (`by`: the call's schedule, or the
   organizer by name). Recording and the transcript follow notes. The notes model reads what was transcribed for
@@ -444,7 +447,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/modules/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
-  them, so nothing new is recorded, transcribed or sent to the AI; shared-screen frames are refused too. The
+  them, and refreshes no live notes, so nothing new is recorded, transcribed or sent to the AI; shared-screen frames are refused too. The
   organizer's browser holds everything as it sends the pause: the recorder and every voice stop, and nothing they
   have is sent. Once the server has paused, what they held is dropped rather than flushed, and a `409` from a
   later upload is dropped too; a presenter's browser stops looking at its share and drops its unsent frames as
@@ -453,7 +456,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   its way, the organizer's sign says **Pausing…**; that's the only in-between state, since the server changes the
   call's state in one step and everyone else sees it change at once. What the server took before the pause
   stays: a piece or clip that got through the gate before the pause was saved is kept (a clip still being
-  transcribed lands in the transcript, before the pause). Notes off is the same for audio and speech, but
+  transcribed lands in the transcript, before the pause). Notes off is the same for audio and speech, and live notes stop refreshing, but
   catch-up, questions and captions still read what was transcribed before. Turning notes off sends the last
   audio and speech first; if it fails, the same recorder carries on.
 - **Resume** (`{type: "resume"}`) is the organizer's choice and nothing else's: not a reconnect, not a reload,
@@ -472,7 +475,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   goes at the segment's end, so nothing said before a pause comes after it.
 - **In breakout rooms.** Each open room has its own capture state, for the people in it and for the organizer
   while it's visiting (`capture.room`, beside the call's). A room is never recorded. It captures (what's said there
-  transcribed by the room's scribe, read for catching up, questions and captions in the room, and given to the
+  transcribed by the room's scribe, read for the room's live notes, catching up, questions and captions in the room, and given to the
   call's notes as the room's section) only while the call's notes are on and the organizer hasn't paused the room.
   Its `transcript` part is unavailable while the room has no scribe, and `capture.room.scribe` says whose browser
   it is (null while there's none). The
@@ -854,7 +857,7 @@ account from a demo one, whose name and address could be anyone's, nor a demo ac
 notes. It's filtered at delivery and on answering, never when ringing: the organizer sees only that nobody answered.
 
 **How many.** Streams are counted as they stand, not as they open, since each holds a request for minutes: an account
-holds at most 8 at once and a process 300, which leaves the rest of its 500 requests for calls. Past either limit,
+holds at most 8 at once and a process 300, out of the 1,000 requests an instance serves. Past either limit,
 someone with a stream gives up their oldest, likeliest a tab that went without the server hearing, so a tab coming back
 always gets in, and a tab still there opens another. Someone with none, on a full process, gets `503 unavailable`, and
 their browser tries again, more slowly each time.
@@ -953,6 +956,93 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
   caption bar, and the call is still transcribed for notes while notes are on.
 
 
+## The call's workspace
+
+A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md#workspaces)). What's done is
+`apps/api/src/modules/callWorkspace.ts`, what the call keeps of it is `callSpace.ts`, and who can open what is
+`workspaceAccess.ts`, on every read: access is never copied into the call. Being in a call, or organizing it, opens nothing.
+
+- **Which one.** The meeting's `workspaceId`, sealed in its manifest, default null. With none, the first time anyone opens
+  Workspace (`workspace-open`, anyone let in), the call settles on its organizer's most recently used, if they can still
+  edit in it, else a new one in their name. It's settled under the call's row, so people opening it at once get one, and
+  it's the organizer's whoever opened it: a guest's click can make it, and tells the guest nothing. "Most recently used" is
+  sealed in the account's profile (`recentWorkspace`): making one, opening one they can edit in, or a call moving to one
+  uses it. A workspace deleted since it was chosen is settled again.
+- **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
+  starts with it. A call that settles on a workspace or moves to one takes the later calls that were using the old one along,
+  once the call's row is let go. A later call someone gave a workspace of its own keeps it.
+- **Changing it.** Only the organizer (`workspace-set`), and only to a workspace where they have at least `edit`: a role of
+  `read` is `403`, and one they can't reach is the same `404` as one that doesn't exist. `GET /v1/live/calls/:id/workspace/:id`
+  says what it would mean, for the sheet that asks: the workspace's name, and the first names of people in the call who
+  aren't in it. It goes by membership alone, which the organizer can see from the workspace's people: someone with one
+  document there is still named, because saying otherwise would tell the organizer about something they can't see.
+  Changing it interrupts nothing: nobody's keys move, nothing open closes, and what was presented or playing there stops.
+  `workspace-new` makes one with just the organizer in it, named after the call unless it's given a name, and moves the call
+  to it. A stand-in hosts the call and doesn't choose its workspace.
+- **`CallState.workspace`** is per viewer, worked out on every read: `id`, `name`, `chosenBy`, `canOpen`, `role`, `documents`,
+  `agenda`, `present`, `play`, `asks`, `asked`. Someone who can open nothing gets `id` and `name` null: private, and
+  nothing that names anything, `present` aside (below). Someone with one document has the `id` to open it with and no name.
+  It's computed only for a call that has something to show, and a workspace that can't be read reads as private: nothing
+  in one can stop anyone reading the call. Someone waiting to be let in gets nothing at all.
+- **What's brought to the call** is `Meeting.documents`, the one list, kept as `<workspace>.<item>`. `workspace-bring`
+  adds a document in the call's workspace, or takes one off, for anyone who can open it, up to 12. `CallState.workspace.documents`
+  says which of them this person can open, wherever they are, by the name they have now; one in Trash isn't listed.
+- **Asking.** Someone who can't open it asks (`workspace-ask`), which names nothing, and takes the ask back the same way. Only
+  the organizer sees who's asking (`asks`), from people still in the call. They answer with one document, read or edit
+  (`workspace-grant`, which needs them to be able to share that document, as Share does), or say not now
+  (`workspace-decline`, and whoever asked sees `asked: 'declined'`, and can ask again; 10 asks a minute per person). A
+  grant is a seat entry in `document_access`: it ends with the call, when they're removed, or from Share, and it holds across
+  a reload, because a seat does. Anything shared with someone in a call, by asking or from Share, tells the call to read
+  itself again, so it opens by itself.
+- **Follow-ups.** `GET /v1/live/calls/:id/follow-ups` is the live notes' follow-ups as this person reads them, plus every
+  to-do with a mention and a date in the documents worked on in this call, for whoever can open each, with `notes` saying
+  what the notes are doing there. With notes off they come from documents alone, and say so. It reads documents, so it isn't
+  part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. `POST` to the
+  same path ticks a to-do with `writeDocument`, as a server-made update that sets the block's own `done`, as the editor does,
+  so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
+  counts as working on it. Access is checked again under the workspace's row in the transaction that writes it.
+- **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
+  person on each document goes into the call's sealed state (`worked`), under the call's row and once only, so typing never
+  waits on it, and a failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
+  who) in the transaction that ends it, the call lets go of it, and each document keeps a version with reason `call`,
+  filed under the call. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
+  the note is told what they can open now, by the name it has now, and nothing else is listed or counted.
+- **Presenting.** `present-start` needs the document open to whoever starts it, and to be in the call's workspace; `kind` is
+  `document` or `board`, and the state is `{ kind, id, section, by }`, one for each part of the call. It's moved and stopped
+  by whoever started it or the organizer, and nobody can start over someone who's presenting there. Sections are the
+  browser's to count. Access doesn't change: someone who can't open it is told something's being presented, and by whom, with
+  `kind`, `id`, `name` and `section` null. Presenter notes aren't call state: see
+  [Data and storage › Presenter notes](data-and-storage.md#presenter-notes).
+- **Playing together.** `{ mediaId, documentId, by, playing, positionMs, atMs }`, with `nowMs` as it's read: all the
+  server's clock, so `playPosition` lands a late joiner at the same moment whatever their own clock says. `play-start` needs the
+  document open and the video to be a block in it, which is read from the document with nothing held; only IDs are kept, and
+  nothing about the video changes. Paused, seeked, resumed and stopped by whoever started it or the organizer. Only someone
+  who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing.
+- **What stops them.** Both belong to the part of the call they started in, and show only to the people there.
+  - Someone reloading hides what they started until they're back: it isn't stopped, and they find it as it was.
+  - Their part of the call closing, their being removed, or their moving to another part stops it for good, as a change of
+    workspace and the call ending do.
+  - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
+    everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
+    tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never
+    waits on a nudge that isn't coming.
+- **The next agenda.** When a call in a series first opens Workspace, it looks once for an agenda to make: the call before
+  it that had one (kept on its meeting, as IDs, when that call ended: whatever it brought or worked on that's named Agenda,
+  or says what the Agenda template says), still in the tree of the workspace this call uses. What was left open, every
+  to-do with words and no tick, is read with nothing held. Then under the call's row, so there's one however many open it,
+  the server makes a document beside the last one, in the same folder, for the same people, restricted as it was, and
+  `writeDocument` fills it in once that commits: From last time, Today, Notes. It replaces the last one among what's brought,
+  and `agenda` names it. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays
+  in its workspace, so a call that moved to another gets none.
+
+Actions are rate limited per person: 240 a minute for what goes on in the workspace, as each makes every browser read the
+call again. Following a change to who can open what, the state is right on the next read; only what's shared with a seat
+tells the call straight away, because that's the only case that knows which call to tell.
+
+`workspaceForCall(d, call)` and `grantDocumentToCall(d, workspace, documentId, call, { role, place? })`, in
+`workspaceAccess.ts`, are the same things for server code: the call's workspace, settled if it has none, and one document
+given to everyone in a call now, or in one part of it, as a seat each.
+
 ## The join page
 
 `apps/web/src/routes/join.$code.tsx` (with `apps/web/src/features/join/`) is the pre-join for everyone with the
@@ -1014,13 +1104,13 @@ link: the organizer's lobby (`features/calls/Lobby.tsx`) by their account, and a
 ## The call screen
 
 `apps/web/src/routes/call.$code.tsx` is the call for everyone in it; no account is needed, since the call's
-pass is what lets a guest in. It's built from `apps/web/src/features/call/`: the stage (`Stage.tsx`, laid out
-by `stageLayout.ts` from your view in `view.ts`, with who's talking settled in `speakers.ts`), each tile's menu
-(`TileMenu.tsx`), the top bar and its view menu (`ViewMenu.tsx`), the side panel (`Panel.tsx`: Notes, Transcript,
-Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, live notes, the share picker, the leave sheet and the
-device pickers.
+pass is what lets a guest in. It's built from `apps/web/src/features/call/`: the panels (`panels.ts`, drawn by
+`PanelHost.tsx`), the stage (`Stage.tsx`, laid out by `stageLayout.ts` from your view in `view.ts`, with who's
+talking settled in `speakers.ts`), each tile's menu (`TileMenu.tsx`), the top bar and its view menu (`ViewMenu.tsx`),
+the side panels (`Panel.tsx`: Notes, Yours, Transcript, Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, the
+share picker, the leave sheet and the device pickers.
 
-- **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript), its
+- **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript, the live notes), its
   `crypto` store (MLS status and members, media keys, chat) and the LiveKit room (`livekit.ts`: mic, camera,
   screen, who's speaking, and their tracks), each with `useLive()`, copying none of their state. Only the
   organizer also reads the meeting, to know who's invited.
@@ -1061,16 +1151,64 @@ device pickers.
   while it's moving), takes up to 4,000 characters, says when there was chat here it can't read, and gives back a
   message that couldn't be sent.
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
-- **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: Auto,
-  Speaker or Grid; up to six pins, which share the main stage (in Grid they come first and bigger); the order you
-  put people in; who you made bigger; how much room shared screens get beside the people; and where you see
-  yourself (in the grid, in a corner the layout makes room for so it never covers a tile, or hidden, folded into a
-  chip there). Two ready-made layouts, Everyone equal and Presenter and me, are defined by role rather than by
-  person, so they fit any call. Reset puts the layout back to Auto (where you see yourself stays as it is), with
-  Undo in its toast, as unpinning everyone and the ready-made layouts have.
+- **Panels** (`panels.ts`, pure; `PanelHost.tsx` draws them) are how the call shares the screen. Everything you can
+  look at has a place in a small tree of rows and columns that only you can see: the stage, the people, a seat for
+  each share shown big, the workspace, the board and the side panels. Hiding something keeps its place. With nothing
+  beside the call the stage is one panel, and `stageLayout.ts` places the people and what's shared on it. Once the
+  workspace or the board is open, or something is shared and you've moved a share or the people by hand, picked a
+  layout, or folded the people away, the stage comes apart (`Adapted.apart`) and they stand as panels of their own;
+  with nothing shared and nothing open it's whole again. `Stage.tsx` is one layer over the whole of the call's area
+  either way, with every tile and share at its own key under one parent, so nothing playing remounts when a panel
+  moves: `useStagePlan` works out what's big above it, `solve` where that goes, and tiles glide with the panels in
+  420 ms. A side panel slides in from the edge it stands against, and nothing is placed until the area has been
+  measured, before the first paint, so a call opens with everything where it belongs. The organizer's stage stays
+  whole while it shows every breakout room.
+- **Arranging them.** Every panel has a handle, and the people a small toolbar (move, fold to arches, hide). Dragging
+  one lights where it will land with the sunrise glow: any edge of a panel, an edge of the window, or a panel's middle
+  to swap the two (a share moved off the stage drops beside what's left of it; two panels of tabs merge). A side
+  panel's tabs show one at a time; dragging a tab out makes it a panel of its own, so two stay open, and dropping it in
+  the middle of a panel of tabs puts it back. Closing such a panel keeps its place, and its tab opens it there again.
+  The line between two panels follows the pointer exactly and moves only the two beside it, snaps at half, and a
+  double-click evens it; beside the people it folds them to arches, then away, and a double-click puts them back to the
+  width they start at. The lines
+  on the stage itself behave the same. A drag is shown as it happens and remembered when it's let go, wherever that
+  is: a press is followed on the window, not on the line it started on, which can go. A share ending ends a drag of its
+  line or its handle, and something let go about where it was picked up stays put. What's typed in Chat and Ask is kept
+  above the panels, so a tab moved to another panel has its words.
+- **When room runs out** panels give way in one fixed order (`adapt`): tiles fold to arches, the workspace's list tucks
+  away, side panels float in one column over the right of the screen (the stage makes room for the column when it
+  can), then the workspace, the board and the shares take turns, with a switcher in the top bar. Anything dragged
+  wider gives that back before any of this. Under 600 px it's a phone: one thing at a time, nothing to drag, and the
+  panel in front has every tab. A panel can't run off the screen: `solve` shares out whatever room there is, and
+  floors never beat a line, so a line keeps up with the pointer down to its minimum. A floating panel with no room in
+  the column (`crowdedOut`) stays mounted and counts as closed: its button in the dock is off, its messages are
+  unread, and one press brings it up in another's place.
+- **People, as a panel.** Tiles sized to the panel; arches in a column or a strip, their name, mic and menu moved to a
+  click on the arch; or, hidden (**⇧P**, the toolbar, or View), small arches on the horizon beside the dock, in space
+  nothing else uses. Whoever has a hand up, or has been talking a moment (`speakers.ts`, as Speaker view counts it, so
+  a quick "yes" moves nothing), rises 9 px, with a line beside them saying so. As many as fit are shown, then a count
+  that opens People, and the speaker and anyone with a hand up always have a place, unless the dock leaves room for
+  nobody: nothing ever stands on it. Those there's no room for stay mounted, out of sight. Someone rung waits in a tile
+  among the tiles; among arches or on the horizon they're in People. A panel of people has no stage to have a corner
+  of, so your own picture is one of them; hidden, its chip waits under the tiles. Nothing here changes while nothing
+  else is on the stage: hiding people then says it applies once something is shared.
+- **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: where the
+  panels sit; Auto, Speaker or Grid; up to six pins, which share the main stage (in Grid they come first and bigger);
+  the order you put people in; who you made bigger; how much room shared screens get beside the people; and where you
+  see yourself (in the grid, in a corner the layout makes room for so it never covers a tile, or hidden, folded into a
+  chip there). **View** in the top bar holds all of it: four layouts of the panels (**Side by side**, which is the
+  call's own, **Stacked**, **Screen first**, **Document first**; a fifth, `board`, is the board's), how you see people,
+  the document list while the workspace is open, the two ready-made layouts for people, Everyone equal and Presenter
+  and me, which are defined by role rather than by person, so they fit any call, and **Reset my view** once there's
+  anything to reset. Reset puts everything back to the call's layout (where you see yourself stays as it is, and what's
+  open stays open), with Undo in its toast, as unpinning everyone and the ready-made layouts have.
 - **What's remembered where.** How you like calls (the mode, room for shares, where you see yourself and its
   corner: `CallViewPrefsSchema`) is in `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a
-  browser without an account), because it's about you, not about anyone in a call. How you arranged this call
+  browser without an account), because it's about you, not about anyone in a call. So are the panels (`CallPanelsSchema`:
+  the tree, what's torn off and open, how you see people), `alcove.callPanels.<ownerId>`, so tomorrow's call starts the
+  way you left this one; it says where kinds of things go and never names a person, a call or a share, which take a
+  seat for as long as they're big. A record that doesn't parse or doesn't hold together (`panelsSound`) is ignored for
+  the call's layout, a phone starts with every panel closed, and with none open on a wide screen Notes opens while notes are on. How you arranged this call
   (pins, order, sizes, which shares you see big: `CallLayoutSchema`) only means something in this call, so it's in
   `sessionStorage` for the tab, `alcove.callLayout.<callId>`: a reload keeps it, and leaving the call deletes it.
   It names people by their `seat` (`CallParticipant.seat`), not their participant ID: participant IDs are LiveKit
@@ -1094,8 +1232,12 @@ device pickers.
 - **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu,
   P pins or unpins (on a share, shows it big or as a tile), Shift with an arrow moves a tile earlier or later (your
   corner picture to another corner), and + and − make it bigger or smaller; L on a share shown big starts pointing at it
-  ([Pointing at shared screens](#pointing-at-shared-screens)); Escape stops pointing, then unpins everyone. The line
-  beside a shared screen, and the one between two, is a separator moved with the arrow keys, Home and End. On someone
+  ([Pointing at shared screens](#pointing-at-shared-screens)); Escape stops pointing, then unpins everyone. Every line
+  between panels, the one beside a shared screen and the one between two is a separator moved with the arrow keys
+  (24 px), Home and End, and evened with Enter; when one folds the people away it goes with them, so focus moves to the
+  handle of what stood beside it and that's said aloud. Enter or Space on a panel's handle picks it up (G on a share shown big,
+  Shift and Enter on a tab): the arrow keys walk the same drops the glow shows, each said aloud, Enter puts it there and
+  Escape leaves it where it was. ⇧P hides the people or brings them back. On someone
   else's share you see big, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your
   pointer, while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
   ([below](#looking-closer-at-a-share)). Each tile's menu shows its keys, and on touch screens its ⋯ is always there.
@@ -1143,6 +1285,13 @@ device pickers.
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
   breakout rooms too, each room its own, and say so instead of showing an old line while notes are paused or
   off, or while the host's browser can't listen.
+- **Live notes** (the Notes tab in `Panel.tsx`) are the call's, not this browser's: `CallState.liveNotes`, one set for
+  everyone who can read the same lines in that part of the call. While the tab is open and notes are on where you are,
+  the browser says it's watching (`CallSession.watchNotes`), which is what keeps them up to date at most every 30 seconds,
+  in one run however many are watching. Someone reading the notes everyone shares, who gets the notes, can tick a
+  follow-up (`tickFollowUp`), and it's done for everyone. A guest sees no box, and someone with notes of their own, written
+  from what they may read, sees no box and is told so
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up** in the top bar and
   the More menu opens the Ask view on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5
@@ -1571,7 +1720,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   `getDisplayMedia` (phones and tablets) is told it can't share and can still see shares. Sound asked for that didn't
   come (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
-  in its menu), the speaking ring and the recorder waveform. On Record the page has its own `LocalMedia`, which
+  in its menu), the speaking ring and the recorder's voice on the water (`useVoice`, which changes CSS variables
+  and never renders). On Record the page has its own `LocalMedia`, which
   opens the microphone only when **Check the level** is pressed and lets it go on **Stop** or when the page is
   left; choosing a microphone while it's closed only remembers it, and one that doesn't start while it's open
   says so and isn't shown as chosen.

@@ -8,7 +8,7 @@ import type { LiveStore } from './live';
 import { DeviceSealedSchema, IDSchema, ISODateSchema, PersonSchema, PortraitStyleSchema } from './types';
 
 /** IDs that come from a browser: 22 characters of base64url. Anything else names nothing. */
-const ItemIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
+export const ItemIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
 /** Words on one line, however they were typed. */
 const oneLine = (min: number, max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(min).max(max));
 const EmailSchema = z.string().trim().toLowerCase().max(254).regex(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/);
@@ -124,7 +124,7 @@ export const WorkspacePlacesSchema = z.object({
 export type WorkspacePlaces = z.infer<typeof WorkspacePlacesSchema>;
 
 /** An edit kept in this browser until Alcove has it: where it belongs, and the update sealed under the device key. */
-export const KeptEditSchema = z.object({ owner: z.string(), workspace: z.string(), document: z.string(), key: z.number(), sealed: DeviceSealedSchema });
+export const KeptEditSchema = z.object({ owner: z.string(), workspace: z.string(), document: z.string(), key: z.number(), at: z.number(), sealed: DeviceSealedSchema });
 export type KeptEdit = z.infer<typeof KeptEditSchema>;
 
 /* ---------- live ---------- */

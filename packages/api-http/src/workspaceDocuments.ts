@@ -5,6 +5,13 @@
  * updates can arrive twice and in any order, so a retry never does harm and there's nothing to reconcile.
  *
  * Nothing typed is let go of until the API has it. With a `keep` store, that survives a reload too.
+ *
+ * A refused update can't hold up what's behind it. A client's clocks have to reach the API in order, so anything written as
+ * the same client is stuck behind it: this document moves to a new client, and what's written from then on goes as usual,
+ * unless it builds on what's stuck. What's stuck is worked out afresh from time to time. Yjs lets go of what's been deleted, so
+ * once a paste is undone or cut down, what's left of it is small.
+ *
+ * This module holds Yjs, and loads with the first document someone opens.
  */
 import {
   AlcoveApiError, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, toBase64Url, type DocClosed, type DocLiveEvent, type DocRefusal, type DocSession, type DocStatus, type KeptUpdates
@@ -22,6 +29,11 @@ const LONGEST_WAIT_MS = 10_000;
 const STEADY_MS = 1_000;
 /** What one request carries, leaving room for what merging adds. */
 const REQUEST_BYTES = MAX_DOC_UPDATE_BYTES - 64 * 1024;
+/** How many updates go in one request: each can be a client of its own, and the API takes so many at once. */
+const REQUEST_UPDATES = 64;
+/** How soon after something changes what's stuck is tried again, and how often if nothing does: room may have been made by someone else. */
+const STUCK_SOON_MS = 1_000;
+const STUCK_WAIT_MS = 30_000;
 
 /** Whatever Yjs applies with this came from Alcove or from `keep`, and isn't new here. */
 const HEARD = Symbol('heard');
@@ -29,12 +41,12 @@ const HEARD = Symbol('heard');
 export interface DocTransport {
   open(after: number, signal: AbortSignal): AsyncIterable<DocLiveEvent>;
   /** Sends one update. Resolves once the API has it safe. */
-  update(update: string): Promise<unknown>;
+  update(update: Uint8Array): Promise<unknown>;
   awareness(update: string, keepalive: boolean): Promise<unknown>;
 }
 
-/** An edit Alcove doesn't have yet, and its place in `keep`, if it has one. */
-interface Unsent { update: Uint8Array; kept: Promise<number | null> | null }
+/** An edit Alcove doesn't have yet, and its place in `keep`, if it has one. `stuck`: it's waiting on something other than the connection. */
+interface Unsent { update: Uint8Array; kept: Promise<number | null> | null; stuck: boolean }
 type Ending = { over: DocClosed } | 'ended' | 'failed';
 
 export class HttpDocSession implements DocSession {
@@ -56,7 +68,12 @@ export class HttpDocSession implements DocSession {
   private live = false;
   private streamDown = false;
   private sendDown = false;
-  private refused: DocRefusal | null = null;
+  /** Why nothing can go at all, until an `access` line says otherwise. */
+  private shut: 'read-only' | 'trashed' | null = null;
+  /** Alcove will never take what was stuck here. */
+  private rejected = false;
+  /** What's stuck is too much, for one request or for the document. Otherwise it may only need working out afresh. */
+  private tooMuch = false;
   /** Why the stream last failed, for `ready`. */
   private settleFailure: unknown;
 
@@ -68,6 +85,7 @@ export class HttpDocSession implements DocSession {
   private sending = false;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private retryWait = FIRST_WAIT_MS;
+  private stuckTry: ReturnType<typeof setTimeout> | undefined;
 
   private caret: ReturnType<typeof setTimeout> | undefined;
   private announcing = false;
@@ -91,14 +109,15 @@ export class HttpDocSession implements DocSession {
   close = () => {
     if (this.closed) return;
     this.closed = true;
+    clearTimeout(this.stuckTry);
     if (!this.stopped) {
       this.stopped = true;
       this.connection?.abort();
       this.stopWaiting?.();
       clearTimeout(this.caret);
       if (this.live) {
-        removeAwarenessStates(this.awareness, [this.doc.clientID], 'closing');
-        this.net.awareness(toBase64Url(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])), true).catch(() => undefined);
+        removeAwarenessStates(this.awareness, [this.awareness.clientID], 'closing');
+        this.net.awareness(toBase64Url(encodeAwarenessUpdate(this.awareness, [this.awareness.clientID])), true).catch(() => undefined);
       }
       this.awareness.destroy();
       this.settle?.reject(new AlcoveApiError('unknown', 'This document was closed.'));
@@ -108,12 +127,16 @@ export class HttpDocSession implements DocSession {
     void this.send().finally(() => this.doc.destroy());
   };
 
+  private get refused(): DocRefusal | null {
+    return this.shut ?? (this.rejected ? 'rejected' : this.tooMuch && this.unsent.some((u) => u.stuck) ? 'too-large' : null);
+  }
   private publish(): void {
     const waiting = this.fresh.length > 0 || this.unsent.length > 0;
-    const status: DocStatus['status'] = this.refused ? 'failed' : this.streamDown || this.sendDown ? 'offline' : waiting ? 'saving' : 'saved';
+    const { refused } = this;
+    const status: DocStatus['status'] = refused ? 'failed' : this.streamDown || this.sendDown ? 'offline' : waiting ? 'saving' : 'saved';
     const v = this.view;
-    if (v.status === status && v.refused === this.refused) return;
-    this.view = { ...v, status, refused: this.refused };
+    if (v.status === status && v.refused === refused) return;
+    this.view = { ...v, status, refused };
     this.listeners.forEach((l) => l());
   }
   private set(p: Partial<DocStatus>): void {
@@ -126,9 +149,13 @@ export class HttpDocSession implements DocSession {
   private edited(update: Uint8Array): void {
     this.fresh.push(update);
     this.publish();
+    if (this.unsent.some((u) => u.stuck)) this.tryStuck(STUCK_SOON_MS);
     if (this.batch !== undefined || this.stopped) return;
     this.batch = setTimeout(() => { this.batch = undefined; this.cut(); void this.send(); }, BATCH_MS);
     unref(this.batch);
+  }
+  private add(update: Uint8Array, stuck: boolean): Unsent {
+    return { update, kept: this.keep ? this.keep.add(update, Date.now()).catch(() => null) : null, stuck };
   }
   /** Ends a batch: it's kept here until Alcove has it, whatever happens to this tab. */
   private cut(): void {
@@ -137,22 +164,48 @@ export class HttpDocSession implements DocSession {
     if (!this.fresh.length) return;
     const update = this.fresh.length === 1 && this.fresh[0] ? this.fresh[0] : Y.mergeUpdates(this.fresh);
     this.fresh = [];
-    this.unsent.push({ update, kept: this.keep ? this.keep.add(update).catch(() => null) : null });
+    this.unsent.push(this.add(update, false));
   }
   /** As much as fits in one request, the oldest first, and always at least one. */
   private nextBatch(): Unsent[] {
     let bytes = 0;
     const batch: Unsent[] = [];
     for (const u of this.unsent) {
-      if (batch.length && bytes + u.update.length > REQUEST_BYTES) break;
+      if (u.stuck) continue;
+      if (batch.length && (bytes + u.update.length > REQUEST_BYTES || batch.length >= REQUEST_UPDATES)) break;
       batch.push(u);
       bytes += u.update.length;
     }
     return batch;
   }
+  /**
+   * What's in this batch can't go, nor can anything else its clients wrote, as their clocks have to arrive in order. Whatever
+   * comes next is written as someone new, so it isn't behind any of it.
+   */
+  private stick(batch: Unsent[]): void {
+    this.cut();
+    const clients = new Set(batch.flatMap((u) => [...Y.parseUpdateMeta(u.update).to.keys()]));
+    for (const u of this.unsent) if (batch.includes(u) || [...Y.parseUpdateMeta(u.update).to.keys()].some((c) => clients.has(c))) u.stuck = true;
+    if (clients.has(this.doc.clientID)) this.becomeNew();
+    this.tryStuck(STUCK_SOON_MS);
+  }
+  /** A new client, for Yjs and for the caret that goes with it: an editor tells its own caret from others' by the two matching. */
+  private becomeNew(): void {
+    const scratch = new Y.Doc();
+    this.doc.clientID = scratch.clientID;
+    scratch.destroy();
+    const was = this.awareness.clientID;
+    const state = this.awareness.getLocalState();
+    removeAwarenessStates(this.awareness, [was], 'moved');
+    if (this.live) this.net.awareness(toBase64Url(encodeAwarenessUpdate(this.awareness, [was])), false).catch(() => undefined);
+    this.awareness.clientID = this.doc.clientID;
+    // Twice, because Awareness ignores a client's first state.
+    this.awareness.setLocalState(state);
+    this.awareness.setLocalState(state);
+  }
   /** One request at a time, oldest first, so a retry only ever repeats what the API may not have. */
   private async send(): Promise<void> {
-    if (this.sending || this.barred || this.refused) return;
+    if (this.sending || this.barred || this.shut || this.rejected) return;
     this.sending = true;
     try {
       for (;;) {
@@ -160,32 +213,38 @@ export class HttpDocSession implements DocSession {
         const first = batch[0];
         if (!first) break;
         const update = batch.length === 1 ? first.update : Y.mergeUpdates(batch.map((b) => b.update));
-        if (update.length > MAX_DOC_UPDATE_BYTES) { this.refused = 'too-large'; break; }
+        if (update.length > MAX_DOC_UPDATE_BYTES) { this.tooMuch = true; this.stick(batch); continue; }
         try {
-          await this.net.update(toBase64Url(update));
+          await this.net.update(update);
         } catch (e) {
-          this.sendFailed(e);
+          if (this.sendFailed(e, batch)) continue;
           break;
         }
-        this.sendDown = false;
-        this.retryWait = FIRST_WAIT_MS;
-        this.unsent.splice(0, batch.length);
-        void this.forget(batch);
-        this.publish();
+        this.delivered(batch);
       }
     } finally {
       this.sending = false;
       this.publish();
     }
   }
-  /** What's waiting stays, until what stopped it changes: an `access` line, the stream saying it's over, or the connection coming back. */
-  private sendFailed(e: unknown): void {
+  private delivered(batch: Unsent[]): void {
+    this.sendDown = false;
+    this.retryWait = FIRST_WAIT_MS;
+    this.unsent = this.unsent.filter((u) => !batch.includes(u));
+    void this.forget(batch);
+    this.publish();
+  }
+  /** Whether what's behind this can go now. Otherwise what's waiting stays until what stopped it changes: an `access` line, the stream saying it's over, or the connection coming back. */
+  private sendFailed(e: unknown, batch: Unsent[]): boolean {
     const code = errorCode(e);
-    if (code === 'forbidden') this.refused = 'read-only';
-    else if (code === 'conflict') this.refused = 'trashed';
-    else if (code === 'invalid') this.refused = 'too-large';
+    if (code === 'too-large') { this.tooMuch = true; this.stick(batch); return true; }
+    // Something it builds on is stuck, or it's something this browser made that needs working out afresh.
+    if (code === 'invalid') { this.stick(batch); return true; }
+    if (code === 'forbidden') this.shut = 'read-only';
+    else if (code === 'conflict') this.shut = 'trashed';
     else if (code === 'not-found' || code === 'unauthenticated') this.barred = true;
     else this.tryAgain();
+    return false;
   }
   private tryAgain(): void {
     this.sendDown = true;
@@ -193,6 +252,69 @@ export class HttpDocSession implements DocSession {
     this.retry = setTimeout(() => { this.retry = undefined; void this.send(); }, this.retryWait * (0.8 + Math.random() * 0.4));
     unref(this.retry);
     this.retryWait = Math.min(this.retryWait * 2, LONGEST_WAIT_MS);
+  }
+  private tryStuck(ms: number): void {
+    clearTimeout(this.stuckTry);
+    if (this.stopped || this.rejected) return;
+    this.stuckTry = setTimeout(() => { void this.sendStuck(); }, ms);
+    unref(this.stuckTry);
+  }
+  /** Where Alcove has got to: what's here, less everything still to reach it. */
+  private knownToAlcove(): Uint8Array {
+    const known = Y.decodeStateVector(Y.encodeStateVector(this.doc));
+    for (const u of this.unsent) {
+      for (const [client, clock] of Y.parseUpdateMeta(u.update).from) known.set(client, Math.min(known.get(client) ?? 0, clock));
+    }
+    return Y.encodeStateVector(known);
+  }
+  /**
+   * Everything Alcove doesn't have, worked out from what's here now, in a document of its own: nothing here is keeping what
+   * was deleted for undo there, so whatever's been taken out is sent as the small thing it now is.
+   */
+  private composed(): Uint8Array {
+    const scratch = new Y.Doc();
+    Y.applyUpdate(scratch, Y.encodeStateAsUpdate(this.doc));
+    scratch.store.pendingStructs = null;
+    scratch.store.pendingDs = null;
+    const update = Y.encodeStateAsUpdate(scratch, this.knownToAlcove());
+    scratch.destroy();
+    return update;
+  }
+  /** Takes the place of everything waiting, if it's something Alcove can take. Tried again until it is, or until Alcove says it never will be. */
+  private async sendStuck(): Promise<void> {
+    if (this.stopped || this.barred || this.shut || this.rejected) return;
+    if (this.sending || !this.unsent.some((u) => u.stuck)) { if (this.unsent.some((u) => u.stuck)) this.tryStuck(STUCK_SOON_MS); return; }
+    this.sending = true;
+    let again: number | null = STUCK_WAIT_MS;
+    try {
+      this.cut();
+      const update = this.composed();
+      const waiting = [...this.unsent];
+      if (update.length > MAX_DOC_UPDATE_BYTES) { this.tooMuch = true; return; }
+      try {
+        // Nothing new, and nothing gone: what was stuck isn't anywhere in this document any more.
+        if (Y.parseUpdateMeta(update).to.size || Y.decodeUpdate(update).ds.clients.size) await this.net.update(update);
+        this.delivered(waiting);
+        this.tooMuch = false;
+        again = null;
+      } catch (e) {
+        const code = errorCode(e);
+        if (code === 'too-large') this.tooMuch = true;
+        else if (code === 'invalid') {
+          // There's nothing more this browser can do with it. What's on screen stays, for someone to copy; a reload starts from what Alcove has.
+          this.rejected = true;
+          again = null;
+          void this.forget(this.unsent.splice(0));
+        } else if (code === 'forbidden') this.shut = 'read-only';
+        else if (code === 'conflict') this.shut = 'trashed';
+        else if (code === 'not-found' || code === 'unauthenticated') this.barred = true;
+      }
+    } finally {
+      this.sending = false;
+      this.publish();
+      if (again !== null) this.tryStuck(again);
+    }
+    void this.send();
   }
   private async forget(sent: Unsent[]): Promise<void> {
     if (!this.keep) return;
@@ -213,7 +335,7 @@ export class HttpDocSession implements DocSession {
     if (this.announcing) { this.announceAgain = true; return; }
     this.announcing = true;
     try {
-      await this.net.awareness(toBase64Url(encodeAwarenessUpdate(this.awareness, [this.doc.clientID])), false);
+      await this.net.awareness(toBase64Url(encodeAwarenessUpdate(this.awareness, [this.awareness.clientID])), false);
     } catch {
       /* Where someone's caret was a moment ago isn't worth a retry. */
     } finally {
@@ -229,7 +351,7 @@ export class HttpDocSession implements DocSession {
     this.set({ role, trashed });
     // Whatever was waiting on this may go now. If it's still refused, it says so again.
     if (role === 'edit' && !trashed) {
-      this.refused = null;
+      this.shut = null;
       this.barred = false;
     }
     void this.send();
@@ -307,7 +429,7 @@ export class HttpDocSession implements DocSession {
       try {
         for (const k of await this.keep.load()) {
           Y.applyUpdate(this.doc, k.update, HEARD);
-          this.unsent.push({ update: k.update, kept: Promise.resolve(k.key) });
+          this.unsent.push({ update: k.update, kept: Promise.resolve(k.key), stuck: false });
         }
       } catch {
         /* What's kept can't be read here: this session has nothing of it to send, and it's kept all the same. */
@@ -342,8 +464,9 @@ export class HttpDocSession implements DocSession {
     clearTimeout(this.batch);
     clearTimeout(this.retry);
     clearTimeout(this.caret);
+    clearTimeout(this.stuckTry);
     this.awareness.destroy();
-    this.settle?.reject(this.settleFailure);
+    this.settle?.reject(this.settleFailure ?? new AlcoveApiError('unavailable', 'This document can’t be opened right now.'));
     if (why === 'deleted') { this.cut(); void this.forget(this.unsent.splice(0)); }
     this.set({ closed: why });
   }

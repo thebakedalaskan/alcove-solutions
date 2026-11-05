@@ -52,9 +52,9 @@ export function CallTile({ person, name, speaking = false, muted = false, hand =
   );
 }
 
-/** The call's controls in one floating bar, bottom-centre on the stage. */
-export function CallDock({ children, label = 'Call controls', className }: { children: ReactNode; label?: string; className?: string | undefined }) {
-  return <div className={cn('ac-dock', className)} role="toolbar" aria-label={label}>{children}</div>;
+/** The call's controls in one floating bar, bottom-centre on the stage. `tucked`: only what's marked `keep` shows. */
+export function CallDock({ children, label = 'Call controls', tucked = false, className }: { children: ReactNode; label?: string; tucked?: boolean | undefined; className?: string | undefined }) {
+  return <div className={cn('ac-dock', tucked && 'is-tucked', className)} role="toolbar" aria-label={label}>{children}</div>;
 }
 
 /**
@@ -77,7 +77,7 @@ export const DockButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttribute
 });
 
 /** A dock control with a menu: the button, and a narrow chevron beside it that opens the menu. */
-export const DockSplit = ({ children }: { children: ReactNode }) => <span className="ac-dock-split">{children}</span>;
+export const DockSplit = ({ children, className }: { children: ReactNode; className?: string | undefined }) => <span className={cn('ac-dock-split', className)}>{children}</span>;
 export const DockChevron = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { label: string; on?: boolean }>(
   function DockChevron({ label, on = false, className, type = 'button', ...rest }, ref) {
     return (
@@ -88,6 +88,12 @@ export const DockChevron = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttribut
   });
 
 export const DockSeparator = () => <span className="ac-dock-sep" aria-hidden="true" />;
+
+/** A dock control in words, for the one thing a tucked dock has to say. */
+export const DockWords = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { icon: IconName; children: ReactNode }>(
+  function DockWords({ icon, children, className, type = 'button', ...rest }, ref) {
+    return <button ref={ref} type={type} className={cn('ac-dock-words', className)} {...rest}><Icon name={icon} size={15} /><span>{children}</span></button>;
+  });
 
 /** Leave: the last item in the dock and its only text button. */
 export const DockLeave = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(function DockLeave({ className, children = 'Leave', type = 'button', ...rest }, ref) {

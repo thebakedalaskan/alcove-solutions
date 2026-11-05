@@ -19,7 +19,8 @@ const sameness = (who: Who): string => who.principals.map(b64u).join();
 
 /** What one step of a stream did: nothing to do, a line written, or its reader lost it. */
 export type Step = 'idle' | 'wrote' | 'lost';
-export type Line<L> = (line: L) => Promise<void>;
+/** Writes a line. `raw`: what's already been made into one, or part of one, for what's the same for everyone or too big to make twice. */
+export type Line<L> = ((line: L) => Promise<void>) & { raw(text: string | Uint8Array): Promise<void> };
 
 export abstract class LiveStream<L> implements RoomMember {
   private wake: (() => void) | undefined;
@@ -76,10 +77,10 @@ export abstract class LiveStream<L> implements RoomMember {
    * Writes one line. A browser that can't take it within a ping has gone, whatever its connection says: one that went
    * just as its stream opened is never read from at all, and would otherwise hold this stream for good.
    */
-  private async write(out: StreamingApi, e: L): Promise<void> {
+  private async write(out: StreamingApi, text: string | Uint8Array): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), this.d.cfg.LIVE_PING_MS); });
-    const wrote = await Promise.race([out.write(`${JSON.stringify(e)}\n`), late]);
+    const wrote = await Promise.race([out.write(text), late]);
     clearTimeout(timer);
     if (wrote !== 'late') return;
     this.end();
@@ -121,7 +122,7 @@ export abstract class LiveStream<L> implements RoomMember {
 
   async run(out: StreamingApi): Promise<void> {
     const t0 = Date.now();
-    const line: Line<L> = (e) => this.write(out, e);
+    const line: Line<L> = Object.assign((e: L) => this.write(out, `${JSON.stringify(e)}\n`), { raw: (text: string | Uint8Array) => this.write(out, text) });
     const { LIVE_PING_MS: pingMs, LIVE_STREAM_MS: streamMs } = this.d.cfg;
     const letGo = t0 + streamMs;
     let why: 'closed' | 'ended' | 'time' = 'ended';

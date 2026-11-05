@@ -3,6 +3,7 @@
  * document opens: import it through `lazy.ts`. Everything it needs from outside comes through its props, so it works
  * on any Y.Doc and knows nothing of the API. See types.ts for what's given and what's handed back.
  */
+import { newBlockId, undoMayDelete } from '@alcove/api/retire';
 import { baseKeymap } from 'prosemirror-commands';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
@@ -32,8 +33,6 @@ import { keepInStep } from './plugins/inStep';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
-import { newBlockId } from './names';
-import { undoMayDelete } from './retire';
 import { safeHref, schema, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, NodeRecord } from './ydoc';
