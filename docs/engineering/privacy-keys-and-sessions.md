@@ -570,9 +570,10 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   browser profile signed in as the account.
 - **Edits waiting to reach Alcove** (IndexedDB `alcove-edits`, `KeptEditSchema`): each Yjs update a document's session
   hasn't had confirmed, sealed with AES-GCM under the [device key](#key-inventory), a fresh 12-byte IV each, with the
-  account, workspace, document and order bound in as additional data. In the clear: those IDs, the order and the size.
-  It's deleted once Alcove has the update, and signing out, or deleting the account, on this browser deletes what's kept
-  for it, and the key with the last of anyone's.
+  account, workspace, document, order and when it was made bound in as additional data. In the clear: those IDs, the
+  order, the time and the size. It's deleted once Alcove has the update, or when someone chooses **Discard** for it, never
+  because a document refused it or went; signing out, or deleting the account, on this browser deletes what's kept for
+  it, and the key with the last of anyone's.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
   the workspace and documents last open and of the folders left open, and whether the list is hidden. Nothing readable.
   Signing out, or deleting the account, on this browser deletes it.
