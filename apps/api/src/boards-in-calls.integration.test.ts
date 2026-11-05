@@ -558,6 +558,10 @@ describe('a saved board', () => {
     await rest(150);
     expect(await opened(back)).toMatchObject({ role: null });
     expect(await seats(board)).toBe(1);
+    // Someone who may share it choosing to let them in again is a new decision, about everyone here.
+    await p.openBoard({ documentId: board, letIn: true });
+    expect(await opened(back)).toMatchObject({ role: 'edit' });
+    expect(await seats(board)).toBe(2);
   });
 
   it('stops letting people in once whoever did it can’t share it any more', async () => {
