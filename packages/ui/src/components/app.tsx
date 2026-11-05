@@ -1,14 +1,12 @@
 /*
- * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines,
- * person cards, settings, theme previews, the mic level, and what a transcript isn't sure of.
+ * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines, the
+ * mic level, and what a transcript isn't sure of.
  */
-import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
 import { Avatar, type AvatarPerson } from './people';
-import { Chip, Meter } from './primitives';
-import type { ThemeChoice } from './theme';
 
 /**
  * A part of a page that opens and closes in place, closed until someone opens it: its heading row (`summary`, the
@@ -114,118 +112,18 @@ export function TranscriptLine({ person, name, time, children, className, id }: 
 
 /* ---------- Tiles and cards ---------- */
 
-/** A name with no spaces (someone known only by their address) may break after its dots and @, never mid-word. */
-function breakable(text: string): ReactNode {
-  if (/\s/.test(text)) return text;
-  const parts = text.split(/(?<=[.@])/);
-  return parts.map((part, i) => <span key={i}>{part}{i < parts.length - 1 && <wbr />}</span>);
-}
-
-/**
- * Someone on your team: their arch, name, `title` (or their address) and when you last met ("Last call ·
- * today"), with icon buttons at the foot (`actions`: start a call, their notes). `tag` marks the card, as
- * "You". In a grid, every card's actions line up at the bottom.
- */
-export function PersonCard({ person, name, title, last, tag, actions, className }: {
-  person: AvatarPerson; name?: ReactNode; title?: ReactNode; last?: ReactNode; tag?: string | undefined; actions?: ReactNode; className?: string | undefined;
-}) {
-  const shown = name ?? (person.name || person.email || '');
-  return (
-    <div className={cn('ac-person-card', className)}>
-      {tag && <Chip tone="outline" className="tag">{tag}</Chip>}
-      <Avatar person={person} size={64} />
-      <b className="ac-clamp-2">{typeof shown === 'string' ? breakable(shown) : shown}</b>
-      {title !== undefined && <small className="ac-clamp-1">{title}</small>}
-      {last !== undefined && <span className="last">{last}</span>}
-      {actions !== undefined && <div className="acts">{actions}</div>}
-    </div>
-  );
-}
-
 /* ---------- Minutes ---------- */
 
 /**
- * The minutes of notes left, as a card: the time left in the display face, a meter of how much of everything granted is
- * left, and what was used this month (`used`), then `children` (a row, a link). Team and Settings both show it; `id` is
- * where a link to it lands.
+ * How loud the microphone is, from `level` (0 to 1): `bars` that fill with horizon, beside a microphone
+ * choice. It doesn't open the microphone: pass it the level you measure, as often as you like.
  */
-export function MinutesCard({ id, title, left, share, used, children, className }: {
-  id?: string | undefined; title: ReactNode; left: string; share: number; used: ReactNode; children?: ReactNode; className?: string | undefined;
-}) {
-  const h = useId();
-  return (
-    <section id={id} className={cn('ac-card ac-minutes', className)} aria-labelledby={h}>
-      <h3 id={h}>{title}</h3>
-      <p className="big">{left}<small>of notes left</small></p>
-      <Meter value={share} />
-      <p className="used">{used}</p>
-      {children}
-    </section>
-  );
-}
-
-/* ---------- Settings ---------- */
-
-/** One part of Settings: a title, a line under it if it needs one (`lead`), then its SettingRows. `id` is where the settings nav jumps to. */
-export function SettingsCard({ id, title, lead, children, className }: { id?: string | undefined; title: ReactNode; lead?: ReactNode; children: ReactNode; className?: string | undefined }) {
-  const h = useId();
-  return (
-    <section id={id} className={cn('ac-card ac-set-card', className)} aria-labelledby={h}>
-      <h3 id={h}>{title}</h3>
-      {lead !== undefined && <p className="lead">{lead}</p>}
-      {children}
-    </section>
-  );
-}
-
-/**
- * One setting: what it is (`label`) and what it does (`help`) on the left, its `control` on the right: a
- * Switch, Segmented, Select or a link. A control too wide to sit beside the words goes under them. Screen
- * readers hear the label and help when they reach the control. `tone="caution"` for deleting things.
- */
-export function SettingRow({ label, help, control, tone, className }: { label: ReactNode; help?: ReactNode; control: ReactNode; tone?: 'caution' | undefined; className?: string | undefined }) {
-  const id = useId();
-  return (
-    <div className={cn('ac-set-row', tone === 'caution' && 'is-caution', className)} role="group" aria-labelledby={`${id}l`} aria-describedby={help !== undefined ? `${id}h` : undefined}>
-      <div className="txt"><b id={`${id}l`}>{label}</b>{help !== undefined && <small id={`${id}h`}>{help}</small>}</div>
-      <div className="ctl">{control}</div>
-    </div>
-  );
-}
-
-const THEME_NAME: Record<ThemeChoice, string> = { system: 'Match system', light: 'Light', dark: 'Dark' };
-
-/** A small window drawn in one theme's own colours, whatever the page's theme is. */
-function ThemeWindow({ theme }: { theme: 'light' | 'dark' }) {
-  return <span className={cn('pane', theme)}><span className="w-side dark"><i /><i /><i /></span><span className="w-main"><i /><i /></span></span>;
-}
-
-/**
- * One choice of appearance: a small window in the light or the dark theme's own colours (both, side by
- * side, for `system`), named underneath. `pressed` rings the one in use. Three sit in a row.
- */
-export const ThemePreview = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { theme: ThemeChoice; pressed: boolean }>(
-  function ThemePreview({ theme, pressed, className, type = 'button', ...rest }, ref) {
-    return (
-      <button ref={ref} type={type} aria-pressed={pressed} className={cn('ac-theme', className)} {...rest}>
-        <span className={cn('win', theme === 'system' && 'is-split')} aria-hidden="true">
-          {theme === 'system' ? <><ThemeWindow theme="light" /><ThemeWindow theme="dark" /></> : <ThemeWindow theme={theme} />}
-        </span>
-        {THEME_NAME[theme]}
-      </button>
-    );
-  });
-
-/**
- * How loud the microphone is, from `level` (0 to 1): eight bars that fill with horizon, beside a
- * microphone choice. It doesn't open the microphone: pass it the level you measure, as often as you like.
- */
-export function MicLevel({ level, label = 'Microphone level', className }: { level: number; label?: string | undefined; className?: string | undefined }) {
+export function MicLevel({ level, bars = 8, label = 'Microphone level', className }: { level: number; bars?: number | undefined; label?: string | undefined; className?: string | undefined }) {
   const v = Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0;
-  const lit = Math.round(v * 8);
+  const lit = Math.round(v * bars);
   return (
     <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className={cn('ac-mic-level', className)}>
-      {Array.from({ length: 8 }, (_, i) => <i key={i} className={i < lit ? 'on' : undefined} />)}
+      {Array.from({ length: bars }, (_, i) => <i key={i} className={i < lit ? 'on' : undefined} />)}
     </span>
   );
 }

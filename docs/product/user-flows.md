@@ -162,8 +162,9 @@ send to anyone".
 
 1. **Start now** creates the call and goes to the organizer's lobby, with anyone picked already there to ring. Night
    floods out from the card that was pressed. If the call can't be made, the modal stays and says why.
-2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. Back
-   goes the other way, and everything chosen so far stays. No window ever opens over another.
+2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. With
+   someone already picked it starts at **When**. Back goes the other way, and everything chosen so far stays. No window
+   ever opens over another.
 3. **Who** is one field. Typing finds people in the company directory, people from past calls, groups, and the whole
    company ("Everyone at Vandelay"; without a directory, "Everyone you meet at Harbourline"); on your own it's the
    people you've met and any address. Pasting a list of addresses reads it at once: commas, semicolons, spaces and
@@ -706,72 +707,102 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 ## 10. Team
 
-**Team** shows your company and who in it uses Alcove: the company directory where there is one (the demo
-directory today), otherwise the people at your work email domain you have calls or calendar meetings with. A
-personal address (gmail.com, outlook.com, icloud.com and the like) has no team.
+**Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
+today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
+(gmail.com, outlook.com, icloud.com and the like) has no team, so it has no Team page: nothing links to it, and its
+address goes to Home.
 
-- **People**: a card for each person on Alcove, you first, then whoever you met most recently, with their
-  title (or address) and **Next call** at a time later today or **Last call** with the day, from your notes.
-  **Start a call** opens Start a call with them already picked; **Notes with** lists the notes you both have
-  (`/notes#with=<address>`: the address stays in the browser, since a fragment is never sent to the web host).
-  The cards can show the colleagues invited, or not on Alcove yet, instead. Eight show before **Show all**.
-- **Not on Alcove yet**: the rest, each with how many calls and calendar meetings you have with them this month.
-  **Invite** (or **Invite all**) opens your own email with an invitation to them (a subject and the link to
-  sign in) and marks them invited; **Remind** opens it again. **Invite people** picks from them the same way,
-  or copies the invite link, which is the address of the page to sign in. Alcove sends no email itself.
-- **Groups**: each with how many people are in it and how many of your calls had any of them. A group opens in
-  place (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least
-  one); **Add people**, from the people picker; **Start a call** with all of them; **Rename**; and
-  **Delete**, which asks once and can be undone for a few seconds. **New group** names one (Enter opens the
-  picker) and fills it; a group half made waits there until you make it or discard it with ×. A name is 1 to 40
-  characters and not one of your other groups'; a group holds up to 50 people, and you can have 30 groups. Groups
-  live in your preferences: only you see them, and only a group's name leaves them, on the notes you share with
-  it. Changes to your preferences (groups, pins, settings) are saved one at a time, in order.
-- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it
-  with Leads", "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from
-  the people who still have each note). Each opens its note.
-- **Your minutes**: the time of notes left and the minutes used this month.
+- **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
+  the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
+  in empty arches with their initial. The low sun stands in an empty arch near where it sets, or just past the end of
+  the line. Nine people stand at full size; up to thirteen, everyone gives up a little room and keeps a name; past
+  that the front stays and the rest recede, smaller, nameless and hazier, on the same line, and pointing at someone
+  or reaching them with the keyboard brings them forward with their name. The line holds 34. On a phone it runs off
+  both sides, with you in the middle to start with, and the sun stands in its empty arch and slides with it.
+- **Someone's popover**: pressing an arch opens a popover under it (on a phone, a sheet): their name, their title or
+  address, and one line about the two of you: **Next call** at a time later today, how many meetings are coming up, or
+  **Last call** with the day. **Ring** starts a call and goes straight to the lobby with them picked. **Schedule** opens
+  Start a call at **When**, with them picked. **Notes you both have** lists the latest five in the same popover: each
+  opens its note, and **Open in Notes** lists them all (`/notes#with=<address>`: the address stays in the browser, since
+  a fragment is never sent to the web host). Someone not on Alcove yet has **Invite** in place of Ring, then **Remind**.
+  Your own arch has your address, the groups you're in and **Settings**.
+- **All 33 people**: past thirteen people a second button lists everyone, to search by name or address. Picking
+  someone brings them forward on the line, past the 34 too, and opens their popover.
+- **Invite people**: tick colleagues who aren't on Alcove and haven't been asked (they step up on the line as you do),
+  or type anyone's whole address, which counts as it's typed; a comma, a space, Tab or **Enter** ticks it and clears the
+  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and the link to
+  sign in), and marks the people on your team invited. **Copy link** copies the address of the page to sign in. Alcove
+  sends no email itself.
+- **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, or **Invited**, and in
+  the same place on every row **Invite**, or **Remind**, which opens your email again. **Invite all** asks everyone who
+  hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
+- **Groups**: a tile for each, with its people standing on the tile's bottom edge, how many there are, and how many calls
+  had all of them. The camera starts a call with all of them without opening it. A tile opens in place, across the
+  column (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least one);
+  **Add people**, from anyone you could reach; **Start a call** with all of them; **Rename**; and **Delete**, which asks once
+  and can be undone for a few seconds. **New group** is a tile too: it opens to name one (Enter opens the picker) and fill
+  it, **Create group** takes the filled button once it's ready, and a group half made waits on its tile until you make it
+  or discard it with ×. A name is 1 to 40 characters and not one of your other groups'; a group holds up to 50 people,
+  you can have 30 groups, and eight show before **Show all**. Groups live in your preferences: only you see them, and
+  only a group's name leaves them, on the notes you share with it. Changes to your preferences (groups, pins, settings)
+  are saved one at a time, in order.
+- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it with Leads",
+  "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from the people who still
+  have each note). Each opens its note. Five show before **Show all**.
 
-With nobody else at your company on Alcove yet, the page asks you to bring them: you beside empty arches for the
-people you meet most, **Invite people** and **Copy invite link**, then those people, each with **Invite**. A
-personal account shows "Just you, for now", with **Invite people** (an email from your own mail app, with the
-link) and **Copy invite link**, then your groups and the notes shared with groups.
+What the numbers count: a call counts once it has notes, for the people on it who still have them. Someone a note was
+shared with afterwards doesn't count, nor do notes shared with you. Someone who removes a note drops out of that call's
+count, and a call with notes off leaves nothing to count. What's coming up is your Alcove calls and the coming week of
+your calendar, which is as far as Alcove reads it (unless **Show my other meetings on Home** is off), each once.
 
-If the team itself doesn't load, the page says why (or that you're offline), with **Try again**. Your groups and
-notes load beside it: if your groups don't, their card says so, with **Try again**, and the rest of the page works.
+With nobody else at your company on Alcove yet, the page asks you to bring them: **Bring your team to Alcove**, with
+**Invite people** and **Copy invite link**, you beside empty arches for the four people you meet most, then those people,
+each with **Invite**, **Invite everyone**, and how many more there are.
+
+While the team is on its way, empty arches wait on the line beside you, and everyone comes up over the horizon when it
+arrives. If it doesn't load, the page says why (or that you're offline, and it comes back by itself), with **Try again**.
+Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
+the page works.
 
 ## 11. Settings
 
-**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. It says who
-you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. With
-recordings on this device that haven't uploaded, **Sign out** first says so in place, under it ("2 recordings on
-this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by themselves, or,
-too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
-**Sign out and delete them**. It counts only this account's recordings, and only those go. On a wide
-screen a nav beside the cards jumps to each part and marks the one in view. Every control saves as it changes: the
-setting says **Saved** for a moment once it's kept, and one the server refuses goes back, with a toast saying why.
+**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. You stand on
+the horizon with your name and address, beside **Take the tour** (the tour of Home again, flow 1) and **Sign out**.
+With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
+("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by
+themselves, or, too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
+**Sign out and delete them**. It counts only this account's recordings, and only those go. With no connection, signing
+out says so and nothing happens later by itself. Under the water the page is
+one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
+narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
+moment, just left of the control (**Saved for new notes** for the language and the summary), and one the server refuses
+goes back, with a toast saying why. Parts that don't load say so, with **Try again**, and the rest of the page still works.
 
-- **Profile**: your name, address and photo from the sign-in, with a link to change them at Google or Microsoft
-  (they update here the next time you sign in); your company, from the company directory or the people at your
-  work domain you meet (not at a personal address); and the time zone times are shown in, this computer's.
+- **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
+  the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
+  Team (not at a personal address); and the time zone times are shown in, this computer's.
 - **Notes**: notes on or off for new calls (each call can still be set when it's scheduled), that everyone invited
   always gets them, the language they're written in ("Same as the call", or one of twelve), and how much the
   summary says (**Short** or **Detailed**). Language and summary apply to notes written from then on.
 - **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
-  recordings, and how much room, wait here to upload, with **See them** (Record's list), or that nothing is waiting.
+  recordings, and how much room, wait here to upload, with **See them** (Record's list), or **Nothing waiting**.
 - **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
   access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
-  instead. Then **Put calls I schedule on my calendar** and **Show my other meetings on Home** (both on by default).
+  instead; signed in another way, **Not connected**, since Google Calendar connects when you sign in with Google. A
+  calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
+  **Show my other meetings on Home** (both on by default).
 - **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
-  one doesn't open it. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the
-  browser asks first if it hasn't been allowed) and its level moves as you speak, records nothing, and closes
-  sooner when pressed again or when this part leaves the screen. **Play test sound** plays through the chosen
-  speaker; the camera is a list only, never opened here, and until the browser has allowed a camera on the join
+  one doesn't open it. A browser names devices only once they're allowed, so until then the microphone and speaker
+  have no list. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks
+  first if it hasn't been allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and
+  closes sooner when stopped or when this part leaves the screen. A microphone that won't open says why, with **Try
+  again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
+  system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
 - **Notifications**: browser notifications, shown on this device while Alcove is open in a tab (any page, a call or a
   recording included; nothing is pushed when no tab is open). Until the browser allows them the choices are greyed
-  out and **Turn on browser notifications** asks it (only when pressed; focus stays on the row once it answers);
-  when the browser blocks them, the card says to allow them for the site in the browser's settings. Then: before a
+  out and **Turn on** asks it (only when pressed; focus stays on the row once it answers);
+  when the browser blocks them, the row says to allow them for the site in the browser's settings. Then: before a
   call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
   screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
   someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
@@ -783,18 +814,21 @@ setting says **Saved** for a moment once it's kept, and one the server refuses g
   last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
   deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
   preferences, and one changed in another tab or on another device takes effect within a minute.
-- **Appearance**: match the system, light or dark, each shown as a small window in its own colours, kept in this
-  browser.
-- **Plan and credits**: the time of notes left, a meter, and the minutes of notes used this month (since 00:00 UTC
-  on the 1st). Calls without notes are free.
-- **Privacy**: what Alcove knows and what it can't read, and the confidential-compute check with the time the
-  hardware was verified, when this browser could check it.
+- **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
+- **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
+  account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
+  (since 00:00 UTC on the 1st). Calls without notes are free.
+- **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
+  verified when this browser could check it, or where your audio is opened and your notes are written.
 
-**Delete account** opens one step in place (never a window over the page) that names what goes: the notes you
-made, with their audio, for everyone who has them; the calls you scheduled; the minutes of notes left; your own notes on
-every call, and anything you added from them to other people's notes; your groups
-and pins; your Google Calendar connection; and your sign-in on every browser. It says what stays too: the notes other
-people gave you, which still have what you said in the call and still say where you changed or shared them.
+**Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
+your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
+everyone who has them; the calls you scheduled, for everyone invited; the minutes of notes left; your own notes on every
+call, and anything you added from them to other people's notes; your groups and pins; workspaces only you are in, and
+documents only you can open; your Google Calendar connection, where Alcove also asks Google to cancel your calls and end
+its access; and your sign-in on every browser. What stays: the notes other people gave you stay with them, without you,
+keeping what you said in the call and your name and address on what you did in them. **Keep my account** has focus, and
+**Escape** does the same.
 **Delete my account** then deletes the account for good:
 the notes you organized, for everyone you gave them to, with their audio; your recordings, calls and meetings; your own
 notes, and everything you added to anyone's shared notes, whether or not you still had the note; your groups and pins; your
@@ -804,8 +838,10 @@ Your calls on Google Calendar that haven't ended are cancelled there, begun or n
 except a meeting you made an Alcove call with **Use Alcove**: it's your own event, so it stays on your calendar
 as it was, and its Alcove link stops working. Alcove's access to your Google account is revoked. If Google is
 slow or unavailable, the account is deleted all the same, and calls it couldn't cancel stay on the calendar.
-The shared demo account can't be deleted: the step says so and offers only **Close**; any other failure is said
-there too, and **Delete my account** tries again. Once it's deleted you land on the welcome page, signed out, even
+The shared demo account can't be deleted: as soon as **Delete account** is pressed the row says so and offers only
+**Close**. So does a tab left showing one account after another tab changed who's signed in: nothing is deleted, and the
+row says to reload the page. Any other failure, having no connection included, is said in the step, **Delete my account**
+tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.
 
