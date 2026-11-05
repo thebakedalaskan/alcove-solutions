@@ -3,6 +3,7 @@
  * lines up with. Plain arithmetic on a `BoardView` in board units, with the canvas's numbers.
  */
 import { bounds, contains, hasBox, inside, isAttached, type BoardObject, type BoardView, type Box, type Camera, type LineEnd, type LineObject, type PlacedObject } from '@alcove/board';
+import type * as Y from 'yjs';
 
 /** A line something has been lined up with, in board units. `axis` is the axis it marks a place on. */
 export interface Guide {
@@ -98,6 +99,12 @@ export function reachOf(seen: Box): Box {
 export function reachHolds(near: Box, seen: Box): boolean {
   const m = Math.max(seen.w, seen.h) / 4;
   return contains(near, seen.x - m, seen.y - m) && contains(near, seen.x + seen.w + m, seen.y + seen.h + m) && near.w < reachOf(seen).w * 1.5;
+}
+
+/** Whether anything hangs off an object: a line attached to it, or a comment pinned to it. */
+export function hangsOff(view: BoardView, comments: Y.Map<unknown>, id: string): boolean {
+  const pinned = Object.values<unknown>(comments.toJSON()).some((thread) => typeof thread === 'object' && thread !== null && 'on' in thread && thread.on === id);
+  return pinned || view.objects.some((o) => o.k === 'line' && [o.from, o.to].some((end) => isAttached(end) && end.on === id));
 }
 
 /** Where a line's end is, or nothing if what it's attached to isn't on the board. */

@@ -194,7 +194,7 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
   const canRedo = useBoardState(board, (s) => s.canRedo);
   const { name = '', seal, sealIcon, mode, acts = mode === 'call', onName, onSeal, onTimer, onVote, onPresent, onMore } = surface;
   return (
-    <BoardBar name={name} seal={seal} sealIcon={sealIcon} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={board.canEdit} acts={acts}
+    <BoardBar name={name} seal={seal} sealIcon={sealIcon} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={BOARD_LOOKS[mode].edit} acts={acts}
       onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => undefined}
       onTimer={onTimer} onVote={onVote} onPresent={onPresent} onMore={onMore} />

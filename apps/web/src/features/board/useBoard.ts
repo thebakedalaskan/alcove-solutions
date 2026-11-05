@@ -8,7 +8,7 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
   type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
@@ -18,7 +18,7 @@ import { typing } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, holdKeys, nextSpot } from './editing';
-import { MOUNT_ALL, NO_GUIDES, everything, reachHolds, reachOf, sameIds, type Guide } from './selection';
+import { MOUNT_ALL, NO_GUIDES, everything, hangsOff, reachHolds, reachOf, sameIds, type Guide } from './selection';
 
 const log = rootLog.child({ component: 'board' });
 
@@ -108,6 +108,8 @@ export class Board implements LiveStore<BoardState> {
   tell: (text: string) => void = () => undefined;
   /** Told when following stops from this side: a scroll, a zoom, Esc. */
   onFollow: ((id: string | null) => void) | undefined;
+  /** Ends whatever gesture is under way. The sheet's listeners fill this in. */
+  endGesture: () => void = () => undefined;
   /** Writes in a word still being composed. The field being typed in fills this in. */
   flushTyping: (() => void) | null = null;
 
@@ -120,6 +122,8 @@ export class Board implements LiveStore<BoardState> {
   private fresh: string | null = null;
   /** Whether the camera has been put anywhere yet, which waits until the sheet has a size. */
   private framed = false;
+  /** Nobody has moved the camera or changed anything yet, so a board that fills after it opens can frame what arrived. */
+  private untouched = true;
   private frame = 0;
   private readonly waits = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly listeners = new Set<() => void>();
@@ -197,6 +201,7 @@ export class Board implements LiveStore<BoardState> {
     if (mode === this.mode) return;
     this.mode = mode;
     if (this.canEdit) return;
+    this.endGesture();
     this.editTaken();
     this.set({ sel: [], tool: 'select' });
   }
@@ -229,7 +234,7 @@ export class Board implements LiveStore<BoardState> {
     this.set(patch);
     if (patch.landed && this.sheet) this.later('landed', tokenMs(this.sheet, '--duration-2') * 2, () => this.set({ landed: NOTHING }));
     if (edit && !view.byId.has(edit)) this.editTaken();
-    if (this.look.mini) this.fitAll(false);
+    if (this.look.mini || (!was.objects.length && this.untouched)) this.fitAll(false);
     this.settleNear();
   };
 
@@ -245,6 +250,7 @@ export class Board implements LiveStore<BoardState> {
     const undo = this.undoManager;
     if (!undo || this.stepping) return;
     this.stepping = true;
+    this.untouched = false;
     undo.stopCapturing();
     undo.captureTimeout = Number.MAX_SAFE_INTEGER;
   }
@@ -283,7 +289,7 @@ export class Board implements LiveStore<BoardState> {
   /** Goes a step back or forward. If Yjs can't finish one, what went back stays back and the board carries on. A step that came to nothing tells no one, so the buttons are always brought up to date here. */
   private travel(step: (undo: Y.UndoManager) => StepResult): void {
     const undo = this.undoManager;
-    if (!undo || this.stepping) return;
+    if (!undo || this.stepping || !this.canEdit) return;
     const result = this.settle(() => step(undo));
     if (!result.ok) log.error('undo failed', { err: result.error });
     this.stacks();
@@ -376,13 +382,13 @@ export class Board implements LiveStore<BoardState> {
     this.set({ edit: id, sel: [id], tool: 'select' });
   }
 
-  /** Stops typing. A sticky made for this and left blank goes again, leaving nothing to undo. */
+  /** Stops typing. A sticky made for this and left blank goes again, leaving nothing to undo, unless something hangs off it by then: taking that too couldn't be undone. */
   finishEdit(): void {
-    const { edit } = this.state;
+    const { edit, view } = this.state;
     if (!edit) return;
     this.flushTyping?.();
     const text = objectText(this.doc, edit);
-    const blank = this.fresh === edit && text !== null && !text.toString().trim();
+    const blank = this.fresh === edit && text !== null && !text.toString().trim() && !hangsOff(readBoard(this.doc, view), this.doc.getMap<unknown>(BOARD_COMMENTS), edit);
     this.fresh = null;
     if (blank) removeObjects(this.doc, [edit], this.origin);
     this.set({ edit: null });
@@ -424,6 +430,7 @@ export class Board implements LiveStore<BoardState> {
   /** Eases the camera somewhere. What it passes on the way stays mounted until it gets there. */
   glideTo(cam: Camera): void {
     const { sheet } = this;
+    this.untouched = false;
     if (!sheet) {
       this.camera.set(cam);
       return;
@@ -432,6 +439,8 @@ export class Board implements LiveStore<BoardState> {
     this.camera.set(cam);
     const { near } = this.state;
     if (near) this.set({ near: bounds([near, reachOf(this.camera.visible())]) });
+    // Not put off by the next glide: following calls this all the time, and what's mounted still has to catch up.
+    if (this.waits.has('glide')) return;
     this.later('glide', tokenMs(sheet, '--duration-3') + SETTLE_MS, () => {
       this.set({ glide: false });
       this.settleNear();
@@ -440,6 +449,7 @@ export class Board implements LiveStore<BoardState> {
 
   /** The person has taken the camera: anything easing it stops where it is. */
   stopGlide(): void {
+    this.untouched = false;
     if (this.state.glide) this.set({ glide: false });
   }
 

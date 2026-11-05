@@ -9,11 +9,14 @@
  */
 import { BOARD_LIMITS, bounds, hasBox, moveObjects, resizeObject, type PlacedObject } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
+import { log as rootLog } from '~/lib/log';
 import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
 import { keyDown, keyUp } from './keys';
 import { NO_GUIDES, boxBetween, carried, picks, placed, pressed, snapTargets, snapTo } from './selection';
 import type { Board } from './useBoard';
+
+const log = rootLog.child({ component: 'board' });
 
 /** What a press has started, until the pointer lets go. */
 export interface Gesture {
@@ -67,7 +70,7 @@ function panGesture(board: Board, start: SheetPoint): Gesture {
   board.set({ panning: true });
   const stop = (): void => board.set({ panning: false });
   return {
-    move: (at) => board.camera.set({ x: from.x + at.sx - start.sx, y: from.y + at.sy - start.sy, z: from.z }),
+    move: (at) => board.camera.set({ x: from.x + at.sx - start.sx, y: from.y + at.sy - start.sy, z: board.camera.getSnapshot().z }),
     up: stop,
     cancel: stop
   };
@@ -209,10 +212,15 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     else if (e.pointerId === held) gesture?.move(at, e);
   };
 
+  /** Two fingers pinch from where they are now. When a third lifts, the pair left starts afresh: the old pair's spread would make the camera jump. */
+  const pinchFromHere = (): void => {
+    const [p, q] = touches.values();
+    pinch = p && q ? pinchGesture(board, p, q) : null;
+  };
+
   /** Takes the gesture off the pointer that's ending, so that nothing can end it twice. */
   const release = (e: PointerEvent): Gesture | null => {
-    touches.delete(e.pointerId);
-    if (touches.size < 2) pinch = null;
+    if (touches.delete(e.pointerId)) pinchFromHere();
     if (e.pointerId !== held) return null;
     const ending = gesture;
     gesture = null;
@@ -220,25 +228,47 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     return ending;
   };
 
+  /** Ends what's under way when the pointer hasn't lifted: a second finger, the board going read-only, the window going away. */
+  const drop = (): void => {
+    const ending = gesture;
+    gesture = null;
+    held = null;
+    ending?.cancel();
+  };
+  board.endGesture = drop;
+
+  /** Keeps a pointer's events coming wherever it goes. It fails only for a pointer already gone, so nothing would ever end its gesture. */
+  const capture = (id: number): void => {
+    try {
+      sheet.setPointerCapture(id);
+    } catch (err) {
+      log.info('pointer gone before capture', { err });
+      if (touches.delete(id)) pinchFromHere();
+      if (id === held) drop();
+    }
+  };
+
   sheet.addEventListener('pointerdown', (e) => {
     const { target } = e;
     if (e.button > 1 || !(target instanceof Element) || target.closest(OVER_THE_SHEET)) return;
     sheet.focus({ preventScroll: true });
     board.finishEdit();
-    if (e.pointerType === 'touch') touches.set(e.pointerId, e);
-    const [p, q] = touches.values();
-    if (p && q) {
-      gesture?.cancel();
-      gesture = null;
-      held = null;
-      pinch = pinchGesture(board, p, q);
+    if (e.pointerType === 'touch') {
+      // The first finger of a new touch: any fingers still listed lifted somewhere nobody saw.
+      if (e.isPrimary) touches.clear();
+      touches.set(e.pointerId, e);
+    }
+    if (touches.size > 1) {
+      drop();
+      pinchFromHere();
+      capture(e.pointerId);
       return;
     }
     if (gesture) return;
     gesture = press(board, camera.point(e), e, target);
     if (!gesture) return;
     held = e.pointerId;
-    try { sheet.setPointerCapture(e.pointerId); } catch { /* It lifted before the capture, so its up has already been seen. */ }
+    capture(e.pointerId);
   }, { signal });
 
   // The press that opened a sticky mustn't then focus the sheet, which would close it again. Anything over the sheet keeps its own focus, and with it the field's closing.
@@ -260,7 +290,11 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   const lost = (e: PointerEvent): void => release(e)?.cancel();
   sheet.addEventListener('pointercancel', lost, { signal });
   sheet.addEventListener('lostpointercapture', lost, { signal });
-  sheet.addEventListener('pointerleave', () => board.pointerAt(null), { signal });
+  sheet.addEventListener('pointerleave', () => {
+    // A move still waiting for its frame would put the pointer back after this says it left.
+    if (held === null) latest = null;
+    board.pointerAt(null);
+  }, { signal });
 
   sheet.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -299,8 +333,17 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   sheet.addEventListener('keydown', (e) => keyDown(board, e), { signal });
   sheet.addEventListener('keyup', (e) => keyUp(board, e), { signal });
   sheet.addEventListener('blur', () => { if (board.getSnapshot().space) board.set({ space: false }); }, { signal });
+  // With the window gone, a pointer can lift where nobody sees it.
+  addEventListener('blur', () => {
+    drop();
+    touches.clear();
+    pinch = null;
+    safariPinch = null;
+  }, { signal });
 
   return () => {
+    drop();
+    board.endGesture = () => undefined;
     listening.abort();
     if (frame) cancelAnimationFrame(frame);
   };
