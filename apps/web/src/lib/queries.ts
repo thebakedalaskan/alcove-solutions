@@ -581,7 +581,7 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
     deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
   };
 }
-/** Makes a new document of words that didn't reach the one they were written in (`DocSession.localCopy`). */
+/** Makes a new document of words that didn't reach the one they were written in (`DocSession.unsentCopy`). */
 export function useSaveCopy() {
   const qc = useQueryClient();
   return useMutation({
