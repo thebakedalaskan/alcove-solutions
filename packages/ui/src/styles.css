@@ -89,7 +89,7 @@
   --stage-ink: #F2EEE6;
   --stage-ink-2: #A9B9CA;
   --speak: #9FC7FB;
-  /* What's chosen on something night, whatever theme is round it: the dark theme's sun. */
+  /* What's chosen on the stage and on night controls, whatever theme is round them: the dark theme's sun. */
   --stage-sun: #F6E8CC;
   /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
   --stage-point: #215DB3;

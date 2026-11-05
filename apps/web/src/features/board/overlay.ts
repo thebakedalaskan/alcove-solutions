@@ -66,6 +66,8 @@ export class BoardOverlay {
   /** Shows these where they are now, and has `write` put them there on the beat. The first goes at once, so others see a drag start. */
   hold(objects: ReadonlyMap<string, BoardObject>, write: () => void): void {
     this.held = objects;
+    // Held, it's where the pointer has it, and what was left of someone else's move to it is over.
+    for (const id of objects.keys()) this.steps.delete(id);
     this.unwritten = write;
     this.shownChanged();
     if (this.beat === undefined) this.onTheBeat();

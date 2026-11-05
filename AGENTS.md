@@ -211,7 +211,7 @@ Read `docs/engineering/logging-and-errors.md`.
   keeps digits in step), and IBM Plex Mono only for code and hashes. Labels and eyebrows are sentence case, never
   uppercase. Fonts are served from `packages/ui/src/fonts`.
 - The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
-  `stage-ink-2`, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
+  `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
   `RevealGroup`, the `EASE` curves) with the `duration-*` and `ease-*` tokens. Respect reduced motion; the global stylesheet already shortens CSS
   animations.

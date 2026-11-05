@@ -246,12 +246,12 @@
 /* What's going on, for everyone: one pill, at the top of the sheet. Night, because it's about the call. */
 .bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
 .bd.is-clean .bd-pill { top: 14px; }
-.bd-pill .ac-i { flex: none; color: var(--stage-sun); transition: color var(--duration-2) var(--ease-out); }
+.bd-pill .ac-i { flex: none; color: var(--sun); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill b { font-weight: 600; }
 .bd-pill > b, .bd-pill > span:not(.sep, .t) { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
 .bd-pill .t { flex: none; font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill .sep { flex: none; width: 1px; height: 18px; background: rgb(255 255 255 / .14); }
-.bd-pill.is-soon .ac-i, .bd-pill.is-soon .t { color: var(--gold); }
+.bd-pill.is-soon .ac-i, .bd-pill.is-soon .t { color: var(--caution); }
 .bd-pill.has-act { padding-right: 5px; }
 .bd-pill button { flex: none; height: 28px; margin-left: 3px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .12); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); }
 .bd-pill button:hover { background: rgb(255 255 255 / .2); }
@@ -295,7 +295,7 @@
 
 /* What the call heard */
 .bd-heard { position: absolute; z-index: 12; left: 50%; bottom: 14px; translate: -50% 0; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 11px; border-radius: 999px; font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: bd-toast var(--duration-3) var(--ease-out) both; }
-.bd-heard .ac-i { color: var(--speak); }
+.bd-heard .ac-i { color: var(--rose); }
 
 /* ---------------------------------------------------------------- on paper, over the sheet */
 /* Small menus on the board */

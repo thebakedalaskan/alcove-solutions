@@ -198,7 +198,7 @@ export function BoardPill({ icon = 'clock', title, text, time, soon = false, act
   action?: string | undefined; onAction?: (() => void) | undefined; className?: string | undefined;
 }) {
   return (
-    <div className={cn('bd-pill', soon && 'is-soon', action && 'has-act', className)} role="status">
+    <div className={cn('bd-pill', 'dark', soon && 'is-soon', action && 'has-act', className)} role="status">
       {icon && <Icon name={icon} size={16} fill="none" />}
       {title && <b>{title}</b>}
       {text && <span>{text}</span>}
@@ -562,7 +562,7 @@ export const BoardComment = memo(function BoardComment({ id, x, y, person, name,
 
 /** Says the call has heard something worth keeping, and waits. */
 export function BoardHeard({ count, onOpen, className }: { count: number; onOpen: () => void; className?: string | undefined }) {
-  return <button type="button" className={cn('bd-heard', className)} onClick={onOpen}><Icon name="waveform" size={16} />{count === 1 ? '1 idea from the call' : `${count} ideas from the call`}</button>;
+  return <button type="button" className={cn('bd-heard', 'dark', className)} onClick={onOpen}><Icon name="waveform" size={16} />{count === 1 ? '1 idea from the call' : `${count} ideas from the call`}</button>;
 }
 
 export interface BoardIdea {
