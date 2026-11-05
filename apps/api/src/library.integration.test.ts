@@ -3,7 +3,7 @@
  * only IDs, and everyone on it is told what they may know of them. Through browsers talking to the real API over HTTP via
  * @alcove/api-http, on real Postgres and, for guests, a real call.
  */
-import { AlcoveApiError, CALL_PASS_HEADER, OPERATION_HEADER, type CallDocument, type CallSession, type CallState, type DocumentLibrary, type ItemKind, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, CALL_PASS_HEADER, OPERATION_HEADER, type CallDocument, type CallSession, type CallState, type DocumentLibrary, type ItemKind, type RepeatInput, type WorkspaceRole } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -31,17 +31,20 @@ async function account(who = 'person'): Promise<Account> {
   const { session } = await b.api.auth.signIn('sso', { email: unique(who) });
   return { ...b, email: session.user.email, name: session.user.name, ownerId: session.ownerId };
 }
-/** A real account, signed in with (the stand-in) Google. */
-async function withGoogle(name: string): Promise<Browser> {
+/** A real account, signed in with (the stand-in) Google, with its calendar connected. */
+async function withGoogle(who: string): Promise<Account & { sub: string }> {
   const b = h.browser();
   const n = `${Date.now().toString(36)}${(seq++).toString(36)}`;
-  h.google.next({ sub: `google-${n}`, email: `${name}.${n}@acme.example`, name });
+  const sub = `google-${n}`;
+  h.google.next({ sub, email: `${who}.${n}@acme.example`, name: who });
   let url = new URL(`${h.baseUrl}/v1/auth/google`);
   for (let hop = 0; hop < 10 && url.origin !== new URL(ORIGIN).origin; hop++) {
     const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
     url = new URL(res.headers.get('location') ?? '', url);
   }
-  return b;
+  const session = await b.api.auth.getSession();
+  if (!session) throw new Error('not signed in with Google');
+  return { ...b, sub, email: session.user.email, name: session.user.name, ownerId: session.ownerId };
 }
 const madeUp = () => randomBytes(16).toString('base64url');
 /** How a request was refused, as a browser sees it, or null when it wasn't. */
@@ -86,6 +89,14 @@ async function idOf(who: Account, name: string): Promise<string> {
   return found.id;
 }
 const soon = (guests: string[] = []) => ({ title: 'Launch check-in', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests, notes: 'off' as const });
+const WEEK = 7 * 86_400_000;
+/** What the app sends for every week on one day, in UTC. */
+function weekly(first: number, count: number): RepeatInput {
+  const occurrences = Array.from({ length: count }, (_, i) => new Date(first + i * WEEK).toISOString());
+  return { rule: { every: 'week', weeks: 1, days: [new Date(first).getUTCDay()] }, until: (occurrences.at(-1) ?? '').slice(0, 10), timeZone: 'UTC', occurrences };
+}
+/** A series' calls still to come. */
+const inSeries = async (who: Account, seriesId: string | undefined) => (await who.api.meetings.upcoming()).filter((m) => m.seriesId === seriesId);
 const on = async (who: Account, meetingId: string) => (await who.api.meetings.get(meetingId)).documents;
 const upcomingOn = async (who: Account, meetingId: string) => (await who.api.meetings.upcoming()).find((m) => m.id === meetingId)?.documents;
 /** Writes what a call brings as it's stored, for IDs no request can put there. */
@@ -189,6 +200,21 @@ describe('the library', () => {
     expect(await code(ann.api.documents.list())).toBe('unavailable');
     expect(await code(ann.api.workspaces.list())).toBe('unavailable');
   });
+
+  it('counts each change to what a call brings against that limit, and nothing else about a call', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Launch');
+    await make(ann, id, 'document', 'Plan');
+    const plan = await idOf(ann, 'Plan');
+    const m = await ann.api.meetings.create({ ...soon(), documents: [plan] });
+    // That's one read of the library, by the test.
+    for (let i = 0; i < 119; i++) await ann.api.meetings.update(m.id, { documents: [plan] });
+    expect(await refusal(ann.api.meetings.update(m.id, { documents: [plan] }))).toMatchObject({ code: 'unavailable', status: 503 });
+    expect(await code(ann.api.documents.list())).toBe('unavailable');
+    // What doesn't read the library goes on as ever: changing anything else, and taking everything off.
+    expect((await ann.api.meetings.update(m.id, { title: 'Renamed' })).title).toBe('Renamed');
+    expect((await ann.api.meetings.update(m.id, { documents: [] })).documents).toEqual([]);
+  });
 });
 
 describe('a call’s documents', () => {
@@ -241,10 +267,11 @@ describe('a call’s documents', () => {
     const first = await ann.api.meetings.create({ ...soon(), documents: [flow] });
     const next = await ann.api.meetings.scheduleNext(first.id, new Date(Date.now() + 8 * 86_400_000).toISOString());
     expect(next.documents).toEqual([{ id: flow, kind: 'board', by: 'Ann', name: 'Flow' }]);
-    const starts = [1, 8].map((days) => new Date(Date.now() + days * 86_400_000).toISOString());
-    const [start = '', last = ''] = starts;
-    const repeating = await ann.api.meetings.create({ ...soon(), startsAt: start, documents: [flow], repeat: { rule: { every: 'week', weeks: 1, days: [new Date(start).getUTCDay()] }, until: last.slice(0, 10), timeZone: 'UTC', occurrences: starts } });
-    expect(repeating.documents.map((d) => d.id)).toEqual([flow]);
+    const start = Date.now() + 86_400_000;
+    const repeating = await ann.api.meetings.create({ ...soon(), startsAt: new Date(start).toISOString(), documents: [flow], repeat: weekly(start, 3) });
+    const calls = await inSeries(ann, repeating.seriesId);
+    expect(calls).toHaveLength(3);
+    for (const call of calls) expect(call.documents).toEqual([{ id: flow, kind: 'board', by: 'Ann', name: 'Flow' }]);
   });
 
   it('never give someone who can’t open a restricted document its name, wherever they look', async () => {
@@ -300,7 +327,7 @@ describe('a call’s documents', () => {
     const binned = await make(ann, mine, 'document', 'Binned');
     const binnedId = await idOf(ann, 'Binned');
     await ann.api.workspaces.items.trash(mine, binned);
-    // Something restricted in a workspace Ann's in, and a workspace she isn't.
+    // Something restricted in a workspace Ann's in, and a workspace Ann isn't in.
     const hidden = await make(ben, mine, 'document', 'Hidden');
     await ben.api.workspaces.share.restrict(mine, hidden, true);
     const theirs = await workspace(ben, 'Theirs');
@@ -311,10 +338,10 @@ describe('a call’s documents', () => {
     const expected = await refusal(ann.api.meetings.create({ ...soon(), documents: [`${madeUp()}.${madeUp()}`] }));
     expect(expected?.code).toBe('invalid');
     const others: [string, string][] = [
-      ['a real document she can’t open', await idOf(ben, 'Hidden')],
-      ['a real document in a workspace she isn’t in', otherId],
+      ['a real document Ann can’t open', await idOf(ben, 'Hidden')],
+      ['a real document in a workspace Ann isn’t in', otherId],
       ['a real workspace and a made-up item', `${mine}.${madeUp()}`],
-      ['a workspace she isn’t in and a made-up item', `${theirs}.${madeUp()}`],
+      ['a workspace Ann isn’t in and a made-up item', `${theirs}.${madeUp()}`],
       ['an item with another workspace’s ID', `${mine}.${other}`],
       ['the same the other way around', `${theirs}.${folder}`],
       ['a folder', `${mine}.${folder}`],
@@ -341,7 +368,7 @@ describe('a call’s documents', () => {
     expect(await code(ann.api.meetings.create({ ...soon(), documents: Array.from({ length: 13 }, () => madeUp()) }))).toBe('invalid');
   });
 
-  it('stay on a call when its organizer loses them, for them to take off, and can’t be brought again', async () => {
+  it('stay on a call when its organizer loses them, for them to take off, and no request can add them again', async () => {
     const ann = await account('ann');
     const ben = await account('ben');
     const id = await workspace(ben, 'Theirs', [[ann, 'read']]);
@@ -357,13 +384,49 @@ describe('a call’s documents', () => {
     await takeOut(ben, id, ann);
     expect(await on(ann, m.id)).toEqual([{ id: plan, kind: 'doc', by: 'Ben', name: null }]);
     expect((await on(ben, m.id))[0]?.name).toBe('Plan');
-    // It isn't in her library any more, and it doesn't stop her changing the call: only what's new has to be.
+    // It isn't in Ann's library any more, and that doesn't stop Ann changing the call: only what's new has to be.
     expect(await namesOf(ann)).toEqual(['Brief']);
     expect((await ann.api.meetings.update(m.id, { documents: [plan, brief] })).documents.map((d) => d.id)).toEqual([plan, brief]);
     expect(await refusal(ann.api.meetings.update(m.id, { documents: [plan, brief, notes] }))).toEqual(await refusal(ann.api.meetings.update(m.id, { documents: [plan, brief, `${madeUp()}.${madeUp()}`] })));
-    // Off the call, it's as anything she can't open: she can't bring it back, here or to another call.
+    // Off the call, no request can add it, here or to another call: it's as anything else Ann can't open.
     expect((await ann.api.meetings.update(m.id, { documents: [brief] })).documents.map((d) => d.id)).toEqual([brief]);
     expect(await code(ann.api.meetings.update(m.id, { documents: [plan, brief] }))).toBe('invalid');
+    expect(await code(ann.api.meetings.create({ ...soon(), documents: [plan] }))).toBe('invalid');
+  });
+
+  it('go along a series as they’re kept, so one its organizer has lost can reach later calls, and nobody there learns more', async () => {
+    const ann = await account('ann');
+    const ben = await account('ben');
+    const dee = await account('dee');
+    const id = await workspace(ben, 'Theirs', [[ann, 'read']]);
+    await make(ben, id, 'document', 'CANARY-PLAN');
+    const plan = await idOf(ann, 'CANARY-PLAN');
+    const mine = await workspace(ann, 'Mine');
+    await make(ann, mine, 'document', 'Brief');
+    const brief = await idOf(ann, 'Brief');
+    const start = Date.now() + 86_400_000;
+    const guests = [ben.email, dee.email];
+    const repeating = await ann.api.meetings.create({ ...soon(guests), startsAt: new Date(start).toISOString(), documents: [plan], repeat: weekly(start, 2) });
+    const single = await ann.api.meetings.create({ ...soon(guests), documents: [plan] });
+    await takeOut(ben, id, ann);
+    const shut: CallDocument = { id: plan, kind: 'doc', by: 'Ben', name: null };
+
+    // The next call in a series takes the list as it's kept.
+    expect((await ann.api.meetings.scheduleNext(single.id, new Date(Date.now() + WEEK).toISOString())).documents).toEqual([shut]);
+    // A change to this and later calls writes what it's given to each of them, what this call keeps included, and the
+    // calls a repeat adds copy the call before them.
+    await ann.api.meetings.update(repeating.id, { documents: [plan, brief] }, { scope: 'following' });
+    await ann.api.meetings.update(repeating.id, { repeat: weekly(start, 3) }, { scope: 'following' });
+    const calls = await inSeries(ann, repeating.seriesId);
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
+      expect(call.documents).toEqual([shut, { id: brief, kind: 'doc', by: 'Ann', name: 'Brief' }]);
+      // Everyone on each of them is told what they'd be told on any call: a name only if they can open it.
+      expect((await on(ben, call.id))[0]?.name).toBe('CANARY-PLAN');
+      expect((await on(dee, call.id))[0]).toEqual(shut);
+    }
+    // None of that makes it something Ann can bring.
+    expect(await namesOf(ann)).toEqual(['Brief']);
     expect(await code(ann.api.meetings.create({ ...soon(), documents: [plan] }))).toBe('invalid');
   });
 
@@ -474,12 +537,12 @@ describe('a call’s documents', () => {
     const made = await make(ann, id, 'document', 'CANARY-RECEIPT');
     const brought = await idOf(ann, 'CANARY-RECEIPT');
     const AnswerSchema = z.object({ id: z.string(), documents: z.array(z.unknown()) });
-    const send = (method: string, path: string, body: unknown, op: string) => ann.fetch(`${h.baseUrl}/v1${path}`, { method, headers: { 'content-type': 'application/json', [OPERATION_HEADER]: op }, body: JSON.stringify(body) });
-    const once = async (method: string, path: string, body: unknown) => {
+    const send = (who: Account, method: string, path: string, body: unknown, op: string) => who.fetch(`${h.baseUrl}/v1${path}`, { method, headers: { 'content-type': 'application/json', [OPERATION_HEADER]: op }, body: JSON.stringify(body) });
+    const once = async (who: Account, method: string, path: string, body: unknown) => {
       const op = madeUp();
-      const first = await (await send(method, path, body, op)).text();
+      const first = await (await send(who, method, path, body, op)).text();
       expect(first).toContain('CANARY-RECEIPT');
-      const again = await send(method, path, body, op);
+      const again = await send(who, method, path, body, op);
       expect(again.status).toBe(200);
       const text = await again.text();
       expect(text).not.toContain('CANARY-RECEIPT');
@@ -489,19 +552,30 @@ describe('a call’s documents', () => {
 
     const calls = async () => (await ann.api.meetings.upcoming()).length;
     const before = await calls();
-    const scheduled = await once('POST', '/meetings', { ...soon(), documents: [brought] });
+    const scheduled = await once(ann, 'POST', '/meetings', { ...soon(), documents: [brought] });
     // It's the same call, not a second one.
     expect(scheduled.again).toEqual({ id: scheduled.first.id, documents: [] });
     expect(await calls()).toBe(before + 1);
-    await once('PATCH', `/meetings/${scheduled.first.id}`, { title: 'Renamed' });
-    await once('POST', `/meetings/${scheduled.first.id}/next`, { startsAt: new Date(Date.now() + 8 * 86_400_000).toISOString() });
+    await once(ann, 'PATCH', `/meetings/${scheduled.first.id}`, { title: 'Renamed' });
+    await once(ann, 'POST', `/meetings/${scheduled.first.id}/next`, { startsAt: new Date(Date.now() + 8 * 86_400_000).toISOString() });
     expect(await calls()).toBe(before + 2);
+
+    // Adopting an event a second time answers with the call it already is, which by then can have documents on it.
+    const gia = await withGoogle('gia');
+    const at = (ms: number) => ({ dateTime: new Date(Date.now() + ms).toISOString() });
+    h.google.calendar(gia.sub).push({ id: 'their-own', summary: 'Standing call', start: at(86_400_000), end: at(88_200_000), organizer: { email: gia.email, self: true } });
+    const adopted = await gia.api.calendar.adopt('their-own', 'off');
+    const space = await workspace(gia, 'Launch');
+    await make(gia, space, 'document', 'CANARY-RECEIPT');
+    await gia.api.meetings.update(adopted.id, { documents: [await idOf(gia, 'CANARY-RECEIPT')] });
+    const again = await once(gia, 'POST', '/calendar/events/their-own/adopt', { notes: 'off' });
+    expect(again.again).toEqual({ id: adopted.id, documents: [] });
 
     // A call with nothing brought answers a retry with exactly what it said.
     const op = madeUp();
     const input = soon();
-    const plain = await (await send('POST', '/meetings', input, op)).text();
-    expect(await (await send('POST', '/meetings', input, op)).text()).toBe(plain);
+    const plain = await (await send(ann, 'POST', '/meetings', input, op)).text();
+    expect(await (await send(ann, 'POST', '/meetings', input, op)).text()).toBe(plain);
   });
 });
 
