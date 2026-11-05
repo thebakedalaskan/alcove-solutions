@@ -43,7 +43,10 @@ interface Root {
   /** How something on this root is made again. */
   make: (map: Y.Map<unknown>, id: string, fields: Copy) => void;
   copies: Map<string, Copy>;
-  /** How many times someone else has written to each id. A write that lost the merge counts: whoever made it still moved that sticky. */
+  /**
+   * How many times someone else has written to each id. A write that lost the merge counts: whoever made it still moved that
+   * sticky. Under `id/part`, what that count was when someone else last brought back a row, column or cell.
+   */
   others: Map<string, number>;
 }
 
@@ -68,6 +71,9 @@ function copyOf(value: unknown): Copy | null {
   if (isRecord(copy['cells'])) copy['cells'] = Object.fromEntries(Object.entries(copy['cells']).filter(([, words]) => words !== ''));
   return copy;
 }
+
+/** A table's rows, columns and cells, each of which can come and go by itself. */
+const partsOf = (copy: Copy | null): unknown[] => [...listOf(copy?.['rows']).map(idOf), ...listOf(copy?.['cols']).map(idOf), ...Object.keys(recordOf(copy?.['cells']))];
 
 /** The ids a transaction touched on one root: the object an event is inside, or the keys of the root itself. */
 function touched(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): Set<string> {
@@ -94,11 +100,11 @@ function rewrite(text: Y.Text, words: string): void {
   if (insert) text.insert(start, insert);
 }
 
-/** Each cell of a table is a field of its own. One that went with its row is made again. */
-function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy): void {
+/** Each cell of a table is a field of its own. One that went with its row is made again, unless someone else has brought it back since. */
+function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, spent: (part: unknown) => boolean): void {
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     const was = wordsOf(before[key]), left = wordsOf(after[key]);
-    if (was === left || wordsOf(now[key]) !== left) continue;
+    if (was === left || wordsOf(now[key]) !== left || spent(key)) continue;
     const cell = cells.get(key);
     if (cell instanceof Y.Text) rewrite(cell, was);
     else cells.set(key, new Y.Text(was));
@@ -108,9 +114,9 @@ function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy):
 /**
  * Each row or column of a table, or reply in a thread, is a field of its own, so someone adding or removing another
  * doesn't stop this one going back. One this browser added goes, unless it's `kept`. One it resized goes back, if nobody has
- * resized it since. One it removed returns after the one it followed, unless it's already back.
+ * resized it since. One it removed returns after the one it followed, unless it's back, or someone has brought it back since.
  */
-function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: readonly unknown[], kept: (id: unknown) => boolean): void {
+function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: readonly unknown[], kept: (id: unknown) => boolean, spent: (part: unknown) => boolean): void {
   const was = new Map(before.map((line) => [idOf(line), line])), left = new Map(after.map((line) => [idOf(line), line]));
   const live = lines.toArray();
   for (let at = live.length - 1; at >= 0; at -= 1) {
@@ -124,7 +130,7 @@ function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: r
   for (const line of before) {
     const id = idOf(line), found = ids.indexOf(id);
     if (found >= 0) place = found + 1;
-    else if (!left.has(id)) {
+    else if (!left.has(id) && !spent(id)) {
       lines.insert(place, [line]);
       ids.splice(place, 0, id);
       place += 1;
@@ -139,12 +145,12 @@ function written(id: unknown, axis: TableAxis, after: Copy, now: Copy): boolean 
 }
 
 /** Sets back what this browser changed in something, field by field. A field someone has changed since stays theirs, and none is ever deleted. */
-function fieldsBack(m: Y.Map<unknown>, before: Copy, after: Copy, now: Copy): void {
+function fieldsBack(m: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, spent: (part: unknown) => boolean): void {
   for (const [key, was] of Object.entries(before)) {
     const left = after[key], live = m.get(key);
     if (same(was, left)) continue;
-    if (live instanceof Y.Array) linesBack(live, listOf(was), listOf(left), (id) => written(id, key === 'rows' ? 'rows' : 'cols', after, now));
-    else if (live instanceof Y.Map) cellsBack(live, recordOf(was), recordOf(left), recordOf(now[key]));
+    if (live instanceof Y.Array) linesBack(live, listOf(was), listOf(left), (id) => written(id, key === 'rows' ? 'rows' : 'cols', after, now), spent);
+    else if (live instanceof Y.Map) cellsBack(live, recordOf(was), recordOf(left), recordOf(now[key]), spent);
     else if (!same(now[key], left)) continue;
     else if (live instanceof Y.Text) rewrite(live, wordsOf(was));
     else m.set(key, was);
@@ -205,8 +211,13 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
         const before = at.copies.get(id) ?? null, after = copyOf(at.map.get(id));
         if (after) at.copies.set(id, after);
         else at.copies.delete(id);
-        if (mine) record(at, id, before, after);
-        else at.others.set(id, (at.others.get(id) ?? 0) + 1);
+        if (mine) {
+          record(at, id, before, after);
+          continue;
+        }
+        const others = (at.others.get(id) ?? 0) + 1, had = new Set(partsOf(before));
+        at.others.set(id, others);
+        for (const part of partsOf(after)) if (!had.has(part)) at.others.set(`${id}/${String(part)}`, others);
       }
     };
     at.map.forEach((value, id) => {
@@ -254,7 +265,7 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
         const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyOf(m);
         if (!before) added.push(entry);
         else if (!after && !now && untouched(entry)) at.make(at.map, id, before);
-        else if (after && m && now) fieldsBack(m, before, after, now);
+        else if (after && m && now) fieldsBack(m, before, after, now, (part) => (at.others.get(`${id}/${String(part)}`) ?? 0) > entry.others);
       }
       takeAway(added);
     }, applying);
