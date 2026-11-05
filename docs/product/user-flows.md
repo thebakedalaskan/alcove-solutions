@@ -492,7 +492,8 @@ list comes from the server today, and its screens are being built.
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
      **@** lists who's in the call first, then who's invited, then the workspace and the company, and tagging someone in
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
-     **Go there** opens it on the line. Putting the workspace away stops following, and for everyone else you've left it.
+     **Go there** opens it on the line. Putting the workspace away, or bringing in something it takes turns with, stops
+     following, and for everyone else you've left it.
    - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them. Just the
      document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
    - **An organizer taken out of the workspace** the call uses is told so, and **New workspace** moves the call to one of

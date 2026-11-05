@@ -438,8 +438,10 @@
 @media (min-width: 1101px) {
   body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
   body:has(.ic-call.is-zen) .ac-toasts.on-stage { bottom: 6px; }
+  /* The line that says who's up gives way there, and comes back when the toast goes: the arch still shows it. */
+  body:has(.ac-toasts.on-stage .ac-toast) .ic-hz.is-past { opacity: 0; }
 }
-.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; }
+.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; transition: opacity var(--duration-2) var(--ease-out); }
 /* A share waiting among arches or on the horizon, and whoever there's no room for. */
 .ic-scr.is-arch { border-radius: 14px; }
 .ic-scr.is-horizon { z-index: 3; border-radius: 6px; }

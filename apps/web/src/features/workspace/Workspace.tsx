@@ -207,10 +207,10 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     togetherRef.current = { follow: (connection) => { const o = othersNow.current.find((x) => x.callIdentity === connection); if (o) follow(o.person.id); }, stop: () => stopFollowing() };
     return () => { togetherRef.current = null; };
   }, [togetherRef, follow, stopFollowing]);
-  /* Put away, there's nothing to go with. */
+  /* Out of sight, put away or behind what it takes turns with, there's nothing to go with. */
   useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
 
-  /* Everyone can see you're in a document from the moment it's open, and that you've left when you put it away. The editor says which line. */
+  /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
   useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
   const closedNow = useRef(closed);
   closedNow.current = closed;

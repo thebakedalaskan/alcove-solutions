@@ -727,7 +727,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
         </div>
       )}
       {onHorizon && panels && loudOne && hzAt !== null && (
-        <span className="ic-hz" style={{ left: hzAt, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
+        <span className={cn('ic-hz', hzAt > panels.horizon.dock && 'is-past')} style={{ left: hzAt, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
       )}
       {seenLooks.popped && popped && (() => {
         const s = ordered.find((x) => x.id === popped);

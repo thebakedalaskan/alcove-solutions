@@ -44,7 +44,7 @@ export interface WorkspaceCall {
   list: { off: boolean; peek: boolean; onToggle: () => void };
   /** Where what the workspace says goes: a call has one place for toasts. */
   say: (toast: WsToastData) => void;
-  /** Closed, and kept as it was for next time: its keys sleep. */
+  /** Out of sight, and kept as it was for next time: closed, or behind something it's taking turns with. Its keys sleep. */
   closed: boolean;
   /** Who's in the call, and who's invited, if you can know: first in `@`. */
   people: readonly CallPerson[];
