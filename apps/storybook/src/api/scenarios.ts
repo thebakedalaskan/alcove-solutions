@@ -7,14 +7,14 @@
 import {
   CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
   SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceTreeSchema, type DocumentRole, type Group, type Person, type ShareEntry, type WorkspaceItem,
-  type WorkspaceTree
+  type WorkspaceTree, WorkspaceMediaSchema
 } from '@alcove/api';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, library, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type Opening, type Page, type Refused, type World } from '../world';
+import { CREDITS, PREFS, WELCOME_CREDITS, session, type Kept, type Opening, type Page, type Refused, type World } from '../world';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, OLD_ROADMAP, PRICING_COPY, WORKING_FROM_HOME
 } from '../world/documents';
@@ -22,7 +22,7 @@ import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, s
 import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, teamOf, type Colleague } from '../world/people';
 import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
-import { forgetAudio } from './media';
+import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
@@ -87,6 +87,23 @@ function shares(): Record<string, ShareEntry[]> {
   };
 }
 
+/** What the Launch plan has in it: two photos from the offsite and the timeline as a file, from Priya, this week. */
+function files(): Kept[] {
+  const plan = itemId('Launch plan');
+  const picture = (name: string, hue: number, daysAgo: number): Kept => ({
+    workspace: 'ws-product', body: () => drawnPicture(name.replace(/\.png$/, ''), hue, 1600, 1000),
+    media: { id: itemId(`media ${name}`), name, type: 'image/png', size: 2_400_000, width: 1600, height: 1000, createdAt: iso(-daysAgo, 11, 0), documents: [plan] }
+  });
+  const words = 'Launch timeline\n\nMonday: freeze\nWednesday: press\nFriday: launch\n';
+  return [
+    picture('Offsite whiteboard.png', 205, 1), picture('Launch room.png', 28, 2),
+    {
+      workspace: 'ws-product', body: () => Promise.resolve(new Blob([words], { type: 'text/plain' })),
+      media: { id: itemId('media Launch timeline'), name: 'Launch timeline.txt', type: 'application/octet-stream', size: words.length, width: null, height: null, createdAt: iso(-1, 9, 30), documents: [plan] }
+    }
+  ];
+}
+
 /** The canvas's busy Wednesday afternoon, at 16:12. */
 function busy(): World {
   const notes = busyNotes();
@@ -94,7 +111,7 @@ function busy(): World {
   return {
     session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
     meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(),
-    rings: [], writing: null
+    media: files(), rings: [], writing: null
   };
 }
 
@@ -160,7 +177,7 @@ function onTheirOwn(): World {
   return {
     session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
     meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
-    workspaces: [], pages: {}, shares: {}, rings: [], writing: null
+    workspaces: [], pages: {}, shares: {}, media: [], rings: [], writing: null
   };
 }
 
@@ -173,7 +190,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({
       world: {
         session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
@@ -237,7 +254,8 @@ export function checked(w: World): World {
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
-    ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())]
+    ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
+    ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);
