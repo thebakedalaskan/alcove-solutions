@@ -1,24 +1,27 @@
 /*
- * The night recorder on Record: a name for the recording, the microphone it will use and how loud that is, and
- * Start recording (or R), which opens the stage recorder (/record/live) and hands it the name in memory, never in
- * the address. The page never opens the microphone by itself: only "Check the level" does, until Stop is pressed or
- * the page is left. The camera has no part here.
+ * The night recorder on Record: the recorder on the horizon, and in the sky above it a name for the recording, Start
+ * recording (or R), which opens the stage recorder (/record/live) and hands it the name in memory, never in the address,
+ * then the microphone it will use and how loud that is. The page never opens the microphone by itself: only "Check the
+ * level" does, until Stop is pressed or the page is left. The camera has no part here.
  */
-import { Icon, Kbd, MicLevel, Select, Tooltip, cn, type SelectOption } from '@alcove/ui';
+import { Button, Icon, Kbd, RecMeter, RecorderSun, Select, Tooltip, cn, useVoice, type SelectOption } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { troubles } from '~/features/call/access';
 import { plainName, readPrefs, rememberDevice, useDevices, type Device } from '~/features/call/devices';
 import { LocalMedia } from '~/features/call/media';
-import { recordOfflineHere } from '~/lib/device';
 import { overlayOpen, typing } from '~/lib/keys';
 import { sessions, useLive, useOnline } from '~/lib/live';
+import { UNNAMED } from './uploads';
 
-export function NightRecorder() {
+/** `keeps`: it records without a connection. Without one, and with that off, Start recording waits for the connection. */
+export function NightRecorder({ keeps }: { keeps: boolean }) {
   const navigate = useNavigate();
   const online = useOnline();
   const [name, setName] = useState('');
+  const locked = !online && !keeps;
   const start = () => {
+    if (locked) return;
     sessions.roomTitle = name.trim() || null;
     void navigate({ to: '/record/live' });
   };
@@ -34,28 +37,37 @@ export function NightRecorder() {
     return () => removeEventListener('keydown', on);
   }, []);
 
+  const check = useMicCheck();
+  const sun = useRef<HTMLDivElement>(null);
+  const meter = useRef<HTMLSpanElement>(null);
+  useVoice({ sun, meter, level: () => check.media.level(), on: check.hearing, gain: 0.8 });
+  const lit = check.checking && !check.trouble;
+
   return (
-    <section className="rec-card" aria-label="Recorder">
-      <div className="rec-orb" aria-hidden="true"><i /></div>
-      <div className="rec-body">
-        <div className="rec-top">
-          <span className="rec-k"><Icon name="room" size={15} />In the room</span>
-          {online
-            ? <span className="rec-pill"><Icon name="transcript" size={14} />Transcribed as you talk</span>
-            : <span className="rec-pill"><Icon name="wifiOff" size={14} />{recordOfflineHere() ? 'Offline · saves to this device' : 'Offline · needs a connection'}</span>}
+    <>
+      {/* Dark until something is recorded: a lit rim while it's checked, and it's only full of colour on the stage. */}
+      <RecorderSun ref={sun} orb={lit ? 'check' : 'idle'} voice={lit ? 'level' : 'idle'} />
+      <section className="rec-go" aria-label="Recorder" style={{ '--d': 1 }}>
+        <div role="status">
+          {!online && (
+            <p className="rec-off">
+              <Icon name="wifiOff" size={15} />
+              {keeps ? 'Offline. Recording still works.' : 'Offline. Recording needs a connection.'}
+            </p>
+          )}
         </div>
-        <input className="rec-name" type="text" value={name} placeholder="Name this recording" aria-label="Name this recording" maxLength={160}
+        <input className="rec-name" type="text" value={name} placeholder={UNNAMED} aria-label="Name this recording" title="Name this recording" maxLength={160}
           autoComplete="off" spellCheck={false} enterKeyHint="go" onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); start(); } }} />
-        <MicCheck />
-        <div className="rec-acts">
-          <button type="button" className="rec-go" aria-label="Start recording" aria-keyshortcuts="R" onClick={start}>
-            <i aria-hidden="true" />Start recording<Kbd>R</Kbd>
-          </button>
-          <p className="rec-note">Let everyone here know before you start.</p>
+        <div className="rec-a">
+          <Button variant="primary" className={cn('rec-start', locked && 'is-off')} aria-label="Start recording" aria-disabled={locked} aria-keyshortcuts="R" onClick={start}>
+            {/* On the cream of the button, so it's the day's rec. */}
+            <i className="rec-dot light" aria-hidden="true" />Start recording<Kbd>R</Kbd>
+          </Button>
         </div>
-      </div>
-    </section>
+        <MicCheck check={check} meter={meter} />
+      </section>
+    </>
   );
 }
 
@@ -66,7 +78,7 @@ const nameOf = (d: Device) => plainName(d.label) || d.label;
 /** The microphones to choose from, each once, by the name people know it by. */
 function micOptions(list: Device[]): SelectOption<string>[] {
   const real = list.filter((d) => !STANDS_IN.has(d.id));
-  return (real.length ? real : list).map((d) => ({ value: d.id, label: nameOf(d) }));
+  return (real.length ? real : list).map((d) => ({ value: d.id, label: nameOf(d), icon: 'mic' }));
 }
 /** Which option `id` is: itself, or for the browser's default (or no choice yet), the microphone that is the default now. */
 function optionFor(id: string | undefined, list: Device[], options: SelectOption<string>[]): string | undefined {
@@ -75,22 +87,11 @@ function optionFor(id: string | undefined, list: Device[], options: SelectOption
   return (stand && options.find((o) => o.label === nameOf(stand))?.value) ?? options[0]?.value;
 }
 
-/** How loud the microphone is, read ten times a second while `live`. */
-function useLevel(media: LocalMedia, live: boolean): number {
-  const [level, setLevel] = useState(0);
-  useEffect(() => {
-    if (!live) return;
-    const t = setInterval(() => setLevel(media.level()), 100);
-    return () => clearInterval(t);
-  }, [media, live]);
-  return live ? level : 0;
-}
-
 /**
- * The microphone to record with, chosen in this browser (the stage recorder and calls use the same choice), and
- * its level. Choosing one while it's closed only remembers it; "Check the level" opens it, and Stop lets go of it.
+ * The microphone to record with, chosen in this browser (the stage recorder and calls use the same choice), and its
+ * check. Choosing one while it's closed only remembers it; "Check the level" opens it, and Stop lets go of it.
  */
-function MicCheck() {
+function useMicCheck() {
   const [media] = useState(() => new LocalMedia());
   const m = useLive(media);
   const [checking, setChecking] = useState(false);
@@ -100,47 +101,55 @@ function MicCheck() {
   const [seen, setSeen] = useState(0);
   /* Browsers name microphones only once one has been allowed, so the list is read again when one opens. */
   const devices = useDevices(m.camera);
-  const level = useLevel(media, checking && m.mic);
   useEffect(() => () => media.stop(), [media]);
 
   const options = micOptions(devices.mic);
-  const value = optionFor((checking && m.micId) || chosen, devices.mic, options);
-  const trouble = checking ? troubles(m, ['mic'])[0] : undefined;
-  const said = checking ? m.changes.filter((c) => c.kind === 'mic' && c.n > seen).at(-1) : undefined;
   const newest = () => m.changes.at(-1)?.n ?? 0;
-  const toggle = () => {
-    if (checking) {
-      // What was in use stays shown: a choice that didn't start never took.
-      setChosen(m.micId ?? chosen);
-      media.stop();
-    } else {
+  return {
+    media, checking, options,
+    value: optionFor((checking && m.micId) || chosen, devices.mic, options),
+    hearing: checking && m.mic,
+    trouble: checking ? troubles(m, ['mic'])[0] : undefined,
+    said: checking ? m.changes.filter((c) => c.kind === 'mic' && c.n > seen).at(-1) : undefined,
+    toggle: () => {
+      if (checking) {
+        // What was in use stays shown: a choice that didn't start never took.
+        setChosen(m.micId ?? chosen);
+        media.stop();
+      } else {
+        setSeen(newest());
+        void media.start({ mic: true, cam: false });
+      }
+      setChecking(!checking);
+    },
+    choose: (id: string) => {
       setSeen(newest());
-      void media.start({ mic: true, cam: false });
+      if (!checking) { rememberDevice('mic', id); setChosen(id); return; }
+      void media.chooseMic(id).then((ok) => { if (ok) setChosen(id); });
     }
-    setChecking(!checking);
   };
-  const choose = (id: string) => {
-    setSeen(newest());
-    if (!checking) { rememberDevice('mic', id); setChosen(id); return; }
-    void media.chooseMic(id).then((ok) => { if (ok) setChosen(id); });
-  };
+}
 
+function MicCheck({ check, meter }: { check: ReturnType<typeof useMicCheck>; meter: RefObject<HTMLSpanElement | null> }) {
+  const { media, checking, options, value, trouble, said, toggle, choose } = check;
+  const missing = trouble?.problem === 'missing';
   return (
     <>
-      <div className="rec-mic">
-        {options.length > 0 && <Select stage icon="mic" label="Microphone" value={value} options={options} onChange={choose} />}
+      <div className="rec-chips">
+        <Select stage icon={trouble ? 'micOff' : 'mic'} label="Microphone" align="center" value={missing ? undefined : value} options={missing ? [] : options} onChange={choose}
+          placeholder={missing ? 'No microphone' : 'Default microphone'} disabled={missing || !options.length} className={cn('rec-chip', trouble && 'is-warn')} />
         <Tooltip label={checking ? 'Lets go of the microphone.' : 'Opens the microphone to show how loud it is. Nothing is recorded.'}>
-          <button type="button" className={cn('rec-level', checking && 'is-on')} aria-pressed={checking} onClick={toggle}>
-            <span aria-hidden="true"><MicLevel stage level={level} /></span>
+          <button type="button" className={cn('rec-chip rec-lv', checking && 'is-on', checking && trouble && 'is-dead')} aria-pressed={checking} onClick={toggle}>
+            <RecMeter ref={meter} />
             <span className={cn(checking && 'sr-only')}>Check the level</span>
             {checking && <span aria-hidden="true">Stop</span>}
           </button>
         </Tooltip>
       </div>
-      <div role="status" className="rec-say">
-        {trouble ? (
-          <p className="is-trouble">{trouble.title} {trouble.how}{trouble.retry && <> <button type="button" onClick={() => void media.retry()}>Try again</button></>}</p>
-        ) : said && <p>{said.text}</p>}
+      <div role="status" className={cn('rec-say', (trouble || said) && 'is-warn')}>
+        {trouble
+          ? <p>{trouble.title} {trouble.how}{trouble.retry && <button type="button" className="rec-retry" onClick={() => void media.retry()}>Try again</button>}</p>
+          : <p>{said ? said.text : checking ? 'Nothing is recorded.' : 'Let everyone here know before you start.'}</p>}
       </div>
     </>
   );

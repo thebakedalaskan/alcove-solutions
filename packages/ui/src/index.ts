@@ -11,6 +11,7 @@ export * from './components/scene';
 export * from './components/theme';
 export * from './components/illustrations';
 export * from './components/horizon';
+export * from './components/recorder';
 export * from './components/empty';
 export * from './components/call';
 export * from './components/capture';

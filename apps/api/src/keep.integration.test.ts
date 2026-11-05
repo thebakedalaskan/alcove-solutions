@@ -132,6 +132,9 @@ describe('keeping the transcript', () => {
     expect(await invited.api.notes.get(noteId)).toMatchObject({ status: 'pending', transcript: [], kept: { transcript: false, recording: true } });
     expect((await org.api.notes.list({ text: CANARY })).map((n) => n.id)).toEqual([noteId]);
     expect(await invited.api.notes.list({ text: CANARY })).toEqual([]);
+    // A search that finds the note by its title quotes nothing to anyone who can't read what was said.
+    expect((await org.api.notes.list({ text: `Supplier ${CANARY}` }))[0]?.said.map((l) => l.text)).toEqual([expect.stringContaining(CANARY)]);
+    expect((await invited.api.notes.list({ text: 'Supplier review' }))[0]).toMatchObject({ id: noteId, said: [], saidCount: 0 });
     expect((await revisionsOf(org.session.ownerId, noteId)).some((r) => r.text.includes(CANARY))).toBe(true);
 
     const steps = await written(org.api, noteId);
@@ -577,6 +580,9 @@ describe('a call with breakout rooms', () => {
     expect(unwritten.rooms.map((r) => r.transcript.length)).toEqual([3, 3]);
     expect(await lena.browser.api.notes.get(noteId)).toMatchObject({ transcript: [], writtenAt: null });
     expect((await lena.browser.api.notes.get(noteId)).rooms.map((r) => r.transcript)).toEqual([[], []]);
+    // A search reads no more than that: what was said in a room is the organizer's alone, whoever said it.
+    expect(await lena.browser.api.notes.list({ text: SUPPORT_CANARY })).toEqual([]);
+    expect((await org.api.notes.list({ text: SUPPORT_CANARY }))[0]?.said).toMatchObject([{ text: expect.stringContaining(SUPPORT_CANARY), room: { name: 'Support' } }]);
     expect(await fails(asked(lena.browser.api, noteId, 'Who is the bank?'))).toEqual(['conflict', 'These notes aren’t written yet, so there’s nothing to ask about.']);
     await asked(org.api, noteId, 'Who is the bank?');
     expect(h.near.prompts.at(-1)).toContain(SUPPORT_CANARY);
@@ -610,6 +616,8 @@ describe('a call with breakout rooms', () => {
     const kept = await noteOf(on.host);
     await written(on.org.api, kept);
     expect((await on.lena.browser.api.notes.get(kept)).rooms[0]?.transcript).toHaveLength(3);
+    // A search finds what was said in a room, and says which room, for anyone who has the notes.
+    expect((await on.lena.browser.api.notes.list({ text: DESIGN_CANARY }))[0]?.said).toMatchObject([{ text: expect.stringContaining(DESIGN_CANARY), room: { name: 'Design' } }]);
     await asked(on.lena.browser.api, kept, 'Who is the printer?');
     expect(h.near.prompts.at(-1)).toContain(DESIGN_CANARY);
     expect(h.near.prompts.at(-1)).not.toContain('deleted once');

@@ -654,6 +654,8 @@ export const NoteSummarySchema = z.object({
   id: IDSchema, kind: NoteKindSchema, status: NoteStatusSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
   /** Everyone who has the notes, organizer first. */
   people: z.array(PersonSchema),
+  /** Who in `people` got the notes afterwards, by address: they weren't on the call. */
+  sharedWith: z.array(z.string()),
   /** The start of the summary; empty until the notes are written. */
   excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
   /** How you got the note, when it's someone else's. Absent on your own. */
@@ -665,6 +667,13 @@ export const NoteSummarySchema = z.object({
   groupShares: z.array(GroupShareSchema)
 });
 export type NoteSummary = z.infer<typeof NoteSummarySchema>;
+
+/** A line of what was said that a search found: where it is, who said it, the room it was said in, and the words. */
+export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true });
+export type NoteSaid = z.infer<typeof NoteSaidSchema>;
+/** A note as a search finds it: what was said that matched, the lines with most of its words first (empty without a search), and how many lines did in all. */
+export const NoteFoundSchema = NoteSummarySchema.extend({ said: z.array(NoteSaidSchema), saidCount: z.number() });
+export type NoteFound = z.infer<typeof NoteFoundSchema>;
 
 /**
  * A breakout room's section of a call's notes: its name, who was in it (the organizer too, if it came in), when it was

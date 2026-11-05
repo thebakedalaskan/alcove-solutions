@@ -18,7 +18,7 @@ export function exampleNote(me: Person): Note {
   started.setHours(9, 30, 0, 0);
   return {
     id: 'example', kind: 'call', status: 'ready', title: 'Weekly product call', startedAt: started.toISOString(), duration: 24 * 60,
-    people: [me, theo, priya, kofi], excerpt: 'Sign-ups are back up, and the launch moves to the 18th.', openActions: 1, totalActions: 1,
+    people: [me, theo, priya, kofi], sharedWith: [], excerpt: 'Sign-ups are back up, and the launch moves to the 18th.', openActions: 1, totalActions: 1,
     recipients: [{ person: me, role: 'organizer' }, { person: theo, role: 'invited' }, { person: priya, role: 'invited' }, { person: kofi, role: 'invited' }],
     groupShares: [],
     summary: 'Sign-ups are back up since Tuesday’s fix, so the launch moves to the 18th. Kofi sends the new screens by Wednesday.',
