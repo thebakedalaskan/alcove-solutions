@@ -81,7 +81,7 @@ has a stream of rings open, a ticker that reads what's ringing once a second ([C
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
    commitment of method, path and body plus the encrypted response; a retry returns the same response,
    and a different request under the same ID is `409 conflict`. Note search, asking, reading who's busy, catching up, caption
-   translations, audio pieces, transcript clips, changes to a note's decisions, open questions,
+   translations, audio pieces, transcript clips, proposals and changes to a note's decisions, open questions,
    follow-ups and transcript lines, having its notes written again, sharing a note, answering an invitation and
    answering a ring keep no receipt.
 6. The handler reads and writes through the vault (encrypted manifests), the audio pipeline (encrypted

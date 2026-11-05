@@ -313,13 +313,18 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   ([Notes and inference › Breakout rooms](notes-and-inference.md#breakout-rooms)). In a call set not to keep its
   transcript, a room's lines are the organizer's alone for as long as they're there, like the main room's.
 - **Decisions, open questions and follow-ups** are one list for everyone who has the note, and every
-  change writes a new revision in the organizer's vault with who made it (their name and address, inside
-  the sealed manifest) and when. What the notes model wrote is only a proposal: a decision stays
-  `proposed` until someone who has the note confirms it (and a confirmed one can later be said to no longer
-  hold), a question stays open until someone says it was answered, and a follow-up's owner is a suggestion
-  until that person takes it on. Only the person a follow-up is for can take it on (`403 forbidden` for
-  anyone else; giving it to yourself is taking it on), and it can only go to someone who has the note now
-  (read under the note's lock, so someone who removed it isn't given one). The inbox, and a question across
+  change writes a new revision in the organizer's vault with who made it (their account, name and address, how they
+  had the note, inside the sealed manifest) and when. What the notes model wrote is only a proposal: a decision stays
+  `proposed` until the organizer or someone invited confirms it (and a confirmed one can later be said to no longer
+  hold), a question stays open until someone says it was answered, and a follow-up's owner and due date are
+  suggestions until that person takes it on. Having the note lets someone in; what they can do then is one rule
+  (`packages/api/src/grants.ts`, [Notes and inference › Decisions and follow-ups](notes-and-inference.md#decisions-and-follow-ups)):
+  anyone adds, the organizer and people invited agree, and only the organizer or the person concerned takes away. Only the person a follow-up is for can take
+  it on (`403 forbidden` for anyone else; giving it to yourself is taking it on, when it's yours to give), and it can
+  only go to someone who has the note now (read under the note's lock, so someone who removed it isn't given one).
+  Entries keep the IDs of the lines they rest on; what those lines say reaches a reader only with the note, worked out
+  for each reader on each request and stored nowhere. Everything anyone adds goes in sealed with the note, and in
+  through an explicit request with its exact words, so nothing private to someone can reach it unless they send it. The inbox, and a question across
   your notes (`POST /v1/notes/ask`), are read per request from the notes you have, your own and ones reached
   through your `note_access` rows; neither keeps anything, and a question names no note, so it can't reach
   anyone else's. Refusals name nobody, so no name reaches a log line.
@@ -366,10 +371,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   a meeting, or a transcript their call didn't keep goes. Note search, asking (about a note, across your notes, a call so far or a series), catching up,
   caption translations, reading who's busy, audio pieces and transcript clips keep no receipt: searching, asking,
   translating and reading who's busy only read, pieces and clips are already idempotent by their place in the
-  recording, and their answers carry the live transcript, which shouldn't be copied into receipts. Nor do changes to a note's decisions, open
+  recording, and their answers carry the live transcript, which shouldn't be copied into receipts. Nor do proposing or changing a note's decisions, open
   questions, follow-ups and transcript lines, having it written again, or sharing it: anyone who has the note can make them, and each answers with the
   whole note, so a receipt kept under someone it was given to would outlive the organizer deleting it. Each
-  sets an explicit state (confirmed, answered, done, these addresses added), so a retry changes nothing anyway.
+  sets an explicit state (confirmed, answered, done, these words proposed, these addresses added), so a retry changes nothing anyway.
   Answering a ring keeps none, for the same reason, and because a receipt's clear method and time would say an
   account was rung for a day after the ring had gone.
   Your own notes and what's added to the shared notes keep none either, so nothing you delete or take back stays
