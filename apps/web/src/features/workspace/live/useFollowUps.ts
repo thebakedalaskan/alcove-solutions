@@ -56,18 +56,19 @@ export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost
     const tickSaid = (id: string) => (mayTick ? [(done: boolean) => session.tickFollowUp(id, done)] : []);
     const said = (notes.notes?.next ?? []).map((f) => ({ f, when: f.evidence[0]?.said ?? 0, source: `Said at ${clockAt(state, f.evidence[0]?.said ?? 0)}` }));
     const typed = notes.added.map((f) => ({ f, when: f.at, source: 'Added by hand' }));
-    const out = [...said, ...typed].sort((a, b) => a.when - b.when).map(({ f, source }): FollowUpRow => ({
+    const spoken = [...said, ...typed].sort((a, b) => a.when - b.when).map(({ f, source }): FollowUpRow => ({
       id: f.id, text: f.text, done: f.done, person: face(state, f.owner), name: f.owner ? firstOf(f.owner) : '', due: dueWords(f.due, now), source,
       locked: !mayTick, mine: me !== undefined && f.owner !== undefined && sameName(f.owner, me.name), ticks: tickSaid(f.id), said: { text: f.text, owner: f.owner, due: f.due }
     }));
     /* Each thing said is the same as one line at most: a second copy in a document is a to-do of its own. */
     const joined = new Set<string>();
+    const lines: FollowUpRow[] = [];
     for (const d of (written?.items ?? []).filter((x): x is DocFollowUp => x.from === 'document')) {
       const tag = d.mentions[0];
       const date = d.dates[0];
       const open = d.workspaceId === workspaceId ? () => go({ kind: 'document', id: d.documentId, block: d.block }) : undefined;
       const tickDoc = d.canTick ? [(done: boolean) => tickLine(session, d, done)] : [];
-      const same = out.find((r) => !joined.has(r.id) && isTheLine(r.said, d));
+      const same = spoken.find((r) => !joined.has(r.id) && isTheLine(r.said, d));
       if (same) {
         joined.add(same.id);
         same.source = `${same.source} · ${d.document}`;
@@ -75,14 +76,18 @@ export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost
         same.done = same.done || d.done;
         same.ticks = [...same.ticks, ...tickDoc];
         same.locked = same.ticks.length === 0;
+        same.mine = same.mine || isYours(d, me, myId);
+        /* What was said may not have said who or when, and a line with tags does. */
+        if (!same.person && tag) { same.person = face(state, tag.name); same.name = firstOf(tag.name); }
+        if (!same.said.due && date) same.due = dayWords(date, now);
         continue;
       }
-      out.push({
+      lines.push({
         id: `${d.documentId}:${d.block}`, text: d.text.replace(/\s+/g, ' ').trim(), done: d.done, person: tag ? face(state, tag.name) : null, name: tag ? firstOf(tag.name) : '', due: date ? dayWords(date, now) : 'No date',
         source: d.document, onSource: open, locked: tickDoc.length === 0, mine: isYours(d, me, myId), ticks: tickDoc, said: { text: d.text }
       });
     }
-    return out.map((r) => { const done = ticking.get(r.id); return done === undefined ? r : { ...r, done }; });
+    return [...spoken, ...lines].map((r) => { const done = ticking.get(r.id); return done === undefined ? r : { ...r, done }; });
   }, [notes, written, state.participants, state.startedAt, mayTick, me, myId, session, workspaceId, go, ticking]);
 
   const tick = useCallback((id: string) => {

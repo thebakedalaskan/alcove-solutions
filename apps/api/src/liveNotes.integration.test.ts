@@ -175,7 +175,7 @@ describe('one set of live notes for the call', () => {
     // Nobody is watching: nothing goes to the notes model, and nothing is kept.
     await sleep(300);
     await host.refresh();
-    expect(host.getSnapshot().liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect(host.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     expect(runs()).toBe(before);
     expect(await notesRows(host.ticket.callId)).toBe(0);
 
@@ -612,7 +612,7 @@ describe('who reads what of them', () => {
     h.near.failNext(1, 'prose');
     const stop = sam.watchNotes();
     const failed = await settle(sam, (s) => s.liveNotes.error !== null);
-    expect(failed.liveNotes).toEqual({ notes: null, writing: false, error: NOT_UPDATED });
+    expect(failed.liveNotes).toEqual({ notes: null, added: [], writing: false, error: NOT_UPDATED });
     await later(sam);
     expect(texts((await notesOf(sam)).decided)).toEqual([SAID]);
     await settle(sam, (s) => s.liveNotes.error === null);
@@ -628,7 +628,7 @@ describe('who reads what of them', () => {
     await notesOf(host);
     stop();
     const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
-    expect(kim.getSnapshot().liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect(kim.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     expect((await look(h.baseUrl, kim)).status).toBe(403);
     await letIn(host, kim);
     await host.remove(kim.ticket.identity);
@@ -1638,7 +1638,7 @@ describe('when notes are off or paused', () => {
     expect((await look(h.baseUrl, kofi)).body).toEqual({ refreshed: false });
     expect(await notesRows(host.ticket.callId)).toBe(0);
     await kofi.refresh();
-    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: null, writing: false, error: null });
+    expect(kofi.getSnapshot().liveNotes).toEqual({ notes: null, added: [], writing: false, error: null });
     expect(code(await kofi.tickFollowUp('AAAAAAAAAAAAAAAAAAAAAA', true).catch((e: unknown) => e))).toBe('not-found');
     expect(runs()).toBe(before);
     await host.leave();
