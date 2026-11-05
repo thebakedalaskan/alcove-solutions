@@ -717,8 +717,9 @@ export interface PeoplePlaced {
   more: (TileSpot & { n: number }) | null;
 }
 export interface Horizon {
-  /** Where the dock starts, in the call's area: the horizon stops short of it. */
+  /** Where the dock starts and ends, in the call's area: the horizon stops short of it. */
   dock: number;
+  dockEnd: number;
   /** The ground they stand on. */
   base: number;
   /** How far the call's area is from the top and the left of the window. */

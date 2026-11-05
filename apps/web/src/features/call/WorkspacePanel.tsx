@@ -153,10 +153,11 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   }), [live, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
+  /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */
+  if (!settled) return <WsPane />;
   /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
   const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;
   if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={call} />;
-  if (!settled) return <WsPane />;
   return (
     <OutsideSpace live={live} at={at} go={act.go} say={act.say} closed={!open} zen={call.zen} list={call.list}>
       {organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}
