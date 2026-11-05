@@ -500,7 +500,9 @@ export async function deleteItem(d: Deps, reader: Reader, workspaceId: string, i
 
 /* ---------- sharing ---------- */
 
-const ShareRow = z.object({ access_id: z.string(), kind: z.enum(['email', 'seat']), role: z.enum(['edit', 'read']), principal_index: bytea, person_ciphertext: bytea, created_at: timestamp });
+const ShareRow = z.object({ access_id: z.string(), kind: z.enum(['email', 'seat']), role: z.enum(['edit', 'read']), person_ciphertext: bytea, created_at: timestamp });
+/** With how access knows them, which for a seat is all there is to find them by. */
+const ShareRowIndexed = ShareRow.extend({ principal_index: bytea });
 /** The addresses of everyone in the workspace who can open this, by the rule that decides it, and everyone it's given to. */
 async function whoCanOpen(w: Workspace, documentId: string, item: StoredItem, entries: ShareEntry[]): Promise<string[]> {
   const found = await rows(w.owner.pool, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId]);
@@ -513,7 +515,7 @@ async function whoCanOpen(w: Workspace, documentId: string, item: StoredItem, en
 export async function shareList(d: Deps, reader: Reader, workspaceId: string, documentId: string): Promise<DocumentShare> {
   const w = await workspaceFor(d, reader, workspaceId);
   const { item: it } = requireSharing(reader, w, documentId);
-  const found = await rows(d.pool, ShareRow, 'SELECT access_id, kind, role, principal_index, person_ciphertext, created_at FROM document_access WHERE owner_id = $1 AND document_id = $2 ORDER BY created_at, access_id', [w.owner.ownerId, documentId]);
+  const found = await rows(d.pool, ShareRowIndexed, 'SELECT access_id, kind, role, principal_index, person_ciphertext, created_at FROM document_access WHERE owner_id = $1 AND document_id = $2 ORDER BY created_at, access_id', [w.owner.ownerId, documentId]);
   const entries = found.map((r): ShareEntry => {
     const who = openSharedPerson(w.owner, workspaceId, documentId, r.access_id, r.person_ciphertext);
     const person: Person = who.email !== undefined ? personOf(who.email) : { id: r.access_id, name: who.name ?? '', email: '', portrait: portraitFor(r.access_id) };
