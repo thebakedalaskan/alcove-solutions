@@ -13,8 +13,10 @@ import { colourOf, colourSelected, hasSizes, sizeSelected, stackSelected, tidySe
 const TOP = 66;
 /** How far above what's picked the bar sits. */
 const ABOVE = 52;
-/** What a frame's title takes up above it, in board units. The bar clears that too: a frame's picked by its title, and a double-click there has to land on it. */
+/** What a frame's title takes up above it, in board units. A frame is picked by its title, so the bar keeps off it: the second press of a double-click has to land there. */
 const TITLE_ROOM = 36;
+/** How far inside a frame the bar sits when there's no room above its title. */
+const INSIDE = 10;
 /** The row of colours and the menu sit this far under where the bar starts. */
 const BELOW = 48;
 const POP_WIDTH = 264;
@@ -25,8 +27,10 @@ function barSpot(view: BoardView, picked: readonly BoardObject[], cam: Camera): 
   const boxes = placed(view, picked.map((o) => o.id));
   if (boxes.length) {
     const ring = selectionRing(boxes, cam);
-    const title = boxes.some((o) => o.k === 'frame') ? TITLE_ROOM * cam.z : 0;
-    return { x: ring.x + ring.w / 2, y: Math.max(TOP, ring.y - ABOVE - title) };
+    const x = ring.x + ring.w / 2, y = ring.y - ABOVE;
+    if (!boxes.some((o) => o.k === 'frame')) return { x, y: Math.max(TOP, y) };
+    const clear = y - TITLE_ROOM * cam.z;
+    return { x, y: clear >= TOP ? clear : Math.max(TOP, ring.y + INSIDE) };
   }
   const line = picked[0];
   const a = line?.k === 'line' ? endBox(view, line.from) : null, b = line?.k === 'line' ? endBox(view, line.to) : null;
