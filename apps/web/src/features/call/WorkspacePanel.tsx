@@ -70,6 +70,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       },
       /** Follow, on a tile. */
       follow: (connection: string) => { reach.current?.follow(connection); },
+      stopFollowing: () => { reach.current?.stop(); },
       setTogether,
       /** The tile's ring pulses once. */
       tagged: (connection: string) => {

@@ -58,7 +58,7 @@ export interface StageParticipant {
   connecting: boolean;
 }
 /** What a tile shows of the workspace, by connection: Follow, Following, who's writing, and who was just tagged. */
-export interface StageTogether extends CallTogether { lit: string | null; onFollow: (connection: string) => void }
+export interface StageTogether extends CallTogether { lit: string | null; onFollow: (connection: string) => void; onStop: () => void }
 
 /** Something shared: whose it is (their participant ID), its feed, and what it's called. */
 export interface StageShare {
@@ -527,7 +527,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
       ...(g && g.length > 1 ? { earlier: at > 0 ? () => moveBy(p.id, -1) : null, later: at < g.length - 1 ? () => moveBy(p.id, 1) : null } : {}),
       size: sizable && restGroup.includes(p.id) ? { big: lay.big.includes(p.seat), toggle: () => toggleBig(p) } : undefined,
       self: p.isMe ? { where: prefs.self, set: onSelf } : undefined,
-      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) }
+      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) },
+      following: together.following === p.id ? { on: true, toggle: together.onStop } : together.followable.includes(p.id) ? { on: false, toggle: () => together.onFollow(p.id) } : undefined
     };
   };
   const nothing = !L.slots.size && !L.shares.size;

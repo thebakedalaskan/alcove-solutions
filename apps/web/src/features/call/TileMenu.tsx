@@ -20,6 +20,8 @@ export interface PersonMenu {
   self?: { where: SelfView; set: (w: SelfView) => void } | undefined;
   /** Someone else's tile: how loud they are for you (your playback only), where the browser can set it. */
   volume?: { level: number; set: (level: number) => void; toggle: () => void } | undefined;
+  /** Someone in the workspace with you: going where they go. An arch has no room for the button a tile has. */
+  following?: { on: boolean; toggle: () => void } | undefined;
 }
 
 const SELF: { where: SelfView; icon: IconName; label: string }[] = [
@@ -43,13 +45,14 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
 }) {
   const name = `${who.name}${me ? ' (you)' : ''}`;
   const pick = (f: () => void) => () => { onOpenChange(false); f(); };
-  const { pinned, spotlight, earlier, later, size, self, volume } = menu;
+  const { pinned, spotlight, earlier, later, size, self, volume, following } = menu;
   const moves = earlier !== undefined || later !== undefined;
   return (
     <Popover open={open} onOpenChange={onOpenChange} side="bottom" align="end" label={`Options for ${name}`} className="ic-menu ic-tmenu"
       anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${name}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
       <div className="mh"><Avatar person={who} size={22} /><b>{name}</b></div>
       <p className="scope">Only your view changes</p>
+      {following && <Item icon="navigate" label={following.on ? 'Stop following' : `Follow ${callName(who)}`} onPick={pick(following.toggle)} />}
       {pinned && <Item icon={pinned.on ? 'pinOff' : 'pin'} label={pinned.on ? 'Unpin for me' : 'Pin for me'} kb="P" keys="P" onPick={pick(pinned.toggle)} />}
       {moves && (
         <>

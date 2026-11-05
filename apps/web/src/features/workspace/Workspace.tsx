@@ -194,9 +194,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const togetherRef = call?.together;
   useEffect(() => {
     if (!togetherRef) return;
-    togetherRef.current = { follow: (connection) => { const o = othersNow.current.find((x) => x.callIdentity === connection); if (o) follow(o.person.id); } };
+    togetherRef.current = { follow: (connection) => { const o = othersNow.current.find((x) => x.callIdentity === connection); if (o) follow(o.person.id); }, stop: () => stopFollowing() };
     return () => { togetherRef.current = null; };
-  }, [togetherRef, follow]);
+  }, [togetherRef, follow, stopFollowing]);
   /* Put away, there's nothing to go with. */
   useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
 

@@ -20,7 +20,7 @@ export interface CallPerson { id: string; seat: string; person: Person; isMe: bo
 /** What the tiles show of people working together, by connection. `followable`: they're in the workspace, so Follow is on offer. */
 export interface CallTogether { followable: readonly string[]; following: string | null; writing: readonly string[] }
 /** What the call can ask of the workspace. */
-export interface WorkspaceTogether { follow: (connection: string) => void }
+export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void }
 
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
