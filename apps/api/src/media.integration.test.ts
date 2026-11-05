@@ -7,11 +7,13 @@
 import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MEDIA_PIECE_BYTES, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { resolveObjectURL } from 'node:buffer';
+import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { request, type ClientRequest } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { LIMITS } from './limits';
 import { maintain } from './maintenance';
 import { MEDIA_LIMITS } from './modules/media';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
@@ -26,7 +28,8 @@ afterAll(async () => {
   if (h) for await (const o of h.objects.list()) await h.objects.delete(o.id);
   await h?.close();
 });
-afterEach(() => { h.closeCalls(); vi.restoreAllMocks(); });
+// A limit a test set is gone before the next starts: tests read the limits afresh on every request (LIMITS_CACHE_MS is 0 here).
+afterEach(async () => { h.closeCalls(); vi.restoreAllMocks(); await h.pool.query('DELETE FROM service_limits'); });
 
 const PIECE = MEDIA_PIECE_BYTES;
 let seq = 0;
@@ -38,6 +41,18 @@ async function account(o: { email?: string | undefined; fetch?: typeof fetch | u
   const { session } = await b.api.auth.signIn('sso', { email: o.email ?? unique() });
   return { ...b, email: session.user.email, name: session.user.name, ownerId: session.ownerId };
 }
+const MiB = 1024 * 1024;
+const GiB = 1024 * MiB;
+/** A limit, set as someone at the database's console would. */
+const setLimit = (name: string, value: number) => h.pool.query('INSERT INTO service_limits (name, value) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now()', [name, value]);
+/** What each storage limit refuses with, as a browser hears it: a file says how big one can be, and a limit of zero that nothing can be uploaded. */
+const tooBig = (most: string) => ({ code: 'invalid', message: `This file is bigger than ${most}, the most a file can be.`, status: 400 });
+const NO_FILES = { code: 'invalid', message: 'Files can’t be uploaded right now.', status: 400 };
+const NO_UPLOADS = { code: 'conflict', message: 'Files can’t be uploaded right now.', status: 409 };
+const FULL = { code: 'conflict', message: 'This workspace is full, so it can’t take more files.', status: 409 };
+const TODAYS = { code: 'conflict', message: 'That’s all you can upload today. You can upload more tomorrow.', status: 409 };
+const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
+const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 const madeUp = () => randomBytes(16).toString('base64url');
 /** How a request was refused, as a browser sees it, or null when it wasn't. */
 const refusal = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => (e instanceof AlcoveApiError ? { code: e.code, message: e.message, status: e.status } : { code: 'not-an-api-error', message: String(e), status: 0 }));
@@ -277,10 +292,11 @@ describe('a file in a document', () => {
     const doc = await make(ann, id, 'document', 'Plan');
     const at = place(id, doc);
     const owner = await ownerOf(id);
-    for (const body of [{ name: 'big.mp4', type: 'video/mp4', size: MAX_MEDIA_BYTES + 1 }, { name: 'none.png', type: 'image/png', size: 0 }, { name: '   ', type: 'image/png', size: 4 }, { name: 'x'.repeat(256), type: 'image/png', size: 4 }, { name: 'half.png', type: 'image/png', size: 1.5 }, { name: 'tall.png', type: 'image/png', size: 4, width: 0 }]) {
+    const limit = LIMITS['media.file_bytes'].default;
+    for (const body of [{ name: 'big.mp4', type: 'video/mp4', size: MAX_MEDIA_BYTES + 1 }, { name: 'over.mp4', type: 'video/mp4', size: limit + 1 }, { name: 'none.png', type: 'image/png', size: 0 }, { name: '   ', type: 'image/png', size: 4 }, { name: 'x'.repeat(256), type: 'image/png', size: 4 }, { name: 'half.png', type: 'image/png', size: 1.5 }, { name: 'tall.png', type: 'image/png', size: 4, width: 0 }]) {
       expect([body.name.slice(0, 8), (await json(ann, at, body)).status]).toEqual([body.name.slice(0, 8), 400]);
     }
-    expect((await json(ann, at, { name: 'fits.mp4', type: 'video/mp4', size: MAX_MEDIA_BYTES })).status).toBe(200);
+    expect((await json(ann, at, { name: 'fits.mp4', type: 'video/mp4', size: limit })).status).toBe(200);
 
     const size = PIECE + 10;
     const m = await started(ann, id, doc, size);
@@ -1081,6 +1097,25 @@ describe('guests in a call', () => {
     expect(await refused(member, seatUrl)).toEqual(await nothing());
     expect((await read(member, accountUrl)).status).toBe(200);
   });
+
+  it('have the same limits as anyone, each with a day of their own', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const agenda = await make(org, id, 'document', 'Agenda');
+    const { host, guests } = await callWith(org, ['Sam Guest', 'Jo Guest']);
+    const [sam, jo] = guests;
+    if (!sam || !jo) throw new Error('nobody joined');
+    await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }, { seat: jo.seat }], 'edit', { pass: host.ticket.pass });
+    const send = (g: { api: AlcoveApi; pass: string }, bytes: number) => g.api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: g.pass });
+    // Each guest's day is their own, counted by the person their pass names.
+    await setLimit('media.account_day_bytes', 2 * MiB);
+    await send(sam, MiB);
+    expect(await refusal(send(sam, MiB + MiB / 2))).toEqual(TODAYS);
+    await send(jo, MiB + MiB / 2);
+    // And a workspace holds what it holds, whoever's adding to it.
+    await setLimit('media.workspace_bytes', 2 * MiB);
+    expect(await refusal(send(jo, 16))).toEqual(FULL);
+  });
 });
 
 describe('a picture on a board', () => {
@@ -1154,8 +1189,15 @@ describe('a picture on a board', () => {
   it('stops when the block that wanted it goes, and lets the next one read', async () => {
     let stuck = true;
     const browser = cookieFetch(ORIGIN);
+    // Held until it's stopped, as a slow network would: one stopped before it starts is refused at once, as fetch does.
     const held: typeof fetch = async (input, init) => {
-      if (stuck && String(input).includes('/v1/media/')) await new Promise((_, reject) => { init?.signal?.addEventListener('abort', () => reject(new Error('stopped'))); });
+      const signal = init?.signal;
+      if (stuck && String(input).includes('/v1/media/')) {
+        await new Promise((_, reject) => {
+          if (signal?.aborted) reject(new Error('stopped'));
+          signal?.addEventListener('abort', () => reject(new Error('stopped')));
+        });
+      }
       return browser(input, init);
     };
     const ann = await account({ fetch: held });
@@ -1686,6 +1728,279 @@ describe('what a process takes on at once', () => {
     expect(outcome).toBe('cut off');
     // It stopped at the next time it asked, every four pieces: well short of the file.
     expect(taken).toBeLessThanOrEqual(5 * PIECE);
+  });
+});
+
+describe('storage limits', () => {
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const send = (who: { api: AlcoveApi }, id: string, doc: string, bytes: number) => who.api.workspaces.media.upload(id, doc, fileOf(bytesOf(bytes)));
+  async function planIn(who: Account) {
+    const id = await workspace(who, 'Ours');
+    return { id, doc: await make(who, id, 'document', 'Plan') };
+  }
+  /** What a refused request answered, without its request ID. */
+  const said = async (res: Response) => {
+    const { code: c, message } = Refused.parse(await res.json());
+    return { code: c, message, status: res.status };
+  };
+
+  it('refuses a file too big, a full workspace and a day’s allowance used, each in its own words, before anything is sent', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    const owner = await ownerOf(id);
+    // Asked for at the start, so nothing of a file that won't fit is sent at all.
+    const starting = async (at: { id: string; doc: string }, size: number) => said(await json(ann, place(at.id, at.doc), { name: 'a.png', type: 'image/png', size }));
+    // A file over the limit in force hears how big one can be, which only the server knows: one past the most there can ever be too.
+    expect(await starting({ id, doc }, MAX_MEDIA_BYTES + 1)).toEqual(tooBig('512 MiB'));
+    await setLimit('media.file_bytes', MiB);
+    expect(await refusal(send(ann, id, doc, MiB + 1))).toEqual(tooBig('1 MiB'));
+    expect(await starting({ id, doc }, MiB + 1)).toEqual(tooBig('1 MiB'));
+    await send(ann, id, doc, MiB);
+    // A workspace that holds what it's allowed: what's stored there, and what's coming.
+    await setLimit('media.workspace_bytes', 2 * MiB);
+    expect(await refusal(send(ann, id, doc, MiB))).toEqual(FULL);
+    expect(await starting({ id, doc }, MiB)).toEqual(FULL);
+    await send(ann, id, doc, MiB / 2);
+    // What someone can upload in a day, in every workspace together.
+    const elsewhere = await planIn(ann);
+    await setLimit('media.account_day_bytes', 2 * MiB);
+    expect(await refusal(send(ann, elsewhere.id, elsewhere.doc, MiB))).toEqual(TODAYS);
+    expect(await starting(elsewhere, MiB)).toEqual(TODAYS);
+    await send(ann, elsewhere.id, elsewhere.doc, MiB / 2);
+    expect(await refusal(send(ann, elsewhere.id, elsewhere.doc, 1))).toEqual(TODAYS);
+    // Each was refused as it started: nothing of them was kept.
+    expect(await count('SELECT count(*)::int AS n FROM workspace_media WHERE owner_id = $1', [owner])).toBe(2);
+    // A limit of zero isn't someone having used theirs up: nothing can be uploaded, whoever's asking.
+    await h.pool.query('DELETE FROM service_limits');
+    await setLimit('media.file_bytes', 0);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_FILES);
+    await h.pool.query('DELETE FROM service_limits');
+    await setLimit('media.workspace_bytes', 0);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
+    await h.pool.query('DELETE FROM service_limits');
+    await setLimit('media.account_day_bytes', 0);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
+  });
+
+  it('asks again on every piece, so a limit lowered during an upload stops it there, and raising it lets it go on', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    const m = await started(ann, id, doc, 3 * PIECE);
+    const at = (n: number) => `${place(id, doc)}/${m}/pieces/${n}`;
+    expect((await sendPiece(ann, at(0), bytesOf(PIECE))).status).toBe(200);
+    await setLimit('media.account_day_bytes', PIECE + 1);
+    expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(TODAYS);
+    await setLimit('media.account_day_bytes', 3 * PIECE);
+    await setLimit('media.workspace_bytes', 2 * PIECE);
+    expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(FULL);
+    await setLimit('media.workspace_bytes', 4 * PIECE);
+    await setLimit('media.file_bytes', 2 * PIECE);
+    expect(await said(await sendPiece(ann, at(1), bytesOf(PIECE)))).toEqual(tooBig('8 MiB'));
+    await h.pool.query('DELETE FROM service_limits');
+    expect((await sendPiece(ann, at(1), bytesOf(PIECE))).status).toBe(200);
+    expect((await sendPiece(ann, at(2), bytesOf(PIECE))).status).toBe(200);
+    expect((await json(ann, `${place(id, doc)}/${m}/finish`, {})).status).toBe(200);
+  });
+
+  it('deletes nothing when a limit goes down: it only refuses what comes next', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    const owner = await ownerOf(id);
+    const kept = await Promise.all([1, 2, 3].map(async (n) => {
+      const bytes = bytesOf(n * 100_000);
+      return { bytes, id: (await ann.api.workspaces.media.upload(id, doc, fileOf(bytes))).id };
+    }));
+    const objects = await objectsOf(owner);
+    const before = await storedBytes(owner);
+    // Below what's already there.
+    await setLimit('media.workspace_bytes', 1);
+    await setLimit('media.account_day_bytes', 1);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
+    await setLimit('media.file_bytes', 0);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_FILES);
+    await maintain(h.deps, { uploadAgeMs: ALREADY });
+    // Everything already there stays, and reads back as it went in.
+    expect((await ann.api.workspaces.media.list(id)).map((x) => x.id).sort()).toEqual(kept.map((k) => k.id).sort());
+    for (const k of kept) expect(same((await read(ann, await ann.api.workspaces.media.url(id, doc, k.id))).bytes, k.bytes)).toBe(true);
+    expect(await objectsOf(owner)).toEqual(objects);
+    expect(await storedBytes(owner)).toBe(before);
+    expect(await queued(owner)).toBe(0);
+  });
+
+  it('takes a changed limit within the cache window, with no restart, and says so once', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    const { cfg } = h.deps;
+    // Read now, so the window starts here.
+    await send(ann, id, doc, 16);
+    const from = h.logs.length;
+    h.deps.cfg = { ...cfg, LIMITS_CACHE_MS: 3000 };
+    try {
+      await setLimit('media.account_day_bytes', 1);
+      // Until the window ends, what was read holds...
+      await send(ann, id, doc, 16);
+      await pause(3100);
+      // ...and once it has, what the database says.
+      expect(await refusal(send(ann, id, doc, 16))).toEqual(TODAYS);
+    } finally { h.deps.cfg = cfg; }
+    const changed = logsSince(from).filter((l) => l.msg === 'service limit changed');
+    expect(changed).toEqual([expect.objectContaining({ level: 30, limit: 'media.account_day_bytes', old: LIMITS['media.account_day_bytes'].default, new: 1 })]);
+  });
+
+  it('keeps what was in force when the limits can’t be read, and reads them again next time', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    await setLimit('media.account_day_bytes', 1);
+    expect(await refusal(send(ann, id, doc, 16))).toEqual(TODAYS);
+    const from = h.logs.length;
+    await h.pool.query('ALTER TABLE service_limits RENAME TO service_limits_away');
+    try {
+      // Nothing can read them now: what was in force stays, and isn't put back to the defaults.
+      expect(await refusal(send(ann, id, doc, 16))).toEqual(TODAYS);
+      expect(logsSince(from).filter((l) => l.msg === 'service limits not read; keeping what was in force').map((l) => l.level)).toContain(40);
+    } finally { await h.pool.query('ALTER TABLE service_limits_away RENAME TO service_limits'); }
+    // Once they can be read, the next request does.
+    await h.pool.query('DELETE FROM service_limits');
+    await send(ann, id, doc, 16);
+  });
+
+  it('takes the account’s row before the workspace’s, as deleting the account does, so neither waits on the other', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    const room = await ownerOf(id);
+    const m = await started(ann, id, doc, 16);
+    // Deleting an account holds its row first, and then the workspaces it's in (account.ts › deleteAccount).
+    const deleting = await h.pool.connect();
+    try {
+      await deleting.query('BEGIN');
+      await deleting.query('SELECT 1 FROM owners WHERE owner_id = $1 FOR UPDATE', [ann.ownerId]);
+      const piece = sendPiece(ann, `${place(id, doc)}/${m}/pieces/0`, bytesOf(16));
+      await until(async () => (await count("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'")) > 0, 'the piece to wait for the account');
+      // The piece waits holding nothing of the workspace, so deleting the account can take that next.
+      await deleting.query('SELECT 1 FROM workspaces WHERE owner_id = $1 FOR NO KEY UPDATE NOWAIT', [room]);
+      await deleting.query('ROLLBACK');
+      expect((await piece).status).toBe(200);
+    } finally {
+      await deleting.query('ROLLBACK');
+      deleting.release();
+    }
+  });
+
+  it('ignores a row it can’t use, saying so once, and holds a value past its ceiling to the ceiling', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    const owner = await ownerOf(id);
+    const from = h.logs.length;
+    await setLimit('media.file_byte', 1);
+    await setLimit('media.account_day_bytes', -1);
+    // Neither stops anything: each limit they meant is its default.
+    await send(ann, id, doc, MiB);
+    await send(ann, id, doc, MiB);
+    const ignored = logsSince(from).filter((l) => l.msg === 'service limit ignored').map((l) => [l.level, l['limit'], l['value']]);
+    expect(ignored.sort()).toEqual([[40, 'media.account_day_bytes', -1], [40, 'media.file_byte', 1]]);
+    // Zero is a value like any other: none.
+    await setLimit('media.account_day_bytes', 0);
+    expect(await refusal(send(ann, id, doc, 1))).toEqual(NO_UPLOADS);
+    await h.pool.query('DELETE FROM service_limits');
+    // Past its ceiling, a value is the ceiling: a workspace holding more than that is full, whatever the row says.
+    const { ceiling } = LIMITS['media.workspace_bytes'];
+    const before = await storedBytes(owner);
+    await h.pool.query('UPDATE owners SET stored_bytes = $2 WHERE owner_id = $1', [owner, ceiling + GiB]);
+    try {
+      await setLimit('media.workspace_bytes', 1e15);
+      expect(await refusal(send(ann, id, doc, 1))).toEqual(FULL);
+    } finally { await h.pool.query('UPDATE owners SET stored_bytes = $2 WHERE owner_id = $1', [owner, before]); }
+    expect(logsSince(from).filter((l) => l.msg === 'service limit clamped')).toEqual([expect.objectContaining({ level: 40, limit: 'media.workspace_bytes', value: 1e15, used: ceiling })]);
+  });
+
+  it('is set from the command line, against any database, saying what it was and what it is now', async () => {
+    const cli = (...args: string[]) => new Promise<{ code: number | null; out: string }>((resolve, reject) => {
+      const run = spawn(process.execPath, ['--import', 'tsx', 'src/limits-cli.ts', ...args], {
+        env: { ...process.env, DATABASE_URL: process.env['TEST_DATABASE_URL'], LOG_FORMAT: 'json', LOG_LEVEL: 'info' }, stdio: ['ignore', 'pipe', 'pipe']
+      });
+      let out = '';
+      run.stdout.on('data', (b: Buffer) => { out += b.toString(); });
+      run.stderr.on('data', (b: Buffer) => { out += b.toString(); });
+      run.on('error', reject);
+      run.on('close', (c) => resolve({ code: c, out }));
+    });
+    const loggedBy = (out: string) => out.split('\n').filter((l) => l.startsWith('{')).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+    const stored = async () => (await h.pool.query<{ name: string; value: string }>('SELECT name, value::text AS value FROM service_limits ORDER BY name')).rows.map((r) => [r.name, Number(r.value)]);
+
+    const day = await cli('set', 'media.account_day_bytes', '1048576');
+    expect(day.code).toBe(0);
+    expect(loggedBy(day.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ level: 30, limit: 'media.account_day_bytes', old: LIMITS['media.account_day_bytes'].default, new: MiB })]);
+    // Set again, what it was is what it was set to.
+    const again = await cli('set', 'media.account_day_bytes', '2MiB');
+    expect(loggedBy(again.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ limit: 'media.account_day_bytes', old: MiB, new: 2 * MiB })]);
+    // A value as `limits list` writes it is one it takes.
+    const room = await cli('set', 'media.workspace_bytes', '5 GiB');
+    expect(room.code).toBe(0);
+    expect(loggedBy(room.out).filter((l) => l.msg === 'service limit set')).toEqual([expect.objectContaining({ limit: 'media.workspace_bytes', old: 100 * GiB, new: 5 * GiB })]);
+    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['media.workspace_bytes', 5 * GiB]]);
+    // The API holds to it on the next request it reads limits for.
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    expect(await refusal(send(ann, id, doc, 3 * MiB))).toEqual(TODAYS);
+    // What's in force, for someone deciding what to change.
+    const listed = await cli('list');
+    expect(listed.code).toBe(0);
+    for (const line of ['media.account_day_bytes', '2 MiB', 'media.file_bytes', '512 MiB']) expect(listed.out).toContain(line);
+    // Anything it can't set is refused, and nothing is stored: a typo is an ordinary refusal, said at warn.
+    for (const args of [['set', 'media.file_byte', '1'], ['set', 'media.file_bytes', '99GiB'], ['set', 'media.file_bytes', '-5'], ['set', 'media.file_bytes'], ['unset']]) {
+      const refused = await cli(...args);
+      expect([args.join(' '), refused.code, loggedBy(refused.out).filter((l) => l.level >= 50)]).toEqual([args.join(' '), 1, []]);
+    }
+    expect(await stored()).toEqual([['media.account_day_bytes', 2 * MiB], ['media.workspace_bytes', 5 * GiB]]);
+  });
+
+  it('warns once each time a workspace or someone’s day passes 80% of its limit', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    await setLimit('media.workspace_bytes', 10 * MiB);
+    await setLimit('media.account_day_bytes', 12 * MiB);
+    const from = h.logs.length;
+    const warned = () => logsSince(from).filter((l) => l.level === 40 && /past 80%/.test(l.msg));
+    const files = [];
+    for (let i = 0; i < 3; i++) files.push(await send(ann, id, doc, 3 * MiB));
+    await send(ann, id, doc, MiB / 2);
+    const first = files.pop();
+    if (!first) throw new Error('no file');
+    await ann.api.workspaces.media.remove(id, doc, first.id);
+    await send(ann, id, doc, 2 * MiB);
+    await send(ann, id, doc, MiB / 4);
+    const lines = warned();
+    // The workspace passed it twice, once more after a file went; the day once, because what's uploaded stays uploaded.
+    expect(lines.map((l) => l.msg)).toEqual(['a workspace is past 80% of its storage', 'a workspace is past 80% of its storage', 'someone is past 80% of what they can upload today']);
+    expect(lines[0]).toEqual(expect.objectContaining({ workspaceId: id, limitBytes: 10 * MiB }));
+    expect(lines[2]).toEqual(expect.objectContaining({ ownerId: ann.ownerId, uploadedBytes: 11.5 * MiB, limitBytes: 12 * MiB }));
+    // Sizes and IDs, and nothing anyone wrote.
+    for (const l of lines) expect(Object.keys(l).filter((k) => !['level', 'time', 'service', 'msg', 'component', 'requestId', 'method', 'path', 'ownerId', 'workspaceId', 'storedBytes', 'uploadedBytes', 'limitBytes'].includes(k))).toEqual([]);
+  });
+
+  it('keeps a day’s count through a restart, forgets it after two days, and deletes it with the account', async () => {
+    const ann = await account();
+    const { id, doc } = await planIn(ann);
+    await setLimit('media.account_day_bytes', 3 * MiB);
+    await send(ann, id, doc, 2 * MiB);
+    const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_upload_days WHERE owner_id = $1 ORDER BY day", [ann.ownerId])).rows.map((r) => [r.day, Number(r.bytes)]);
+    const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+    expect(await days()).toEqual([[ago(0), 2 * MiB]]);
+    // Another process, as after a restart, counts what this one did, because it reads it from the database every time.
+    const second = await h.secondServer();
+    try {
+      const again = createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch });
+      expect(await refusal(again.workspaces.media.upload(id, doc, fileOf(bytesOf(2 * MiB))))).toEqual(TODAYS);
+      await h.pool.query('DELETE FROM media_upload_days WHERE owner_id = $1', [ann.ownerId]);
+      await again.workspaces.media.upload(id, doc, fileOf(bytesOf(2 * MiB)));
+    } finally { await second.close(); }
+    // Upkeep keeps today and yesterday, and nothing older.
+    await h.pool.query('INSERT INTO media_upload_days (owner_id, day, bytes) VALUES ($1, $2, 1), ($1, $3, 1)', [ann.ownerId, ago(1), ago(2)]);
+    await maintain(h.deps, { uploadAgeMs: ALREADY });
+    expect((await days()).map(([d]) => d)).toEqual([ago(1), ago(0)]);
+    // And it goes with the account.
+    await ann.api.account.delete();
+    expect(await days()).toEqual([]);
   });
 });
 
