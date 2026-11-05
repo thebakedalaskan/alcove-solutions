@@ -196,8 +196,8 @@ export interface WorkspaceView {
 export interface WorkspaceLive extends LiveStore<WorkspaceView> {
   /** Says where this browser is. It's here with nothing open from the moment the stream opens, and for as long as it stays open. */
   present(where: WorkspaceWhere): void;
-  /** You've heard about this tag, so it isn't kept for you any more, on any device. */
-  seen(mention: string): void;
+  /** You've heard about this tag, so it isn't kept for you any more, on any device. Done once that's said, or couldn't be: the next stream says it again. */
+  seen(mention: string): Promise<void>;
   close(): void;
 }
 /**

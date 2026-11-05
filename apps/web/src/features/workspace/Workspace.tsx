@@ -5,12 +5,12 @@
  */
 import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree } from '@alcove/api';
 import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { q, qk } from '~/lib/queries';
 import { useTreeActions } from './actions';
 import { useLaidOver } from './changes';
 import { WsContext, type FolderDraft, type OpenPage, type Ws, type WorkspacePlace, type WorkspaceProps } from './context';
@@ -73,7 +73,8 @@ const TAG_MS = 9000;
  * Being tagged: a toast says who and where, and nothing moves until you say so. One at a time, the oldest first, and only
  * while someone can see it: what's said in a tab nobody's looking at waits for them.
  */
-function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[], tree: Tree, say: (toast: WsToastData) => void, go: (to: WorkspacePlace) => void) {
+function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[], tree: Tree, at: WorkspacePlace, say: (toast: WsToastData) => void, go: (to: WorkspacePlace) => void) {
+  const qc = useQueryClient();
   const [turn, setTurn] = useState(0);
   const busy = useRef(false);
   useEffect(() => {
@@ -87,11 +88,13 @@ function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[]
     const next = waiting.find((m) => tree.all.has(m.document));
     const item = next && tree.all.get(next.document);
     if (!next || !item) return;
+    void store.seen(next.id).then(() => qc.invalidateQueries({ queryKey: qk.mentions }));
+    /* Already on that line, from a notification say: there's nothing to tell. */
+    if (at.kind === 'document' && at.id === next.document && at.block === next.block) { setTurn((n) => n + 1); return; }
     busy.current = true;
     say(wsToast.tagged(next.by, firstName(next.by.name), nameOf(item), () => go({ kind: 'document', id: next.document, block: next.block ?? undefined })));
-    store.seen(next.id);
     setTimeout(() => { busy.current = false; setTurn((n) => n + 1); }, TAG_MS);
-  }, [store, waiting, tree, say, go, turn]);
+  }, [store, waiting, tree, at, qc, say, go, turn]);
 }
 
 /** Which folders are open, remembered in this browser. */
@@ -142,7 +145,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const { following, follow, stopFollowing } = useFollow({ others, tree, at, goWith, say });
   /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
-  useTagToasts(store, view.mentions, tree, say, go);
+  useTagToasts(store, view.mentions, tree, at, say, go);
   const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, change, go, say, openFolders: openAll, justMade, openDoc });
   const role = view.tree?.role ?? null;
   const canChange = role === 'admin' || role === 'edit';

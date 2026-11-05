@@ -239,13 +239,13 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false },
+      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
       pinned: [], groups: []
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
       summaryLength: 'detailed',
-      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false }
+      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true }
     });
     expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);

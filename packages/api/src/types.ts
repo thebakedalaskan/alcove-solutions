@@ -77,7 +77,9 @@ export const NotificationPrefsSchema = z.object({
   notesReady: z.boolean(),
   sharedWithYou: z.boolean(),
   notesRequested: z.boolean(),
-  followUpDue: z.boolean()
+  followUpDue: z.boolean(),
+  /** Someone tagged you in a document. On for anyone who hasn't said. */
+  tagged: z.boolean().default(true)
 });
 export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
 
@@ -1096,7 +1098,9 @@ export const NotificationOpenSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('call'), code: CallCodeSchema }),
   z.object({ to: z.literal('note'), noteId: IDSchema }),
   z.object({ to: z.literal('notes') }),
-  z.object({ to: z.literal('home') })
+  z.object({ to: z.literal('home') }),
+  /** A line in a document, for someone tagged in it. */
+  z.object({ to: z.literal('document'), workspaceId: IDSchema, documentId: IDSchema, block: z.string().nullable() })
 ]);
 export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
 /**

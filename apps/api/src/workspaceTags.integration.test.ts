@@ -117,9 +117,9 @@ describe('a tag', () => {
     const again = theo.api.workspaces.live(id);
     await until(() => told(again).length === 1, 'the tag on opening again');
     const mention = told(again)[0]?.id ?? '';
-    again.seen(mention);
+    await again.seen(mention);
     expect(told(again)).toEqual([]);
-    await until(async () => (await theo.api.workspaces.mentions()).length === 0, 'it to go');
+    expect(await theo.api.workspaces.mentions()).toEqual([]);
     expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE mention_id = $1', [mention])).toBe(0);
     again.close();
 

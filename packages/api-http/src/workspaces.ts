@@ -53,10 +53,10 @@ export class HttpWorkspaceLive implements WorkspaceLive {
     this.saying = setTimeout(() => { this.saying = undefined; this.say(); }, PRESENCE_WAIT_MS);
     unref(this.saying);
   };
-  /** It leaves the view at once; if saying so doesn't get through, the next stream says it again. */
-  seen = (mention: string) => {
+  /** It leaves the view at once. */
+  seen = async (mention: string) => {
     this.set({ mentions: this.view.mentions.filter((m) => m.id !== mention) });
-    this.heard(mention).catch(() => undefined);
+    await this.heard(mention).catch(() => undefined);
   };
   close = () => {
     this.closed = true;
