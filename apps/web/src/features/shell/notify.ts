@@ -212,7 +212,7 @@ function useGo(): Go {
     if (o.to === 'note') void router.navigate({ to: '/notes/$noteId', params: { noteId: o.noteId } });
     else if (o.to === 'notes') void router.navigate({ to: '/notes' });
     else if (o.to === 'home') void router.navigate({ to: '/home' });
-    else if (o.to === 'document') void router.navigate({ to: '/workspace/$workspaceId/$documentId', params: { workspaceId: o.workspaceId, documentId: o.documentId }, ...(o.block ? { hash: o.block } : {}) });
+    else if (o.to === 'document') void router.navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId: o.workspaceId, documentId: o.documentId }, ...(o.block ? { hash: o.block } : {}) });
     else {
       // Already at the call: the window coming forward is all it takes.
       const at = router.state.location.pathname;

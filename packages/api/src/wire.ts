@@ -97,11 +97,17 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rooms-move'), email: z.string().trim().toLowerCase().max(254), roomId: z.string().max(64).nullable() }),
   /** The organizer pausing notes in one open room while the call's are on, or carrying on there: the call's notes are unchanged. */
   z.object({ type: z.literal('rooms-pause'), roomId: z.string().max(64), paused: z.boolean() }),
-  /** Anyone in the call, opening Workspace: the first time, which workspace the call uses is settled, and the next call in a series gets its agenda. */
-  z.object({ type: z.literal('workspace-open') }),
-  /** The organizer moves the call to a workspace they can edit in. Being organizer opens nothing, so anyone not in it sees that it's private. */
+  /**
+   * Anyone in the call, opening Workspace: the first time, the call's home is settled, with the call's folder in it, and the
+   * next call in a series gets its agenda. `timeZone`, where the browser is: the day a new home and folder are named after.
+   */
+  z.object({ type: z.literal('workspace-open'), timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
+  /**
+   * The organizer has everyone view and edit a workspace they can edit in, or the call's home again. Its notes and transcript
+   * still go to its home. Being organizer opens nothing, so anyone not in it sees that it's private.
+   */
   z.object({ type: z.literal('workspace-set'), workspaceId: ItemIdSchema }),
-  /** The organizer makes a workspace, with just them in it, and moves the call to it. It's named after the call unless it's given a name. */
+  /** The organizer makes a workspace, with just them in it, and everyone views it. It's named after the call unless it's given a name. */
   z.object({ type: z.literal('workspace-new'), name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(120)).optional() }),
   /** Anyone who can open it brings a document in the call's workspace to the call, or takes it off. */
   z.object({ type: z.literal('workspace-bring'), documentId: ItemIdSchema, brought: z.boolean() }),

@@ -25,7 +25,7 @@ import * as capture from './capture';
 import { dropInvites, notesCanGo, syncAccess } from './access';
 import { lookupCode } from './codes';
 import { MeetingManifest, minutesOf, pickTime, updateManifest } from './meetings';
-import { callFor } from './repeats';
+import { callFor, zoneOf } from './repeats';
 import type { Loaded } from '../vault';
 import { findItem, getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording, type HeldRoom } from './notes';
@@ -41,7 +41,7 @@ import * as screens from './screens';
 import * as series from './series';
 import * as transcripts from './transcripts';
 import { readerInCall, workspaceOwner } from './workspaceAccess';
-import { endSeat, endSeats } from './workspaces';
+import { endSeat, endSeats, makeHome } from './workspaces';
 import * as writer from './writer';
 import { log } from '../log';
 
@@ -457,7 +457,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
 }
 
 /** What someone who isn't in the call yet is told of its workspace: nothing. */
-const PRIVATE: CallWorkspace = { id: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' };
+const PRIVATE: CallWorkspace = { id: null, home: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' };
 
 /**
  * Who hosts, as this viewer sees it: the connection hosting now and whether it stands in for the organizer, the
@@ -876,7 +876,7 @@ function stillHosting(v: Viewer, s: Stored, ctx: Record<string, string | number 
 
 export async function act(v: Viewer, callId: string, a: CallAction): Promise<CallState> {
   const o = v.organizer;
-  if (a.type === 'workspace-open') return openWorkspace(v, callId);
+  if (a.type === 'workspace-open') return openWorkspace(v, callId, a.timeZone);
   if (space.isSpaceAction(a)) return actOnWorkspace(v, callId, a);
   if (a.type === 'mute') {
     // Carried out by LiveKit; nothing about the call changes here.
@@ -889,6 +889,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   }
   // Who may be rung is settled before the call's lock is taken: knowing the team can take a calendar read.
   if (a.type === 'ring') await rings.mayRing(o, (await load(o, o.pool, callId)).row.meeting_item_id, a.emails);
+  /** Who the invite took on or let go of, for the call's home to follow once the call's row is let go. */
+  const invite: { meetingId: string; gone: string[] } | null = a.type === 'ring' || a.type === 'remove' ? { meetingId: '', gone: [] } : null;
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
@@ -897,6 +899,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     const exact = tenthsIn(row.started_at);
     const settled = settle(state, row);
     let s = settled;
+    if (invite) invite.meetingId = row.meeting_item_id;
     let locked = row.locked;
     let gone: string[] = [];
     /** The seat of whoever this takes out of the call. */
@@ -993,6 +996,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       const stillIn = (e: string) => s.people.some((j) => j.email === e && j.status === 'in' && !s.removed.includes(j.person));
       if (v.isOrganizer && email && !stillIn(email) && await addedFromLink(o, c, row.meeting_item_id, email)) {
         await takeOffInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, email);
+        invite?.gone.push(email);
         clog.info('taken off the invite', { callId, meetingId: row.meeting_item_id, noteId: s.notes.noteId });
       }
     } else if (a.type === 'lock') {
@@ -1025,6 +1029,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
     // What the call gave them in a workspace goes with them.
     if (removed) await endSeat(o, callId, removed);
+    // So does a place in a home made for the call that the invite gave them; someone rung is on the invite, so in it.
+    if (invite && (a.type === 'ring' || invite.gone.length)) await space.followHome(o, invite.meetingId, invite.gone);
     await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
   });
   return view(v, o.pool, callId);
@@ -1063,7 +1069,7 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
       if (changed === 'again') return 'again';
       await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, changed.s)));
       clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
-      return { room: row.room_name, moved: changed.moved, ended: changed.ended, meetingId: row.meeting_item_id };
+      return { room: row.room_name, ended: changed.ended };
     });
     if (done === 'again') {
       if (tries < SPACE_TRIES) continue;
@@ -1071,10 +1077,6 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
     }
     // A grant to someone removed while it was made goes, as their removal took everything else.
     if (done.ended) await endSeat(o, callId, done.ended);
-    if (done.moved) {
-      await space.noteUsed(o, done.moved.to);
-      await space.carryForward(o, done.meetingId, done.moved.from, done.moved.to);
-    }
     await nudge(o, done.room, callId, { call: true, log: false });
     return view(v, o.pool, callId);
   }
@@ -1099,31 +1101,65 @@ async function stopLost(o: Owner, callId: string, lost: space.Lost): Promise<voi
 }
 
 /**
- * The workspace a call uses, settled the first time it's asked for, under the call's row so that everyone asking at once
- * gets the same one. A workspace deleted since it was chosen is settled again. Which one the organizer used last is asked
- * before the row is taken: nothing under it opens a workspace.
+ * The call's home, and this run of the call's folder in it, settled the first time anyone asks (docs: Calls and recordings ›
+ * The call's home): the meeting's, a workspace its organizer chose or its series has, while they can still make things in it;
+ * else a new one made for the call, named after it and the day where `timeZone` is, with everyone invited in it. Under the
+ * call's row, so everyone asking at once gets the same: a new home is made there, since nobody else can reach it yet, and
+ * for a home that's there already the folder's ID is taken there, and the folder made in that workspace's own transaction
+ * with nothing of the call held. A home deleted since is settled again. Whose it is, and what's in it, the meeting's
+ * organizer decides: whoever asks first only settles it.
  */
-export async function settledWorkspace(o: Owner, callId: string): Promise<string> {
-  const { row } = await load(o, o.pool, callId);
-  const { workspaceId } = (await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest;
-  if (workspaceId && await workspaceOwner(o.pool, workspaceId)) return workspaceId;
-  const recent = await space.recentFor(o);
-  const chosen = await tx(o.pool, async (c) => {
+export async function settledHome(o: Owner, callId: string, timeZone?: string | undefined): Promise<{ workspaceId: string; folderId: string }> {
+  const { row, state } = await load(o, o.pool, callId);
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const had = state.workspace.home;
+  const chosen = meeting.manifest.workspaceId;
+  if (had?.made && had.workspaceId === chosen && await workspaceOwner(o.pool, chosen)) return had;
+  const organizer = (await profile(o)).email;
+  // Asked with nothing held: a home the organizer can no longer make things in is no home of theirs.
+  const usable = chosen !== null && await space.organizerEdits(o, organizer, chosen);
+  const zone = timeZone ?? (meeting.manifest.seriesId ? await zoneOf(o, meeting.manifest.seriesId) : undefined) ?? 'UTC';
+  const name = space.homeName(meeting.manifest.title, row.started_at, zone);
+  const taken = await tx(o.pool, async (c) => {
     const held = await load(o, c, callId, true);
     if (held.row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'workspace' } });
-    const was = (await getItem(o, c, 'meeting', held.row.meeting_item_id, MeetingManifest, 'That meeting')).manifest.workspaceId;
-    if (was && await workspaceOwner(c, was)) return { id: was, was, room: null };
-    const id = recent && await workspaceOwner(c, recent) ? recent : await space.newFor(o, c);
-    await updateManifest(o, c, held.row.meeting_item_id, (m) => ({ ...m, workspaceId: id }));
-    clog.info('call settled on a workspace', { callId, workspaceId: id });
-    return { id, was, room: held.row.room_name };
+    const m = await getItem(o, c, 'meeting', held.row.meeting_item_id, MeetingManifest, 'That meeting');
+    const now = m.manifest.workspaceId;
+    const h = held.state.workspace.home;
+    if (now !== chosen) return { again: true } as const;
+    if (now !== null && usable) {
+      if (h?.workspaceId === now) return { again: false, home: h, made: false, was: now } as const;
+      const claim = { workspaceId: now, folderId: id128(), made: false };
+      await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, home: claim } });
+      return { again: false, home: claim, made: false, was: now } as const;
+    }
+    const folder = space.folderFor(o, organizer, callId, id128(), name, held.row.started_at);
+    const { id } = await makeHome(o, c, { name, madeFor: space.madeForCall(m, held.row.started_at), invited: m.manifest.guests, folder });
+    await updateManifest(o, c, m.itemId, (x) => ({ ...x, workspaceId: id }));
+    const home = { workspaceId: id, folderId: folder.id, made: true };
+    await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, home } });
+    clog.info('call settled on a new home', { callId, workspaceId: id });
+    return { again: false, home, made: true, was: now, room: held.row.room_name } as const;
   });
-  if (chosen.id !== chosen.was) {
-    await space.noteUsed(o, chosen.id);
-    await space.carryForward(o, row.meeting_item_id, chosen.was, chosen.id);
-    await nudge(o, chosen.room, callId, { call: true, log: false });
+  // The meeting changed while this was asked: ask again, from what it says now.
+  if (taken.again) return settledHome(o, callId, timeZone);
+  const { home } = taken;
+  if (taken.made) {
+    await space.carryForward(o, row.meeting_item_id, taken.was, home.workspaceId);
+    await nudge(o, taken.room, callId, { call: true, log: false });
+    return home;
   }
-  return chosen.id;
+  if (!home.made) {
+    const folder = space.folderFor(o, organizer, callId, home.folderId, name, row.started_at);
+    if (!await space.folderIn(o, home.workspaceId, folder, meeting, organizer)) throw notFound('That workspace', { callId, workspaceId: home.workspaceId });
+    await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      const h = held.state.workspace.home;
+      if (held.row.state === 'live' && h?.folderId === home.folderId && !h.made) await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, home: { ...h, made: true } } });
+    });
+    clog.info('call folder settled in its home', { callId, workspaceId: home.workspaceId });
+  }
+  return { workspaceId: home.workspaceId, folderId: home.folderId };
 }
 
 /**
@@ -1168,13 +1204,13 @@ async function agendaFor(o: Owner, callId: string): Promise<void> {
 }
 
 /**
- * Someone opens Workspace. A workspace that can't be made for a guest opening it is the organizer's to hear about, not
- * theirs, and an agenda that can't be made is no reason anyone can't open the rest.
+ * Someone opens Workspace. A home that can't be made for a guest opening it is the organizer's to hear about, not theirs,
+ * and an agenda that can't be made is no reason anyone can't open the rest.
  */
-async function openWorkspace(v: Viewer, callId: string): Promise<CallState> {
+async function openWorkspace(v: Viewer, callId: string, timeZone: string | undefined): Promise<CallState> {
   const o = v.organizer;
   try {
-    await settledWorkspace(o, callId);
+    await settledHome(o, callId, timeZone);
     await agendaFor(o, callId).catch((e: unknown) => clog.warn('next agenda not made', { callId, err: e }));
   } catch (e) {
     if (v.isOrganizer || !(e instanceof ConflictError)) throw e;
@@ -1183,7 +1219,7 @@ async function openWorkspace(v: Viewer, callId: string): Promise<CallState> {
   return view(v, o.pool, callId);
 }
 
-/** What changing the call's workspace would mean, for the organizer to decide. */
+/** What viewing another workspace in the call would mean, for the organizer to decide. */
 export async function previewWorkspace(v: Viewer, callId: string, workspaceId: string): Promise<CallWorkspaceSwitch> {
   return space.preview(v, await readerInCall(v), (await load(v.organizer, v.organizer.pool, callId)).state.people, workspaceId);
 }
@@ -1586,6 +1622,8 @@ async function groupsFor(o: Owner, callId: string, row: Row, s: Stored): Promise
 export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof CallCommitBodySchema>): Promise<{ epoch: number }> {
   const o = v.organizer;
   const ctx = { callId, generation: b.generation, epoch: b.epoch, added: b.added.length, removed: b.removed.length, room: b.group !== MAIN_PLACE };
+  /** The meeting, when this put someone on its invite: a home made for the call lets them in too. */
+  let invited: string | null = null;
   const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
@@ -1643,6 +1681,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
       const wanted = [...new Set(signedIn.map((x) => x.email))];
       const added = await addToInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, wanted);
       for (const x of signedIn) if (added.includes(x.email)) s = withPerson(s, x.id, (j) => ({ ...j, role: 'invited' }));
+      if (added.length) invited = row.meeting_item_id;
       clog.info('added to the invite', { callId, meetingId: row.meeting_item_id, noteId: s.notes.noteId, people: added.length });
       // The invite is full: they're in the call, as guests, without the notes.
       if (added.length < wanted.length) clog.warn('invite full; let in without the notes', { callId, meetingId: row.meeting_item_id, people: wanted.length - added.length });
@@ -1652,6 +1691,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     return row.room_name;
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
+  if (invited) await space.followHome(o, invited);
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
   if (b.added.length && room) {
     // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
@@ -2185,6 +2225,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   let room: string | null = null;
   let audio: string[] = [];
   let worked: WorkedDocument[] = [];
+  let home: CallSpace['home'] = null;
   const end = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     // Upkeep decided from an earlier read; the organizer may have come back since.
@@ -2200,6 +2241,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     const s = row.state === 'live' ? await roomsChanged(o, c, callId, state, relocate(state, closed, Date.now(), row.mls_seq)) : closed;
     if (row.state === 'live') {
       worked = s.workspace.worked;
+      home = s.workspace.home;
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
       await save(o, c, callId, { ...s, workspace: NO_SPACE });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
@@ -2240,7 +2282,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }
     clog.info(row.state === 'live' ? 'call ended' : 'left an ended call', { callId, meetingId: row.meeting_item_id, duration, noteId: s.notes.noteId });
-    return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
+    return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration, startedAt: row.started_at, ended: row.state === 'live' };
   });
   if (!end) return null;
   await queueDelete(o, audio);
@@ -2253,8 +2295,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
   // What's kept of the workspace is the last thing and nobody waits for it: it can take a worker as long as a worker has for
   // each document, and nothing about the call's end depends on it. It says itself when something didn't work.
-  void space.afterCall(o, callId, end.meetingId, worked);
-  return end;
+  if (end.ended) void space.afterCall(o, { callId, meetingId: end.meetingId, worked, noteId: end.pendingNoteId, home, startedAt: end.startedAt });
+  return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration };
 }
 
 /**

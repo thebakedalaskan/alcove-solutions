@@ -19,7 +19,7 @@ export type Place = { [K in keyof FileRoutesByTo]: K extends `${string}$${string
 const TAGS_MS = 60_000;
 
 /** What a place in the side panel can count: what's waiting on you, notes, tags you haven't seen, recordings on this device waiting to upload, and the team. */
-export type Counter = 'home' | 'notes' | 'workspace' | 'record' | 'team';
+export type Counter = 'home' | 'notes' | 'drive' | 'record' | 'team';
 /**
  * How many there are of each, once they've loaded. The team counts the people on Alcove, you among
  * them, once someone besides you is.
@@ -31,18 +31,18 @@ export function useCounts(): Record<Counter, number | undefined> {
   const tags = useQuery({ ...q.mentions(), refetchInterval: TAGS_MS }).data?.length;
   const kept = useLive(uploads);
   const waiting = kept.list.filter((k) => k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused').length;
-  return { home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, notes: notes?.length, workspace: tags || undefined, record: waiting || undefined, team: others ? others + 1 : undefined };
+  return { home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, notes: notes?.length, drive: tags || undefined, record: waiting || undefined, team: others ? others + 1 : undefined };
 }
 
-/** The workspace's pages fill the frame, keep one screen as you move around them, and take N for themselves. */
-export const inWorkspace = (path: string): boolean => path === '/workspace' || path.startsWith('/workspace/');
+/** A workspace's pages, in the Drive, fill the frame, keep one screen as you move around them, and take N for themselves. */
+export const inWorkspace = (path: string): boolean => path.startsWith('/drive/');
 
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
 /** The side panel's places, under Start a call. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 'home' },
   { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes', tour: 'notes' },
-  { to: '/workspace', icon: 'folderOpen', label: 'Workspace', count: 'workspace' },
+  { to: '/drive', icon: 'folderOpen', label: 'Drive', count: 'drive' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'room' },
   { to: '/team', icon: 'people', label: 'Team', count: 'team' }
 ];
@@ -59,6 +59,6 @@ export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/notes', icon: 'notes', label: 'Notes', tour: 'notes' },
   { to: '/record', icon: 'recordDot', label: 'Record', raised: true, tour: 'room' },
-  { to: '/workspace', icon: 'folderOpen', label: 'Workspace' },
+  { to: '/drive', icon: 'folderOpen', label: 'Drive' },
   { to: '/team', icon: 'people', label: 'Team' }
 ];

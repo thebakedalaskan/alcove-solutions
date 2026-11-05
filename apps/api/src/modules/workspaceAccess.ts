@@ -23,7 +23,7 @@ import { log } from '../log';
 import { findOwner, masterKey, openOwner } from '../owners';
 import { findSession } from '../sessions';
 import { profile } from './account';
-import { nudgeCall, seated, seatedIn, seatOfViewer, settledWorkspace, viewerOf, type Viewer } from './calls';
+import { nudgeCall, seated, seatedIn, seatOfViewer, settledHome, viewerOf, type Viewer } from './calls';
 import { personOf, portraitFor } from './portraits';
 
 const xlog = log.child({ component: 'access' });
@@ -39,6 +39,22 @@ export const TREE_NOTICE = 'tree';
 /** Who made something: their name and address as they were. A deleted account leaves its name and no address. */
 const Maker = z.object({ name: z.string(), email: z.string() });
 export type Maker = z.infer<typeof Maker>;
+/**
+ * What makes a folder a call's own (docs: Calls and recordings › The call's home): which call, whose, and, once it's over,
+ * its note. Its pages read the call or the note, through their own access: nothing of either is kept here.
+ */
+export const StoredCall = z.object({
+  /** The organizer's owner, whose call and note it is. */
+  ownerId: z.string(),
+  callId: z.string(),
+  /** The organizer's address, as it was: they read its pages whatever the note's rows say. */
+  organizer: z.string(),
+  startedAt: z.string(),
+  /** Set once the call has ended (`ended`), if it had notes. */
+  noteId: z.string().nullable(),
+  ended: z.boolean()
+});
+export type StoredCall = z.infer<typeof StoredCall>;
 export const StoredItem = z.object({
   kind: ItemKindSchema,
   name: z.string(),
@@ -58,11 +74,20 @@ export const StoredItem = z.object({
    * The address of whoever restricted it, when that wasn't its creator: they keep it as its creator does, for as long as
    * it's restricted and they're in the workspace. It gives nobody an entry in `document_access`, so nothing outlives it.
    */
-  restrictedBy: z.string().nullable().default(null)
+  restrictedBy: z.string().nullable().default(null),
+  /** On a call's folder only. */
+  call: StoredCall.nullable().default(null)
 });
 export type StoredItem = z.infer<typeof StoredItem>;
+/**
+ * The call a workspace was made for, as its home: what it was called and when, its meeting and series (the series' later
+ * calls share it), and who it added as people invited, so taking someone off the invite takes them out again. Nobody
+ * added by hand is ever taken out for that.
+ */
+export const MadeFor = z.object({ title: z.string(), at: z.string(), meetingId: z.string(), seriesId: z.string().nullable(), added: z.array(z.string()) });
+export type MadeFor = z.infer<typeof MadeFor>;
 /** A workspace's name and tree: one record, because its server serialises every change under the row's lock. */
-export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem) });
+export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem), madeFor: MadeFor.nullable().default(null) });
 export type WorkspaceState = z.infer<typeof WorkspaceState>;
 
 /** Seals what's kept for a workspace: `workspace-state`, `workspace-member` and `document-access` records. */
@@ -408,14 +433,15 @@ export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db,
 export interface CallRef { organizer: Owner; callId: string }
 
 /**
- * The workspace a call uses, for the server to work in: the meeting's, else its organizer's most recently used, else a new
- * one in their name, settled the first time it's asked for. It opens nothing for anyone.
+ * The call's home, for the server to work in, and the call's folder at the top of it (`folderId`): what the server makes for
+ * the call, such as its board, goes in that folder. The meeting's, else a new one made for the call, settled the first time
+ * it's asked for. It opens nothing for anyone.
  */
-export async function workspaceForCall(d: Deps, call: CallRef): Promise<HeldWorkspace> {
-  const workspaceId = await settledWorkspace(call.organizer, call.callId);
+export async function workspaceForCall(d: Deps, call: CallRef): Promise<HeldWorkspace & { folderId: string }> {
+  const { workspaceId, folderId } = await settledHome(call.organizer, call.callId);
   const w = await serverWorkspace(d, workspaceId);
   if (!w) throw missing(workspaceId);
-  return w;
+  return { ...w, folderId };
 }
 
 /**

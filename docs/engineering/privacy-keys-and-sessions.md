@@ -409,6 +409,15 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   it's removed. An entry for a seat ends with the call: it's deleted when the call ends or that person is taken out of
   it, the pass stops opening it the moment either happens, and maintenance sweeps up any left by a process that stopped.
   Someone who also has it through their account keeps what that gives them.
+- **A call's home.** A workspace made as a call's home has the organizer as its admin and the people invited in it, to
+  edit: the same people who get the call's notes. Someone let in from the link who goes on the invite is let in too, and
+  taken out again when they're taken off it; nobody added by hand is ever taken out for that, and a guest without an
+  account gets nothing unless something's shared with their seat. A home the organizer chose keeps its own people.
+- **A call's folder** shows its pages only to whoever may read them now, worked out on every read of the tree: while the
+  call's on, whoever's in it (their pass is for that call), who read its live pages as anywhere in the call; after it, its
+  organizer and whoever has its note by the note's own rows, so taking the note out of your notes, or deleting it, takes
+  the pages too. Nothing of the call or the note is in the workspace, so the pages open only through the call or the note,
+  which ask again. Everyone else in the workspace sees the folder and what people put in it, as they would any folder.
 - **Nothing else opens anything.** Being a call's organizer gives nothing. Joining a call gives nothing. What a call says
   of its workspace is worked out here on every read, for each person, and nothing about who can open what is copied into it.
   Someone who can open nothing is told that it's private and nothing that names anything: not which workspace, not a document, a

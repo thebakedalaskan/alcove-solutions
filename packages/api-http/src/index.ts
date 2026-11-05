@@ -6,7 +6,7 @@
 import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema,
   NoteFoundSchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
-  SeriesAnswerPartSchema, SeriesSchema,
+  SeriesAnswerPartSchema, SeriesSchema, isTimeZone,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
@@ -59,6 +59,15 @@ const audioPath = (id: string, segment: number, pieces: number) => `/notes/${enc
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const opId = () => b64u(randomBytes(16));
+/** Where this browser is, as an IANA name, when it knows and the API would too: the day a call's new home and folder are named after. */
+function hereZone(): { timeZone?: string } {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return timeZone && isTimeZone(timeZone) ? { timeZone } : {};
+  } catch {
+    return {};
+  }
+}
 
 export function createHttpApi(o: HttpOptions): AlcoveApi {
   const f = o.fetch ?? globalThis.fetch.bind(globalThis);
@@ -1121,7 +1130,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
   addFollowUp = async (text: string) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', text })); };
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
-  openWorkspace = () => this.space({ type: 'workspace-open' });
+  openWorkspace = () => this.space({ type: 'workspace-open', ...hereZone() });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
   setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId });
   newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}) });

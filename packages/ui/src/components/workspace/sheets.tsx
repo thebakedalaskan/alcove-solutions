@@ -230,15 +230,18 @@ export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], 
 }
 
 /**
- * One question, in place of the menu, before a call moves to another workspace. `name`: that workspace. `current`: this
- * one. `cantOpen`: the first names of people in the call who can't open it.
+ * One question, in place of the menu, before everyone in a call views another workspace. `name`: that workspace. `current`:
+ * this one. `home`: the call's home, where its notes go, when that isn't `name`. `cantOpen`: the first names of people in the
+ * call who can't open it.
  */
-export function WsSwitchSheet({ name, current, cantOpen = [], onSwitch, onKeep }: { name: string; current: string; cantOpen?: string[] | undefined; onSwitch: () => void; onKeep: () => void }) {
+export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, onKeep }: {
+  name: string; current: string; home?: string | undefined; cantOpen?: string[] | undefined; onSwitch: () => void; onKeep: () => void;
+}) {
   const who = cantOpen.length === 1 ? cantOpen[0] : `${cantOpen.length} people`;
   return (
     <div className="wv-switch">
       <b>Switch this call to {name}?</b>
-      <p>Everyone sees the change. Nobody is disconnected, and nothing moves or is copied.</p>
+      <p>Everyone sees the change. Nobody is disconnected, and nothing moves or is copied.{home ? ` Notes and the transcript still go to ${home}.` : ''}</p>
       {cantOpen.length > 0 && <p className="warn"><Icon name="info" size={15} /><span>{who} can’t open {name}. They stay in the call and see that it’s private, not what’s in it.</span></p>}
       <div className="ac">
         <Button variant="primary" size="sm" onClick={onSwitch}><span className="ac-clamp-1">Switch to {name}</span></Button>

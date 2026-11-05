@@ -245,7 +245,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
-    rememberPlaces(owner, (p) => (documentId ? openedIn({ ...p, workspace: workspaceId }, workspaceId, documentId) : { ...p, workspace: workspaceId }));
+    if (documentId) rememberPlaces(owner, (p) => openedIn(p, workspaceId, documentId));
   }, [owner, workspaceId, documentId]);
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);

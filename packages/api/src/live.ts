@@ -570,16 +570,19 @@ export interface CallSession extends LiveStore<CallState> {
    */
   addFollowUp(text: string): Promise<void>;
   /**
-   * Opening Workspace, for anyone in the call: the first time, it settles which workspace the call uses (the meeting's, else
-   * the organizer's most recently used, else a new one in their name), and the next call in a series finds its new agenda.
-   * Resolves with `workspace` up to date, which for someone who can't open it says it's private.
+   * Opening Workspace, for anyone in the call: the first time, it settles the call's home (the meeting's, else a new one
+   * named after the call and the day, where this browser is), with the call's folder in it, and the next call in a series
+   * finds its new agenda. Resolves with `workspace` up to date, which for someone who can't open it says it's private.
    */
   openWorkspace(): Promise<void>;
-  /** Organizer only: what changing the call's workspace would mean, for the sheet that asks. Changes nothing. */
+  /** Organizer only: what viewing another workspace would mean, for the sheet that asks. Changes nothing. */
   previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch>;
-  /** Organizer only: moves the call to a workspace they can edit in. Nobody is interrupted; what's being presented and played stops. */
+  /**
+   * Organizer only: everyone views and edits a workspace the organizer can edit in, or the call's home again. The notes and
+   * transcript still go to the home. Nobody is interrupted; what's being presented and played stops.
+   */
   setWorkspace(workspaceId: string): Promise<void>;
-  /** Organizer only: makes a workspace with just them in it, named after the call unless it's given a name, and moves the call to it. */
+  /** Organizer only: makes a workspace with just them in it, named after the call unless it's given a name, and everyone views it. */
   newWorkspace(name?: string | undefined): Promise<void>;
   /** Anyone who can open it: brings a document in the call's workspace to the call, or takes it off (`brought` false). */
   bringDocument(documentId: string, brought: boolean): Promise<void>;

@@ -5,7 +5,7 @@
  * this module does what access allows. What a document or board holds isn't here: to the tree they're rows of a kind.
  */
 import {
-  type DocumentRole, type DocumentShare, type ItemKind, type ItemPlace, type Person, type PresenceBody, type ShareEntry, type ShareTarget, type WorkspaceHere, type WorkspaceItem, type WorkspaceLiveEvent, type WorkspacePerson,
+  type DocumentRole, type DocumentShare, type ItemCall, type ItemKind, type ItemPlace, type Person, type PresenceBody, type ShareEntry, type ShareTarget, type WorkspaceHere, type WorkspaceItem, type WorkspaceLiveEvent, type WorkspacePerson,
   type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
@@ -21,11 +21,10 @@ import { log } from '../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../owners';
 import {
   TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
-  workspaceFor, workspaceKey, type Credentials, type Maker, type Reader, type Standing, type StoredItem, type Who, type Workspace, type WorkspaceState
+  workspaceFor, workspaceKey, type Credentials, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './workspaceAccess';
 import { profile } from './account';
 import { nudgeCall, seated } from './calls';
-import { noteOpened, noteUsed } from './callWorkspace';
 import { personOf, portraitFor } from './portraits';
 import { copyContent, kindOf, startContent } from './workspaceDocuments';
 import { waitingFor } from './workspaceMentions';
@@ -152,16 +151,45 @@ const makerOf = (r: Reader): Maker => ({ name: r.account?.name ?? '', email: (r.
 
 /* ---------- reading ---------- */
 
+/**
+ * Each call's folder in a tree as one reader may read its pages (docs: Calls and recordings › The call's home): the live ones
+ * while the call's on, for whoever's in it (`seatCall`, the call their pass is for); then the call's note, for its organizer
+ * and whoever has it now, which the note's own rows say. One small query for a tree, whatever's in it. Nothing of the call or
+ * the note is opened here, and someone without them is told only that the call was there, which the folder says anyway.
+ */
+export async function callsIn(db: Db, who: Who, seatCall: string | null, s: WorkspaceState): Promise<Map<string, ItemCall>> {
+  const folders = Object.entries(s.items).flatMap(([id, item]) => (item.call ? [{ id, call: item.call }] : []));
+  const out = new Map<string, ItemCall>();
+  if (!folders.length) return out;
+  const email = who.email?.trim().toLowerCase();
+  const asked = folders.flatMap(({ call }) => (call.ended && call.noteId ? [call] : []));
+  /** Each note that's still there, by its organizer and ID, and whether this reader has it under their address. */
+  const notes = new Map<string, boolean>();
+  if (asked.length) {
+    const found = await rows(db, z.object({ owner_id: z.string(), note_item_id: z.string(), held: z.boolean() }), `SELECT t.owner_id, t.note_item_id,
+        EXISTS (SELECT 1 FROM note_access a WHERE a.owner_id = t.owner_id AND a.note_item_id = t.note_item_id AND a.email_index = ANY($1::bytea[])) AS held
+      FROM unnest($2::text[], $3::text[]) AS t(owner_id, note_item_id)
+      JOIN items i ON i.owner_id = t.owner_id AND i.item_id = t.note_item_id AND i.kind = 'note' AND i.deleted_at IS NULL`, [who.principals, asked.map((c) => c.ownerId), asked.map((c) => c.noteId ?? '')]);
+    for (const r of found) notes.set(`${r.owner_id}:${r.note_item_id}`, r.held);
+  }
+  for (const { id, call } of folders) {
+    const held = call.noteId === null ? undefined : notes.get(`${call.ownerId}:${call.noteId}`);
+    const theirs = call.ended && held !== undefined && (held || call.organizer === email);
+    out.set(id, { startedAt: call.startedAt, on: !call.ended, here: !call.ended && seatCall === call.callId, noteId: theirs ? call.noteId : null });
+  }
+  return out;
+}
+
 /** One item as a reader sees it. `trash` is what it's in Trash with, on its own or with a folder. */
-function wireItem(id: string, item: StoredItem, role: DocumentRole, outside: boolean, trash: { at: string; by: string | null } | null): WorkspaceItem {
+function wireItem(id: string, item: StoredItem, role: DocumentRole, outside: boolean, trash: { at: string; by: string | null } | null, call: ItemCall | null): WorkspaceItem {
   return {
     id, kind: item.kind, name: item.name, parent: outside ? null : item.parent, by: item.by && { name: item.by.name, portrait: portraitFor(item.by.email || item.by.name) },
-    createdAt: item.createdAt, editedAt: item.editedAt, trashedAt: trash?.at ?? null, trashedBy: trash?.by ?? null, restricted: item.restricted, role
+    createdAt: item.createdAt, editedAt: item.editedAt, trashedAt: trash?.at ?? null, trashedBy: trash?.by ?? null, restricted: item.restricted, role, call
   };
 }
 type Seen = Standing & { workspaceId: string; state: WorkspaceState; people: number };
-/** The workspace as one reader sees it: everything they can open, in order, with parents first. */
-function treeFor(who: Who, w: Seen): WorkspaceTree {
+/** The workspace as one reader sees it: everything they can open, in order, with parents first, and each call's folder as `calls` says they may read it. */
+function treeFor(who: Who, w: Seen, calls: ReadonlyMap<string, ItemCall>): WorkspaceTree {
   const outside = w.role === null;
   const items: WorkspaceItem[] = [];
   const kids = childrenIn(w.state);
@@ -172,36 +200,46 @@ function treeFor(who: Who, w: Seen): WorkspaceTree {
     const { id, item } = at.child;
     const trash = item.trashedAt ? { at: item.trashedAt, by: item.trashedBy } : at.above;
     const role = roleOf(who, w, id, item);
-    if (role) items.push(wireItem(id, item, role, outside, trash));
+    if (role) items.push(wireItem(id, item, role, outside, trash, calls.get(id) ?? null));
     stack.push(...next(id, trash));
   }
   return { id: w.workspaceId, name: outside ? null : w.state.name, role: w.role, people: outside ? null : w.people, items };
 }
-export const tree = async (d: Deps, reader: Reader, workspaceId: string): Promise<WorkspaceTree> => treeFor(reader, await workspaceFor(d, reader, workspaceId));
+export async function tree(d: Deps, reader: Reader, workspaceId: string): Promise<WorkspaceTree> {
+  const w = await workspaceFor(d, reader, workspaceId);
+  return treeFor(reader, w, await callsIn(d.pool, reader, reader.seat?.callId ?? null, w.state));
+}
 export async function item(d: Deps, reader: Reader, workspaceId: string, itemId: string): Promise<WorkspaceItem> {
   const w = await workspaceFor(d, reader, workspaceId);
   const found = requireItem(reader, w, itemId);
-  return wireItem(itemId, found.item, found.role, w.role === null, trashOf(w.state, itemId));
+  const calls = found.item.call ? await callsIn(d.pool, reader, reader.seat?.callId ?? null, { ...w.state, items: { [itemId]: found.item } }) : new Map<string, ItemCall>();
+  return wireItem(itemId, found.item, found.role, w.role === null, trashOf(w.state, itemId), calls.get(itemId) ?? null);
 }
 
-const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number() });
-/** Every workspace someone's in, by name, then each one they only have documents in, which says nothing about itself. */
+const ListedRow = z.object({ owner_id: z.string(), workspace_id: z.string(), state_ciphertext: bytea, role: z.enum(['admin', 'edit', 'read']).nullable(), people: z.number(), created_at: timestamp });
+/**
+ * The Drive: every workspace someone's in, newest first, a call's home with the call it was made for; then each one they only
+ * have documents in, which says nothing about itself, not even when it was made.
+ */
 export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
   const o = reader.account?.owner;
   if (!o) return [];
-  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role,
+  const found = await rows(o.pool, ListedRow, `SELECT w.owner_id, w.workspace_id, w.state_ciphertext, m.role, w.created_at,
       (SELECT count(*)::int FROM workspace_members x WHERE x.owner_id = w.owner_id) AS people
     FROM workspaces w LEFT JOIN workspace_members m ON m.owner_id = w.owner_id AND m.email_index = ANY($1::bytea[])
-    WHERE m.role IS NOT NULL OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))`, [reader.principals]);
+    WHERE m.role IS NOT NULL OR EXISTS (SELECT 1 FROM document_access a WHERE a.owner_id = w.owner_id AND a.principal_index = ANY($1::bytea[]))
+    ORDER BY w.created_at DESC, w.workspace_id`, [reader.principals]);
   const mine: WorkspaceSummary[] = [];
   const given: WorkspaceSummary[] = [];
   for (const r of found) {
-    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null }); continue; }
+    if (r.role === null) { given.push({ id: r.workspace_id, name: null, role: null, people: null, createdAt: null, call: null }); continue; }
     const owner = await findOwner(o, r.owner_id, undefined);
     // Deleted since its row was read: nobody has it any more.
-    if (owner) mine.push({ id: r.workspace_id, name: openState(owner, r.workspace_id, r.state_ciphertext).name, role: r.role, people: r.people });
+    if (!owner) continue;
+    const state = openState(owner, r.workspace_id, r.state_ciphertext);
+    mine.push({ id: r.workspace_id, name: state.name, role: r.role, people: r.people, createdAt: r.created_at.toISOString(), call: state.madeFor && { title: state.madeFor.title, at: state.madeFor.at } });
   }
-  return [...mine.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')), ...given];
+  return [...mine, ...given];
 }
 
 /* ---------- changing ---------- */
@@ -237,16 +275,90 @@ export async function createIn(o: Owner, c: Db, name: string): Promise<{ id: str
   if ((made?.n ?? 0) >= MAX_MADE) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n } });
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {} })]);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: null })]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email, true);
   wlog.info('workspace created', { workspaceId: id });
   return { id };
 }
-export async function create(o: Owner, name: string): Promise<{ id: string }> {
-  const made = await tx(o.pool, (c) => createIn(o, c, name));
-  await noteUsed(o, made.id);
-  return made;
+export const create = (o: Owner, name: string): Promise<{ id: string }> => tx(o.pool, (c) => createIn(o, c, name));
+
+/* ---------- a call's home ---------- */
+
+/** A call's folder, as its home keeps it. */
+export interface CallFolder { id: string; name: string; call: StoredCall }
+const folderOf = (f: CallFolder, pos: string, at: string): StoredItem => ({
+  kind: 'folder', name: f.name, parent: null, pos, by: null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: f.call
+});
+/** The people invited to a call, as a home keeps them: lower-cased, once each, without its organizer. */
+const inviteesOf = (invited: string[], organizer: string): string[] => [...new Set(invited.map((e) => e.trim().toLowerCase()))].filter((e) => e && e !== organizer.trim().toLowerCase());
+
+/**
+ * A call's new home, in the caller's transaction, which holds the call's row: nobody else can reach it yet, so nothing waits
+ * on it. The organizer is its admin, and everyone invited is in it to edit, the same people who get the notes; the call's
+ * folder is at the top. It's the call's, so it doesn't count towards the workspaces someone can make (`MAX_MADE`).
+ */
+export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'added'>; invited: string[]; folder: CallFolder }): Promise<{ id: string }> {
+  const me = await profile(o, c);
+  const id = id128();
+  const { ownerId, root } = await createOwner(o, c);
+  const owner = ownerFrom(o, ownerId, root, undefined);
+  const added = inviteesOf(home.invited, me.email).slice(0, MAX_PEOPLE - 1);
+  const state: WorkspaceState = { name: home.name, items: { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) }, madeFor: { ...home.madeFor, added } };
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, state)]);
+  await addMember(owner, c, id, me.email, 'admin', me.name);
+  for (const email of added) await addMember(owner, c, id, email, 'edit');
+  await noteAuthor({ owner }, c, me.email);
+  wlog.info('call home made', { workspaceId: id, people: added.length + 1 });
+  return { id };
+}
+
+/**
+ * Puts a call's folder at the top of its home, in the caller's transaction, which holds the home's row (`serverWorkspace` with
+ * `change`), unless it's there already, or was and has gone: whoever gets there first makes it, with the ID the call took for
+ * it. True when it's there now. A full workspace has no room for it, and the call goes on without.
+ */
+export async function addCallFolder(w: HeldWorkspace, db: Db, folder: CallFolder): Promise<boolean> {
+  if (w.state.items[folder.id]) return true;
+  if (Object.keys(w.state.items).length >= MAX_ITEMS) { wlog.warn('no room for a call’s folder', { workspaceId: w.workspaceId }); return false; }
+  w.state = withItem(w.state, folder.id, folderOf(folder, positionIn(w.state, null, null), new Date().toISOString()));
+  await saveState(w, db);
+  await publish(db, w.workspaceId, TREE_NOTICE);
+  wlog.info('call folder made', { workspaceId: w.workspaceId, folderId: folder.id });
+  return true;
+}
+
+/**
+ * Who's in a call's home follows its invite, when it was made for that call or its series (`MadeFor`): everyone invited is in
+ * it, to edit, and whoever's taken off the invite (`gone`) is taken out again, if it was the invite that put them there and
+ * their role is still the one it gave them. Anyone added by hand stays as they are. In the caller's transaction, which holds
+ * the home's row.
+ */
+export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, invited: string[], gone: string[] = []): Promise<{ added: number; removed: number }> {
+  const made = w.state.madeFor;
+  if (!made) return { added: 0, removed: 0 };
+  const ownerId = w.owner.ownerId;
+  const members = await rows(db, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [ownerId]);
+  const indexOf = (email: string) => blindIndex(masterKey(w.owner), 'email', email);
+  const memberOf = (email: string) => { const at = indexOf(email); return members.find((m) => Buffer.compare(m.email_index, at) === 0); };
+  const leaving = inviteesOf(gone, organizer).filter((e) => made.added.includes(e));
+  const joining = inviteesOf(invited, organizer).filter((e) => !leaving.includes(e) && !memberOf(e)).slice(0, Math.max(0, MAX_PEOPLE - members.length));
+  for (const email of joining) await addMember(w.owner, db, w.workspaceId, email, 'edit');
+  let removed = 0;
+  for (const email of leaving) {
+    const m = memberOf(email);
+    if (m?.role !== 'edit') continue;
+    await dropMember(w, db, m);
+    removed++;
+  }
+  const added = [...made.added.filter((e) => !leaving.includes(e)), ...joining];
+  if (joining.length || leaving.length) {
+    w.state = { ...w.state, madeFor: { ...made, added } };
+    await saveState(w, db);
+    await publish(db, w.workspaceId, TREE_NOTICE);
+    wlog.info('call home follows its invite', { workspaceId: w.workspaceId, added: joining.length, removed });
+  }
+  return { added: joining.length, removed };
 }
 export async function rename(d: Deps, reader: Reader, workspaceId: string, name: string): Promise<void> {
   await change(d, reader, workspaceId, (w) => {
@@ -326,14 +438,21 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
     if (!leaving) requireRole(w, 'admin');
     if (!m) throw noOne(w, memberId);
     if (m.role === 'admin' && (await admins(w, c)) <= 1) throw onlyAdmin(w);
-    await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, memberId]);
-    await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
-    // What they had by restricting something goes with them: coming back gives them only what they're given.
-    const { email } = openJson(workspaceKey(w.owner), memberHeader(w.owner, workspaceId, memberId), m.person_ciphertext, MemberPerson);
-    w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
-    const trashed = await trashStranded(w, c);
+    const trashed = await dropMember(w, c, m);
     wlog.info('person removed', { workspaceId, memberId, leaving, trashed });
   });
+}
+/**
+ * Takes someone out, in the caller's transaction, which holds the workspace's row; the caller saves the state. What they had
+ * by restricting something goes with them, so coming back gives them only what they're given, and what only they could reach
+ * goes to Trash. How much did.
+ */
+async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>): Promise<number> {
+  await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
+  await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
+  const { email } = openJson(workspaceKey(w.owner), memberHeader(w.owner, w.workspaceId, m.member_id), m.person_ciphertext, MemberPerson);
+  w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
+  return trashStranded(w, c);
 }
 
 /* ---------- the tree ---------- */
@@ -349,7 +468,7 @@ export async function createItem(d: Deps, reader: Reader, workspaceId: string, i
     const id = id128();
     const at = new Date().toISOString();
     w.state = withItem(w.state, id, {
-      kind: input.kind, name: input.name, parent, pos: positionIn(w.state, parent, input.after), by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null
+      kind: input.kind, name: input.name, parent, pos: positionIn(w.state, parent, input.after), by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null
     });
     if (holdsContent(input.kind)) await addDocuments(w, c, [id]);
     if (input.kind === 'document') await startContent(w, c, [id]);
@@ -390,7 +509,7 @@ export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: st
   if (Object.keys(w.state.items).length >= MAX_ITEMS) throw new ConflictError('This workspace is full. Delete something from it first.', { context: { workspaceId: w.workspaceId } });
   const at = new Date().toISOString();
   w.state = withItem(w.state, id, {
-    kind: 'document', name, parent: from.parent, pos: positionIn(w.state, from.parent, like), by: from.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: from.restricted, restrictedBy: from.restrictedBy
+    kind: 'document', name, parent: from.parent, pos: positionIn(w.state, from.parent, like), by: from.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: from.restricted, restrictedBy: from.restrictedBy, call: null
   });
   await addDocuments(w, db, [id]);
   await startContent(w, db, [id]);
@@ -404,7 +523,7 @@ export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: st
 }
 
 interface Copied { from: string; id: string; item: StoredItem }
-/** A copy of `id`, and of everything `reader` can open in it, by a new person and shared with nobody. The copy of `id` comes first. */
+/** A copy of `id`, and of everything `reader` can open in it, by a new person and shared with nobody. The copy of `id` comes first. A copy of a call's folder is a folder: the call's pages stay with the call's own. */
 function copied(reader: Reader, w: Workspace, id: string, parent: string | null, pos: string, name: string): Copied[] {
   const kids = childrenIn(w.state);
   const at = new Date().toISOString();
@@ -413,7 +532,7 @@ function copied(reader: Reader, w: Workspace, id: string, parent: string | null,
   for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
     const source = w.state.items[x.from];
     if (!source) continue;
-    out.push({ from: x.from, id: x.copy, item: { ...source, name: x.name, parent: x.parent, pos: x.pos, by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restrictedBy: null } });
+    out.push({ from: x.from, id: x.copy, item: { ...source, name: x.name, parent: x.parent, pos: x.pos, by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restrictedBy: null, call: null } });
     for (const child of kids.get(x.from) ?? []) {
       if (!child.item.trashedAt && roleOf(reader, w, child.id, child.item)) stack.push({ from: child.id, copy: id128(), parent: x.copy, pos: child.item.pos, name: child.item.name });
     }
@@ -865,7 +984,7 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
       this.role = standing.role;
       await line({ type: 'access', role: standing.role });
     }
-    const tree = treeFor(this.who, { ...s, ...standing });
+    const tree = treeFor(this.who, { ...s, ...standing }, await callsIn(this.d.pool, this.who, this.callId, s.state));
     const text = JSON.stringify(tree);
     const hash = shortHash(text);
     if (hash !== this.shown) {
@@ -906,9 +1025,9 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
   const release = d.hub.admit('workspace', limitKey(reader), address);
   try {
     const known = await workspaceFor(d, reader, workspaceId);
-    if (reader.account && (known.role === 'admin' || known.role === 'edit')) await noteOpened(reader.account.owner, workspaceId);
+    const callId = reader.seat?.callId ?? null;
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), { role: known.role, grants: known.grants }, known.version, release, reader.seat?.callId ?? null);
+    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known, await callsIn(d.pool, reader, callId, known.state)), { role: known.role, grants: known.grants }, known.version, release, callId);
     room.join(stream);
     try {
       await room.ready;

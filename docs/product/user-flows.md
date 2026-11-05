@@ -469,10 +469,13 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 All of this works on screen except **Play for everyone**, which isn't offered until videos can go in documents.
 
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
-   column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
-   opens it, the call settles which one it uses: the one the call was scheduled with, else the organizer's most recently
-   used, else a new one in their name. Everyone sees the same one, late or back from a reload. It opens on this call's
-   agenda, or the first thing brought to it, and **This call** at the top of the list holds what's been brought. Anyone who
+   column, and the workspace rises in. The count on the button is what's been brought to this call. Every call has a home,
+   where its notes and transcript go: the workspace it was scheduled with, as a continuation, or the one its series has;
+   else, the first time anyone opens it, a new one made for the call, named after it and the day (**Launch check-in ·
+   5 Nov**), with the organizer and everyone invited in it. At the top of the home is the call's own folder, named the
+   same, open, with **Notes**, **Follow-ups** and **Transcript** in it; a home for several calls has a folder for each,
+   the newest first. Everyone sees the same workspace, late or back from a reload. It opens on this call's agenda, or the
+   first thing brought to it, and **This call** at the top of the list holds what's been brought. Anyone who
    can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping
    its row on This call. Pressing Workspace or **W** again gives the stage back and keeps your place: the document, where
    you'd scrolled to, your caret and your undo, for the rest of the call and across a reload. The call's letters (**M**,
@@ -496,15 +499,18 @@ All of this works on screen except **Play for everyone**, which isn't offered un
      following, and for everyone else you've left it.
    - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them. Just the
      document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
-   - **An organizer taken out of the workspace** the call uses is told so, and **New workspace** moves the call to one of
-     their own. Everyone else carries on.
-2. **Only the organizer changes it**, from the name at the top of the list: their workspaces they can edit in, with who's in
-   each, and **New workspace**. Picking one asks once, in place, and says who in the call can't open it; **Switch to …**
-   changes the list for everyone at once, and **Back** on the toast changes it back. Nobody is interrupted and nothing is
-   moved or copied: sound and video carry on, and whoever can't open it stays in the call and sees that it's private, not
-   what's in it. What was brought to the call from the workspace before stays with that one. **New workspace** makes one
-   with just the organizer in it, named after the call, and opens a blank document in it; it's still there after the
-   call. Everyone else sees the name, and that the organizer chooses.
+   - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
+     of their own. Everyone else carries on.
+2. **Only the organizer switches what everyone views**, from the name at the top of the list: their workspaces they can edit
+   in, with who's in each, the call's home marked **This call's home**, and **New workspace**. Picking one asks once, in
+   place, says who in the call can't open it, and that the notes and transcript still go to the home; **Switch to …**
+   changes the list for everyone at once, a toast says where the notes still go, and **Back** on it changes it back. The
+   call's Notes, Follow-ups and Transcript stay at the top of the list while another workspace is viewed. Nobody is
+   interrupted and nothing is moved or copied: sound and video carry on, and whoever can't open it stays in the call and
+   sees that it's private, not what's in it. What was brought to the call from the workspace before stays with that one.
+   **New workspace** makes one with just the organizer in it, named after the call, and opens a blank document in it; it's
+   still there after the call. The home doesn't change: the next call in the series still has it. Everyone else sees the
+   name, and that the organizer chooses.
 3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
    names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
    with the call. The organizer sees who's asking at the top of the call, and shares the document in front of them:
@@ -512,8 +518,8 @@ All of this works on screen except **Play for everyone**, which isn't offered un
    opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
    is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
    ends with the call.
-4. **Notes, Follow-ups and Transcript** are always at the top of the list, for everyone in the call, whether or not they can open
-   the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
+4. **Notes, Follow-ups and Transcript** are in the call's folder in its home, and at the top of the list wherever else, for everyone
+   in the call, whether or not they can open the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
    empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
    says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
    that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
@@ -935,19 +941,31 @@ tries again, and nothing happens later by itself. Once it's deleted you land on 
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.
 
-## 12. The workspace
+## 12. The Drive and the workspace
 
-Documents and folders people write in together, between calls as well as in them. **Workspace** opens the one you had
-open last, at the document you had open in it; it fills the page, in your theme, with search and you in the top of it.
-It's the list and a document side by side. Everything happens in the list: nothing opens a window, and nothing asks you
-to fill anything in. Whatever someone does here reaches everyone else in the workspace as it happens, and a row that
-arrives or moves glows for a moment for all of them.
+Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
+its home, where its notes, follow-ups and transcript go, and **Drive** in the side panel lists every workspace you're in,
+newest first: a call's home with the call it was made for and when (**From Launch check-in, Today at 09:30**), and one
+made by hand with when it was made, each with who's in it. Picking one opens it on its own page, which fills the page, in
+your theme, with search and you in the top of it: the list and a document side by side, at the document you had open in
+it last. Everything happens in the list: nothing opens a window, and nothing asks you to fill anything in. Whatever
+someone does here reaches everyone else in the workspace as it happens, and a row that arrives or moves glows for a moment
+for all of them.
 
-**First day.** Someone with no workspace gets one in their name, made the first time they open Workspace. It says
-**Nothing here yet** with **New document** and **New folder**. **New document** opens an empty page with the caret in
-the title and a few ways to start under it: **Agenda**, **Decision log**, **Retro** and **Project brief**. They're only
-blocks: picking one fills the page, names an untitled document after it, and anything in it can change or go. Two
-people can have the same new document open: they get one title and one first line.
+**A call's folder.** At the top of a call's home is the call's folder, named after it and the day, with its **Notes**,
+**Follow-ups** and **Transcript**: once the call's over they open its note, at that part of it, for whoever has the note,
+and in a call, in a tab of their own. Someone in the workspace without the note sees the folder and whatever's been put in
+it. It's a folder like any other: rename it, move it, put documents in it.
+
+**When scheduling** a call, the details hold **New workspace for this call**: open it to pick one of your workspaces as its
+home instead, so its notes go there, beside the calls before it.
+
+**First day.** The Drive says **Nothing here yet**, and that your next call makes the first. **New workspace** in its sky
+names one in place and opens it. An empty workspace says **Nothing here yet** with **New document** and **New folder**.
+**New document** opens an empty page with the caret in the title and a few ways to start under it: **Agenda**, **Decision
+log**, **Retro** and **Project brief**. They're only blocks: picking one fills the page, names an untitled document after
+it, and anything in it can change or go. Two people can have the same new document open: they get one title and one first
+line.
 
 **Making things.** **+** at the top of the list, or hovering a folder and pressing its **+**, offers **New document**
 and **New folder**; **N** and **⇧N** skip the menu when you aren't typing. A folder is named in its row: type, then
@@ -1016,7 +1034,7 @@ first, then your company (in a call, who's in it first, then who's invited). The
 before you pick. Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
 edit**, **Read only** or **Not now**. A tag never shares anything by itself, and someone who can't open it isn't told. Being
 tagged is a toast saying who and where, and nothing moves until **Go there**, which lands on the line. Someone away hears when
-they're back: **Workspace** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.
+they're back: **Drive** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.
 
 **Comments.** Select words: the bar over them has **Comment**, as does a block's menu, and **⌘⇧M** does the same. The words
 stay marked while you write, and **@** works here too, for people and dates. **Enter** marks them for everyone, with a count in

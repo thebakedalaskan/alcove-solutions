@@ -80,7 +80,7 @@ function Shell() {
             {/* With the side panel hidden, its offline notice moves to the top of the page. */}
             <Offline show={side.hidden} className="main-offline" />
             <div className="main-top"><TopActions onSearch={() => openPalette()} keyed={!full} /></div>
-            <div key={full ? '/workspace' : path} className="main-in enter">
+            <div key={full ? '/drive/' : path} className="main-in enter">
               {account.offline && full ? <WsPane page><WsDoc><WsOfflineEmpty /></WsDoc></WsPane> : account.offline && path !== '/record' ? <OfflinePage /> : <Outlet />}
             </div>
           </main>

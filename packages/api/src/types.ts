@@ -250,7 +250,10 @@ export const MeetingSchema = z.object({
   joinMuted: z.boolean(),
   /** What was brought to the call. */
   documents: z.array(CallDocumentSchema),
-  /** The workspace the call uses, for its organizer: null until there is one, and for everyone else, who find out in the call what they can open. */
+  /**
+   * The call's home, for its organizer: the workspace its notes and transcript go to, in a folder of its own. Null until
+   * there is one, and for everyone else, who find out in the call what they can open.
+   */
   workspaceId: IDSchema.nullable(),
   /** How everyone invited has answered. */
   rsvps: RsvpCountsSchema,
@@ -342,7 +345,10 @@ export const MeetingInputSchema = z.object({
   joinMuted: z.boolean().optional(),
   /** Documents brought to the call, by ID. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
-  /** The workspace the call uses, one the organizer can edit in. Null: the organizer's most recently used, when someone first opens it. */
+  /**
+   * The call's home: one of the organizer's workspaces they can edit in, where its notes and transcript go. Null: a new
+   * workspace made for the call, named after it and its date, when someone first opens it or the call ends with notes.
+   */
   workspaceId: IDSchema.nullable().optional(),
   /** Schedules a call for each occurrence, as one series with one link. */
   repeat: RepeatInputSchema.optional(),

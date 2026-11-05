@@ -8,7 +8,7 @@
  */
 import { errorMessage, firstName, type CallSession, type CallWorkspace, type Person } from '@alcove/api';
 import { DURATION, WsLostSpace, WsNoAccess, WsPane, cn, useToast, wsToast, type WsToastData } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CallPerson, CallTogether, SpaceHead, WorkspaceCall, WorkspacePlace, WorkspacePlaying, WorkspacePresenting, WorkspaceTogether } from '~/features/workspace/context';
@@ -45,6 +45,9 @@ function firstPlace(w: CallWorkspace): WorkspacePlace {
 /** What the call's screen holds about the workspace. One a call has for good: everything in `act` keeps the same identity. */
 export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace, view: CallView) {
   const push = useToast();
+  const qc = useQueryClient();
+  /** A workspace's name, as your Drive has it: the call names only the one everyone views. */
+  const spaceName = useCallback((id: string) => qc.getQueryData(q.workspaces().queryKey)?.find((w) => w.id === id)?.name ?? 'the call’s home', [qc]);
   const kept = view.layout.workspace;
   const [open, setOpen] = useState(kept.open);
   const [mounted, setMounted] = useState(kept.open);
@@ -75,11 +78,14 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
     const reveal = () => { setMounted(true); setOpen(true); };
     const hide = () => { setOpen(false); setZen(false); setPeek(false); setFinding(false); };
-    /** Organizer only: the call moves to another workspace, for everyone at once, and Back moves it back. */
+    /** The call's home by name, when everyone's viewing another workspace: where the notes still go. */
+    const homeName = (w: CallWorkspace) => (w.home === null || w.home === w.id ? null : spaceName(w.home));
+    /** Organizer only: everyone views another workspace, or the home again, at once, and Back goes back. The notes stay in the home. */
     const switchTo = (to: string) => {
       const from = session.getSnapshot().workspace.id;
       session.setWorkspace(to).then(() => {
-        say(wsToast.switched(session.getSnapshot().workspace.name ?? 'Untitled', () => { if (from) switchTo(from); }));
+        const w = session.getSnapshot().workspace;
+        say(wsToast.switched(w.name ?? 'Untitled', homeName(w), () => { if (from) switchTo(from); }));
       }, failed);
     };
     return {
@@ -125,14 +131,14 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       newWorkspace: () => {
         session.newWorkspace().then(async () => {
           const w = session.getSnapshot().workspace;
-          say(wsToast.newSpace(w.name ?? 'Untitled'));
+          say(wsToast.newSpace(w.name ?? 'Untitled', homeName(w)));
           if (w.id === null) return;
           const { id } = await makeFirst.current(w.id);
           setAt({ kind: 'document', id });
         }).catch(failed);
       }
     };
-  }, [push, session]);
+  }, [push, session, spaceName]);
   const openNow = useRef(open);
   openNow.current = open;
   useAskAnswered(workspace, act);
@@ -249,14 +255,15 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   /* The organizer chooses the call's workspace from the name at the top of the list; everyone else is told who chooses. */
-  const picker = useMemo(() => (organizer ? (head: SpaceHead) => <SpacePicker head={head} act={act} /> : undefined), [organizer, act]);
+  const home = workspace.home;
+  const picker = useMemo(() => (organizer ? (head: SpaceHead) => <SpacePicker head={head} act={act} home={home} /> : undefined), [organizer, act, home]);
   /* Watching a presentation, your own page is under it: out of sight, as far as it knows. */
   const call = useMemo((): WorkspaceCall => ({
-    top: LIVE_ROWS, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
+    top: home !== null && home === workspace.id ? undefined : LIVE_ROWS, home, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList },
     presenting, playing
-  }), [ live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList, presenting, playing ]);
+  }), [ home, workspace.id, live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList, presenting, playing ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /*

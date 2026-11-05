@@ -41,6 +41,8 @@
 .dark .hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
 .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
 .dark .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
+.hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.856 0.046 257) 58%, oklch(0.892 0.04 312) 100%); --hz-glow-w: 860px; --hz-glow-h: 120px; }
+.dark .hz[data-moment="drive"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.276 0.063 261) 58%, oklch(0.33 0.069 280) 100%); }
 .hz[data-moment="note"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.847 0.049 253.947) 58%, oklch(0.878 0.041 285) 100%); --hz-glow-w: 760px; --hz-glow-h: 90px; }
 .dark .hz[data-moment="note"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.272 0.062 260.824) 58%, oklch(0.307 0.067 270.769) 100%); }
 .hz[data-moment="settings"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.841 0.05 253.421) 58%, oklch(0.866 0.044 265) 100%); --hz-glow-w: 620px; --hz-glow-h: 70px; }

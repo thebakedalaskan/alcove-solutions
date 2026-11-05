@@ -27,6 +27,26 @@ export type ItemKind = z.infer<typeof ItemKindSchema>;
 export const ItemAuthorSchema = z.object({ name: z.string(), portrait: PortraitStyleSchema });
 export type ItemAuthor = z.infer<typeof ItemAuthorSchema>;
 
+/** A call's own pages, in its folder: its notes (the summary and what was decided), its follow-ups, and its transcript. */
+export const CallPageSchema = z.enum(['notes', 'follow-ups', 'transcript']);
+export type CallPage = z.infer<typeof CallPageSchema>;
+export const CALL_PAGES: readonly CallPage[] = ['notes', 'follow-ups', 'transcript'];
+/**
+ * What makes a folder a call's own: the folder a call makes at the top of its home workspace. Its pages aren't items: they
+ * read the call (`here`) or its note (`noteId`), through their own access, and nothing of either is copied into the
+ * workspace. Someone who can't read them sees the folder and whatever else is in it.
+ */
+export const ItemCallSchema = z.object({
+  startedAt: ISODateSchema,
+  /** The call is still on. */
+  on: z.boolean(),
+  /** You're in it now: its pages are the live ones (`CallSession`). */
+  here: z.boolean(),
+  /** Its notes, once it's over, for someone who has them: what its pages open. */
+  noteId: IDSchema.nullable()
+});
+export type ItemCall = z.infer<typeof ItemCallSchema>;
+
 export const WorkspaceItemSchema = z.object({
   id: IDSchema,
   kind: ItemKindSchema,
@@ -45,7 +65,9 @@ export const WorkspaceItemSchema = z.object({
   /** Opens only for its creator and the people it's shared with. Always false for a folder. */
   restricted: z.boolean(),
   /** What you can do with it. */
-  role: DocumentRoleSchema
+  role: DocumentRoleSchema,
+  /** A call's folder: its pages, as you may read them. Null for everything else. */
+  call: ItemCallSchema.nullable()
 });
 export type WorkspaceItem = z.infer<typeof WorkspaceItemSchema>;
 
@@ -62,8 +84,14 @@ export const WorkspaceTreeSchema = z.object({
 });
 export type WorkspaceTree = z.infer<typeof WorkspaceTreeSchema>;
 
-/** A workspace in your list. Someone outside it who has documents in it sees only that it's there. */
-export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true });
+/**
+ * A workspace in your Drive, newest first. Someone outside it who has documents in it sees only that it's there: `createdAt`
+ * is null for them. `call`: the call it was made for, as a call's home, for someone in it.
+ */
+export const WorkspaceSummarySchema = WorkspaceTreeSchema.omit({ items: true }).extend({
+  createdAt: ISODateSchema.nullable(),
+  call: z.object({ title: z.string(), at: ISODateSchema }).nullable()
+});
 export type WorkspaceSummary = z.infer<typeof WorkspaceSummarySchema>;
 
 /** Someone in a workspace. `id` is what the API calls them here. */
@@ -114,11 +142,10 @@ export type MentionBody = z.infer<typeof MentionBodySchema>;
 /* ---------- in this browser ---------- */
 
 /**
- * Where someone was, remembered in this browser, per account, by ID only: the workspace they last had open, the document
- * they last had open in each and the ones before it, which folders they left open, and whether they tucked the list away.
+ * Where someone was, remembered in this browser, per account, by ID only: the document they last had open in each workspace
+ * and the ones before it, which folders they left open, and whether they tucked the list away.
  */
 export const WorkspacePlacesSchema = z.object({
-  workspace: z.string().nullable(),
   documents: z.record(z.string(), z.string()),
   /** What was opened in each workspace, the newest first, for Find before anything's typed. */
   recent: z.record(z.string(), z.array(z.string())).default({}),
