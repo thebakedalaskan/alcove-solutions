@@ -1,15 +1,13 @@
 /*
  * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines,
- * note tiles, person cards, settings, theme previews, the mic level, and what a
- * transcript isn't sure of.
+ * person cards, settings, theme previews, the mic level, and what a transcript isn't sure of.
  */
-import { Slot } from 'radix-ui';
-import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactElement, type ReactNode } from 'react';
+import { forwardRef, useId, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
-import { Avatar, Faces, type AvatarPerson } from './people';
-import { ArchThumb, Chip, Meter, type Cover } from './primitives';
+import { Avatar, type AvatarPerson } from './people';
+import { Chip, Meter } from './primitives';
 import type { ThemeChoice } from './theme';
 
 /**
@@ -115,45 +113,6 @@ export function TranscriptLine({ person, name, time, children, className, id }: 
 }
 
 /* ---------- Tiles and cards ---------- */
-
-/** `children` inside `link` (an element such as the router's Link, which keeps its own props) when there is one, otherwise in a div. */
-function LinkOrDiv({ link, className, children, ...aria }: {
-  link: ReactElement | undefined; className: string; children: ReactNode;
-  'aria-labelledby'?: string | undefined; 'aria-describedby'?: string | undefined;
-}) {
-  if (!link) return <div className={className}>{children}</div>;
-  return <Slot.Root className={className} {...aria}><Slot.Slottable>{link}</Slot.Slottable>{children}</Slot.Root>;
-}
-
-/**
- * A note as a tile, for Record's recordings: its cover, title and `meta` (when, how long), the start of
- * the summary, then who has it and a count or state at the `end`. `faces` draws the people; `who` says it
- * in words, beside them or instead ("Only you"). Pass the router's Link as `link` and the tile opens the note.
- */
-export function NoteTile({ cover, room = false, title, meta, excerpt, faces, who, end, link, className }: {
-  cover: Cover; room?: boolean | undefined; title: ReactNode; meta?: ReactNode; excerpt?: ReactNode;
-  faces?: AvatarPerson[] | undefined; who?: ReactNode; end?: ReactNode; link?: ReactElement | undefined; className?: string | undefined;
-}) {
-  const people = faces && faces.length > 0 ? faces : undefined;
-  const id = useId();
-  /* As a link, it's named by its title alone and described by when and its state, not by every word in it. */
-  const named = link ? { 'aria-labelledby': `${id}t`, 'aria-describedby': [meta !== undefined && `${id}m`, end !== undefined && `${id}e`].filter(Boolean).join(' ') || undefined } : {};
-  return (
-    <LinkOrDiv link={link} className={cn('ac-note-tile', className)} {...named}>
-      <div className="top">
-        <ArchThumb cover={cover} room={room} width={32} />
-        <div className="t"><b id={`${id}t`}>{title}</b>{meta !== undefined && <small id={`${id}m`}>{meta}</small>}</div>
-      </div>
-      {excerpt !== undefined && <div className="ex ac-clamp-2">{excerpt}</div>}
-      {(people || who !== undefined || end !== undefined) && (
-        <div className="foot">
-          <span className="who">{people && <Faces people={people} size={22} />}{who}</span>
-          {end !== undefined && <span id={`${id}e`} className="end ac-clamp-1">{end}</span>}
-        </div>
-      )}
-    </LinkOrDiv>
-  );
-}
 
 /** A name with no spaces (someone known only by their address) may break after its dots and @, never mid-word. */
 function breakable(text: string): ReactNode {

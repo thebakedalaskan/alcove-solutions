@@ -19,7 +19,6 @@
 .stage-btn:hover { background: rgb(255 255 255 / 0.14); }
 .stage-btn:active { transform: scale(0.96); }
 .stage-btn[disabled] { opacity: 0.5; pointer-events: none; }
-.stage-btn.lg { width: 64px; height: 64px; }
 .stage-btn.sm { width: 40px; height: 40px; border-radius: 12px; }
 
 /* ---- camera feeds ---- */
