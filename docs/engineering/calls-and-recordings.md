@@ -1049,8 +1049,10 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
     waits on a nudge that isn't coming.
 - **The next agenda.** When a call in a series first opens Workspace, it looks once for an agenda to make: the call before
   it that had one (kept on its meeting, as IDs, when that call ended: whatever it brought or worked on that's named Agenda,
-  or says what the Agenda template says), still in the tree of the workspace this call uses. What was left open, every
-  to-do with words and no tick, is read with nothing held. Then under the call's row, so there's one however many open it,
+  or says what the Agenda template says), still in the tree of the workspace this call uses. It's made in the organizer's
+  name, so it takes what making a document there takes: `edit` in the workspace, and `edit` on the last agenda, whose open
+  to-dos it carries. An organizer taken out of the workspace, or who can only read in it or read the last one, gets none,
+  however many calls their series has. What was left open, every to-do with words and no tick, is read with nothing held. Then under the call's row, so there's one however many open it,
   the server makes a document beside the last one, in the same folder, for the same people, restricted as it was, and
   `writeDocument` fills it in once that commits: From last time, Today, Notes. It replaces the last one among what's brought,
   and `agenda` names it. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays

@@ -24,7 +24,7 @@ import { isFollowUp, type Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
 import { placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
-import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Who } from './workspaceAccess';
+import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Who, type Workspace } from './workspaceAccess';
 import { editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
 import { addBeside, createIn } from './workspaces';
 
@@ -551,8 +551,26 @@ function dayOf(iso: string, timeZone: string): string {
   return `${parts.find((p) => p.type === 'day')?.value ?? ''} ${parts.find((p) => p.type === 'month')?.value ?? ''}`;
 }
 /**
+ * The workspace as the organizer has it, if they may make the next agenda in it from the last one: an agenda is made in
+ * their name, so it takes what making a document there takes, `edit` in the workspace, and `edit` on the last one, whose
+ * open to-dos it carries. Reading either isn't enough. Undefined otherwise, including once they've been taken out of it.
+ */
+async function organizerCarries(o: Owner, workspaceId: string, last: string, c?: Db | undefined, lock?: 'change' | undefined): Promise<Workspace | undefined> {
+  const who = accountWho(o, (await profile(o, c)).email);
+  try {
+    const w = await workspaceFor(o, who, workspaceId, c, lock);
+    requireRole(w, 'edit');
+    requireDocument(who, w, last, 'edit');
+    return w;
+  } catch (e) {
+    if (e instanceof NotFoundError || e instanceof ForbiddenError || e instanceof ConflictError) return undefined;
+    throw e;
+  }
+}
+/**
  * The agenda to make for a call in a series, if one's due: it has none, the call before it had one, and that's in the
- * workspace this call uses and still in its tree. An agenda stays in its workspace: nothing in one is copied to another.
+ * workspace this call uses and still in its tree, and its organizer may carry it on (`organizerCarries`). An agenda stays in
+ * its workspace: nothing in one is copied to another.
  */
 export async function planAgenda(o: Owner, meeting: Loaded<MeetingManifest>): Promise<AgendaPlan | undefined> {
   const { seriesId, startsAt, agenda, workspaceId } = meeting.manifest;
@@ -560,21 +578,22 @@ export async function planAgenda(o: Owner, meeting: Loaded<MeetingManifest>): Pr
   const earlier = (await allMeetings(o)).filter((m) => m.manifest.seriesId === seriesId && m.itemId !== meeting.itemId && m.manifest.agenda && m.manifest.startsAt < startsAt).sort((a, b) => b.manifest.startsAt.localeCompare(a.manifest.startsAt));
   const last = earlier[0]?.manifest.agenda;
   if (!last || last.workspaceId !== workspaceId) return undefined;
-  const w = await serverWorkspace(o, workspaceId);
+  const w = await organizerCarries(o, workspaceId, last.documentId);
   const item = w?.state.items[last.documentId];
-  if (!w || !item || trashOf(w.state, last.documentId)) return undefined;
+  if (!w || !item) return undefined;
   const open = await readDocument(w, last.documentId, 'openTodos', { kind: kindOf(item) });
   return { workspaceId, last: last.documentId, title: `Agenda · ${dayOf(startsAt, await zoneOf(o, seriesId) ?? 'UTC')}`, open };
 }
 /**
  * Makes it, in the caller's transaction, which holds the call's row, so however many people open Workspace at once there's
- * one. Undefined when it isn't to be made after all. It's filled in once this commits (`fillAgenda`).
+ * one. Undefined when it isn't to be made after all, the organizer's access asked again under the workspace's row. It's
+ * filled in once this commits (`fillAgenda`).
  */
 export async function claimAgenda(o: Owner, c: Db, meetingId: string, plan: AgendaPlan): Promise<HeldWorkspace & { documentId: string } | undefined> {
   const m = await getItem(o, c, 'meeting', meetingId, MeetingManifest, 'That meeting');
   if (m.manifest.agenda) return undefined;
-  const w = await serverWorkspace(o, plan.workspaceId, c, 'change');
-  if (!w || !w.state.items[plan.last] || trashOf(w.state, plan.last)) return undefined;
+  const w = await organizerCarries(o, plan.workspaceId, plan.last, c, 'change');
+  if (!w) return undefined;
   const documentId = await addBeside(w, c, plan.last, plan.title);
   const brought = broughtId(plan.workspaceId, documentId);
   await updateManifest(o, c, meetingId, (x) => ({

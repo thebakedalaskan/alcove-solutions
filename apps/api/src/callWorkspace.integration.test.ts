@@ -1610,6 +1610,53 @@ describe('the next call’s agenda', () => {
     await single.host.openWorkspace();
     expect(single.host.getSnapshot().workspace.agenda).toBeNull();
   });
+
+  it('isn’t made for an organizer taken out of the workspace, or who can only read in it or read the last one', async () => {
+    const admin = await account();
+    const art = await account();
+    const priya = await account();
+    /** A series Art organizes in the admin's workspace, its first call worked on an agenda `maker` made, and its next call's code. */
+    async function seriesIn(maker: Account) {
+      const id = await workspace(admin, 'Product');
+      const member = (await admin.api.workspaces.addPerson(id, art.email, 'edit')).id;
+      await admin.api.workspaces.addPerson(id, priya.email, 'edit');
+      const agenda = await doc(maker, id, 'Agenda');
+      const at = Date.now() + 3_600_000;
+      const m = await art.api.meetings.create({ title: 'Weekly', startsAt: new Date(at).toISOString(), durationMinutes: 30, guests: [], notes: 'off', workspaceId: id });
+      const next = await art.api.meetings.scheduleNext(m.id, new Date(at + 7 * 86_400_000).toISOString());
+      const first = await art.api.calls.join(m.code, { mic: false, cam: false });
+      await inGroup(first);
+      const page = await open(art, id, agenda, { pass: first.ticket.pass });
+      addTodo(page, 'open1', 'Book the briefing ', { who: { id: 'x', name: 'Someone' }, when: '2026-11-06' });
+      await saved(page);
+      page.close();
+      await first.leave();
+      await until(async () => (await admin.api.workspaces.versions(id, agenda)).some((v) => v.reason === 'call'), 'the version');
+      return { id, member, agenda, next: next.code };
+    }
+    /** What `viewer` finds in the workspace once a guest has opened Workspace in the next call. */
+    async function opened(s: { id: string; next: string }, viewer = admin) {
+      const host = await art.api.calls.join(s.next, { mic: false, cam: false });
+      await inGroup(host);
+      const g = await guest(host, s.next);
+      await g.call.openWorkspace();
+      const names = (await viewer.api.workspaces.get(s.id)).items.map((x) => x.name);
+      await host.leave();
+      return names;
+    }
+    const removed = await seriesIn(art);
+    await admin.api.workspaces.removePerson(removed.id, removed.member);
+    expect(await opened(removed)).toEqual(['Agenda']);
+    const reading = await seriesIn(art);
+    await admin.api.workspaces.setRole(reading.id, reading.member, 'read');
+    expect(await opened(reading)).toEqual(['Agenda']);
+    // Able to edit in the workspace, and only to read the last agenda: Priya made it, restricted it, and shared it with Art to
+    // read. A new one would be restricted as it was, so it's Priya who'd find it.
+    const restricted = await seriesIn(priya);
+    await priya.api.workspaces.share.restrict(restricted.id, restricted.agenda, true);
+    await priya.api.workspaces.share.set(restricted.id, restricted.agenda, [{ email: art.email }], 'read');
+    expect(await opened(restricted, priya)).toEqual(['Agenda']);
+  });
 });
 
 describe('asking Alcove about a selection', () => {
