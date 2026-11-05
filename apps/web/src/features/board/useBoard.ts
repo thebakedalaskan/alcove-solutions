@@ -8,16 +8,17 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, removeObjects,
-  type BoardView, type Box, type Camera, type Pad, type StickyColour
+  BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, isAttached, makeUndo, objectText, observeBoard, readBoard, removeObjects,
+  type BoardView, type Box, type Camera, type LineStyle, type NewObject, type Pad, type ShapeKind, type StickyColour
 } from '@alcove/board';
-import type { BoardTool } from '@alcove/ui';
+import type { BoardMoreItem, BoardPenKind, BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
 import * as Y from 'yjs';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
-import { STICKY, nextSpot } from './editing';
-import { MOUNT_ALL, NO_GUIDES, everything, reachHolds, reachOf, sameIds, type Guide } from './selection';
+import { STICKY, nextSpot, textField } from './editing';
+import { MOUNT_ALL, NO_GUIDES, drawn, everything, reachHolds, reachOf, sameIds, type Guide } from './selection';
+import type { BoardDraft } from './tools/draft';
 
 const log = rootLog.child({ component: 'board' });
 
@@ -51,14 +52,40 @@ export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
   phone: { ...BARE, page: true, phone: true }
 };
 
+/** What can open beside the rail: a tool's options, or More's. */
+export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more';
+
+/** What More's items do. Each comes from outside the board, and one that isn't given does nothing. */
+export type BoardMoreItems = Partial<Record<BoardMoreItem, (() => void) | undefined>>;
+
 export interface BoardState {
   view: BoardView;
   tool: BoardTool;
   /** The colour picked on the sticky tool, which a sticky takes where no frame says otherwise. */
   colour: StickyColour;
+  /** What the Shape tool draws, how the Line tool runs, and what the Pen tool is holding. */
+  shape: ShapeKind;
+  line: LineStyle;
+  pen: BoardPenKind;
+  /** What's open beside the rail. */
+  fly: BoardFly | null;
   sel: readonly string[];
   /** What's being typed in. */
   edit: string | null;
+  /** The row of colours under the selection bar is open. */
+  picking: boolean;
+  /** The selection bar's More is open. */
+  menu: boolean;
+  /** What the pointer is near, whose dots are showing. */
+  hover: string | null;
+  /** What's being drawn, which only this person sees until it's let go. */
+  draft: BoardDraft | null;
+  /** The object a line waits to go from, after Draw a line from this. */
+  lineFrom: string | null;
+  /** A press is held, so the selection bar keeps out of the way. */
+  pressing: boolean;
+  /** The map is open. */
+  map: boolean;
   /** The box being dragged out, in board units. */
   marquee: Box | null;
   guides: readonly Guide[];
@@ -81,6 +108,10 @@ export interface BoardState {
 }
 
 const NOTHING: ReadonlySet<string> = new Set();
+/** Whatever is open or under way over the sheet, closed. */
+const CLOSED = { fly: null, picking: false, menu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
+/** The tools with options to pick, which open as the tool is picked. */
+const OPTIONS: Partial<Record<BoardTool, BoardFly>> = { note: 'note', shape: 'shape', line: 'line', pen: 'pen' };
 /** What a board with nothing on it frames: the canvas's working space. */
 const BLANK: Box = { x: 0, y: 0, w: 1160, h: 530 };
 /** With no bar to keep clear of. */
@@ -117,6 +148,7 @@ export class Board implements LiveStore<BoardState> {
   tell: (text: string) => void = () => undefined;
   /** Told when following stops from this side: a scroll, a zoom, Esc. */
   onFollow: ((id: string | null) => void) | undefined;
+  moreItems: BoardMoreItems = {};
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -136,8 +168,9 @@ export class Board implements LiveStore<BoardState> {
     this.doc = doc;
     this.mode = mode;
     this.state = {
-      view: readBoard(doc), tool: 'select', colour: 'butter', sel: [], edit: null, marquee: null, guides: NO_GUIDES, space: false, panning: false,
-      glide: false, settling: NOTHING, landed: NOTHING, near: null, following: null, canUndo: false, canRedo: false
+      view: readBoard(doc), tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, picking: false, menu: false, hover: null,
+      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING,
+      near: null, following: null, canUndo: false, canRedo: false
     };
   }
 
@@ -205,7 +238,7 @@ export class Board implements LiveStore<BoardState> {
     this.mode = mode;
     if (this.canEdit) return;
     this.finishEdit();
-    this.set({ sel: [], tool: 'select' });
+    this.set({ ...CLOSED, hover: null, sel: [], tool: 'select' });
   }
 
   private later(name: string, ms: number, then: () => void): void {
@@ -279,11 +312,19 @@ export class Board implements LiveStore<BoardState> {
   }
 
   /** One change on its own, as one undo, however soon it follows the last one. */
-  private step(change: () => void): void {
+  private step<T>(change: () => T): T {
     const within = this.stepping;
     if (!within) this.beginStep();
-    change();
+    const result = change();
     if (!within) this.endStep();
+    return result;
+  }
+
+  /** One change of this person's, as one undo, on the sheet at once. */
+  write<T>(change: () => T): T {
+    const result = this.step(change);
+    this.read();
+    return result;
   }
 
   /**
@@ -329,17 +370,43 @@ export class Board implements LiveStore<BoardState> {
     this.set({ sel: everything(this.state.view) });
   }
 
+  /** Picks a tool and opens its options. Picking it again closes them, and the tool stays. */
   pickTool(tool: BoardTool): void {
     this.finishEdit();
-    this.set({ tool, sel: [] });
+    const again = tool === this.state.tool;
+    this.set({ ...CLOSED, tool, sel: [], hover: null, fly: again ? null : OPTIONS[tool] ?? null });
+  }
+
+  /** More, beside the rail. */
+  toggleMore(): void {
+    this.set({ fly: this.state.fly === 'more' ? null : 'more' });
+  }
+
+  /** Does one of More's items. Says whether it had anything to do, so that its key can otherwise be someone else's. */
+  runMore(item: BoardMoreItem): boolean {
+    const run = this.moreItems[item];
+    if (!run) return false;
+    this.set({ fly: null });
+    run();
+    return true;
+  }
+
+  /** A press on the sheet closes whatever is open over it. */
+  closeOver(): void {
+    const { fly, picking, menu } = this.state;
+    if (fly || picking || menu) this.set({ fly: null, picking: false, menu: false });
+  }
+
+  hoverOn(id: string | null): void {
+    if (id !== this.state.hover) this.set({ hover: id });
   }
 
   /** Back to Select. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
-    const { tool, sel, following } = this.state;
-    if (tool === 'select' && !sel.length && !following) return false;
+    const { tool, sel, following, fly } = this.state;
+    if (tool === 'select' && !sel.length && !following && !fly) return false;
     this.stopFollow();
-    this.set({ tool: 'select', sel: [] });
+    this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;
   }
 
@@ -353,43 +420,53 @@ export class Board implements LiveStore<BoardState> {
   }
 
   duplicateSelected(): void {
-    const { sel } = this.state;
-    if (!sel.length) return;
-    let copies: string[] = [];
-    this.step(() => { copies = duplicateObjects(this.doc, sel, COPY_OFFSET, this.origin); });
+    const { sel, view } = this.state;
+    // A line attached at both ends would land exactly on itself. Copying what it joins copies it.
+    const ids = sel.filter((id) => {
+      const o = view.byId.get(id);
+      return !(o?.k === 'line' && isAttached(o.from) && isAttached(o.to));
+    });
+    if (!ids.length) return;
+    const copies = this.step(() => duplicateObjects(this.doc, ids, COPY_OFFSET, this.origin));
     if (!copies.length) { this.refuse(); return; }
     this.read();
     this.set({ sel: copies });
   }
 
-  private refuse(): void {
+  refuse(): void {
     log.info('board is full', { objects: this.state.view.objects.length });
     this.tell('This board is full. Delete something to make room.');
   }
 
   /* ---------- typing ---------- */
 
-  /** Adds a sticky at `x y` and opens it for typing. It takes the colour of the frame it lands in, unless given one. */
-  newSticky(x: number, y: number, colour?: StickyColour): void {
-    if (!this.canEdit) return;
+  /** Adds something and opens it for typing, all one undo with whatever is typed. If nothing gets written on it, it goes again. */
+  addAndType(input: NewObject): string | null {
+    if (!this.canEdit) return null;
     this.finishEdit();
-    const { view, colour: picked } = this.state;
-    const c = colour ?? colourIn(view, frameAt(view, x + STICKY / 2, y + STICKY / 2), picked);
     this.beginStep();
-    const id = addObject(this.doc, { k: 'note', x, y, w: STICKY, h: STICKY, c, size: 'm', t: '' }, this.origin);
+    const id = addObject(this.doc, input, this.origin);
     if (!id) {
       this.endStep();
       this.refuse();
-      return;
+      return null;
     }
     this.read();
     this.fresh = id;
     this.set({ edit: id, sel: [id], tool: 'select' });
+    return id;
+  }
+
+  /** Adds a sticky at `x y` and opens it for typing. It takes the colour of the frame it lands in, unless given one. */
+  newSticky(x: number, y: number, colour?: StickyColour): string | null {
+    const { view, colour: picked } = this.state;
+    const c = colour ?? colourIn(view, frameAt(view, x + STICKY / 2, y + STICKY / 2), picked);
+    return this.addAndType({ k: 'note', x, y, w: STICKY, h: STICKY, c, size: 'm', t: '' });
   }
 
   /** Opens something for typing, if it has a place for text. */
   startEdit(id: string): void {
-    if (!this.canEdit || !objectText(this.doc, id)) return;
+    if (!this.canEdit || !objectText(this.doc, id, textField(this.state.view.byId.get(id)))) return;
     this.finishEdit();
     this.beginStep();
     this.set({ edit: id, sel: [id], tool: 'select' });
@@ -453,7 +530,7 @@ export class Board implements LiveStore<BoardState> {
 
   fitAll(glide = true): void {
     if (!this.camera.width) return;
-    const boxes = this.state.view.objects.filter(hasBox);
+    const boxes = drawn(this.state.view);
     const cam = this.camera.fitting(boxes.length ? bounds(boxes) : BLANK, this.look.bar ? undefined : BARE_PAD);
     if (glide) this.glideTo(cam);
     else this.camera.set(cam);

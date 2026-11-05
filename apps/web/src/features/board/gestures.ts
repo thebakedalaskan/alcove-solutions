@@ -12,13 +12,20 @@ import type { BoardTool } from '@alcove/ui';
 import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
 import { keyDown, keyUp } from './keys';
-import { NO_GUIDES, boxBetween, carried, picks, placed, pressed, snapTargets, snapTo } from './selection';
+import { CLICK_SLOP, NO_GUIDES, OVER_THE_SHEET, boxBetween, carried, drawn, movable, picks, pressed, snapTargets, snapTo } from './selection';
+import { framePress, settleFrame } from './tools/frame';
+import { dotPress, hoverAt, linePress } from './tools/line';
+import { penPress } from './tools/pen';
+import { shapePress } from './tools/shape';
+import { textPress } from './tools/text';
 import type { Board } from './useBoard';
 
 /** What a press has started, until the pointer lets go. */
 export interface Gesture {
   /** At most once a frame, with where the pointer is now. */
   move(at: SheetPoint, e: PointerEvent): void;
+  /** Every move as it arrives, for what can't afford to miss one: a pen. */
+  trace?(e: PointerEvent): void;
   up(at: SheetPoint, e: PointerEvent): void;
   /** The pointer was taken away: a second finger arrived, or the browser took over. What's done stays done. */
   cancel(): void;
@@ -39,15 +46,16 @@ export const TOOL_PRESSES = new Map<BoardTool, ToolPress>([
   ['note', (board, { at }) => {
     board.newSticky(at.x - STICKY / 2, at.y - STICKY / 2);
     return null;
-  }]
+  }],
+  ['text', textPress],
+  ['shape', shapePress],
+  ['line', linePress],
+  ['pen', penPress],
+  ['frame', framePress]
 ]);
 
-/** What floats over the sheet. It has its own controls, so the board leaves a press on it alone. */
-const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit';
 /** The smallest a person can size something by hand. */
 const LEAST_SIDE = 60;
-/** How far a press can wander, in screen pixels, and still be a click. */
-const CLICK_SLOP = 3;
 /** How near an edge has to get, in screen pixels, for a move to line up with it. */
 const SNAP_REACH = 6;
 const WHEEL_ZOOM = 0.004;
@@ -91,9 +99,9 @@ function marqueeGesture(board: Board, start: SheetPoint): Gesture {
 function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean): Gesture {
   board.select(pressed(board.getSnapshot().sel, id, shift));
   const { view, near, sel } = board.getSnapshot();
-  const objects = placed(view, sel);
+  const objects = movable(view, sel);
   const travelling = carried(view, sel);
-  const box = bounds(placed(view, [...travelling]));
+  const box = bounds(drawn(view, travelling));
   const targets = snapTargets(view, near, travelling);
   let moved = false;
   const stop = (): void => {
@@ -124,7 +132,10 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
 function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: string): Gesture {
   const side = (n: number): number => Math.min(BOARD_LIMITS.maxSide, Math.max(LEAST_SIDE, n));
   board.beginStep();
-  const stop = (): void => board.endStep();
+  const stop = (): void => {
+    if (o.k === 'frame') settleFrame(board, o.id);
+    board.endStep();
+  };
   return {
     move(at) {
       const dx = at.x - start.x, dy = at.y - start.y;
@@ -140,8 +151,12 @@ function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: s
 
 /** Works out what a press means, in the order the canvas does. */
 function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): Gesture | null {
-  const { sel, tool, space, view } = board.getSnapshot();
+  const { sel, tool, space, view, hover } = board.getSnapshot();
   if (e.button === 1 || space || !board.canEdit) return panGesture(board, at);
+  const dot = target.closest('[data-p]')?.getAttribute('data-p');
+  const from = sel.length === 1 ? sel[0] : hover;
+  if (dot && from) return dotPress(board, at, from);
+  board.hoverOn(null);
   const corner = target.closest('[data-h]')?.getAttribute('data-h');
   const only = sel.length === 1 ? view.byId.get(sel[0] ?? '') : undefined;
   if (corner && only && hasBox(only)) return sizeGesture(board, at, only, corner);
@@ -154,11 +169,10 @@ function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): 
 /** Double-click: type in what's there, or put a sticky here. It asks what's at the point, because a captured pointer makes the sheet the event's target. */
 function doubleClick(board: Board, e: MouseEvent): void {
   const target = document.elementFromPoint(e.clientX, e.clientY);
-  if (!board.canEdit || !target || target.closest(OVER_THE_SHEET)) return;
+  if (!board.canEdit || board.getSnapshot().tool !== 'select' || !target || target.closest(OVER_THE_SHEET)) return;
   const id = pressedId(board, target);
   if (id) {
-    const o = board.getSnapshot().view.byId.get(id);
-    if (o?.k !== 'frame') board.startEdit(id);
+    board.startEdit(id);
     return;
   }
   const at = board.camera.point(e);
@@ -207,6 +221,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     const [p, q] = touches.values();
     if (pinch && p && q) pinch(p, q);
     else if (e.pointerId === held) gesture?.move(at, e);
+    else if (!gesture && e.pointerType !== 'touch') hoverAt(board, at, e.target);
   };
 
   /** Takes the gesture off the pointer that's ending, so that nothing can end it twice. */
@@ -217,6 +232,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     const ending = gesture;
     gesture = null;
     held = null;
+    board.set({ pressing: false });
     return ending;
   };
 
@@ -225,12 +241,14 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     if (e.button > 1 || !(target instanceof Element) || target.closest(OVER_THE_SHEET)) return;
     sheet.focus({ preventScroll: true });
     board.finishEdit();
+    board.closeOver();
     if (e.pointerType === 'touch') touches.set(e.pointerId, e);
     const [p, q] = touches.values();
     if (p && q) {
       gesture?.cancel();
       gesture = null;
       held = null;
+      board.set({ pressing: false });
       pinch = pinchGesture(board, p, q);
       return;
     }
@@ -238,6 +256,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     gesture = press(board, camera.point(e), e, target);
     if (!gesture) return;
     held = e.pointerId;
+    board.set({ pressing: true });
     try { sheet.setPointerCapture(e.pointerId); } catch { /* It lifted before the capture, so its up has already been seen. */ }
   }, { signal });
 
@@ -248,6 +267,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
 
   sheet.addEventListener('pointermove', (e) => {
     if (touches.has(e.pointerId)) touches.set(e.pointerId, e);
+    if (e.pointerId === held) gesture?.trace?.(e);
     latest = e;
     frame ||= requestAnimationFrame(flush);
   }, { signal });
@@ -260,7 +280,10 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   const lost = (e: PointerEvent): void => release(e)?.cancel();
   sheet.addEventListener('pointercancel', lost, { signal });
   sheet.addEventListener('lostpointercapture', lost, { signal });
-  sheet.addEventListener('pointerleave', () => board.pointerAt(null), { signal });
+  sheet.addEventListener('pointerleave', () => {
+    board.pointerAt(null);
+    board.hoverOn(null);
+  }, { signal });
 
   sheet.addEventListener('wheel', (e) => {
     e.preventDefault();

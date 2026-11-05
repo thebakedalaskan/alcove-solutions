@@ -4,7 +4,7 @@
  * one sticky. It always shows the Y.Text, never the view, because the view cuts text past the limit and this is where
  * someone can see and fix all of it. Keys stop here: letters are letters, and nothing on the call or the board hears them.
  */
-import { BOARD_LIMITS, objectText, type BoardView, type PlacedObject } from '@alcove/board';
+import { BOARD_LIMITS, objectText, type BoardObject, type BoardView, type PlacedObject } from '@alcove/board';
 import { BoardEdit } from '@alcove/ui';
 import { useLayoutEffect, useRef } from 'react';
 import type * as Y from 'yjs';
@@ -121,24 +121,33 @@ export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown)
   };
 }
 
-/** The textarea for one object, focused with the caret at the end, as it opens. */
-export function BoardTyping({ board, id, label }: { board: Board; id: string; label: string }) {
+/** Which of an object's fields is typed in: a frame has a title. */
+export const textField = (o: BoardObject | undefined): 't' | 'title' => (o?.k === 'frame' ? 'title' : 't');
+
+/** The textarea for one object, focused with the caret at the end, as it opens. `field` says what it writes in, and a `title` keeps to one line. */
+export function BoardTyping({ board, id, label, field = 't' }: { board: Board; id: string; label: string; field?: 't' | 'title' | undefined }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current, text = objectText(board.doc, id);
+    const el = ref.current, text = objectText(board.doc, id, field);
     if (!el || !text) return undefined;
     const stop = bindText(el, text, board.origin);
     const key = (e: KeyboardEvent): void => {
       // ⌘ and Ctrl shortcuts aren't typing, so they're the app's as usual. Anything else goes no further than this field.
       if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
       if (e.isComposing) return;
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || (e.key === 'Enter' && field === 'title')) {
+        e.preventDefault();
         board.finishEdit();
         board.focusSheet();
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        board.nextSticky();
+        if (field === 'title') {
+          board.finishEdit();
+          board.focusSheet();
+        } else {
+          board.nextSticky();
+        }
       }
     };
     // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
@@ -153,8 +162,8 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
     };
-  }, [board, id]);
-  return <BoardEdit ref={ref} label={label} maxLength={BOARD_LIMITS.text} />;
+  }, [board, id, field]);
+  return <BoardEdit ref={ref} label={label} rows={1} maxLength={BOARD_LIMITS.text} />;
 }
 
 /** Where Tab puts the next sticky: to the right, or at the start of the next row when the frame it's in runs out. */

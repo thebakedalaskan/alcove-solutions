@@ -18,7 +18,7 @@ interface BoardKey {
 const CALL_KEYS: ReadonlySet<string> = new Set(['m', 'v', 'c']);
 
 /** The tools, by key. */
-export const TOOL_KEYS = new Map<string, BoardTool>([['n', 'note']]);
+export const TOOL_KEYS = new Map<string, BoardTool>([['n', 'note'], ['t', 'text'], ['s', 'shape'], ['l', 'line'], ['p', 'pen'], ['f', 'frame']]);
 
 const did = (run: (board: Board, e: KeyboardEvent) => void): BoardKey['run'] => (board, e) => {
   run(board, e);
@@ -40,6 +40,7 @@ const PLAIN_KEYS = new Map<string, BoardKey>([
   ['escape', { edits: false, run: (board) => board.escape() }],
   ['backspace', remove],
   ['delete', remove],
+  ['k', { edits: true, run: (board) => board.runMore('comment') }],
   ['!', show],
   ['=', zoomIn],
   ['+', zoomIn],
