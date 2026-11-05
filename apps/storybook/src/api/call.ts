@@ -6,7 +6,7 @@
  * does to the snapshot what the server would; leaving ends the call for whoever hosts and leaves its note being written.
  */
 import {
-  RING_SECONDS, notesAreOn, type BreakoutPlan, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  AlcoveApiError, RING_SECONDS, notesAreOn, type BreakoutPlan, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
@@ -89,9 +89,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name),
       notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
-      liveNotes: { notes: null, writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
+      liveNotes: { notes: null, added: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
-      workspace: { id: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' },
+      workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' },
       board: { open: null }
     });
     this.script = script;
@@ -114,7 +114,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     // Joining late, the call's notes have been written already.
     if (this.heard.length) {
       this.notesFor = this.heard.length;
-      this.change((s) => ({ ...s, liveNotes: { notes: this.notesNow(), writing: false, error: null } }));
+      this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), writing: false, error: null } }));
     }
     // The organizer back after someone hosted in their place hosts again at once, and hears who did.
     const stoodIn = script.door?.standIn;
@@ -277,7 +277,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       this.after(1500, () => {
         this.writing = false;
         this.notesFor = this.heard.length;
-        this.change((s) => ({ ...s, liveNotes: { notes: this.notesNow(), writing: false, error: null } }));
+        this.change((s) => ({ ...s, liveNotes: { ...s.liveNotes, notes: this.notesNow(), writing: false, error: null } }));
         this.writeNotesSoon();
       });
     });
@@ -618,7 +618,22 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   tickFollowUp(id: string, done: boolean): Promise<void> {
     if (done) this.ticked.add(id); else this.ticked.delete(id);
-    this.change((s) => (s.liveNotes.notes ? { ...s, liveNotes: { ...s.liveNotes, notes: { ...s.liveNotes.notes, next: s.liveNotes.notes.next.map((n) => (n.id === id ? { ...n, done } : n)) } } } : s));
+    this.change((s) => {
+      const added = s.liveNotes.added.map((a) => (a.id === id ? { ...a, done } : a));
+      return s.liveNotes.notes
+        ? { ...s, liveNotes: { ...s.liveNotes, added, notes: { ...s.liveNotes.notes, next: s.liveNotes.notes.next.map((n) => (n.id === id ? { ...n, done } : n)) } } }
+        : { ...s, liveNotes: { ...s.liveNotes, added } };
+    });
+    return Promise.resolve();
+  }
+  /** A follow-up nobody said, in your own words, yours: for everyone who gets the notes. The same words again add nothing. */
+  addFollowUp(text: string): Promise<void> {
+    const s = this.getSnapshot();
+    if (!s.notes.everOn) return Promise.reject(new AlcoveApiError('forbidden', 'Notes have never been on in this call.'));
+    const words = text.replace(/\s+/g, ' ').trim();
+    if (!words || s.liveNotes.added.some((a) => a.text === words)) return Promise.resolve();
+    const at = Math.max(0, Math.round((Date.now() - Date.parse(s.startedAt)) / 1000));
+    this.change((now) => ({ ...now, liveNotes: { ...now.liveNotes, added: [...now.liveNotes.added, { id: nextId('added'), text: words, owner: this.me.person.name, evidence: [], done: false, at }] } }));
     return Promise.resolve();
   }
   catchUp(_range: CatchUpRange): Promise<CatchUp> {

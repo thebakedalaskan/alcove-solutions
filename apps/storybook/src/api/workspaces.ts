@@ -3,12 +3,14 @@
  * starts every document with and written with the editor's own blocks (the world's `pages`), so the editor opens it as it
  * opens any other; what's typed stays in this story. Nobody else is ever in it. A page can say Alcove refused some of what
  * this browser wrote: its session opens couldn't-save, with those words on the page, until they're copied, saved as a new
- * document or discarded.
+ * document or discarded. Files are kept in the world (`media`) and read back as the browser's own object URLs; a tag waits
+ * in the world (`mentions`) until it's seen.
  */
 import {
-  AlcoveApiError, DOC_SEED, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
-  type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive,
-  type WorkspacePerson, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  AlcoveApiError, DOC_SEED, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
+  type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice,
+  type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
+  type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
@@ -16,19 +18,27 @@ import * as Y from 'yjs';
 import { setTitle } from '~/features/workspace/editor/title';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import { appendBlocks, contentOf } from '~/features/workspace/editor/ydoc';
+import { isOnline } from '../browser';
+import type { Space } from '../world';
 import { personAt } from '../world/people';
-import { Pushed } from './live';
+import { Pushed, pause } from './live';
 import { current, me, nextId } from './state';
 
 const notFound = () => new AlcoveApiError('not-found', 'That workspace isn’t there, or you can’t open it.');
 
-export function treeOf(id: string): WorkspaceTree {
+/** A workspace as the world keeps it. */
+export function treeOf(id: string): Space {
   const tree = current().workspaces.find((w) => w.id === id);
   if (!tree) throw notFound();
   return tree;
 }
-const summaryOf = ({ items: _items, ...rest }: WorkspaceTree): WorkspaceSummary => rest;
-export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map(summaryOf);
+/** Its tree, as the API sends it: what the Drive says of it besides stays out. */
+const treeOnly = ({ createdAt: _made, call: _call, ...tree }: Space): WorkspaceTree => tree;
+export const treeFor = (id: string): WorkspaceTree => treeOnly(treeOf(id));
+const summaryOf = ({ items: _items, ...rest }: Space): WorkspaceSummary => rest;
+/** Your Drive: every workspace you're in, the newest first, then each one you only have documents in. */
+const drive = (a: WorkspaceSummary, b: WorkspaceSummary) => Number(a.role === null) - Number(b.role === null) || (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+export const workspaceList = (): WorkspaceSummary[] => current().workspaces.map(summaryOf).sort(drive);
 
 const authorOf = () => { const p = me(); return p.portrait ? { name: p.name, portrait: p.portrait } : null; };
 
@@ -51,7 +61,7 @@ export function createItem(id: string, input: ItemInput): { id: string } {
   const now = new Date().toISOString();
   const item: WorkspaceItem = {
     id: nextId('item').padEnd(22, '0'), kind: input.kind, name: input.name ?? '', parent: input.parent ?? null, by: authorOf(),
-    createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, role: 'edit'
+    createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null
   };
   edit(id, (items) => place([...items, item], item, { parent: item.parent, ...(input.after !== undefined ? { after: input.after } : {}) }));
   return { id: item.id };
@@ -80,10 +90,19 @@ export function addPerson(id: string, email: string, _role: WorkspaceRole): { id
   return { id: `wp-${personAt(email).email}` };
 }
 
+/**
+ * Who has a document. Everyone who can open it, by address: the workspace's people unless it's restricted (then you, who
+ * restricted it), and everyone it's shared with. The seats it's shared with in the call, for people with no address here.
+ */
 export function shareOf(id: string, documentId: string): DocumentShare {
   const tree = treeOf(id);
   const doc = tree.items.find((i) => i.id === documentId);
-  return { workspace: { name: tree.name ?? '', people: tree.people ?? 0 }, restricted: doc?.restricted ?? false, entries: current().shares[documentId] ?? [] };
+  const restricted = doc?.restricted ?? false;
+  const entries = current().shares[documentId] ?? [];
+  const insiders = restricted ? [me().email] : peopleIn(id).map((p) => p.person.email);
+  const canOpen = [...new Set([...insiders, ...entries.flatMap((e) => (e.kind === 'email' ? [e.person.email] : []))])];
+  const seats = entries.flatMap((e) => (e.kind === 'seat' ? [e.person.id] : []));
+  return { workspace: { name: tree.name ?? '', people: tree.people ?? 0 }, restricted, entries, canOpen, seats };
 }
 /** Shares a document with each of `to`, as `role`: someone it's shared with already keeps their entry, with the new role. */
 export function shareWith(documentId: string, to: ShareTarget[], role: DocumentRole): void {
@@ -109,19 +128,143 @@ export function unshare(documentId: string, entryId: string): void {
 }
 export const restrict = (id: string, documentId: string, restricted: boolean) => edit(id, (items) => items.map((i) => (i.id === documentId ? { ...i, restricted } : i)));
 
+/** The IDs this workspace's documents know people by, for the addresses asked about: a member's is the one they have here. */
+export function idsIn(id: string, emails: string[]): Record<string, string> {
+  const people = peopleIn(id);
+  return Object.fromEntries(emails.flatMap((email) => {
+    const lower = email.trim().toLowerCase();
+    const found = people.find((p) => p.person.email.toLowerCase() === lower);
+    return found ? [[lower, found.id]] : [];
+  }));
+}
+
+/* ---------- tags ---------- */
+
+/** The documents you can open in a workspace now. */
+const openable = (space: Space): Set<string> => new Set(space.items.filter((i) => i.kind !== 'folder' && i.trashedAt === null).map((i) => i.id));
+const asMention = ({ workspaceId: _space, name: _name, ...tag }: MentionNotice): WorkspaceMention => tag;
+/** Tags waiting for you in a workspace, the oldest first, in documents you can open now. */
+function mentionsIn(id: string): WorkspaceMention[] {
+  const open = openable(treeOf(id));
+  return current().mentions.filter((m) => m.workspaceId === id && open.has(m.document)).map(asMention).reverse();
+}
+/** What you've been tagged in and haven't seen, in every workspace, the newest first: only what you can open now. */
+export function mentionsEverywhere(): MentionNotice[] {
+  const w = current();
+  return w.mentions.filter((m) => { const space = w.workspaces.find((s) => s.id === m.workspaceId); return space !== undefined && openable(space).has(m.document); });
+}
+/** You've seen a tag: it isn't kept any more. One that's gone already is fine. */
+export function seeMention(mentionId: string): void {
+  const w = current();
+  const tag = w.mentions.find((m) => m.id === mentionId);
+  w.mentions = w.mentions.filter((m) => m.id !== mentionId);
+  if (tag) for (const live of watching) live.refresh(tag.workspaceId);
+}
+/** Telling someone you tagged them, in a document you can edit. Nobody else is in this story to hear it. */
+export function mention(id: string, documentId: string, _tag: MentionBody): void {
+  editable(id, documentId);
+}
+
 /* ---------- live ---------- */
 
 const watching = new Set<LiveWorkspace>();
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   constructor(private readonly id: string) {
-    super({ status: 'live', tree: structuredClone(treeOf(id)), here: [] });
+    super({ status: 'live', tree: structuredClone(treeFor(id)), here: [], mentions: mentionsIn(id) });
     watching.add(this);
   }
-  refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeOf(id)) })); }
+  refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), mentions: mentionsIn(id) })); }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
+  async seen(mentionId: string): Promise<void> {
+    await pause(60);
+    seeMention(mentionId);
+  }
   override close(): void { watching.delete(this); super.close(); }
 }
 export const liveWorkspace = (id: string): WorkspaceLive => new LiveWorkspace(id);
+
+/* ---------- files ---------- */
+
+/** The limit in force, as the API has it unless it's changed. */
+const MOST_BYTES = 512 * 1024 * 1024;
+/** How an upload goes here: a few pieces, a moment each, so a block shows it uploading. */
+const UPLOAD_PIECES = 6;
+const PIECE_MS = 450;
+/** Where each file is read from, once it's been asked for: a player keeps it. They go with the story. */
+const urls = new Map<string, string>();
+
+/** A document or board you can edit, or why not. */
+function editable(id: string, documentId: string): WorkspaceItem {
+  const item = treeOf(id).items.find((i) => i.id === documentId);
+  if (!item || item.kind === 'folder') throw notFound();
+  if (item.role !== 'edit') throw new AlcoveApiError('forbidden', 'You can only read this.');
+  return item;
+}
+/** A file, as one of the documents you reach it through has it. */
+function fileIn(id: string, documentId: string, mediaId: string) {
+  const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId && m.media.documents.includes(documentId));
+  if (!kept) throw new AlcoveApiError('not-found', 'That file isn’t there any more.');
+  return kept;
+}
+/** Keeps a file in a document, a piece at a time: through a lost connection it waits, and a stopped upload leaves nothing. */
+export async function upload(id: string, documentId: string, file: File, o: MediaUploadOptions = {}): Promise<WorkspaceMedia> {
+  editable(id, documentId);
+  if (file.size > MOST_BYTES) throw new AlcoveApiError('invalid', 'This file is bigger than 512 MiB, the most a file can be.');
+  const stopped = () => new AlcoveApiError('network', 'That upload was stopped.');
+  for (let piece = 1; piece <= UPLOAD_PIECES; piece++) {
+    await pause(PIECE_MS);
+    while (!isOnline()) { if (o.signal?.aborted) throw stopped(); await pause(500); }
+    if (o.signal?.aborted) throw stopped();
+    o.onProgress?.({ sent: Math.round((file.size * piece) / UPLOAD_PIECES), total: file.size });
+  }
+  const media: WorkspaceMedia = {
+    id: nextId('media'), name: file.name.replace(/\s+/g, ' ').trim() || 'File', type: servedType(file.type), size: file.size,
+    width: o.width ?? null, height: o.height ?? null, createdAt: new Date().toISOString(), documents: [documentId]
+  };
+  current().media.unshift({ workspace: id, media, body: () => Promise.resolve(file) });
+  return structuredClone(media);
+}
+/** Where to read a file through a document, for a player or a download: the same while the story lasts. */
+export async function urlOf(id: string, documentId: string, mediaId: string): Promise<string> {
+  const kept = fileIn(id, documentId, mediaId);
+  const known = urls.get(mediaId);
+  if (known) return known;
+  const url = URL.createObjectURL(await kept.body());
+  urls.set(mediaId, url);
+  return url;
+}
+/** A picture, as a URL of its own: whoever asked for it lets it go. */
+export async function pictureOf(id: string, documentId: string, mediaId: string, o: MediaPictureOptions = {}): Promise<string> {
+  const kept = fileIn(id, documentId, mediaId);
+  const body = await kept.body();
+  if (o.signal?.aborted) throw new AlcoveApiError('network', 'That picture was stopped.');
+  return URL.createObjectURL(body);
+}
+/** Reuses a file from another document of the same workspace, for someone who can edit this one. */
+export function attach(id: string, documentId: string, mediaId: string): void {
+  editable(id, documentId);
+  const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId);
+  if (!kept) throw new AlcoveApiError('not-found', 'That file isn’t there any more.');
+  if (!kept.media.documents.includes(documentId)) kept.media.documents = [...kept.media.documents, documentId];
+}
+/** Every file you can reach in a workspace, the newest first, each with the documents you reach it through. */
+export function mediaIn(id: string): WorkspaceMedia[] {
+  const open = openable(treeOf(id));
+  return current().media
+    .filter((m) => m.workspace === id && m.media.documents.some((d) => open.has(d)))
+    .map((m) => ({ ...m.media, documents: m.media.documents.filter((d) => open.has(d)) }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+/** Deletes a file for good, for everyone: every document that had it shows it removed from then on. */
+export function removeMedia(id: string, documentId: string, mediaId: string): void {
+  editable(id, documentId);
+  fileIn(id, documentId, mediaId);
+  const w = current();
+  w.media = w.media.filter((m) => !(m.workspace === id && m.media.id === mediaId));
+  const url = urls.get(mediaId);
+  if (url) URL.revokeObjectURL(url);
+  urls.delete(mediaId);
+}
 
 const docs = new Map<string, Y.Doc>();
 const lineOf = (text: string): BlockJSON => ({ type: 'line', content: [{ type: 'text', text }] });
@@ -194,18 +337,20 @@ export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): 
   docs.set(made.id, doc);
   return made;
 }
-/** The documents kept for this story go when it does. */
+/** The documents and files kept for this story go when it does. */
 export function forgetDocuments(): void {
   for (const d of docs.values()) d.destroy();
   docs.clear();
   watching.clear();
+  for (const url of urls.values()) URL.revokeObjectURL(url);
+  urls.clear();
 }
 
 export const noVersions = (): DocVersionSummary[] => [];
 export const noVersion = (): Promise<DocVersion> => Promise.reject(new AlcoveApiError('not-found', 'That version isn’t there.'));
 /** Every document you can open here, as words, for searching in this browser. */
 export async function* searchText(id: string): AsyncIterable<SearchDoc> {
-  for (const i of treeOf(id).items) {
+  for (const i of treeFor(id).items) {
     if (i.kind === 'folder' || i.trashedAt) continue;
     yield { id: i.id, kind: i.kind, name: i.name, title: i.name, blocks: [] };
   }

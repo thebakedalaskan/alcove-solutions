@@ -4,7 +4,8 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, Note, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { BrowserSetup } from '../browser';
@@ -15,6 +16,11 @@ import { iso } from './clock';
 export interface Refused { why: Exclude<DocRefusal, 'trashed'>; words: string[] }
 /** What a document says, in the editor's own blocks under its title, and what of it Alcove refused, if anything. */
 export interface Page { blocks: BlockJSON[]; refused?: Refused | undefined }
+
+/** A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call). */
+export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
+/** A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). */
+export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob> }
 
 export interface World {
   /** Who's signed in, or nobody. */
@@ -31,12 +37,16 @@ export interface World {
   calendar: Calendar;
   credits: CreditBalance;
   documents: DocumentLibrary;
-  /** The workspaces you're in, each with everything in it you can open. */
-  workspaces: WorkspaceTree[];
+  /** The workspaces you're in, each with everything in it you can open, and what your Drive says of it. */
+  workspaces: Space[];
   /** What each document says, by its ID. One without a page here is new: a title, and an empty line under it. */
   pages: Record<string, Page>;
   /** Who each document is shared with besides its workspace's own people, by its ID. */
   shares: Record<string, ShareEntry[]>;
+  /** Where you've been tagged and haven't said you've seen it, the newest first. */
+  mentions: MentionNotice[];
+  /** The files in your workspaces' documents. */
+  media: Kept[];
   /** Who's ringing you as the story opens. */
   rings: IncomingRing[];
   /** A note being written: how long until it's done, and what it says then. */
@@ -62,7 +72,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 
 export const PREFS: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true },
+  notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
   pinned: [], groups: []
 };
 

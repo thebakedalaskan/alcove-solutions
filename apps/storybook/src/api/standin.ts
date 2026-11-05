@@ -541,10 +541,10 @@ export const standIn: AlcoveApi = {
     list: () => answer(spaces.workspaceList),
     create: (name: string) => answer((w) => {
       const id = nextId('ws');
-      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [] });
+      w.workspaces.push({ id, name, role: 'admin', people: 1, items: [], createdAt: new Date().toISOString(), call: null });
       return { id };
     }),
-    get: (id: ID) => answer(() => spaces.treeOf(id)),
+    get: (id: ID) => answer(() => spaces.treeFor(id)),
     presenterNotes: {
       get: () => answer(() => ({ text: '' })),
       set: () => answer(() => undefined)
@@ -579,6 +579,18 @@ export const standIn: AlcoveApi = {
       remove: (_id: ID, documentId: ID, entryId: ID) => answer(() => spaces.unshare(documentId, entryId)),
       restrict: (id: ID, documentId: ID, restricted: boolean) => answer(() => spaces.restrict(id, documentId, restricted))
     },
+    media: {
+      upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null); return spaces.upload(id, documentId, file, o); },
+      url: async (id: ID, documentId: ID, mediaId: ID) => { await answer(() => null); return spaces.urlOf(id, documentId, mediaId); },
+      picture: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.pictureOf(id, documentId, mediaId, o); },
+      attach: (id: ID, documentId: ID, mediaId: ID) => answer(() => spaces.attach(id, documentId, mediaId)),
+      list: (id: ID) => answer(() => spaces.mediaIn(id)),
+      remove: (id: ID, documentId: ID, mediaId: ID) => answer(() => spaces.removeMedia(id, documentId, mediaId))
+    },
+    mention: (id: ID, documentId: ID, tag) => answer(() => spaces.mention(id, documentId, tag)),
+    ids: (id: ID, emails: string[]) => answer(() => spaces.idsIn(id, emails)),
+    mentions: () => answer(() => spaces.mentionsEverywhere()),
+    mentionSeen: (_id: ID, mentionId: ID) => answer(() => spaces.seeMention(mentionId)),
     live: (id: ID) => spaces.liveWorkspace(id),
     document: async (id: ID, documentId: ID) => { await answer(() => null); return spaces.openDocument(id, documentId); },
     saveCopy: (id: ID, input) => answer(() => spaces.saveCopy(id, input)),

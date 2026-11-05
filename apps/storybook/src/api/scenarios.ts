@@ -6,15 +6,15 @@
  */
 import {
   CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
-  SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceTreeSchema, type DocumentRole, type Group, type Person, type ShareEntry, type WorkspaceItem,
-  type WorkspaceTree
+  MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentRole,
+  type Group, type ItemCall, type Person, type ShareEntry, type WorkspaceItem
 } from '@alcove/api';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, library, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type Opening, type Page, type Refused, type World } from '../world';
+import { CREDITS, PREFS, WELCOME_CREDITS, session, type Opening, type Page, type Refused, type Space, type World } from '../world';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, OLD_ROADMAP, PRICING_COPY, WORKING_FROM_HOME
 } from '../world/documents';
@@ -38,21 +38,22 @@ const GROUPS = [group('g-leads', 'Leads', [PRIYA, KOFI, INES]), group('g-product
 /** A workspace item's ID, from its name: the 22 characters the contract asks for. Stories open a document by it. */
 export const itemId = (slug: string) => slug.replace(/[^A-Za-z0-9]/g, '').padEnd(22, '0').slice(0, 22);
 const hoursBefore = (hours: number) => new Date(Date.parse(iso(0, 16, 12)) - hours * 3_600_000).toISOString();
-interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: boolean; trashed?: { hoursAgo: number; by: Person } }
+interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: boolean; trashed?: { hoursAgo: number; by: Person }; call?: ItemCall }
 function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: number, o: ItemShape = {}): WorkspaceItem {
   const at = hoursBefore(hoursAgo);
   return {
     id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: at, editedAt: at,
-    trashedAt: o.trashed ? hoursBefore(o.trashed.hoursAgo) : null, trashedBy: o.trashed?.by.name ?? null, restricted: o.restricted ?? false, role: o.role ?? 'edit'
+    trashedAt: o.trashed ? hoursBefore(o.trashed.hoursAgo) : null, trashedBy: o.trashed?.by.name ?? null, restricted: o.restricted ?? false, role: o.role ?? 'edit',
+    call: o.call ?? null
   };
 }
 /** The workspaces: Product, which Art runs; Design, where he edits; and the company handbook, which he can only read. */
-function workspaces(): WorkspaceTree[] {
+function workspaces(): Space[] {
   const research = { parent: itemId('Research') };
   const reading = { role: 'read' } as const;
   return [
     {
-      id: 'ws-product', name: 'Product', role: 'admin', people: 6,
+      id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
       items: [
         item('Launch plan', 'document', PRIYA, 2), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
@@ -61,9 +62,12 @@ function workspaces(): WorkspaceTree[] {
         item('Launch plan, first draft', 'document', ART, 260, { trashed: { hoursAgo: 70, by: ART } })
       ]
     },
-    { id: 'ws-design', name: 'Design', role: 'edit', people: 4, items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)] },
     {
-      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38,
+      id: 'ws-design', name: 'Design', role: 'edit', people: 4, createdAt: iso(-90, 14, 0), call: null,
+      items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)]
+    },
+    {
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38, createdAt: iso(-400, 9, 0), call: null,
       items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
     }
   ];
@@ -93,7 +97,7 @@ function busy(): World {
   return {
     session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
     meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(),
-    rings: [], writing: null
+    mentions: [], media: [], rings: [], writing: null
   };
 }
 
@@ -159,7 +163,7 @@ function onTheirOwn(): World {
   return {
     session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
     meetings: [], calendar: connected([]), credits: CREDITS, documents: { source: 'sample', workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
-    workspaces: [], pages: {}, shares: {}, rings: [], writing: null
+    workspaces: [], pages: {}, shares: {}, mentions: [], media: [], rings: [], writing: null
   };
 }
 
@@ -172,7 +176,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({
       world: {
         session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
@@ -232,7 +236,9 @@ function checked(w: World): World {
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
     ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
-    ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())]
+    ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())],
+    ['drive', WorkspaceSummarySchema.array().safeParse(w.workspaces)], ['mentions', MentionNoticeSchema.array().safeParse(w.mentions)],
+    ['media', WorkspaceMediaSchema.array().safeParse(w.media.map((m) => m.media))]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);
