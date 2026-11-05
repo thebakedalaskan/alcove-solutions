@@ -93,10 +93,9 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
     const text = rt.view?.dom;
     if (!caret || !text) return;
     text.setAttribute('aria-controls', name);
-    text.setAttribute('aria-expanded', 'true');
     if (activeId) text.setAttribute('aria-activedescendant', activeId);
     else text.removeAttribute('aria-activedescendant');
-    return () => { for (const a of ['aria-controls', 'aria-expanded', 'aria-activedescendant']) text.removeAttribute(a); };
+    return () => { for (const a of ['aria-controls', 'aria-activedescendant']) text.removeAttribute(a); };
   }, [rt, caret, name, activeId]);
 
   useEffect(() => {
@@ -132,27 +131,28 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
     else if (on.offsetTop + on.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = on.offsetTop + on.offsetHeight - box.clientHeight + 6;
   }, [index]);
 
-  const selected = active;
   return (
-    <Popover anchor={anchor} className={cn('wm', className)} id={name} label={label} role={caret ? 'listbox' : 'menu'}>
-      {caret && <span className="sr-only" role="status" aria-live="polite">{selected?.label}</span>}
-      <div ref={list} className="wm-list">
-        {rows.map((r, i) => {
-          if (r.kind === 'head') return <div key={`head-${i}`} className="wm-h">{r.label}</div>;
-          if (r.kind === 'sep') return <div key={`sep-${i}`} className="wm-s" />;
-          if (r.kind === 'text') return <p key={`text-${i}`} className="wm-x">{r.label}</p>;
-          if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
-          return (
-            <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === selected : undefined} className={cn('wm-r', r === selected && 'is-sel', r.className)} onClick={r.run}>
-              {r.face && <Avatar person={r.face} size={24} />}
-              {r.icon && <Icon name={r.icon} size={16} />}
-              <span className="t"><span className="l">{r.label}</span>{r.sub && <small>{r.sub}</small>}</span>
-              {r.hint && <kbd className="ac-kbd">{r.hint}</kbd>}
-            </button>
-          );
-        })}
-      </div>
-    </Popover>
+    <>
+      {caret && <span className="sr-only" role="status" aria-live="polite">{active?.label}</span>}
+      <Popover anchor={anchor} className={cn('wm', className)} id={name} label={label} role={caret ? 'listbox' : 'menu'}>
+        <div ref={list} className="wm-list" role="presentation">
+          {rows.map((r, i) => {
+            if (r.kind === 'head') return <div key={`head-${i}`} className="wm-h" role="presentation">{r.label}</div>;
+            if (r.kind === 'sep') return <div key={`sep-${i}`} className="wm-s" role="presentation" />;
+            if (r.kind === 'text') return <p key={`text-${i}`} className="wm-x" role="presentation">{r.label}</p>;
+            if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
+            return (
+              <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === active : undefined} className={cn('wm-r', r === active && 'is-sel', r.className)} onClick={r.run}>
+                {r.face && <Avatar person={r.face} size={24} />}
+                {r.icon && <Icon name={r.icon} size={16} />}
+                <span className="t"><span className="l">{r.label}</span>{r.sub && <small>{r.sub}</small>}</span>
+                {r.hint && <kbd className="ac-kbd">{r.hint}</kbd>}
+              </button>
+            );
+          })}
+        </div>
+      </Popover>
+    </>
   );
 }
 

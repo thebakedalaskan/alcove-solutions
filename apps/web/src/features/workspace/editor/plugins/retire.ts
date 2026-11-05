@@ -198,9 +198,6 @@ function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; keeper: Y.Xm
   return out;
 }
 
-/** Elements with no ID: an undo took back a block's arrival, and leaves the element (see `undoMayDelete`). */
-const nameless = (fragment: Y.XmlFragment): Y.XmlElement[] => fragment.toArray().slice(1).flatMap((child) => (child instanceof Y.XmlElement && child.getAttribute('id') === undefined ? [child] : []));
-
 /** Writes that only tidy up, so they're no step of anyone's to undo, and don't take away what could be redone. */
 const TIDYING = Symbol('tidying');
 
@@ -268,13 +265,12 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       let done: readonly Leaving[] = [];
 
       /* Writing here, after the fact, can wait until the change that needs it is over: y-prosemirror keeps track of the selection between them. */
-      const tidy = (strays: readonly StrayWords[], arrived: readonly string[], undone: boolean, redone: readonly Y.XmlElement[]) => {
+      const tidy = (strays: readonly StrayWords[], arrived: readonly string[], unnamed: readonly Y.XmlElement[], redone: readonly Y.XmlElement[]) => {
         queueMicrotask(() => {
           if (view.isDestroyed || rt.readOnly || rt.halted) return;
           const here = blockAt(view.state.selection.$head)?.node;
           let landed: { id: string; offset: number } | null = null;
           const copies = doubles(fragment);
-          const unnamed = undone ? nameless(fragment) : [];
           if (strays.length > 0 || copies.length > 0 || unnamed.length > 0 || redone.length > 0) {
             doc.transact(() => {
               /* First, so words gathered below go into the copy that stays. */
@@ -284,7 +280,7 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
                 const offset = into ? gatherWords(stray, into.element) : null;
                 if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
               }
-              /* What an undo took out left its element behind: on the page only if someone's words are in it. */
+              /* An undo took back a block's arrival, ID and all, and left its element (see `undoMayDelete`): on the page only if someone's words are in it. */
               for (const element of unnamed) {
                 element.setAttribute('id', newBlockId());
                 if (holdsNothing(element)) element.setAttribute('gone', '');
@@ -309,9 +305,11 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
         if (rt.readOnly || rt.halted || (tr.local && !undone)) return;
         const strays: StrayWords[] = [];
         const arrived: string[] = [];
+        const unnamed: Y.XmlElement[] = [];
         const redone: Y.XmlElement[] = [];
         tr.changed.forEach((keys, type) => {
           if (!(type instanceof Y.XmlElement) || type.parent !== fragment) return;
+          if (undone && keys.has('id') && type.getAttribute('id') === undefined) unnamed.push(type);
           if (tr.origin instanceof Y.UndoManager && tr.origin.redoing && keys.has('id') && !keys.has('gone') && type.getAttribute('gone') !== undefined) redone.push(type);
           if (!keys.has('gone')) return;
           const gone: unknown = type.getAttribute('gone');
@@ -327,7 +325,7 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
           }
         });
         const touched: ReadonlyMap<unknown, unknown> = tr.changed;
-        if (undone || strays.length > 0 || arrived.length > 0 || touched.has(fragment)) tidy(strays, arrived, undone, redone);
+        if (undone || strays.length > 0 || arrived.length > 0 || touched.has(fragment)) tidy(strays, arrived, unnamed, redone);
       };
 
       doc.on('afterTransaction', after);

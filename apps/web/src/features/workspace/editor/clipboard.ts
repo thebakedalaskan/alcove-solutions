@@ -305,6 +305,8 @@ function toggles(root: HTMLElement): void {
 function quotes(root: HTMLElement): void {
   const doc = root.ownerDocument;
   for (const quote of [...root.querySelectorAll('blockquote')]) {
+    /* Already one text, which may be a block of ours written as a quote. */
+    if (![...quote.childNodes].some(isBlock)) continue;
     const out: Node[] = [];
     let words: HTMLElement | null = null;
     for (const child of [...quote.childNodes]) {
