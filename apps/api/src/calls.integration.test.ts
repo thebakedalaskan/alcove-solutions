@@ -1749,6 +1749,9 @@ describe('joining by link', () => {
     await host.transcribe(speech('Sam, how is support going?', 0, 8000), host.ticket.identity);
     expect(told().language).toBe('en');
     expect(told().prompt).not.toMatch(/colours|buttons|green/);
+    // Lines are kept to a tenth of a second and this clip is placed by the server's clock: give the last one time to be
+    // plainly before it.
+    await sleep(150);
     await kofi.transcribe(speech('Grey for the borders.', 0, 10_000), kofi.ticket.identity);
     expect(told().prompt).toContain('And green for links.');
     expect(told().prompt).not.toContain('support');
