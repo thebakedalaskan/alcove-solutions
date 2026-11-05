@@ -119,10 +119,12 @@ function keepBlocks(tr: Transaction, transactions: readonly Transaction[], befor
   const after = tr.doc;
   if (sameBlocks(before.doc, after)) return [];
   const here = new Map<PMNode, number>();
+  const blockAtPos = new Map<number, PMNode>();
   const byId = new Map<string, { node: PMNode; pos: number }>();
   after.forEach((node, pos, index) => {
     if (index === 0) return;
     here.set(node, pos);
+    blockAtPos.set(pos, node);
     const id = blockIdOf(node);
     if (id) byId.set(id, { node, pos });
   });
@@ -145,7 +147,7 @@ function keepBlocks(tr: Transaction, transactions: readonly Transaction[], befor
     const stays = here.get(node) ?? (same?.node.type === node.type ? same?.pos : id === null ? outlives(transactions, pos) : null);
     if (stays !== undefined && stays !== null) {
       putBack();
-      above = after.nodeAt(stays);
+      above = blockAtPos.get(stays) ?? null;
       cursor = tr.mapping.map(stays) + (above?.nodeSize ?? 0);
       return;
     }

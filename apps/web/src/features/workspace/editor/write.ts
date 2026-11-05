@@ -157,7 +157,8 @@ const isLowHalf = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff;
 
 /** How much of two lines is the same from each end. Never between the two halves of a character. */
 function commonEnds(was: Flat<Y.XmlElement>, now: Flat<PMNode>, meta: WriteMeta): { left: number; right: number } {
-  const same = (i: number, j: number) => was.words.charCodeAt(i) === now.words.charCodeAt(j) && sameObject(was.objects.get(i), now.objects.get(j), meta);
+  const plain = was.objects.size === 0 && now.objects.size === 0;
+  const same = (i: number, j: number) => was.words.charCodeAt(i) === now.words.charCodeAt(j) && (plain || sameObject(was.objects.get(i), now.objects.get(j), meta));
   const shorter = Math.min(was.words.length, now.words.length);
   let left = 0;
   while (left < shorter && same(left, left)) left += 1;
@@ -408,6 +409,8 @@ function writeBlocks(parent: Y.XmlFragment, node: PMNode, meta: WriteMeta): void
   while (yCount - left - right > 0 && pCount - left - right > 0) {
     const leftY = ys[left], rightY = ys[yCount - right - 1];
     const leftP = at(left), rightP = at(pCount - right - 1);
+    if (matches(leftY, leftP, meta)) { left += 1; continue; }
+    if (matches(rightY, rightP, meta)) { right += 1; continue; }
     let updateLeft = sameName(leftY, leftP);
     let updateRight = sameName(rightY, rightP);
     if (sameName(leftY, leftP) && sameName(rightY, rightP)) {

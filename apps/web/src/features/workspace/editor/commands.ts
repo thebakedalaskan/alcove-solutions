@@ -14,10 +14,15 @@ const n = schema.nodes;
 /** A top-level block: the title isn't one. */
 export interface BlockRef { node: PMNode; pos: number; index: number; id: string | null }
 
-/** Every block on the page, in order. */
-export function allBlocks(doc: PMNode): BlockRef[] {
+const pages = new WeakMap<PMNode, readonly BlockRef[]>();
+
+/** Every block on the page, in order. It's asked many times a keystroke, of a document that can hold a lot that isn't on the page, and a document doesn't change. */
+export function allBlocks(doc: PMNode): readonly BlockRef[] {
+  const known = pages.get(doc);
+  if (known) return known;
   const out: BlockRef[] = [];
   doc.forEach((node, pos, index) => { if (index > 0 && !isGone(node)) out.push({ node, pos, index, id: blockIdOf(node) }); });
+  pages.set(doc, out);
   return out;
 }
 
