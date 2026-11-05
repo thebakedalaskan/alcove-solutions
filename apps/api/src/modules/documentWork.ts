@@ -9,12 +9,12 @@
  *
  * The small things here run on the event loop too, for what's too small to be worth a trip to a worker.
  */
-import { DOC_FRAGMENT, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
-import { settleUndone, undoMayDelete } from '@alcove/api/retire';
+import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
+import { bytesOnPage, itemsOnPage, settleUndone, undoMayDelete } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
 import { b64u, concat, fromUtf8, jcs, openJson, openRecord, sealJson, sealRecord, toJson, utf8, type RecordHeader } from '../crypto';
-import { SERVER_CAPS, inspect, type Inspected } from './documentFirewall';
+import { SERVER_CAPS, browserCaps, inspect, type Inspected } from './documentFirewall';
 import { docEdits, docReads } from './documentOps';
 import { documentText, type ContentKind } from './documentText';
 
@@ -150,8 +150,12 @@ function nestingIn(doc: Y.Doc): number {
   }
   return deepest;
 }
-const Shape = z.object({ bytes: z.number(), items: z.number(), nesting: z.number() });
-const shapeOf = (doc: Y.Doc, state: Uint8Array) => ({ bytes: state.length, items: itemsIn(doc), nesting: nestingIn(doc) });
+/** What a document comes to. `retired`: how many of its items aren't on its page, which it still has to hold. */
+const Shape = z.object({ bytes: z.number(), items: z.number(), retired: z.number(), nesting: z.number() });
+function shapeOf(doc: Y.Doc, state: Uint8Array) {
+  const items = itemsIn(doc);
+  return { bytes: state.length, items, retired: items - itemsOnPage(doc), nesting: nestingIn(doc) };
+}
 
 /** A state someone is about to rely on opens again, reaching everything it should. Thrown otherwise, before anything is deleted. */
 function proveOpens(state: Uint8Array, vector: Uint8Array): void {
@@ -165,6 +169,37 @@ function proveOpens(state: Uint8Array, vector: Uint8Array): void {
   }
 }
 
+/**
+ * Lets go of every value a map key has had but the last. Yjs keeps them all, and they don't merge, so a store that writes the
+ * same keys over and over grows for good. No compaction can do this: a browser that's behind has part of that chain, and
+ * needs the rest of it to find what's current, or the key is empty when it comes back. A copy has nobody behind it, so
+ * this is for copies alone. Walked with a list, as elsewhere.
+ */
+function dropSuperseded(doc: Y.Doc): void {
+  const waiting = [...doc.share.values()];
+  const inside = (item: Y.Item) => { if (!item.deleted && item.content instanceof Y.ContentType) waiting.push(item.content.type); };
+  for (let type = waiting.pop(); type; type = waiting.pop()) {
+    for (let item = type._start; item; item = item.right) inside(item);
+    for (const current of type._map.values()) {
+      inside(current);
+      for (let older = current.left; older; older = older.left) if (older.deleted) older.gc(doc.store, true);
+      current.left = null;
+      current.origin = null;
+      if (current.deleted) current.gc(doc.store, true);
+    }
+  }
+}
+/** A document's state for a copy, which starts with nothing it doesn't need. Read back, as that's what merges what was let go of. */
+function forCopy(doc: Y.Doc) {
+  dropSuperseded(doc);
+  const again = new Y.Doc();
+  Y.applyUpdate(again, Y.encodeStateAsUpdate(doc));
+  const state = Y.encodeStateAsUpdate(again);
+  const shape = shapeOf(again, state);
+  again.destroy();
+  return { state, shape };
+}
+
 /* ---------- what's asked of a worker ---------- */
 
 /** What's done with what's found, once it's back: nobody in a worker logs. */
@@ -173,8 +208,12 @@ const found = (b: Built, l: OpenLog): Found => ({ skipped: b.skipped, unreadable
 const SeenSchema: z.ZodType<Inspected> = z.object({
   blocks: z.array(z.object({ client: z.number(), from: z.number(), to: z.number() })),
   needs: z.array(z.tuple([z.number(), z.number()])), deletes: z.array(z.tuple([z.number(), z.number()])),
-  items: z.number(), nesting: z.number(), content: z.number(), deleted: z.number()
+  items: z.number(), nesting: z.number(), content: z.number(), deleted: z.number(), dsFrom: z.number()
 });
+/** What's on a document's page, in items and in bytes of what it says, and what its whole state comes to. */
+const Weight = z.object({ items: z.number(), bytes: z.number(), state: z.number() });
+const weightOf = (doc: Y.Doc) => ({ items: itemsOnPage(doc), bytes: bytesOnPage(doc), state: Y.encodeStateAsUpdate(doc).length });
+const Weighed = z.object({ before: Weight, after: Weight });
 
 const Keep = z.object({ versionId: z.string(), reason: z.enum(['edits', 'call', 'restore']), callId: z.string().nullable() });
 const VersionParts = z.object({ versionId: z.string(), parts: z.array(Bytes) });
@@ -282,17 +321,29 @@ function read(i: SealedLog & { op: z.infer<typeof ReadName>; args: unknown }) {
   b.doc.destroy();
   return { value, found: found(b, l) };
 }
-/** Makes a change on the document as it stands. Nothing changed, nothing to write. */
+/** Makes a change on the document as it stands, weighed before and after. Nothing changed, nothing to write. */
 function edit(i: SealedLog & { op: z.infer<typeof EditName>; args: unknown }) {
   const l = openLog(i);
   const b = build(l);
+  const before = weightOf(b.doc);
   const updates: Uint8Array[] = [];
   b.doc.on('update', (u: Uint8Array) => { updates.push(u); });
   let value: unknown;
   b.doc.transact(() => { value = docEdits[i.op].call(b.doc, i.args); });
-  b.doc.destroy();
   const update = updates.length ? Y.mergeUpdates(updates) : null;
-  return { value, update, seen: update && seenOf(update), found: found(b, l) };
+  const weighed = { before, after: update ? weightOf(b.doc) : before };
+  b.doc.destroy();
+  return { value, update, seen: update && seenOf(update), weighed, found: found(b, l) };
+}
+/** What an update would bring a document to, for one at its limits, where only the document can say. */
+function weigh(i: SealedLog & { update: Uint8Array }) {
+  const l = openLog(i);
+  const b = build(l);
+  const before = weightOf(b.doc);
+  Y.applyUpdate(b.doc, i.update);
+  const after = weightOf(b.doc);
+  b.doc.destroy();
+  return { before, after, found: found(b, l) };
 }
 /** What a document says, ready to go on a line of a search: a big document's words are no more worth handling on the way past than its update. */
 function searchLine(i: SealedLog & { id: string; itemKind: z.infer<typeof ItemKindSchema>; name: string; kind: ContentKind }) {
@@ -307,10 +358,30 @@ function copy(i: SealedLog & { name: string | null }) {
   const l = openLog(i);
   const b = build(l);
   if (i.name) b.doc.transact(() => { docEdits.retitle.call(b.doc, { name: i.name }); });
-  const state = Y.encodeStateAsUpdate(b.doc);
-  const shape = shapeOf(b.doc, state);
+  const { state, shape } = forCopy(b.doc);
   b.doc.destroy();
   return { state, shape, seen: seenOf(state), found: found(b, l) };
+}
+/**
+ * Someone's words from another document, as this one's first state (`saveCopy`). It's judged as anything from a browser is,
+ * and goes through a Y.Doc, so what's kept is a state proved to open, holding nothing that waits for what never came, whose
+ * title says what the tree calls it. A document's goes on top of the seed, which the new one already holds: words rescued
+ * from a document that never opened here come without it, and its title is where the name goes.
+ */
+function adopt(i: { state: Uint8Array; items: number; kind: ContentKind; name: string | null }) {
+  const { seen, why } = inspect(i.state, browserCaps(i.items));
+  if (!seen) return { why };
+  const doc = new Y.Doc();
+  if (i.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
+  Y.applyUpdate(doc, i.state);
+  doc.store.pendingStructs = null;
+  doc.store.pendingDs = null;
+  if (i.name) doc.transact(() => { docEdits.retitle.call(doc, { name: i.name }); });
+  const vector = Y.encodeStateVector(doc);
+  const { state, shape } = forCopy(doc);
+  doc.destroy();
+  proveOpens(state, vector);
+  return { made: { state, shape, seen: seenOf(state) } };
 }
 /** Rows as lines of a stream, read once for everyone in a room. */
 export function linesOf(i: Pick<SealedLog, 'at' | 'key' | 'rows'>) {
@@ -330,9 +401,11 @@ export const DOC_TASKS = {
   reset: task(z.object({ at: AtSchema, key: Bytes, through: z.number(), version: VersionParts }), z.object({ snapshot: Bytes, editors: Bytes, shape: Shape, seen: SeenSchema }), reset),
   read: task(SealedLog.extend({ op: ReadName, args: z.unknown() }), z.object({ value: z.unknown(), found: Found }), read),
   searchLine: task(SealedLog.extend({ id: z.string(), itemKind: ItemKindSchema, name: z.string(), kind: Kind }), z.object({ line: Bytes, found: Found }), searchLine),
-  edit: task(SealedLog.extend({ op: EditName, args: z.unknown() }), z.object({ value: z.unknown(), update: Bytes.nullable(), seen: SeenSchema.nullable(), found: Found }), edit),
+  edit: task(SealedLog.extend({ op: EditName, args: z.unknown() }), z.object({ value: z.unknown(), update: Bytes.nullable(), seen: SeenSchema.nullable(), weighed: Weighed, found: Found }), edit),
+  weigh: task(SealedLog.extend({ update: Bytes }), Weighed.extend({ found: Found }), weigh),
   copy: task(SealedLog.extend({ name: z.string().nullable() }), z.object({ state: Bytes, shape: Shape, seen: SeenSchema, found: Found }), copy),
-  inspect: task(z.object({ update: Bytes }), z.object({ seen: SeenSchema.optional(), why: z.string().optional() }), (i) => inspect(i.update)),
+  adopt: task(z.object({ state: Bytes, items: z.number(), kind: Kind, name: z.string().nullable() }), z.object({ why: z.string().optional(), made: z.object({ state: Bytes, shape: Shape, seen: SeenSchema }).optional() }), adopt),
+  inspect: task(z.object({ update: Bytes, items: z.number() }), z.object({ seen: SeenSchema.optional(), why: z.string().optional() }), (i) => inspect(i.update, browserCaps(i.items))),
   seal: task(z.object({ at: AtSchema, key: Bytes, seq: z.number(), by: EditorSchema.nullable(), update: Bytes }), z.object({ sealed: Bytes }), (i) => ({ sealed: sealUpdate(i.at, i.key, i.seq, i.by, i.update) })),
   lines: task(z.object({ at: AtSchema, key: Bytes, rows: z.array(SealedRow) }), z.object({ lines: z.array(z.object({ seq: z.number(), bytes: z.number(), text: z.string() })) }), linesOf),
   /** For a worker that's just been started: nothing to do but be there. */

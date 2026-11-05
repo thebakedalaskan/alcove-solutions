@@ -1,4 +1,5 @@
 import { X509Certificate } from 'node:crypto';
+import { MAX_DOC_ITEMS } from '@alcove/api';
 import { z } from 'zod';
 import { INTEL_SGX_ROOT_CA, NVIDIA_NRAS_ROOT_CA } from './roots';
 import { teeKeys } from './tee';
@@ -91,10 +92,14 @@ const EnvSchema = z.object({
   DOC_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
   /** How long a worker has for one job on a document, in ms. */
   DOC_WORK_MS: z.coerce.number().int().min(1).default(20_000),
-  /** How much memory the worker for big documents has, in MiB. */
-  DOC_HEAP_MB: z.coerce.number().int().min(16).default(320),
-  /** The most separate items a document can hold, which is what its memory follows: at about 210 bytes each, this keeps any document inside DOC_HEAP_MB. */
-  DOC_ITEMS_MAX: z.coerce.number().int().min(1).default(500_000),
+  /** How much memory the worker for big documents has, in MiB. A document at its ceilings, of the worst shapes measured, peaks at about 550. */
+  DOC_HEAP_MB: z.coerce.number().int().min(16).default(640),
+  /** The most separate items a document's page can hold, which is what its memory follows: real blocks hold about 650 to 1,000 bytes an item once open, and a document opens and folds at its ceilings inside DOC_HEAP_MB. */
+  DOC_ITEMS_MAX: z.coerce.number().int().min(1).default(MAX_DOC_ITEMS),
+  /** How many jobs one person can have waiting for a worker: past this their browser is told to try again. */
+  DOC_WAITING_PER_PERSON: z.coerce.number().int().min(1).default(32),
+  /** How much of documents can be on its way to browsers at once, in MiB, and a quarter of that for any one person or address: past it, opening a big one waits for the browser to try again, and a stream that can't have its next line is let go of. */
+  DOC_SENDING_MB: z.coerce.number().int().min(1).default(64),
   /** How many reads of a version an instance serves at once: each holds a request for as long as its reader takes. */
   DOC_VERSION_READS: z.coerce.number().int().min(1).default(8),
   /** How long someone stays here in a workspace after their browser last said so, in ms. Browsers say so every 10 seconds. */

@@ -4,10 +4,11 @@
  * is ever in it.
  */
 import {
-  AlcoveApiError, DOC_SEED, type DocSession, type DocStatus, type DocVersion, type DocVersionSummary, type DocumentRole, type DocumentShare, type ItemInput,
-  type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson, type WorkspaceRole, type WorkspaceSummary,
-  type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  AlcoveApiError, DOC_SEED, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
+  type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson,
+  type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
+import { itemsOnPage } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { personAt } from '../world/people';
@@ -111,19 +112,33 @@ class Document extends Pushed<DocStatus> implements DocSession {
   readonly awareness: Awareness;
   readonly ready: Promise<void>;
   constructor(documentId: string, role: DocumentRole) {
-    super({ status: 'saved', refused: null, role, trashed: false, closed: null });
+    super({ status: 'saved', refused: null, role, trashed: false, closed: null, unsent: false });
     const known = docs.get(documentId);
     this.doc = known ?? new Y.Doc();
     if (!known) { Y.applyUpdate(this.doc, DOC_SEED); docs.set(documentId, this.doc); }
     this.awareness = new Awareness(this.doc);
     this.ready = Promise.resolve();
   }
+  /** Nothing here waits on Alcove, so nobody has words of their own that it hasn't taken. */
+  unsentCopy(): DocUnsentCopy { return { text: '', token: { vector: Y.encodeStateVector(this.doc), keys: [] } }; }
+  size(): DocSize { return { bytes: Y.encodeStateAsUpdate(this.doc).length, items: itemsOnPage(this.doc) }; }
+  /** There's never anything unsent here to let go of. */
+  discardUnsaved(): Promise<void> { this.close(); return Promise.resolve(); }
   override close(): void { this.awareness.destroy(); super.close(); }
 }
 export function openDocument(id: string, documentId: string): DocSession {
   const item = treeOf(id).items.find((i) => i.id === documentId);
   if (!item || item.kind === 'folder') throw notFound();
   return new Document(documentId, item.role);
+}
+/** A new document or board of a state, made as the API makes one: a document starts from the seed, then takes the state. */
+export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): { id: string } {
+  const made = createItem(id, input);
+  const doc = new Y.Doc();
+  if (input.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
+  Y.applyUpdate(doc, input.state);
+  docs.set(made.id, doc);
+  return made;
 }
 /** The documents kept for this story go when it does. */
 export function forgetDocuments(): void {

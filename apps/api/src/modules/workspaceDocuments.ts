@@ -28,15 +28,15 @@ import { AppError, ConflictError, ForbiddenError, TooLargeError, UnavailableErro
 import { DocFailure } from '../live/docPool';
 import { publish, type Hub, type HubEvent } from '../live/hub';
 import { roomFor, type Room, type Snapshot } from '../live/room';
-import { LiveStream, type Line, type Step } from '../live/stream';
+import { LiveStream, inPieces, type Line, type Step } from '../live/stream';
 import { log } from '../log';
 import { findOwner } from '../owners';
 import {
-  change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Credentials, type Reader, type StoredItem, type Who, type Workspace
+  change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Allowed, type Credentials, type Reader, type StoredItem, type Who, type Workspace
 } from './workspaceAccess';
 import { workedOn as workedOnInCall, mayAskInCall } from './calls';
 import { editSelection } from './drafting';
-import { MAX_NESTING, SERVER_CAPS, bringsNew, clientsOf, inspect, refusalGiven, type Block, type Inspected, type KnownClient } from './documentFirewall';
+import { MAX_NESTING, SERVER_CAPS, bringsNew, browserCaps, clientsOf, inspect, isTooMuch, refusalGiven, type Block, type Inspected, type KnownClient } from './documentFirewall';
 import { docEdits, docReads, type ArgsOf, type OpTable, type ResultOf } from './documentOps';
 import type { ContentKind } from './documentText';
 import { StoredVersionInfo, linesOf, openVersionPart, sealUpdate, snapshotHeader, editorsHeader, versionInfoHeader, type At, type Editor, type SealedLog } from './documentWork';
@@ -50,8 +50,11 @@ const COMPACT_UPDATES = 200;
 const COMPACT_BYTES = 1024 * 1024;
 /** A version is kept at most this often while people edit. */
 const VERSION_EVERY_MS = 10 * 60_000;
-/** What a document keeps of its past: older versions go, so a document edited for months stays a size that can be stored. The newest always stays. */
-const MAX_VERSIONS = 200;
+/**
+ * What a document keeps of its past, in bytes: past this the oldest go, so a document edited for months stays a size that can
+ * be stored. The newest always stays. Nothing goes for being one of many: an old version is often the last to hold words
+ * that were deleted since, and telling would mean opening every one of them.
+ */
 const MAX_VERSION_BYTES = 64 * 1024 * 1024;
 /** How long the tree's `editedAt` may lag what's been typed, so nobody rewrites the tree for every key. */
 const TOUCH_EVERY_MS = 60_000;
@@ -61,11 +64,13 @@ const MAX_AWARENESS_CLIENTS = 4;
 const NOTHING = Buffer.from(b64u(new Uint8Array([0, 0])), 'latin1');
 /** What's small enough to read or seal here: past this a worker does it, so one big update doesn't hold up everyone else. */
 const INLINE_BYTES = 32 * 1024;
-/** A document past either of these takes turns on the one worker that has the memory. */
+/** A document past either of these takes turns on the one worker that has the memory. A document of real blocks holds about 1,000 bytes an item, and at this many peaks well inside what the others have. */
 const BIG_DOC_BYTES = 256 * 1024;
-const BIG_DOC_ITEMS = 50_000;
-/** There's a limit to how much of documents can be on its way to browsers at once: past it, opening another waits for the browser to try again. */
-const SENDING_BYTES = 64 * 1024 * 1024;
+const BIG_DOC_ITEMS = 25_000;
+/** One update past this is sealed and read by that worker too: it goes through a few copies as text, which the others have no room for. */
+const BIG_UPDATE_BYTES = 4 * 1024 * 1024;
+/** How much of updates can be coming in at once, past what's small enough to be typing: past it, a browser tries again. */
+const RECEIVING_BYTES = 128 * 1024 * 1024;
 /** How long a document that wouldn't open stays closed, so a tab trying again can't keep a worker busy. */
 const CLOSED_SECONDS = 300;
 /** How long a restore can hold a document, in case the instance doing it goes. */
@@ -73,8 +78,6 @@ const HELD_SECONDS = 120;
 /** How long a document whose compaction failed is left before the next try, and how often a full one, which compacts with every update, can. */
 const FOLD_AGAIN_MS = 60_000;
 const FOLD_SOON_MS = 2_000;
-
-const sending = { bytes: 0 };
 
 export const kindOf = (item: StoredItem): ContentKind => (item.kind === 'board' ? 'board' : 'document');
 
@@ -101,13 +104,43 @@ const awarenessHeader = (p: Place, documentId: string): RecordHeader => ({ v: 1,
 
 /* ---------- who a client is ---------- */
 
-/** Who's written as a client: a keyed hash for each way access knows them, bound to the document and the client, so no two rows can be linked. */
+/**
+ * Who's written as a client: a keyed hash for each way access knows them, bound to the document and the client, so no two rows
+ * can be linked. An account is one of those ways, because its address can change: what someone wrote or kept before a new
+ * address is still theirs after it.
+ */
 const PERSON_TAG_BYTES = 32;
-function tagsFor(o: Owner, documentId: string, client: number, r: Who): Uint8Array[] {
-  const key = stateKey(o.root, o.ownerId, `document-clients:${documentId}`);
-  return r.principals.map((p) => mac(key, concat(utf8(`${client}:`), p)));
+const clientsKey = (o: Owner, documentId: string): Uint8Array => stateKey(o.root, o.ownerId, `document-clients:${documentId}`);
+const clientTag = (key: Uint8Array, client: number, principal: Uint8Array): Uint8Array => mac(key, concat(utf8(`${client}:`), principal));
+function tagsFor(o: Owner, documentId: string, client: number, r: Reader): Uint8Array[] {
+  const key = clientsKey(o, documentId);
+  return [...r.principals, ...(r.account ? [utf8(`account:${r.account.owner.ownerId}`)] : [])].map((p) => clientTag(key, client, p));
 }
 const tagsIn = (people: Uint8Array): Uint8Array[] => Array.from({ length: Math.floor(people.length / PERSON_TAG_BYTES) }, (_, i) => people.subarray(i * PERSON_TAG_BYTES, (i + 1) * PERSON_TAG_BYTES));
+const ClientTags = z.object({ document_id: z.string(), client_id: bigintText, people: bytea });
+/**
+ * Someone's address changed, in the caller's transaction: every client in this workspace's documents that went by the old one
+ * goes by the new one, so a tab of theirs that's open, or words they kept offline, carry on. Rows from before clients went by
+ * account too have only the address to go by.
+ */
+export async function moveClientTags(o: Owner, db: Db, from: Uint8Array, to: Uint8Array): Promise<number> {
+  const found = await rows(db, ClientTags, 'SELECT document_id, client_id, people FROM document_clients WHERE owner_id = $1', [o.ownerId]);
+  const keys = new Map<string, Uint8Array>();
+  let moved = 0;
+  for (const r of found) {
+    const key = keys.get(r.document_id) ?? clientsKey(o, r.document_id);
+    keys.set(r.document_id, key);
+    const was = clientTag(key, r.client_id, from);
+    const tags = tagsIn(r.people);
+    if (!tags.some((t) => equalBytes(t, was))) continue;
+    const now = clientTag(key, r.client_id, to);
+    const people = concat(...tags.filter((t) => !equalBytes(t, was) && !equalBytes(t, now)), now);
+    await exec(db, 'UPDATE document_clients SET people = $4 WHERE owner_id = $1 AND document_id = $2 AND client_id = $3', [o.ownerId, r.document_id, r.client_id, Buffer.from(people)]);
+    moved += 1;
+  }
+  if (moved) dlog.info('document clients moved to a new address', { workspaceOwner: o.ownerId, clients: moved });
+  return moved;
+}
 /** What the server writes belongs to nobody, so no browser can write as it. */
 const nobody = (): Uint8Array => new Uint8Array(0);
 
@@ -116,12 +149,13 @@ async function knownClients(c: Db, p: Place, documentId: string, seen: Inspected
   const found = await rows(c, ClientRow, 'SELECT client_id, next_clock, people FROM document_clients WHERE owner_id = $1 AND document_id = $2 AND client_id = ANY($3::bigint[])', [p.owner.ownerId, documentId, clientsOf(seen)]);
   return new Map(found.map((r) => [r.client_id, { next: r.next_clock, people: tagsIn(r.people) }]));
 }
-/** Moves on how far each client has written, and gives anyone new to whoever wrote first. */
+/** Moves on how far each client has written, gives anyone new to whoever wrote first, and takes whatever else it's told a client goes by. The server's own say nothing, and change nothing. */
 async function noteClients(c: Db, p: Place, documentId: string, blocks: Block[], people: (client: number) => Uint8Array): Promise<void> {
   if (!blocks.length) return;
   await exec(c, `INSERT INTO document_clients (owner_id, document_id, client_id, next_clock, people)
                  SELECT $1, $2, t.client, t.next, t.people FROM unnest($3::bigint[], $4::bigint[], $5::bytea[]) AS t(client, next, people)
-                 ON CONFLICT (owner_id, document_id, client_id) DO UPDATE SET next_clock = greatest(document_clients.next_clock, EXCLUDED.next_clock)`, [
+                 ON CONFLICT (owner_id, document_id, client_id) DO UPDATE SET next_clock = greatest(document_clients.next_clock, EXCLUDED.next_clock),
+                   people = CASE WHEN octet_length(EXCLUDED.people) > 0 THEN EXCLUDED.people ELSE document_clients.people END`, [
     p.owner.ownerId, documentId, blocks.map((b) => b.client), blocks.map((b) => b.to), blocks.map((b) => Buffer.from(people(b.client)))
   ]);
 }
@@ -148,11 +182,11 @@ function report(p: Place, documentId: string, found: { skipped: number[]; unread
 }
 
 const DocRow = z.object({
-  next_seq: bigintText, updates_since_snapshot: z.number(), bytes_since_snapshot: bigintText, snapshot_bytes: bigintText, snapshot_items: bigintText, items_since_snapshot: bigintText,
+  next_seq: bigintText, updates_since_snapshot: z.number(), bytes_since_snapshot: bigintText, snapshot_bytes: bigintText, snapshot_items: bigintText, snapshot_retired_items: bigintText, items_since_snapshot: bigintText,
   snapshot_nesting: z.number(), nesting_since_snapshot: z.number(), version_seq: bigintText, version_at: timestamp.nullable(), created_at: timestamp, held: z.boolean(), closed: z.boolean()
 });
 type DocRow = z.infer<typeof DocRow>;
-const DOC_COLUMNS = `next_seq, updates_since_snapshot, bytes_since_snapshot, snapshot_bytes, snapshot_items, items_since_snapshot, snapshot_nesting, nesting_since_snapshot, version_seq, version_at, created_at,
+const DOC_COLUMNS = `next_seq, updates_since_snapshot, bytes_since_snapshot, snapshot_bytes, snapshot_items, snapshot_retired_items, items_since_snapshot, snapshot_nesting, nesting_since_snapshot, version_seq, version_at, created_at,
   coalesce(held_until > now(), false) AS held, coalesce(closed_until > now(), false) AS closed`;
 /** Holds a document's row: everything that writes to its log takes turns here, on every instance. Hold it only to write. */
 async function lockDocument(c: pg.PoolClient, p: Place, documentId: string): Promise<DocRow> {
@@ -167,30 +201,52 @@ async function documentRow(p: Place, documentId: string): Promise<DocRow> {
 }
 const sizeOf = (row: DocRow): number => row.snapshot_bytes + row.bytes_since_snapshot;
 const itemsOf = (row: DocRow): number => row.snapshot_items + row.items_since_snapshot;
+/** What's on its page: all of that, but for what the last compaction found had left it. */
+const pageOf = (row: DocRow): number => Math.max(itemsOf(row) - row.snapshot_retired_items, 0);
 /** The deepest a document's types could go: exact at a compaction, and everything since counts as if it nested below the deepest thing there. */
 const nestingOf = (row: DocRow): number => row.snapshot_nesting + row.nesting_since_snapshot;
-/** What a worker needs to know of a job on this document. */
-const jobFor = (row: DocRow) => ({ big: sizeOf(row) > BIG_DOC_BYTES || itemsOf(row) > BIG_DOC_ITEMS, bytes: sizeOf(row) });
+/** What a worker needs to know of a job on this document. `who`: whose turn it's on, which is the workspace's if nobody in particular asked. */
+const jobFor = (p: Place, documentId: string, row: DocRow, who: string = p.owner.ownerId) => ({ big: sizeOf(row) > BIG_DOC_BYTES || itemsOf(row) > BIG_DOC_ITEMS, bytes: sizeOf(row), who, doc: documentId });
 
 const byLimits = (p: Place, bytes: number, items: number, times = 1): boolean => bytes > MAX_DOC_BYTES * times || items > p.owner.cfg.DOC_ITEMS_MAX * times;
 const tooLong = (p: Place, documentId: string, bytes: number, items: number) => new TooLargeError('This document is too long to add to. Delete something from it first.', { context: { workspaceId: p.workspaceId, documentId, bytes, items } });
-/** How far past its limit a document can go on what isn't new content. Only what's deleted outright goes further. */
+/** How far past its limit what's on a document's page, or its size, can be, which only a race between two updates comes near. */
 const CEILING = 2;
 /**
- * A document's size is capped, in bytes and in items, because its memory follows items, so nobody can fill the disk or an
- * instance with one. What's refused is what would add to it: new text and new elements, past what the same update takes out.
- * Blocks leave a page by having attributes written and their words deleted, and joining two lines writes the same words
- * somewhere else, so all of that goes through, and a full document can always be made smaller. A move adds an element, so it
- * waits like anything else that adds one. That isn't free of limits, because a new attribute is an item too: there's a
- * ceiling on that, far past anything but someone doing it on purpose, and past that only deletes are taken. How deep things
- * nest is held the same way. All of this is what could be there, not what is: a refusal compacts the document, which finds
- * out, and the browser tries again with what it's holding.
+ * How much it can hold in all, as a multiple of that limit, whatever's on its page: what's been overwritten or deleted stays in
+ * memory too. A document at both ceilings at once, of the worst shape measured, compacts with a third of its worker's memory
+ * to spare, and ran out at about twice as much.
  */
-function requireRoom(p: Place, documentId: string, row: DocRow, bytes: number, seen: Inspected): void {
+const HOLDS = 3;
+/** What a document comes to, exactly, before an update and after it, from a worker that opened it. */
+interface Weight { items: number; bytes: number; state: number }
+interface Weighed { before: Weight; after: Weight }
+/**
+ * A document's size is capped, in bytes and in items, because its memory follows items, so nobody can fill the disk or an
+ * instance with one. The limit is on what's on its page: blocks are retired and words deleted, and a page someone emptied has
+ * room, however much of that Yjs has to keep. One rule holds at the limit: an update goes in if it doesn't add to what's on
+ * the page, counting what it adds against what it deletes and retires. So deletes, retires, joins and moves go through, whole,
+ * and nothing ever has to be sent apart. The figures on the row are the most it could come to, so most updates are taken on
+ * those alone, and one they can't settle is weighed exactly, by a worker that opens the document: `'weigh'`, and then again
+ * with what that says. Bytes go the same way, by what's said on the page, since a move adds a little structure every time.
+ *
+ * Everything a document holds costs memory, on its page or not, so there are ceilings that nothing gets past but deletes: on
+ * what's on the page and on its size, at twice the limit, and on all it holds, including every value a map key has had, which
+ * Yjs keeps and no compaction can let go of. A document at its ceilings opens, folds and copies inside its worker: that's
+ * where they were measured, and a copy lets go of what's been overwritten. How deep things nest is held the same way. Those
+ * figures can be more than what's there, so a refusal compacts the document, which finds out, and it's judged again.
+ */
+function requireRoom(p: Place, documentId: string, row: DocRow, bytes: number, seen: Inspected, weighed: Weighed | null): 'fits' | 'weigh' {
+  if (!seen.blocks.length) return 'fits';
   const size = sizeOf(row) + bytes;
   const items = itemsOf(row) + seen.items;
-  if (!seen.blocks.length) return;
-  if (byLimits(p, size, items, CEILING) || (byLimits(p, size, items) && seen.content > seen.deleted) || (seen.nesting > 0 && nestingOf(row) + seen.nesting > MAX_NESTING)) throw tooLong(p, documentId, size, items);
+  const page = pageOf(row) + seen.items;
+  if (items > p.owner.cfg.DOC_ITEMS_MAX * HOLDS || byLimits(p, size, page, CEILING) || (seen.nesting > 0 && nestingOf(row) + seen.nesting > MAX_NESTING)) throw tooLong(p, documentId, size, items);
+  if (!byLimits(p, size, page)) return 'fits';
+  if (!weighed) return 'weigh';
+  const { before, after } = weighed;
+  if ((after.items <= p.owner.cfg.DOC_ITEMS_MAX || after.items <= before.items) && (after.state <= MAX_DOC_BYTES || after.bytes <= before.bytes)) return 'fits';
+  throw tooLong(p, documentId, after.state, after.items);
 }
 const restoring = (p: Place, documentId: string) => new UnavailableError('This document is being put back to an earlier version. What’s here will go in a moment.', { context: { workspaceId: p.workspaceId, documentId } });
 
@@ -211,7 +267,7 @@ async function writeVersion(c: Db, p: Place, documentId: string, versionId: stri
   await exec(c, `DELETE FROM document_versions v USING (
       SELECT version_id, row_number() OVER newest AS n, sum(bytes) OVER newest AS kept_bytes
       FROM document_versions WHERE owner_id = $1 AND document_id = $2 WINDOW newest AS (ORDER BY created_at DESC, version_id)
-    ) kept WHERE v.owner_id = $1 AND v.document_id = $2 AND v.version_id = kept.version_id AND kept.n > 1 AND (kept.n > $3 OR kept.kept_bytes > $4)`, [p.owner.ownerId, documentId, MAX_VERSIONS, MAX_VERSION_BYTES]);
+    ) kept WHERE v.owner_id = $1 AND v.document_id = $2 AND v.version_id = kept.version_id AND kept.n > 1 AND kept.kept_bytes > $3`, [p.owner.ownerId, documentId, MAX_VERSION_BYTES]);
 }
 
 /**
@@ -231,7 +287,7 @@ async function fold(p: Place, documentId: string, through: number, keep?: Keep):
   if (!keep && from !== null && reach === from) return { raced: false, wrote: false, versionId: null };
   const versionId = keep ? id128() : null;
   const covered = l.rows.filter((r) => r.seq > (from ?? 0));
-  const made = await working(p, documentId, row, () => p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(row)));
+  const made = await working(p, documentId, row, () => p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(p, documentId, row)));
   report(p, documentId, made.found);
   const wrote = await tx(p.owner.pool, async (c) => {
     await lockDocument(c, p, documentId);
@@ -247,11 +303,11 @@ async function fold(p: Place, documentId: string, through: number, keep?: Keep):
   return { raced: !wrote, wrote, versionId: wrote ? versionId : null };
 }
 /** What a document comes to now a snapshot says it exactly, and what's left in the log on top. */
-async function settleFigures(c: Db, p: Place, documentId: string, shape: { bytes: number; items: number; nesting: number }, versionSeq: number | null): Promise<void> {
-  await exec(c, `UPDATE documents d SET snapshot_bytes = $3, snapshot_items = $4, snapshot_nesting = $5, updates_since_snapshot = r.n, bytes_since_snapshot = r.bytes, items_since_snapshot = r.items, nesting_since_snapshot = r.nesting
-                 ${versionSeq === null ? '' : ', version_seq = $6, version_at = now()'}
+async function settleFigures(c: Db, p: Place, documentId: string, shape: { bytes: number; items: number; retired: number; nesting: number }, versionSeq: number | null): Promise<void> {
+  await exec(c, `UPDATE documents d SET snapshot_bytes = $3, snapshot_items = $4, snapshot_retired_items = $5, snapshot_nesting = $6, updates_since_snapshot = r.n, bytes_since_snapshot = r.bytes, items_since_snapshot = r.items, nesting_since_snapshot = r.nesting
+                 ${versionSeq === null ? '' : ', version_seq = $7, version_at = now()'}
                  FROM (SELECT count(*)::int AS n, coalesce(sum(bytes), 0) AS bytes, coalesce(sum(items), 0) AS items, coalesce(sum(nesting), 0)::int AS nesting FROM document_updates WHERE owner_id = $1 AND document_id = $2) r
-                 WHERE d.owner_id = $1 AND d.document_id = $2`, [p.owner.ownerId, documentId, shape.bytes, shape.items, shape.nesting, ...(versionSeq === null ? [] : [versionSeq])]);
+                 WHERE d.owner_id = $1 AND d.document_id = $2`, [p.owner.ownerId, documentId, shape.bytes, shape.items, shape.retired, shape.nesting, ...(versionSeq === null ? [] : [versionSeq])]);
 }
 
 /** Each hub's documents being folded now, one at a time, and when each can next be tried. Other instances are stopped by `fold` itself. */
@@ -273,35 +329,49 @@ interface Tending { through: number; keep: Keep | undefined; full: boolean }
  */
 function tendingAfter(p: Place, row: DocRow, seq: number, bytes: number, callId: string | null): Tending | null {
   const version = seq - 1 > row.version_seq && Date.now() - (row.version_at ?? row.created_at).getTime() >= VERSION_EVERY_MS;
-  const full = byLimits(p, sizeOf(row), itemsOf(row)) || nestingOf(row) > MAX_NESTING / 2;
+  const full = byLimits(p, sizeOf(row), pageOf(row)) || nestingOf(row) > MAX_NESTING / 2;
   const compact = row.updates_since_snapshot + 1 >= COMPACT_UPDATES || row.bytes_since_snapshot + bytes >= COMPACT_BYTES || full;
   if (!version && !compact) return null;
   return { through: seq - 1, keep: version ? { reason: 'edits', callId } : undefined, full };
 }
-async function tend(p: Place, documentId: string, t: Tending): Promise<void> {
+/** Whether anything was folded. */
+async function tend(p: Place, documentId: string, t: Tending): Promise<boolean> {
   const { busy, notBefore } = foldingOn(p.owner.hub);
   const key = roomKey(p.workspaceId, documentId);
-  if (busy.has(key) || Date.now() < (notBefore.get(key) ?? 0)) return;
+  if (busy.has(key) || Date.now() < (notBefore.get(key) ?? 0)) return false;
   busy.add(key);
   if (notBefore.size > 1000) notBefore.clear();
   try {
-    await fold(p, documentId, t.through, t.keep);
+    const { wrote } = await fold(p, documentId, t.through, t.keep);
     if (t.full) notBefore.set(key, Date.now() + FOLD_SOON_MS);
+    return wrote;
   } catch (e) {
     notBefore.set(key, Date.now() + FOLD_AGAIN_MS);
     dlog.warn('document not folded', { workspaceId: p.workspaceId, documentId, err: e });
+    return false;
   } finally {
     busy.delete(key);
   }
 }
 
-/** Puts an update at the end of the log, under the row's lock, and tells every instance when the transaction commits. */
-async function append(c: pg.PoolClient, p: Place, documentId: string, row: DocRow, update: Uint8Array, by: Editor | null, seen: Inspected, people: (client: number) => Uint8Array): Promise<number> {
+/** A keyed hash of what an update deletes, so the same deletes arriving again are known without opening anything. */
+const deletesTag = (o: Owner, documentId: string, update: Uint8Array, seen: Inspected): Uint8Array | null =>
+  (seen.deletes.length ? mac(stateKey(o.root, o.ownerId, `document-deletes:${documentId}`), update.subarray(seen.dsFrom)) : null);
+/** Whether the log since its snapshot has had these deletes already. */
+const deletedBefore = async (c: Db, p: Place, documentId: string, tag: Uint8Array): Promise<boolean> =>
+  (await maybeOne(c, z.object({ n: z.number() }), 'SELECT 1 AS n FROM document_updates WHERE owner_id = $1 AND document_id = $2 AND deletes_tag = $3 LIMIT 1', [p.owner.ownerId, documentId, tag])) !== undefined;
+/** An update's deletes and nothing else, for one whose structs are all here already: the structs would only be counted again. */
+function deletesOnly(update: Uint8Array, seen: Inspected): { update: Uint8Array; seen: Inspected } {
+  return { update: concat(new Uint8Array([0]), update.subarray(seen.dsFrom)), seen: { ...seen, blocks: [], needs: [], items: 0, nesting: 0, content: 0, dsFrom: 1 } };
+}
+
+/** Puts an update at the end of the log, under the row's lock, and tells every instance when the transaction commits. `deletes`: its tag, if it deletes anything. */
+async function append(c: pg.PoolClient, p: Place, documentId: string, row: DocRow, update: Uint8Array, by: Editor | null, seen: Inspected, people: (client: number) => Uint8Array, deletes: Uint8Array | null = null): Promise<number> {
   const seq = row.next_seq;
   const at = atOf(p, documentId);
   const key = contentKey(p.owner, documentId);
-  const sealed = update.length <= INLINE_BYTES ? sealUpdate(at, key, seq, by, update) : (await p.owner.docs.run('seal', { at, key, seq, by, update }, { big: false, bytes: update.length, first: true })).sealed;
-  await exec(c, 'INSERT INTO document_updates (owner_id, document_id, seq, update_ciphertext, bytes, items, nesting) VALUES ($1,$2,$3,$4,$5,$6,$7)', [p.owner.ownerId, documentId, seq, sealed, update.length, seen.items, seen.nesting]);
+  const sealed = update.length <= INLINE_BYTES ? sealUpdate(at, key, seq, by, update) : (await p.owner.docs.run('seal', { at, key, seq, by, update }, { big: update.length > BIG_UPDATE_BYTES, bytes: update.length, who: p.owner.ownerId, first: true })).sealed;
+  await exec(c, 'INSERT INTO document_updates (owner_id, document_id, seq, update_ciphertext, bytes, items, nesting, deletes_tag) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [p.owner.ownerId, documentId, seq, sealed, update.length, seen.items, seen.nesting, deletes ? Buffer.from(deletes) : null]);
   await exec(c, `UPDATE documents SET next_seq = $3, updates_since_snapshot = updates_since_snapshot + 1, bytes_since_snapshot = bytes_since_snapshot + $4, items_since_snapshot = items_since_snapshot + $5,
                  nesting_since_snapshot = nesting_since_snapshot + $6 WHERE owner_id = $1 AND document_id = $2`, [p.owner.ownerId, documentId, seq + 1, update.length, seen.items, seen.nesting]);
   await noteClients(c, p, documentId, seen.blocks, people);
@@ -309,48 +379,125 @@ async function append(c: pg.PoolClient, p: Place, documentId: string, row: DocRo
   return seq;
 }
 
-/** Why an update was refused goes in the logs, and nothing of what it said. A browser hears that it was. */
-function refuseUpdate(workspaceId: string, documentId: string, why: string, bytes: number): ValidationError {
+/** Why an update was refused goes in the logs, and nothing of what it said. A browser hears whether it's too much, which taking something out can change, or never to be. */
+function refuseUpdate(workspaceId: string, documentId: string, why: string, bytes: number): AppError {
   dlog.info('update refused', { workspaceId, documentId, why, bytes });
-  return new ValidationError('That isn’t an update Alcove can take.', { context: { workspaceId, documentId, why } });
+  const context = { workspaceId, documentId, why };
+  return isTooMuch(why) ? new TooLargeError('That’s too much to save in one go.', { context }) : new ValidationError('That isn’t an update Alcove can take.', { context });
 }
+/** What this instance has coming in and going out, as much of it can be megabytes, and whoever's asked for it. */
+interface Traffic { sending: number; sendingBy: Map<string, number>; sendingTo: Map<string, number>; receiving: number }
+const trafficByHub = new WeakMap<Hub, Traffic>();
+function trafficOn(hub: Hub): Traffic {
+  const traffic = trafficByHub.get(hub) ?? { sending: 0, sendingBy: new Map<string, number>(), sendingTo: new Map<string, number>(), receiving: 0 };
+  trafficByHub.set(hub, traffic);
+  return traffic;
+}
+/** Holds room for what's about to come in, which is known before any of it's read. Nothing's held for what's small enough to be typing. */
+function takeReceiving(d: Deps, bytes: number): () => void {
+  if (bytes <= INLINE_BYTES) return () => undefined;
+  const traffic = trafficOn(d.hub);
+  if (traffic.receiving > 0 && traffic.receiving + bytes > RECEIVING_BYTES) throw new UnavailableError('Alcove is very busy right now. This will carry on by itself in a moment.', { context: { bytes, receiving: traffic.receiving } });
+  traffic.receiving += bytes;
+  let holding = true;
+  return () => { if (holding) { holding = false; traffic.receiving -= bytes; } };
+}
+
+/** What one update may hold: as much as a document can. */
+const capsFor = (d: Deps) => browserCaps(d.cfg.DOC_ITEMS_MAX * HOLDS);
+/** Where an update landed, and what that leaves to do. */
+interface Landed { w: Allowed; seq: number; stale: boolean; tending: Tending | null }
 
 /**
  * An update from a browser, sealed and appended in one transaction. Whoever can't write here hears so before anything of it is
  * read. It's checked in two steps: what can be told from the update alone, with nothing held, and what depends on the log,
  * under the workspace's lock, so nothing lands after someone loses access, and the document's, so `seq`s commit in order and
- * any reader who's seen one has seen all before it. `seq` is where it landed.
+ * any reader who's seen one has seen all before it. `seq` is where it landed. `length`: what the request says it holds.
  */
-export async function appendUpdate(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: () => Promise<ArrayBuffer>): Promise<{ seq: number }> {
+export async function appendUpdate(d: Deps, reader: Reader, workspaceId: string, documentId: string, length: number, body: () => Promise<ArrayBuffer>): Promise<{ seq: number }> {
   const asked = await editableBy(d, reader, workspaceId, documentId);
-  const update = new Uint8Array(await body());
-  if (!update.length) throw new ValidationError('That update is empty.', { context: { workspaceId, documentId } });
-  if (update.length > MAX_DOC_UPDATE_BYTES) throw new TooLargeError('That’s too much to save in one go.', { context: { workspaceId, documentId, bytes: update.length } });
-  const { seen, why } = update.length <= INLINE_BYTES ? inspect(update) : await d.docs.run('inspect', { update }, { big: false, bytes: update.length });
-  if (!seen) throw refuseUpdate(workspaceId, documentId, why ?? 'unknown', update.length);
+  const received = takeReceiving(d, length);
+  try {
+    const update = new Uint8Array(await body());
+    if (!update.length) throw new ValidationError('That update is empty.', { context: { workspaceId, documentId } });
+    if (update.length > MAX_DOC_UPDATE_BYTES) throw new TooLargeError('That’s too much to save in one go.', { context: { workspaceId, documentId, bytes: update.length } });
+    const { seen, why } = update.length <= INLINE_BYTES ? inspect(update, capsFor(d)) : await d.docs.run('inspect', { update, items: capsFor(d).items }, { big: update.length > BIG_DOC_BYTES, bytes: update.length, who: limitKey(reader) });
+    if (!seen) throw refuseUpdate(workspaceId, documentId, why ?? 'unknown', update.length);
 
-  const landed = await tx(d.pool, async (c) => {
-    const w = await editableBy(d, reader, workspaceId, documentId, c, 'hold');
-    const row = await lockDocument(c, w, documentId);
-    if (row.held) throw restoring(w, documentId);
-    const known = await knownClients(c, w, documentId, seen);
-    const why2 = refusalGiven(seen, known, (client, people) => tagsFor(w.owner, documentId, client, reader).some((t) => people.some((q) => equalBytes(t, q))));
-    if (why2) throw refuseUpdate(workspaceId, documentId, why2, update.length);
-    // Here before, whole: a retry, of what's safe already.
-    if (!bringsNew(seen, known) && !seen.deletes.length) return { w, seq: row.next_seq - 1, stale: false, tending: null };
-    requireRoom(w, documentId, row, update.length, seen);
-    const tags = (client: number) => concat(...tagsFor(w.owner, documentId, client, reader));
-    const seq = await append(c, w, documentId, row, update, editorOf(w.owner, reader), seen, tags);
-    return { w, seq, stale: Date.now() - Date.parse(w.editedAt) >= TOUCH_EVERY_MS, tending: tendingAfter(w, row, seq, update.length, reader.seat?.callId ?? null) };
-  }).catch(async (e: unknown) => {
-    // What's counted is what could be there: much of it may be what's been deleted, or overwritten, which only a compaction shows, and nothing else may come along to start one. So this one reaches all the way: a stream reading the last row starts again, which is rare and safe. The browser tries again, and finds out.
-    if (e instanceof TooLargeError) await tend(asked, documentId, { through: (await documentRow(asked, documentId)).next_seq - 1, keep: undefined, full: true });
-    throw e;
-  });
-  if (landed.tending) await tend(landed.w, documentId, landed.tending);
-  if (landed.stale) await touch(d, reader, workspaceId, documentId);
-  if (reader.seat) await workedOnInCall(reader.seat.viewer, { workspaceId, documentId }, editorOf(landed.w.owner, reader));
-  return { seq: landed.seq };
+    const write = (weighed: Weighed | null) => tx(d.pool, async (c) => {
+      const w = await editableBy(d, reader, workspaceId, documentId, c, 'hold');
+      const row = await lockDocument(c, w, documentId);
+      if (row.held) throw restoring(w, documentId);
+      const known = await knownClients(c, w, documentId, seen);
+      const why2 = refusalGiven(seen, known, (client, people) => tagsFor(w.owner, documentId, client, reader).some((t) => people.some((q) => equalBytes(t, q))));
+      if (why2) throw refuseUpdate(workspaceId, documentId, why2, update.length);
+      // Every struct in it is here already, as with a retry, or something rebuilt: what's left is its deletes, if they're new. The same deletes again are nothing, and cost nothing: no row, no version.
+      const fresh = bringsNew(seen, known);
+      const deletes = deletesTag(w.owner, documentId, update, seen);
+      if (!fresh && (!deletes || (await deletedBefore(c, w, documentId, deletes)))) return { landed: { w, seq: row.next_seq - 1, stale: false, tending: null } };
+      const what = fresh ? { update, seen } : deletesOnly(update, seen);
+      if (requireRoom(w, documentId, row, what.update.length, what.seen, weighed) === 'weigh') return { weigh: row };
+      // Whoever's writing is who a client belongs to by now, which refusalGiven has made sure of: what it went by still counts, and so does anything new, such as an account for a client from before accounts were counted.
+      const tags = (client: number) => {
+        const had = known.get(client)?.people ?? [];
+        return concat(...had, ...tagsFor(w.owner, documentId, client, reader).filter((t) => !had.some((q) => equalBytes(t, q))));
+      };
+      const seq = await append(c, w, documentId, row, what.update, editorOf(w.owner, reader), what.seen, tags, deletes);
+      return { landed: { w, seq, stale: Date.now() - Date.parse(w.editedAt) >= TOUCH_EVERY_MS, tending: tendingAfter(w, row, seq, what.update.length, reader.seat?.callId ?? null) } };
+    });
+    /** A document at its limit, where the figures can't say: a worker weighs what this update would bring it to. */
+    const weigh = async (row: DocRow): Promise<Weighed> => working(asked, documentId, row, async () => d.docs.run('weigh', { ...(await sealedLog(asked, documentId)), update }, jobFor(asked, documentId, row, limitKey(reader))));
+    const settle = async (weighed: Weighed | null, folded: boolean): Promise<Landed> => {
+      try {
+        const done = await write(weighed);
+        if ('landed' in done) return done.landed;
+        return settle(await weigh(done.weigh), folded);
+      } catch (e) {
+        if (!(e instanceof TooLargeError) || folded) throw e;
+        // What's counted is what could be there: much of it may be what's been deleted, or overwritten, which only a compaction shows, and nothing else may come along to start one. So this one reaches all the way: a stream reading the last row starts again, which is rare and safe. Then it's judged again by what's there.
+        if (!(await tend(asked, documentId, { through: (await documentRow(asked, documentId)).next_seq - 1, keep: undefined, full: true }))) throw e;
+        return settle(weighed, true);
+      }
+    };
+    const landed = await settle(null, false);
+    if (landed.tending) await tend(landed.w, documentId, landed.tending);
+    if (landed.stale) await touch(d, reader, workspaceId, documentId);
+    if (reader.seat) await workedOnInCall(reader.seat.viewer, { workspaceId, documentId }, editorOf(landed.w.owner, reader));
+    return { seq: landed.seq };
+  } finally {
+    received();
+  }
+}
+/**
+ * What a browser couldn't get into the document it was written in, as a new one's first state (`saveCopy`): only ever a document
+ * nobody's written to, as the state doesn't merge with anything. It's judged like anything from a browser, and it's the server's
+ * from then on, so nobody writes as one of its clients: whoever carries on is someone new.
+ */
+export async function adoptState(d: Deps, reader: Reader, workspaceId: string, documentId: string, length: number, body: () => Promise<ArrayBuffer>): Promise<{ seq: number }> {
+  const asked = await workspaceFor(d, reader, workspaceId);
+  const { item } = requireDocument(reader, asked, documentId, 'edit');
+  const taken = () => new ConflictError('Something’s been written to this document already.', { context: { workspaceId, documentId } });
+  if ((await documentRow(asked, documentId)).next_seq !== 1) throw taken();
+  const received = takeReceiving(d, length);
+  try {
+    const state = new Uint8Array(await body());
+    if (!state.length) throw new ValidationError('That update is empty.', { context: { workspaceId, documentId } });
+    if (state.length > MAX_DOC_BYTES) throw tooLong(asked, documentId, state.length, 0);
+    const { made, why } = await d.docs.run('adopt', { state, items: capsFor(d).items, kind: kindOf(item), name: item.kind === 'document' && item.name ? item.name : null }, { big: state.length > BIG_DOC_BYTES, bytes: state.length, who: limitKey(reader) }).catch((e: unknown) => {
+      throw e instanceof DocFailure && e.reason === 'failed' ? refuseUpdate(workspaceId, documentId, 'unreadable', state.length) : e;
+    });
+    if (!made) throw refuseUpdate(workspaceId, documentId, why ?? 'unknown', state.length);
+    if (byLimits(asked, made.shape.bytes, made.shape.items - made.shape.retired)) throw tooLong(asked, documentId, made.shape.bytes, made.shape.items);
+    const seq = await tx(d.pool, async (c) => {
+      const w = await editableBy(d, reader, workspaceId, documentId, c, 'hold');
+      const row = await lockDocument(c, w, documentId);
+      if (row.next_seq !== 1) throw taken();
+      return append(c, w, documentId, row, made.state, editorOf(w.owner, reader), made.seen, nobody);
+    });
+    return { seq };
+  } finally {
+    received();
+  }
 }
 /** The tree follows what's written, about a minute behind. The update is safe by now, so this can't fail it. */
 async function touch(d: Deps, who: Who, workspaceId: string, documentId: string): Promise<void> {
@@ -384,7 +531,7 @@ export async function documentsAt(db: Db, ownerId: string, documentIds: string[]
 export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>): Promise<ResultOf<Reads[N]>> {
   requireContent(w, documentId);
   const row = await documentRow(w, documentId);
-  const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row)));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(w, documentId, row)));
   report(w, documentId, done.found);
   return reads[op].result.parse(done.value);
 }
@@ -401,7 +548,7 @@ export async function writeDocument<N extends keyof Edits>(
   requireContent(w, documentId);
   if (trashOf(w.state, documentId)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, documentId } });
   const row = await documentRow(w, documentId);
-  const done = await working(w, documentId, row, async () => w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row)));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(w, documentId, row)));
   report(w, documentId, done.found);
   const result = edits[op].result.parse(done.value);
   const { update, seen } = done;
@@ -410,7 +557,7 @@ export async function writeDocument<N extends keyof Edits>(
     await opts.holding?.(c);
     const locked = await lockDocument(c, w, documentId);
     if (locked.held) throw restoring(w, documentId);
-    requireRoom(w, documentId, locked, update.length, seen);
+    requireRoom(w, documentId, locked, update.length, seen, done.weighed);
     const landed = await append(c, w, documentId, locked, update, opts.by ?? null, seen, nobody);
     return { seq: landed, tending: tendingAfter(w, locked, landed, update.length, opts.callId ?? null) };
   });
@@ -443,21 +590,31 @@ async function started(p: Place, documentId: string, row: DocRow): Promise<void>
     if (locked.snapshot_bytes === 0 && locked.next_seq === 1) await startContent(p, c, [documentId]);
   });
 }
+/** How often a copy waits for its turn when the workers are full, and how long at first: about 15 seconds in all. */
+const COPY_TRIES = 6;
+const COPY_WAIT_MS = 500;
 /**
  * A copy holds what `from` holds now, as its first update, and a document's title says what the tree calls the copy. It's
  * done after the copy is in the tree, outside any lock, one at a time: a folder of big documents mustn't hold up everyone
  * typing in the workspace, and anyone who opens a copy meanwhile merges with it. One whose records won't open leaves its
- * copy as it started, and the rest are made all the same.
+ * copy as it started, and the rest are made all the same. Workers being busy says nothing about the document: that waits,
+ * and if it goes on, this throws, for nobody to be left with a blank copy that looks like the real thing.
  */
-export async function copyContent(p: Place, from: string, to: string, kind: ContentKind, name: string): Promise<void> {
-  try {
-    const row = await documentRow(p, from);
-    const made = await p.owner.docs.run('copy', { ...(await sealedLog(p, from)), name: kind === 'document' && name ? name : null }, jobFor(row));
-    report(p, from, made.found);
-    if (!made.seen.blocks.length) return;
-    await tx(p.owner.pool, async (c) => { await append(c, p, to, await lockDocument(c, p, to), made.state, null, made.seen, nobody); });
-  } catch (e) {
-    dlog.warn('document not copied', { workspaceId: p.workspaceId, documentId: from, err: e });
+export async function copyContent(p: Place, from: string, to: string, kind: ContentKind, name: string, who: string): Promise<void> {
+  for (let tries = 1; ; tries++) {
+    try {
+      const row = await documentRow(p, from);
+      const made = await p.owner.docs.run('copy', { ...(await sealedLog(p, from)), name: kind === 'document' && name ? name : null }, jobFor(p, from, row, who));
+      report(p, from, made.found);
+      if (!made.seen.blocks.length) return;
+      await tx(p.owner.pool, async (c) => { await append(c, p, to, await lockDocument(c, p, to), made.state, null, made.seen, nobody); });
+      return;
+    } catch (e) {
+      const busy = e instanceof UnavailableError && !(e instanceof DocFailure);
+      if (busy && tries >= COPY_TRIES) throw e;
+      if (!busy) { dlog.warn('document not copied', { workspaceId: p.workspaceId, documentId: from, err: e }); return; }
+      await new Promise((resolve) => setTimeout(resolve, COPY_WAIT_MS * 2 ** (tries - 1)));
+    }
   }
 }
 
@@ -490,15 +647,51 @@ const partOf = async (p: Place, documentId: string, versionId: string, part: num
   return r.state_ciphertext;
 };
 
-/** Writes one line, or gives up on a reader who hasn't taken it within a ping. */
-async function lineFor(d: Deps, out: StreamingApi, text: string): Promise<boolean> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), d.cfg.LIVE_PING_MS); });
-  const wrote = await Promise.race([out.write(text), late]);
-  clearTimeout(timer);
-  if (wrote !== 'late') return true;
+/** Writes one line, or gives up on a reader who hasn't taken each piece of it within a ping. */
+async function lineFor(d: Deps, out: StreamingApi, text: string | Uint8Array): Promise<boolean> {
+  if (await inPieces(out, text, d.cfg.LIVE_PING_MS)) return true;
   out.abort();
   return false;
+}
+
+/** How long bytes are as base64url. */
+const asAscii = (bytes: number): number => Math.ceil((bytes * 4) / 3);
+/** What's small enough to go whatever else is on its way: everyone's ordinary documents, which nobody's unread stream gets to hold up. There's one of these to a stream, and streams have their limit. */
+const SMALL_SEND_BYTES = asAscii(BIG_DOC_BYTES);
+/** Room held for something on its way to a browser. `settle`: what it turned out to be. */
+interface Sending { settle(bytes: number): void; release(): void }
+/** What one person, or one address, can have on its way, as a part of all there can be. */
+const SHARE = 4;
+/**
+ * Takes room for something on its way to a browser: a document opening, a line of its stream, a version, a search. That's
+ * before anything's opened, so it counts however many are opening at once, and it's held until the last of it has left or the
+ * reader has, so what nobody reads stays counted. Past the limit overall, or a quarter of it for one person or one address,
+ * the browser's told to try again. Someone with nothing on its way is held back only by the overall limit, and with nothing
+ * at all on its way anything goes, however big: a document can be bigger than any of these, and has to be able to open.
+ */
+function takeSending(d: Deps, who: string, address: string, wanted: number): Sending {
+  const traffic = trafficOn(d.hub);
+  const all = d.cfg.DOC_SENDING_MB * 1024 * 1024;
+  const theirs = traffic.sendingBy.get(who) ?? 0;
+  const there = traffic.sendingTo.get(address) ?? 0;
+  const over = (n: number, limit: number) => n > 0 && n + wanted > limit;
+  if (wanted > SMALL_SEND_BYTES && (over(theirs, all / SHARE) || over(there, all / SHARE) || over(traffic.sending, all))) {
+    throw new UnavailableError('Too many documents are on their way right now. Try again in a moment.', { context: { wanted, theirs, there, sending: traffic.sending } });
+  }
+  let held = 0;
+  const count = (counts: Map<string, number>, key: string, bytes: number) => {
+    const now = (counts.get(key) ?? 0) + bytes - held;
+    if (now > 0) counts.set(key, now);
+    else counts.delete(key);
+  };
+  const hold = (bytes: number) => {
+    count(traffic.sendingBy, who, bytes);
+    count(traffic.sendingTo, address, bytes);
+    traffic.sending += bytes - held;
+    held = bytes;
+  };
+  hold(wanted);
+  return { settle: hold, release: () => { hold(0); } };
 }
 
 /** Reads of a version under way on each instance: each holds a request, and a reader can be as slow as they like. */
@@ -506,7 +699,8 @@ const versionReads = new WeakMap<Hub, { open: number }>();
 function takeVersionRead(d: Deps): () => void {
   const reads = versionReads.get(d.hub) ?? { open: 0 };
   versionReads.set(d.hub, reads);
-  if (reads.open >= d.cfg.DOC_VERSION_READS || sending.bytes > SENDING_BYTES) throw new UnavailableError('Too many documents are on their way right now. Try again in a moment.', { context: { open: reads.open, bytes: sending.bytes } });
+  const { sending } = trafficOn(d.hub);
+  if (reads.open >= d.cfg.DOC_VERSION_READS || sending > d.cfg.DOC_SENDING_MB * 1024 * 1024) throw new UnavailableError('Too many documents are on their way right now. Try again in a moment.', { context: { open: reads.open, sending } });
   reads.open++;
   let holding = true;
   return () => { if (holding) { holding = false; reads.open--; } };
@@ -516,7 +710,7 @@ function takeVersionRead(d: Deps): () => void {
  * A version as it's kept, a part at a time, so a reader who stops reading holds one part and no more. Nothing's written until
  * it's known they can have it, and it stops if they lose it on the way.
  */
-export async function version(d: Deps, reader: Reader, workspaceId: string, documentId: string, versionId: string): Promise<(out: StreamingApi) => Promise<void>> {
+export async function version(d: Deps, reader: Reader, workspaceId: string, documentId: string, versionId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
   const w = await workspaceFor(d, reader, workspaceId);
   requireDocument(reader, w, documentId, 'read');
   const r = await versionRow(w, documentId, versionId);
@@ -525,7 +719,6 @@ export async function version(d: Deps, reader: Reader, workspaceId: string, docu
   const summary = summarise(r.version_id, r.created_at, openJson(key, versionInfoHeader(at, r.version_id), r.info_ciphertext, StoredVersionInfo));
   const release = takeVersionRead(d);
   return async (out) => {
-    let held = 0;
     const until = Date.now() + d.cfg.LIVE_STREAM_MS;
     try {
       if (!(await lineFor(d, out, `${JSON.stringify({ type: 'version', ...summary, parts: r.parts })}\n`))) return;
@@ -537,18 +730,14 @@ export async function version(d: Deps, reader: Reader, workspaceId: string, docu
           requireDocument(reader, current, documentId, 'read');
         }
         const bytes = openVersionPart(at, key, r.version_id, part, r.parts, await partOf(w, documentId, r.version_id, part));
-        held = bytes.length;
-        sending.bytes += held;
-        const wrote = await lineFor(d, out, `{"type":"part","update":"${b64u(bytes)}"}\n`);
-        sending.bytes -= held;
-        held = 0;
+        const room = takeSending(d, limitKey(reader), address, asAscii(bytes.length));
+        const wrote = await lineFor(d, out, `{"type":"part","update":"${b64u(bytes)}"}\n`).finally(room.release);
         if (!wrote) return;
       }
     } catch (e) {
       dlog.info('version not sent to the end', { workspaceId, documentId, versionId, err: e });
       out.abort();
     } finally {
-      sending.bytes -= held;
       release();
     }
   };
@@ -589,7 +778,7 @@ const letGo = (db: Db, p: Place, documentId: string) => exec(db, 'UPDATE documen
  */
 async function replaceWith(p: Place, documentId: string, row: DocRow, version: { versionId: string; parts: Uint8Array[] }): Promise<void> {
   const through = row.next_seq - 1;
-  const made = await p.owner.docs.run('reset', { at: atOf(p, documentId), key: contentKey(p.owner, documentId), through, version }, { big: true, bytes: sizeOf(row) });
+  const made = await p.owner.docs.run('reset', { at: atOf(p, documentId), key: contentKey(p.owner, documentId), through, version }, { ...jobFor(p, documentId, row), big: true });
   await tx(p.owner.pool, async (c) => {
     await lockDocument(c, p, documentId);
     await exec(c, 'DELETE FROM document_updates WHERE owner_id = $1 AND document_id = $2', [p.owner.ownerId, documentId]);
@@ -622,9 +811,9 @@ export async function restoreVersion(d: Deps, reader: Reader, workspaceId: strin
     }
     await keepNow(w, documentId, { reason: 'restore', callId: reader.seat?.callId ?? null });
     const row = await documentRow(w, documentId);
-    const made = await d.docs.run('restore', { ...(await sealedLog(w, documentId)), version: { versionId, parts }, kind }, jobFor(row));
+    const made = await d.docs.run('restore', { ...(await sealedLog(w, documentId)), version: { versionId, parts }, kind }, jobFor(w, documentId, row, limitKey(reader)));
     report(w, documentId, made.found);
-    if (byLimits(w, made.shape.bytes, made.shape.items)) throw tooLong(w, documentId, made.shape.bytes, made.shape.items);
+    if (byLimits(w, made.shape.bytes, made.shape.items - made.shape.retired)) throw tooLong(w, documentId, made.shape.bytes, made.shape.items);
     const name = made.title.replace(/\s+/g, ' ').trim().slice(0, 200);
     await change(d, reader, workspaceId, async (locked, c) => {
       const { item } = requireDocument(reader, locked, documentId, 'edit');
@@ -641,10 +830,12 @@ export async function restoreVersion(d: Deps, reader: Reader, workspaceId: strin
 
 /**
  * Every document a reader can open, as words, one line each, for searching in their browser. Nothing in Trash. Refused here,
- * before a line is written, like anything else. One that won't open is left out, and the rest still come. It stops as soon as
- * they can't read what's next: whatever changes who has what moves the workspace's version on.
+ * before a line is written, like anything else. One that won't open is left out, and the rest still come, and it's closed
+ * for everyone as it would be for opening it. It stops as soon as they can't read what's next: whatever changes who has what
+ * moves the workspace's version on.
  */
-export async function searchText(d: Deps, reader: Reader, workspaceId: string): Promise<(out: StreamingApi) => Promise<void>> {
+export async function searchText(d: Deps, reader: Reader, workspaceId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
+  const who = limitKey(reader);
   const w = await workspaceFor(d, reader, workspaceId);
   const opens = Object.entries(w.state.items).filter(([id, item]) => item.kind !== 'folder' && roleOf(reader, w, id, item) !== undefined && !trashOf(w.state, id));
   return async (out) => {
@@ -659,17 +850,20 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string): 
       }
       const now = current.state.items[id];
       if (!now || roleOf(reader, current, id, now) === undefined || trashOf(current.state, id)) continue;
-      let line: Uint8Array;
+      let room: Sending | undefined;
       try {
         const row = await documentRow(current, id);
-        const done = await d.docs.run('searchLine', { ...(await sealedLog(current, id)), id, itemKind: now.kind, name: now.name, kind: kindOf(now) }, jobFor(row));
+        if (row.closed) continue;
+        room = takeSending(d, who, address, sizeOf(row));
+        const done = await working(current, id, row, async () => d.docs.run('searchLine', { ...(await sealedLog(current, id)), id, itemKind: now.kind, name: now.name, kind: kindOf(now) }, jobFor(current, id, row, who)));
         report(current, id, done.found);
-        line = done.line;
+        room.settle(done.line.length);
+        if (!(await lineFor(d, out, done.line))) return;
       } catch (e) {
         dlog.warn('document not read for search', { workspaceId, documentId: id, err: e });
-        continue;
+      } finally {
+        room?.release();
       }
-      await out.write(line);
     }
   };
 }
@@ -919,7 +1113,7 @@ async function readUpdatesAfter(p: Place, documentId: string, after: number): Pr
   const at = atOf(p, documentId);
   const key = contentKey(p.owner, documentId);
   const bytes = sealed.reduce((n, r) => n + r.sealed.length, 0);
-  const { lines } = bytes <= INLINE_BYTES ? linesOf({ at, key, rows: sealed }) : await p.owner.docs.run('lines', { at, key, rows: sealed }, { big: false, bytes, first: true });
+  const { lines } = bytes <= INLINE_BYTES ? linesOf({ at, key, rows: sealed }) : await p.owner.docs.run('lines', { at, key, rows: sealed }, { big: bytes > BIG_UPDATE_BYTES, bytes, who: p.owner.ownerId, first: true });
   const snapshot = await maybeOne(p.owner.pool, SnapshotAt, 'SELECT through_seq FROM document_snapshots WHERE owner_id = $1 AND document_id = $2', [p.owner.ownerId, documentId]);
   return { lines, reached: found.at(-1)?.seq ?? after, through: snapshot?.through_seq ?? 0 };
 }
@@ -941,8 +1135,8 @@ function docRoomFor(d: Deps, w: Place, documentId: string, tree: Room): DocRoom 
   return room;
 }
 
-/** What a stream starts with, once: it's let go of as soon as it's written. `ascii`: the update, as base64url, ready to go on a line. */
-interface First { seq: number; ascii: Uint8Array }
+/** What a stream starts with, once: it's let go of as soon as it's written. `ascii`: the update, as base64url, ready to go on a line. `sent`: all of it has gone, or the reader has. */
+interface First { seq: number; ascii: Uint8Array; sent(): void }
 
 const samePerson = (a: Who, b: Who): boolean => a.principals.some((p) => b.principals.some((q) => Buffer.compare(p, q) === 0));
 
@@ -955,7 +1149,11 @@ class DocStream extends LiveStream<DocLiveEvent> {
   private why: DocClosed = 'access';
   private shut = false;
 
-  constructor(d: Deps, room: Room, private readonly doc: DocRoom, credentials: Credentials, who: Who, version: number, release: () => void, private role: 'edit' | 'read', private trashed: boolean) {
+  constructor(
+    d: Deps, room: Room, private readonly doc: DocRoom, credentials: Credentials, who: Who, version: number, release: () => void, private role: 'edit' | 'read', private trashed: boolean,
+    /** Whose budget what's sent here comes out of, and from where. */
+    private readonly sender: string, private readonly address: string
+  ) {
     super(d, room, credentials, who, version, release, { workspaceId: doc.workspaceId, documentId: doc.documentId });
     this.at = doc.reached;
     this.caretsTold = doc.caretsSoFar;
@@ -994,7 +1192,7 @@ class DocStream extends LiveStream<DocLiveEvent> {
       await line.raw(first.ascii);
       await line.raw('"}\n');
     } finally {
-      sending.bytes -= first.ascii.length;
+      first.sent();
     }
   }
   protected async step(line: Line<DocLiveEvent>): Promise<Step> {
@@ -1004,8 +1202,21 @@ class DocStream extends LiveStream<DocLiveEvent> {
     const { behind, line: update } = this.doc.updateAfter(this.at);
     if (behind) { this.end(); return 'idle'; }
     if (update) {
+      // A line is counted until it's gone, like anything else on its way. One there isn't room for now lets this stream go, and its browser opens it again from where it got to.
+      let room: Sending;
+      try {
+        room = takeSending(this.d, this.sender, this.address, update.text.length);
+      } catch (e) {
+        dlog.info('stream let go: too much on its way', { workspaceId: this.doc.workspaceId, documentId: this.doc.documentId, seq: update.seq, bytes: update.text.length, err: e });
+        this.end();
+        return 'idle';
+      }
+      try {
+        await line.raw(update.text);
+      } finally {
+        room.release();
+      }
       this.at = update.seq;
-      await line.raw(update.text);
       return 'wrote';
     }
     const caret = this.doc.caretAfter(this.caretsTold);
@@ -1017,19 +1228,26 @@ class DocStream extends LiveStream<DocLiveEvent> {
   protected ping(): DocLiveEvent { return { type: 'ping' }; }
   protected closed(session: boolean): DocLiveEvent { return { type: 'closed', why: session ? 'session' : this.why }; }
   protected override leave(): void {
-    if (this.first) { sending.bytes -= this.first.ascii.length; this.first = null; }
+    this.first?.sent();
+    this.first = null;
     super.leave();
     this.doc.leave(this);
   }
 }
 
-/** What a browser at `after` doesn't have yet, and the seq that brings it to. There's a limit to what can be on its way to browsers, known before anything's opened. */
-async function syncFrom(p: Place, documentId: string, row: DocRow, after: number): Promise<First> {
-  if (after > 0 && row.next_seq === after + 1) return { seq: after, ascii: NOTHING };
-  if (sending.bytes + sizeOf(row) > SENDING_BYTES) throw new UnavailableError('Too many documents are opening right now. Try again in a moment.', { context: { workspaceId: p.workspaceId, documentId, bytes: sizeOf(row) } });
-  const made = await p.owner.docs.run('sync', { ...(await sealedLog(p, documentId)), after }, jobFor(row));
-  report(p, documentId, made.found);
-  return { seq: made.seq, ascii: made.ascii };
+/** What a browser at `after` doesn't have yet, and the seq that brings it to. There's a limit to what can be on its way to browsers, and it's taken before anything's opened. */
+async function syncFrom(d: Deps, p: Place, documentId: string, row: DocRow, after: number, who: string, address: string): Promise<First> {
+  if (after > 0 && row.next_seq === after + 1) return { seq: after, ascii: NOTHING, sent: () => undefined };
+  const room = takeSending(d, who, address, asAscii(sizeOf(row)));
+  try {
+    const made = await p.owner.docs.run('sync', { ...(await sealedLog(p, documentId)), after }, jobFor(p, documentId, row, who));
+    report(p, documentId, made.found);
+    room.settle(made.ascii.length);
+    return { seq: made.seq, ascii: made.ascii, sent: room.release };
+  } catch (e) {
+    room.release();
+    throw e;
+  }
 }
 
 /**
@@ -1069,16 +1287,14 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     if (item.kind === 'document') await started(w, documentId, row);
     const tree = roomFor(d, workspaceId);
     const room = docRoomFor(d, w, documentId, tree);
-    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, release, role, trashOf(w.state, documentId) !== null);
+    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, release, role, trashOf(w.state, documentId) !== null, limitKey(reader), address);
     tree.join(stream);
     room.join(stream);
     try {
       await Promise.all([tree.ready, room.ready]);
       // Whatever changed before the room was listening: nothing did, usually, and that costs one small query.
       void tree.read();
-      const first = await syncFrom(w, documentId, await documentRow(w, documentId), after);
-      sending.bytes += first.ascii.length;
-      stream.start(first);
+      stream.start(await syncFrom(d, w, documentId, await documentRow(w, documentId), after, limitKey(reader), address));
     } catch (e) {
       tree.leave(stream);
       room.leave(stream);
