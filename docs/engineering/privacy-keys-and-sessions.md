@@ -44,7 +44,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they keep beside a document for presenting it) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they keep beside a document for presenting it) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them) and `document:<id>` (what a document or board holds) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -445,8 +445,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **A new address.** Access follows the address, so when a sign-in brings an account a new one, everything under the old
   hash moves to the new one in that transaction, keeping the stronger role where the new address already had something.
   While another account still signs in with the old address, what's under it stays that account's. What they've written in a
-  document stays theirs too: a Yjs client is tagged by their account as well as their address, so open tabs and words kept
-  offline carry on without anything having to move.
+  document stays theirs too: a Yjs client is tagged by their account as well as their address, and its address tag moves to
+  the new address in the same transaction, for clients from before the account was counted, so open tabs and words kept
+  offline carry on.
 - **Working on a document** takes `edit`, and that's settled before anything of an update is read: an update from someone who can only read is `403 forbidden`, and one to something in
   Trash `409 conflict`, each under the workspace's lock, so nothing lands after someone is taken out. Saying where you are in
   a document takes only being able to open it. Versions are for anyone who can open it, and restoring one for anyone who can edit it.
@@ -550,9 +551,9 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
   1 MiB or a piece of a file over 4 MiB is refused from its `content-length` (`400 invalid`) before the body is read; a frame
   must also be a JPEG between 64 and 4096 pixels a side, and a piece exactly its own length. A file can be at most what
   `media.file_bytes` allows, 512 MiB unless it's changed, and never more than 4 GiB. A document update is at most what a
-  document can hold, 16 MiB, and a caret 4 KiB. A document stops taking new content at 16 MiB or 150,000 items on its page,
-  and anything but deletes at twice that or at 900,000 structs in all. Too much is `413 too-large`, and what no honest
-  client sends `400 invalid`: neither lets go of anything a browser holds.
+  document can hold, 16 MiB, and a caret 4 KiB. At 150,000 items on its page or 16 MiB, a document takes only what doesn't
+  add to the page, and anything but deletes stops at twice that or at 450,000 structs in all. Too much is `413 too-large`,
+  and what no honest client sends `400 invalid`: neither lets go of anything a browser holds.
 - **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies, as adding
   someone to a workspace and sharing a document do their addresses; after that they're a `member_id` or an `access_id`.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
@@ -733,9 +734,12 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   kept of it is deleted at once; a copy on Alcove it couldn't reach is deleted once there's a connection.
 - **Signing out, or deleting the account, in a browser** deletes everything that browser [kept](#on-this-device)
   for the account, recordings waiting to upload among it, and the device key if no other account has any there. It
-  also forgets which notifications have shown there, and closes the ones still showing.
-  Settings' **Sign out** says first how many of the account's recordings here haven't uploaded, and signs out only
-  once that's chosen.
+  also forgets which notifications have shown there, and closes the ones still showing. Every other tab open there hears
+  it at once (`BroadcastChannel` `alcove-account`, carrying the account's ID and whether it was deleted), keeps nothing
+  more for the account until it signs in there again, and goes to the welcome page.
+  Settings' **Sign out** says first how many of the account's recordings here haven't uploaded, and whether anything
+  written here hasn't reached Alcove, which it can copy (only that account's own words, as plain text), and signs out
+  only once that's chosen.
 - **Deleting your account** (`DELETE /v1/account`) removes, in one transaction: its meetings, with their calls
   (chat, call links, MLS logs, live notes, moves to another device and rings included), live ones too; every note it organized, each the way deleting your
   own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every

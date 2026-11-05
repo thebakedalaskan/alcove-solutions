@@ -864,7 +864,10 @@ the horizon with your name and address, beside **Take the tour** (the tour of Ho
 With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
 ("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by
 themselves, or, too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
-**Sign out and delete them**. It counts only this account's recordings, and only those go. With no connection, signing
+**Sign out and delete them**. It counts only this account's recordings, and only those go. The same goes for anything
+written in the workspace that hasn't reached Alcove ("Something you wrote hasn't reached Alcove yet. Signing out deletes it
+from this browser."), with **Copy what you wrote** beside them, which copies only your own words, as plain text. Every
+other tab open here hears it at once and goes to the welcome page, saying you signed out in another tab. With no connection, signing
 out says so and nothing happens later by itself. Under the water the page is
 one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
 narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
@@ -1078,18 +1081,23 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   taking edits, and opens again by itself, a little later each time.
 - A document too big to save says so: delete something, or send a block to another document, and what's waiting saves.
   Anything Alcove can't take at all says so too, and so does losing the right to edit with something unsaved.
-- Signed out in another tab: a bar says your edits are safe in this browser, and save when you sign in again.
+- Your session ends by itself (it expired): the app goes to the welcome page to sign in again, saying your edits are safe
+  in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
+  purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
-gone), the page offers **Copy text**, **Save as new document**, which makes a copy named after it of everything as you
-have it, opens it, and lets this one carry on from what Alcove has, and **Discard**, which asks once. A document that's
-gone keeps offering them where it was. Words this browser holds for a document you aren't looking at, found when the app
-opens or the connection comes back, get one toast, with **Show it**.
+gone), the page offers what to do with it, holding only your own words that didn't save, never the rest of the document:
+**Copy text**; **Save as new document**, for someone who can make one, which makes "Your words from" and the document's
+name beside it, says so with **Open**, and lets this one carry on from what Alcove has; and **Discard**, which asks once,
+with the keyboard on **Keep it**. On a document that's gone, only **Copy text** is offered until it's sure the document
+is gone. In Trash, the bar says what you wrote saves once it's restored. A document that's gone keeps offering them where it
+was. Words this browser holds for a document you aren't looking at, found when the app opens or the connection comes back,
+get one toast, with **Show it**.
 
 Signing out, or deleting your account, on this browser deletes every edit still kept here for it and where you were in
-your workspaces.
+your workspaces; Sign out asks first if anything hasn't reached Alcove.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a

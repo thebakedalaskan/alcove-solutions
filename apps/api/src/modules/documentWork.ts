@@ -10,7 +10,7 @@
  * The small things here run on the event loop too, for what's too small to be worth a trip to a worker.
  */
 import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
-import { itemsOnPage, settleUndone, undoMayDelete } from '@alcove/api/retire';
+import { bytesOnPage, itemsOnPage, settleUndone, undoMayDelete } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
 import { b64u, concat, fromUtf8, jcs, openJson, openRecord, sealJson, sealRecord, toJson, utf8, type RecordHeader } from '../crypto';
@@ -208,8 +208,12 @@ const found = (b: Built, l: OpenLog): Found => ({ skipped: b.skipped, unreadable
 const SeenSchema: z.ZodType<Inspected> = z.object({
   blocks: z.array(z.object({ client: z.number(), from: z.number(), to: z.number() })),
   needs: z.array(z.tuple([z.number(), z.number()])), deletes: z.array(z.tuple([z.number(), z.number()])),
-  items: z.number(), nesting: z.number(), content: z.number(), deleted: z.number()
+  items: z.number(), nesting: z.number(), content: z.number(), deleted: z.number(), dsFrom: z.number()
 });
+/** What's on a document's page, in items and in bytes of what it says, and what its whole state comes to. */
+const Weight = z.object({ items: z.number(), bytes: z.number(), state: z.number() });
+const weightOf = (doc: Y.Doc) => ({ items: itemsOnPage(doc), bytes: bytesOnPage(doc), state: Y.encodeStateAsUpdate(doc).length });
+const Weighed = z.object({ before: Weight, after: Weight });
 
 const Keep = z.object({ versionId: z.string(), reason: z.enum(['edits', 'call', 'restore']), callId: z.string().nullable() });
 const VersionParts = z.object({ versionId: z.string(), parts: z.array(Bytes) });
@@ -317,17 +321,29 @@ function read(i: SealedLog & { op: z.infer<typeof ReadName>; args: unknown }) {
   b.doc.destroy();
   return { value, found: found(b, l) };
 }
-/** Makes a change on the document as it stands. Nothing changed, nothing to write. */
+/** Makes a change on the document as it stands, weighed before and after. Nothing changed, nothing to write. */
 function edit(i: SealedLog & { op: z.infer<typeof EditName>; args: unknown }) {
   const l = openLog(i);
   const b = build(l);
+  const before = weightOf(b.doc);
   const updates: Uint8Array[] = [];
   b.doc.on('update', (u: Uint8Array) => { updates.push(u); });
   let value: unknown;
   b.doc.transact(() => { value = docEdits[i.op].call(b.doc, i.args); });
-  b.doc.destroy();
   const update = updates.length ? Y.mergeUpdates(updates) : null;
-  return { value, update, seen: update && seenOf(update), found: found(b, l) };
+  const weighed = { before, after: update ? weightOf(b.doc) : before };
+  b.doc.destroy();
+  return { value, update, seen: update && seenOf(update), weighed, found: found(b, l) };
+}
+/** What an update would bring a document to, for one at its limits, where only the document can say. */
+function weigh(i: SealedLog & { update: Uint8Array }) {
+  const l = openLog(i);
+  const b = build(l);
+  const before = weightOf(b.doc);
+  Y.applyUpdate(b.doc, i.update);
+  const after = weightOf(b.doc);
+  b.doc.destroy();
+  return { before, after, found: found(b, l) };
 }
 /** What a document says, ready to go on a line of a search: a big document's words are no more worth handling on the way past than its update. */
 function searchLine(i: SealedLog & { id: string; itemKind: z.infer<typeof ItemKindSchema>; name: string; kind: ContentKind }) {
@@ -385,7 +401,8 @@ export const DOC_TASKS = {
   reset: task(z.object({ at: AtSchema, key: Bytes, through: z.number(), version: VersionParts }), z.object({ snapshot: Bytes, editors: Bytes, shape: Shape, seen: SeenSchema }), reset),
   read: task(SealedLog.extend({ op: ReadName, args: z.unknown() }), z.object({ value: z.unknown(), found: Found }), read),
   searchLine: task(SealedLog.extend({ id: z.string(), itemKind: ItemKindSchema, name: z.string(), kind: Kind }), z.object({ line: Bytes, found: Found }), searchLine),
-  edit: task(SealedLog.extend({ op: EditName, args: z.unknown() }), z.object({ value: z.unknown(), update: Bytes.nullable(), seen: SeenSchema.nullable(), found: Found }), edit),
+  edit: task(SealedLog.extend({ op: EditName, args: z.unknown() }), z.object({ value: z.unknown(), update: Bytes.nullable(), seen: SeenSchema.nullable(), weighed: Weighed, found: Found }), edit),
+  weigh: task(SealedLog.extend({ update: Bytes }), Weighed.extend({ found: Found }), weigh),
   copy: task(SealedLog.extend({ name: z.string().nullable() }), z.object({ state: Bytes, shape: Shape, seen: SeenSchema, found: Found }), copy),
   adopt: task(z.object({ state: Bytes, items: z.number(), kind: Kind, name: z.string().nullable() }), z.object({ why: z.string().optional(), made: z.object({ state: Bytes, shape: Shape, seen: SeenSchema }).optional() }), adopt),
   inspect: task(z.object({ update: Bytes, items: z.number() }), z.object({ seen: SeenSchema.optional(), why: z.string().optional() }), (i) => inspect(i.update, browserCaps(i.items))),

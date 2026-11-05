@@ -1,5 +1,7 @@
 /*
  * Words that didn't reach Alcove, and what someone can do with them: copy them, save them as a new document, or let them go.
+ * Only their own words, ever (`unsentCopy`): what this browser wrote that Alcove hasn't got, never the rest of the document,
+ * which may be restricted from them now, or gone. Someone who can still open the document can select and copy it as usual.
  * They're offered wherever the words may not get there by themselves: a document that refused them, or one that can't be
  * opened any more, including one that's left the list while this device still holds something written in it.
  */
@@ -15,39 +17,49 @@ import { openDocument } from './session';
 const rlog = log.child({ component: 'workspace-rescue' });
 
 /**
- * Where a new document of someone's words goes, for someone who can make one there. `name`: what the copy is named after,
- * read when it's made: what the list calls the document, or last called one that's gone.
+ * Where a new document of someone's words goes, for someone who can make one there. `name`: what the document they came from
+ * is called, read when the copy's made: what the list calls it, or last called one that's gone.
  */
 export interface CopyTo { workspaceId: string; name: () => string | null; parent: string | null; go: (id: string) => void }
 
-export function Rescue({ session, say, copyTo, onLetGo }: {
+/** What a new document of someone's words is called, after the one they were written in. */
+const copyName = (from: string | null) => (from ? `Your words from ${from}` : 'Your words');
+
+export function Rescue({ session, say, copyTo, gone = false, copyOnly = false, onLetGo }: {
   session: DocSession;
   say: (toast: WsToastData) => void;
   copyTo?: CopyTo | undefined;
-  /** Once they're let go of: open the document again, from what Alcove has. */
+  /** The document can't be opened any more. */
+  gone?: boolean | undefined;
+  /**
+   * Only Copy text: the session hasn't found out yet that the words can't get there, so nothing would let go of them, and
+   * neither Save as new document nor Discard would work.
+   */
+  copyOnly?: boolean | undefined;
+  /** Once what was taken is let go of: open the document again, from what Alcove has. */
   onLetGo: () => void;
 }) {
   const save = useSaveCopy();
   const [asking, setAsking] = useState(false);
   const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
-  const copy = () => { navigator.clipboard.writeText(session.localCopy().text).then(() => say(wsToast.copiedText()), failed); };
-  const saveAsNew = copyTo && (() => {
+  const copy = () => { navigator.clipboard.writeText(session.unsentCopy().text).then(() => say(wsToast.copiedText()), failed); };
+  const saveAsNew = copyTo && !copyOnly ? () => {
     const { workspaceId, parent, go } = copyTo;
+    // Taken now: what's typed while it saves isn't in it, and isn't let go of.
+    const taken = session.unsentCopy();
+    const name = copyName(copyTo.name());
     void (async () => {
-      const { titleIn } = await import('./editor/title');
-      const { state } = session.localCopy();
-      const name = `${copyTo.name() ?? (titleIn(state) || 'Untitled')} copy`;
-      const { id } = await save.mutateAsync({ workspaceId, input: { kind: 'document', name, parent, state } });
-      // Its title is what the list calls it. It's all in the copy now, which Alcove has: this document carries on from what Alcove has of it.
-      await session.discardUnsaved();
+      const { stateOf } = await import('./unsentDoc');
+      const { id } = await save.mutateAsync({ workspaceId, input: { kind: 'document', name, parent, state: stateOf(taken.text) } });
+      await session.discardUnsaved(taken.token);
       rlog.info('saved unsent words as a new document', { workspaceId, copy: id });
-      say(wsToast.savedAsNew(name));
-      go(id);
+      say(wsToast.savedAsNew(() => go(id)));
+      onLetGo();
     })().catch((e: unknown) => { rlog.warn('couldn’t save unsent words as a new document', { workspaceId, err: e }); failed(e); });
-  });
+  } : undefined;
   const discard = () => {
     setAsking(false);
-    session.discardUnsaved().then(() => {
+    session.discardUnsaved(session.unsentCopy().token).then(() => {
       rlog.info('discarded unsent words');
       say(wsToast.discarded());
       onLetGo();
@@ -55,7 +67,7 @@ export function Rescue({ session, say, copyTo, onLetGo }: {
   };
   return (
     <WsRescue onCopy={copy} onSaveAsNew={saveAsNew} saving={save.isPending}
-      discard={{ open: asking, onOpenChange: setAsking, content: <WsDiscardAsk onDiscard={discard} onKeep={() => setAsking(false)} /> }} />
+      discard={copyOnly ? undefined : { open: asking, onOpenChange: setAsking, content: <WsDiscardAsk gone={gone} onDiscard={discard} onKeep={() => setAsking(false)} /> }} />
   );
 }
 
@@ -87,7 +99,8 @@ export function KeptHere({ workspaceId, documentId, owner, pass, say, copyTo, ba
   return <KeptIn session={session} say={say} copyTo={copyTo} back={back} onLetGo={() => setRound((r) => r + 1)} />;
 }
 
+/** Until its session closes, having found the document can't be opened, the words may still get there: only Copy text till then. */
 function KeptIn({ session, say, copyTo, back, onLetGo }: { session: DocSession; say: (toast: WsToastData) => void; copyTo?: CopyTo | undefined; back: ReactNode; onLetGo: () => void }) {
-  const { unsent } = useLive(session);
-  return <WsCantOpen what="document" unsent={unsent} action={unsent ? <Rescue session={session} say={say} copyTo={copyTo} onLetGo={onLetGo} /> : back} />;
+  const { unsent, closed } = useLive(session);
+  return <WsCantOpen what="document" unsent={unsent} action={unsent ? <Rescue session={session} say={say} copyTo={copyTo} gone copyOnly={closed === null} onLetGo={onLetGo} /> : back} />;
 }

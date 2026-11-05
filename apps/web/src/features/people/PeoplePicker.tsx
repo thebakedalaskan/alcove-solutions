@@ -53,7 +53,14 @@ function Picker({ title, cta, note, skip, preset, from, groups, after, onDone }:
   const [act, setAct] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const team = useQuery(q.team()).data;
-  const found = useQuery({ ...q.people(query.trim()), enabled: !from }).data ?? [];
+  const search = useQuery({ ...q.people(query.trim()), enabled: !from });
+  const found = search.data ?? [];
+  /*
+   * Only a search for exactly what's in the field now finds anyone. While the next one's on its way, what the last one found
+   * stays in view, for the list not to jump at every key, but nothing takes it: neither Enter nor finishing, and it isn't lit.
+   * The address typed is always what's typed.
+   */
+  const current = from !== undefined || (search.data !== undefined && !search.isPlaceholderData);
 
   const typed = query.trim().toLowerCase();
   const taken = (p: { email: string }) => sel.some((s) => sameEmail(s, p)) || skip.some((e) => e.toLowerCase() === p.email.toLowerCase());
@@ -66,7 +73,8 @@ function Picker({ title, cta, note, skip, preset, from, groups, after, onDone }:
   const offered = group ? [] : (groups ?? []).filter((g) => fresh(g) > 0 && (!typed || fold(g.name).includes(fold(typed)))).slice(0, typed ? MAX : GROUPS_FIRST);
   const at = Math.min(act, offered.length + shown.length - 1);
   const activeGroup = offered[at];
-  const active = shown[at - offered.length];
+  const lit = shown[at - offered.length];
+  const active = lit && (current || lit.person.email.toLowerCase() === typed) ? lit : undefined;
 
   useEffect(() => {
     const t = requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));

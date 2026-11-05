@@ -13,7 +13,7 @@ import { z, ZodError } from 'zod';
 import type { Deps, Owner } from './context';
 import { b64u, equalBytes, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, unb64u, utf8 } from './crypto';
 import { bytea, exec, maybeOne } from './db';
-import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound, toAppError, type AppError } from './errors';
+import { AuthError, ConflictError, ForbiddenError, NotFoundError, TooLargeError, UnavailableError, ValidationError, notFound, toAppError, type AppError } from './errors';
 import { addLogContext, log, withLogContext } from './log';
 import * as google from './google';
 import { inference } from './inference';
@@ -743,8 +743,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
    * A document or board: its stream down, its updates and carets up, and its versions. An update that arrives twice changes
    * nothing, and a receipt would hold a copy of it, so none of this keeps one.
    */
-  app.use('/v1/workspaces/:id/documents/:doc/updates', capped(MAX_DOC_UPDATE_BYTES));
-  app.use('/v1/workspaces/:id/documents/:doc/adopt', capped(MAX_DOC_BYTES));
+  /** What's over a document's own limit is too much, which a browser tells from what can never be. */
+  const cappedContent = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new TooLargeError('That’s more than a document can hold.', { context: { maxSize } }); } });
+  app.use('/v1/workspaces/:id/documents/:doc/updates', cappedContent(MAX_DOC_UPDATE_BYTES));
+  app.use('/v1/workspaces/:id/documents/:doc/adopt', cappedContent(MAX_DOC_BYTES));
   app.use('/v1/workspaces/:id/documents/:doc/awareness', capped(Math.ceil((MAX_DOC_AWARENESS_BYTES * 4) / 3) + 1024));
   app.get('/v1/workspaces/:id/documents/:doc/live', async (c) => {
     const r = await readerOf(c);
@@ -777,7 +779,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.get('/v1/workspaces/:id/documents/:doc/versions/:version', async (c) => {
     const r = await readerOf(c);
     versionLimiter(access.limitKey(r), 'document version');
-    const run = await workspaceDocuments.version(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
+    const run = await workspaceDocuments.version(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'), clientAddress(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -810,7 +812,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.get('/v1/workspaces/:id/search', async (c) => {
     const r = await readerOf(c);
     searchLimiter(access.limitKey(r), 'workspace search');
-    const run = await workspaceDocuments.searchText(d, r, c.req.param('id'));
+    const run = await workspaceDocuments.searchText(d, r, c.req.param('id'), clientAddress(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);

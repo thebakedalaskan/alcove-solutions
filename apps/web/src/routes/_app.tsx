@@ -1,5 +1,6 @@
-import { IconButton, WsDoc, WsOfflineEmpty, WsPane, cn } from '@alcove/ui';
-import { Outlet, createFileRoute, useRouter, useRouterState } from '@tanstack/react-router';
+import { IconButton, WsDoc, WsOfflineEmpty, WsPane, cn, useToast } from '@alcove/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { Outlet, createFileRoute, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CallFlowHost, useCallFlowHost } from '~/features/calls/CallFlow';
 import { useKeptUploads } from '~/features/record/uploads';
@@ -14,6 +15,9 @@ import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { TopActions } from '~/features/shell/TopActions';
 import { CallFlowContext, type PaletteStart } from '~/features/shell/context';
 import { ownerOf, requireAccount } from '~/lib/guards';
+import { log } from '~/lib/log';
+import { q } from '~/lib/queries';
+import { onSignedOutElsewhere } from '~/lib/signedOut';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 
 /*
@@ -31,6 +35,7 @@ function Shell() {
   const router = useRouter();
   useKeptUploads(ownerOf(account));
   useKeptEdits(ownerOf(account));
+  useSignedOutElsewhere(ownerOf(account));
   useEffect(() => {
     if (!account.offline) return;
     const back = () => { void router.invalidate(); };
@@ -91,4 +96,22 @@ function Shell() {
         <TourHost />
     </CallFlowContext.Provider>
   );
+}
+
+/**
+ * Signed out in another tab, or the account deleted there: this one goes to the welcome page at once and says why. What it
+ * had kept was deleted on purpose there, so it mustn't go on saying that what's written here is safe.
+ */
+function useSignedOutElsewhere(owner: string | null) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const toast = useToast();
+  useEffect(() => onSignedOutElsewhere((who, deleted) => {
+    if (who !== owner) return;
+    log.child({ component: 'account' }).info('signed out in another tab', { deleted });
+    qc.clear();
+    qc.setQueryData(q.session().queryKey, null);
+    void navigate({ to: '/welcome', replace: true });
+    toast(deleted ? 'Your account was deleted in another tab.' : 'You signed out in another tab.', { icon: 'signOut' });
+  }), [owner, qc, navigate, toast]);
 }

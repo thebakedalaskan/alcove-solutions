@@ -1,6 +1,6 @@
 /* A document's frame: its head, the bars that drop in under it, and the page. What's on the page is the editor's. */
 import { AnimatePresence, motion } from 'motion/react';
-import { forwardRef, type HTMLAttributes, type KeyboardEventHandler, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, type HTMLAttributes, type KeyboardEventHandler, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { EmptyState } from '../empty';
 import { Icon, type IconName } from '../icon';
@@ -107,12 +107,14 @@ export function WsOfflineBar({ show }: { show: boolean }) {
 
 /**
  * Someone moved the document you're in to Trash. You can keep reading, and anyone who can edit it can bring it back:
- * leave `onRestore` out for someone who can't. `who` is their first name.
+ * leave `onRestore` out for someone who can't. `who` is their first name. `unsent`: something written here hasn't reached
+ * Alcove, and goes once it's back.
  */
-export function WsGoneBar({ who, onRestore }: { who: string | null; onRestore?: (() => void) | undefined }) {
+export function WsGoneBar({ who, onRestore, unsent = false }: { who: string | null; onRestore?: (() => void) | undefined; unsent?: boolean | undefined }) {
   return (
     <Bar show={who !== null} className="wd-gone">
-      <Icon name="trash" size={14} /><span>{who} moved this document to Trash. You can keep reading it.</span>
+      <Icon name="trash" size={14} />
+      <span>{who} moved this document to Trash. {unsent ? 'What you wrote that didn’t save is safe in this browser, and saves once it’s restored.' : 'You can keep reading it.'}</span>
       {onRestore && <Button size="xs" onClick={onRestore}>Restore it</Button>}
     </Bar>
   );
@@ -125,50 +127,67 @@ export function WsGoneBar({ who, onRestore }: { who: string | null; onRestore?: 
  */
 export type WsUnsaved = 'too-large' | 'rejected' | 'read-only' | 'unavailable' | 'signed-out' | 'call-ended';
 
-const UNSAVED_WORDS: Record<WsUnsaved, string> = {
-  'too-large': 'This document is too big to save. Your edits are safe in this browser: delete something, or send a block to another document, and they’ll save.',
-  rejected: 'Alcove couldn’t take your last edits. They’re safe in this browser: copy them, or save them as a new document.',
-  'read-only': 'You can only read this now, so your last edits didn’t save. They’re safe in this browser: copy them, or save them as a new document.',
-  unavailable: 'This document can’t be opened right now. Your edits are safe in this browser, and it opens again by itself.',
-  'signed-out': 'You’re signed out here. Your edits are safe in this browser, and they save when you sign in again.',
-  'call-ended': 'The call has ended, so nothing more saves here.'
-};
+/** What the bar says. It offers only what's there: `saveable`, someone can save what didn't reach Alcove as a new document. */
+function unsavedWords(why: WsUnsaved, saveable: boolean): string {
+  const take = saveable ? 'copy them, or save them as a new document.' : 'copy them.';
+  switch (why) {
+    case 'too-large': return 'This document is too big to save. Your edits are safe in this browser: delete something, or send a block to another document, and they’ll save.';
+    case 'rejected': return `Alcove couldn’t take your last edits. They’re safe in this browser: ${take}`;
+    case 'read-only': return `You can only read this now, so your last edits didn’t save. They’re safe in this browser: ${take}`;
+    case 'unavailable': return 'This document can’t be opened right now. Your edits are safe in this browser, and it opens again by itself.';
+    case 'signed-out': return 'You’re signed out here. Your edits are safe in this browser, and they save when you sign in again.';
+    case 'call-ended': return 'The call has ended, so nothing more saves here.';
+  }
+}
 
-/** What's typed here isn't reaching Alcove, and why. Nothing typed is lost: where it may not get there by itself, pass `WsRescue`. */
-export function WsUnsavedBar({ why, children }: { why: WsUnsaved | null; children?: ReactNode }) {
+/**
+ * What's typed here isn't reaching Alcove, and why. Nothing typed is lost: where it may not get there by itself, pass
+ * `WsRescue`, and say whether it offers Save as new document with `saveable`.
+ */
+export function WsUnsavedBar({ why, saveable = false, children }: { why: WsUnsaved | null; saveable?: boolean | undefined; children?: ReactNode }) {
   return (
     <Bar show={why !== null} className="wd-off wd-unsaved">
-      <Icon name={why === 'unavailable' ? 'hourglass' : 'alert'} size={14} /><span className="t">{why && UNSAVED_WORDS[why]}</span>
+      <Icon name={why === 'unavailable' ? 'hourglass' : 'alert'} size={14} /><span className="t">{why && unsavedWords(why, saveable)}</span>
       {children}
     </Bar>
   );
 }
 
-/** What someone can do with words that didn't reach Alcove. Leave `onSaveAsNew` out for someone who can't make a document here. */
+/**
+ * What someone can do with words that didn't reach Alcove. Leave `onSaveAsNew` out for someone who can't make a document here,
+ * and both it and `discard` out while letting them go wouldn't work.
+ */
 export function WsRescue({ onCopy, onSaveAsNew, saving = false, discard }: {
   onCopy: () => void; onSaveAsNew?: (() => void) | undefined; saving?: boolean | undefined;
   /** The ask before they go: `WsDiscardAsk`. */
-  discard: WsPop;
+  discard?: WsPop | undefined;
 }) {
   return (
     <span className="wd-acts">
       <Button size="xs" icon="copy" onClick={onCopy}>Copy text</Button>
       {onSaveAsNew && <Button size="xs" icon="filePlus" loading={saving} onClick={onSaveAsNew}>Save as new document</Button>}
-      <WsPopover open={discard.open} onOpenChange={discard.onOpenChange} label="Discard what didn’t save" align="end"
-        anchor={<Button size="xs" variant="quiet">Discard</Button>}>{discard.content}</WsPopover>
+      {discard && (
+        <WsPopover open={discard.open} onOpenChange={discard.onOpenChange} label="Discard what didn’t save" align="end"
+          anchor={<Button size="xs" variant="quiet">Discard</Button>}>{discard.content}</WsPopover>
+      )}
     </span>
   );
 }
 
-/** Asks once before letting go of what didn't save. */
-export function WsDiscardAsk({ onDiscard, onKeep }: { onDiscard: () => void; onKeep: () => void }) {
+/**
+ * Asks once before letting go of what didn't save. The keyboard starts on keeping it, so Enter twice loses nothing.
+ * `gone`: the document can't be opened any more, so there's nothing for it to carry on from.
+ */
+export function WsDiscardAsk({ onDiscard, onKeep, gone = false }: { onDiscard: () => void; onKeep: () => void; gone?: boolean | undefined }) {
+  const keep = useRef<HTMLButtonElement>(null);
+  useEffect(() => { keep.current?.focus({ preventScroll: true }); }, []);
   return (
     <div className="wv-switch">
       <b>Discard what didn’t save?</b>
-      <p>It’s only in this browser, so it goes for good. The document carries on from what Alcove has.</p>
+      <p>{gone ? 'It’s only in this browser, so it goes for good.' : 'It’s only in this browser, so it goes for good. The document carries on from what Alcove has.'}</p>
       <div className="ac">
         <Button variant="primary" size="sm" onClick={onDiscard}>Discard</Button>
-        <Button variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
+        <Button ref={keep} variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
       </div>
     </div>
   );
@@ -300,14 +319,17 @@ export function WsPickDocument({ onDocument }: { onDocument?: (() => void) | und
 export interface WsTrashItem { id: string; name: string; sub: string; folder?: boolean | undefined; onOpen?: (() => void) | undefined; onRestore?: (() => void) | undefined; onDelete?: WsPop | undefined }
 
 /** What Delete forever asks, in place of the button. */
+/** Asks once before deleting for good. The keyboard starts on keeping it, so Enter twice loses nothing. */
 export function WsDeleteAsk({ name, onDelete, onKeep }: { name: string; onDelete: () => void; onKeep: () => void }) {
+  const keep = useRef<HTMLButtonElement>(null);
+  useEffect(() => { keep.current?.focus({ preventScroll: true }); }, []);
   return (
     <div className="wv-switch">
       <b>Delete {name} for good?</b>
       <p>It goes for everyone, with everything in it. Nobody can bring it back.</p>
       <div className="ac">
         <Button variant="primary" size="sm" onClick={onDelete}>Delete forever</Button>
-        <Button variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
+        <Button ref={keep} variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
       </div>
     </div>
   );
