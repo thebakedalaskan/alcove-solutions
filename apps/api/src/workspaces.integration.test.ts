@@ -112,7 +112,7 @@ function stream(base: string, f: typeof fetch, id: string, pass?: string, slowMs
 const fill = (workspaceId: string, who: Account, n: number) => rewrite(workspaceId, (s) => {
   const at = new Date().toISOString();
   const items = { ...s.items };
-  for (let i = 0; i < n; i++) items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: null, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: who.name, email: who.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null };
+  for (let i = 0; i < n; i++) items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: null, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: who.name, email: who.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
   return { ...s, items };
 });
 const treeOf = (l: WorkspaceLive) => l.getSnapshot().tree;
@@ -123,7 +123,7 @@ describe('a workspace', () => {
     const ann = await account();
     const { id } = await ann.api.workspaces.create('  Launch \n plan ');
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1 }]);
+    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, createdAt: expect.any(String), call: null }]);
     expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', people: 1, items: [] });
     await ann.api.workspaces.rename(id, 'Launch');
     expect((await ann.api.workspaces.get(id)).name).toBe('Launch');
@@ -209,7 +209,7 @@ describe('people in a workspace', () => {
     expect(people.map((p) => [p.person.email, p.role, p.isMe])).toEqual([[ann.email, 'admin', true], [theo.email, 'edit', false], [later, 'read', false]]);
     expect(people[0]?.person.name).toBe(ann.name);
     expect(await ann.api.workspaces.list()).toEqual([expect.objectContaining({ id, people: 3 })]);
-    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3 }]);
+    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, createdAt: expect.any(String), call: null }]);
     expect((await theo.api.workspaces.people(id)).find((p) => p.isMe)?.person.email).toBe(theo.email);
 
     // Adding someone who's in it sets their role: the same person, not a second one.
@@ -342,7 +342,7 @@ describe('the tree', () => {
       const at = new Date().toISOString();
       const items = { ...s.items };
       for (let i = 0; i < 4998; i++) {
-        items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: folder, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null };
+        items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: folder, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
       }
       return { ...s, items };
     });
@@ -397,7 +397,7 @@ describe('the tree', () => {
     const ids = Array.from({ length: 4900 }, () => madeUp());
     await rewrite(id, (s) => {
       const items = { ...s.items };
-      ids.forEach((x, i) => { items[x] = { kind: 'folder', name: `Level ${i}`, parent: ids[i - 1] ?? top, pos: 'V', by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null }; });
+      ids.forEach((x, i) => { items[x] = { kind: 'folder', name: `Level ${i}`, parent: ids[i - 1] ?? top, pos: 'V', by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null }; });
       return { ...s, items };
     });
     expect(await itemsOf(theo.api, id)).toHaveLength(4901);
@@ -750,7 +750,7 @@ describe('who can open what', () => {
     expect(await w.list()).toEqual([]);
     await ann.api.workspaces.share.set(id, given, [{ email: sam.email }], 'read');
 
-    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null }]);
+    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, createdAt: null, call: null }]);
     const tree = await w.get(id);
     expect(tree).toMatchObject({ id, name: null, role: null, people: null });
     expect(tree.items.map((i) => [i.id, i.parent, i.role])).toEqual([[given, null, 'read']]);
@@ -1081,7 +1081,8 @@ describe('deleting an account', () => {
     const onlyThem = await workspace(one, 'Only them', [[two, 'admin']]);
     const owner = await ownerOf(onlyThem);
     await Promise.all([one.api.account.delete(), two.api.account.delete()]);
-    expect((await stays.api.workspaces.list()).map((w) => [w.name, w.role, w.people])).toEqual([['First', 'admin', 1], ['Second', 'admin', 1]]);
+    // The Drive lists the newest first.
+    expect((await stays.api.workspaces.list()).map((w) => [w.name, w.role, w.people])).toEqual([['Second', 'admin', 1], ['First', 'admin', 1]]);
     expect([first, second].every(Boolean)).toBe(true);
     expect(await count('SELECT count(*)::int AS n FROM owners WHERE owner_id = $1', [owner])).toBe(0);
   });

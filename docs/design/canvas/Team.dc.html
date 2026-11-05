@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-team.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-team.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh tm" data-mode="{{mode}}" data-sheet="{{anyPop}}" data-line="{{lineFit}}" style="{{shellStyle}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage" style="{{stageStyle}}">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="{{logoClip}}"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="{{logoSky}}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="{{logoClipUrl}}"><rect width="22" height="26" fill="{{logoSkyUrl}}"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button></div>
+</div>
+<sc-if value="{{anyPop}}" hint-placeholder-val="{{false}}"><button type="button" class="tm-catch" aria-label="Close" tabindex="-1" onClick="{{closeAll}}"></button></sc-if>
+<div class="pg-in">
+
+<div class="tm-sky">
+<header class="pg-top">
+<span></span>
+<div class="top-end">
+<button type="button" class="find{{hotAsk}}" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</header>
+
+<section class="tm-hero" aria-labelledby="tm-h">
+<h1 class="tm-t" id="tm-h">{{title}}</h1>
+<sc-if value="{{hasWhy}}" hint-placeholder-val="{{false}}"><p class="tm-why"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{whyIcon}}"></path></svg>{{why}}</p></sc-if>
+<div class="tm-a">
+<sc-if value="{{hasInvite}}" hint-placeholder-val="{{true}}">
+<span class="tm-at">
+<button type="button" class="b {{inviteCls}} b-lg{{hotInvite}}" aria-expanded="{{invExpanded}}" onClick="{{openInvite}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.addUser}}"></path></svg>Invite people</button>
+<sc-if value="{{invOpen}}" hint-placeholder-val="{{false}}">
+<div class="tm-pop is-list" role="dialog" aria-label="Invite people">
+<i class="tm-caret"></i>
+<div class="tm-find"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><input type="text" value="{{invQ}}" placeholder="Name or email" aria-label="Name or email" onChange="{{invType}}" data-autofocus="true"></div>
+<div class="tm-list">
+<sc-for list="{{invRows}}" as="r" hint-placeholder-count="2">
+<button type="button" class="tm-l{{r.hotCls}}" aria-pressed="{{r.on}}" onClick="{{r.go}}"><span class="tm-ga"><span>{{r.letter}}</span></span><span class="tm-l-t"><b class="clamp1">{{r.name}}</b><small class="clamp1">{{r.sub}}</small></span><span class="ck tm-ck{{r.ckCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span></button>
+</sc-for>
+<sc-if value="{{invNone}}" hint-placeholder-val="{{false}}"><p class="tm-none">{{invNoneText}}</p></sc-if>
+</div>
+<div class="tm-pop-f"><button type="button" class="b b-quiet b-sm{{hotInvCopy}}" onClick="{{copyLink}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.link}}"></path></svg>Copy link</button><button type="button" class="b {{invSendCls}} b-sm{{hotInvSend}}" disabled="{{invSendOff}}" onClick="{{invSend}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mail}}"></path></svg>{{invSendLabel}}</button></div>
+</div>
+</sc-if>
+</span>
+</sc-if>
+<sc-if value="{{hasCopy}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-sky b-lg" onClick="{{copyLink}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.link}}"></path></svg>Copy invite link</button></sc-if>
+<sc-if value="{{hasRetry}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-press b-lg{{hotRetry}}" onClick="{{retry}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.retry}}"></path></svg>Try again</button></sc-if>
+<sc-if value="{{hasAll}}" hint-placeholder-val="{{false}}">
+<span class="tm-at">
+<button type="button" class="b b-sky b-lg{{hotAll}}" aria-expanded="{{allExpanded}}" onClick="{{openAll}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg>{{allLabel}}</button>
+<sc-if value="{{allOpen}}" hint-placeholder-val="{{false}}">
+<div class="tm-pop is-list" role="dialog" aria-label="{{allLabel}}">
+<i class="tm-caret"></i>
+<div class="tm-find"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><input type="text" value="{{allQ}}" placeholder="Find someone" aria-label="Find someone" onChange="{{allType}}" data-autofocus="true"></div>
+<div class="tm-list is-tall">
+<sc-for list="{{allRows}}" as="r" hint-placeholder-count="6">
+<button type="button" class="tm-l{{r.hotCls}}" onClick="{{r.go}}"><sc-if value="{{r.here}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{r.id}}" size="32" hint-size="32px,35px"></dc-import></sc-if><sc-if value="{{r.ghost}}" hint-placeholder-val="{{false}}"><span class="tm-ga"><span>{{r.letter}}</span></span></sc-if><span class="tm-l-t"><b class="clamp1">{{r.name}}</b><small class="clamp1">{{r.sub}}</small></span></button>
+</sc-for>
+<sc-if value="{{allNone}}" hint-placeholder-val="{{false}}"><p class="tm-none">Nobody here by that name.</p></sc-if>
+</div>
+</div>
+</sc-if>
+</span>
+</sc-if>
+</div>
+</section>
+
+<div class="tm-row{{rowCls}}" role="list" aria-label="People at {{company}}" style="{{rowStyle}}">
+<sc-if value="{{gapLeft}}" hint-placeholder-val="{{false}}"><i class="tm-gap" style="{{gapStyle}}"></i></sc-if>
+<sc-for list="{{row}}" as="p" hint-placeholder-count="7">
+<div class="tm-p{{p.cls}}" role="listitem" style="{{p.style}}">
+<button type="button" class="tm-who{{p.hotCls}}" aria-label="{{p.label}}" aria-expanded="{{p.expanded}}" title="{{p.tip}}" disabled="{{p.isBlank}}" onClick="{{p.go}}">
+<span class="tm-arch"><span class="tm-fig">
+<sc-if value="{{p.here}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{p.id}}" size="{{p.size}}" hint-size="72px,78px"></dc-import></sc-if>
+<sc-if value="{{p.ghost}}" hint-placeholder-val="{{false}}"><span class="tm-ghost"><span>{{p.letter}}</span></span></sc-if>
+</span></span>
+<span class="tm-n">{{p.first}}</span>
+</button>
+<sc-if value="{{p.open}}" hint-placeholder-val="{{false}}">
+<div class="tm-pop is-person" role="dialog" aria-label="{{p.name}}">
+<i class="tm-caret"></i>
+<sc-if value="{{cardView}}" hint-placeholder-val="{{true}}">
+<div class="tm-pop-h"><span class="tm-pop-w"><b class="clamp1">{{p.name}}</b><small class="clamp1">{{p.title}}</small></span><button type="button" class="dlg-x" aria-label="Close" onClick="{{closeAll}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<sc-if value="{{p.hasWhen}}" hint-placeholder-val="{{true}}"><p class="tm-when{{p.whenCls}}">{{p.when}}</p></sc-if>
+<div class="tm-pop-a">
+<sc-if value="{{p.canRing}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-press{{hotRing}}" onClick="{{p.ring}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.phone}}"></path></svg>Ring</button></sc-if>
+<sc-if value="{{p.canInvite}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-press{{hotPopInvite}}" onClick="{{p.invite}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mail}}"></path></svg>Invite</button></sc-if>
+<sc-if value="{{p.canRemind}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-press" onClick="{{p.remind}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mail}}"></path></svg>Remind</button></sc-if>
+<sc-if value="{{p.canStart}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-tint{{hotStart}}" onClick="{{p.start}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Schedule</button></sc-if>
+<sc-if value="{{p.isMe}}" hint-placeholder-val="{{false}}"><button type="button" class="b b-tint" onClick="{{goSettings}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.settings}}"></path></svg>Settings</button></sc-if>
+</div>
+<sc-if value="{{p.hasNotes}}" hint-placeholder-val="{{true}}"><button type="button" class="tm-pop-l{{hotNotes}}" onClick="{{p.goNotes}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg><span>Notes you both have</span><b>{{p.noteCount}}</b><svg class="i go" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></sc-if>
+</sc-if>
+<sc-if value="{{notesView}}" hint-placeholder-val="{{false}}">
+<div class="tm-pop-h"><button type="button" class="dlg-x tm-back" aria-label="Back" onClick="{{p.backCard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg></button><span class="tm-pop-w"><b class="clamp1">Notes with {{p.short}}</b></span><button type="button" class="dlg-x" aria-label="Close" onClick="{{closeAll}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<div class="tm-pn">
+<sc-for list="{{p.notes}}" as="n" hint-placeholder-count="3"><button type="button" class="tm-pn-r{{n.hotCls}}" onClick="{{n.go}}"><span class="clamp1">{{n.title}}</span><small>{{n.day}}</small></button></sc-for>
+</div>
+<button type="button" class="tm-pop-l" onClick="{{p.goAllNotes}}"><span>Open in Notes</span><svg class="i go" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button>
+</sc-if>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{gapRight}}" hint-placeholder-val="{{false}}"><i class="tm-gap" style="{{gapStyle}}"></i></sc-if>
+</div>
+</div>
+
+<div class="tm-grid{{gridCls}}">
+<section class="tm-gs" aria-labelledby="tm-gs">
+<div class="pn-h"><h2 id="tm-gs">Groups</h2></div>
+<sc-if value="{{groupsFailed}}" hint-placeholder-val="{{false}}"><div class="tm-note"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg><span><b>Your groups didn’t load.</b> Alcove couldn’t reach the server.</span><button type="button" class="b b-line b-sm" onClick="{{retryGroups}}">Try again</button></div></sc-if>
+<sc-if value="{{groupsOk}}" hint-placeholder-val="{{true}}">
+<div class="tm-gg">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="3">
+
+<sc-if value="{{t.closed}}" hint-placeholder-val="{{true}}">
+<article class="tm-g{{t.cls}}">
+<button type="button" class="tm-g-o{{t.hotCls}}" aria-expanded="false" aria-label="{{t.label}}" onClick="{{t.go}}"></button>
+<sc-if value="{{t.isGroup}}" hint-placeholder-val="{{true}}">
+<div class="tm-g-t"><b class="clamp1">{{t.name}}</b><small>{{t.line}}</small></div>
+<div class="tm-g-b">
+<div class="tm-g-f">
+<sc-for list="{{t.faces}}" as="f" hint-placeholder-count="3"><span class="tm-mini"><sc-if value="{{f.here}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{f.id}}" size="38" hint-size="38px,41px"></dc-import></sc-if><sc-if value="{{f.ghost}}" hint-placeholder-val="{{false}}"><span class="tm-ga"><span>{{f.letter}}</span></span></sc-if></span></sc-for>
+<sc-if value="{{t.hasMore}}" hint-placeholder-val="{{false}}"><span class="tm-more">+{{t.more}}</span></sc-if>
+</div>
+<button type="button" class="tm-g-c{{t.hotCall}}" aria-label="Start a call with {{t.name}}" title="Start a call with {{t.name}}" onClick="{{t.call}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg></button>
+</div>
+</sc-if>
+<sc-if value="{{t.isNewTile}}" hint-placeholder-val="{{false}}">
+<div class="tm-g-t"><b class="clamp1"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg>New group</b></div>
+<div class="tm-g-b"><div class="tm-g-f"><span class="tm-mini"><span class="tm-ga"></span></span><span class="tm-mini"><span class="tm-ga"></span></span><span class="tm-mini"><span class="tm-ga"></span></span></div></div>
+</sc-if>
+<sc-if value="{{t.isDraft}}" hint-placeholder-val="{{false}}">
+<div class="tm-g-t"><b class="clamp1">{{t.name}}</b><small>{{t.line}}</small></div>
+<div class="tm-g-b">
+<div class="tm-g-f"><sc-for list="{{t.faces}}" as="f" hint-placeholder-count="1"><span class="tm-mini"><sc-if value="{{f.here}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{f.id}}" size="38" hint-size="38px,41px"></dc-import></sc-if><sc-if value="{{f.ghost}}" hint-placeholder-val="{{false}}"><span class="tm-ga"><span>{{f.letter}}</span></span></sc-if></span></sc-for></div>
+<button type="button" class="tm-g-c{{t.hotDiscard}}" aria-label="Discard this group" title="Discard this group" onClick="{{t.discard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</div>
+</sc-if>
+</article>
+</sc-if>
+
+<sc-if value="{{t.open}}" hint-placeholder-val="{{false}}">
+<article class="tm-o{{t.openCls}}" aria-label="{{t.name}}">
+<header class="tm-o-h">
+<div class="tm-o-n">
+<sc-if value="{{t.naming}}" hint-placeholder-val="{{false}}">
+<input class="tm-name" type="text" value="{{t.nameValue}}" maxlength="40" placeholder="Name it, like Design" aria-label="{{t.nameLabel}}" aria-invalid="{{t.badName}}" onChange="{{t.nameType}}" onKeyDown="{{t.nameKey}}" onBlur="{{t.nameBlur}}" data-autofocus="true">
+<sc-if value="{{t.hasProblem}}" hint-placeholder-val="{{false}}"><small class="tm-err" role="alert">{{t.problem}}</small></sc-if>
+</sc-if>
+<sc-if value="{{t.named}}" hint-placeholder-val="{{true}}"><h3 class="clamp1">{{t.name}}</h3><small>{{t.line}}</small></sc-if>
+</div>
+<div class="tm-o-a">
+<sc-if value="{{t.isGroup}}" hint-placeholder-val="{{true}}">
+<button type="button" class="b b-tint b-sm{{t.hotCallOpen}}" onClick="{{t.call}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Start a call</button>
+</sc-if>
+<span class="tm-at">
+<button type="button" class="b b-line b-sm{{t.hotAdd}}" aria-expanded="{{t.pickExpanded}}" onClick="{{t.add}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.addUser}}"></path></svg>Add people</button>
+<sc-if value="{{t.picking}}" hint-placeholder-val="{{false}}">
+<div class="tm-pop is-list is-end" role="dialog" aria-label="{{t.pickTitle}}">
+<i class="tm-caret"></i>
+<div class="tm-find"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><input type="text" value="{{pickQ}}" placeholder="Name or email" aria-label="Name or email" onChange="{{pickType}}" data-autofocus="true"></div>
+<div class="tm-list">
+<sc-for list="{{pickRows}}" as="r" hint-placeholder-count="4">
+<button type="button" class="tm-l{{r.hotCls}}" aria-pressed="{{r.on}}" onClick="{{r.go}}"><sc-if value="{{r.here}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{r.id}}" size="32" hint-size="32px,35px"></dc-import></sc-if><sc-if value="{{r.ghost}}" hint-placeholder-val="{{false}}"><span class="tm-ga"><span>{{r.letter}}</span></span></sc-if><span class="tm-l-t"><b class="clamp1">{{r.name}}</b><small class="clamp1">{{r.sub}}</small></span><span class="ck tm-ck{{r.ckCls}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></span></button>
+</sc-for>
+<sc-if value="{{pickNone}}" hint-placeholder-val="{{false}}"><p class="tm-none">Nobody else to add.</p></sc-if>
+</div>
+<div class="tm-pop-f"><span class="tm-priv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you see your groups</span><button type="button" class="b {{pickAddCls}} b-sm{{hotPickAdd}}" disabled="{{pickOff}}" onClick="{{pickDone}}">{{pickLabel}}</button></div>
+</div>
+</sc-if>
+</span>
+<sc-if value="{{t.isGroup}}" hint-placeholder-val="{{true}}">
+<button type="button" class="tm-ib{{t.hotRename}}" aria-label="Rename {{t.name}}" title="Rename {{t.name}}" onClick="{{t.rename}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pen}}"></path></svg></button>
+<span class="tm-at">
+<button type="button" class="tm-ib{{t.hotDelete}}" aria-label="Delete {{t.name}}" title="Delete {{t.name}}" aria-expanded="{{t.delExpanded}}" onClick="{{t.ask}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg></button>
+<sc-if value="{{t.deleting}}" hint-placeholder-val="{{false}}">
+<div class="tm-pop is-del is-end" role="dialog" aria-label="Delete {{t.name}}">
+<i class="tm-caret"></i>
+<button type="button" class="tm-del{{hotDeleteYes}}" onClick="{{t.remove}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg><span><b class="clamp1">Delete {{t.name}}</b><small>Notes you shared with it stay with the people who have them.</small></span></button>
+</div>
+</sc-if>
+</span>
+<button type="button" class="tm-ib" aria-label="Close {{t.name}}" title="Close" onClick="{{t.close}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button>
+</sc-if>
+<sc-if value="{{t.isNew}}" hint-placeholder-val="{{false}}">
+<button type="button" class="b {{t.createCls}} b-sm{{t.hotCreate}}" disabled="{{t.createOff}}" onClick="{{t.create}}">Create group</button>
+<button type="button" class="tm-ib" aria-label="Discard this group" title="Discard this group" onClick="{{t.discard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</sc-if>
+</div>
+</header>
+<sc-if value="{{t.hasMembers}}" hint-placeholder-val="{{true}}">
+<ul class="tm-ms" aria-label="People in {{t.name}}">
+<sc-for list="{{t.members}}" as="m" hint-placeholder-count="3">
+<li class="tm-m"><sc-if value="{{m.here}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{m.id}}" size="34" hint-size="34px,37px"></dc-import></sc-if><sc-if value="{{m.ghost}}" hint-placeholder-val="{{false}}"><span class="tm-ga"><span>{{m.letter}}</span></span></sc-if><span class="tm-l-t"><b class="clamp1">{{m.name}}</b><small class="clamp1">{{m.sub}}</small></span><sc-if value="{{m.canTake}}" hint-placeholder-val="{{true}}"><button type="button" class="fy-x{{m.hotCls}}" aria-label="Take {{m.name}} out of {{t.name}}" title="Take {{m.first}} out" onClick="{{m.take}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></sc-if></li>
+</sc-for>
+</ul>
+</sc-if>
+<sc-if value="{{t.noMembers}}" hint-placeholder-val="{{false}}"><p class="tm-empty"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you see your groups. Their names show on notes you share with one.</p></sc-if>
+</article>
+</sc-if>
+
+</sc-for>
+</div>
+</sc-if>
+</section>
+
+<sc-if value="{{hasYet}}" hint-placeholder-val="{{true}}">
+<section class="tm-s tm-yet" aria-labelledby="tm-yet">
+<div class="pn-h"><h2 id="tm-yet">{{yetTitle}}</h2><sc-if value="{{hasInviteAll}}" hint-placeholder-val="{{true}}"><button type="button" class="b b-quiet b-sm{{hotInvAll}}" onClick="{{inviteAll}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mail}}"></path></svg>{{inviteAllLabel}}</button></sc-if></div>
+<sc-for list="{{yet}}" as="r" hint-placeholder-count="3">
+<div class="tm-r{{r.cls}}">
+<span class="tm-ga"><span>{{r.letter}}</span></span>
+<b class="clamp1">{{r.name}}</b>
+<span class="tm-r-s clamp1">{{r.title}}</span>
+<span class="tm-r-m clamp1"><sc-if value="{{r.invited}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if>{{r.status}}</span>
+<button type="button" class="b {{r.btn}} b-sm{{r.hotCls}}" onClick="{{r.go}}">{{r.act}}</button>
+</div>
+</sc-for>
+<sc-if value="{{hasYetFoot}}" hint-placeholder-val="{{false}}"><p class="tm-yet-f">{{yetFoot}}</p></sc-if>
+</section>
+</sc-if>
+
+<section class="tm-s tm-sh" aria-labelledby="tm-sh">
+<div class="pn-h"><h2 id="tm-sh">Shared with groups</h2></div>
+<sc-for list="{{shared}}" as="n" hint-placeholder-count="4"><button type="button" class="nr tm-nr" onClick="{{n.go}}"><dc-import name="Faces" who="{{n.by}}" size="26" hint-size="26px,29px"></dc-import><span class="tm-nr-t"><span class="t clamp1">{{n.title}}</span><small class="clamp1">{{n.line}}</small></span><span class="w">{{n.day}}</span></button></sc-for>
+<sc-if value="{{noShared}}" hint-placeholder-val="{{false}}"><p class="sec-note">Notes shared with a group show up here.</p></sc-if>
+</section>
+</div>
+
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="4"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+
+<sc-if value="{{callOpen}}" hint-placeholder-val="{{false}}">
+<div class="scrim">
+<div class="dlg" role="dialog" aria-modal="true" aria-label="Start a call">
+<sc-if value="{{callChoose}}" hint-placeholder-val="{{true}}">
+<div class="dlg-h"><h2>Start a call with {{call.head}}</h2><button type="button" class="dlg-x" aria-label="Close" onClick="{{callClose}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div>
+<div class="tm-picked"><dc-import name="Faces" who="{{call.faces}}" size="30" max="6" ring="var(--raised)" hint-size="60px,33px"></dc-import><span class="clamp1">{{call.names}}</span></div>
+<div class="ways">
+<button type="button" class="way{{hotCallNow}}" onClick="{{callNow}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg><span><b>Start now</b><small>Ring your team in, or share a link.</small></span><span class="k">↵</span></button>
+<button type="button" class="way{{hotCallLater}}" onClick="{{callLater}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg><span><b>Schedule for later</b><small>Find a time that works for everyone.</small></span><span class="k">S</span></button>
+</div>
+</sc-if>
+<sc-if value="{{callWhen}}" hint-placeholder-val="{{false}}">
+<ol class="steps"><li class="is-done">Who</li><li class="is-on">When</li><li>Details</li></ol>
+<button type="button" class="dlg-x card-x" aria-label="Close" onClick="{{callClose}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+<h2 class="dlg-q">When works for everyone?</h2>
+<div class="dlg-b">
+<sc-for list="{{ov.slotDays}}" as="d" hint-placeholder-count="3"><div class="slot-day"><span>{{d.day}}</span><div class="slot-row"><sc-for list="{{d.slots}}" as="s" hint-placeholder-count="2"><button type="button" class="slot{{s.cls}}" aria-pressed="{{s.on}}" onClick="{{s.go}}">{{s.t}}</button></sc-for></div></div></sc-for>
+</div>
+<div class="dlg-f"><button type="button" class="b b-quiet" onClick="{{callBack}}">Back</button><button type="button" class="b b-press{{hotCallNext}}" onClick="{{callNext}}">Next</button></div>
+</sc-if>
+<sc-if value="{{callDetails}}" hint-placeholder-val="{{false}}">
+<ol class="steps"><li class="is-done">Who</li><li class="is-done">When</li><li class="is-on">Details</li></ol>
+<button type="button" class="dlg-x card-x" aria-label="Close" onClick="{{callClose}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+<h2 class="dlg-q">{{call.title}}</h2>
+<div class="dlg-b">
+<div class="drow"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg><span><b>{{ov.slotLabel}}</b></span><span></span></div>
+<div class="drow"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg><span><b>{{call.names}}</b></span><span></span></div>
+<button type="button" class="drow" style="width: 100%" onClick="{{ov.toggleNotes}}" aria-pressed="{{ov.notesOn}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg><span><b>{{ov.notesLabel}}</b><small>{{ov.notesSub}}</small></span><span class="sw{{swCls}}"></span></button>
+</div>
+<div class="dlg-f"><button type="button" class="b b-quiet" onClick="{{callBackWhen}}">Back</button><button type="button" class="b b-press{{hotCallSchedule}}" onClick="{{callSchedule}}">Schedule</button></div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasUndo}}" hint-placeholder-val="{{false}}"><div class="toast tm-undo" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg><span>{{undoText}}</span><button type="button" class="{{hotUndo}}" onClick="{{undoDelete}}">Undo</button></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":null,"default":"home"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    var self = this;
+    this.__esc = function (e) { if (e.key === 'Escape') self.setState({ pop: '', popView: '', inv: false, all: false, picking: '', deleting: '', forward: '', hot: '' }); };
+    document.addEventListener('keydown', this.__esc);
+    /* On a phone the line is wider than the window: start with you in the middle of it. */
+    this.__centre = setTimeout(function () { document.querySelectorAll('.tm-row').forEach(function (r) { r.scrollLeft = (r.scrollWidth - r.clientWidth) / 2; }); }, 60);
+  }
+  componentDidUpdate() {
+    var who = (this.state || {}).who;
+    if (who !== this.__who) { this.__who = who; this.__centre = setTimeout(function () { document.querySelectorAll('.tm-row').forEach(function (r) { r.scrollLeft = (r.scrollWidth - r.clientWidth) / 2; }); }, 60); }
+    var f = document.querySelector('.tm [data-autofocus]');
+    if (f && f !== this.__focused) { this.__focused = f; f.focus({ preventScroll: true }); }
+    if (!f) this.__focused = null;
+  }
+  componentWillUnmount() {
+    document.removeEventListener('keydown', this.__esc);
+    clearTimeout(this.__toast); clearTimeout(this.__undo); clearTimeout(this.__retry); clearTimeout(this.__centre);
+  }
+  renderVals() {
+    var AH = window.AH, T = AH.TM, D = AH.D, assign = AH.assign, self = this;
+    var v = AH.page(this, 'team');
+    this.__uid = this.__uid || (window.__tmUid = (window.__tmUid || 0) + 1);
+    v.logoClip = 'tma' + this.__uid; v.logoSky = 'tms' + this.__uid; v.logoClipUrl = 'url(#' + v.logoClip + ')'; v.logoSkyUrl = 'url(#' + v.logoSky + ')';
+    var st = v.st, set = v.set, hot = v.hot, toast = v.toast, I = v.I;
+    var who = st.who || 'all';
+    var invited = st.invited || {};
+    var failed = who === 'failed' || who === 'offline', loading = who === 'loading';
+
+    /* Who's here. */
+    var r = T.roster(who, invited);
+    var person = function (id) { return r.on.concat(r.off).filter(function (p) { return p.id === id; })[0] || T.person(id); };
+    var ln = T.line(T.me, r);
+    var closed = { pop: '', popView: '', inv: false, all: false, picking: '', deleting: '', forward: '', hot: '' };
+    var closeAll = function () { set(closed); };
+    v.closeAll = closeAll;
+    v.openAsk = function () { set(assign({}, closed, { ask: 'open' })); };
+    v.goSettings = function () { v.go('settings'); };
+
+    /* Asking people: your own email opens, and they're marked invited. */
+    var mailed = function (ids, word) {
+      var d = assign({}, invited);
+      ids.forEach(function (id) { d[id] = true; });
+      set({ invited: d, hot: '' });
+      toast('Your email opens with ' + word + ' ' + T.names(ids) + '.');
+    };
+    var askOne = function (id) { mailed([id], 'an invitation to'); };
+    var remindOne = function (id) { toast('Your email opens with a reminder to ' + T.names([id]) + '.'); };
+    v.copyLink = function () { set(closed); toast('Invite link copied. It opens the page to sign in.'); };
+
+    /* Ring goes straight in; Schedule opens at When with them already picked. A group's Start a call asks which. */
+    var ringLine = function (ids) { return T.names(ids) + (ids.length > 1 ? ' hear a ring when you join.' : ' hears a ring when you join.'); };
+    var startWith = function (ids, title, group) { set(assign({}, closed, { call: { who: ids, title: title, group: !!group }, callStep: 'choose', slot: 'm10' })); };
+    var call = st.call || null, callStep = st.callStep || 'choose';
+    v.callOpen = !!call;
+    v.callChoose = !!call && callStep === 'choose';
+    v.callWhen = !!call && callStep === 'when';
+    v.callDetails = !!call && callStep === 'details';
+    v.call = call ? { title: call.title, head: call.group ? call.title : T.names(call.who), faces: call.who.join(','), names: T.names(call.who) } : {};
+    v.swCls = v.ov.notesOn ? ' is-on' : '';
+    v.callClose = function () { set({ call: null, callStep: '', hot: '' }); };
+    v.callNow = function () { if (call) set({ call: null, callStep: '', page: 'lobby', lobbyTitle: 'Art’s call', lobbySub: ringLine(call.who), hot: '' }); };
+    v.callLater = function () { set({ callStep: 'when', hot: '' }); };
+    v.callBack = function () { if (call && call.direct) set({ call: null, callStep: '', hot: '' }); else set({ callStep: 'choose', hot: '' }); };
+    v.callNext = function () { set({ callStep: 'details', hot: '' }); };
+    v.callBackWhen = function () { set({ callStep: 'when', hot: '' }); };
+    v.callSchedule = function () { var c = call, ids = c ? c.who : []; set({ call: null, callStep: '', hot: '' }); toast('On your Google Calendar. ' + (ids.length === 1 ? T.names(ids) + ' gets' : ids.length + ' people get') + ' an invitation.'); };
+    v.hotCallNow = hot('c-now'); v.hotCallLater = hot('c-later'); v.hotCallNext = hot('c-next'); v.hotCallSchedule = hot('c-schedule');
+
+    /* The hero. */
+    var popOpen = !!(st.pop || st.inv || st.all || st.picking || st.deleting);
+    var makingNow = !!st.making;
+    var draft = st.draft || { name: '', people: [] };
+    var ready = makingNow && draft.name.trim() !== '' && draft.people.length > 0;
+    v.anyPop = popOpen;
+    v.company = D.company;
+    v.title = who === 'first' ? 'Bring your team to Alcove' : who === 'failed' ? 'Your team didn’t load' : who === 'offline' ? 'You’re offline' : loading ? 'Your team' : D.company;
+    v.hasWhy = failed;
+    v.why = who === 'offline' ? 'Your team shows here when you’re back.' : 'Alcove couldn’t reach the server.';
+    v.whyIcon = who === 'offline' ? I.wifiOff : I.alert;
+    v.hasRetry = failed; v.retry = function () {
+      set({ who: 'loading', hot: '' });
+      clearTimeout(self.__retry);
+      self.__retry = setTimeout(function () { self.setState({ who: 'all' }); }, 1300);
+    };
+    v.hotRetry = hot('retry');
+    v.hasInvite = !failed && !loading;
+    v.hasCopy = who === 'first';
+    v.inviteCls = popOpen || ready ? 'b-sky' : 'b-press';
+    v.hotInvite = hot('invite');
+    v.invOpen = !!st.inv;
+    v.invExpanded = v.invOpen ? 'true' : 'false';
+    v.openInvite = function () {
+      if (loading) return;
+      set(assign({}, closed, { inv: !st.inv, invPick: [], invQ: '' }));
+    };
+
+    /* Picking who to invite. */
+    var invPick = st.invPick || [], invQ = st.invQ || '';
+    var askable = r.off.filter(function (p) { return !p.invited; });
+    var match = function (p, q) { return !q || p.name.toLowerCase().indexOf(q.trim().toLowerCase()) >= 0; };
+    var typedMail = invQ.indexOf('@') > 0 ? invQ.trim() : '';
+    v.invQ = invQ;
+    v.invType = function (e) { set({ invQ: e.target.value }); };
+    v.invRows = askable.filter(function (p) { return match(p, invQ); }).map(function (p) {
+      var on = invPick.indexOf(p.id) >= 0;
+      return {
+        name: p.name, letter: p.first.charAt(0), sub: [p.title, p.meetings].filter(Boolean).join(' · '), on: on ? 'true' : 'false', ckCls: on ? ' is-on' : '', hotCls: hot('pick-' + p.id),
+        go: function () { set({ invPick: on ? invPick.filter(function (x) { return x !== p.id; }) : invPick.concat([p.id]), hot: '' }); }
+      };
+    });
+    if (typedMail) v.invRows = v.invRows.concat([{
+      name: typedMail, letter: typedMail.charAt(0).toUpperCase(), sub: 'New to you', on: 'true', ckCls: ' is-on', hotCls: '',
+      go: function () { set({ invPick: invPick.indexOf(typedMail) >= 0 ? invPick.filter(function (x) { return x !== typedMail; }) : invPick.concat([typedMail]), hot: '' }); }
+    }]);
+    v.invNone = v.invRows.length === 0;
+    v.invNoneText = askable.length ? 'Nobody here by that name. Type their address.' : r.off.length ? 'Everyone here has been asked.' : 'Everyone here is on Alcove.';
+    var going = typedMail && invPick.indexOf(typedMail) < 0 ? invPick.concat([typedMail]) : invPick;
+    v.invSendOff = going.length === 0;
+    v.invSendCls = going.length ? 'b-press' : 'b-tint';
+    v.invSendLabel = going.length ? 'Invite ' + going.length : 'Invite';
+    v.invSend = function () { var ids = going; set(assign({}, closed, { invPick: [] })); mailed(ids, 'an invitation to'); };
+    v.hotInvSend = hot('inv-send'); v.hotInvCopy = hot('inv-copy');
+
+    /* Everyone in one list, once the line recedes. */
+    var allQ = st.allQ || '';
+    v.hasAll = ln.recedes && !failed;
+    v.allLabel = 'All ' + ln.n + ' people';
+    v.hotAll = hot('all');
+    v.allOpen = !!st.all;
+    v.allExpanded = v.allOpen ? 'true' : 'false';
+    v.allQ = allQ;
+    v.allType = function (e) { set({ allQ: e.target.value }); };
+    v.openAll = function () { set(assign({}, closed, { all: !st.all, allQ: '' })); };
+    v.allRows = [T.me].concat(r.on, r.off).filter(function (p) { return match(p, allQ); }).sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (p) {
+      return { id: p.id, name: p.name, letter: p.first.charAt(0), sub: p.me ? 'You' : p.on ? p.title : 'Not on Alcove yet', here: p.on, ghost: !p.on, hotCls: hot('all-' + p.id), go: function () { set(assign({}, closed, { pop: p.id })); } };
+    });
+    v.allNone = v.allRows.length === 0;
+
+    /* The line. */
+    var sun = T.sunOf(ln);
+    v.gridCls = who === 'first' ? ' is-first' : '';
+    v.rowCls = (ln.recedes ? ' is-receding' : '') + (loading ? ' is-waiting' : '');
+    v.rowStyle = '--sum: ' + ln.width.toFixed(3);
+    v.gapLeft = ln.gap > 0.01; v.gapRight = ln.gap < -0.01;
+    v.gapStyle = '--k: ' + Math.abs(ln.gap).toFixed(3);
+    v.cardView = st.popView !== 'notes'; v.notesView = st.popView === 'notes';
+    v.hotRing = hot('ring'); v.hotStart = hot('p-start'); v.hotNotes = hot('notes'); v.hotPopInvite = hot('p-invite');
+    var arches = loading ? T.line(T.me, { on: [], off: ['a', 'b', 'c', 'd', 'e', 'f'].map(function (x) { return { id: x, first: '', name: '', title: '' }; }) }).arches : failed ? [T.line(T.me, { on: [], off: [] }).arches[0]] : ln.arches;
+    if (failed || loading) sun = T.sunOf({ arches: arches, recedes: false });
+    if (who === 'first') arches = T.line(T.me, { on: [], off: r.off.slice(0, 4) }).arches, sun = T.sunOf({ arches: arches, recedes: false });
+    v.row = arches.map(function (p) {
+      var open = st.pop === p.id && !p.blank, id = p.id, first = p.me ? 'Art' : p.first;
+      var blank = !p.name;
+      var notes = p.me || who === 'first' ? [] : T.notesWith(id);
+      var when = p.me ? '' : p.ghost && p.invited ? 'Invited' : (p.next || p.meetings || p.last || '');
+      return assign({}, p, {
+        cls: (p.far ? ' is-far' : '') + (open ? ' is-on' : '') + (st.inv && invPick.indexOf(id) >= 0 ? ' is-picked' : '') + (st.forward === id ? ' is-forward' : '') + (sun.inArch === id ? ' has-sun' : '') + (p.me ? ' is-me' : '') + (blank ? ' is-blank' : ''),
+        style: '--k: ' + p.k.toFixed(3) + '; --px: ' + p.px.toFixed(3) + '; --haze: ' + p.haze.toFixed(2) + '; --z: ' + p.z.toFixed(2) + '; --d: ' + p.d,
+        size: Math.round(72 * p.k), here: !p.ghost, ghost: !!p.ghost, letter: blank ? '' : p.first.charAt(0), open: open, expanded: open ? 'true' : 'false', hotCls: hot('p-' + id),
+        isBlank: blank, label: blank ? 'An empty place' : p.me ? 'You, ' + p.name : p.ghost ? p.name + ', not on Alcove yet' : p.name, tip: p.far ? p.name : '', short: first,
+        go: function () { if (!blank && !loading) set(assign({}, closed, { pop: open ? '' : id })); },
+        hasWhen: !!when, when: when, whenCls: p.next ? ' is-next' : '',
+        canRing: !p.ghost && !p.me, canInvite: !!p.ghost && !p.invited, canRemind: !!p.ghost && !!p.invited, canStart: !p.me, isMe: !!p.me,
+        ring: function () { set(assign({}, closed, { page: 'lobby', lobbyTitle: 'Art’s call', lobbySub: first + ' hears a ring when you join.' })); },
+        start: function () { set(assign({}, closed, { call: { who: [id], title: 'Call with ' + first, direct: true }, callStep: 'when', slot: 'm10' })); },
+        invite: function () { askOne(id); }, remind: function () { remindOne(id); },
+        hasNotes: notes.length > 0, noteCount: notes.length,
+        notes: notes.slice(0, 5).map(function (n, i) { return { title: n.title, day: n.day.replace(/ \d+ Oct/, ''), hotCls: hot('note-' + i), go: function () { v.go('note'); } }; }),
+        goNotes: function () { set({ popView: 'notes', hot: '' }); },
+        backCard: function () { set({ popView: '', hot: '' }); },
+        goAllNotes: function () { v.go('notes'); }
+      });
+    });
+    v.stageStyle = '--sx: ' + sun.x.toFixed(3) + '; --sr: ' + sun.r;
+    v.lineFit = arches.length <= 3 ? 'short' : 'long';
+    v.scene = T.scene(v.scene);
+
+    /* Groups. */
+    var groupsFailed = !!st.groupsFailed;
+    var groups = st.groups || T.groupsOf(who);
+    var problemOf = function (name, self2) {
+      var n = name.trim();
+      if (!n) return 'Give the group a name.';
+      var same = groups.filter(function (g) { return g.id !== self2 && g.name.trim().toLowerCase() === n.toLowerCase(); })[0];
+      return same ? 'You already have a group called ' + same.name + '.' : '';
+    };
+    var patch = function (id, how) { return groups.map(function (g) { return g.id === id ? assign({}, g, how(g)) : g; }); };
+    var line = function (g) { return g.people.length + (g.people.length === 1 ? ' person' : ' people') + (g.calls ? ' · ' + g.calls + (g.calls === 1 ? ' call' : ' calls') : ''); };
+    var faceOf = function (id) { var p = person(id); return { id: id, here: p.on !== false, ghost: p.on === false, letter: p.first.charAt(0) }; };
+    var memberOf = function (id, canTake, take) {
+      var p = person(id);
+      return { id: id, name: p.name, first: p.first, sub: p.on === false ? 'Not on Alcove yet' : p.title, here: p.on !== false, ghost: p.on === false, letter: p.first.charAt(0), canTake: canTake, take: take, hotCls: hot('x-' + id) };
+    };
+    v.groupsFailed = groupsFailed;
+    v.groupsOk = !groupsFailed;
+    v.retryGroups = function () { set({ groupsFailed: false, hot: '' }); };
+
+    var pickFor = st.picking || '', pick = st.pick || [], pickQ = st.pickQ || '';
+    var pickGroup = groups.filter(function (g) { return g.id === pickFor; })[0];
+    var inAlready = pickFor === 'new' ? draft.people : pickGroup ? pickGroup.people : [];
+    v.pickQ = pickQ;
+    v.pickType = function (e) { set({ pickQ: e.target.value }); };
+    v.pickRows = r.on.concat(r.off).filter(function (p) { return inAlready.indexOf(p.id) < 0 && match(p, pickQ); }).map(function (p) {
+      var on = pick.indexOf(p.id) >= 0;
+      return {
+        id: p.id, name: p.name, letter: p.first.charAt(0), sub: p.on ? p.title : 'Not on Alcove yet', here: p.on, ghost: !p.on, on: on ? 'true' : 'false', ckCls: on ? ' is-on' : '', hotCls: hot('pick-' + p.id),
+        go: function () { set({ pick: on ? pick.filter(function (x) { return x !== p.id; }) : pick.concat([p.id]), hot: '' }); }
+      };
+    });
+    /* A whole address counts as it's typed, here as in Invite people. */
+    var pickMail = pickQ.indexOf('@') > 0 ? pickQ.trim() : '';
+    if (pickMail) v.pickRows = [{
+      id: pickMail, name: pickMail, letter: pickMail.charAt(0).toUpperCase(), sub: 'New to you', here: false, ghost: true, on: 'true', ckCls: ' is-on', hotCls: '',
+      go: function () { set({ pick: pick.indexOf(pickMail) >= 0 ? pick : pick.concat([pickMail]), pickQ: '', hot: '' }); }
+    }].concat(v.pickRows);
+    var pickGoing = pickMail && pick.indexOf(pickMail) < 0 ? pick.concat([pickMail]) : pick;
+    v.pickNone = v.pickRows.length === 0;
+    v.pickOff = pickGoing.length === 0;
+    v.pickAddCls = pickGoing.length ? 'b-press' : 'b-tint';
+    v.pickLabel = pickGoing.length ? 'Add ' + pickGoing.length : 'Add';
+    v.hotPickAdd = hot('pick-add');
+    v.pickDone = function () {
+      if (pickFor === 'new') set({ draft: assign({}, draft, { people: draft.people.concat(pick) }), picking: '', pick: [], pickQ: '', hot: '' });
+      else set({ groups: patch(pickFor, function (g) { return { people: g.people.concat(pick) }; }), picking: '', pick: [], pickQ: '', hot: '' });
+    };
+
+    var tiles = groups.map(function (g) {
+      var open = st.open === g.id, renaming = st.renaming === g.id, shown = g.people.slice(0, g.people.length > 4 ? 3 : 4);
+      var nameValue = st.renameTo === undefined ? g.name : st.renameTo;
+      var problem = renaming ? (st.nameError || '') : '';
+      var saveName = function () {
+        var p = problemOf(nameValue, g.id);
+        if (p) { set({ nameError: p }); return; }
+        set({ groups: patch(g.id, function () { return { name: nameValue.trim() }; }), renaming: '', renameTo: undefined, nameError: '', hot: '' });
+      };
+      var call = function () { startWith(g.people, g.name, true); };
+      return {
+        id: g.id, name: g.name, line: line(g), isGroup: true, isNew: false, isNewTile: false, isDraft: false, closed: !open, open: open, cls: '', openCls: '', hotCls: hot('g-' + g.id), hotCall: hot('g-call-' + g.id), label: 'Open ' + g.name,
+        faces: shown.map(faceOf), hasMore: g.people.length > 4, more: g.people.length - 3,
+        go: function () { set(assign({}, closed, { open: g.id, making: false, renaming: '', renameTo: undefined })); }, close: function () { set(assign({}, closed, { open: '', renaming: '', renameTo: undefined })); },
+        call: call, hotCallOpen: hot('g-call'),
+        naming: renaming, named: !renaming, nameValue: nameValue, nameLabel: 'Group name', badName: problem ? 'true' : 'false', hasProblem: !!problem, problem: problem,
+        nameType: function (e) { set({ renameTo: e.target.value, nameError: '' }); },
+        nameKey: function (e) { if (e.key === 'Enter') { e.preventDefault(); saveName(); } else if (e.key === 'Escape') { e.stopPropagation(); set({ renaming: '', renameTo: undefined, nameError: '' }); } },
+        nameBlur: function () { if (renaming && !problemOf(nameValue, g.id)) saveName(); },
+        add: function () { set(assign({}, closed, { picking: pickFor === g.id ? '' : g.id, pick: [], pickQ: '' })); }, picking: pickFor === g.id, pickExpanded: pickFor === g.id ? 'true' : 'false', pickTitle: 'Add people to ' + g.name, hotAdd: hot('add'),
+        rename: function () { set(assign({}, closed, { renaming: g.id, renameTo: g.name, nameError: '' })); }, hotRename: hot('rename'),
+        ask: function () { set(assign({}, closed, { deleting: st.deleting === g.id ? '' : g.id })); }, deleting: st.deleting === g.id, delExpanded: st.deleting === g.id ? 'true' : 'false', hotDelete: hot('delete'),
+        remove: function () {
+          var at = groups.indexOf(g);
+          set(assign({}, closed, { groups: groups.filter(function (x) { return x !== g; }), open: '', undo: { group: g, at: at } }));
+          clearTimeout(self.__undo);
+          self.__undo = setTimeout(function () { self.setState({ undo: null }); }, 5200);
+        },
+        hasMembers: true, noMembers: false,
+        members: g.people.map(function (id) { return memberOf(id, g.people.length > 1, function () { set({ groups: patch(g.id, function (x) { return { people: x.people.filter(function (y) { return y !== id; }) }; }), hot: '' }); }); })
+      };
+    });
+
+    /* New group: its tile, the editor it opens into, or the group half made and waiting. */
+    var waiting = !makingNow && (draft.name.trim() !== '' || draft.people.length > 0);
+    var makeIt = function () {
+      var p = problemOf(draft.name);
+      if (p) { set({ nameError: p }); return; }
+      if (!draft.people.length) { set({ picking: 'new', pick: [], pickQ: '', hot: '' }); return; }
+      var g = { id: 'g' + (groups.length + 10), name: draft.name.trim(), people: draft.people, calls: 0 };
+      set({ groups: groups.concat([g]), making: false, draft: { name: '', people: [] }, open: g.id, nameError: '', hot: '' });
+    };
+    var discard = function () { set(assign({}, closed, { making: false, draft: { name: '', people: [] }, nameError: '' })); };
+    var newProblem = makingNow ? (st.nameError || '') : '';
+    var newTile = {
+      id: 'new', name: draft.name.trim() || 'New group', line: draft.people.length ? T.names(draft.people) : 'Not made yet', isGroup: false, isNew: makingNow, isNewTile: !makingNow && !waiting, isDraft: waiting,
+      closed: !makingNow, open: makingNow, cls: waiting ? ' is-draft' : ' is-new', openCls: ' is-making', hotCls: hot('new'), label: waiting ? 'Keep making ' + (draft.name.trim() || 'this group') : 'New group',
+      faces: draft.people.slice(0, 4).map(faceOf), hasMore: false, more: 0, hotDiscard: hot('draft-x'), hotCall: '',
+      go: function () { set(assign({}, closed, { making: true, draft: draft, open: '', renaming: '', renameTo: undefined })); },
+      naming: true, named: false, nameValue: draft.name, nameLabel: 'New group’s name', badName: newProblem ? 'true' : 'false', hasProblem: !!newProblem, problem: newProblem,
+      nameType: function (e) { set({ draft: assign({}, draft, { name: e.target.value }), nameError: '' }); },
+      nameKey: function (e) { if (e.key === 'Enter') { e.preventDefault(); makeIt(); } else if (e.key === 'Escape') { e.stopPropagation(); set(assign({}, closed, { making: false })); } },
+      nameBlur: function () {},
+      add: function () { set(assign({}, closed, { making: true, picking: pickFor === 'new' ? '' : 'new', pick: [], pickQ: '' })); }, picking: pickFor === 'new', pickExpanded: pickFor === 'new' ? 'true' : 'false', pickTitle: 'Add people to ' + (draft.name.trim() || 'the group'), hotAdd: hot('draft-add'),
+      create: makeIt, createOff: !ready, createCls: ready && !popOpen ? 'b-press' : 'b-tint', hotCreate: hot('create'), discard: discard,
+      hasMembers: draft.people.length > 0, noMembers: draft.people.length === 0,
+      members: draft.people.map(function (id) { return memberOf(id, true, function () { set({ draft: assign({}, draft, { people: draft.people.filter(function (y) { return y !== id; }) }), hot: '' }); }); })
+    };
+    v.tiles = tiles.concat([newTile]);
+    v.hasUndo = !!st.undo; v.undoText = st.undo ? 'Deleted ' + st.undo.group.name + '.' : ''; v.hotUndo = 'tm-undo-b' + hot('undo');
+    v.undoDelete = function () {
+      var u = st.undo, g = groups.slice();
+      g.splice(u.at, 0, u.group);
+      clearTimeout(self.__undo);
+      set({ groups: g, undo: null, hot: '' });
+    };
+    v.hotDeleteYes = hot('delete-yes');
+
+    /* Not on Alcove yet. */
+    var left = r.off.filter(function (p) { return !p.invited; });
+    v.hasYet = r.off.length > 0;
+    v.yetTitle = who === 'first' ? 'People you meet most' : 'Not on Alcove yet';
+    v.hasInviteAll = left.length > 1;
+    v.inviteAllLabel = (who === 'first' ? 'Invite everyone' : 'Invite all ' + left.length);
+    v.hotInvAll = hot('inv-all');
+    v.inviteAll = function () { mailed(left.map(function (p) { return p.id; }), 'an invitation to'); };
+    v.yet = (who === 'first' ? r.off.slice(0, 4) : r.off).map(function (p) {
+      return {
+        name: p.name, letter: p.first.charAt(0), title: p.title, invited: p.invited, status: p.invited ? 'Invited' : p.meetings || p.last || '', cls: p.invited ? ' is-invited' : '', btn: p.invited ? 'b-quiet' : 'b-line', act: p.invited ? 'Remind' : 'Invite', hotCls: hot('row-' + p.id),
+        go: function () { if (p.invited) remindOne(p.id); else askOne(p.id); }
+      };
+    });
+    v.hasYetFoot = who === 'first';
+    v.yetFoot = '2 more in your directory';
+
+    /* Shared with groups. */
+    v.shared = T.sharedOf(who).map(function (n) { return assign({}, n, { go: function () { v.go('note'); } }); });
+    v.noShared = v.shared.length === 0;
+
+    /* The side panel: how many use Alcove, and your groups, which open here. */
+    var here = r.on.length + 1;
+    v.side = assign({}, v.side, {
+      nav: v.side.nav.map(function (n) { return n.label === 'Team' && here > 1 ? assign({}, n, { count: here, hasCount: true }) : n; }),
+      hasGroups: !groupsFailed,
+      groups: groups.map(function (g) { return { t: g.name, n: g.people.length, go: function () { set(assign({}, closed, { open: g.id, making: false })); } }; }).concat([{ t: 'New group', n: '+', go: function () { set(assign({}, closed, { making: true, draft: draft, open: '' })); } }])
+    });
+    return v;
+  }
+}
+</script>
+</body>
+</html>

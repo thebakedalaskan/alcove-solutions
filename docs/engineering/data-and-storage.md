@@ -74,7 +74,7 @@ both an account and a document, so it goes with either: by `owner_id`, or by its
 
 | Item kind | Manifest fields |
 | --- | --- |
-| `profile` | name, email, photo URL, whether it's a demo account (`sample`), the workspace it used last (`recentWorkspace`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
+| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
 | `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), the workspace it uses and its agenda there (`workspaceId`, `agenda`: IDs only), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link, whether the event was the organizer's own before it became an Alcove call (adopted), and for a call in a series that repeats, the recurring event it's an occurrence of (`master`), the series it's in (`seriesId`), when that series repeats its link's code (`seriesCode`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), which guests were added by being let in from the call's link (`addedFromLink`), once any were, whether it was started now rather than scheduled (`instant`), what the notes keep (`choices`), whether everyone joins muted (`joinMuted`), the documents brought to it by ID, the times offered, until someone picks one (`offer`: the start and end are then those of the first), and while Google is being asked for its event, until when it's claimed for that (`placing`) |
 | `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), what was worked on in the call (`workedOn`: document IDs, `kind` and who, read for each person by what they can open), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), and follow-ups ticked during the call whose notes aren't written yet (`ticked`: each one's ID, words, owner and due date, the IDs of the lines behind it, the room it was in, who ticked it and when; empty in a note stored before calls kept them), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
@@ -93,11 +93,16 @@ scoping and deleting work as they do for an account. It has no `identities` row,
 nobody signs in as one, and nothing that reads an account's tables finds it. Nothing lists `owners`. Its `owner_id` stays
 on the server; everything outside knows it by `workspace_id`.
 
-Its name and tree are one record, `workspace-state`, under the workspace's key: `name`, and `items`, a map of ID to an
-item's `kind` (`document`, `board` or `folder`), `name`, `parent`, `pos`, who made it (`by`: their name and address as they
-were, or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted` and
-`restrictedBy` (the address of whoever restricted it, when that wasn't its creator). To the tree `kind` is only data: a document and a board are alike, each a row in `documents` that what it holds hangs off, and
-nothing here looks inside. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
+Its name and tree are one record, `workspace-state`, under the workspace's key: `name`; `items`, a map of ID to an item's
+`kind` (`document`, `board` or `folder`), `name`, `parent`, `pos`, who made it (`by`: their name and address as they were,
+or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted`, `restrictedBy` (the
+address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
+the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
+`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and the
+addresses its invite put in it. Older records take `null` for both. To the tree `kind` is only data: a document and a board
+are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
+content of its own: its pages read the call and its note through their own access
+([Calls and recordings › The call's home](calls-and-recordings.md#the-calls-home)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
 relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
 under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
 under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
@@ -123,7 +128,7 @@ same row, so taking someone out takes their address with them. `workspace_author
 name is on something here, which is how deleting an account finds a workspace it left long ago. When a sign-in brings an
 account a new address, everything under the old hash moves to the new one in that sign-in's transaction, and its name on
 what it made follows. A workspace holds at most 1,000 people, a document is shared with at most 500, and an address can
-have made at most 100 workspaces. Who can do what is in
+have made at most 100 workspaces by hand: a home made for a call doesn't count. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
 ### Tags
@@ -592,6 +597,11 @@ and this way it runs through the same auth, origin check and tests as everything
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
+- **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
+  of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
+  seat, and the seats and addresses each has been worked out for, and nothing about what's on it. It goes when the call ends. A call stored
+  before this was kept reads as having none
+  ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
   came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to

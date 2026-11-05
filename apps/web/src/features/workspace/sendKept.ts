@@ -69,7 +69,7 @@ export function useKeptEdits(owner: string | null) {
     const tell = ({ workspace, document }: Place) => {
       toast('Something you wrote didn’t reach its document. It’s safe in this browser.', {
         icon: 'alert', ms: 12_000,
-        action: { label: 'Show it', onClick: () => { void navigate({ to: '/workspace/$workspaceId/$documentId', params: { workspaceId: workspace, documentId: document } }); } }
+        action: { label: 'Show it', onClick: () => { void navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId: workspace, documentId: document } }); } }
       });
     };
     const send = () => { void sendKept(owner, tell); };

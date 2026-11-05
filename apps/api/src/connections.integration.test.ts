@@ -205,7 +205,7 @@ describe('a connection lost in the middle of a request', () => {
   it('fails only that request, plainly and where its ID finds it, and everything else carries on', async () => {
     const onMain = () => h.baseUrl;
     const ann = await account(unique('ann'), onMain);
-    const ben = await account(unique('ben'), onMain);
+    const bram = await account(unique('bram'), onMain);
     // A second connection holds Ann's row, so making a workspace waits for it inside its transaction.
     const holder = new pg.Client({ connectionString: h.deps.cfg.DATABASE_URL });
     await holder.connect();
@@ -219,8 +219,8 @@ describe('a connection lost in the middle of a request', () => {
       await waitFor(async () => (await waiting()).length === 1, 'Ann’s request to wait for her row');
       const [stuck] = await waiting();
       if (!stuck) throw new Error('nothing is waiting for the row');
-      // Ben's request goes on beside it, on a connection of its own, as Ann's is cut off mid-transaction.
-      const bens = ben.api.workspaces.create('Elsewhere').then(({ id }) => ({ made: id }), (e: unknown) => ({ failed: errorCode(e) }));
+      // Bram's request goes on beside it, on a connection of its own, as Ann's is cut off mid-transaction.
+      const brams = bram.api.workspaces.create('Elsewhere').then(({ id }) => ({ made: id }), (e: unknown) => ({ failed: errorCode(e) }));
       await holder.query('SELECT pg_terminate_backend($1)', [stuck.pid]);
       const failed = await making;
       expect(errorCode(failed)).toBe('unavailable');
@@ -230,7 +230,7 @@ describe('a connection lost in the middle of a request', () => {
       expect(logged().filter((l) => l.requestId === requestId && l.level === 40).map((l) => l.msg)).toContain('lost the connection to the database');
       // Postgres rolled the transaction back with the connection: nothing tried to, and failed.
       expect(logged().filter((l) => l.requestId === requestId).map((l) => l.msg)).not.toContain('rollback failed');
-      expect(await bens).toEqual({ made: expect.any(String) });
+      expect(await brams).toEqual({ made: expect.any(String) });
     } finally {
       await holder.query('ROLLBACK').catch(() => undefined);
       await holder.end();

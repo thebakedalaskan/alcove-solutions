@@ -1,14 +1,13 @@
 /*
  * Where someone was in their workspaces, remembered in this browser for each account and only by ID (nothing readable):
- * the workspace they last had open, the documents they last had open in each, the folders they left open, and whether the
- * list is tucked away. It goes when they sign out here or delete their account. A guest in a call has no account, so
+ * the documents they last had open in each, the folders they left open, and whether the list is tucked away. It goes when they sign out here or delete their account. A guest in a call has no account, so
  * nothing's kept for them.
  */
 import { WorkspacePlacesSchema, type WorkspacePlaces } from '@alcove/api';
 import { log } from '~/lib/log';
 
 const plog = log.child({ component: 'workspace' });
-const NOWHERE: WorkspacePlaces = { workspace: null, documents: {}, recent: {}, folders: {}, listOff: false };
+const NOWHERE: WorkspacePlaces = { documents: {}, recent: {}, folders: {}, listOff: false };
 /** How many documents Find remembers opening in each workspace. */
 const RECENT = 12;
 const keyOf = (owner: string) => `alcove.workspace.${owner}`;

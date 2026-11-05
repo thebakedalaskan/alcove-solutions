@@ -28,7 +28,7 @@ export function WorkedOn({ worked }: { worked: readonly NoteWorkedOn[] }) {
       <WsWorkedOn documents={documents.map((d) => ({ id: d.id, name: d.name || 'Untitled', sub: workedBy(d.by) }))}
         onOpen={(id) => {
           const d = documents.find((x) => x.id === id);
-          if (d) void navigate({ to: '/workspace/$workspaceId/$documentId', params: { workspaceId: d.workspaceId, documentId: d.id } });
+          if (d) void navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId: d.workspaceId, documentId: d.id } });
         }} />
     </Section>
   );

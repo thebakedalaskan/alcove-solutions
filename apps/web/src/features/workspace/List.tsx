@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import { q, useCreateWorkspace, useRenameWorkspace } from '~/lib/queries';
 import { focusRow } from './actions';
+import { CallPages } from './CallPages';
 import { useWs, type WorkspaceArea } from './context';
 import type { RowDrag } from './drag';
 import { PersonCard } from './People';
@@ -19,6 +20,8 @@ import { foldersFor, nameOf, nudged, rowsOf, trashIn } from './tree';
 export const peopleWords = (n: number | null) => (n === null ? 'Only what’s shared with you' : n === 1 ? 'Just you' : `${n} people`);
 /** A workspace as a row of the menu under the name at the top of the list. */
 export const spaceChoice = (w: WorkspaceSummary): WsSpaceChoice => ({ id: w.id, name: w.name ?? 'Shared with you', sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
+/** The same, saying which is the call's home: where its notes and transcript go, whichever everyone views. */
+export const homeChoice = (c: WsSpaceChoice, home: string | null): WsSpaceChoice => (c.id === home ? { ...c, sub: `This call’s home · ${c.sub}` } : c);
 
 /** A row's menu: which row, in which part of the list, where it opened if someone right-clicked, and whether Move to… has taken its place. */
 interface RowMenu { id: string; area: WorkspaceArea; at?: WsPoint | undefined; moving: boolean }
@@ -60,7 +63,7 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   return {
     open, onOpenChange: (to: boolean) => { if (to) { setOpen(true); void spaces.refetch(); } else close(); },
     content: people ? <PeopleSheet /> : call?.picker ? call.picker({ workspaceId: ws.workspaceId, name: ws.spaceName, people: ws.sent.people, about, close }) : call ? (
-      <WsSpacePicker spaces={[{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }]} current={ws.workspaceId} canChoose={false} organizer={call.chooser} about={about} onPick={close} onNew={close} />
+      <WsSpacePicker spaces={[homeChoice({ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, call.home)]} current={ws.workspaceId} canChoose={false} organizer={call.chooser} about={about} onPick={close} onNew={close} />
     ) : (
       <WsSpacePicker spaces={choices} current={ws.workspaceId} canChoose heading="Workspaces" about={about}
         onPick={(id) => { close(); if (id !== ws.workspaceId) ws.switchTo(id); }} onNew={() => { close(); onNaming('new'); }} />
@@ -87,6 +90,15 @@ export function List({ drags }: { drags: ListDrag }) {
   const call = ws.call;
   const inCall = (call?.documents ?? []).flatMap((id) => { const item = tree.all.get(id); return member && item && item.kind === 'document' && item.trashedAt === null ? [item] : []; });
   const justBrought = useJustBrought(inCall.map((i) => i.id));
+  /* The folder of the call you're in opens the first time it's there, so its pages are in sight; after that it's yours to close. */
+  const here = ws.items.find((i) => i.call?.here && i.trashedAt === null)?.id;
+  const opened = useRef(new Set<string>());
+  const { setOpen } = ws;
+  useEffect(() => {
+    if (here === undefined || opened.current.has(here)) return;
+    opened.current.add(here);
+    setOpen(here, true);
+  }, [here, setOpen]);
 
   const canEdit = (item: WorkspaceItem) => item.role === 'edit';
   const openRow = (item: WorkspaceItem, area: WorkspaceArea) => {
@@ -190,14 +202,16 @@ export function List({ drags }: { drags: ListDrag }) {
         onPointerDown={(e) => arm(e, item.id)} />
     );
   };
-  const rows = rowsOf(tree, ws.open, ws.draft?.parent).map((row): ReactElement => {
+  const rows = rowsOf(tree, ws.open, ws.draft?.parent).flatMap((row): ReactElement[] => {
     if (row.draft) {
-      return (
+      return [(
         <WsRenameRow key="draft" name="" kind="folder" depth={row.depth} onCancel={() => ws.setDraft(null)}
           onCommit={(name) => { const parent = ws.draft?.parent ?? null; ws.setDraft(null); if (name.trim()) actions.newFolder(parent, name.trim()); }} />
-      );
+      )];
     }
-    return rowOf(row.item, 'tree', row.depth, row.open);
+    /* A call's folder holds its pages first, then whatever people put in it. */
+    const pages = row.open && row.item.call ? [<CallPages key={`pages:${row.item.id}`} call={row.item.call} depth={row.depth + 1} />] : [];
+    return [rowOf(row.item, 'tree', row.depth, row.open), ...pages];
   });
   const trash = trashIn(ws.items);
 

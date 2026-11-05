@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { AlcoveApiError, errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -547,30 +547,6 @@ export function usePickTime(code: string) {
 }
 
 /* ---------- workspaces ---------- */
-
-/** What someone's first workspace is called, until they rename it. */
-const firstWorkspaceName = (name: string) => `${firstName(name) || 'My'}’s workspace`;
-
-/**
- * The workspace to open: the one `remembered`, if it's still yours, or your first, or a new one in your name for someone
- * who has none. Two tabs opening at once make one between them.
- */
-export async function workspaceToOpen(qc: QueryClient, remembered: string | null, name: string): Promise<string> {
-  const pick = async () => {
-    const all = await qc.fetchQuery({ ...q.workspaces(), staleTime: 0 });
-    return all.find((w) => w.id === remembered)?.id ?? all.find((w) => w.role !== null)?.id ?? all[0]?.id ?? null;
-  };
-  const have = await pick();
-  if (have) return have;
-  const make = async () => {
-    const again = await pick();
-    if (again) return again;
-    const { id } = await api.workspaces.create(firstWorkspaceName(name));
-    await qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
-    return id;
-  };
-  return 'locks' in navigator ? navigator.locks.request('alcove-first-workspace', make) : make();
-}
 
 export function useCreateWorkspace() {
   const qc = useQueryClient();

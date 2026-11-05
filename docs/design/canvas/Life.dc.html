@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Everything that moves</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah lb" style="{{rootStyle}}">
+<header class="lb-h">
+<div><h1>Everything that moves</h1><p>Each one repeats here so you can see it. On the real pages they come at random, one at a time, every 22 to 60 seconds.</p></div>
+<div class="lb-seg" role="group" aria-label="Theme"><button type="button" class="{{darkCls}}" onClick="{{toDark}}">Dark</button><button type="button" class="{{lightCls}}" onClick="{{toLight}}">Light</button></div>
+</header>
+<div class="lb-grid">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="16">
+<figure class="lb-f">
+<div class="lb-s" style="{{t.style}}"><dc-import name="Scene" a="{{t.a}}" hint-size="100%,100%"></dc-import></div>
+<figcaption><b>{{t.name}}</b><span>{{t.line}}</span><small>{{t.where}}</small></figcaption>
+</figure>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":1270}}'>
+var TILES = [
+  { only: 'clouds', moment: 'home', name: 'Clouds', line: 'Striped like the light on the water, drifting across on the wind.', where: 'Every page, always. Shown 12 times faster.' },
+  { only: 'gulls', moment: 'home', name: 'Gulls', line: 'One, three or five. A few wing beats, then a glide.', where: 'Home, Team and Notes.' },
+  { only: 'balloon', moment: 'home', name: 'A hot air balloon', line: 'In from the edge, up in a curve, and out again. About 40 seconds.', where: 'Home, in the corner. Real speed.' },
+  { only: 'star', moment: 'record', name: 'Stars', line: 'They twinkle after dark, and now and then one shoots.', where: 'Notes and a note in dark mode. Record always.' },
+  { only: 'fish', moment: 'home', name: 'A fish', line: 'Leaps, with a ring on the water at each end.', where: 'Home, Team, Notes and Record.' },
+  { only: 'school', moment: 'home', name: 'A shoal', line: 'Five small fish, one after another.', where: 'Home, Team and Notes.' },
+  { only: 'flyer', moment: 'home', name: 'A flying fish', line: 'A long, low glide over the water.', where: 'Home and Team.' },
+  { only: 'marlin', moment: 'home', name: 'A marlin', line: 'The big one. A high leap.', where: 'Home.' },
+  { only: 'dolphins', moment: 'home', name: 'Dolphins', line: 'Two, one after the other, far out.', where: 'Home and Team.' },
+  { only: 'whale', moment: 'home', name: 'A whale’s tail', line: 'Up out of the water, a moment there, and down again.', where: 'Home and Record.' },
+  { only: 'sail', moment: 'home', pace: 5, name: 'A sailing boat', line: 'Along the horizon, in front of the sun when it gets there.', where: 'Everywhere but a note. Shown 5 times faster.' },
+  { only: 'steamer', moment: 'home', pace: 5, name: 'A small ship', line: 'With a trail of smoke.', where: 'Home and Team. Shown 5 times faster.' },
+  { only: 'trawler', moment: 'home', pace: 5, name: 'A fishing boat', line: 'Out with its gear up.', where: 'Home, Team, Notes and Record. Shown 5 times faster.' },
+  { only: 'tug', moment: 'home', pace: 5, name: 'A tug', line: 'Small and quicker than the rest.', where: 'Home and Team. Shown 5 times faster.' },
+  { only: 'tall', moment: 'home', pace: 5, name: 'A tall ship', line: 'Three masts, the slowest of them.', where: 'Home, Team and Record. Shown 5 times faster.' },
+  { only: 'freighter', moment: 'home', pace: 5, name: 'A freighter', line: 'Long and low, stacked with boxes.', where: 'Home, Notes and Settings. Shown 5 times faster.' }
+];
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, self = this, hs = AH.hash(), st = this.state || {}, mode = st.mode || hs.mode || this.props.mode || 'dark';
+    return {
+      rootStyle: AH.rootStyle('blue-hour', mode, 17),
+      darkCls: mode === 'dark' ? 'is-on' : '', lightCls: mode === 'light' ? 'is-on' : '',
+      toDark: function () { self.setState({ mode: 'dark' }); }, toLight: function () { self.setState({ mode: 'light' }); },
+      tiles: TILES.map(function (t) {
+        return { name: t.name, line: t.line, where: t.where, style: '--hz: 124px', a: AH.assign({ page: true, only: t.only, pace: t.pace }, AH.scene(t.moment, 'blue-hour', mode)) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -70,8 +70,10 @@ export interface SpaceHead { workspaceId: string; name: string; people: number |
 
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
-  /** The first rows under This call: the live pages. */
+  /** The first rows under This call: the live pages, while everyone views a workspace that isn't the call's home, where they're in its folder. */
   top?: ReactNode;
+  /** The call's home, where its notes go and its folder is, if you can open anything in it. */
+  home: string | null;
   /** What's been brought to the call, in order, by its ID in this workspace. */
   documents: readonly string[];
   /** Brings a document to the call, or takes it off. It's in every document's menu. */
