@@ -192,7 +192,9 @@ export function adapt(a: CallPanels, size: Size, f: PanelFacts): Adapted {
   if (!fits() && A.people === 'tiles' && apart) { A.people = 'arches'; A.gave.push('people'); }
   if (!fits() && A.list) { A.list = false; A.gave.push('list'); }
   if (!fits() && !f.zen && a.groups.some((g) => g.open)) { A.float = true; A.gave.push('side'); }
-  if (!fits() && open.length > 1) { A.tabs = true; A.gave.push('tabs'); }
+  // A column over two things side by side would sit on most of one of them, so they need room for it too.
+  const clear = () => need(a.tree, a, f, A, false) + (A.float ? SIDE_W + GAP : 0) <= size.w;
+  if (!clear() && open.length > 1) { A.tabs = true; A.gave.push('tabs'); }
   return A;
 }
 
@@ -326,15 +328,19 @@ export function solve(a: CallPanels, size: Size, f: PanelFacts): Solved {
   if (rects.ws && rects.ws.w < 620 && A.list) { A.list = false; if (!A.gave.includes('list')) A.gave.push('list'); }
   if (A.float) {
     // Side panels with no room in the row share a column over the right of the screen, the panel you last brought up
-    // always among them. The stage makes room for it if it can, so nobody's covered.
+    // always among them. Whatever's under it makes room if it can, so nobody and no words are covered.
     const open = a.groups.filter((g) => g.open);
     const most = Math.max(1, Math.floor((box.h + GAP) / (FLOAT_MIN_H + GAP)));
     const shown = [...open.filter((g) => g.id !== a.front), ...open.filter((g) => g.id === a.front)].slice(-most);
     const people = rects.people && rects.people.x > size.w / 2 ? rects.people.w + GAP : 0;
     const h = (box.h - GAP * (shown.length - 1)) / shown.length;
-    open.filter((g) => shown.includes(g)).forEach((g, i) => { rects[groupLeaf(g.id)] = whole({ x: size.w - people - SIDE_W, y: box.y + i * (h + GAP), w: SIDE_W, h }); });
-    const st = rects.stage;
-    if (st && st.w - SIDE_W - GAP >= STAGE_MIN) rects.stage = { ...st, w: st.w - SIDE_W - GAP };
+    const x = size.w - people - SIDE_W;
+    open.filter((g) => shown.includes(g)).forEach((g, i) => { rects[groupLeaf(g.id)] = whole({ x, y: box.y + i * (h + GAP), w: SIDE_W, h }); });
+    for (const id of ['stage', 'ws', 'board', 'share:1', 'share:2'] as const) {
+      const r = rects[id];
+      const w = r ? x - GAP - r.x : 0;
+      if (r && w < r.w && w >= (id === 'stage' ? STAGE_MIN : CLEAR_MIN)) rects[id] = { ...r, w };
+    }
   }
   return { A, rects, dividers, gave: A.gave, box };
 }
