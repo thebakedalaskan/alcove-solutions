@@ -55,7 +55,7 @@
 - Modify: `apps/web/src/routes/call.$code.tsx`, `apps/web/src/features/call/Stage.tsx`, `stageLayout.ts`, `Panel.tsx`, `ViewMenu.tsx`, `TopBar.tsx`, `view.ts`, `packages/api/src/live.ts` (the prefs schema), `packages/ui/src/styles/call.css`, `packages/ui/src/components/call.tsx`, `docs/engineering/calls-and-recordings.md`
 
 **Interfaces:**
-- Produces `panels.ts`, pure: `PanelTree`, `adapt`, `solve(tree, size, facts) -> { rects, dividers, tiles, gave }`, `moveLeaf`, `tearTab`, `swapLeaves`, `dragDivider`, `preset`, `reset`, people modes `tiles | arches | hidden`. Leaves: `people`, `share:<id>`, `g:<group>` (a tabbed group), and `ws` (a slot C1 fills; empty and never shown until then).
+- Produces `panels.ts`, pure: `adapt`, `solve(tree, size, facts) -> { rects, dividers, tiles, gave }`, `moveLeaf` (a drop in the middle swaps), `tearTab`, `dragDivider`, `preset`, `reset`, people modes `tiles | arches | hidden`. Leaves: `people`, `share:<id>`, `g:<group>` (a tabbed group), and `ws` (a slot C1 fills; empty and never shown until then).
 - Produces `<PanelHost>` taking a render prop per leaf kind.
 
 - [ ] Port `$CANVAS/src/ws-layout.js` to typed, pure `panels.ts`. Keep its numbers: minimums, give-way order, snap at half, double-click to even.

@@ -1017,7 +1017,7 @@ link: the organizer's lobby (`features/calls/Lobby.tsx`) by their account, and a
 pass is what lets a guest in. It's built from `apps/web/src/features/call/`: the panels (`panels.ts`, drawn by
 `PanelHost.tsx`), the stage (`Stage.tsx`, laid out by `stageLayout.ts` from your view in `view.ts`, with who's
 talking settled in `speakers.ts`), each tile's menu (`TileMenu.tsx`), the top bar and its view menu (`ViewMenu.tsx`),
-the side panels (`Panel.tsx`: Notes, Transcript, Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, live
+the side panels (`Panel.tsx`: Notes, Yours, Transcript, Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, live
 notes, the share picker, the leave sheet and the device pickers.
 
 - **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript), its
@@ -1070,7 +1070,9 @@ notes, the share picker, the leave sheet and the device pickers.
   with nothing shared and nothing open it's whole again. `Stage.tsx` is one layer over the whole of the call's area
   either way, with every tile and share at its own key under one parent, so nothing playing remounts when a panel
   moves: `useStagePlan` works out what's big above it, `solve` where that goes, and tiles glide with the panels in
-  420 ms. The organizer's stage stays whole while it shows every breakout room.
+  420 ms. A side panel slides in from the edge it stands against, and nothing is placed until the area has been
+  measured, before the first paint, so a call opens with everything where it belongs. The organizer's stage stays
+  whole while it shows every breakout room.
 - **Arranging them.** Every panel has a handle, and the people a small toolbar (move, fold to arches, hide). Dragging
   one lights where it will land with the sunrise glow: any edge of a panel, an edge of the window, or a panel's middle
   to swap the two (a share moved off the stage drops beside what's left of it; two panels of tabs merge). A side
@@ -1078,20 +1080,27 @@ notes, the share picker, the leave sheet and the device pickers.
   the middle of a panel of tabs puts it back. Closing such a panel keeps its place, and its tab opens it there again.
   The line between two panels follows the pointer exactly, snaps at half, and a double-click evens it; beside the
   people it folds them to arches, then away, and a double-click puts them back to the width they start at. The lines
-  on the stage itself behave the same. A drag is shown as it happens and remembered when it's let go.
+  on the stage itself behave the same. A drag is shown as it happens and remembered when it's let go, wherever that
+  is: a press is followed on the window, not on the line it started on, which can go. A share ending ends a drag of its
+  line or its handle, and something let go about where it was picked up stays put. What's typed in Chat and Ask is kept
+  above the panels, so a tab moved to another panel has its words.
 - **When room runs out** panels give way in one fixed order (`adapt`): tiles fold to arches, the workspace's list tucks
   away, side panels float in one column over the right of the screen (the stage makes room for the column when it
   can), then the workspace, the board and the shares take turns, with a switcher in the top bar. Anything dragged
   wider gives that back before any of this. Under 600 px it's a phone: one thing at a time, nothing to drag, and the
   panel in front has every tab. A panel can't run off the screen: `solve` shares out whatever room there is, and
-  floors never beat a line, so a line keeps up with the pointer down to its minimum.
+  floors never beat a line, so a line keeps up with the pointer down to its minimum. A floating panel with no room in
+  the column (`crowdedOut`) stays mounted and counts as closed: its button in the dock is off, its messages are
+  unread, and one press brings it up in another's place.
 - **People, as a panel.** Tiles sized to the panel; arches in a column or a strip, their name, mic and menu moved to a
   click on the arch; or, hidden (**⇧P**, the toolbar, or View), small arches on the horizon beside the dock, in space
-  nothing else uses. Whoever's talking or has a hand up rises 9 px, with a line beside them saying so. As many as fit
-  are shown, then a count that opens People, and someone talking or with a hand up always has a place. Those there's
-  no room for stay mounted, out of sight. A panel of people has no stage to have a corner of, so your own picture is
-  one of them; hidden, its chip waits under the tiles. Nothing here changes while nothing else is on the stage: hiding
-  people then says it applies once something is shared.
+  nothing else uses. Whoever has a hand up, or has been talking a moment (`speakers.ts`, as Speaker view counts it, so
+  a quick "yes" moves nothing), rises 9 px, with a line beside them saying so. As many as fit are shown, then a count
+  that opens People, and the speaker and anyone with a hand up always have a place, unless the dock leaves room for
+  nobody: nothing ever stands on it. Those there's no room for stay mounted, out of sight. Someone rung waits in a tile
+  among the tiles; among arches or on the horizon they're in People. A panel of people has no stage to have a corner
+  of, so your own picture is one of them; hidden, its chip waits under the tiles. Nothing here changes while nothing
+  else is on the stage: hiding people then says it applies once something is shared.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: where the
   panels sit; Auto, Speaker or Grid; up to six pins, which share the main stage (in Grid they come first and bigger);
   the order you put people in; who you made bigger; how much room shared screens get beside the people; and where you
@@ -1134,7 +1143,8 @@ notes, the share picker, the leave sheet and the device pickers.
   corner picture to another corner), and + and − make it bigger or smaller; L on a share shown big starts pointing at it
   ([Pointing at shared screens](#pointing-at-shared-screens)); Escape stops pointing, then unpins everyone. Every line
   between panels, the one beside a shared screen and the one between two is a separator moved with the arrow keys
-  (24 px), Home and End, and evened with Enter. Enter or Space on a panel's handle picks it up (G on a share shown big,
+  (24 px), Home and End, and evened with Enter; when one folds the people away it goes with them, so focus moves to the
+  handle of what stood beside it and that's said aloud. Enter or Space on a panel's handle picks it up (G on a share shown big,
   Shift and Enter on a tab): the arrow keys walk the same drops the glow shows, each said aloud, Enter puts it there and
   Escape leaves it where it was. ⇧P hides the people or brings them back. On someone
   else's share you see big, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your

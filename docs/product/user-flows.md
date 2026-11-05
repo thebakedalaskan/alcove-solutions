@@ -305,7 +305,8 @@ put them, and one dock at the bottom.
   Drag a tab out of a side panel to keep it open beside the others; drop it back on a panel to merge them. Hover the
   people to move them, fold them to arches, or hide them (**⇧P**): hidden, they stand small on the horizon beside the
   dock, and whoever's talking or has a hand up rises, with a line saying so. As the window narrows, tiles fold to arches,
-  side panels float, and what's big takes turns, with a switcher in the top bar. All of it works from the keyboard,
+  side panels float, and what's big takes turns, with a switcher in the top bar. A panel there's no room for waits out
+  of sight: its button in the dock shows it closed, with anything new on it, and one press brings it up. All of it works from the keyboard,
   and Alcove remembers how you like calls in this browser, so tomorrow's starts the way you left it.
 - **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
   screen. A tile's **⋯** menu says what each choice changes and the key for it: **Pin for me** (up to six people,
