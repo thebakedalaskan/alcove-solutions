@@ -1,16 +1,21 @@
 /*
  * Workspaces and the documents in them, kept in the world. A document is a real Y.Doc, started from the same bytes the API
- * starts every document with, so the editor opens it as it opens any other; what's typed stays in this story. Nobody else
- * is ever in it.
+ * starts every document with and written with the editor's own blocks (the world's `pages`), so the editor opens it as it
+ * opens any other; what's typed stays in this story. Nobody else is ever in it. A page can say Alcove refused some of what
+ * this browser wrote: its session opens couldn't-save, with those words on the page, until they're copied, saved as a new
+ * document or discarded.
  */
 import {
   AlcoveApiError, DOC_SEED, randomClient, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
-  type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson,
-  type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive,
+  type WorkspacePerson, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { setTitle } from '~/features/workspace/editor/title';
+import type { BlockJSON } from '~/features/workspace/editor/types';
+import { appendBlocks, contentOf } from '~/features/workspace/editor/ydoc';
 import { personAt } from '../world/people';
 import { Pushed } from './live';
 import { current, me, nextId } from './state';
@@ -62,33 +67,45 @@ export function duplicateItem(id: string, itemId: string): { id: string } {
   return createItem(id, { kind: it.kind, name: it.name ? `${it.name} copy` : '', parent: it.parent, after: it.id });
 }
 
-/** Everyone in a workspace: you, its admin, and the people on your team who use Alcove. */
+/** Everyone in a workspace: you, as the workspace has you, and the people on your team who use Alcove, one of them its admin if you aren't. */
 export function peopleIn(id: string): WorkspacePerson[] {
-  treeOf(id);
+  const mine: WorkspaceRole = treeOf(id).role ?? 'read';
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const team = (current().team?.members ?? []).filter((m) => m.onAlcove).map((m, i): WorkspacePerson => ({ id: `wp-${i}`, person: m.person, role: 'edit', since, isMe: false }));
-  return [{ id: 'wp-me', person: me(), role: 'admin', since, isMe: true }, ...team];
+  const team = (current().team?.members ?? []).filter((m) => m.onAlcove)
+    .map((m, i): WorkspacePerson => ({ id: `wp-${i}`, person: m.person, role: mine !== 'admin' && i === 0 ? 'admin' : 'edit', since, isMe: false }));
+  return [{ id: 'wp-me', person: me(), role: mine, since, isMe: true }, ...team];
 }
 export function addPerson(id: string, email: string, _role: WorkspaceRole): { id: string } {
   treeOf(id);
   return { id: `wp-${personAt(email).email}` };
 }
 
-const shares = new Map<string, DocumentShare['entries']>();
 export function shareOf(id: string, documentId: string): DocumentShare {
   const tree = treeOf(id);
   const doc = tree.items.find((i) => i.id === documentId);
-  return { workspace: { name: tree.name ?? '', people: tree.people ?? 0 }, restricted: doc?.restricted ?? false, entries: shares.get(documentId) ?? [] };
+  return { workspace: { name: tree.name ?? '', people: tree.people ?? 0 }, restricted: doc?.restricted ?? false, entries: current().shares[documentId] ?? [] };
 }
+/** Shares a document with each of `to`, as `role`: someone it's shared with already keeps their entry, with the new role. */
 export function shareWith(documentId: string, to: ShareTarget[], role: DocumentRole): void {
+  const w = current();
   const since = new Date().toISOString();
-  const added = to.map((t) => ('email' in t
-    ? { id: nextId('share'), kind: 'email' as const, person: personAt(t.email), role, since }
-    : { id: nextId('share'), kind: 'seat' as const, person: { id: t.seat, name: 'Someone in the call', email: '' }, role, since }));
-  shares.set(documentId, [...(shares.get(documentId) ?? []), ...added]);
+  let entries = w.shares[documentId] ?? [];
+  for (const t of to) {
+    if ('email' in t) {
+      const person = personAt(t.email);
+      const had = entries.some((e) => e.kind === 'email' && e.person.email === person.email);
+      entries = had
+        ? entries.map((e) => (e.kind === 'email' && e.person.email === person.email ? { ...e, role } : e))
+        : [...entries, { id: nextId('share'), kind: 'email', person, role, since } satisfies ShareEntry];
+    } else {
+      entries = [...entries, { id: nextId('share'), kind: 'seat', person: { id: t.seat, name: 'Someone in the call', email: '' }, role, since } satisfies ShareEntry];
+    }
+  }
+  w.shares[documentId] = entries;
 }
 export function unshare(documentId: string, entryId: string): void {
-  shares.set(documentId, (shares.get(documentId) ?? []).filter((e) => e.id !== entryId));
+  const w = current();
+  w.shares[documentId] = (w.shares[documentId] ?? []).filter((e) => e.id !== entryId);
 }
 export const restrict = (id: string, documentId: string, restricted: boolean) => edit(id, (items) => items.map((i) => (i.id === documentId ? { ...i, restricted } : i)));
 
@@ -113,36 +130,73 @@ function ownDoc(): Y.Doc {
   doc.clientID = randomClient();
   return doc;
 }
+const lineOf = (text: string): BlockJSON => ({ type: 'line', content: [{ type: 'text', text }] });
+/**
+ * A document as the world has it: its title, what its page says, and whatever of it Alcove refused, which only this browser
+ * has. The empty first line every document starts with is written over, as typing into it would be.
+ */
+function documentOf(item: WorkspaceItem): Y.Doc {
+  const doc = ownDoc();
+  Y.applyUpdate(doc, DOC_SEED);
+  if (item.kind !== 'document') return doc;
+  setTitle(doc, item.name);
+  const page = current().pages[item.id];
+  const blocks = [...(page?.blocks ?? []), ...(page?.refused?.words ?? []).map(lineOf)];
+  if (blocks.length > 0) {
+    appendBlocks(doc, blocks);
+    contentOf(doc).delete(1, 1);
+  }
+  return doc;
+}
 class Document extends Pushed<DocStatus> implements DocSession {
   readonly doc: Y.Doc;
   readonly awareness: Awareness;
   readonly ready: Promise<void>;
-  constructor(documentId: string, role: DocumentRole) {
-    super({ status: 'saved', refused: null, role, trashed: false, closed: null, unsent: false });
-    const known = docs.get(documentId);
-    this.doc = known ?? ownDoc();
-    if (!known) { Y.applyUpdate(this.doc, DOC_SEED); docs.set(documentId, this.doc); }
+  private readonly id: string;
+  constructor(item: WorkspaceItem) {
+    const refused = current().pages[item.id]?.refused ?? null;
+    super({ status: refused ? 'failed' : 'saved', refused: refused?.why ?? null, role: item.role, trashed: item.trashedAt !== null, closed: null, unsent: refused !== null });
+    this.id = item.id;
+    const known = docs.get(item.id);
+    this.doc = known ?? documentOf(item);
+    if (!known) docs.set(item.id, this.doc);
     this.awareness = new Awareness(this.doc);
     this.ready = Promise.resolve();
   }
-  /** Nothing here waits on Alcove, so nobody has words of their own that it hasn't taken. */
-  unsentCopy(): DocUnsentCopy { return { text: '', token: { vector: Y.encodeStateVector(this.doc), keys: [] } }; }
+  /** What Alcove refused of this document, which is all this browser wrote here that it hasn't taken. */
+  unsentCopy(): DocUnsentCopy {
+    const words = current().pages[this.id]?.refused?.words ?? [];
+    return { text: words.join('\n'), token: { vector: Y.encodeStateVector(this.doc), keys: [] } };
+  }
   size(): DocSize { return { bytes: Y.encodeStateAsUpdate(this.doc).length, items: itemsOnPage(this.doc) }; }
-  /** There's never anything unsent here to let go of. */
-  discardUnsaved(): Promise<void> { this.close(); return Promise.resolve(); }
+  /** Lets go of what Alcove refused: the document opens again as Alcove has it. */
+  discardUnsaved(): Promise<void> {
+    const w = current();
+    const page = w.pages[this.id];
+    if (page?.refused) {
+      w.pages[this.id] = { blocks: page.blocks };
+      docs.delete(this.id);
+    }
+    this.close();
+    return Promise.resolve();
+  }
   override close(): void { this.awareness.destroy(); super.close(); }
 }
 export function openDocument(id: string, documentId: string): DocSession {
   const item = treeOf(id).items.find((i) => i.id === documentId);
   if (!item || item.kind === 'folder') throw notFound();
-  return new Document(documentId, item.role);
+  return new Document(item);
 }
-/** A new document or board of a state, made as the API makes one: a document starts from the seed, then takes the state. */
+/**
+ * A new document or board of a state, made as the API makes one: a document starts from the seed, takes the state, and is
+ * titled with the name it's given.
+ */
 export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): { id: string } {
   const made = createItem(id, input);
   const doc = ownDoc();
   if (input.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
   Y.applyUpdate(doc, input.state);
+  if (input.kind === 'document' && input.name) setTitle(doc, input.name);
   docs.set(made.id, doc);
   return made;
 }
@@ -150,7 +204,6 @@ export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): 
 export function forgetDocuments(): void {
   for (const d of docs.values()) d.destroy();
   docs.clear();
-  shares.clear();
   watching.clear();
 }
 

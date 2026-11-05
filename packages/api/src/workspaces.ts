@@ -5,7 +5,7 @@
  */
 import { z } from './zod';
 import type { LiveStore } from './live';
-import { IDSchema, ISODateSchema, PersonSchema, PortraitStyleSchema } from './types';
+import { DeviceSealedSchema, IDSchema, ISODateSchema, PersonSchema, PortraitStyleSchema } from './types';
 
 /** IDs that come from a browser: 22 characters of base64url. Anything else names nothing. */
 export const ItemIdSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
@@ -101,6 +101,24 @@ export const ShareBodySchema = z.object({ to: z.array(ShareTargetSchema).min(1).
 export const RestrictBodySchema = z.object({ restricted: z.boolean() });
 /** What a new workspace, item or person comes back as. Only an ID: an answer kept for a retry holds nothing readable. */
 export const CreatedSchema = z.object({ id: IDSchema });
+
+/* ---------- in this browser ---------- */
+
+/**
+ * Where someone was, remembered in this browser, per account, by ID only: the workspace they last had open, the document
+ * they last had open in each, which folders they left open, and whether they tucked the list away.
+ */
+export const WorkspacePlacesSchema = z.object({
+  workspace: z.string().nullable(),
+  documents: z.record(z.string(), z.string()),
+  folders: z.record(z.string(), z.array(z.string())),
+  listOff: z.boolean()
+});
+export type WorkspacePlaces = z.infer<typeof WorkspacePlacesSchema>;
+
+/** An edit kept in this browser until Alcove has it: where it belongs, when it was made, and the update sealed under the device key. */
+export const KeptEditSchema = z.object({ owner: z.string(), workspace: z.string(), document: z.string(), key: z.number(), at: z.number(), sealed: DeviceSealedSchema });
+export type KeptEdit = z.infer<typeof KeptEditSchema>;
 
 /* ---------- live ---------- */
 

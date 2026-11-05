@@ -34,12 +34,17 @@ export const wsToast = {
   addedTo: (document: string, onGo: () => void) => say('check', `Added to ${document}`, { label: 'Go there', onClick: onGo }),
   restoredVersion: (when: string, onUndo: () => void) => say('history', `Restored the version from ${when}`, { label: 'Undo', onClick: onUndo }),
   restored: () => say('history', 'Restored. Everyone sees it again.'),
+  deleted: (name: string) => say('trash', `${name} deleted for good`),
+  failed: (text: string) => say('alert', text),
   stoppedPresenting: () => say('presentation', 'You stopped presenting. Everyone’s back where they were.'),
   switched: (name: string, onBack: () => void) => say('swap', `This call now uses ${name}. Nobody was disconnected.`, { label: 'Back', onClick: onBack }),
   newSpace: (name: string) => say('folders', `New workspace, ${name}. This call uses it now.`),
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),
   notesOn: () => say('check', 'Notes are on for everyone'),
   backOnline: () => say('check', 'Back online. Your edits are saved.'),
+  copiedText: () => say('copy', 'Copied. Paste it wherever you like.'),
+  savedAsNew: (onOpen: () => void) => say('filePlus', 'Saved as a new document', { label: 'Open', onClick: onOpen }),
+  discarded: () => say('trash', 'Discarded. This document is as Alcove has it.'),
   sharing: (person: AvatarPerson, first: string, onShow: () => void): WsToastData => ({ person, text: `${first} started sharing`, action: { label: 'Show it', onClick: onShow }, ms: 12000 })
 };
 

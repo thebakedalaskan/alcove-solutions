@@ -1,9 +1,12 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { AlcoveApiError, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
+import { AlcoveApiError, errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
+import { forgetEdits } from '~/features/workspace/keep';
+import { forgetPlaces } from '~/features/workspace/places';
+import { announceSignIn, announceSignOut } from './signedOut';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
@@ -34,7 +37,9 @@ export const qk = {
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
-  trust: ['trust'] as const
+  trust: ['trust'] as const,
+  workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -116,7 +121,11 @@ export const q = {
     queryKey: qk.busy(emails, range.from, range.to), queryFn: () => api.calendar.busy([...emails], range), staleTime: 60_000, retry: false
   }),
   /** What you can bring to a call. */
-  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false })
+  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
+  /** Who's in a workspace, for anyone in it. */
+  workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
+  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
 };
 
 /**
@@ -140,23 +149,27 @@ export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
-    onSuccess: (r) => { qc.clear(); qc.setQueryData(qk.session, r.session); }
+    onSuccess: (r) => { if (r.session) announceSignIn(r.session.ownerId); qc.clear(); qc.setQueryData(qk.session, r.session); }
   });
 }
 /**
  * Signed out (or the account deleted) on this device: whatever it kept for the account goes too, the recordings
  * waiting to upload among it (features/record/offline.ts; anyone else's stay), and its notifications, those showing too.
  */
-async function forgetHere(qc: QueryClient) {
+async function forgetHere(qc: QueryClient, deleted: boolean) {
   await forgetNotified();
   const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
   if (!owner) return;
+  // Every tab hears it first, so none keeps anything more for the account while what's kept is deleted.
+  announceSignOut(owner, deleted);
+  forgetPlaces(owner);
   try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
+  try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
 }
 export function useSignOut() {
   const qc = useQueryClient();
   // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
-  return useMutation({ networkMode: 'always', mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); } });
+  return useMutation({ networkMode: 'always', mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc, false); qc.clear(); qc.setQueryData(qk.session, null); } });
 }
 /**
  * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
@@ -174,7 +187,7 @@ export function useDeleteAccount(onDeleted: () => void) {
       if (!here || now?.ownerId !== here) throw new AlcoveApiError('forbidden', 'Who’s signed in here changed in another tab, so nothing was deleted. Reload this page.');
       await api.account.delete();
     },
-    onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+    onSuccess: async () => { await forgetHere(qc, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
   });
 }
 /*
@@ -509,4 +522,89 @@ export function usePickTime(code: string) {
     mutationFn: (at: string) => api.calls.pick(code, at),
     onError: (e) => (errorCode(e) === 'conflict' ? qc.invalidateQueries({ queryKey: qk.card(code) }) : undefined)
   });
+}
+
+/* ---------- workspaces ---------- */
+
+/** What someone's first workspace is called, until they rename it. */
+const firstWorkspaceName = (name: string) => `${firstName(name) || 'My'}’s workspace`;
+
+/**
+ * The workspace to open: the one `remembered`, if it's still yours, or your first, or a new one in your name for someone
+ * who has none. Two tabs opening at once make one between them.
+ */
+export async function workspaceToOpen(qc: QueryClient, remembered: string | null, name: string): Promise<string> {
+  const pick = async () => {
+    const all = await qc.fetchQuery({ ...q.workspaces(), staleTime: 0 });
+    return all.find((w) => w.id === remembered)?.id ?? all.find((w) => w.role !== null)?.id ?? all[0]?.id ?? null;
+  };
+  const have = await pick();
+  if (have) return have;
+  const make = async () => {
+    const again = await pick();
+    if (again) return again;
+    const { id } = await api.workspaces.create(firstWorkspaceName(name));
+    await qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+    return id;
+  };
+  return 'locks' in navigator ? navigator.locks.request('alcove-first-workspace', make) : make();
+}
+
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (name: string) => api.workspaces.create(name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+export function useRenameWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+/**
+ * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
+ * to a call is read again after each, as it lists these documents. `pass`: a guest's.
+ */
+export function useItemChanges(workspaceId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  const w = api.workspaces;
+  const as = pass ? { pass } : undefined;
+  const library = () => qc.invalidateQueries({ queryKey: qk.documents });
+  return {
+    create: useMutation({ mutationFn: (input: ItemInput) => w.items.create(workspaceId, input), onSuccess: library }),
+    // One at a time, so what's typed last is what's kept.
+    rename: useMutation({ scope: { id: `workspace-rename:${workspaceId}` }, mutationFn: (v: { id: string; name: string }) => w.items.rename(workspaceId, v.id, v.name, as), onSuccess: library }),
+    move: useMutation({ mutationFn: (v: { id: string; to: ItemPlace }) => w.items.move(workspaceId, v.id, v.to), onSuccess: library }),
+    duplicate: useMutation({ mutationFn: (id: string) => w.items.duplicate(workspaceId, id), onSuccess: library }),
+    trash: useMutation({ mutationFn: (id: string) => w.items.trash(workspaceId, id), onSuccess: library }),
+    restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as), onSuccess: library }),
+    deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
+  };
+}
+/** Makes a new document of words that didn't reach the one they were written in (`DocSession.unsentCopy`). */
+export function useSaveCopy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => api.workspaces.saveCopy(v.workspaceId, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
+  });
+}
+/** Who has a document: adding someone, taking them off, and closing it to the workspace. */
+export function useDocumentShare(workspaceId: string, documentId: string) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.documentShare(workspaceId, documentId) });
+  const s = api.workspaces.share;
+  return {
+    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role), onSuccess: reread }),
+    remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry), onSuccess: reread }),
+    restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted), onSuccess: reread })
+  };
+}
+/** Who's in a workspace: adding someone, changing what they can do, and taking them out, or yourself. */
+export function useWorkspacePeople(workspaceId: string) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.workspacePeople(workspaceId) });
+  const w = api.workspaces;
+  return {
+    add: useMutation({ mutationFn: (v: { email: string; role: WorkspaceRole }) => w.addPerson(workspaceId, v.email, v.role), onSuccess: reread }),
+    setRole: useMutation({ mutationFn: (v: { id: string; role: WorkspaceRole }) => w.setRole(workspaceId, v.id, v.role), onSuccess: reread }),
+    remove: useMutation({ mutationFn: (id: string) => w.removePerson(workspaceId, id), onSuccess: reread })
+  };
 }

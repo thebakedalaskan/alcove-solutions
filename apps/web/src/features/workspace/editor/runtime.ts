@@ -98,6 +98,8 @@ export class EditorRuntime {
   readonly hover = new Store<string | null>(null);
   /** Open threads, by ID, kept current from the `comments` map. */
   readonly threads = new Store<ReadonlyMap<string, ThreadView>>(new Map());
+  /** Nothing's written under the title. */
+  readonly blank = new Store(false);
   /** Counts every redraw of the page, so what's measured against it can measure again. */
   readonly layout = new Store(0);
   /** Counts changes to what `documentName` might say, so tags in the text can say it again. */
