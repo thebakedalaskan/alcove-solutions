@@ -1394,7 +1394,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
   if (b.added.length && room) {
     // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
-    const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit, hub: o.hub };
+    const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit, hub: o.hub, docs: o.docs };
     const ownerId = o.ownerId;
     setTimeout(() => { arrivals(d, ownerId, callId, room, Date.now()).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId, err })); }, ARRIVAL_MS + 1_000).unref();
   }

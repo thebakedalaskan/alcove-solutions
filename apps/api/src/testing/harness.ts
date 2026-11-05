@@ -13,6 +13,7 @@ import { createApp } from '../app';
 import type { Deps } from '../context';
 import { loadConfig, type Config } from '../config';
 import { createPool } from '../db';
+import { createDocPool } from '../live/docPool';
 import { createHub } from '../live/hub';
 import { createLiveKit } from '../livekit';
 import { configureLogging } from '../log';
@@ -76,6 +77,8 @@ export interface Harness {
   close(): Promise<void>;
 }
 
+const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB });
+
 async function listen(deps: Deps, stopping?: AbortSignal | undefined): Promise<{ server: ServerType; baseUrl: string }> {
   const app = createApp(deps, stopping);
   const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s)); });
@@ -122,7 +125,7 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const objects = await createObjectStore(cfg);
-  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX }) };
+  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS }), docs: docPoolFor(cfg) };
   const { server, baseUrl } = await listen(deps);
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
@@ -139,19 +142,22 @@ export async function startHarness(): Promise<Harness> {
       const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, callNotesMs: o.callNotesMs ?? 250, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.ringSilenceMs ? { ringSilenceMs: o.ringSilenceMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
       const join: AlcoveApi['calls']['join'] = async (code, opts) => { const s = await api.calls.join(code, opts); calls.push(s); return s; };
       const live: AlcoveApi['workspaces']['live'] = (id, opts) => { const s = api.workspaces.live(id, opts); streams.push(s); return s; };
-      const document: AlcoveApi['workspaces']['document'] = (id, documentId, opts) => { const s = api.workspaces.document(id, documentId, opts); streams.push(s); return s; };
+      const document: AlcoveApi['workspaces']['document'] = async (id, documentId, opts) => { const s = await api.workspaces.document(id, documentId, opts); streams.push(s); return s; };
       return { api: { ...api, calls: { ...api.calls, join }, workspaces: { ...api.workspaces, live, document } }, fetch: f };
     },
     closeCalls,
     async secondServer(more = {}, stopping = undefined, own = undefined, hubUrl = undefined) {
       const settings = { ...deps.cfg, ...more };
-      const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX });
-      const second = await listen({ ...deps, hub, cfg: settings, ...(own ? { pool: own } : {}) }, stopping);
-      return { baseUrl: second.baseUrl, close: async () => { await hub.close(); await stop(second.server); } };
+      const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX, maxPerAddress: settings.LIVE_STREAMS_PER_ADDRESS });
+      // Workers take a moment to start, so instances share them, unless a test wants them to behave differently.
+      const docs = more.DOC_WORK_MS || more.DOC_HEAP_MB || more.DOC_WORKERS ? docPoolFor(settings) : deps.docs;
+      const second = await listen({ ...deps, hub, docs, cfg: settings, ...(own ? { pool: own } : {}) }, stopping);
+      return { baseUrl: second.baseUrl, close: async () => { await hub.close(); await stop(second.server); if (docs !== deps.docs) await docs.close(); } };
     },
     async close() {
       closeCalls();
       await deps.hub.close();
+      await deps.docs.close();
       await stop(server);
       await google.close();
       await near.close();

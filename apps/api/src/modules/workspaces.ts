@@ -20,7 +20,7 @@ import { LiveStream, type Line, type Step } from '../live/stream';
 import { log } from '../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../owners';
 import {
-  TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, requireDocument, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
+  TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
   workspaceFor, workspaceKey, type Credentials, type Maker, type Reader, type Standing, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './workspaceAccess';
 import { profile } from './account';
@@ -821,8 +821,8 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
  * is refused here, before a line is written, as they would be for anything else. Runs until the reader loses it, the
  * browser goes, this instance shuts down, or it's time to let go.
  */
-export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string): Promise<(out: StreamingApi) => Promise<void>> {
-  const release = d.hub.admit('workspace', limitKey(reader));
+export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
+  const release = d.hub.admit('workspace', limitKey(reader), address);
   try {
     const known = await workspaceFor(d, reader, workspaceId);
     const room = roomFor(d, workspaceId);
@@ -845,7 +845,6 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
 
 /** Says where a browser is, for everyone who may know. Nobody can be placed in something they can't open. */
 export async function present(d: Deps, reader: Reader, workspaceId: string, body: PresenceBody): Promise<void> {
-  const w = await workspaceFor(d, reader, workspaceId);
-  if (!('gone' in body) && body.document !== null) requireDocument(reader, w, body.document, 'read');
+  const w = await placeableIn(d, reader, workspaceId, 'gone' in body ? null : body.document);
   await announce(w, reader, personIn(w.owner, reader), body.connection, 'gone' in body ? 'gone' : { document: body.document, block: body.block, typing: body.typing });
 }
