@@ -1,14 +1,14 @@
 /*
- * In the call (user-flows 6): who's here, from you alone to the whole company, whoever's speaking in the speak ring,
- * raised hands, your own camera, and someone asking to join. Everyone's camera is off, so people show in their arches;
+ * In the call (user-flows 6): who's here, from you alone to the whole company, people coming and going, whoever's
+ * speaking in the speak ring, raised hands, your own camera, and someone asking to join. Everyone's camera is off, so people show in their arches;
  * yours is the browser's made-up camera when you turn it on.
  */
 import type { Meta } from '@storybook/react-vite';
-import { at, joins, knocks, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
+import { at, chats, joins, knocks, leaves, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
 import { inCall, phone } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';
-import { AIKO, ALL_HANDS, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
+import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
 
 const meta = { title: 'Calls/In the call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -28,6 +28,27 @@ export const TwoOfYou = inCall({
   script: { cues: at(1.5, joins(PRIYA)), talk: { from: 4, lines: REVIEW_TALK.filter((l) => l.who === PRIYA || l.who === 'me') }, summary: REVIEW_SUMMARY }
 });
 export const TwoOfYouPhone = phone(TwoOfYou);
+
+/**
+ * People come and go at Priya's check-in: Aiko comes in, Kofi says he has to drop off and leaves, Maya comes in muted,
+ * unmutes to ask what she missed, and Aiko posts in chat (its button in the dock says there's something new).
+ */
+export const ComingAndGoing = inCall({
+  scenario: 'busy', call: CHECK_IN,
+  script: {
+    here: [{ who: KOFI }],
+    cues: [
+      ...at(2, joins(AIKO)),
+      ...at(4, says(KOFI, 'I have to drop off for the next one. The copy comes on Friday.', { hands: { text: 'Send the empty states copy', due: 'Friday' } })),
+      ...at(8.5, leaves(KOFI)),
+      ...at(11, joins(MAYA, { mic: false })),
+      ...at(14, unmutes(MAYA)),
+      ...at(14.4, says(MAYA, 'Sorry I’m late. Did I miss the help article?')),
+      ...at(19, chats(AIKO, 'The release notes are in the launch folder, for anyone who wants them.'))
+    ]
+  }
+});
+export const ComingAndGoingPhone = phone(ComingAndGoing);
 
 /** The design review, everyone there and talking it through while notes are on. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
