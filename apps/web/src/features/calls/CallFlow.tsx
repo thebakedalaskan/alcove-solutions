@@ -62,7 +62,9 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
   useQuery(q.people(''));
   const toast = useToast();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
-  const [view, setView] = useState<View>(later ? 'who' : 'choice');
+  /* Whoever's already picked needs no Who: scheduling goes straight to finding a time with them, and Back still reaches it. */
+  const scheduleFrom: View = people.length ? 'when' : 'who';
+  const [view, setView] = useState<View>(later ? scheduleFrom : 'choice');
   const [back, setBack] = useState(false);
   const [wide, setWide] = useState(false);
   const [from, setFrom] = useState<View | null>(null);
@@ -100,7 +102,7 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
     <Modal ref={setBox} open={open} onOpenChange={(o) => { if (!o) onClose(); }} label={label} className={cn('cf-modal', widened && 'is-wide')}>
       <FlowView>
         {view === 'choice'
-          ? <Choice people={guestsOf(draft.tokens, me)} name={name} team={!!team} onClose={onClose} onLater={() => go('who')} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
+          ? <Choice people={guestsOf(draft.tokens, me)} name={name} team={!!team} onClose={onClose} onLater={() => go(scheduleFrom)} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
           : <FlowSteps steps={STEPS} at={STEP_OF[view]} busy={schedule.isPending} onBack={previous} onClose={onClose} />}
         {view !== 'choice' && <p className="sr-only" role="status">{`Step ${STEP_OF[view] + 1} of ${STEPS.length}: ${STEPS[STEP_OF[view]] ?? ''}`}</p>}
         {view === 'who' && (

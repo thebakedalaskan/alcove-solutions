@@ -227,23 +227,13 @@ a.ac-note-tile:active { transform: none; }
 .ac-note-tile .who { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
 .ac-note-tile .end { flex: 0 1 auto; max-width: 62%; }
 
-/* ---- PersonCard: actions line up at the bottom of every card in a row ---- */
-.ac-person-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 22px 12px 14px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); text-align: center; }
-.ac-person-card > .tag { position: absolute; top: 12px; right: 12px; }
-.ac-person-card > b { max-width: 100%; margin-top: 12px; font: 600 14.5px/1.25 var(--font-sans); color: var(--ink); }
-.ac-person-card > small { max-width: 100%; font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
-.ac-person-card > .last { max-width: 100%; margin-top: 8px; font: 500 11.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-wrap: balance; }
-.ac-person-card > .acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: auto; padding-top: 10px; }
-.ac-person-card > .acts .ac-icon-btn { width: 34px; height: 34px; background: var(--sunk); }
-.ac-person-card > .acts .ac-icon-btn:hover { background: var(--line); color: var(--ink); }
-
 
 /* ---- SettingsCard, SettingRow: a control that can't sit beside its words wraps under them ---- */
 .ac-set-card { padding: 24px 28px 10px; scroll-margin-top: 24px; }
 .ac-set-card > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
 .ac-set-card > .lead { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
 .ac-set-card > h3 + .ac-set-row, .ac-set-card > .lead + .ac-set-row { margin-top: 12px; }
-/* MinutesCard: the minutes of notes left. The time sizes to the card, from Team's narrow column to Settings' wide one. */
+/* MinutesCard: the minutes of notes left. The time sizes to the card. */
 .ac-minutes { container-type: inline-size; scroll-margin-top: 24px; }
 .ac-minutes > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
 .ac-minutes .big { margin-top: 14px; font: 450 clamp(34px, 11cqi, 48px)/1.05 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 48; }
@@ -349,6 +339,7 @@ a.ac-note-tile:active { transform: none; }
 /* ---- Popover, menu items, tooltip ---- */
 .ac-pop { z-index: 70; min-width: 220px; padding: 6px; border-radius: var(--radius-lg); background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); transform-origin: var(--radix-popover-content-transform-origin); animation: ac-pop-in 180ms var(--ease-out) both; outline: none; }
 .ac-pop[data-state="closed"] { animation: ac-pop-out 120ms var(--ease-in) forwards; }
+.ac-pop-caret { display: block; margin-top: -1px; fill: var(--surface-raised); filter: drop-shadow(0 1px 0 var(--line)); }
 .ac-pop-item { width: 100%; display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 10px 12px; border-radius: 12px; text-align: left; transition: background-color var(--duration-1); }
 .ac-pop-item:hover, .ac-pop-item.sel { background: var(--sunk); }
 .ac-pop-item[disabled] { opacity: .5; pointer-events: none; }
