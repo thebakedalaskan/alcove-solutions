@@ -7,7 +7,7 @@ import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type Al
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'node:crypto';
-import { addObject, newId, tableCell } from '@alcove/board';
+import { addObject, boardText, newId, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config';
 import { cookieName } from './sessions';
@@ -3158,8 +3158,12 @@ describe('privacy at rest', () => {
     const col = newId();
     addObject(onBoard.doc, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: '', hint: '', sub: '', title: 'CANARY-WSFRAME roadmap' }, null);
     addObject(onBoard.doc, { k: 'note', x: 40, y: 80, w: 150, h: 150, c: 'butter', size: 'm', t: 'CANARY-WSSTICKY sign by Friday' }, null);
-    const grid = addObject(onBoard.doc, { k: 'table', x: 800, y: 0, w: 120, h: 40, rows: [{ id: row, size: 40 }], cols: [{ id: col, size: 120 }], cells: {} }, null) ?? '';
-    tableCell(onBoard.doc, grid, row, col, null)?.insert(0, 'CANARY-WSCELL owner');
+    const grid = addObject(onBoard.doc, { k: 'table', x: 800, y: 0, w: 120, h: 40, rows: [{ id: row, size: 40 }], cols: [{ id: col, size: 120 }], cells: {} }, null);
+    const cell = grid ? tableCell(onBoard.doc, grid, row, col, null) : undefined;
+    if (!cell) throw new Error('the board has no cell to write its canary in');
+    cell.insert(0, 'CANARY-WSCELL owner');
+    // Each is on the board, so what's looked for below is there to find.
+    for (const canary of ['CANARY-WSFRAME roadmap', 'CANARY-WSSTICKY sign by Friday', 'CANARY-WSCELL owner']) expect(boardText(onBoard.doc)).toContain(canary);
     await until(async () => onBoard.getSnapshot().status === 'saved', 'the board to reach Alcove');
     onBoard.close();
     await c.api.workspaces.items.rename(space.id, spaceDoc.id, 'CANARY-WSRENAMED');

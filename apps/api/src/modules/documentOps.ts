@@ -8,7 +8,7 @@
  * know what's in a board add their functions here the same way. Arguments and results cross between threads, so they're
  * plain data: bytes are fine, a `Y.Doc` isn't. To work with another document, pass its `state`.
  */
-import { DOC_FRAGMENT, DocTextBlockSchema } from '@alcove/api';
+import { DOC_FRAGMENT, DocTextBlockSchema, SERVER_CLIENT } from '@alcove/api';
 import { TEMPLATES, fillTemplate, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
 import { z } from 'zod';
@@ -66,21 +66,18 @@ function retitle(doc: Y.Doc, name: string): void {
 }
 
 /**
- * The Yjs client a board's template is written as: the same on every board, and never a browser's, whose are random 32-bit
- * numbers (a document's seed has 1). So a board says itself whether it has had its template, and so does a copy of one.
+ * Puts a template on an empty board, once. It's written as `SERVER_CLIENT.template`, the same client on every board and never
+ * a browser's, so a board says itself whether it has had its template, and so does a copy of one. Its bytes are the same every
+ * time for the board, as `seed` is its id. Asking again finds the template's client in the board and changes nothing; so does
+ * the second of two asks at the same moment, as `writeDocument` won't write as a client the log has had by then: it works that
+ * one out again, and finds the first. A board someone has put something on is left as it is, and a document isn't a board.
+ * Whether this put the template on: blank puts nothing.
  */
-const TEMPLATE_CLIENT = 2;
-/**
- * Puts a template on a board, clear of anything already there, once. Asking again finds the template's client in the board
- * and changes nothing, and so does the second of two asks at the same moment, because `writeDocument` won't write as a client
- * the log already has: it works that one out again, and it finds the first. A document isn't a board, and gets nothing.
- * Whether this put the template there: blank puts nothing.
- */
-function boardTemplate(doc: Y.Doc, template: TemplateName, seed: string): boolean {
-  if (doc.share.has(DOC_FRAGMENT) || Y.getState(doc.store, TEMPLATE_CLIENT) > 0) return false;
-  doc.clientID = TEMPLATE_CLIENT;
+function boardTemplate(doc: Y.Doc, kind: ContentKind, template: TemplateName, seed: string): boolean {
+  if (kind !== 'board' || Y.getState(doc.store, SERVER_CLIENT.template) > 0) return false;
+  doc.clientID = SERVER_CLIENT.template;
   fillTemplate(doc, template, null, seed);
-  return Y.getState(doc.store, TEMPLATE_CLIENT) > 0;
+  return Y.getState(doc.store, SERVER_CLIENT.template) > 0;
 }
 
 /** What the server can write to a document. */
@@ -90,6 +87,6 @@ export const docEdits = {
   tickFollowUp: docOp(z.object({ kind: Kind, block: z.string(), done: z.boolean() }), z.boolean(), (doc, a) => tickFollowUp(doc, a.kind, a.block, a.done)),
   /** Fills in a new document as the next call's agenda. */
   writeAgenda: docOp(z.object({ title: z.string(), open: Runs }), z.void(), (doc, a) => { writeAgenda(doc, a.title, a.open); }),
-  /** A board's template, from the server, so everyone gets the same frames and nobody's undo can take them away. */
-  boardTemplate: docOp(z.object({ template: z.enum(TEMPLATES), seed: z.string() }), z.boolean(), (doc, a) => boardTemplate(doc, a.template, a.seed))
+  /** A board's template, from the server, so everyone gets the same frames and nobody's undo can take them away. `seed`: the board's id. */
+  boardTemplate: docOp(z.object({ kind: Kind, template: z.enum(TEMPLATES), seed: z.string() }), z.boolean(), (doc, a) => boardTemplate(doc, a.kind, a.template, a.seed))
 };

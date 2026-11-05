@@ -5,7 +5,9 @@
  * checked is what people get: one board for everyone whatever they do at once, nothing an honest browser sends turned away,
  * and nothing of what's on it anywhere but with the people who can open it.
  */
-import { AlcoveApiError, DOC_UPDATE_TYPE, DocLiveEventSchema, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind, type WorkspaceRole } from '@alcove/api';
+import {
+  AlcoveApiError, DOC_UPDATE_TYPE, DocLiveEventSchema, SERVER_CLIENT, isServerClient, type BoardTemplate, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind, type WorkspaceRole
+} from '@alcove/api';
 import {
   addObject, addThread, duplicateObjects, hasBox, makeHistory, moveObjects, newId, objectText, readBoard, removeObjects, route, setObjects, tableCell, type Box, type NewObject, type StickyColour
 } from '@alcove/board';
@@ -15,7 +17,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import * as Y from 'yjs';
 import { z } from 'zod';
 import { blindIndex } from './crypto';
-import { AppError } from './errors';
+import { exec, type Db } from './db';
+import { AppError, ClientTakenError } from './errors';
 import { workspaceFor } from './modules/workspaceAccess';
 import { keepVersion, readDocument, writeDocument, type Held } from './modules/workspaceDocuments';
 import { masterKey } from './owners';
@@ -134,6 +137,22 @@ async function onServer(w: Held, board: string): Promise<Y.Doc> {
 }
 /** What the firewall turned away from this board. It logs why, and never anything of what was in it. */
 const refusals = (board: string) => h.logs.filter((l) => l.includes('update refused') && l.includes(board));
+/** What server code is told when it's refused: the class's code and its words. */
+const refusalOnServer = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => (e instanceof AppError ? { code: e.code, message: e.message } : { code: `not an AppError: ${String(e)}`, message: '' }));
+
+/** Asks for a board's template as the server does when a call makes one: the board's id is its seed. Whether it put it on. */
+const fill = async (who: Account, id: string, board: string, template: BoardTemplate = 'retro', opts: { holding?: (c: Db) => Promise<void> } = {}) =>
+  (await writeDocument(await heldBy(who, id), board, 'boardTemplate', { kind: 'board', template, seed: board }, opts)).result;
+/** How many updates a board's log has had. */
+const logged = (board: string) => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
+const ClientRow = z.object({ next: z.coerce.number(), people: z.number() });
+/** What a board's log knows of one Yjs client: how far it's written, and how many people it's known to be (none for the server's). */
+async function clientOf(board: string, client: number): Promise<{ next: number; people: number } | null> {
+  const found = (await h.pool.query('SELECT next_clock::text AS next, octet_length(people) / 32 AS people FROM document_clients WHERE document_id = $1 AND client_id = $2', [board, client])).rows[0];
+  return found === undefined ? null : ClientRow.parse(found);
+}
+/** The lines saying a change from the server to this board was worked out again, as a client it was written as was taken. */
+const reworked = (board: string) => h.logs.filter((l) => l.includes('server change worked out again') && l.includes(board));
 
 /** A connection that can drop: every stream and request fails until it's back. */
 function network(b: Browser) {
@@ -154,10 +173,17 @@ const docPath = (id: string, doc: string) => `/workspaces/${id}/documents/${doc}
 const send = (who: { fetch: typeof fetch }, id: string, doc: string, update: Uint8Array) =>
   who.fetch(`${h.baseUrl}/v1${docPath(id, doc)}/updates`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE }, body: new Uint8Array(update) });
 const post = (who: { fetch: typeof fetch }, path: string, sent: unknown) => who.fetch(`${h.baseUrl}/v1${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sent) });
-/** A board update from nobody's session: a sticky, written as a browser of its own would write it. */
-function aSticky(words: string): Uint8Array {
+/** A board update from nobody's session: a sticky, written as a browser of its own would write it, or as `client`. */
+function aSticky(words: string, client?: number): Uint8Array {
   const doc = new Y.Doc();
+  if (client !== undefined) doc.clientID = client;
   addObject(doc, { k: 'note', x: 0, y: 0, w: 150, h: 150, c: 'butter', size: 'm', t: words }, null);
+  return Y.encodeStateAsUpdate(doc);
+}
+/** A comment from a browser of its own, which puts nothing on the board. */
+function aComment(words: string): Uint8Array {
+  const doc = new Y.Doc();
+  doc.getMap('comments').set(newId(), words);
   return Y.encodeStateAsUpdate(doc);
 }
 /** Stickies sent one update each, as a browser sends them when nothing batches them: one client, carrying on its clocks. */
@@ -168,6 +194,22 @@ async function oneByOne(who: Browser, id: string, board: string, n: number, labe
     const before = Y.encodeStateVector(pen);
     addObject(pen, { k: 'note', x: (i % 20) * 160, y: 3000 + Math.floor(i / 20) * 160, w: 150, h: 150, c: 'mist', size: 's', t: `${label} ${i}` }, me);
     expect((await send(who, id, board, Y.encodeStateAsUpdate(pen, before))).status).toBe(200);
+  }
+  pen.destroy();
+}
+/** Stickies that come and go, one update each, as someone trying things out makes them: the board is as it was, with 2 × `n` more updates. */
+async function comeAndGo(who: Browser, id: string, board: string, n: number): Promise<void> {
+  const pen = new Y.Doc();
+  const me = {};
+  const step = async (change: () => void) => {
+    const before = Y.encodeStateVector(pen);
+    change();
+    expect((await send(who, id, board, Y.encodeStateAsUpdate(pen, before))).status).toBe(200);
+  };
+  for (let i = 0; i < n; i++) {
+    let made = '';
+    await step(() => { made = addObject(pen, { k: 'note', x: 0, y: 3000, w: 150, h: 150, c: 'mist', size: 's', t: `Tried ${i}` }, me) ?? ''; });
+    await step(() => { removeObjects(pen, [made], me); });
   }
   pen.destroy();
 }
@@ -625,7 +667,7 @@ describe('who can do what', () => {
     await until(() => t.s.getSnapshot().status === 'failed', 'the save to fail');
     expect(t.s.getSnapshot().refused).toBe('trashed');
     expect((await send(ann, id, board, aSticky('No'))).status).toBe(409);
-    expect(await code(writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'retro', seed: board }))).toBe('conflict');
+    expect(await code(fill(ann, id, board))).toBe('conflict');
     // Opening it now still reads it, as it was.
     const late = await open(theo, id, board);
     expect(late.s.getSnapshot()).toMatchObject({ trashed: true, role: 'edit' });
@@ -684,7 +726,7 @@ describe('who can do what', () => {
     // Server code holding Sam's own workspace can't reach Ann's board through it.
     const samsOwn = await workspace(sam, 'Sam’s');
     const samHeld = await heldBy(sam, samsOwn);
-    expect(await code(writeDocument(samHeld, board, 'boardTemplate', { template: 'retro', seed: board }))).toBe('not-found');
+    expect(await code(writeDocument(samHeld, board, 'boardTemplate', { kind: 'board', template: 'retro', seed: board }))).toBe('not-found');
     expect(await code(readDocument(samHeld, board, 'text', { kind: 'board' }))).toBe('not-found');
     expect(await code((async () => keepVersion(samHeld, board, { reason: 'call', callId: null }))())).toBe('not-found');
 
@@ -701,7 +743,7 @@ describe('who can do what', () => {
     expect((await post(ann, `${docPath(id, boardThere)}/awareness`, { update: 'AA' })).status).toBe(404);
     expect((await ann.fetch(`${h.baseUrl}/v1${docPath(id, boardThere)}/live`)).status).toBe(404);
     const held = await heldBy(ann, id);
-    expect(await code(writeDocument(held, boardThere, 'boardTemplate', { template: 'retro', seed: boardThere }))).toBe('not-found');
+    expect(await code(writeDocument(held, boardThere, 'boardTemplate', { kind: 'board', template: 'retro', seed: boardThere }))).toBe('not-found');
     expect(await code(readDocument(held, boardThere, 'state', {}))).toBe('not-found');
 
     // Nothing changed on either board, and nothing of either reached a log.
@@ -715,22 +757,25 @@ describe('who can do what', () => {
 /* ---------- what the server does with a board ---------- */
 
 describe('a template', () => {
-  it('fills a board once, however many times it’s asked, as a server-made update nobody’s undo takes away', async () => {
+  it('fills a board once, however many ask at the same moment, as the server’s own client, and nobody’s undo takes it away', async () => {
     const ann = await account();
     const theo = await account();
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const board = await make(ann, id, 'Retro');
     const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
     const ah = makeHistory(a.doc, a.me);
-    const held = await heldBy(ann, id);
-    const rows = async () => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
 
-    // Five at once, then twice more, and once for another template: one template, in one update.
-    const asks = await Promise.all(Array.from({ length: 5 }, () => writeDocument(held, board, 'boardTemplate', { template: 'retro', seed: board })));
-    expect(asks.filter((x) => x.result)).toHaveLength(1);
-    expect(await rows()).toBe(1);
-    for (const template of ['retro', 'retro', 'flow'] as const) expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template, seed: board })).result).toBe(false);
-    expect(await rows()).toBe(1);
+    // Five at once: one lands, in one update, and the others find it there when they work it out again.
+    const asks = await Promise.all(Array.from({ length: 5 }, () => fill(ann, id, board)));
+    expect(asks.filter(Boolean)).toHaveLength(1);
+    expect(await logged(board)).toBe(1);
+    // It's written as the template's client, which is nobody's, and as far as the template went.
+    const went = Y.getState((await onServer(await heldBy(ann, id), board)).store, SERVER_CLIENT.template);
+    expect(went).toBeGreaterThan(0);
+    expect(await clientOf(board, SERVER_CLIENT.template)).toEqual({ next: went, people: 0 });
+    // Asked again, for it or another: nothing.
+    for (const template of ['retro', 'retro', 'flow'] as const) expect(await fill(ann, id, board, template)).toBe(false);
+    expect(await logged(board)).toBe(1);
     // It reaches everyone who has the board open, as anyone's edit does.
     await agree([a, t], 'the template to reach both');
     expect(view(a).objects).toHaveLength(3);
@@ -744,7 +789,7 @@ describe('a template', () => {
     await saved(t);
     await agree([a, t], 'the sticky to reach Ann');
     expect(view(a).byId.get(note)?.f).toBe(view(a).frames[0]?.id);
-    expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'ideas', seed: board })).result).toBe(false);
+    expect(await fill(ann, id, board, 'ideas')).toBe(false);
     await rest(150);
     expect(view(a).frames).toHaveLength(3);
     const settled = shown(a);
@@ -756,36 +801,109 @@ describe('a template', () => {
     expect(refusals(board)).toEqual([]);
   });
 
-  it('lands beside what someone put there first, carries over to a copy, and leaves a blank board blank', async () => {
+  it('leaves a board someone has started on as it is, and a blank one blank, and goes by what a board is, not what’s in it', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
+    // Someone quick puts something on it before the template lands: it stays as they left it, and the template stays off.
     const board = await make(ann, id, 'Quick');
     const a = await open(ann, id, board);
-    // Someone quick puts something on it before the template lands: it fills all the same, clear of it.
-    const quick = sticky(a, 'Here first', 0, 0);
+    sticky(a, 'Here first', 0, 0);
     await saved(a);
-    expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'what-why-next', seed: board })).result).toBe(true);
-    await until(() => view(a).frames.length === 3, 'the template to arrive');
-    const first = boxOf(a, quick);
-    for (const f of view(a).frames) expect(f.x).toBeGreaterThanOrEqual(first.x + first.w);
-    expect(view(a).frames.map((f) => f.title)).toEqual(['What happened', 'Why', 'What next']);
-
-    // A copy is filled already: asking it again changes nothing.
-    const copy = (await ann.api.workspaces.items.duplicate(id, board)).id;
-    expect((await writeDocument(await heldBy(ann, id), copy, 'boardTemplate', { template: 'retro', seed: copy })).result).toBe(false);
-    const c = await open(ann, id, copy);
-    expect(shown(c)).toBe(shown(a));
+    expect(await fill(ann, id, board, 'what-why-next')).toBe(false);
+    expect(await clientOf(board, SERVER_CLIENT.template)).toBeNull();
+    await rest(150);
+    expect(view(a).objects.map((o) => o.k)).toEqual(['note']);
 
     // Blank puts nothing on a board and writes nothing.
     const blank = await make(ann, id, 'Blank');
-    expect((await writeDocument(await heldBy(ann, id), blank, 'boardTemplate', { template: 'blank', seed: blank })).result).toBe(false);
-    expect(await count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [blank])).toBe(0);
+    expect(await fill(ann, id, blank, 'blank')).toBe(false);
+    expect(await logged(blank)).toBe(0);
     expect(view(await open(ann, id, blank)).objects).toEqual([]);
 
-    // A document isn't a board: a template gives it nothing.
+    // What it's put on is said by its kind: a document gets nothing, and a board something stray was written into still gets it.
     const doc = await make(ann, id, 'A document', 'document');
-    expect((await writeDocument(await heldBy(ann, id), doc, 'boardTemplate', { template: 'retro', seed: doc })).result).toBe(false);
-    expect(await count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [doc])).toBe(0);
+    expect((await writeDocument(await heldBy(ann, id), doc, 'boardTemplate', { kind: 'document', template: 'retro', seed: doc })).result).toBe(false);
+    expect(await logged(doc)).toBe(0);
+    const strayed = await make(ann, id, 'Strayed');
+    const s = await open(ann, id, strayed);
+    s.doc.getXmlFragment('content').insert(0, [new Y.XmlText('Not a board’s')]);
+    await saved(s);
+    expect(await fill(ann, id, strayed, 'ideas')).toBe(true);
+    await until(() => view(s).frames.map((f) => f.title).join() === 'Ideas', 'the template to arrive');
+    expect(refusals(strayed)).toEqual([]);
+  });
+
+  it('fills a board once when a try dies between working the template out and writing it, and it’s tried again', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Retro');
+    const t = await open(theo, id, board);
+    // The template is worked out, then the connection writing it goes, with its transaction, as it does when the process dies there.
+    const dies = async (c: Db) => { await exec(c, 'SELECT pg_terminate_backend(pg_backend_pid())'); };
+    expect(await code(fill(ann, id, board, 'retro', { holding: dies }))).not.toBe('allowed');
+    expect(await logged(board)).toBe(0);
+    expect(await clientOf(board, SERVER_CLIENT.template)).toBeNull();
+    // Tried again, it fills. Tried once more, as a retry is after one that landed but whose answer never came back: nothing more.
+    expect(await fill(ann, id, board)).toBe(true);
+    expect(await fill(ann, id, board)).toBe(false);
+    expect(await logged(board)).toBe(1);
+    await until(() => view(t).frames.length === 3, 'the template to reach Theo');
+    expect(view(t).objects).toHaveLength(3);
+    expect(refusals(board)).toEqual([]);
+  });
+
+  it('fills once however long the board goes on: asked after its log compacts, with the template taken off, it finds it there', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const board = await make(ann, id, 'Retro');
+    expect(await fill(ann, id, board)).toBe(true);
+    const a = await open(ann, id, board);
+    await until(() => view(a).frames.length === 3, 'the template');
+    // Ann takes it all off, and the board goes on, empty, until its log compacts.
+    removeObjects(a.doc, view(a).objects.map((o) => o.id), a.me);
+    await saved(a);
+    await comeAndGo(ann, id, board, 105);
+    await until(() => compacted(board), 'the log to compact');
+    const before = await logged(board);
+    // What the template wrote is in the snapshot now, as the template's client, and asking again finds it there.
+    expect(await fill(ann, id, board)).toBe(false);
+    expect(await fill(ann, id, board, 'ideas')).toBe(false);
+    expect(await logged(board)).toBe(before);
+    expect(await clientOf(board, SERVER_CLIENT.template)).toMatchObject({ people: 0 });
+    await rest(150);
+    expect(view(a).objects).toEqual([]);
+    expect(refusals(board)).toEqual([]);
+  });
+
+  it('won’t put a second template on a board whose first won’t open, and says so for good, not that it’s changing too fast', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const board = await make(ann, id, 'Retro');
+    expect(await fill(ann, id, board)).toBe(true);
+    // The row holding it is damaged, so the board opens without it, as it does without any row that won't open.
+    await h.pool.query("UPDATE document_updates SET update_ciphertext = 'not a record' WHERE document_id = $1", [board]);
+    expect(view(await open(ann, id, board)).objects).toEqual([]);
+    expect(await refusalOnServer(fill(ann, id, board, 'ideas'))).toEqual({ code: 'conflict', message: 'This document has had this change already, so it can’t have it again.' });
+    // Refused the first time it was worked out, as working it out again would find the same.
+    expect(reworked(board)).toEqual([]);
+    expect(await logged(board)).toBe(1);
+  });
+
+  it('tells whoever asked that the board is changing too fast, as a conflict, when it keeps changing around a client that’s taken', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Retro');
+    expect(await fill(ann, id, board)).toBe(true);
+    await h.pool.query("UPDATE document_updates SET update_ciphertext = 'not a record' WHERE document_id = $1", [board]);
+    // Each time it's worked out, Theo's browser lands a comment first, so the board is never as it was read.
+    const theoComments = async () => { expect((await send(theo, id, board, aComment('Still here'))).status).toBe(200); };
+    const asked = fill(ann, id, board, 'ideas', { holding: theoComments });
+    await expect(asked).rejects.toBeInstanceOf(ClientTakenError);
+    expect(await refusalOnServer(asked)).toEqual({ code: 'conflict', message: 'This document is changing too fast to change from here. Try again.' });
+    expect(reworked(board)).toHaveLength(2);
+    expect(await logged(board)).toBe(1 + 3);
   });
 });
 
@@ -880,6 +998,100 @@ describe('copies and versions', () => {
     await until(() => words(a, inside).endsWith('?'), 'Theo’s typing to reach Ann');
     expect(refusals(board)).toEqual([]);
   });
+  it('copies a board with its template, which the copy can’t have again, and gives one copied before its template its own', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const filled = await make(ann, id, 'Retro');
+    expect(await fill(ann, id, filled)).toBe(true);
+    const copy = (await ann.api.workspaces.items.duplicate(id, filled)).id;
+    const [f, c] = await Promise.all([open(ann, id, filled), open(ann, id, copy)]);
+    expect(shown(c)).toBe(shown(f));
+    // The copy holds the template as the original does, as the template's client, so asking it changes nothing.
+    expect(await clientOf(copy, SERVER_CLIENT.template)).toEqual(await clientOf(filled, SERVER_CLIENT.template));
+    expect(await fill(ann, id, copy)).toBe(false);
+    expect(await fill(ann, id, copy, 'ideas')).toBe(false);
+    expect(await logged(copy)).toBe(1);
+    // One copied while it was still empty has nothing of a template's, so it gets one of its own, its frames its own too.
+    const empty = await make(ann, id, 'Empty');
+    const early = (await ann.api.workspaces.items.duplicate(id, empty)).id;
+    expect(await clientOf(early, SERVER_CLIENT.template)).toBeNull();
+    expect(await fill(ann, id, early)).toBe(true);
+    const e = await open(ann, id, early);
+    await until(() => view(e).frames.length === 3, 'its template');
+    expect(view(e).frames.map((x) => x.title)).toEqual(view(f).frames.map((x) => x.title));
+    expect(view(e).frames.filter((x) => view(f).byId.has(x.id))).toEqual([]);
+  });
+
+  it('puts a board back to before its template as it was then, and the template doesn’t come back, even when asked', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const board = await make(ann, id, 'Retro');
+    const a = await open(ann, id, board);
+    // A sticky that came and went: an empty board with a history, so there's a version of it.
+    const gone = sticky(a, 'Tried and taken off', 0, 0);
+    await saved(a);
+    removeObjects(a.doc, [gone], a.me);
+    await saved(a);
+    const empty = await versionNow(ann, id, board);
+    expect(await fill(ann, id, board)).toBe(true);
+    await until(() => view(a).frames.length === 3, 'the template');
+    sticky(a, 'In Went well', 20, 60);
+    await saved(a);
+    const filled = shown(a);
+
+    await ann.api.workspaces.restoreVersion(id, board, empty);
+    await until(() => view(a).objects.length === 0, 'the board to be as it was');
+    // Its template's client is still the template's: asking again changes nothing, for it or another.
+    const before = await logged(board);
+    expect(await fill(ann, id, board)).toBe(false);
+    expect(await fill(ann, id, board, 'ideas')).toBe(false);
+    expect(await logged(board)).toBe(before);
+    await rest(150);
+    expect(view(a).objects).toEqual([]);
+    // What it said before the restore was kept, and putting that back brings the template back, with the sticky in it.
+    const kept = (await ann.api.workspaces.versions(id, board)).find((v) => v.reason === 'restore');
+    if (!kept) throw new Error('nothing was kept before the restore');
+    await ann.api.workspaces.restoreVersion(id, board, kept.id);
+    await until(() => shown(a) === filled, 'the template to come back');
+    expect(refusals(board)).toEqual([]);
+  });
+
+  it('keeps the template’s client the template’s when a version takes the place of a board that won’t open', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const board = await make(ann, id, 'Retro');
+    const a = await open(ann, id, board);
+    const gone = sticky(a, 'Tried and taken off', 0, 0);
+    await saved(a);
+    removeObjects(a.doc, [gone], a.me);
+    await saved(a);
+    const empty = await versionNow(ann, id, board);
+    expect(await fill(ann, id, board)).toBe(true);
+    await until(() => view(a).frames.length === 3, 'the template');
+    const withTemplate = await versionNow(ann, id, board);
+    const filled = shown(a);
+    const template = await clientOf(board, SERVER_CLIENT.template);
+    a.s.close();
+    // Then what it holds won't open, so it closes, and it's put back to the version from before the template.
+    await h.pool.query("UPDATE document_snapshots SET snapshot_ciphertext = 'not a record' WHERE document_id = $1", [board]);
+    await h.pool.query('DELETE FROM document_updates WHERE document_id = $1', [board]);
+    const shut = await ann.api.workspaces.document(id, board);
+    await expect(shut.ready).rejects.toBeTruthy();
+    await until(() => shut.getSnapshot().closed !== null, 'it to say so');
+    await ann.api.workspaces.restoreVersion(id, board, empty);
+    expect(view(await open(ann, id, board)).objects).toEqual([]);
+    // The template's client is still had, as the server's, though nothing of it is on the board, so nothing's written as it again.
+    expect(await clientOf(board, SERVER_CLIENT.template)).toEqual({ next: 0, people: 0 });
+    for (const template of ['ideas', 'retro'] as const) {
+      expect(await refusalOnServer(fill(ann, id, board, template))).toEqual({ code: 'conflict', message: 'This document has had this change already, so it can’t have it again.' });
+    }
+    // The version with the template puts it back exactly: what was written as the template's client is all it ever said.
+    await ann.api.workspaces.restoreVersion(id, board, withTemplate);
+    const back = await open(ann, id, board);
+    expect(shown(back)).toBe(filled);
+    expect(await clientOf(board, SERVER_CLIENT.template)).toEqual(template);
+    expect(refusals(board)).toEqual([]);
+  });
 });
 
 describe('search', () => {
@@ -931,6 +1143,60 @@ describe('search', () => {
     const read = await readDocument(await heldBy(ann, id), board, 'text', { kind: 'board' });
     expect(read).toEqual({ title: '', blocks: found?.blocks });
     expect(await readDocument(await heldBy(ann, id), board, 'todos', { kind: 'board' })).toEqual([]);
+  });
+});
+
+describe('the server’s own clients', () => {
+  it('moves a browser that finds itself on the template’s client to one of its own before it writes, and every word arrives', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Retro');
+    expect(await fill(ann, id, board)).toBe(true);
+    const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
+    await agree([a, t], 'the template to reach both');
+    const template = await clientOf(board, SERVER_CLIENT.template);
+    const failed: string[] = [];
+    a.s.subscribe(() => { const v = a.s.getSnapshot(); if (v.status === 'failed') failed.push(String(v.refused)); });
+
+    // Whatever put it there, Ann's board is on the template's client when she starts.
+    a.doc.clientID = SERVER_CLIENT.template;
+    const note = sticky(a, 'Moved, not refused', 20, 60);
+    type(a, note, ', every word');
+    const improve = view(a).frames[1]?.id ?? '';
+    type(a, improve, ' (and this)', 'title');
+    await saved(a);
+    expect(isServerClient(a.doc.clientID)).toBe(false);
+    expect(a.s.getSnapshot()).toMatchObject({ status: 'saved', refused: null });
+    // Theo has all of it, and so does the board when it's opened again.
+    await agree([a, t], 'Ann’s words to reach Theo');
+    expect(words(t, note)).toBe('Moved, not refused, every word');
+    expect(words(t, improve, 'title')).toBe('Could improve (and this)');
+    expect(words(await open(theo, id, board), note)).toBe('Moved, not refused, every word');
+    // And the template's client is the template's alone: nobody's, and no further than it went.
+    expect(await clientOf(board, SERVER_CLIENT.template)).toEqual(template);
+    expect(refusals(board)).toEqual([]);
+    expect(failed).toEqual([]);
+  });
+
+  it('refuses anything a browser writes as one of the server’s clients, whether or not the server has written as it yet', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const board = await make(ann, id, 'Fresh');
+    // Before there's a template: written as its client, or as any of the server's, it's refused, so it can't take the template's place.
+    for (const client of [SERVER_CLIENT.seed, SERVER_CLIENT.template, 15]) expect((await send(ann, id, board, aSticky('Not mine to write', client))).status, `client ${client}`).toBe(400);
+    expect(refusals(board)).toHaveLength(3);
+    expect(refusals(board).every((l) => l.includes('server-client'))).toBe(true);
+    expect(await logged(board)).toBe(0);
+    expect(await fill(ann, id, board)).toBe(true);
+    // After it, the same; and a client that isn't the server's goes through like any browser's, either side of them.
+    expect((await send(ann, id, board, aSticky('Still not mine', SERVER_CLIENT.template))).status).toBe(400);
+    expect((await send(ann, id, board, aSticky('Mine', 16))).status).toBe(200);
+    expect((await send(ann, id, board, aSticky('Mine too', 0))).status).toBe(200);
+    expect(await clientOf(board, SERVER_CLIENT.template)).toMatchObject({ people: 0 });
+    const b = view(await open(ann, id, board));
+    expect(b.frames).toHaveLength(3);
+    expect(b.objects.flatMap((o) => (o.k === 'note' ? [o.t] : [])).sort()).toEqual(['Mine', 'Mine too']);
   });
 });
 
@@ -1023,7 +1289,7 @@ describe('what’s kept', () => {
       const theo = await account(unique('canary-board-editor'));
       const id = await workspace(ann, 'CANARY-BOARD-SPACE', [[theo, 'edit']]);
       const board = await make(ann, id, 'CANARY-BOARD-NAME');
-      await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'retro', seed: board });
+      expect(await fill(ann, id, board)).toBe(true);
       const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
       add(a, { k: 'frame', x: 0, y: 1000, w: 600, h: 500, c: '', role: '', hint: 'CANARY-BOARD-HINT', sub: 'CANARY-BOARD-WHO', title: 'CANARY-BOARD-FRAME' });
       const note = sticky(a, 'CANARY-BOARD-STICKY the launch slips', 40, 1080);

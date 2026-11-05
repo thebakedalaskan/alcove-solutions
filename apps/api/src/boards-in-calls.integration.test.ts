@@ -3,7 +3,8 @@
  * store and the local LiveKit server: who can open one and who sees it, closing it, bringing a saved board and who's let in,
  * the workspace it's saved in, and what someone left out is told, which is nothing that names it.
  */
-import { AlcoveApiError, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, SERVER_CLIENT, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole } from '@alcove/api';
+import { readBoard } from '@alcove/board';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -165,6 +166,34 @@ describe('a new board', () => {
     for (const who of [kofi, priya]) expect((await who.api.workspaces.get(id)).items.map((x) => [x.id, x.kind, x.name, x.role])).toEqual([[board, 'board', 'Launch review', 'edit']]);
     expect(await code(jamie.api.workspaces.get(id, pass))).toBe('unauthenticated');
     expect((await art.api.workspaces.get(id)).items.map((x) => x.id)).toEqual([board]);
+  });
+
+  it('fills a new board from its template before the call says it’s open, once, as the server’s, for everyone in it', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
+    await host.setWorkspace(id);
+    const k = await invited(host, c, kofi);
+    const logged = (board: string) => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
+    const asTemplate = (board: string) => count('SELECT count(*)::int AS n FROM document_clients WHERE document_id = $1 AND client_id = $2 AND octet_length(people) = 0', [board, SERVER_CLIENT.template]);
+
+    await k.openBoard({ template: 'retro' });
+    const board = k.getSnapshot().board.open?.documentId ?? '';
+    // By the time it's open it's in the board's log: one update, written as the template's client, which is nobody's.
+    expect(await logged(board)).toBe(1);
+    expect(await asTemplate(board)).toBe(1);
+    const [hers, his] = await Promise.all([open(art, id, board), open(kofi, id, board, { pass: k.ticket.pass })]);
+    for (const page of [hers, his]) expect(readBoard(page.doc).frames.map((f) => [f.title, f.role])).toEqual([['Went well', ''], ['Could improve', ''], ['Actions', 'actions']]);
+    // Opened again for everyone, it isn't filled again.
+    await host.openBoard({ documentId: board, letIn: false });
+    expect(await logged(board)).toBe(1);
+    // Blank writes nothing.
+    await host.openBoard({ template: 'blank' });
+    const blank = host.getSnapshot().board.open?.documentId ?? '';
+    expect(blank).not.toBe(board);
+    expect(await logged(blank)).toBe(0);
+    expect(await asTemplate(blank)).toBe(0);
   });
 
   it('takes every template, and nothing else', async () => {
