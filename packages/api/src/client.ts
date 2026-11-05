@@ -3,6 +3,7 @@ import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
+import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
   AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
@@ -219,6 +220,58 @@ export interface AlcoveApi {
      * calls' dates are read in it, so they're the days the asker sees.
      */
     ask(id: ID, question: string, timeZone: string): AsyncIterable<SeriesAnswerPart>;
+  };
+  workspaces: {
+    /** Every workspace you're in, then each one you only have documents in. */
+    list(): Promise<WorkspaceSummary[]>;
+    /** Makes a workspace with you as its admin. */
+    create(name: string): Promise<{ id: ID }>;
+    /** A workspace as you see it. Anyone who can't open it gets the same `not-found` as for a workspace that doesn't exist. */
+    get(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceTree>;
+    /** Admins only. */
+    rename(id: ID, name: string): Promise<void>;
+    /** Deletes a workspace for good, for everyone, with everything in it. Admins only. */
+    remove(id: ID): Promise<void>;
+    /** Everyone in a workspace, for anyone in it. */
+    people(id: ID): Promise<WorkspacePerson[]>;
+    /** Adds someone by address, whether or not they use Alcove yet, or sets their role if they're in it. Admins only. */
+    addPerson(id: ID, email: string, role: WorkspaceRole): Promise<{ id: ID }>;
+    /** Admins only, and a workspace always keeps an admin. */
+    setRole(id: ID, personId: ID, role: WorkspaceRole): Promise<void>;
+    /** Takes someone out: an admin can anyone, and anyone can themselves. A workspace always keeps an admin. */
+    removePerson(id: ID, personId: ID): Promise<void>;
+    items: {
+      /** One document, board or folder, if you can open it. */
+      get(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceItem>;
+      /** Makes one, last in `parent` (the top when left out) unless `after` says otherwise. */
+      create(id: ID, input: ItemInput): Promise<{ id: ID }>;
+      /** Anyone who can edit it, so a document's title can follow what's typed. */
+      rename(id: ID, itemId: ID, name: string, opts?: WorkspaceReadOptions): Promise<void>;
+      /** Moves it to another folder or another place among its siblings. A folder can't go inside itself. */
+      move(id: ID, itemId: ID, to: ItemPlace): Promise<void>;
+      /** A copy just after it, with everything you can open inside a folder. A copy isn't shared with anyone, and a copy of something restricted is restricted, to you. */
+      duplicate(id: ID, itemId: ID): Promise<{ id: ID }>;
+      /** Moves it to Trash, for everyone, for 30 days. A folder takes what's in it, except anything you can't open, which stays in the tree. */
+      trash(id: ID, itemId: ID): Promise<void>;
+      /** Brings it back, to the top if its folder isn't in the tree any more. Anyone who can edit it. */
+      restore(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<void>;
+      /** Deletes something in Trash for good, for everyone. */
+      deleteForever(id: ID, itemId: ID): Promise<void>;
+    };
+    share: {
+      /** Who has a document: for people in the workspace who can edit it, like everything else here. */
+      list(id: ID, documentId: ID): Promise<DocumentShare>;
+      /**
+       * Opens a document for everyone in `to`, all of them or none, or changes what they can do with it. Sharing with a
+       * seat takes the pass of the call it's in, and ends with the call.
+       */
+      set(id: ID, documentId: ID, to: ShareTarget[], role: DocumentRole, opts?: WorkspaceReadOptions): Promise<void>;
+      remove(id: ID, documentId: ID, entryId: ID): Promise<void>;
+      /** Restricts a document to its creator and the people it's shared with, or opens it to the workspace again. Whoever restricts it keeps it. */
+      restrict(id: ID, documentId: ID, restricted: boolean): Promise<void>;
+    };
+    /** A workspace kept up to date until `close()`, or until you lose it (`status: 'closed'`). */
+    live(id: ID, opts?: WorkspaceReadOptions): WorkspaceLive;
   };
   credits: {
     balance(): Promise<CreditBalance>;

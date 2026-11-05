@@ -6,8 +6,8 @@
 import { PreferencesSchema, type Patch, type Person, type Preferences, type Session, type SignInBody, type SignInProvider } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
-import { blindIndex } from '../crypto';
-import { exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
+import { blindIndex, equalBytes } from '../crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { demoDay, demoIdentity, isSharedDemo } from '../demo';
 import type { Identity } from '../identity';
 import { ForbiddenError, NotFoundError } from '../errors';
@@ -26,6 +26,7 @@ import { photoUrl } from './photos';
 import { portraitFor } from './portraits';
 import { eventsToWithdraw } from './repeats';
 import { forget as forgetRings } from './rings';
+import { forgetAccount, moveAddress } from './workspaces';
 
 const alog = log.child({ component: 'account' });
 
@@ -55,15 +56,14 @@ async function profileItem(o: Owner, db: Db) {
 /** `db`: a transaction reads on its own connection. Waiting for a second one while it holds a lock can use up the pool. */
 export const profile = async (o: Owner, db: Db = o.pool): Promise<Profile> => (await profileItem(o, db)).manifest;
 
-export async function updateProfile(o: Owner, fn: (p: Profile) => Profile): Promise<Profile> {
-  return tx(o.pool, async (c) => {
-    const [p] = await listItems(o, c, 'profile', Profile);
-    if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
-    const next = fn(p.manifest);
-    await saveRevision(o, c, p.itemId, p.revisionId, next);
-    return next;
-  });
+async function changeProfile(o: Owner, db: Db, fn: (p: Profile) => Profile): Promise<Profile> {
+  const [p] = await listItems(o, db, 'profile', Profile);
+  if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
+  const next = fn(p.manifest);
+  await saveRevision(o, db, p.itemId, p.revisionId, next);
+  return next;
 }
+export const updateProfile = (o: Owner, fn: (p: Profile) => Profile): Promise<Profile> => tx(o.pool, (c) => changeProfile(o, c, fn));
 
 /** `db`: a transaction reads on its own connection. */
 export async function me(o: Owner, db: Db = o.pool): Promise<Person> {
@@ -79,7 +79,7 @@ export async function sessionFor(o: Owner): Promise<Session> {
   return { user: await me(o), ownerId: o.ownerId, provider: o.session.provider, sample: p.sample, createdAt: o.session.createdAt.toISOString(), expiresAt: o.session.expiresAt.toISOString() };
 }
 
-const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp });
+const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp, email_index: bytea });
 
 /** Signs in a demo identity: Microsoft as Art Vandelay, or single sign-on as the email typed. */
 export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, demoIdentity(body.provider, body.email), body.provider);
@@ -95,10 +95,15 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
   const found = await tx(d.pool, async (c) => {
     // Two first sign-ins at once must not make two accounts: serialise on the identity.
     await exec(c, 'SELECT pg_advisory_xact_lock($1)', [Buffer.from(subject.slice(0, 8)).readBigInt64BE()]);
-    const existing = await maybeOne(c, IdentityRow, 'SELECT owner_id, created_at FROM identities WHERE subject_index = $1', [subject]);
+    const existing = await maybeOne(c, IdentityRow, 'SELECT owner_id, created_at, email_index FROM identities WHERE subject_index = $1', [subject]);
     if (existing) {
       // The provider's verified email can change; notes shared by email follow the current one.
       await exec(c, 'UPDATE identities SET last_used_at = now(), email_index = $2 WHERE subject_index = $1', [subject, email]);
+      // And what the account has in workspaces moves with it, along with the profile, so nothing reads the new rows under the old address.
+      if (!equalBytes(existing.email_index, email)) {
+        await changeProfile(await openOwner(d, existing.owner_id, undefined, c), c, (p) => ({ ...p, email: who.email }));
+        await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
+      }
       return { ownerId: existing.owner_id, isNew: false };
     }
     const { ownerId, root } = await createOwner(d, c);
@@ -153,7 +158,8 @@ const REVOKE_MS = 3_000;
  * their calls and call links; every note it organized, each the way deleting a note does, so everyone loses it;
  * what it added to other people's shared notes (its own words: a row found by a keyed hash, so nothing of theirs is
  * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
- * account signs in with that address too); and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
+ * account signs in with that address too); its place in every workspace and on every document given to that
+ * address, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
  * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects are deleted, and any the store refuses are queued in object_gc for maintenance. Notes it shared on
@@ -183,6 +189,7 @@ export async function deleteAccount(o: Owner): Promise<void> {
     if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
     // The rooms of its calls still going, to close once the calls are gone.
     const rooms = (await rows(c, z.object({ room_name: z.string() }), "SELECT room_name FROM calls WHERE owner_id = $1 AND state = 'live' AND room_name IS NOT NULL", [o.ownerId])).map((r) => r.room_name);
+    const callIds = (await rows(c, z.object({ call_id: z.string() }), 'SELECT call_id FROM calls WHERE owner_id = $1', [o.ownerId])).map((r) => r.call_id);
     // Meetings first, with their calls, call links and chat, so no note is left with a meeting to be unlinked from.
     const meetings = await exec(c, "DELETE FROM items WHERE owner_id = $1 AND kind IN ('meeting', 'series')", [o.ownerId]);
     const notes = await rows(c, z.object({ item_id: z.string() }), "SELECT item_id FROM items WHERE owner_id = $1 AND kind = 'note'", [o.ownerId]);
@@ -199,11 +206,12 @@ export async function deleteAccount(o: Owner): Promise<void> {
     const answers = await forgetAnswers(o, c, p.manifest.email);
     // Rings to its address, in other people's calls: its own calls' went with its meetings.
     const rings = await forgetRings(o, c, p.manifest.email);
+    const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
     // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
     const added = await takeAllBack(o, c);
-    return { meetings, notes: notes.length, objects, frames, received, answers, rings, added, rooms };
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, added, rooms, workspaces };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -214,7 +222,8 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length, ms: Math.round(performance.now() - t0)
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
   });
 }
 
