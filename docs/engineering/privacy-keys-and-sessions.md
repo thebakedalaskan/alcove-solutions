@@ -71,7 +71,8 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `call-state` | state key `call:<id>` | call |
 | `call-mls` | state key `call-mls:<id>` | call, place in the call's log, entry kind, and the part of the call's group it belongs to |
 | `call-move` | state key `call-move:<id>` | call, move |
-| `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID) |
+| `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID), view (`all`, or a digest of the lines it can't read) |
+| `call-notes-lines` | state key `call-notes:<id>` | the same (when each line that row read was said, and the lines it left out) |
 | `meeting-answer` | state key `meeting-answers:<meetingId>` | meeting, and the hash of the address of whoever answered |
 | `call-ring` | state key `ring:<meetingId>` | meeting, ring (whom it's for and what they said) |
 | `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
@@ -313,10 +314,10 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   read is not found either, and drops out of lists and the inbox: it's never a signed-out answer for the reader.
 - **The live transcript** is only in the organizer's own call or room recording; nobody else sees it until
   the note is finished and given to them.
-- **Live notes** are for the people in that part of the call, through the reading rule the live transcript follows: a
-  point shows only to someone who may read every line behind it, and the summary only to someone who may read every line
-  the notes read, so a guest with the link, or someone back from a breakout room, doesn't read what they weren't there
-  for. Only people who get the notes can tick a follow-up
+- **Live notes** follow the reading rule the live transcript follows, in what the notes model reads and not only in what's
+  shown: everyone who may read the same lines shares notes written from those lines and no others, so a guest with the
+  link, or someone who came late into a breakout room, gets notes written only from what they were there for. Only people
+  who get the notes can tick a follow-up, in the notes everyone shares
   ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Breakout rooms' sections** are part of the note: everyone who can read it reads every room's, whichever room
   they were in, while during the call a room's talk is read only there
@@ -565,7 +566,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 
 | Where | Visible |
 | --- | --- |
-| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, `series`, so which accounts connected Google, and how many series that repeat an account has, though not which calls are in one: that's sealed in each call); while a change to a series goes through, that one is; revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; while a call runs, how many people its organizer rang, and for each when the ring started and when it stops: so also that someone said "in a little while" (a ring still to come) or answered at all (a ring that stopped early), and when, though never how, and never who; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; while a call runs, which parts of it have live notes, when they were last refreshed, and the size of each; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
+| Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, `series`, so which accounts connected Google, and how many series that repeat an account has, though not which calls are in one: that's sealed in each call); while a change to a series goes through, that one is; revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; while a call runs, how many people its organizer rang, and for each when the ring started and when it stops: so also that someone said "in a little while" (a ring still to come) or answered at all (a ring that stopped early), and when, though never how, and never who; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; while a call runs, which parts of it have live notes, how many views of each, when they were last refreshed, and the size of each; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. |
 | Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), and when the oldest thing in its Trash went there. Never a name, a folder, or how the tree is arranged |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
@@ -582,7 +583,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 
 ## Deletion
 
-- **Deleting your own note** removes, in one transaction: every revision, the recording and its pieces, its
+- **Deleting your own note** is refused while its call is live (`409 conflict`: the call is still writing to it, and
+  the note page says so). Otherwise it removes, in one transaction: every revision, the recording and its pieces, its
   shared-screen frames and what was read on them, any transcript clips still there, its notes job, every `note_access` row (so everyone loses it), everyone's own notes on it, everything added to it, the link from
   its meeting, and the owner's operation receipts; stored bytes go down to match. Nobody else holds a receipt
   with the note in it: what others can do to a note keeps none ([Requests](#requests)). Then the audio and

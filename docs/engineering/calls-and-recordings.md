@@ -140,9 +140,9 @@ The call itself stays in the API: who's let in, notes and the transcript.
   from `KMASTER`, per request. A removed person's pass stops working, and once the call has ended only the
   organizer can read it.
 - **What each role can do.** Everyone let in: read the call, chat, catch up and ask, for themselves alone
-  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), read the shared live notes of the
-  part of the call they're in as far as they may read what's behind them ([Live notes](notes-and-inference.md#live-notes)),
-  and keep them up to date by watching them, raise a hand, ask for notes,
+  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), read the live notes of the part of
+  the call they're in, written only from what they may read ([Live notes](notes-and-inference.md#live-notes)), and keep
+  them up to date by watching them, raise a hand, ask for notes,
   point at and mark shared screens and say whether others may point at what they share
   ([Pointing at shared screens](#pointing-at-shared-screens)), and, while screen notes are on, send frames of their own
   shared screen ([Shared screens](#shared-screens)).
@@ -1198,12 +1198,13 @@ share picker, the leave sheet and the device pickers.
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
   breakout rooms too, each room its own, and say so instead of showing an old line while notes are paused or
   off, or while the host's browser can't listen.
-- **Live notes** (the Notes tab in `Panel.tsx`) are the call's, not this browser's: `CallState.liveNotes`, the same
-  for everyone in that part of the call as far as they may read it. While the tab is open and notes are on where you are,
+- **Live notes** (the Notes tab in `Panel.tsx`) are the call's, not this browser's: `CallState.liveNotes`, one set for
+  everyone who can read the same lines in that part of the call. While the tab is open and notes are on where you are,
   the browser says it's watching (`CallSession.watchNotes`), which is what keeps them up to date at most every 30 seconds,
-  in one run however many are watching. Someone who gets the notes can tick a follow-up (`tickFollowUp`), and it's done
-  for everyone; a guest sees the follow-ups they may read, ticked or not, without the box, and is told when something
-  was left out ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
+  in one run however many are watching. Someone reading the notes everyone shares, who gets the notes, can tick a
+  follow-up (`tickFollowUp`), and it's done for everyone. A guest sees no box, and someone with notes of their own, written
+  from what they may read, sees no box and is told so
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up** in the top bar and
   the More menu opens the Ask view on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5

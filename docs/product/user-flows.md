@@ -370,7 +370,7 @@ put them, and one dock at the bottom.
 - **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
   and a summary, read from the transcript as the call goes, the same for everyone in that part of the call; each time
   opens the transcript at that moment. Anyone who gets the notes can tick a follow-up, and it's done for everyone and in
-  the notes at the end. A guest with the link sees only what comes from what was said while they were here. The
+  the notes at the end. A guest with the link gets notes written only from what was said while they were here, and can't tick them. The
   organizer's **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
 - **Yours** (side panel), beside **Notes**: your own notes on the call, which say **Only you** before you type. Write
   something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark in the dock, or **More**
