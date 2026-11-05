@@ -19,6 +19,9 @@ export function rootMap(doc: Y.Doc, name: string): Y.Map<unknown> | null {
 }
 
 export const mapOf = (value: unknown): Y.Map<unknown> | null => (value instanceof Y.Map ? value : null);
+export const listOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+export const recordOf = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
 const textOf = (value: unknown): string | undefined => (value instanceof Y.Text ? cut(value.toString()) : undefined);
 
 /** Whether two plain values hold the same thing. */

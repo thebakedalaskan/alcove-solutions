@@ -8,7 +8,7 @@
  */
 import * as Y from 'yjs';
 import { bounds, centre, contains, frameAt, holds } from './geometry';
-import { mapOf, readBoard, rootMap, same } from './read';
+import { listOf, mapOf, readBoard, recordOf, rootMap, same } from './read';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardObjectSchema, LineEndSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
   type BoardObject, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type PlacedObject, type ShapeKind, type StickyColour
@@ -72,31 +72,37 @@ function admit(fields: Record<string, unknown>): BoardObject | null {
   return parsed.success ? parsed.data : null;
 }
 
-function put(objects: Y.Map<unknown>, o: BoardObject): void {
+function arrayOf(value: unknown): Y.Array<unknown> {
+  const list = new Y.Array<unknown>();
+  list.push(listOf(value));
+  return list;
+}
+
+/**
+ * Writes an object from plain values, under its id. It's the one place an object's Y.Map is made: everything that adds one
+ * comes through here, and so does undo bringing one back, so the two can't drift apart. A cell is only written if it has
+ * words, as cells are made on their first write.
+ */
+export function put(objects: Y.Map<unknown>, id: string, fields: Record<string, unknown>): void {
   const m = new Y.Map<unknown>();
-  for (const [key, value] of Object.entries<unknown>(o)) {
+  for (const [key, value] of Object.entries(fields)) {
     if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells') continue;
     m.set(key, (key === 't' || key === 'title') && typeof value === 'string' ? new Y.Text(value) : value);
   }
-  if (o.k === 'table') {
+  if (fields['k'] === 'table') {
     const cells = new Y.Map<Y.Text>();
-    for (const row of o.rows) {
-      for (const col of o.cols) {
-        const text = o.cells[cellKey(row.id, col.id)];
-        if (text) cells.set(cellKey(row.id, col.id), new Y.Text(text));
-      }
-    }
-    m.set('rows', Y.Array.from(o.rows));
-    m.set('cols', Y.Array.from(o.cols));
+    for (const [key, text] of Object.entries(recordOf(fields['cells']))) if (typeof text === 'string' && text) cells.set(key, new Y.Text(text));
+    m.set('rows', arrayOf(fields['rows']));
+    m.set('cols', arrayOf(fields['cols']));
     m.set('cells', cells);
   }
-  objects.set(o.id, m);
+  objects.set(id, m);
 }
 
 /** Clamps, checks and writes one object. For the writers that work out its id, `at` and `f` themselves. */
 export function insert(objects: Y.Map<unknown>, fields: Record<string, unknown>): BoardObject | null {
   const object = admit(fields);
-  if (object) put(objects, object);
+  if (object) put(objects, object.id, object);
   return object;
 }
 
@@ -448,18 +454,19 @@ export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: re
 
 const replyOf = (text: string): { id: string; text: string; at: number } => ({ id: newId(), text: cut(text), at: Date.now() });
 
+/** Writes a thread from plain values, under its id. Like `put`, it's what adds one and what brings one back. */
+export function putThread(comments: Y.Map<unknown>, id: string, fields: Record<string, unknown>): void {
+  const thread = new Y.Map<unknown>();
+  thread.set('on', fields['on']);
+  thread.set('replies', arrayOf(fields['replies']));
+  comments.set(id, thread);
+}
+
 /** Starts a comment thread pinned to an object, and returns its id. */
 export function addThread(doc: Y.Doc, on: string, text: string, origin: unknown): string {
   const id = newId();
   const comments = rootMap(doc, BOARD_COMMENTS);
-  if (comments) {
-    doc.transact(() => {
-      const thread = new Y.Map<unknown>();
-      thread.set('on', on);
-      thread.set('replies', Y.Array.from([replyOf(text)]));
-      comments.set(id, thread);
-    }, origin);
-  }
+  if (comments) doc.transact(() => putThread(comments, id, { on, replies: [replyOf(text)] }), origin);
   return id;
 }
 
@@ -475,7 +482,8 @@ function tableOf(objects: Y.Map<unknown>, id: string): { rows: Y.Array<unknown>;
   return m?.get('k') === 'table' && rows instanceof Y.Array && cols instanceof Y.Array && cells ? { rows, cols, cells } : null;
 }
 
-const inLine = (key: string, axis: TableAxis, line: string): boolean => (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`));
+/** Whether a cell's key is in this row or column. */
+export const inLine = (key: string, axis: TableAxis, line: string): boolean => (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`));
 
 function lineIds(lines: Y.Array<unknown>): (string | null)[] {
   return lines.toArray().map((line) => {
