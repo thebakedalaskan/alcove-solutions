@@ -1,6 +1,7 @@
 /*
  * The keyboard list, as the canvas's Keyboard board has it, from the foot of Find or ?. What only means something in a call
- * shows in a call. Board keys are the whiteboards': they join this list with what they open.
+ * shows in a call. A key joins this list with what it does: opening a board with boards, and the next section, →, with
+ * presenting.
  */
 import { WsKeyboard, type WsKeyGroup } from '@alcove/ui';
 import { shortcut } from '~/lib/keys';
@@ -33,8 +34,7 @@ export function Keys({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
       name: 'Editing',
       keys: [
         { label: 'Bold', key: shortcut('B') }, { label: 'Italic', key: shortcut('I') }, { label: 'Comment', key: shortcut('⇧M') }, { label: 'Indent', key: 'Tab' },
-        { label: 'Undo your own changes', key: shortcut('Z') }, { label: 'New line in the same block', key: '⇧↵' },
-        ...(inCall ? [{ label: 'Next section when presenting', key: '→' }] : [])
+        { label: 'Undo your own changes', key: shortcut('Z') }, { label: 'New line in the same block', key: '⇧↵' }
       ]
     }
   ];
