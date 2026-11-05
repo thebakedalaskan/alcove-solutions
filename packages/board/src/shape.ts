@@ -105,7 +105,7 @@ type Without<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 /** An object about to be added. The board gives it an id and an `at`, and works out `f` unless it's told. */
 export type NewObject = Without<BoardObject, 'id' | 'at' | 'f'> & { f?: string | undefined };
 
-/** A board as it reads now: `objects` in drawing order, `frames` in slide order. */
+/** A board as it reads now: `objects` and `frames` in drawing order, which puts a frame after whatever holds it. The top-level frames, with no `f`, are the slides, in order. */
 export interface BoardView {
   objects: readonly BoardObject[];
   byId: ReadonlyMap<string, BoardObject>;

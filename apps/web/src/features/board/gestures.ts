@@ -15,7 +15,7 @@ import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
 import { keyDown, keyUp } from './keys';
 import { CLICK_SLOP, NO_GUIDES, OVER_THE_SHEET, boxBetween, carried, drawn, movable, picks, pressed, snapTargets, snapTo } from './selection';
-import { framePress, raiseHeld, settleFrame } from './tools/frame';
+import { framePress, settleFrame } from './tools/frame';
 import { dotPress, hoverAt, linePress } from './tools/line';
 import { penPress } from './tools/pen';
 import { shapePress } from './tools/shape';
@@ -120,9 +120,7 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
   let moved = false;
   const stop = (): void => {
     board.set({ guides: NO_GUIDES });
-    if (!moved) return;
-    raiseHeld(board, sel);
-    board.endStep();
+    if (moved) board.endStep();
   };
   return {
     move(at) {

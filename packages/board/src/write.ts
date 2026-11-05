@@ -161,13 +161,13 @@ function spotOf(o: NewObject | BoardObject): { x: number; y: number } | null {
  * Whether something sits in a frame: by its middle, or for a frame, only if all of it fits. Otherwise a frame dropped
  * beside another would vanish into it and stop being a slide, and one drawn round a smaller frame would nest inside it.
  */
-function sitsIn(o: NewObject | BoardObject, f: Box): boolean {
+export function sitsIn(o: NewObject | BoardObject, f: Box): boolean {
   if (o.k === 'frame') return holds(f, o);
   const spot = spotOf(o);
   return spot !== null && contains(f, spot.x, spot.y);
 }
 
-/** The frame on top that something sits in, leaving out any it can't be in. */
+/** The innermost frame something sits in, leaving out any it can't be in. */
 function frameFor(o: NewObject | BoardObject, frames: readonly FrameObject[], ruledOut: ReadonlySet<string> = new Set()): string {
   return frames.findLast((f) => !ruledOut.has(f.id) && sitsIn(o, f))?.id ?? '';
 }
@@ -216,7 +216,7 @@ function startOf(o: BoardObject | undefined): { x: number; y: number } | null {
   return isAttached(o.to) ? null : o.to;
 }
 
-/** The frame something lands in: the one it was carried in if it still sits there, or else the one on top it sits in. */
+/** The frame something lands in: the one it was carried in if it still sits there, or else the innermost it sits in. */
 function landing(o: BoardObject, frames: readonly FrameObject[], carried: ReadonlySet<string>, inner: ReadonlySet<string>): string {
   const home = frames.find((f) => f.id === o.f);
   if (home && carried.has(home.id) && sitsIn(o, home)) return home.id;

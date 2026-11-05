@@ -2,7 +2,8 @@
  * Reading a board. Everything in the doc came from other people's browsers, so it's `unknown` until it
  * parses, and one bad object mustn't take a board down for everyone: what doesn't parse is left out. What
  * comes back holds together for the code that draws it: `f` names a frame on the board or nothing, frames
- * nest without going round in circles, and every line's attached ends are there to attach to.
+ * nest without going round in circles and draw after whatever holds them, and every line's attached ends are there to
+ * attach to.
  *
  * Two limits are exceptions to leaving out, because two people can pass them together and no write can stop that:
  * a sticky mustn't vanish over its text, nor a table over its rows. So a read keeps the object and cuts what's past
@@ -131,6 +132,29 @@ function framesInCircles(frames: readonly FrameObject[]): Set<string> {
 }
 
 /**
+ * Frames in drawing order: the deeper a frame is held, the later it comes, and otherwise as `byOrder` has them. So a frame
+ * draws over whatever holds it, whatever their `at`s, and nesting writes nothing: every frame keeps its `at`, the top-level
+ * ones stay in order as slides, and the last frame at a point is the innermost one there. Their `f`s have to be settled, so
+ * that none go round. A loop, not recursion: a peer can nest frames as deep as the board allows.
+ */
+function holdersFirst(frames: readonly FrameObject[]): readonly FrameObject[] {
+  if (!frames.some((f) => f.f)) return frames;
+  const holders = new Map(frames.map((f) => [f.id, f.f]));
+  const depths = new Map([['', 0]]);
+  for (const { id } of frames) {
+    const walked: string[] = [];
+    let at = id;
+    while (!depths.has(at)) {
+      walked.push(at);
+      at = holders.get(at) ?? '';
+    }
+    let depth = depths.get(at) ?? 0;
+    for (const held of walked.toReversed()) depths.set(held, depth += 1);
+  }
+  return frames.toSorted((a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0));
+}
+
+/**
  * The board as it reads now, leaving out anything that doesn't parse. Pass the last view as `prev` and an
  * object that didn't change comes back as the same reference, and so does the view if nothing changed, which
  * is what lets a move re-render that object alone. Past `BOARD_LIMITS.objects` the same objects are left out
@@ -153,14 +177,16 @@ export function readBoard(doc: Y.Doc, prev?: BoardView): BoardView {
   const placed = new Set(kept.filter(hasBox).map((o) => o.id));
   const joined = (end: LineEnd): boolean => !isAttached(end) || placed.has(end.on);
 
-  const objects = kept.flatMap((o) => {
+  const held = kept.flatMap((o) => {
     if (o.k === 'line' && !(joined(o.from) && joined(o.to))) return [];
     const settled = (o.f && !frameIds.has(o.f)) || circling.has(o.id) ? { ...o, f: '' } : o;
     const was = prev?.byId.get(o.id);
     return [was && same(settled, was) ? was : settled];
   });
+  const frames = holdersFirst(held.filter((o) => o.k === 'frame'));
+  const objects = [...frames, ...held.filter((o) => o.k !== 'frame')];
   if (prev && objects.length === prev.objects.length && objects.every((o, i) => o === prev.objects[i])) return prev;
-  return { objects, byId: new Map(objects.map((o) => [o.id, o])), frames: objects.filter((o) => o.k === 'frame') };
+  return { objects, byId: new Map(objects.map((o) => [o.id, o])), frames };
 }
 
 /** Calls `onChange` after any change to what's on the board or its comments. Returns how to stop. */

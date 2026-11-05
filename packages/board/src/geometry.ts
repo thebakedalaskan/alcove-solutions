@@ -56,7 +56,7 @@ export function byFrame<T extends PlacedObject>(objects: readonly T[]): Map<stri
   return groups;
 }
 
-/** The frame on top at a point. */
+/** The innermost frame at a point, which is also the one on top: frames draw after whatever holds them. */
 export function frameAt(view: BoardView, x: number, y: number): FrameObject | null {
   return view.frames.findLast((f) => contains(f, x, y)) ?? null;
 }

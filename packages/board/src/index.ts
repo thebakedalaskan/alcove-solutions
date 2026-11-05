@@ -12,13 +12,12 @@ export type {
   ShapeKind, ShapeObject, ShotObject, StickyColour, TableLine, TableObject, TextObject
 } from './shape';
 export { objectText, observeBoard, readBoard } from './read';
-export { bounds, centre, colourIn, contains, fit, frameAt, hit, inside } from './geometry';
+export { bounds, centre, colourIn, contains, fit, frameAt, hit, holds, inside } from './geometry';
 export type { Camera, Pad } from './geometry';
 export { freeRoute, route, shapePath, sides } from './routes';
 export type { Route } from './routes';
-export { stackObjects } from './write';
 export {
-  addObject, addReply, addTableLine, addThread, applyThemes, duplicateObjects, moveObjects, removeObjects, removeTableLine, resizeObject, setObjects, sizeTableLine, tableCell, tidyObjects
+  addObject, addReply, addTableLine, addThread, applyThemes, duplicateObjects, moveObjects, removeObjects, removeTableLine, resizeObject, setObjects, sitsIn, sizeTableLine, stackObjects, tableCell, tidyObjects
 } from './write';
 export type { Move, ObjectPatch, TableAxis } from './write';
 export { makeHistory } from './history';
