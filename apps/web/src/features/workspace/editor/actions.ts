@@ -119,6 +119,13 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
       view.dispatch(tr);
       if (ref.id) rt.menu.set({ kind: 'documents', block: ref.id });
       return;
+    case 'board': {
+      view.dispatch(tr);
+      const block = ref.id;
+      const make = rt.props.onNewBoard;
+      if (block && make) void make().then((board) => { if (board) placeBoard(rt, block, board); });
+      return;
+    }
     default:
       view.dispatch(tr);
   }
@@ -150,6 +157,17 @@ export function pickDocument(rt: EditorRuntime, block: string, doc: string): voi
   if (!view || !ref) return;
   const tr = view.state.tr;
   const at = placeFor(tr, ref, (keep) => [n.doclink.create({ id: keep ?? newBlockId(), doc }), n.line.create({ id: newBlockId() })]);
+  view.dispatch(caretInto(tr, at + 2).scrollIntoView());
+  view.focus();
+}
+
+/** A board, made for `/` Board: a block on a line of its own where `/` was, under the line if there are words on it. */
+function placeBoard(rt: EditorRuntime, block: string, board: string): void {
+  const view = editing(rt);
+  const ref = view ? findBlock(view.state.doc, block) : null;
+  if (!view || !ref) return;
+  const tr = view.state.tr;
+  const at = placeFor(tr, ref, (keep) => [n.board.create({ id: keep ?? newBlockId(), board }), n.line.create({ id: newBlockId() })]);
   view.dispatch(caretInto(tr, at + 2).scrollIntoView());
   view.focus();
 }

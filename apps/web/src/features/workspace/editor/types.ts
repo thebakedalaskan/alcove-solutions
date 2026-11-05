@@ -139,6 +139,8 @@ export interface EditorProps {
   documentName?: ((id: string) => string | undefined) | undefined;
   /** A tag or a link to another document was pressed. */
   onOpenDocument?: ((id: string) => void) | undefined;
+  /** Makes a board beside this document, for `/` Board to show. Resolves with its ID, or null if it wasn't made. Without it, `/` has no Board. */
+  onNewBoard?: (() => Promise<string | null>) | undefined;
   /** A person's name in the text was pressed. */
   onOpenPerson?: ((id: string, rect: Rect) => void) | undefined;
   /** Someone was just tagged: tell them, or ask before sharing. */

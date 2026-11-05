@@ -65,7 +65,8 @@ export function List({ drags }: { drags: ListDrag }) {
     ws.go({ kind: 'document', id: item.id });
   };
   const newIn = (parent: string | null) => (
-    <WsNewMenu onDocument={() => { setAdding(undefined); actions.newDocument(parent); }} onFolder={() => { setAdding(undefined); if (parent) ws.setOpen(parent, true); ws.setDraft({ parent }); }} />
+    <WsNewMenu onDocument={() => { setAdding(undefined); actions.newDocument(parent); }} onFolder={() => { setAdding(undefined); if (parent) ws.setOpen(parent, true); ws.setDraft({ parent }); }}
+      onBoard={tree.boards ? () => { setAdding(undefined); void actions.newBoard(parent); } : undefined} />
   );
   const menuFor = (item: WorkspaceItem): WsPop | undefined => {
     const folder = item.kind === 'folder';
@@ -142,12 +143,12 @@ export function List({ drags }: { drags: ListDrag }) {
     const folder = item.kind === 'folder';
     if (ws.renaming === item.id) {
       return (
-        <WsRenameRow key={item.id} name={item.name} kind={folder ? 'folder' : 'document'} depth={depth} placeholder={folder ? 'Name this folder' : 'Name this document'}
+        <WsRenameRow key={item.id} name={item.name} kind={item.kind} depth={depth} placeholder={`Name this ${item.kind}`}
           onCancel={() => { ws.setRenaming(null); focusRow(item.id); }} onCommit={(name) => { ws.setRenaming(null); actions.rename(item.id, name); focusRow(item.id); }} />
       );
     }
     return (
-      <WsRow key={item.id} id={item.id} name={nameOf(item)} kind={folder ? 'folder' : 'document'} depth={depth} open={open}
+      <WsRow key={item.id} id={item.id} name={nameOf(item)} kind={item.kind} depth={depth} open={open}
         current={ws.at.kind === 'document' && ws.at.id === item.id} flash={ws.glowing.has(item.id)}
         into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || ws.blockInto === item.id} ghosted={drag?.id === item.id}
         onOpen={() => openRow(item)} onTwist={folder ? () => ws.setOpen(item.id, !open) : undefined}
@@ -157,7 +158,7 @@ export function List({ drags }: { drags: ListDrag }) {
         onPointerDown={(e) => arm(e, item.id)} />
     );
   });
-  const trash = trashIn(ws.items);
+  const trash = trashIn(ws.items, ws.tree.boards);
 
   return (
     <WsList listKey={ws.workspaceId} onKeyDown={rowKeys} empty={rows.length > 0 ? false : !member ? 'shared' : ws.canChange ? 'yours' : 'others'} foot={member ? <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} /> : undefined}

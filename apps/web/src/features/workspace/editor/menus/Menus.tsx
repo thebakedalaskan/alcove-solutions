@@ -158,7 +158,7 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
 
 function slashRows(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'slash' }>): Row[] {
   const call = rt.props.call;
-  const groups = slashGroups(menu.query, call !== undefined, rt.props.onPick !== undefined);
+  const groups = slashGroups(menu.query, call !== undefined, rt.props.onPick !== undefined, rt.props.onNewBoard !== undefined);
   if (groups.length === 0) return [{ kind: 'text', label: `Nothing called “${menu.query}”.` }];
   return groups.flatMap((g) => [
     { kind: 'head', label: g.title } satisfies Row,

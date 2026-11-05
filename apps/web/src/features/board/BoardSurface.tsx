@@ -17,6 +17,7 @@ import { createContext, forwardRef, memo, useContext, useEffect, useImperativeHa
 import type { Awareness } from 'y-protocols/awareness';
 import type * as Y from 'yjs';
 import { log as rootLog } from '~/lib/log';
+import { CommentPins, CommentSheets, BoardCommentsStore, type BoardCommenting } from './comments';
 import { BoardTyping } from './editing';
 import { watchSheet } from './gestures';
 import { FollowingPill } from './pills';
@@ -102,6 +103,10 @@ export interface BoardSurfaceProps extends BoardHandlers {
   /** Everyone here can add to it, as a blank board says. Unless it's said otherwise, they can. */
   everyone?: boolean | undefined;
   sealIcon?: IconName | undefined;
+  /** What the seal says on hover. */
+  sealTitle?: string | undefined;
+  /** Comments: who's writing, and whose faces go on them. Without it there are none to see or add. */
+  comments?: BoardCommenting | undefined;
   /** Timer, Vote, Present and More in the bar. On by default in a call and nowhere else. */
   acts?: boolean | undefined;
   people?: readonly BoardPerson[] | undefined;
@@ -269,12 +274,15 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
   const canRedo = useBoardState(board, (s) => s.canRedo);
   const mapOn = useBoardState(board, (s) => s.map);
   const following = useBoardState(board, (s) => s.following !== null);
-  const { name = '', naming, seal, sealIcon, mode, acts = mode === 'call', onName, onSeal, onTimer, onVote, onPresent, onMore } = surface;
+  const { name = '', naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call', people = NO_PEOPLE, onName, onSeal, onTimer, onVote, onPresent, onMore, onCall } = surface;
+  const look = BOARD_LOOKS[mode];
+  const faces = useMemo(() => people.map((p) => p.person), [people]);
   return (
-    <BoardBar name={name} naming={naming} seal={seal} sealIcon={sealIcon} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={BOARD_LOOKS[mode].edit} acts={acts && !following} mapOn={mapOn}
+    <BoardBar name={name} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={BOARD_LOOKS[mode].edit} acts={acts && !following} mapOn={mapOn}
       onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
-      onTimer={onTimer} onVote={onVote} onPresent={onPresent} onMore={onMore} />
+      onTimer={onTimer} onVote={onVote} onPresent={onPresent} onMore={onMore}
+      tail={look.page && !look.phone && <BoardPageActions people={faces} onCall={() => onCall?.()} />} />
   );
 }
 
@@ -303,7 +311,7 @@ function shotSpot(board: Board): { x: number; y: number } {
 }
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
-  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, everyone = true, onCall, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
+  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, everyone = true, comments, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
@@ -314,15 +322,18 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
   const glide = useBoardState(board, (s) => s.glide);
   const pan = useBoardState(board, (s) => s.space || s.panning);
   const following = useBoardState(board, (s) => s.following);
-  const faces = useMemo(() => people.map((p) => p.person), [people]);
+  const said = useMemo(() => new BoardCommentsStore(board), [board]);
+  /* Whoever can write comments has K and More's Comment for them, unless what's around the board says otherwise. */
+  const commentsMe = comments?.me ?? null;
+  const items = useMemo(() => (commentsMe && !moreItems.comment ? { ...moreItems, comment: said.start } : moreItems), [commentsMe, moreItems, said]);
 
   useLayoutEffect(() => board.setMode(mode), [board, mode]);
   useLayoutEffect(() => {
     board.tell = (text) => { toast(text); };
     board.onFollow = onFollow;
     board.onSay = onSay;
-    board.moreItems = moreItems;
-  }, [board, toast, onFollow, onSay, moreItems]);
+    board.moreItems = items;
+  }, [board, toast, onFollow, onSay, items]);
   useLayoutEffect(() => {
     const s = sheet.current, w = world.current;
     if (!s || !w) return undefined;
@@ -355,16 +366,18 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
         {look.rail && <BoardRail tool={tool} moreOpen={more} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => { board.toggleMore(); board.focusSheet(); }} />}
         <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} theme={theme} night={night} follow={people.find((p) => p.id === following)?.colour}
           tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
-          <BoardWorld ref={world} pointers={<BoardPointers presence={presence} talking={talking} />}><Objects board={board} presence={presence} /></BoardWorld>
+          <BoardWorld ref={world} pointers={<>{comments && !look.mini && <CommentPins board={board} store={said} commenting={comments} />}<BoardPointers presence={presence} talking={talking} /></>}>
+            <Objects board={board} presence={presence} />
+          </BoardWorld>
           {!look.mini && <Over board={board} onSort={onSort} />}
           {look.edit && <Blank board={board} everyone={everyone} />}
           {look.bar && <Bar board={board} surface={props} />}
           {look.bar && <Minimap board={board} />}
           {look.rail && <Flyouts board={board} />}
           <SheetPill board={board} people={people} pill={pill ?? followingOnly} />
+          {comments && !look.mini && <CommentSheets board={board} sheet={() => sheet.current} store={said} commenting={comments} />}
           {children}
         </BoardSheet>
-        {look.page && !look.phone && <BoardPageActions people={faces} onCall={() => onCall?.()} />}
       </BoardLayout>
     </Pictures.Provider>
   );

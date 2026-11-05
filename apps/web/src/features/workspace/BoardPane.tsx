@@ -1,0 +1,224 @@
+/*
+ * A board on its own page, beside the list. The board's bar is the page's head: its name, with everything about the board
+ * itself under it, and its seal, which says how it's saving. Reconnecting and Couldn't save take the pill at the top of the
+ * sheet too, as in a call. Someone who can only look has no tools, and the seal says View only. Who else is here sits at the
+ * end of the bar, beside Start a call here. What's done offline is kept on this device, as a document's is, and goes when
+ * the connection's back; a board that goes from under someone says so in its place.
+ */
+import { firstName, type DocStatus, type WorkspaceItem } from '@alcove/api';
+import type { BoardReply } from '@alcove/board';
+import type { Transaction } from 'yjs';
+import { BoardPill, BoardPop, Button, WsCantOpen, WsDoc, WsDocHead, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { BoardCommenting } from '~/features/board/comments';
+import { BoardSurface } from '~/features/board/lazy';
+import { useBoardPeople } from '~/features/board/people';
+import { FollowingPill } from '~/features/board/pills';
+import { useCallFlow } from '~/features/shell/context';
+import { useLive, useOnline } from '~/lib/live';
+import { focusRow } from './actions';
+import { useWs, type Ws } from './context';
+import { canKeepEdits } from './keep';
+import { useBackOnline, useOpensAgain, useSession, type Opened } from './opened';
+import { ShareSheet } from './Sheets';
+import { foldersAbove, nameOf } from './tree';
+
+/** Where a board is: its workspace and the folders it's in. Its own name is on its bar, below. */
+const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf)];
+
+/** What's open from the bar: the menu under the name, what the seal says, or the share sheet. */
+type Pop = 'name' | 'seal' | 'share' | null;
+
+/** How long changes go on counting as one, so a drag or a sentence is one change and not a hundred. */
+const ONE_CHANGE_MS = 1_000;
+
+/**
+ * How many changes made here haven't been saved: each run of edits with no pause in it is one, counted from when everything
+ * was last saved. It's what Couldn't save says is only on this screen.
+ */
+function useChangesSinceSaved(opened: Opened, status: DocStatus): number {
+  const { doc } = opened.session;
+  const [count, setCount] = useState(0);
+  const last = useRef(0);
+  const saved = status.status === 'saved' && !status.unsent;
+  useEffect(() => { if (saved) setCount(0); }, [saved]);
+  useEffect(() => {
+    const changed = (tr: Transaction) => {
+      // Someone else's, or nothing at all, such as the board reading itself as it opens.
+      if (!tr.local || (tr.changed.size === 0 && tr.deleteSet.clients.size === 0)) return;
+      const now = Date.now();
+      if (now - last.current > ONE_CHANGE_MS) setCount((n) => n + 1);
+      last.current = now;
+    };
+    doc.on('afterTransaction', changed);
+    return () => doc.off('afterTransaction', changed);
+  }, [doc]);
+  return count;
+}
+
+/** What the seal and the pill say for how the board stands. */
+interface Standing { seal: string; icon: IconName; title: string; pill?: { icon: IconName; title: string; text: string; action?: { label: string; run: () => void } | undefined } | undefined }
+
+function standingOf(status: DocStatus, offline: boolean, readOnly: boolean, changes: number, tryAgain: (() => void) | undefined): Standing {
+  if (readOnly) return { seal: 'View only', icon: 'eye', title: 'View only. You can look round and follow people.' };
+  if (status.status === 'failed' || (status.closed === 'session' && status.unsent)) {
+    const text = changes > 1 ? `Your last ${changes} changes are only here.` : 'Your last change is only here.';
+    return { seal: 'Not saved', icon: 'cloudOff', title: `Couldn’t save. ${text}`, pill: { icon: 'cloudOff', title: 'Couldn’t save', text, action: tryAgain && { label: 'Try again', run: tryAgain } } };
+  }
+  if (offline) return { seal: 'Reconnecting', icon: 'wifiOff', title: 'Reconnecting. Keep going. Your changes are safe here.', pill: { icon: 'wifiOff', title: 'Reconnecting', text: 'Keep going. Your changes are safe here.' } };
+  return { seal: 'Sealed', icon: 'sealed', title: 'Sealed. Alcove can’t read this board.' };
+}
+
+/** The menu under the board's name, on the sheet, closing with Escape or a press anywhere else but the name. */
+function NameMenu({ items, onClose }: { items: { icon: IconName; label: string; onPick: () => void }[]; onClose: () => void }) {
+  const ref = usePopOnSheet(onClose);
+  return <BoardPop ref={ref} left={12} top={62} label="The board" items={items} />;
+}
+
+function SealPop({ title, rows, onClose }: { title: string; rows: { icon: IconName; text: string }[]; onClose: () => void }) {
+  const ref = usePopOnSheet(onClose);
+  return <BoardPop ref={ref} left={12} top={62} title={title} rows={rows} />;
+}
+
+/** A pop over the sheet: focus goes into it, and Escape, or a press anywhere but on it or the bar's name and seal, closes it. */
+function usePopOnSheet(close: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  const latest = useRef(close);
+  latest.current = close;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const first = el.querySelector<HTMLElement>('button');
+    if (first) first.focus({ preventScroll: true });
+    else { el.tabIndex = -1; el.focus({ preventScroll: true }); }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      latest.current();
+    };
+    const onPress = (e: PointerEvent) => {
+      if (!(e.target instanceof Element) || el.contains(e.target) || e.target.closest('.bd-head .nm, .bd-head .sv')) return;
+      latest.current();
+    };
+    el.addEventListener('keydown', onKey);
+    addEventListener('pointerdown', onPress, true);
+    return () => {
+      el.removeEventListener('keydown', onKey);
+      removeEventListener('pointerdown', onPress, true);
+    };
+  }, []);
+  return ref;
+}
+
+/** Waiting for the board to open: the page with nothing on it yet, or, with no connection, what's said about that. */
+export function BoardPane({ item }: { item: WorkspaceItem }) {
+  const ws = useWs();
+  const { opened, reopen } = useSession(ws, item.id);
+  const online = useOnline();
+  if (!opened) return <WsDoc className="is-board"><WsDocHead crumbs={crumbsAbove(ws, item)} save="quiet" onToggleList={ws.toggleList} />{!online && <WsOfflineEmpty />}</WsDoc>;
+  return <OpenedBoard key={opened.round} ws={ws} item={item} opened={opened} reopen={reopen} />;
+}
+
+function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem; opened: Opened; reopen: () => void }) {
+  const { session, ready } = opened;
+  const status = useLive(session);
+  const online = useOnline();
+  const offline = status.status === 'offline' || (!online && status.status !== 'failed');
+  useOpensAgain(status, ready, reopen);
+  useBackOnline(ws, session, offline, status);
+  const changes = useChangesSinceSaved(opened, status);
+  const flow = useCallFlow();
+  const [pop, setPop] = useState<Pop>(null);
+  const [naming, setNaming] = useState<string | null>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+
+  const member = ws.sent.role !== null;
+  const trashed = item.trashedAt !== null || status.trashed || status.refused === 'trashed';
+  const gone = status.closed === 'access' || status.closed === 'deleted';
+  // A session that's ended takes nothing more: anything added there would have nowhere to go.
+  const readOnly = item.role !== 'edit' || trashed || status.role === 'read' || status.refused === 'read-only' || (status.closed !== null && status.closed !== 'session');
+  const canShare = member && item.role === 'edit';
+  const name = nameOf(item);
+  // Edits kept on this device go again from there when it opens again: without them, nothing would be left to try.
+  const tryAgain = ws.owner !== null && canKeepEdits() ? reopen : undefined;
+  const standing = standingOf(status, offline && ready, readOnly, changes, tryAgain);
+
+  /* Who's here, by what they're known by in the workspace: their face from who's in it now, else their name. */
+  const here = ws.here;
+  const face = useCallback((id: string, named: string): AvatarPerson => here.find((h) => h.person.id === id)?.person ?? { name: named || 'Someone' }, [here]);
+  const people = useBoardPeople(session.awareness, face);
+  const me = here.find((h) => h.isMe)?.person;
+  const commenting = useMemo((): BoardCommenting => ({
+    me: readOnly || !ws.me ? null : { by: me?.id ?? '', name: ws.me.name },
+    person: me ?? ws.me ?? { name: 'You' },
+    face: (r: BoardReply) => face(r.by, r.name),
+    onResolved: (reopenThread) => ws.say(wsToast.resolved(reopenThread))
+  }), [readOnly, ws.me, me, face, ws.say]);
+
+  const nameButton = () => wrap.current?.querySelector<HTMLElement>('.bd-head .nm') ?? null;
+  const backToName = () => requestAnimationFrame(() => nameButton()?.focus({ preventScroll: true }));
+  const closePop = () => setPop(null);
+  const nameField: BoardNaming | undefined = naming === null ? undefined : {
+    value: naming,
+    onChange: setNaming,
+    onDone: () => {
+      const to = naming.replace(/\s+/g, ' ').trim();
+      setNaming(null);
+      if (to && to !== name) ws.actions.rename(item.id, to);
+      backToName();
+    },
+    onCancel: () => { setNaming(null); backToName(); }
+  };
+  const showInList = () => {
+    if (ws.listOff || matchMedia('(max-width: 640px)').matches) ws.toggleList();
+    focusRow(item.id);
+  };
+  const items = [
+    ...(item.role === 'edit' && !trashed ? [{ icon: 'pen' as const, label: 'Rename', onPick: () => { closePop(); setNaming(name); } }] : []),
+    { icon: 'folderOpen' as const, label: `Saved in ${ws.spaceName}`, onPick: () => { closePop(); showInList(); } },
+    ...(canShare ? [{ icon: 'people' as const, label: 'Who can add to it', onPick: () => setPop('share') }] : []),
+    { icon: 'link' as const, label: 'Copy link', onPick: () => { closePop(); ws.actions.copyLink(item.id); } }
+  ];
+
+  // Whatever the bar opened goes with what it was about.
+  useEffect(() => { if (readOnly) setNaming(null); }, [readOnly]);
+
+  const where = crumbsAbove(ws, item);
+  if (gone) {
+    return (
+      <WsDoc>
+        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} />
+        <WsCantOpen what="board" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
+      </WsDoc>
+    );
+  }
+  if (!ready) return <WsDoc className="is-board"><WsDocHead crumbs={where} save="quiet" onToggleList={ws.toggleList} />{status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}</WsDoc>;
+
+  const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
+  return (
+    <WsDoc className="is-board">
+      <WsDocHead crumbs={where} save="quiet" onToggleList={ws.toggleList} />
+      <WsGoneBar what="board" who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
+      <div ref={wrap} className="bpg">
+        <Suspense>
+          <BoardSurface doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : 'page'} name={name} naming={nameField}
+            seal={standing.seal} sealIcon={standing.icon} sealTitle={standing.title} everyone={!item.restricted} people={people} comments={commenting}
+            onName={() => setPop((p) => (p === 'name' ? null : 'name'))} onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}
+            onCall={() => flow.start({ name })}
+            pill={(following, stop) => standing.pill
+              ? <BoardPill icon={standing.pill.icon} title={standing.pill.title} text={standing.pill.text} action={standing.pill.action?.label} onAction={standing.pill.action?.run} />
+              : following && <FollowingPill person={following} onStop={stop} />}>
+            {pop === 'name' && <NameMenu items={items} onClose={closePop} />}
+            {pop === 'seal' && <SealPop title="Sealed" rows={[{ icon: 'lock', text: `Saved in ${ws.spaceName}.` }, { icon: 'sealed', text: 'Alcove can’t read it.' }]} onClose={closePop} />}
+          </BoardSurface>
+        </Suspense>
+        {pop === 'share' && (
+          <WsPopover open onOpenChange={(to) => { if (!to) { closePop(); backToName(); } }} at={() => nameButton()?.getBoundingClientRect() ?? new DOMRect()} label="Who can add to it">
+            <ShareSheet item={item} />
+          </WsPopover>
+        )}
+      </div>
+    </WsDoc>
+  );
+}

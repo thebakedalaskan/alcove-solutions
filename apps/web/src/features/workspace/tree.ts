@@ -5,28 +5,34 @@
 import type { ItemPlace, WorkspaceItem } from '@alcove/api';
 
 /** What a row says for something nobody has named yet. */
-export const nameOf = (item: Pick<WorkspaceItem, 'kind' | 'name'>): string => item.name || (item.kind === 'folder' ? 'Untitled folder' : 'Untitled');
+const UNNAMED: Record<WorkspaceItem['kind'], string> = { document: 'Untitled', folder: 'Untitled folder', board: 'Untitled board' };
+export const nameOf = (item: Pick<WorkspaceItem, 'kind' | 'name'>): string => item.name || UNNAMED[item.kind];
 
 /** A title can run on: the list keeps what fits in a name, on one line. */
 export const nameFrom = (title: string): string => title.replace(/\s+/g, ' ').trim().slice(0, 200);
 
-/** A workspace's items, by ID and by what's in each folder. `kids` leaves out Trash, and boards until they have somewhere to open. */
+/**
+ * A workspace's items, by ID and by what's in each folder. `kids` leaves out Trash, and boards where they aren't listed: a call
+ * shows its boards itself, on the stage, so its workspace lists documents and folders. `all` has everything, boards included.
+ */
 export interface Tree {
   all: ReadonlyMap<string, WorkspaceItem>;
   kids: ReadonlyMap<string | null, readonly WorkspaceItem[]>;
+  /** Boards are in the list: the workspace as a page. */
+  boards: boolean;
 }
 
-export function treeOf(items: readonly WorkspaceItem[]): Tree {
+export function treeOf(items: readonly WorkspaceItem[], boards: boolean): Tree {
   const all = new Map(items.map((i) => [i.id, i]));
   const kids = new Map<string | null, WorkspaceItem[]>();
   for (const item of items) {
-    if (item.trashedAt !== null || item.kind === 'board') continue;
+    if (item.trashedAt !== null || (!boards && item.kind === 'board')) continue;
     const at = item.parent !== null && all.has(item.parent) ? item.parent : null;
     const here = kids.get(at);
     if (here) here.push(item);
     else kids.set(at, [item]);
   }
-  return { all, kids };
+  return { all, kids, boards };
 }
 
 const kidsOf = (t: Tree, parent: string | null): readonly WorkspaceItem[] => t.kids.get(parent) ?? [];
@@ -122,7 +128,7 @@ export function foldersFor(t: Tree, moving: string): { id: string; name: string;
   return out;
 }
 
-/** The documents in the list, top to bottom, folders open or not. */
+/** The documents and boards in the list, top to bottom, folders open or not: whatever opens on the page. */
 export function documentsIn(t: Tree): WorkspaceItem[] {
   const out: WorkspaceItem[] = [];
   const walk = (parent: string | null) => {
@@ -143,11 +149,14 @@ export function nextDocument(t: Tree, gone: string): string | null {
   return (docs.slice(at + 1).find(staying) ?? docs.filter(staying).at(-1))?.id ?? null;
 }
 
-/** What's in Trash on its own account: something inside a folder there goes and comes back with the folder. The newest first. */
-export function trashIn(items: readonly WorkspaceItem[]): WorkspaceItem[] {
+/**
+ * What's in Trash on its own account: something inside a folder there goes and comes back with the folder. The newest first.
+ * Boards only where they're listed (`Tree.boards`).
+ */
+export function trashIn(items: readonly WorkspaceItem[], boards: boolean): WorkspaceItem[] {
   const trashed = new Set(items.filter((i) => i.trashedAt !== null).map((i) => i.id));
   return items
-    .filter((i) => i.trashedAt !== null && i.kind !== 'board' && !(i.parent !== null && trashed.has(i.parent)))
+    .filter((i) => i.trashedAt !== null && (boards || i.kind !== 'board') && !(i.parent !== null && trashed.has(i.parent)))
     .sort((a, b) => (b.trashedAt ?? '').localeCompare(a.trashedAt ?? ''));
 }
 

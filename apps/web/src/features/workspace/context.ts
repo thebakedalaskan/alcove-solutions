@@ -44,6 +44,11 @@ export interface WorkspaceProps {
 export interface TreeActions {
   newDocument: (parent: string | null) => void;
   newFolder: (parent: string | null, name: string) => void;
+  /**
+   * A board, called Untitled board, in `parent`: opened on the page, unless `stay`. Resolves with its ID, or null when it
+   * couldn't be made, which has been said.
+   */
+  newBoard: (parent: string | null, how?: { stay?: boolean | undefined }) => Promise<string | null>;
   /** Naming something in the list: a document's title follows. */
   rename: (id: string, name: string) => void;
   /** The title was typed on the page: the list follows. */

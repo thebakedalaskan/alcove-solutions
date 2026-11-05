@@ -14,6 +14,7 @@ import { useLive, useMedia } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { useTreeActions } from './actions';
+import { BoardPane } from './BoardPane';
 import { useLaidOver } from './changes';
 import { WsContext, type FolderDraft, type Ws, type WorkspaceProps } from './context';
 import { DocumentPane } from './DocumentPane';
@@ -79,14 +80,14 @@ function useToasts() {
 }
 
 /** What just arrived in the list or moved in it, for everyone, glows. */
-function useGlow(sent: WorkspaceTree | null): ReadonlySet<string> {
+function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): ReadonlySet<string> {
   const [glowing, setGlowing] = useState<ReadonlySet<string>>(new Set());
   const before = useRef<Tree | null>(null);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   useEffect(() => { const t = timers.current; return () => { t.forEach(clearTimeout); }; }, []);
   useEffect(() => {
     if (!sent) return;
-    const now = treeOf(sent.items);
+    const now = treeOf(sent.items, mode === 'page');
     const was = before.current;
     before.current = now;
     if (!was) return;
@@ -98,7 +99,7 @@ function useGlow(sent: WorkspaceTree | null): ReadonlySet<string> {
       setGlowing((on) => new Set([...on].filter((id) => !lit.includes(id))));
     }, GLOW_MS);
     timers.current.add(t);
-  }, [sent]);
+  }, [sent, mode]);
   return glowing;
 }
 
@@ -131,9 +132,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const owner = session?.ownerId ?? null;
   const me = session?.user ?? null;
   const { items, change } = useLaidOver(view.tree);
-  const tree = useMemo(() => treeOf(items), [items]);
+  const tree = useMemo(() => treeOf(items, mode === 'page'), [items, mode]);
   const { toasts, say } = useToasts();
-  const glowing = useGlow(view.tree);
+  const glowing = useGlow(view.tree, mode);
   const { open, setOpen, openAll } = useFolders(owner, workspaceId);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -241,7 +242,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     <WsContext value={ws}>
       <WsPane page={page} listOff={listOff} phoneList={phoneList}>
         <List drags={{ drag, arm, ended }} />
-        {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
+        {at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
             <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}

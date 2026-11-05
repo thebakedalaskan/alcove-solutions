@@ -8,7 +8,6 @@ import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsGoneBar, Ws
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
-import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { agoLabel, shortDay } from '~/lib/time';
 import { focusRow } from './actions';
@@ -16,45 +15,11 @@ import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
+import { useBackOnline, useOpensAgain, useSession, type Opened } from './opened';
 import { Rescue, type CopyTo } from './Rescue';
-import { openDocument, withDocument } from './session';
+import { withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
-
-const dlog = log.child({ component: 'workspace' });
-
-/** A session for one document, and whether its first sync is in. Why it ended, if it has, is in its status. */
-interface Opened { session: DocSession; ready: boolean; round: number }
-
-/** One session at a time for a document. `reopen`: a fresh one, from what Alcove has and anything kept here. */
-function useSession(ws: Ws, documentId: string) {
-  const { workspaceId, pass, owner } = ws;
-  const [round, setRound] = useState(0);
-  const reopen = useCallback(() => setRound((r) => r + 1), []);
-  const [opened, setOpened] = useState<Opened | null>(null);
-  useEffect(() => {
-    let left = false;
-    let held: DocSession | null = null;
-    const open = () => {
-      openDocument(workspaceId, documentId, owner, pass).then((session) => {
-        if (left) { session.close(); return; }
-        held = session;
-        setOpened({ session, ready: false, round });
-        // A session that never opens says why in its status.
-        session.ready.then(() => { if (!left) setOpened({ session, ready: true, round }); }, () => undefined);
-      }, (e: unknown) => {
-        dlog.warn('a document didn’t open', { workspaceId, documentId, err: e });
-        addEventListener('online', open, { once: true });
-      });
-    };
-    open();
-    return () => { left = true; removeEventListener('online', open); held?.close(); };
-  }, [workspaceId, documentId, pass, owner, round]);
-  return { opened, reopen };
-}
-
-/** How long a document that can't be opened right now waits before it's opened again, a little longer each time. */
-const UNAVAILABLE_WAITS = [2_000, 5_000, 15_000, 30_000];
 
 /** The dates `@` offers: today, tomorrow and the next Friday. */
 function dateChoices(now: number): { label: string; date: string }[] {
@@ -110,11 +75,12 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     return () => cancelAnimationFrame(frame);
   }, [editor, block]);
 
-  const others = useMemo(() => documentsIn(ws.tree).filter((d) => d.id !== item.id && d.role === 'edit'), [ws.tree, item.id]);
+  /* A block goes to another document, and only a document can be linked with `@`: a board is a `/` Board of its own. */
+  const others = useMemo(() => documentsIn(ws.tree).filter((d) => d.kind === 'document' && d.id !== item.id && d.role === 'edit'), [ws.tree, item.id]);
   const onMention: EditorProps['onMention'] = (query, { docsOnly }) => {
     const words = query.toLowerCase();
     const has = (s: string) => s.toLowerCase().includes(words);
-    const documents: MentionItem[] = documentsIn(ws.tree).filter((d) => d.id !== item.id && has(nameOf(d))).slice(0, docsOnly ? 8 : 3).map((d) => ({ kind: 'document', id: d.id, name: nameOf(d) }));
+    const documents: MentionItem[] = documentsIn(ws.tree).filter((d) => d.kind === 'document' && d.id !== item.id && has(nameOf(d))).slice(0, docsOnly ? 8 : 3).map((d) => ({ kind: 'document', id: d.id, name: nameOf(d) }));
     if (docsOnly) return [{ title: 'Documents', items: documents }];
     const out: MentionSection[] = [
       { title: ws.spaceName, items: persons.filter((p) => p.email !== ws.me?.email && has(p.name)).slice(0, 6).map((person) => ({ kind: 'person', person })) },
@@ -194,6 +160,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
           <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
+            onNewBoard={!readOnly && ws.canChange && ws.tree.boards ? () => ws.actions.newBoard(item.parent, { stay: true }) : undefined}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop}
@@ -250,27 +217,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   } : undefined;
   const rescue = stuck ? <Rescue session={session} say={ws.say} copyTo={copyTo} gone={gone} onLetGo={reopen} /> : null;
 
-  /* A document that can't be opened right now opens again by itself, a little later each time. */
-  const tries = useRef(0);
-  useEffect(() => { if (ready) tries.current = 0; }, [ready]);
-  useEffect(() => {
-    if (status.closed !== 'unavailable') return undefined;
-    const wait = UNAVAILABLE_WAITS[Math.min(tries.current, UNAVAILABLE_WAITS.length - 1)] ?? 30_000;
-    tries.current += 1;
-    const timer = setTimeout(reopen, wait);
-    return () => clearTimeout(timer);
-  }, [status.closed, reopen]);
-
-  /*
-   * Back from being offline, and everything's in: in the session that was offline. Not once what was written was refused or
-   * the session ended, so a document opened again after Discard doesn't say its edits saved.
-   */
-  const wasOffline = useRef<DocSession | null>(null);
-  useEffect(() => {
-    if (offline) wasOffline.current = session;
-    else if (wasOffline.current !== session || status.status === 'failed' || status.closed !== null) wasOffline.current = null;
-    else if (status.status === 'saved') { wasOffline.current = null; ws.say(wsToast.backOnline()); }
-  }, [offline, session, status.status, status.closed, ws.say]);
+  useOpensAgain(status, ready, reopen);
+  useBackOnline(ws, session, offline, status);
 
   if (gone) {
     return (

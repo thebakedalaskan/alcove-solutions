@@ -7,7 +7,8 @@ import type { BoardMoreItem, BoardPenKind, BoardTool } from '@alcove/ui';
 import type { Guide } from './selection';
 import type { BoardDraft } from './tools/draft';
 
-export type BoardMode = 'call' | 'page' | 'tile' | 'present' | 'phone' | 'read';
+/** `read`: in a call or a note, for someone who can only look. `pageRead`: a board's own page, for someone who can only look. */
+export type BoardMode = 'call' | 'page' | 'pageRead' | 'tile' | 'present' | 'phone' | 'read';
 
 /** What each mode has. */
 export interface BoardLook {
@@ -31,6 +32,7 @@ const BARE: BoardLook = { ...LOOK, bar: false, rail: false, edit: false, clean: 
 export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
   call: LOOK,
   page: { ...LOOK, page: true },
+  pageRead: { ...LOOK, page: true, rail: false, edit: false },
   read: { ...LOOK, rail: false, edit: false },
   present: BARE,
   tile: { ...BARE, mini: true },

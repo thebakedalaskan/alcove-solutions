@@ -46,7 +46,7 @@ function followTrigger(rt: EditorRuntime, state: EditorState, typed: boolean): v
   if (!t) rt.dismissed = null;
   const open = rt.menu.get();
   /* A search that's found nothing for three letters isn't a search. */
-  const wanted = t && !(t.kind === 'slash' && t.query.length > 2 && slashGroups(t.query, rt.props.call !== undefined, rt.props.onPick !== undefined).length === 0) ? t : null;
+  const wanted = t && !(t.kind === 'slash' && t.query.length > 2 && slashGroups(t.query, rt.props.call !== undefined, rt.props.onPick !== undefined, rt.props.onNewBoard !== undefined).length === 0) ? t : null;
   if (open && (open.kind === 'slash' || open.kind === 'mention')) {
     if (!wanted || wanted.kind !== open.kind) rt.menu.set(null);
     else if (!sameMenu(open, wanted)) rt.menu.set(wanted);
