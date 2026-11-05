@@ -167,7 +167,7 @@ export function CopyField({ value, label, className }: { value: string; label: s
   );
 }
 
-export const Kbd =({ children, className }: { children: ReactNode; className?: string }) => <kbd className={cn('ac-kbd', className)}>{children}</kbd>;
+export const Kbd = ({ children, className }: { children: ReactNode; className?: string }) => <kbd className={cn('ac-kbd', className)}>{children}</kbd>;
 
 /** A moment in a recording you can jump to. */
 /** A moment as a chip: a position in a recording (4:05) by default, or the caller's label, such as a time of day, with what pressing it does. */

@@ -51,6 +51,9 @@ export function trustLine(t: Trust | undefined): string {
 /** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
 export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
 
+/** The top-ups list's key, carrying its type, for reading what it held before. */
+const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.credits.topUps() }).queryKey;
+
 export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
@@ -92,8 +95,22 @@ export const q = {
    * add credits just isn't there, and it isn't asked again for a while.
    */
   topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.credits.routes(), staleTime: 10 * 60_000, retry: false }),
-  /** Top-ups still open, and the last few finished. */
-  topUps: () => queryOptions({ queryKey: qk.topUps, queryFn: () => api.credits.topUps() }),
+  /**
+   * Top-ups still open, and the last few finished; read again every 30 seconds while one is open, so a payment that
+   * settles with the sheet closed shows on Plan and credits. A server that can't take payments answers unavailable:
+   * there's nothing to show.
+   */
+  topUps: () => queryOptions({
+    queryKey: qk.topUps,
+    queryFn: async ({ client }) => {
+      const was = client.getQueryData(topUpsKey)?.filter(topUpOpen) ?? [];
+      const list = await api.credits.topUps();
+      // One that was on its way has been credited since: the balance catches up.
+      if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.balance });
+      return list;
+    },
+    refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false)
+  }),
   /**
    * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
    * and the balance too when credits were added.

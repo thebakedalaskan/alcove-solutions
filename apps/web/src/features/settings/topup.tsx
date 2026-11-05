@@ -114,8 +114,11 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
   const left = minutesUntil(t.expiresAt, now);
   // The server shows the address only while it can take money; past its expiry it can't, whatever the state says yet.
   const address = left > 0 ? t.address : null;
+  /** Past its expiry while the server still has it open: nothing more can be sent to it. */
+  const lapsed = t.address !== null && address === null;
   let state: ReactNode;
-  if (t.state === 'short') state = <Notice tone="caution">{topUpLine(t)}</Notice>;
+  if (lapsed && t.state === 'waiting') state = <p className="set-topup-state is-expired"><Icon name="clock" size={18} />This address expired. To add credits, start a new top-up.</p>;
+  else if (t.state === 'short') state = <Notice tone="caution">{topUpLine(t)}</Notice>;
   else if (t.state === 'failed') state = <Notice tone="caution">{topUpLine(t)} <RequestRef id={t.id} /></Notice>;
   else {
     const mark = t.state === 'waiting' || t.state === 'arriving' ? <Dots /> : <Icon name={t.state === 'credited' ? 'check' : 'clock'} size={18} />;
@@ -143,7 +146,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
           <p className="set-topup-route">
             {routeName(t.route)}
             {t.received && ` · ${t.received.amount} ${t.route.token} arrived`}
-            {t.address !== null && ' · This address expired. To add credits, start a new top-up.'}
+            {lapsed && t.state !== 'waiting' && ' · This address expired. To add credits, start a new top-up.'}
           </p>
         )}
       </div>

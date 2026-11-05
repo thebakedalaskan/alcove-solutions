@@ -235,7 +235,8 @@ export function AppearanceCard() {
  */
 export function PlanCard({ credits }: { credits: CreditBalance }) {
   const routes = useQuery(q.topUpRoutes());
-  const open = useQuery({ ...q.topUps(), enabled: routes.isSuccess }).data?.filter(topUpOpen) ?? [];
+  // Top-ups on their way show whether or not 1Click answers right now; a server without payments has none to show.
+  const open = useQuery(q.topUps()).data?.filter(topUpOpen) ?? [];
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <MinutesCard id="plan" title="Plan and credits" className="ac-set-card" left={hoursAndMinutes(credits.balance / credits.perMinute)}
@@ -254,12 +255,12 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
           ))}
         </ul>
       )}
-      {routes.isSuccess && (
+      {routes.data !== undefined && (
         <SettingRow label="Add credits" help="Pay with a stablecoin from any wallet or exchange."
           control={<Button variant="primary" size="sm" icon="plus" onClick={() => setSheet({ open: true, topUpId: null })}>Add credits</Button>} />
       )}
       <SettingRow label="Calls without notes" help="Never use minutes." control={fact('check', 'Free')} />
-      {routes.isSuccess && <AddCreditsSheet open={sheet.open} topUpId={sheet.topUpId} onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))} />}
+      <AddCreditsSheet open={sheet.open} topUpId={sheet.topUpId} onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))} />
     </MinutesCard>
   );
 }

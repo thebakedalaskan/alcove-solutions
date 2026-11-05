@@ -50,9 +50,7 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
   const prefs = useQuery(q.prefs()).data;
   const credits = useQuery(q.balance()).data;
   const calendar = useQuery(q.calendar()).data;
-  // A server that can't take payments has no top-ups to ask about.
-  const payments = useQuery(q.topUpRoutes()).isSuccess;
-  const paying = useQuery({ ...q.topUps(), enabled: payments }).data?.some(topUpOpen) ?? false;
+  const paying = useQuery(q.topUps()).data?.some(topUpOpen) ?? false;
   const navigate = useNavigate();
   const toast = useToast();
   const del = useDeleteAccount(() => {
