@@ -1,6 +1,7 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import { AlcoveApiError, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { api } from './api';
@@ -458,6 +459,19 @@ export function useShareNote() {
     onError: (_e, v) => { void qc.invalidateQueries({ queryKey: qk.note(v.id) }); }
   });
 }
+/**
+ * Reads a note again, for what can't ask through here: the browser's audio element fetches for itself and can't say
+ * why it failed, or how much more has been recorded. A session that's over shows up here, where the query layer deals
+ * with it. Gives back the note as it is now.
+ */
+export function useRecheckNote(id: string) {
+  const qc = useQueryClient();
+  return useCallback(async () => {
+    await qc.refetchQueries({ queryKey: qk.note(id), exact: true }, { throwOnError: true });
+    return qc.getQueryData(q.note(id).queryKey);
+  }, [qc, id]);
+}
+
 export function useDeleteNote() {
   const qc = useQueryClient();
   return useMutation({

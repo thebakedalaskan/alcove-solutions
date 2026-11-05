@@ -154,8 +154,14 @@ export interface AlcoveApi {
     list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]>;
     get(id: ID): Promise<Note>;
     progress(id: ID): AsyncIterable<NoteProgress>;
-    /** URL that streams one decrypted audio segment to a signed-in browser. */
-    audioUrl(id: ID, segment: number): string;
+    /**
+     * URL of the first `pieces` of one decrypted audio segment, for a signed-in browser's audio element: it answers byte
+     * ranges, so it starts at once and goes to any moment. A browser holds a URL to the length it first said, so a
+     * recording that has grown is read at a new URL.
+     */
+    audioUrl(id: ID, segment: number, pieces: number): string;
+    /** The same audio whole, for a browser that can't go to a moment by range. */
+    audio(id: ID, segment: number, pieces: number, signal?: AbortSignal | undefined): Promise<Blob>;
     /** URL of one shared-screen frame of a note (a `ScreenMoment`'s image), for a signed-in browser that has the note. */
     screenUrl(id: ID, frameId: ID): string;
     /**

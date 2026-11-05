@@ -574,24 +574,37 @@ Everything here comes from the server today; the screens for it are being built.
 - **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
   yours for everyone, once you say so in the row, and it stays in Your notes; the organizer can **Remove** any of them
   the same way.
-- A note's page starts with a way back (**Notes /** its title), the pin (**Pin these notes**, at most eight
-  pinned), **Share** and **More**. Chips above the title say whether it's **Ready**, **Being written** or **Still
-  recording**, the series it's in, and how you got it. Under the title: when it was and who has it, then
-  **Written in confidential compute** with when the hardware was checked, which opens what was checked about
-  the models.
-- A written note shows the summary, decisions, open questions, follow-ups, the transcript (its first lines,
-  then **Show all 24 minutes**) and, beside it, the encrypted recording, chapters, shared screens and who has
-  it. It takes questions about the call: a suggested question or your own, in a bar that stays at the bottom
-  while you read (suggestions show at the end of the note). Answers cite the moments in the recording they
-  come from.
+- A note's page is a slim band of sky, with the call drawn along the horizon. The band has a way back (**Notes /** its
+  title), the pin (**Pin these notes**, at most eight pinned), **Share**, **More**, and one line under the title: when
+  it was, who has it, how you got it, and **Written in confidential compute** with when the hardware was checked, which
+  opens what was checked about the models. Until the notes are written that says **Being written in confidential
+  compute**, or **Still recording** beside what's been checked so far, and while they're written again, **Being written
+  again**.
+- The horizon is the call: **Play** and the time, then a line with the chapters standing on it, what was decided and
+  what's to do sitting on it (hollow until people have said so), where nothing was captured, and light under it drawn
+  from what was said, still where nobody spoke. Pointing at a chapter or a mark says what it is. Pressing one, a moment
+  chip anywhere on the page, or the time of a transcript line goes there: the sun moves along the line, and the
+  transcript goes to that line and marks it, opening the rest if it has to. A chapter that's breakout rooms opens them
+  instead. **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
+  reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
+  the line being said is marked. If part of it won't play, it says so, and **Play** tries again from there. The horizon
+  stays at the top of the page as you read. On a phone it shows the chapter you're in, and the chapters are listed
+  beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
+  so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
+  keep its recording has the line and no player.
+- A written note shows the summary, **Decided**, **Still open**, **Follow-ups**, the transcript (its first five lines,
+  then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
+  notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
+  going to a moment never takes the note away. It takes questions about the call: a suggested question or your own, in
+  a bar that stays at the bottom while you read (suggestions show at the end of the note). Answers cite the moments in
+  the recording they come from.
 - Until the notes are written, the page says the audio is saved and encrypted (or, when the call doesn't keep its
   recording, that the call has ended) and the notes are being written
   in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript) with the
-  one in progress marked. When nothing was said, it says so and offers **Play** for the audio. A call that didn't keep
-  its transcript or recording says so in one line where it would have been, and has no player; you can still ask
-  about what the notes say. After **Delete
-  notes** it lists what went; a note that isn't there (deleted, or never shared with you) says so, with **Back
-  to notes**.
+  one in progress marked. When nothing was said, it says so, the water is still, and **Play** stays on the line for the
+  audio. A call that didn't keep its transcript or recording says so in one line where it would have been, and has no
+  player; you can still ask about what the notes say. After **Delete notes** it lists what went; a note that isn't
+  there (deleted, or never shared with you) says so, with **Back to notes**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
   behind the line in Notes' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
   to 12 of them that share the most words with the question, and cites the notes and the moments in them it
@@ -612,29 +625,31 @@ Everything here comes from the server today; the screens for it are being built.
   the call's, and writing the notes again writes each room's section again too, keeping what people settled.
   Questions about the notes cover the rooms. Deleting the notes deletes the rooms' sections with them. A call set
   not to keep its transcript keeps each room's notes and deletes what was said there, as it does for the main room.
-- What the notes heard is a proposal until people say so, and each entry shows **What was said** behind it, with
-  anything to be careful of: nothing said backs it, someone said otherwise, it was hard to hear, or a line behind it or
-  its own words changed since. Each decision says where it stands: **Proposed**, **Confirmed**, **Not decided** or **No longer
-  holds**, and who said so. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
+- What the notes heard is a proposal until people say so. Each entry's row shows anything to be careful of (nothing
+  said backs it, someone said otherwise, it was hard to hear, or a line behind it or its own words changed since), and
+  its menu shows **What was said** behind it. Each decision says where it stands and who said so: proposed, confirmed,
+  not decided, or no longer holding, and it's solid on the horizon once it's confirmed. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
   or last reworded it; someone given the notes afterwards can propose and say what they think, but not confirm. Only
   the organizer can say **It wasn’t decided**, and anyone else saying so flags it, in their name, for the organizer to
   settle. Whoever confirmed a decision, or the organizer, can undo that or mark **It no longer holds**. New words on a
   confirmed decision need someone else to confirm them. If what you're agreeing to changed after you opened it, nothing
   is saved and the page shows what it says now. An open question shows **Not answered yet** until someone taps **It was
   answered**. A follow-up shows who the notes suggest, dashed, and any date as only suggested, until that person taps
-  **I’ll do it**, or **Not mine**, which leaves it with nobody. Its menu lets the organizer or the person it's for
-  give it to anyone who has the notes (giving it to yourself takes it on); once someone has taken it on, only they or
-  the organizer can reword, date or tick it, and the organizer doing so asks them again. **History** on each lists every
-  change: who did what, when, and what the words were.
+  **I’ll do it**, or **Not mine** in its menu, which leaves it with nobody. Its menu lets the organizer or the person it's
+  for give it to anyone who has the notes (giving it to yourself takes it on); once someone has taken it on, only they
+  or the organizer can reword, date or tick it, and the organizer doing so asks them again. **Changes** in each one's
+  menu lists every change: who did what, when, and what the words were.
 - **Propose a decision** and **Add a follow-up** add what the notes missed, in your words, to the call's notes or a
   breakout room's section, and the plus on a transcript line starts one from what was said there.
-- A call's notes say when it's in a series: **Every Tuesday** when the last three calls in it were a week apart,
-  otherwise **In a series**. Beside the note are the series' other calls (the newest three, with the start of
-  each summary), how much is still open across them and, for the organizer, the next call; **All** opens the
-  series page. When it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people
-  and notes setting, at the same time of day a week on (still the same time when the clocks change in
-  between), on the calendar; **Change** in the confirmation moves it or cancels it.
-- The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
+- Beside a call's notes is the series it's in: **Every Tuesday** when the last three calls in it were a week apart,
+  otherwise **In a series**, with the series' other calls (the newest three, with the start of each summary), how much
+  is still open across them and, for the organizer, the next call with **Change**; **All** opens the series page. When
+  it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people and notes setting, at
+  the same time of day a week on (still the same time when the clocks change in between), on the calendar. That starts
+  the series, so the next call shows there; **Change** moves it or cancels it.
+- The series page sits on the same evening as a note. Its calls stand on the horizon, each opening its notes, with the
+  sun on the latest and the next call at the end of the line. Under it is what carries over from the calls you have
+  notes from: decisions (confirmed, not
   confirmed yet, and no longer holding), questions still open and answered since the last call, and follow-ups taken
   on, not taken on yet and done since the last call, each with the call and moment it came from, breakout rooms'
   with their room. Things can be settled there, and

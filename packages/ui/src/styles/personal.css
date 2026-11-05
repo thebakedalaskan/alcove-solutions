@@ -1,5 +1,5 @@
 /* Your own notes (apps/web/src/features/personal): in the call's panel, at night like the rest of the call, and beside a
-   note (own-); and what people added to the shared notes from theirs (add-). */
+   note (own-). */
 
 /* The head of the panel's view: who it's for, and marking a moment. */
 .own-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--line); }
@@ -46,13 +46,6 @@
 .own-compose .ac-btn { width: 36px; height: 36px; padding: 0; }
 .ic-foot .own-compose .ac-btn { width: 36px; }
 
-/* Beside a note. */
-.own-card .ac-card-head { align-items: center; }
-.own-card .ac-scope { font-size: 12px; }
-.own-card .own-list { max-height: 460px; margin: 4px -6px 10px; padding: 0 6px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.own-card .own-compose { margin-top: 10px; }
-.own-empty.ac-empty { padding: 20px 8px 16px; }
-
 /* What would go to the shared notes: the words, where, and who. It opens where the entry is, never over it. */
 .own-pv { display: grid; gap: 10px; margin-top: 10px; padding: 12px; scroll-margin-block: 24px 110px; border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); }
 .own-pv .h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink); }
@@ -66,8 +59,6 @@
 .own-pv dd .ac-faces { flex: none; }
 .own-pv .btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .own-pv .bad { font-size: 13px; line-height: 1.45; color: var(--caution); }
-/* Who the shared notes are for, among a note's chips. */
-.doc .lead-chips .ac-scope { align-self: center; }
 
 /* Keeping an answer. */
 .own-keep { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
@@ -75,32 +66,17 @@
 .ic-qa .a .own-keep { margin-top: 2px; }
 .ic-qa .a .own-keep .lk { font-size: 12.5px; }
 
-/* Bookmarking a line: beside the pencil on a written note. In the call it has its own room at the end of the line, and
-   shows on hover or focus, always on touch screens. */
-.ln-mark.is-on { opacity: 1; color: var(--sun-text); }
+/* Bookmarking a line in the call: it has its own room at the end of the line, and shows on hover or focus, always on
+   touch screens. */
 .tx-l { position: relative; }
 .tx-l.has-mark { padding-right: 30px; }
 .tx-l .tx-mark { position: absolute; right: 0; top: 2px; width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
 .tx-l:hover .tx-mark, .tx-l:focus-within .tx-mark { opacity: 1; }
 @media (hover: none) { .tx-l .tx-mark { opacity: 1; } }
 .tx-l .tx-mark:hover { background: var(--sunk); color: var(--ink); }
-.ask-bar .ac-scope { flex: none; }
 /* On a phone the dock has no room for it: it's in the More menu, and in the panel's Yours view. Six tabs fit a little closer. */
 @media (max-width: 560px) {
   .ic-dockbar .d-mark { display: none; }
   .ic-side-head .ac-tab { padding: 0 6px; font-size: 13px; }
   .ic-side-head .ac-tab[aria-selected="true"]::after { left: 5px; right: 5px; }
 }
-
-/* What people added to the shared notes. */
-.add-list { display: grid; gap: 0; }
-.add-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
-.add-row:first-child { border-top: 0; padding-top: 4px; }
-.add-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13.5px; color: var(--ink-2); }
-.add-h b { font-weight: 600; color: var(--ink); }
-.add-h .ac-time { font-size: 12px; line-height: 1; color: var(--ink-3); }
-.add-b { display: grid; gap: 6px; min-width: 0; }
-.add-b p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
-.add-m { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-/* Under what it's about, with the whole width: it doesn't squeeze the words beside it. */
-.add-row .own-sure { grid-column: 2 / -1; flex-wrap: wrap; gap: 4px 10px; margin-left: 0; }
