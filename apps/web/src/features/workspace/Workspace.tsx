@@ -187,10 +187,18 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
   const writing = others.flatMap((o) => (o.typing && o.callIdentity !== null ? [o.callIdentity] : [])).join(' ');
   const followingIn = following ? others.find((o) => o.person.id === following.person.id)?.callIdentity ?? null : null;
+  const placed = closed ? [] : others.flatMap((o): [string, string][] => {
+    if (o.callIdentity === null) return [];
+    const doc = o.document === null ? undefined : tree.all.get(o.document);
+    return doc ? [[o.callIdentity, nameOf(doc)]] : o.elsewhere ? [[o.callIdentity, 'A document you can’t open']] : [];
+  });
+  const placedNow = useRef(placed);
+  placedNow.current = placed;
+  const where = JSON.stringify(placed);
   const tellTiles = call?.onTogether;
   useEffect(() => {
-    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [] });
-  }, [tellTiles, followable, followingIn, writing]);
+    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current) });
+  }, [tellTiles, followable, followingIn, writing, where]);
   const othersNow = useRef(others);
   othersNow.current = others;
   const togetherRef = call?.together;

@@ -18,7 +18,11 @@ export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; 
 /** Someone in the call: `id` is their connection, the same as `callIdentity` among who's here, and `seat` is what's shared with. */
 export interface CallPerson { id: string; seat: string; person: Person; isMe: boolean }
 /** What the tiles show of people working together, by connection. `followable`: they're in the workspace, so Follow is on offer. */
-export interface CallTogether { followable: readonly string[]; following: string | null; writing: readonly string[] }
+export interface CallTogether {
+  followable: readonly string[]; following: string | null; writing: readonly string[];
+  /** Where each is, in words: what's named is only ever what you can open. */
+  where: Readonly<Record<string, string>>;
+}
 /** What the call can ask of the workspace. */
 export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void }
 

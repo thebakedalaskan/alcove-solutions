@@ -17,7 +17,7 @@ import type { CallView } from './view';
 
 const wlog = log.child({ component: 'call-workspace' });
 
-const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [] };
+const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {} };
 /** How long someone's tile stays lit for being tagged. */
 const LIT_MS = 2600;
 
