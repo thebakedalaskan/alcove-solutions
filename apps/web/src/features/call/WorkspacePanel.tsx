@@ -8,11 +8,13 @@
  */
 import { errorMessage, firstName, type CallSession, type CallWorkspace, type Person } from '@alcove/api';
 import { WsDoc, WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CallPerson, CallTogether, WorkspaceCall, WorkspacePlace, WorkspaceTogether } from '~/features/workspace/context';
 import { Workspace } from '~/features/workspace/Workspace';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
+import { q, useMentionSeen } from '~/lib/queries';
 import type { CallView } from './view';
 
 const wlog = log.child({ component: 'call-workspace' });
@@ -20,6 +22,8 @@ const wlog = log.child({ component: 'call-workspace' });
 const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {} };
 /** How long someone's tile stays lit for being tagged. */
 const LIT_MS = 2600;
+/** How often someone who hasn't opened the workspace in this call looks for tags: once it's open, its stream says. */
+const TAGS_MS = 20_000;
 
 /** Where a workspace opens: this call's agenda, or the first thing brought to it. With neither, it opens what you had open last. */
 function firstPlace(w: CallWorkspace): WorkspacePlace {
@@ -70,6 +74,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
         const name = () => session.getSnapshot().workspace.documents.find((d) => d.id === id)?.name || 'Untitled';
         session.bringDocument(id, brought).then(() => { if (brought) say(wsToast.broughtToCall(name())); }, failed);
       },
+      /** Opens the workspace at this place. */
+      openAt: (to: WorkspacePlace) => { setAt(to); setPeek(false); reveal(); },
       /** Follow, on a tile. */
       follow: (connection: string) => { reach.current?.follow(connection); },
       stopFollowing: () => { reach.current?.stop(); },
@@ -92,6 +98,20 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   }, [push, session]);
   const openNow = useRef(open);
   openNow.current = open;
+
+  /* Tagged here with the workspace not open: the call says so, and nothing moves until Go there. Someone with no account has only their stream. */
+  const signedIn = !!useQuery(q.session()).data;
+  const waiting = useQuery({ ...q.mentions(), enabled: signedIn && !mounted && workspace.id !== null, refetchInterval: TAGS_MS }).data;
+  const saidSeen = useMentionSeen();
+  const seen = saidSeen.mutate;
+  const told = useRef(new Set<string>());
+  useEffect(() => {
+    const next = waiting?.find((m) => m.workspaceId === workspace.id && !told.current.has(m.id));
+    if (!next) return;
+    told.current.add(next.id);
+    act.announce(wsToast.tagged(next.by, firstName(next.by.name), next.name || 'Untitled', () => act.openAt({ kind: 'document', id: next.document, block: next.block ?? undefined })));
+    seen({ workspaceId: next.workspaceId, mention: next.id });
+  }, [waiting, workspace.id, act, seen]);
 
   /* The first time it opens here, the call settles which workspace it uses, and finds its agenda. */
   useEffect(() => {

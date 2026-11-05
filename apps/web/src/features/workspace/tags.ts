@@ -3,10 +3,10 @@
  * the document is told. Whoever can't is asked about once, right where you are, and only you can share anything: a tag never
  * does. The list says who can't open this before you pick, from what Share knows, and the decision reads it again.
  */
-import { errorMessage, firstName, type DocumentShare, type Person, type ShareTarget, type WorkspaceItem } from '@alcove/api';
+import { errorCode, errorMessage, firstName, type DocumentShare, type MentionBody, type Person, type ShareTarget, type WorkspaceItem } from '@alcove/api';
 import { wsToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';
 import { q, useDocumentShare, useMention } from '~/lib/queries';
@@ -73,8 +73,8 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
   /* Everyone in the call, as this workspace knows them: by what they're called here if they're in it, and by their seat if not. */
   const inCall = useMemo(() => (ws.call?.people ?? []).filter((p) => !p.isMe).map((p) => {
     const here = ws.here.find((h) => h.callIdentity === p.id)?.person;
-    const member = p.person.email ? members.find((m) => m.email === p.person.email) : undefined;
-    const person = member ?? (here && { ...here, email: p.person.email }) ?? (p.person.email ? { ...p.person, id: outsiderId(p.person.email) } : seatPerson(p.person, p.seat));
+    const known = p.person.email ? members.find((m) => m.email === p.person.email) : undefined;
+    const person = known ?? (here && { ...here, email: p.person.email }) ?? (p.person.email ? { ...p.person, id: outsiderId(p.person.email) } : seatPerson(p.person, p.seat));
     return { connection: p.id, seat: p.seat, person: named(person) };
   }), [ws.call?.people, ws.here, members]);
   const invited = useMemo(() => (ws.call?.invited ?? []).map((p) => members.find((m) => m.email === p.email) ?? named({ ...p, id: outsiderId(p.email) })), [ws.call?.invited, members]);
@@ -118,13 +118,28 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
     return p.email ? { email: p.email } : seat ? { seat } : null;
   }, [seatOf]);
 
+  /* A tag written offline goes with what was typed: it's told when the connection's back, while the document's open. */
+  const say = mention.mutate;
+  const unsaid = useRef<MentionBody[]>([]);
+  const send = useCallback(function send(tag: MentionBody) {
+    say({ document: item.id, ...tag }, { onError: (e) => {
+      if (errorCode(e) === 'network') unsaid.current.push(tag);
+      else tlog.warn('someone tagged wasn’t told', { err: e });
+    } });
+  }, [say, item.id]);
+  useEffect(() => {
+    const back = () => { for (const tag of unsaid.current.splice(0)) send(tag); };
+    addEventListener('online', back);
+    return () => removeEventListener('online', back);
+  }, [send]);
+
   const onLit = ws.call?.onTagged;
   const tell = useCallback((p: Person, block: string) => {
     const to = targetOf(p);
-    if (to) mention.mutate({ document: item.id, to, block }, { onError: (e) => { tlog.warn('someone tagged wasn’t told', { err: e }); } });
+    if (to) send({ to, block });
     const inThisCall = inCall.find((c) => c.person.id === p.id);
     if (inThisCall) onLit?.(inThisCall.connection);
-  }, [targetOf, mention, item.id, inCall, onLit]);
+  }, [targetOf, send, inCall, onLit]);
 
   /** Someone was just tagged: tell them, or ask, once, right where you are. */
   const tagged = useCallback(async (person: Person, block: string, rect: () => DOMRect) => {

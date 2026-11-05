@@ -563,6 +563,11 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
 export function useMention(workspaceId: string, pass?: string | undefined) {
   return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
 }
+/** You've heard about a tag. */
+export function useMentionSeen() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+}
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
 export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {
   const qc = useQueryClient();

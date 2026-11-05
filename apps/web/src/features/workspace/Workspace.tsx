@@ -3,7 +3,7 @@
  * call and a panel inside one, the same in both: it takes where it is and says where to go, and whatever holds it keeps the
  * address. See WorkspaceProps in context.ts.
  */
-import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree } from '@alcove/api';
+import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
 import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -210,8 +210,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Put away, there's nothing to go with. */
   useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
 
-  /* Everyone can see you're in a document from the moment it's open. The editor says which line. */
-  useEffect(() => { store.present({ document: documentId, block: null, typing: false }); }, [store, documentId]);
+  /* Everyone can see you're in a document from the moment it's open, and that you've left when you put it away. The editor says which line. */
+  useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
+  const closedNow = useRef(closed);
+  closedNow.current = closed;
+  const present = useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
 
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
@@ -257,7 +260,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   if (!view.tree) return <WsPane page={isPage}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty /></WsDoc>}</WsPane>;
 
   const ws: Ws = {
-    mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present: store.present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
+    mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page
   };
