@@ -5,15 +5,16 @@
  * ↑ and ↓ pick a note instead, and Enter opens it. "Pin a note" opens the same line to pick notes to
  * pin. It's the only thing open while it's open. Escape closes it, and focus goes back where it was.
  */
-import { MAX_PINS, errorMessage, firstName, type AnswerPart, type NoteSummary } from '@alcove/api';
+import { MAX_PINS, errorMessage, firstName, searchOf, type AnswerPart, type NoteSummary } from '@alcove/api';
 import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, cn, coverFor, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AnswerView, useAnswer, type Cite } from '~/features/notes/answer';
-import { highlight } from '~/features/notes/highlight';
+import { marked } from '~/features/notes/highlight';
 import { noteMeta } from '~/features/notes/meta';
 import { api } from '~/lib/api';
+import { useSettled } from '~/lib/live';
 import { q, usePins } from '~/lib/queries';
 import { noteDay, position } from '~/lib/time';
 import type { PaletteStart } from './context';
@@ -32,19 +33,12 @@ export function Palette({ open, onOpenChange, start }: { open: boolean; onOpenCh
   );
 }
 
-/** `value`, once it has stayed the same for `ms`: a search waits for a pause in typing. */
-function useSettled<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setSettled(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return settled;
-}
-
 /** A note in the palette: its sky, its title with what matched marked, when it was and what it holds. */
 function NoteLine({ n, term }: { n: NoteSummary; term: string }) {
   return (
     <>
       <ArchThumb cover={coverFor(n.id)} room={n.kind === 'room'} width={26} />
-      <span className="t"><b>{highlight(n.title, term)}</b><small>{noteDay(n.startedAt)} · {n.received ? `From ${firstName(n.received.by.name)}` : noteMeta(n)}</small></span>
+      <span className="t"><b>{marked(n.title, searchOf(term).terms)}</b><small>{noteDay(n.startedAt)} · {n.received ? `From ${firstName(n.received.by.name)}` : noteMeta(n)}</small></span>
     </>
   );
 }

@@ -17,6 +17,13 @@ const onConnection = (changed: () => void) => {
 /** Whether this browser has a connection. Offline, recording still works (when it's on in Settings); everything else waits for it. */
 export const useOnline = (): boolean => useSyncExternalStore(onConnection, onLine, () => true);
 
+/** `value`, once it has stayed the same for `ms`: a search waits for a pause in typing. */
+export function useSettled<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setSettled(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return settled;
+}
+
 /** The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. */
 export function useNow(every = 30_000): number {
   const [now, setNow] = useState(() => Date.now());

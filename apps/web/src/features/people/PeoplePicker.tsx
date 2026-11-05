@@ -27,13 +27,13 @@ export interface PickerOptions {
   onDone: (people: Person[], group?: Group | undefined) => void;
 }
 
-export function PeoplePicker({ open, onOpenChange, anchor, align = 'start', side = 'bottom', stage = false, ...o }: PickerOptions & {
+export function PeoplePicker({ open, onOpenChange, anchor, align = 'start', side = 'bottom', stage = false, className, ...o }: PickerOptions & {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom';
   /** It opens on the night stage. */
-  stage?: boolean | undefined;
+  stage?: boolean | undefined; className?: string | undefined;
 }) {
   return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} align={align} side={side} stage={stage} label={o.title} className="pick-pop">
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} align={align} side={side} stage={stage} label={o.title} className={cn('pick-pop', className)}>
       <Picker {...o} onDone={(p, g) => { onOpenChange(false); o.onDone(p, g); }} />
     </Popover>
   );
@@ -132,7 +132,7 @@ function Picker({ title, cta, note, skip, preset, from, groups, after, onDone }:
           );
         })}
         {shown.length ? shown.map((r, i) => (
-          <button key={r.person.email} type="button" role="option" aria-selected={r === active} className={cn('pick-row', r === active && 'on')} onMouseMove={() => setAct(offered.length + i)} onClick={() => add(r.person)}>
+          <button key={r.person.email} type="button" role="option" aria-selected={r === active} className={cn('pick-row', r === active && 'on', r.source === 'new' && 'is-new')} onMouseMove={() => setAct(offered.length + i)} onClick={() => add(r.person)}>
             <Avatar person={r.person} size={32} />
             <span className="min-w-0"><b>{r.source === 'new' ? r.person.email : r.person.name}</b><small>{origin(r)}</small></span>
             {r.source === 'team' && company && !from ? <Chip tone="outline">{company}</Chip> : null}
