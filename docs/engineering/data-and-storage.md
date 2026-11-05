@@ -380,6 +380,11 @@ and this way it runs through the same auth, origin check and tests as everything
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
+- **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
+  of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
+  seat, and the seats and addresses each has been worked out for, and nothing about what's on it. It goes when the call ends. A call stored
+  before this was kept reads as having none
+  ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
   came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to

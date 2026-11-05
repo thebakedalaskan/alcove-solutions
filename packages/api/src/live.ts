@@ -1,4 +1,5 @@
 import { z } from './zod';
+import { CallBoardSchema, type BoardCheck, type BoardOpen } from './callBoards';
 import { CallWorkspaceSchema, type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentKind } from './callWorkspace';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import { LiveNotesSchema, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
@@ -314,6 +315,8 @@ export const CallStateSchema = z.object({
   liveNotes: LiveNotesSchema,
   /** The workspace the call uses, as you may know it. Nothing that names anything for someone waiting to be let in, or who can't open it. */
   workspace: CallWorkspaceSchema,
+  /** The board open in the part of the call you're in, as you may know it. Nothing for someone waiting to be let in. */
+  board: CallBoardSchema,
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),
@@ -599,6 +602,16 @@ export interface CallSession extends LiveStore<CallState> {
   seekPlaying(positionMs: number): Promise<void>;
   /** Whoever started it, or the organizer. Nothing about the video changes. */
   stopPlaying(): Promise<void>;
+  /**
+   * Anyone invited, not a guest: opens a board for everyone in the part of the call they're in, in place of whatever's open
+   * there. A new one is saved in the call's workspace, named after the call; a saved one needs `edit` on it. Resolves once
+   * it's open, with `board` up to date.
+   */
+  openBoard(from: BoardOpen): Promise<void>;
+  /** Whoever opened it, or the organizer: closes it for everyone. Nothing is deleted, and nobody loses what the call gave them. */
+  closeBoard(): Promise<void>;
+  /** What opening a saved board would mean: who here can't open it, and whether you may let them in. For someone who could bring it. Changes nothing. */
+  boardCheck(documentId: string): Promise<BoardCheck>;
   /** The call's follow-ups as you may read them, kept up to date while something here says it's showing them (`watchFollowUps`). */
   readonly followUps: LiveStore<CallFollowUps | null>;
   /** Says this browser is showing the follow-ups, until the function it returns is called. */
