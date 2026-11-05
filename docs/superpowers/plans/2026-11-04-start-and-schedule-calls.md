@@ -40,7 +40,7 @@ moves is in the canvas's source (paths in the task briefs): `Proto.dc.html` hold
 
 ## Decisions made while mapping the backend
 
-These settle what the spec left open. Each goes in the pull request so Ben can overrule it.
+These settle what the spec left open. Each goes in the pull request so it can be overruled.
 
 | Question | Decision |
 | --- | --- |
