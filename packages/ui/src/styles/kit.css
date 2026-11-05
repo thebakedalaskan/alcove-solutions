@@ -180,11 +180,6 @@
 @keyframes ac-settle { from { opacity: 0; transform: translateY(8px); } }
 
 /* ---- TranscriptLine ---- */
-.ac-line { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); }
-.ac-line b { color: var(--ink); font-weight: 600; margin-right: 6px; }
-.ac-line .ac-time { margin-left: 6px; color: var(--ink-3); font-size: 12px; }
-.ac-line .ac-time-chip { margin-left: 6px; vertical-align: 1px; }
-.ac-line mark { color: inherit; border-radius: 3px; background: linear-gradient(var(--sun-soft), var(--sun-soft)) no-repeat 0 100% / 100% 60%; }
 /* What a transcript can't vouch for: a dotted underline, never colour alone, and the reason on hover or focus. */
 .ac-unsure { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--ink-3); text-decoration-thickness: 1.5px; text-underline-offset: 3px; text-decoration-skip-ink: none; border-radius: 3px; cursor: help; }
 .ac-unsure:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

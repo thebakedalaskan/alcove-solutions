@@ -1724,7 +1724,7 @@ object store: Cloud SQL's backups hold what they hold for a week.
 
 What goes with each choice:
 
-- **Without the recording,** the Player has nothing to play (`Note.audio` is empty) and corrections can't be checked by
+- **Without the recording,** the note has nothing to play (`Note.audio` is empty) and corrections can't be checked by
   listening. Lines keep their places, the gaps theirs and the bill its minutes, because the note saved them first. The
   recording's row stays: its key seals the shared-screen frames.
 - **Without the transcript,** there's nothing to correct or write the notes again from (`409 conflict`), search reads
