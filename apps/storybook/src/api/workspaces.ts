@@ -4,10 +4,11 @@
  * is ever in it.
  */
 import {
-  AlcoveApiError, DOC_SEED, type DocSession, type DocStatus, type DocVersion, type DocVersionSummary, type DocumentRole, type DocumentShare, type ItemInput,
-  type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson, type WorkspaceRole, type WorkspaceSummary,
-  type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  AlcoveApiError, DOC_FRAGMENT, DOC_SEED, type DocLocalCopy, type DocSession, type DocSize, type DocStatus, type DocVersion, type DocVersionSummary, type DocumentRole,
+  type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson,
+  type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
+import { TAGS, isGone, itemsOnPage } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { personAt } from '../world/people';
@@ -105,25 +106,59 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
 }
 export const liveWorkspace = (id: string): WorkspaceLive => new LiveWorkspace(id);
 
+/** The words in a line, or anything else that holds them, as the API's copy reads them. */
+function wordsIn(type: Y.XmlFragment): string {
+  return type.toArray().map((child) => {
+    if (child instanceof Y.XmlText) {
+      let words = '';
+      for (let item = child._start; item; item = item.right) if (!item.deleted && item.content instanceof Y.ContentString) words += item.content.str;
+      return words;
+    }
+    if (!(child instanceof Y.XmlElement)) return '';
+    if (child.nodeName === 'hardBreak') return '\n';
+    if (TAGS.has(child.nodeName)) return String(child.getAttribute('name') ?? child.getAttribute('date') ?? '');
+    return `${wordsIn(child)}\n`;
+  }).join('');
+}
+/** What's on a page as plain text, a line to a block. */
+const pageText = (doc: Y.Doc): string => doc.getXmlFragment(DOC_FRAGMENT).toArray().flatMap((block) => {
+  const words = block instanceof Y.XmlElement && !isGone(block) ? wordsIn(block).trim() : '';
+  return words ? [words] : [];
+}).join('\n');
+
 const docs = new Map<string, Y.Doc>();
 class Document extends Pushed<DocStatus> implements DocSession {
   readonly doc: Y.Doc;
   readonly awareness: Awareness;
   readonly ready: Promise<void>;
   constructor(documentId: string, role: DocumentRole) {
-    super({ status: 'saved', refused: null, role, trashed: false, closed: null });
+    super({ status: 'saved', refused: null, role, trashed: false, closed: null, unsent: false });
     const known = docs.get(documentId);
     this.doc = known ?? new Y.Doc();
     if (!known) { Y.applyUpdate(this.doc, DOC_SEED); docs.set(documentId, this.doc); }
     this.awareness = new Awareness(this.doc);
     this.ready = Promise.resolve();
   }
+  /** Nothing here waits on Alcove, so a copy is the page as it stands. */
+  localCopy(): DocLocalCopy { return { text: pageText(this.doc), state: Y.encodeStateAsUpdate(this.doc) }; }
+  size(): DocSize { return { bytes: Y.encodeStateAsUpdate(this.doc).length, items: itemsOnPage(this.doc) }; }
+  /** There's never anything unsent here to let go of. */
+  discardUnsaved(): Promise<void> { this.close(); return Promise.resolve(); }
   override close(): void { this.awareness.destroy(); super.close(); }
 }
 export function openDocument(id: string, documentId: string): DocSession {
   const item = treeOf(id).items.find((i) => i.id === documentId);
   if (!item || item.kind === 'folder') throw notFound();
   return new Document(documentId, item.role);
+}
+/** A new document or board of a state, made as the API makes one: a document starts from the seed, then takes the state. */
+export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): { id: string } {
+  const made = createItem(id, input);
+  const doc = new Y.Doc();
+  if (input.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
+  Y.applyUpdate(doc, input.state);
+  docs.set(made.id, doc);
+  return made;
 }
 /** The documents kept for this story go when it does. */
 export function forgetDocuments(): void {

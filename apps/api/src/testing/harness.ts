@@ -77,7 +77,7 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB });
+const docPoolFor = (cfg: Config) => createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON });
 
 async function listen(deps: Deps, stopping?: AbortSignal | undefined): Promise<{ server: ServerType; baseUrl: string }> {
   const app = createApp(deps, stopping);
@@ -150,7 +150,7 @@ export async function startHarness(): Promise<Harness> {
       const settings = { ...deps.cfg, ...more };
       const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX, maxPerAddress: settings.LIVE_STREAMS_PER_ADDRESS });
       // Workers take a moment to start, so instances share them, unless a test wants them to behave differently.
-      const docs = more.DOC_WORK_MS || more.DOC_HEAP_MB || more.DOC_WORKERS ? docPoolFor(settings) : deps.docs;
+      const docs = more.DOC_WORK_MS || more.DOC_HEAP_MB || more.DOC_WORKERS || more.DOC_WAITING_PER_PERSON ? docPoolFor(settings) : deps.docs;
       const second = await listen({ ...deps, hub, docs, cfg: settings, ...(own ? { pool: own } : {}) }, stopping);
       return { baseUrl: second.baseUrl, close: async () => { await hub.close(); await stop(second.server); if (docs !== deps.docs) await docs.close(); } };
     },
