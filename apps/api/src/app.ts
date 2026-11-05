@@ -141,7 +141,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const othersPointLimiter = rateLimit(20, 60_000);
   /** Ticking follow-ups, per person in a call: the same. */
   const followUpLimiter = rateLimit(60, 60_000);
-  /** Saying you're looking at the live notes, per connection to a call: a browser does every 5 seconds. Refreshes have their own limit, on the call. */
+  /** Saying you're looking at the live notes, per connection to a call: a browser does every 5 seconds. Refreshes have their own limit, for each view of each part of the call. */
   const notesWatchLimiter = rateLimit(120, 60_000);
   /**
    * Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so

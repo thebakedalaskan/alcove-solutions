@@ -19,7 +19,10 @@ import type { NoteManifest } from './notes';
 import type { Reading } from './screens';
 
 /** What the notes model writes into a note (shared screens described, too), and the verified model that wrote it. */
-export interface Written { summary: string; decisions: Decision[]; questions: Question[]; actions: ActionItem[]; chapters: Chapter[]; suggestedQuestions: string[]; screens: ScreenMoment[]; evidence: InferenceEvidence }
+export interface Written { summary: string; decisions: Decision[]; questions: Question[]; actions: ActionItem[]; ticks: Map<string, string>; chapters: Chapter[]; suggestedQuestions: string[]; screens: ScreenMoment[]; evidence: InferenceEvidence }
+
+/** A follow-up as the model is told it, to say which of what it writes it is: `id` never goes to it. */
+export interface Known { id: string; text: string; owner?: string | undefined }
 
 /** What the model is told about a meeting: who it's with, how long it's been, and what was said. */
 export interface Brief {
@@ -40,6 +43,8 @@ export interface Brief {
   live?: boolean | undefined;
   /** For notes written again: what people already settled, which the model is told not to list again (settledOf). */
   settled?: string[] | undefined;
+  /** What was ticked during the call in the part these notes are for, for the model to say which follow-up each is. */
+  ticks?: Known[] | undefined;
   /** What the notes say, for questions once the transcript they were written from has been deleted. */
   written?: Pick<NoteManifest, 'decisions' | 'questions' | 'actions' | 'chapters'> | undefined;
   /** The notes are written and the call wasn't set to keep what they were written from, so the main room's transcript is gone. */
@@ -100,7 +105,7 @@ const roomsText = (rooms: RoomNote[], texts: string[]): string => rooms.map((r, 
 const MAX_TRANSCRIPT_CHARS = 120_000;
 
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-export const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
 /** Never the fence the transcript is sent in, so nothing said or shown can end it early. */
@@ -265,8 +270,13 @@ const FULL = { decisions: 12, questions: 12, actions: 20, screens: 8 };
 const BRIEF = { decisions: 6, questions: 6, actions: 10, screens: 4 };
 const keeps = (s: NotesStyle) => (s.brief ? BRIEF : FULL);
 
+/** Said when the people in the call ticked follow-ups: it's the model that can tell which of what it writes each one is, however it's worded. */
+const TICKED_RULE = `
+
+Some follow-ups were ticked as done during the call. They're listed before the transcript, each with its label, as in "T3 (Kofi) Send the deck". Each action also has "ticked": the label of the one it is, however you word it and in whatever language, or null. Never give a label to two actions, and never make one up.`;
+
 /** The system prompt for writing notes in a style. Only the summary's length and the language change; everything else is asked the same way. */
-export const notesPrompt = (style: NotesStyle): string => `You write the notes for a meeting from its transcript. Reply with a single JSON object and nothing else, in this shape:
+export const notesPrompt = (style: NotesStyle, ticked: boolean): string => `You write the notes for a meeting from its transcript. Reply with a single JSON object and nothing else, in this shape:
 {"summary": string, "decisions": [{"text": string, "at": number, "lines": [number], "against": [number], "screen": number | null, "part": number | null, "sure": boolean}], "questions": [{"text": string, "at": number, "lines": [number], "against": [number], "screen": number | null, "part": number | null, "sure": boolean}], "actions": [{"text": string, "owner": string | null, "due": string | null, "at": number, "lines": [number], "against": [number], "screen": number | null, "part": number | null, "sure": boolean}], "chapters": [{"at": number, "title": string, "summary": string, "screen": number | null, "part": number | null, "sure": boolean}], "suggestedQuestions": [string], "screens": [{"n": number, "description": string}]}
 
 summary: ${SUMMARY_LENGTHS[style.length]} on what the meeting was about and where it landed. Start with the substance, not "The meeting" or "In this call".
@@ -282,7 +292,7 @@ A line starting "[mm:ss] [screen N" says what was on a shared screen from then o
 screens: one entry for each screen N in the transcript, up to ${keeps(style).screens} of them (if there are more, the ones people talked about most), {"n": N, "description": string}: one or two plain sentences on what it shows and what was being said about it then. If it couldn't be read, or nothing said was about it, say only what can be told.
 screen: when a decision, question, action or chapter was about something on a screen, the N of that screen, with part: the number of the part meant, if one part is, and sure: true when what was said plainly refers to it ("this chart", "the numbers on the slide"), false when that only seems likely. Otherwise screen is null.
 
-${style.language === 'call' ? 'Write in the language the call was held in.' : `Write in ${LANGUAGE_NAMES[style.language]}.`} Use only what the transcript and its screens say: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke. A line starting "--" marks a stretch when notes were off or paused and nothing was recorded: never say or guess what happened in it. ${DOUBT} When the message lists what's already settled, those stand as the people in the meeting left them: never list them again, even in other words. ${SAID_ONLY}`;
+${style.language === 'call' ? 'Write in the language the call was held in.' : `Write in ${LANGUAGE_NAMES[style.language]}.`} Use only what the transcript and its screens say: never invent names, numbers, dates or decisions. Lines without a name come from a recording in a room, where nobody can tell who spoke. A line starting "--" marks a stretch when notes were off or paused and nothing was recorded: never say or guess what happened in it. ${DOUBT} When the message lists what's already settled, those stand as the people in the meeting left them: never list them again, even in other words. ${SAID_ONLY}${ticked ? TICKED_RULE : ''}`;
 
 /**
  * The line numbers a model points at, as numbers or as "L12": the indices (from 0) of lines it was shown, in order,
@@ -306,7 +316,8 @@ const Draft = z.object({
   summary: z.string().regex(/[\p{L}\p{N}]/u),
   decisions: z.array(Said).catch([]),
   questions: z.array(Said).catch([]),
-  actions: z.array(z.object({ text: z.string(), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null), at: At, ...OnScreen, ...Backed })).catch([]),
+  // Marking something done goes by this list, so a list that isn't what was asked for fails rather than goes without.
+  actions: z.array(z.object({ text: z.string(), owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null), at: At, ...OnScreen, ...Backed, ticked: z.string().nullish() })),
   chapters: z.array(z.object({ at: z.coerce.number(), title: z.string(), summary: z.string().catch(''), ...OnScreen })).catch([]),
   suggestedQuestions: z.array(z.string()).catch([]),
   screens: z.array(z.object({ n: z.coerce.number(), description: z.string().catch('') })).catch([])
@@ -325,6 +336,20 @@ function onScreen(shown: ScreenMoment[], o: { screen?: number | null | undefined
   return { screen: { id: m.id, ...(region === undefined ? {} : { region }), sure: o.sure === true } };
 }
 
+/**
+ * What the model is told of things it's to recognise, one to a line, by a short label as lines are: a long ID copied
+ * wrong would read as something new.
+ */
+const listed = (letter: string, xs: Known[]) => xs.map((x, i) => `${letter}${i + 1} ${x.owner ? `(${oneLine(x.owner)}) ` : ''}${oneLine(x.text)}`).join('\n');
+/**
+ * Reads back the labels `listed` gave, in the order the model used them: the ID a label stands for, once. A label it
+ * wasn't given is nothing, and one it used already stays with whatever used it first.
+ */
+function labelsOf(letter: string, xs: Known[]): (label: string) => string | undefined {
+  const left = new Map(xs.map((x, i) => [`${letter}${i + 1}`, x.id]));
+  return (label) => { const key = label.trim().toUpperCase(); const id = left.get(key); left.delete(key); return id; };
+}
+
 /** How many lines an entry can point at as what it comes from, and as what cuts against it. */
 const MAX_LINES_PER_ENTRY = 3;
 const MAX_LINES_AGAINST = 2;
@@ -336,9 +361,10 @@ const NOBODY = new Set(['', 'unknown', 'unassigned', 'none', 'n/a', 'someone', '
 export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<Written> {
   const shown = b.screens ?? [];
   const sent = numberedText(b.lines, b.gaps, shown);
+  const told = b.ticks ?? [];
   const { json, evidence } = await complete(cfg, [
-    { role: 'system', content: notesPrompt(style) },
-    { role: 'user', content: `${about(b)}\n\n${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}Transcript:\n${fenced(sent.text)}` }
+    { role: 'system', content: notesPrompt(style, told.length > 0) },
+    { role: 'user', content: `${about(b)}\n\n${b.settled?.length ? `Already settled (don't list these again):\n${b.settled.map((x) => `- ${x}`).join('\n')}\n\n` : ''}${told.length ? `Ticked during the call:\n${listed('T', told)}\n\n` : ''}Transcript:\n${fenced(sent.text)}` }
   // Room for every entry the notes keep, each with its lines: a reply cut off isn't JSON, so the notes wouldn't be written.
   // At the slowest the model has been seen (about 24 tokens a second), all of it fits well inside the timeout, which
   // matters since a timeout never uses up an attempt.
@@ -364,6 +390,8 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
     .filter((c, i, all) => i === 0 || c.at !== all[i - 1]?.at)
     .slice(0, 8);
   const when = moment(b);
+  const tickOf = labelsOf('T', told);
+  const ticks = new Map<string, string>();
   /*
    * Where an entry comes from, by line: only lines the model was sent, as for a catch-up. An entry it can't tie to a line
    * stays, with no moment, since that would be the model's word alone, and the note says nothing backs it. Otherwise its
@@ -387,8 +415,12 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
     actions: d.actions.filter((a) => a.text.trim()).slice(0, keeps(style).actions).map((a): ActionItem => {
       const who = owner(a.owner);
       const due = a.due?.trim();
-      return { id: id128(), text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...backed(a), done: false, ...onScreen(shown, a), changes: [] };
+      const id = id128();
+      const tick = a.ticked ? tickOf(a.ticked) : undefined;
+      if (tick) ticks.set(id, tick);
+      return { id, text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...backed(a), done: false, ...onScreen(shown, a), changes: [] };
     }),
+    ticks,
     chapters,
     suggestedQuestions: d.suggestedQuestions.map((q) => clip(q.trim(), 120)).filter(Boolean).slice(0, 3),
     // Each screen with what the model said it shows and how it ties in; one it said nothing about keeps its reading alone.
@@ -457,8 +489,8 @@ const COMMON = new Set([
 ]);
 /** A word without the commonest endings, so "launch", "launches" and "launched" are one word. */
 const stem = (w: string) => { const s = w.replace(/(?:ing|ed|es|e|s)$/, ''); return s.length > 2 ? s : w; };
-/** The words of a text that say what it's about, as a question is matched on them: folded, of three letters or more, without the commonest. */
-export const keyWords = (text: string) => fold(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && !COMMON.has(w)).map(stem);
+/** The words of a text a question is matched on: folded, of three letters or more, without the commonest. */
+const wordsOf = (text: string) => fold(text).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2 && !COMMON.has(w)).map(stem);
 /** A transcript line's words with whoever said it, for matching. */
 const heard = (l: TranscriptLine) => `${l.speaker?.name ?? ''} ${l.text}`;
 /** A note's date, for questions about "last week" or "yesterday". */
@@ -547,8 +579,8 @@ const NoteCite = z.object({ note: z.coerce.number().int(), at: z.coerce.number()
  * transcript lines.
  */
 export async function answerFromNotes(cfg: Config, notes: NoteBrief[], asker: Person, question: string): Promise<{ parts: AnswerPart[]; sent: string[]; lines: number }> {
-  const terms = new Set(keyWords(question));
-  const shared = (text: string) => new Set(keyWords(text).filter((w) => terms.has(w)));
+  const terms = new Set(wordsOf(question));
+  const shared = (text: string) => new Set(wordsOf(text).filter((w) => terms.has(w)));
   const found = notes.map((n) => ({
     n,
     words: shared([n.brief.title, n.brief.summary ?? '', ...roomSummaries(n.brief), ...n.decisions.map((d) => d.text), ...n.actions.map((a) => `${a.text} ${a.owner?.name ?? ''} ${a.due ?? ''}`), ...n.brief.lines.map(heard)].join('\n'))
@@ -624,21 +656,23 @@ open: questions that were asked and haven't been answered yet.
 next: what someone said they, or someone else, would do. owner is that person's name as the transcript gives it, or null if it doesn't say; due is when, as it was said ("Friday"), or null.
 Each item is one short sentence. lines are the numbers of the transcript lines it comes from, one to three of them; leave out anything you can't point to a line for. Use an empty list when there's nothing. Write in the language of the transcript, and use only what it says: never invent names, numbers or decisions. A line starting "--" marks a stretch when nothing was recorded: never say or guess what happened in it. ${DOUBT} ${SAID_ONLY}`;
 
-const Items = z.array(z.object({
-  text: z.string(), lines: Refs, owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
-}));
-/** All of it, with words in its summary: a reply that doesn't say what it's asked to isn't a catch-up that found nothing. */
+/** Said when a catch-up is told the follow-ups so far: it's the model that can tell what it's writing from what it wrote, in any words and any language. */
+const KNOWN_RULE = `
+
+The follow-ups so far are listed before the transcript, each with its label, as in "F3 (Kofi) Send the deck". Each item in next also has "id": the label of the one it is, however you word it now and in whatever language, or null for something new. List again the ones that still stand. Never give a label to two items, and never make one up.`;
+
+/** The lines a point comes from: numbers, or as they're marked ("L12"). Anything else isn't a reply, and neither is a list that isn't one. */
+const Cites = z.array(z.union([z.number(), z.string().regex(/^\s*L?\d+\s*$/i)]));
+const Items = z.array(z.object({ text: z.string(), lines: Cites, owner: z.string().nullish(), due: z.string().nullish(), id: z.string().nullish() }));
+/** All of it, in this shape, with words in its summary: a reply that doesn't say what it's asked to isn't a catch-up that found nothing. */
 const CatchUpReply = z.object({ summary: z.string().regex(/[\p{L}\p{N}]/u), decided: Items, proposed: Items, open: Items, next: Items });
-/**
- * A point in a catch-up and the lines it comes from, as indices (from 0) into the lines the model was sent: `cited`,
- * every one it named, and `refs`, the first three, which are the moments shown.
- */
-export interface Cited { text: string; owner?: string; due?: string; refs: number[]; cited: number[] }
+/** A point in a catch-up, and the lines it comes from: indices (from 0) into the lines the model was sent, at most three. For a follow-up told to the model, `same` is which one it is. */
+export interface Cited { text: string; owner?: string; due?: string; refs: number[]; same?: string }
 /**
  * A catch-up as the model sorted it, every point tied to lines it was sent. `uncited` counts the points it couldn't tie
- * to one, which are left out; `cut` is what didn't fit and wasn't read.
+ * to one, which are left out; `strays`, the labels it gave that weren't for it to give; `cut` is what didn't fit and wasn't read.
  */
-export interface Sorted { summary: string; decided: Cited[]; proposed: Cited[]; open: Cited[]; next: Cited[]; uncited: number; cut: Cut | null }
+export interface Sorted { summary: string; decided: Cited[]; proposed: Cited[]; open: Cited[]; next: Cited[]; uncited: number; strays: number; cut: Cut | null }
 
 /** The most points kept from each list of a catch-up: the newest, as what was said last is what's still going on. */
 const POINTS = 8;
@@ -647,31 +681,44 @@ const MOMENTS = 3;
 /**
  * Where a stretch of a call in progress has got to, sorted into decided, proposed, still open, and what's next, each
  * point with the lines it comes from, in the order they were said. `reading` says which stretch it is ("the last 5
- * minutes"). `followUps`: the most next steps kept, when more matter than the points in a short stretch (a whole call's
- * live notes), with room to say them. A reply that isn't what was asked for fails, and nothing is made of it.
+ * minutes"). A whole call's live notes also say `followUps`, the most next steps kept, with room to say them, and
+ * `known`, the follow-ups so far, for the model to say which each one it lists is. A reply that isn't what was asked for
+ * fails, and nothing is made of it.
  */
-export async function catchUp(cfg: Config, b: Brief, reading: string, followUps = POINTS): Promise<Sorted> {
+export async function catchUp(cfg: Config, b: Brief, reading: string, o: { followUps?: number; known?: Known[] } = {}): Promise<Sorted> {
+  const { followUps = POINTS, known = [] } = o;
   const sent = numberedText(b.lines, b.gaps);
   const reply = CatchUpReply.safeParse(await completeJson(cfg, [
-    { role: 'system', content: CATCH_UP_PROMPT },
-    { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\nTranscript:\n${fenced(sent.text)}` }
+    { role: 'system', content: `${CATCH_UP_PROMPT}${known.length ? KNOWN_RULE : ''}` },
+    { role: 'user', content: `${about({ ...b, live: true })}\nReading: ${reading}\n\n${known.length ? `Follow-ups so far:\n${listed('F', known)}\n\n` : ''}Transcript:\n${fenced(sent.text)}` }
   ], { what: 'catch-up', maxTokens: followUps > POINTS ? 2500 : 1500, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
   let uncited = 0;
-  const lastOf = (c: Cited) => c.cited.at(-1) ?? 0;
-  const items = (xs: z.infer<typeof Items>, todo = false, most = POINTS): Cited[] => xs.filter((x) => x.text.trim()).flatMap((x): Cited[] => {
+  let strays = 0;
+  const knownOf = labelsOf('F', known);
+  const sameAs = (label: string | null | undefined): { same?: string } => {
+    if (!label) return {};
+    const same = knownOf(label);
+    if (same) return { same };
+    strays++;
+    return {};
+  };
+  const items = (xs: z.infer<typeof Items>, todo = false, most = POINTS): Cited[] => xs.filter((x) => x.text.trim()).flatMap((x) => {
     const cited = refsOf(x.lines, sent.kept, Number.POSITIVE_INFINITY);
     // A point with no line behind it is the model's word alone: it's left out, never shown without evidence.
     if (!cited.length) { uncited++; return []; }
     const owner = x.owner?.trim() ?? '';
     const due = x.due?.trim() ?? '';
     return [{
-      text: clip(x.text.trim(), 300), refs: cited.slice(0, MOMENTS), cited,
-      ...(todo && owner && !NOBODY.has(fold(owner)) ? { owner: clip(owner, 80) } : {}), ...(todo && due ? { due: clip(due, 40) } : {})
+      last: cited.at(-1) ?? 0,
+      point: {
+        text: clip(x.text.trim(), 300), refs: cited.slice(0, MOMENTS),
+        ...(todo && owner && !NOBODY.has(fold(owner)) ? { owner: clip(owner, 80) } : {}), ...(todo && due ? { due: clip(due, 40) } : {}), ...(todo ? sameAs(x.id) : {})
+      }
     }];
-  }).sort((a, b) => lastOf(a) - lastOf(b)).slice(-most);
+  }).sort((a, b) => a.last - b.last).slice(-most).map((x) => x.point);
   const d = reply.data;
-  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true, followUps), uncited, cut: sent.cut };
+  return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true, followUps), uncited, strays, cut: sent.cut };
 }
 
 const ASK_SO_FAR_PROMPT = `You answer a question about a meeting that is still going on, using only part of its transcript. Each transcript line starts with its number, as in "L12 [03:41] Name: words". Reply with a single JSON object and nothing else: {"answer": string, "lines": [number]}

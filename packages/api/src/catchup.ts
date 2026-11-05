@@ -96,7 +96,8 @@ export type CatchUp = z.infer<typeof CatchUpSchema>;
 
 /**
  * Something to do in a call's shared live notes. `id` stays with it from one refresh to the next, however the notes
- * model rewords it, for as long as it's plainly the same item; `done` is the same for everyone (CallAction `follow-up`).
+ * model rewords it, for as long as the notes model says it's the same item; `done` is the same for everyone reading these
+ * notes (CallAction `follow-up`).
  */
 export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done: z.boolean() });
 export type LiveFollowUp = z.infer<typeof LiveFollowUpSchema>;

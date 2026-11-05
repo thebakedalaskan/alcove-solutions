@@ -1737,9 +1737,12 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
   if ((resting.get(restKey) ?? 0) > Date.now()) return false;
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const invited = invitedIn(meeting);
-  const found = await liveNotes.find(o, o.pool, callId, place, readerFor(v, s, mine, row.started_at, invited));
-  // Their notes are up to date, or it isn't time: said without opening anything, which is nearly every look.
-  if (found.view !== null && !(await liveNotes.due(o, o.pool, callId, place, found.view, noteId))) return false;
+  const reader = readerFor(v, s, mine, row.started_at, invited);
+  const found = await liveNotes.find(o, o.pool, callId, place, reader);
+  // Their notes are up to date, or it isn't time: said without reading the transcript, which is nearly every look.
+  const theirs = found.own ?? found.view;
+  if (theirs !== null && !(await liveNotes.due(o, o.pool, callId, place, theirs, noteId))) return false;
+  clog.debug('reading the transcript for the live notes', { callId, part: place !== MAIN_PLACE ? 'room' : 'main' });
   const clips = await liveNotes.clipsOf(o, o.pool, noteId);
   const part = await soFarIn(o, row, s, { noteId, recordingId }, meeting, place, sharedIn(row, s, place), (gaps) => catchup.windowOf(tenthsIn(row.started_at), row.started_at.getTime(), [], true, gaps));
   const may = mayRead(v, s, mine, row.started_at, invited);
@@ -1759,10 +1762,12 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     const at = settle(now.state, now.row);
     if (!placesOf(at).includes(place)) return null;
     capture.mayCapture(capturing(now.row, at, place), 'live-notes', ctx);
-    return liveNotes.claim(o, c, callId, place, view, clips);
+    return liveNotes.claim(o, c, callId, place, view, clips, lines, barred);
   });
   if (!claim) return false;
-  if (liveNotes.digestOf(lines) === claim.heard) {
+  // Nothing new, in the notes this would refresh or the ones they're reading: a run would write what they already have.
+  const heard = liveNotes.digestOf(lines);
+  if (heard === claim.heard || heard === found.stored?.notes?.heard) {
     await liveNotes.release(o, callId, place, view, claim);
     clog.debug('nothing new for the live notes', { ...ctx, lines: lines.length });
     return false;
@@ -1771,10 +1776,14 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     // Everyone reading them sees they're being written.
     await nudge(o, row.room_name, callId, { call: true, log: false });
     const t0 = performance.now();
-    const sorted = await drafting.catchUp(o.cfg, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), FOLLOW_UPS_READ);
-    const done = { lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0) };
+    const known = liveNotes.knownTo(claim, lines);
+    const sorted = await drafting.catchUp(o.cfg, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
+    const done = {
+      lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
+      cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0)
+    };
     const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 });
-    if (!await liveNotes.keep(o, callId, place, view, claim, run)) {
+    if (!await liveNotes.keep(o, callId, place, view, claim, run, reader)) {
       clog.info('live notes written too late to keep', { ...ctx, ...done });
       return false;
     }
@@ -1791,7 +1800,8 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
 /**
  * A follow-up of the live notes of the part of the call someone is in, ticked or not, for everyone there, in the
  * caller's transaction, which holds the call's row, so the call can't end halfway through. It's for anyone in the call
- * who gets the notes, as anyone who has a note can tick its follow-ups, which a guest with the link doesn't.
+ * who gets the notes, as `mayChangeAction` has it for a follow-up nobody has taken on, which nothing is until the notes
+ * are written. A guest with the link doesn't get them.
  */
 async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up' }>): Promise<void> {
   const o = v.organizer;

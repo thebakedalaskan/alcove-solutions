@@ -116,7 +116,7 @@ async function writeRooms(o: Owner, m: NoteManifest, organizer: Person, style: N
       // Each request is a fresh lease on the job, so another worker doesn't take it while rooms are written.
       await renew();
       try {
-        return { id: r.id, notes: await draft(o.cfg, roomBriefOf(m, r, organizer), tried > 1 ? { ...style, brief: true } : style) };
+        return { id: r.id, notes: await draft(o.cfg, { ...roomBriefOf(m, r, organizer), ticks: m.ticked.filter((t) => t.room === r.id) }, tried > 1 ? { ...style, brief: true } : style) };
       } catch (e) {
         // Waiting for the notes model, or a note deleted meanwhile, is the whole job's; anything else is this room's alone.
         if (e instanceof UnverifiedError || e instanceof UnansweredError || e instanceof NotFoundError) throw e;
@@ -187,7 +187,7 @@ async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | un
         const w = wrote.rooms.rooms.find((x) => x.id === r.id);
         if (!w || !('notes' in w)) return r;
         const items = keepSettled(r, w.notes);
-        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items, actions: doneInNotes(items.actions, m.ticked.filter((t) => t.room === r.id), r.transcript), transcript: m.keep.transcript ? r.transcript : [] };
+        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items, actions: doneInNotes(items.actions, m.ticked.filter((t) => t.room === r.id), w.notes.ticks, r.transcript), transcript: m.keep.transcript ? r.transcript : [] };
       });
       const roomsWritten = new Set(wrote.rooms.rooms.flatMap((x) => ('notes' in x ? [x.id] : [])));
       // What's ticked in a room whose notes weren't written waits for them; the call's, for the call's.
@@ -197,9 +197,9 @@ async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | un
       if (!wrote.notes) {
         return { ...m, status: 'ready', chapters, rooms: sections, inference, ticked: waiting, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
       }
-      const { evidence: _, ...written } = wrote.notes;
+      const { evidence: _, ticks, ...written } = wrote.notes;
       const items = { ...written, ...keepSettled(m, written) };
-      const actions = doneInNotes(items.actions, m.ticked.filter((t) => t.room === null), m.transcript ?? []);
+      const actions = doneInNotes(items.actions, m.ticked.filter((t) => t.room === null), ticks, m.transcript ?? []);
       return { ...m, status: 'ready', ...items, actions, chapters, rooms: sections, writtenAt: wrote.readAt, transcript: m.keep.transcript ? m.transcript : [], inference, ticked: waiting };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
@@ -318,7 +318,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         return;
       }
       await renew();
-      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown }, style);
+      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown, ticks: note.manifest.ticked.filter((t) => t.room === null) }, style);
       await settle(o, job.job_id, noteId, { notes, rooms, readAt });
       wlog.info('notes written', {
         ...at, language: style.language, length: style.length, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
