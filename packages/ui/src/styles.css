@@ -88,6 +88,8 @@
   --stage-ink: #F2EEE6;
   --stage-ink-2: #A9B9CA;
   --speak: #9FC7FB;
+  /* What's chosen on something night, whatever theme is round it: the dark theme's sun. */
+  --stage-sun: #F6E8CC;
   /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
   --stage-point: #215DB3;
   /* The sky: illustration, tour art and covers only */
@@ -186,20 +188,21 @@
 }
 
 /*
- * The board: a dawn sheet. Light values on :root and .light, and dark wherever everything above is. On the stage that's
- * so as well, unless the sheet says `.light`.
- * `note-*` are the sticky colours and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the
- * `line` tokens for edges above. `bf-*` are frames.
+ * The board: a sheet of the page's own paper, with a little of the evening's warmth at its foot. Light values on :root and
+ * .light, and dark wherever everything above is, so on the stage a sheet is night unless it says `.light`: `BoardSheet`'s
+ * `theme`. What can come from the tokens above does, so a sheet scoped to one theme follows it. `note-*` are the sticky
+ * colours, which are content, and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the `line`
+ * tokens for edges above. `bf-*` are frames.
  */
 :root, .light {
-  --bd-ground: #F6F3FB;
-  --bd-wash: linear-gradient(180deg, #F3F1FC 0%, #F7F2F9 50%, #FDEFE7 100%);
-  --bd-bar: rgb(255 255 255 / .74);
-  --bd-dot: rgb(112 96 168 / .26);
-  --bd-ring: rgb(26 22 51 / .07);
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 88%, var(--sun-soft)) 55%, color-mix(in srgb, var(--ground) 40%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink) 22%, transparent);
+  --bd-ring: color-mix(in srgb, var(--ink) 7%, transparent);
   --bf-fill: rgb(255 255 255 / .68);
-  --bf-ring: rgb(96 80 160 / .13);
-  --bf-lift: 0 18px 34px -30px rgb(90 60 140 / .5);
+  --bf-ring: color-mix(in srgb, var(--ink) 11%, transparent);
+  --bf-lift: 0 18px 34px -30px rgb(18 34 63 / .5);
   --note-top: #FFFFFF;
   --note-butter: #FFE0A0;
   --note-peach: #FFCCAC;
@@ -207,10 +210,10 @@
   --note-lilac: #DBCBFA;
   --note-sky: #C6D1FF;
   --note-mist: #E7E3F0;
-  --note-ink: #1A1633;
-  --note-shadow: 0 1px 1px rgb(26 22 51 / .05), 0 8px 16px -10px rgb(26 22 51 / .3);
-  --line-ink: #7566C4;
-  --line-rose: #C2406E;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(18 34 63 / .05), 0 8px 16px -10px rgb(18 34 63 / .3);
+  --line-ink: color-mix(in srgb, var(--sun) 82%, var(--ground));
+  --line-rose: var(--rose);
   /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
   --bd-rise: 560ms;
   --bd-glide: 700ms;
@@ -218,24 +221,25 @@
 }
 
 .dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.dusk.rec) {
-  --bd-ground: #14112A;
-  --bd-wash: linear-gradient(180deg, #14112E 0%, #1A1438 56%, #2A1A42 100%);
-  --bd-bar: rgb(23 20 43 / .74);
-  --bd-dot: rgb(200 190 240 / .16);
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 80%, var(--surface)) 55%, color-mix(in srgb, var(--surface) 88%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink-2) 16%, transparent);
   --bd-ring: rgb(255 255 255 / .09);
   --bf-fill: rgb(255 255 255 / .05);
   --bf-ring: rgb(255 255 255 / .1);
   --bf-lift: 0 18px 34px -30px rgb(0 0 0 / .7);
-  --note-top: #1B1744;
+  --note-top: var(--surface);
   --note-butter: #704A12;
   --note-peach: #5E3524;
   --note-rose: #5C2A3C;
   --note-lilac: #40337A;
   --note-sky: #2E3A78;
   --note-mist: #2C2850;
-  --note-ink: #F4F2FB;
+  --note-ink: var(--ink);
   --note-shadow: 0 1px 1px rgb(0 0 0 / .3), 0 10px 18px -10px rgb(0 0 0 / .7);
-  --line-ink: #A99FFF;
+  --line-ink: var(--horizon);
+  --line-rose: var(--rose);
 }
 
 /*

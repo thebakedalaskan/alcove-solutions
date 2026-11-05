@@ -87,7 +87,9 @@ export interface BoardSurfaceProps extends BoardHandlers {
   talking?: ReadonlySet<string> | undefined;
   /** Rises through the arch: a board that has just opened. */
   fresh?: boolean | undefined;
-  /** Night board: the sheet goes dark, whatever the page's theme is. */
+  /** The person's theme, which the sheet takes whatever is round it. The stage is night for everything else, so the call passes `useTheme().resolved`. Elsewhere the sheet is what the page is. */
+  theme?: 'light' | 'dark' | undefined;
+  /** Night board: the sheet goes dark, whatever the theme is. */
   night?: boolean | undefined;
   /** What the call puts over the sheet: its pill, its menus, ideas from the call. */
   children?: ReactNode;
@@ -215,7 +217,7 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
 }
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
-  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, night = false, name, onCall, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
+  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, onCall, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
@@ -258,7 +260,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
   return (
     <BoardLayout page={look.page} phone={look.phone} className={className}>
       {look.rail && <BoardRail tool={tool} moreOpen={more} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => { board.toggleMore(); board.focusSheet(); }} />}
-      <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} night={night} follow={people.find((p) => p.id === following)?.colour}
+      <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} theme={theme} night={night} follow={people.find((p) => p.id === following)?.colour}
         tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
         <BoardWorld ref={world} pointers={<BoardPointers presence={presence} talking={talking} />}><Objects board={board} presence={presence} /></BoardWorld>
         {!look.mini && <Over board={board} onSort={onSort} />}

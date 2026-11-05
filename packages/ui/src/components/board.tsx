@@ -5,10 +5,11 @@
  * `data-p` say what was pressed, so one listener on the sheet serves them all, and `memo` keeps a busy board from drawing
  * anything that didn't change.
  */
-import { forwardRef, memo, useId, type CSSProperties, type HTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, memo, type CSSProperties, type HTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../cn';
 import { CallDock, DockButton, DockSeparator, SharePointer } from './call';
 import { Icon, type IconName } from './icon';
+import { EmptyArch } from './illustrations';
 import { Popover } from './overlay';
 import { Avatar, Faces, type AvatarPerson } from './people';
 import { Button, IconButton } from './primitives';
@@ -71,17 +72,19 @@ export interface BoardSheetProps extends HTMLAttributes<HTMLDivElement> {
   pan?: boolean | undefined;
   /** The colour of whoever you're following: a ring round the sheet says this view isn't your own. */
   follow?: string | undefined;
-  /** Night board: this sheet goes dark, whatever the page's theme is. */
+  /** The person's theme, which this sheet takes whatever is round it. The stage is night for everything else, so a board in a call passes this. Without it, the sheet is what the page is. */
+  theme?: 'light' | 'dark' | undefined;
+  /** Night board: this sheet goes dark, whatever the theme is. */
   night?: boolean | undefined;
 }
 
 /** The sheet. Pass it the pointer and key handlers; everything over the board goes inside, after `BoardWorld`. */
 export const BoardSheet = forwardRef<HTMLDivElement, BoardSheetProps>(function BoardSheet(
-  { tool = 'select', clean = false, fresh = false, page = false, mini = false, glide = false, pan = false, follow, night = false, className, style, tabIndex = mini ? -1 : 0, children, ...rest }, ref
+  { tool = 'select', clean = false, fresh = false, page = false, mini = false, glide = false, pan = false, follow, theme, night = false, className, style, tabIndex = mini ? -1 : 0, children, ...rest }, ref
 ) {
   return (
     <div ref={ref} tabIndex={tabIndex} style={follow ? { '--fc': follow, ...style } : style}
-      className={cn('bd', `is-tool-${tool}`, clean && 'is-clean', fresh && 'is-new', page && 'is-page', mini && 'is-mini', glide && 'is-glide', pan && 'is-pan', night && 'dark', className)} {...rest}>
+      className={cn('bd', `is-tool-${tool}`, clean && 'is-clean', fresh && 'is-new', page && 'is-page', mini && 'is-mini', glide && 'is-glide', pan && 'is-pan', night ? 'dark' : theme, className)} {...rest}>
       {children}
     </div>
   );
@@ -599,16 +602,9 @@ export function BoardMap({ blocks, bounds, view, className }: { blocks: BoardBox
 
 /** What a blank board says, until the first sticky. `fading` as that sticky lands: it goes on being drawn until it has gone. */
 export function BoardEmpty({ fading = false, className }: { fading?: boolean | undefined; className?: string | undefined }) {
-  const id = useId().replace(/:/g, '');
   return (
     <div className={cn('bd-empty', fading && 'is-faded', className)}>
-      <svg width="66" height="74" viewBox="0 0 66 74" aria-hidden="true">
-        <defs>
-          <linearGradient id={`${id}s`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2A2373" /><stop offset=".45" stopColor="#5847DA" /><stop offset=".72" stopColor="#C470A9" /><stop offset=".9" stopColor="#FFA06A" /></linearGradient>
-          <clipPath id={`${id}a`}><path d="M7 72V32a26 26 0 0 1 52 0v40z" /></clipPath>
-        </defs>
-        <g clipPath={`url(#${id}a)`}><rect width="66" height="74" fill={`url(#${id}s)`} /><circle cx="33" cy="54" r="12" fill="#FFD58A" /><rect y="56" width="66" height="18" fill="#231C5E" /></g>
-      </svg>
+      <EmptyArch />
       <b>Double-click anywhere to add a sticky</b>
       <span>Or press N. Everyone here can add to this board.</span>
     </div>

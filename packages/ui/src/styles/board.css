@@ -23,7 +23,7 @@
 .bz > .bd { min-width: 0; }
 .bz .bd { flex: 1; }
 .bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: 5px; transition: opacity var(--duration-2) var(--ease-out); animation: bz-rail var(--duration-3) var(--ease-out) both; }
-.bz-rail .ac-dock-btn[aria-pressed="true"] { background: rgba(255, 138, 91, .18); color: #FFB08A; }
+.bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
 .bz-rail .ac-dock-sep { width: 24px; height: 1px; margin: 3px 0; }
 .bz-rail.is-faded { opacity: 0; pointer-events: none; }
 
@@ -32,7 +32,7 @@
 .bz.is-page .bz-rail { background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
 .bz.is-page .bz-rail .ac-dock-btn { color: var(--ink-2); }
 .bz.is-page .bz-rail .ac-dock-btn:hover { background: var(--sunk); }
-.bz.is-page .bz-rail .ac-dock-btn[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); }
+.bz.is-page .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
 .bz.is-page .bz-rail .ac-dock-sep { background: var(--line); }
 .bz.is-page .bd { border-radius: 18px; box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
 .bz.is-page .bd-head { padding-right: 262px; }
@@ -143,7 +143,7 @@
 /* What's happening to an object */
 .bo.is-sel { z-index: 2; }
 .bo.is-other { outline: 2px solid var(--pc); outline-offset: 2px; }
-.bo.is-lift { z-index: 3; transform: rotate(-1.5deg) scale(1.03); box-shadow: 0 2px 2px rgb(26 22 51 / .08), 0 22px 30px -14px rgb(26 22 51 / .4); }
+.bo.is-lift { z-index: 3; transform: rotate(-1.5deg) scale(1.03); box-shadow: 0 2px 2px rgb(18 34 63 / .08), 0 22px 30px -14px rgb(18 34 63 / .4); }
 .bo.is-top { outline: 2.5px solid var(--horizon); outline-offset: 3px; }
 .bo.is-muted { opacity: .4; }
 .bo.is-live-edit .bo-t { visibility: hidden; }
@@ -233,31 +233,31 @@
 /* The board's own button, on top of IconButton */
 .bt { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .bt:hover { background: var(--sunk); color: var(--ink); }
-.bt[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); }
+.bt[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
 .bt[disabled] { opacity: 1; color: var(--line-control); pointer-events: none; }
 
 /* The map */
-.bi { position: absolute; z-index: 10; display: flex; color: var(--ink-2); background: var(--surface); border-radius: 14px; box-shadow: 0 0 0 1px var(--bd-ring), 0 2px 4px rgb(26 22 51 / .04), 0 14px 28px -16px rgb(26 22 51 / .32); }
+.bi { position: absolute; z-index: 10; display: flex; color: var(--ink-2); background: var(--surface); border-radius: 14px; box-shadow: 0 0 0 1px var(--bd-ring), 0 2px 4px rgb(18 34 63 / .04), 0 14px 28px -16px rgb(18 34 63 / .32); }
 .bd-map { right: 12px; bottom: 12px; width: 172px; height: 112px; overflow: hidden; padding: 0; background: var(--surface); }
 .bd-map i { position: absolute; display: block; border-radius: 2px; background: var(--note-mist); }
 .bd-map b { position: absolute; display: block; border-radius: 3px; box-shadow: 0 0 0 1.5px var(--horizon); }
 
 /* ---------------------------------------------------------------- night, floating on the sheet */
 /* What's going on, for everyone: one pill, at the top of the sheet. Night, because it's about the call. */
-.bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(11 10 24 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
+.bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
 .bd.is-clean .bd-pill { top: 14px; }
-.bd-pill .ac-i { flex: none; color: #FFD58A; transition: color var(--duration-2) var(--ease-out); }
+.bd-pill .ac-i { flex: none; color: var(--stage-sun); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill b { font-weight: 600; }
 .bd-pill > b, .bd-pill > span:not(.sep, .t) { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
 .bd-pill .t { flex: none; font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill .sep { flex: none; width: 1px; height: 18px; background: rgb(255 255 255 / .14); }
-.bd-pill.is-soon .ac-i, .bd-pill.is-soon .t { color: #F3B85A; }
+.bd-pill.is-soon .ac-i, .bd-pill.is-soon .t { color: var(--gold); }
 .bd-pill.has-act { padding-right: 5px; }
 .bd-pill button { flex: none; height: 28px; margin-left: 3px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .12); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); }
 .bd-pill button:hover { background: rgb(255 255 255 / .2); }
 
 /* Anything small that floats over the sheet is night, like the dock beside it */
-.bx, .bx-sw, .bfly, .bd-heard { color: var(--stage-ink); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 16px 30px -14px rgb(11 10 24 / .55); }
+.bx, .bx-sw, .bfly, .bd-heard { color: var(--stage-ink); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 16px 30px -14px rgb(6 13 26 / .55); }
 
 /* The bar on what's selected */
 .bx { position: absolute; z-index: 13; display: flex; align-items: center; gap: 1px; height: 42px; padding: 3px; border-radius: 12px; animation: bd-pop var(--duration-1) var(--ease-out) both; white-space: nowrap; }
@@ -284,7 +284,7 @@
 .bfly.is-pen { top: calc(50% + 56px); }
 .bfly .row { display: flex; gap: 2px; }
 .bfly .bt { width: 36px; height: 36px; border-radius: 9px; color: var(--stage-ink); }
-.bfly .bt[aria-pressed="true"], .bx .bt[aria-pressed="true"] { background: rgba(255, 138, 91, .18); color: #FFB08A; }
+.bfly .bt[aria-pressed="true"], .bx .bt[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
 .bfly .sw { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; }
 .bfly .item { display: flex; align-items: center; gap: 10px; width: 188px; height: 38px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); text-align: left; }
 .bfly .item .ac-i { color: var(--stage-ink-2); }
@@ -295,11 +295,11 @@
 
 /* What the call heard */
 .bd-heard { position: absolute; z-index: 12; left: 50%; bottom: 14px; translate: -50% 0; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 11px; border-radius: 999px; font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: bd-toast var(--duration-3) var(--ease-out) both; }
-.bd-heard .ac-i { color: #FF9DAE; }
+.bd-heard .ac-i { color: var(--speak); }
 
 /* ---------------------------------------------------------------- on paper, over the sheet */
 /* Small menus on the board */
-.bp { position: absolute; z-index: 16; width: 264px; padding: 6px; border-radius: 14px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 22px 44px -18px rgb(26 22 51 / .5); animation: bd-pop var(--duration-1) var(--ease-out) both; }
+.bp { position: absolute; z-index: 16; width: 264px; padding: 6px; border-radius: 14px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 22px 44px -18px rgb(18 34 63 / .5); animation: bd-pop var(--duration-1) var(--ease-out) both; }
 .bp .hd { padding: 10px 10px 8px; font: 600 14px/1.25 var(--font-sans); letter-spacing: -.005em; }
 .bp .sub { padding: 0 10px 10px; font-size: 13px; line-height: 1.42; color: var(--ink-3); }
 .bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
@@ -308,7 +308,7 @@
 .bp .mi small { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .bp .opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 10px 10px; }
 .bp .opt { height: 40px; border-radius: 10px; font: 600 14px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
-.bp .opt[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); box-shadow: inset 0 0 0 1.5px var(--sun); }
+.bp .opt[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); box-shadow: inset 0 0 0 1.5px var(--sun); }
 .bp .ft { padding: 2px 10px 10px; }
 .bp .ft .ac-btn { width: 100%; }
 .bp .rows { display: grid; gap: 7px; padding: 2px 10px 10px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
@@ -316,7 +316,7 @@
 .bp .rows .ac-i { flex: none; margin-top: 2px; color: var(--ink-3); }
 
 /* Ideas from the call */
-.bd-tray { position: absolute; z-index: 12; left: 50%; bottom: 14px; translate: -50% 0; width: 560px; max-width: calc(100% - 24px); padding: 6px; border-radius: 16px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 26px 50px -20px rgb(26 22 51 / .5); animation: bd-toast var(--duration-2) var(--ease-out) both; }
+.bd-tray { position: absolute; z-index: 12; left: 50%; bottom: 14px; translate: -50% 0; width: 560px; max-width: calc(100% - 24px); padding: 6px; border-radius: 16px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 26px 50px -20px rgb(18 34 63 / .5); animation: bd-toast var(--duration-2) var(--ease-out) both; }
 .bd-tray .hd { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 10px; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; }
 .bd-tray .hd .ac-i { color: var(--rec); }
 .bd-tray .hd .sp { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font: 500 12px/1 var(--font-sans); white-space: normal; }
@@ -382,9 +382,9 @@
 .bd-tile { position: relative; min-width: 0; min-height: 0; padding: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--bd-ground); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06); text-align: left; cursor: pointer; }
 .bd-tile.is-col { flex: none; width: 100%; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); }
 .bd-tile .bd-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
-.bd-tile .ac-tile-name { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 6px; border-radius: 8px; background: rgba(11, 10, 24, .78); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); }
+.bd-tile .ac-tile-name { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 6px; border-radius: 8px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); }
 .bd-tile.is-col .ac-tile-name { left: 8px; bottom: 8px; gap: 6px; height: 24px; padding: 0 8px 0 5px; border-radius: 7px; font-size: 12px; }
-.bd-tile .open { position: absolute; right: 10px; top: 10px; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgba(11, 10, 24, .78); color: var(--stage-ink); }
+.bd-tile .open { position: absolute; right: 10px; top: 10px; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); }
 
 /* ---------------------------------------------------------------- a phone */
 .pc-add { position: absolute; z-index: 14; right: 14px; bottom: 14px; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
