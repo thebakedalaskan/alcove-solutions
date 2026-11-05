@@ -38,6 +38,8 @@ export const wsToast = {
   deleted: (name: string) => say('trash', `${name} deleted for good`),
   failed: (text: string) => say('alert', text),
   stoppedPresenting: () => say('presentation', 'You stopped presenting. Everyone’s back where they were.'),
+  stoppedTheirPresenting: (first: string) => say('presentation', `You stopped ${first}’s presentation. Everyone’s back where they were.`),
+  presentingPrivate: (first: string) => say('lock', `${first} is presenting something you can’t open`),
   switched: (name: string, onBack: () => void) => say('swap', `This call now uses ${name}. Nobody was disconnected.`, { label: 'Back', onClick: onBack }),
   newSpace: (name: string) => say('folders', `New workspace, ${name}. This call uses it now.`),
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),

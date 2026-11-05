@@ -10,10 +10,11 @@ import { errorMessage, firstName, type CallSession, type CallWorkspace, type Per
 import { WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CallPerson, CallTogether, WorkspaceCall, WorkspacePlace, WorkspaceTogether } from '~/features/workspace/context';
+import type { CallPerson, CallTogether, WorkspaceCall, WorkspacePlace, WorkspacePlaying, WorkspacePresenting, WorkspaceTogether } from '~/features/workspace/context';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
 import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
 import type { LiveCall } from '~/features/workspace/live/types';
+import { presentingStrip } from '~/features/workspace/Presentation';
 import { Workspace } from '~/features/workspace/Workspace';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
@@ -74,6 +75,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       /** ⌘K: Find, with the workspace opened for it. */
       find: () => { reveal(); setFinding(true); },
       found: () => setFinding(false),
+      /** Opens it where you were, as for a presentation. */
+      show: reveal,
       go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
       /** Just the document, which opens the workspace if it has to, or everything back. */
       setZen: (on: boolean) => { if (on) reveal(); setZen(on); },
@@ -186,8 +189,12 @@ function editing(t: EventTarget | null): boolean {
 const LIVE_ROWS = <LiveRows />;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, live, act, reach, people, invited, onToggleList, onShowList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, live, act, reach, people, invited, presenting, playing, onToggleList, onShowList, onToggleZen }: {
   workspace: CallWorkspace;
+  /** What's presented where you are, and what you're doing about it (presenting.ts). */
+  presenting: WorkspacePresenting;
+  /** What's playing for everyone, when there's somewhere to read a video from (PlayTogether.tsx). */
+  playing: WorkspacePlaying | undefined;
   /** Who's in the call, and who's invited if you can know, for `@`. */
   people: readonly CallPerson[];
   invited: readonly Person[];
@@ -214,11 +221,13 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
 }) {
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
+  /* Watching a presentation, your own page is under it: out of sight, as far as it knows. */
   const call = useMemo((): WorkspaceCall => ({
-    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
+    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
-    list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList }
-  }), [ live, documents, act, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList ]);
+    list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList },
+    presenting, playing
+  }), [ live, documents, act, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList, presenting, playing ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */
@@ -228,7 +237,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={call} />;
   return (
     <OutsideSpace live={live} at={at} go={act.go} say={act.say} closed={!open} zen={call.zen} list={call.list}>
-      {organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}
+      {presentingStrip(presenting)}{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}
     </OutsideSpace>
   );
 });

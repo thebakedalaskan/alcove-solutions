@@ -1,8 +1,9 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
-import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
+import type { CallPresent, ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
+import type { VideoPlay } from './editor/types';
 import type { Following, StopFollowing } from './follow';
 import type { Someone } from './presence';
 import type { EditorHandle } from './editor/types';
@@ -27,6 +28,38 @@ export interface CallTogether {
 }
 /** What the call can ask of the workspace. */
 export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void }
+
+/**
+ * Presenting, in a call (features/call/presenting.ts). `present` is what the call says is presented where you are; `watching`:
+ * the page is the presentation, because you're presenting it or watching it rather than working on your own (`away`).
+ * `section` is the one on screen, which moves at once for whoever presses Next. `inSight`: the workspace isn't closed or
+ * behind something it takes turns with, so its keys are awake.
+ */
+export interface WorkspacePresenting {
+  present: CallPresent | null;
+  /** Whoever's presenting, as the call shows them. */
+  presenter: Person | null;
+  watching: boolean;
+  away: boolean;
+  section: number;
+  inSight: boolean;
+  /** Presents a document to everyone in this part of the call, from its first section. */
+  start: (documentId: string) => void;
+  /** Whoever's presenting, or the organizer: moves everyone to a section. */
+  move: (section: number) => void;
+  /** Whoever's presenting, or the organizer: stops it for everyone. */
+  stop: () => void;
+  /** Work on my own, and Back to the presentation. */
+  setAway: (away: boolean) => void;
+}
+
+/** A video playing for everyone, in a call (features/call/PlayTogether.tsx). */
+export interface WorkspacePlaying {
+  /** What's playing where you are: its document, and what a block holding it shows. Null when nothing is. */
+  now: { documentId: string; video: VideoPlay } | null;
+  /** Plays a video in a document for everyone, from the start. Left out while someone else is playing something. */
+  start?: ((documentId: string, mediaId: string) => void) | undefined;
+}
 
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
@@ -65,6 +98,10 @@ export interface WorkspaceCall {
   /** ⌘K in the call asked for Find, which opens the workspace first if it's closed. `onFinding` says it's been heard. */
   finding: boolean;
   onFinding: () => void;
+  /** Presenting in this call. */
+  presenting: WorkspacePresenting;
+  /** Playing a video for everyone. Left out when there's nowhere to read a video from, and then Play for everyone isn't offered. */
+  playing?: WorkspacePlaying | undefined;
 }
 
 export interface WorkspaceProps {

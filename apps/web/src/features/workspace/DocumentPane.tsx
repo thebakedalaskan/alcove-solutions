@@ -4,7 +4,7 @@
  * and whatever they wrote that didn't reach Alcove stays theirs to copy, save as a new document, or let go.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type Person, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPresentPreview, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
@@ -16,12 +16,15 @@ import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
 import { useHistory } from './History';
 import { TEMPLATES } from './editor/templates';
+import type { DocSection } from './editor/sections';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlock, Point, Rect } from './editor/types';
-import { Rescue, type CopyTo } from './Rescue';
 import { PersonCard } from './People';
 import { facesIn } from './presence';
 import { HearIt } from './live/HearIt';
 import { useEditorCall } from './live/useEditorCall';
+import { useVideoHandlers } from './playing';
+import { presentingStrip } from './Presentation';
+import { Rescue, type CopyTo } from './Rescue';
 import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
@@ -70,7 +73,7 @@ export function landOn(editor: EditorHandle, block: string): void {
   editor.scrollToBlock(block, { flash: true });
 }
 
-function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus }) {
+function Page({ ws, item, session, status, onSections }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus; onSections: (sections: readonly DocSection[]) => void }) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   const now = useNow(60_000);
   const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
@@ -79,6 +82,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   // A session that's ended takes nothing more: anything typed there would have nowhere to go.
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed' || status.closed !== null;
   const alcove = useAsk(ws, item);
+  const media = useVideoHandlers(ws, item.id, true);
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -230,7 +234,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             onOpenPerson={openPerson} onTagged={(person, block, rect) => { void onTagged(person, block, tagRect(person.id, block, rect)); }}
             onComment={readOnly || !ws.self ? undefined : (draft) => setComment({ kind: 'draft', draft })} onOpenThread={(id, rect) => setComment({ kind: 'thread', id, rect })}
             onPresence={(p) => ws.present({ document: item.id, ...p })}
-            onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
+            onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast} onSections={onSections} media={media}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : alcove.onAsk}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
@@ -268,7 +272,7 @@ export function DocumentPane({ item }: { item: WorkspaceItem }) {
 
 /** The head with nothing to do yet. */
 function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
-  return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />;
+  return presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />;
 }
 
 const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
@@ -284,10 +288,13 @@ function unsavedOf(status: DocStatus, ready: boolean, guest: boolean): WsUnsaved
 function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem; opened: Opened; reopen: () => void }) {
   const { session, ready } = opened;
   const status = useLive(session);
-  const [more, setMore] = useState<'menu' | 'move' | null>(null);
+  const [more, setMore] = useState<'menu' | 'move' | 'present' | null>(null);
   const [share, setShare] = useState(false);
   /** Whose face on the head was pressed. */
   const [card, setCard] = useState<string | null>(null);
+  /** Present's preview, and the sections it counts, as the page has them. */
+  const [previewing, setPreviewing] = useState(false);
+  const [sections, setSections] = useState<readonly DocSection[] | null>(null);
   const member = ws.sent.role !== null;
   const canShare = member && item.role === 'edit';
   const changing = ws.canChange && item.role === 'edit' && item.trashedAt === null;
@@ -327,21 +334,26 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   if (gone) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+        {presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />}
         <WsCantOpen what="document" unsent={rescue !== null}
           action={rescue ?? <Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );
   }
 
+  /* Present is at the top of every document in a call, once the page knows its sections; on a phone it's in ⋯. Something in Trash can't be presented. */
+  const present = ws.call?.presenting;
+  const preview = present && sections && ready && !trashed ? (onStart: () => void) => (
+    <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { onStart(); present.start(item.id); }} />
+  ) : null;
   const close = () => setMore(null);
   const morePop: WsPop = {
     open: more !== null, onOpenChange: (to) => setMore(to ? 'menu' : null),
     content: more === 'move' ? (
       <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id)}
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
-    ) : (
-      <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
+    ) : more === 'present' && preview ? preview(close) : (
+      <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined} onPresent={preview ? () => setMore('present') : undefined}
         onHistory={() => { close(); history.show(); }}
         onDuplicate={changing ? () => { close(); ws.actions.duplicate(item.id); } : undefined}
         onMove={changing ? () => setMore('move') : undefined}
@@ -350,18 +362,21 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
     )
   };
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
-  const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
   const faces = facesIn(ws.here, item.id).map((person): WsFace => ({
     person, card: { open: card === person.id, onOpenChange: (to) => setCard(to ? person.id : null), content: card === person.id ? <PersonCard person={person} onDone={() => setCard(null)} /> : null }
   }));
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
+  const presentPop: WsPop | undefined = preview ? { open: previewing, onOpenChange: setPreviewing, content: preview(() => setPreviewing(false)) } : undefined;
+  const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
   return (
     <>
     <WsDoc>
-      <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
-        share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
-        zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+      {presentingStrip(ws.call?.presenting) ?? (
+        <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
+          share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} present={presentPop} more={morePop}
+          zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+      )}
       <WsFollowBar following={ws.following} onStop={() => ws.stopFollowing()} />
       <WsOfflineBar show={offline && ready && status.closed === null} />
       <WsUnsavedBar why={unsaved}>{rescue}</WsUnsavedBar>
@@ -370,7 +385,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsVersionBar when={history.reading} />
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready
-        ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
+        ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} onSections={setSections} /></WsScroll>
         : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}
       {history.page}
     </WsDoc>

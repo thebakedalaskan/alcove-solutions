@@ -42,7 +42,9 @@ export const qk = {
   mentions: ['workspaces', 'mentions'] as const,
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
   documentVersions: (id: string, documentId: string) => ['workspaces', id, 'versions', documentId] as const,
-  documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const
+  documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const,
+  /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
+  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -134,7 +136,9 @@ export const q = {
   /** What History lists, read afresh each time it opens. `pass`: a guest's. */
   documentVersions: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersions(id, documentId), queryFn: () => api.workspaces.versions(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
   /** A version never changes, so what's read stays good for as long as it's being looked at, and goes soon after. */
-  documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 })
+  documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 }),
+  /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
+  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity })
 };
 
 /**
@@ -587,14 +591,6 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
     deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
   };
 }
-/** Makes a new document of words that didn't reach the one they were written in (`DocSession.localCopy`). */
-export function useSaveCopy() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => api.workspaces.saveCopy(v.workspaceId, v.input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
-  });
-}
 /** Tells someone they were tagged. `pass`: someone in a call. */
 export function useMention(workspaceId: string, pass?: string | undefined) {
   return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
@@ -603,6 +599,22 @@ export function useMention(workspaceId: string, pass?: string | undefined) {
 export function useMentionSeen() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+}
+/** Keeps your notes for presenting a document. Empty text deletes them. */
+export function useSavePresenterNotes(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => api.workspaces.presenterNotes.set(workspaceId, documentId, text, pass ? { pass } : undefined),
+    onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
+  });
+}
+/** Makes a new document of words that didn't reach the one they were written in (`DocSession.localCopy`). */
+export function useSaveCopy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => api.workspaces.saveCopy(v.workspaceId, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
+  });
 }
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
 export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {

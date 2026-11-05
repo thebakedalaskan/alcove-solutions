@@ -524,11 +524,24 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
      notes off they say so.
    - **Hear it** on a quote plays that moment, for anyone with the notes, once the note exists.
-5. **Present** shows a document one section at a time. Whoever started it or the organizer moves it on and stops it, and
-   nobody's access changes: someone who can't open it is told it's on, not what it is. Your own notes beside it are
-   yours alone.
-6. **Play for everyone** plays a video in a document at the same moment for everyone who can open it, late joiners too.
-   Losing the document, a new workspace, another room or the call ending stops it, and the video stays where it is.
+5. **Present** is at the top of every document in a call (in **⋯** on a phone). Its preview shows what people will see and
+   how many sections the document splits into, at each first- or second-level heading, and **Present N sections** starts it.
+   - **Everyone who can open it** sees it in place of their own page: one section at a time, with no list, menus or
+     anyone's caret, and the strip at the top saying who's presenting what. The workspace opens for it if it wasn't open.
+   - **Whoever presents** also gets, beside it and for them alone, where they are and what's next, **Back** and **Next**
+     (or **←** and **→**), their own notes for that document, kept for next time, and **Stop presenting**, always at the foot.
+   - **Work on my own** goes back to your own page, or to the document itself, while the presentation carries on; the strip
+     says **Back to the presentation**. The organizer can also stop someone else's from the strip.
+   - **Stop presenting** puts everyone back exactly where they were: your own page as you left it, and the workspace put
+     away again if it opened for the presentation. Nobody's access changes: someone who can't open it is told who's
+     presenting, never what.
+6. **Play for everyone**, on a video in a document, plays it at the same moment on the screen of everyone who can open it,
+   from the workspace: no screen share, and nobody hears it twice. Late joiners land at the same moment.
+   - **The bar** above the dock says what's playing and who started it, and has your own volume. Whoever started it, or the
+     organizer, can pause it for everyone, move it along, and stop it with **×**.
+   - **If your browser holds it back**, the bar says so, and **Play here** brings you in. Paused with your computer's own
+     pause key, **Back to everyone** puts you where everyone is. A file your browser can't play says so.
+   - Losing the document, a new workspace, another room or the call ending stops it, and the video stays where it is.
 7. **After the call**, the note says what was worked on and by whom, for each person only what they can open, and each
    document keeps a version of how the call left it. **The next call in a series** finds a new agenda beside the last one,
    holding only what was left open.
@@ -1037,4 +1050,4 @@ your workspaces.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
-touch screen: **Move to…** does that. A bar's buttons go under its words. Someone's card and a comment are sheets too, and faces are on the list's rows.
+touch screen: **Move to…** does that. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.

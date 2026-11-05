@@ -7,10 +7,11 @@ import { Avatar, Button, Icon } from '@alcove/ui';
 import type { Person } from '@alcove/api';
 import { firstName } from '@alcove/api';
 import type { Node as PMNode } from 'prosemirror-model';
-import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
 import type { EditorRuntime } from '../runtime';
+import type { VideoPlay } from '../types';
 import { captionsOf, numberAttr, textAttr } from '../schema';
 import { clockOf, liveWhen } from '../../live/dates';
 import { galleryItems, liveLines, type GalleryItem } from './attrs';
@@ -196,33 +197,49 @@ function FileRow({ node }: { node: PMNode }) {
   );
 }
 
+/**
+ * The picture everyone in the call is watching, lent to this block while it's on the page, with where it's got to. It's
+ * given back before the page under it goes, so it's never out of the page for a moment, which would stop it.
+ */
+function Showing({ play, dur }: { play: VideoPlay; dur: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const show = play.show;
+  useLayoutEffect(() => { const el = box.current; return el ? show(el) : undefined; }, [show]);
+  const clock = useSyncExternalStore(play.clock.subscribe, play.clock.getSnapshot);
+  const total = clock.total || dur;
+  return (
+    <>
+      <div ref={box} className="wb-vlive" />
+      <div className="wb-vbar"><span className="wb-vfill" style={{ width: `${total > 0 ? Math.min(1, clock.seconds / total) * 100 : 0}%` }} /></div>
+      <span className="wb-vtime ac-time">{position(clock.seconds)} / {position(total)}</span>
+    </>
+  );
+}
+
 function VideoBlock({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const media = rt.props.media;
   const id = textAttr(node, 'id');
+  const file = textAttr(node, 'media');
   const poster = textAttr(node, 'poster');
   const url = poster ? media?.url(poster) : undefined;
   const dur = numberAttr(node, 'dur') ?? 0;
   const up = numberAttr(node, 'up');
   const failed = textAttr(node, 'failed');
   const width = numberAttr(node, 'width'), height = numberAttr(node, 'height');
-  const play = media?.playing?.block === id ? media?.playing : null;
+  const play = file !== null && media?.playing?.media === file ? media.playing : null;
   const ready = up === null && !failed;
+  const onPlay = media?.onPlay;
   return (
     <div className="wb-vid" style={{ aspectRatio: shapeOf(width, height) }}>
       {url && <img className="wb-img" src={url} alt="" draggable={false} />}
       {ready && !play && (
         <div className="wb-vctl">
-          {media?.onPlay && id && <Button variant="primary" size="sm" icon="play" onClick={() => media.onPlay?.(id)}>Play for everyone</Button>}
+          {onPlay && id && file && <Button variant="primary" size="sm" icon="play" onClick={() => onPlay({ block: id, media: file })}>Play for everyone</Button>}
           <span className="ac-time">{position(dur)}</span>
         </div>
       )}
-      {play && (
-        <>
-          <div className="wb-vbar"><span className="wb-vfill" style={{ width: `${play.total > 0 ? (play.seconds / play.total) * 100 : 0}%` }} /></div>
-          <span className="wb-vtime ac-time">{position(play.seconds)} / {position(play.total)}</span>
-        </>
-      )}
+      {play && <Showing play={play} dur={dur} />}
       <span className="wb-vt">{textAttr(node, 'title')}</span>
       {up !== null && !failed && <Uploading percent={Math.round(up)} />}
       {failed && <Failed name={failed} block={id} />}

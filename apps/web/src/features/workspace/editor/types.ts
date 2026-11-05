@@ -7,6 +7,7 @@ import type { IconName } from '@alcove/ui';
 import type { ReactNode, Ref } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type { Doc } from 'yjs';
+import type { DocSection } from './sections';
 
 /** A block or inline piece as plain data: ProseMirror's JSON for the nodes in schema.ts. */
 export interface BlockJSON {
@@ -114,8 +115,21 @@ export interface EditorCall {
   onLive?: ((what: LiveWhat, block: string) => void) | undefined;
 }
 
-/** A video playing for everyone, for the block it's in. */
-export interface VideoPlay { block: string; seconds: number; total: number }
+/** Where a video playing for everyone is, in seconds, and how long it is: 0 until that's known. */
+export interface VideoClock { seconds: number; total: number }
+
+/**
+ * A video playing for everyone in the call, for the blocks that hold it. It plays once, in the call, whether or not anyone
+ * has its document open: a block holding it shows the picture everyone's watching, with where it's got to.
+ */
+export interface VideoPlay {
+  /** The file playing, as a video block's `media` names it. */
+  media: string;
+  /** Read with `useSyncExternalStore`: it moves on every second or so, and nothing else has to draw again for it. */
+  clock: { subscribe: (listener: () => void) => () => void; getSnapshot: () => VideoClock };
+  /** Puts the picture in a block, until what it returns is called. The last block to ask has it. */
+  show: (into: HTMLElement) => () => void;
+}
 
 /** What photos, videos and files need from outside. */
 export interface MediaHandlers {
@@ -125,8 +139,8 @@ export interface MediaHandlers {
   onRetry?: ((block: string) => void) | undefined;
   /** The download on a file block. */
   onOpenFile?: ((file: { media: string; name: string }) => void) | undefined;
-  /** Play for everyone. Without it, a video shows no button. */
-  onPlay?: ((block: string) => void) | undefined;
+  /** Play for everyone, on a video: its block, and its file as `media` names it. Without it, a video shows no button. */
+  onPlay?: ((video: { block: string; media: string }) => void) | undefined;
   /** The video playing for everyone now, if it's in this document. */
   playing?: VideoPlay | null | undefined;
 }
@@ -197,6 +211,13 @@ export interface EditorProps {
   whenBlank?: ReactNode | undefined;
   /** Where the caret starts when the document opens. */
   autoFocus?: 'title' | 'end' | undefined;
+  /**
+   * The audience's view of a presentation: only this section (sections.ts), and the title only with the first. Pass
+   * `readOnly` with it. A number past the last section shows the last.
+   */
+  section?: number | null | undefined;
+  /** The document's sections, now and whenever they change, for presenting it. */
+  onSections?: ((sections: readonly DocSection[]) => void) | undefined;
   ref?: Ref<EditorHandle> | undefined;
 }
 

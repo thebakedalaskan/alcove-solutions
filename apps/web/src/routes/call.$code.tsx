@@ -27,6 +27,8 @@ import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { PanelHost, tabName, useCallArea, useHorizon, type PanelHostHandle } from '~/features/call/PanelHost';
+import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/PlayTogether';
+import { usePresenting } from '~/features/call/presenting';
 import {
   PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView, zenRoom,
   type Leaf, type PanelFacts, type PanelPreset, type ShareLeaf
@@ -179,8 +181,9 @@ function InCall({ session }: { session: CallSession }) {
   const layout = useCallView(state.callId, account.data ? account.data.ownerId : account.isPending ? undefined : null, startPanels);
   const forgetLayout = layout.forget;
   const panels = layout.panels;
-  // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot.
-  const spaceKey = JSON.stringify(told.workspace);
+  // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot. A
+  // video playing tells the server's time on every read, which only its player uses, and it reads the call itself.
+  const spaceKey = JSON.stringify(told.workspace, (k, v: unknown) => (k === 'nowMs' ? undefined : v));
   const space = useMemo(() => told.workspace, [spaceKey]);
   const work = useWorkspacePanel(session, space, layout);
   // What's been brought to this call, as the list will show it.
@@ -1400,6 +1403,16 @@ function InCall({ session }: { session: CallSession }) {
   listShow.current = showList;
   const onShowList = useCallback(() => { listShow.current(); }, []);
 
+  /* Presenting: what's presented where you are, drawn over your own page or worked on beside it (presenting.ts). */
+  const presenting = usePresenting({
+    session, present: space.present, participants: state.participants, open: work.open, inSight: work.open && !!solved.rects.ws,
+    show: work.act.show, hide: work.act.hide, go: work.act.go, say: work.act.say, failed: work.act.failed
+  });
+  /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
+  const player = useSharedVideo(session, !ended, work.act.failed);
+  const startPlaying = useCallback((documentId: string, mediaId: string) => { session.startPlaying(documentId, mediaId, 0).catch(work.act.failed); }, [session, work.act]);
+  const playing = useWorkspacePlaying(player, startPlaying);
+
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
       sessions.call = null;
@@ -1425,7 +1438,7 @@ function InCall({ session }: { session: CallSession }) {
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
             <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
-              listOff={!solved.A.list} listPeek={work.peek} live={liveCall} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
+              listOff={!solved.A.list} listPeek={work.peek} live={liveCall} act={work.act} presenting={presenting} playing={playing} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>
@@ -1456,6 +1469,7 @@ function InCall({ session }: { session: CallSession }) {
               </motion.div>
             </>
           )} />
+        {player && <PlayTogetherBar player={player} />}
         <footer ref={dockBar} className="ic-dockbar">
           <CallDock tucked={zenOn}>
             <DockSplit className="keep">

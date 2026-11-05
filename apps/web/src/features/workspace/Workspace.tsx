@@ -4,8 +4,9 @@
  * address. See WorkspaceProps in context.ts.
  */
 import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
-import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
+import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
@@ -27,6 +28,7 @@ import { LivePage } from './live/LivePage';
 import { useSending } from './live/useSending';
 import { openedIn, placesOf, rememberPlaces } from './places';
 import { othersIn } from './presence';
+import { Presentation, presentingStrip } from './Presentation';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
 import { useWordsFollow } from './words';
@@ -150,10 +152,10 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
   const justMade = useRef<string | null>(null);
   const openDoc = useRef<Ws['openDoc']['current']>(null);
+  const page = useRef<OpenPage | null>(null);
   /* What the list last called each document, for a copy of someone's words in one that's gone. */
   const known = useRef(new Map<string, string>());
   useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, nameOf(it)); }, [items]);
-  const page = useRef<OpenPage | null>(null);
   const spaceName = view.tree?.name ?? 'Shared with you';
   const others = useMemo(() => othersIn(view.here), [view.here]);
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
@@ -195,9 +197,6 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
   }, [view.tree, at.kind, phone, owner, workspaceId, tree, onGo]);
 
-  /* A document just made is only opening while it's the one open. */
-  useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
-
   /* The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. */
   const closed = call?.closed ?? false;
   const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
@@ -226,11 +225,21 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Out of sight, put away or behind what it takes turns with, there's nothing to go with. */
   useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
 
+  /*
+   * Watching a presentation, or giving one, it's drawn over your own page, which waits underneath as you left it. The page
+   * counts as out of sight meanwhile (`closed`): you're following nobody, and nothing under it can be reached.
+   */
+  const watching = call?.presenting.watching ?? false;
+  const reduce = useReducedMotion();
+
   /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
   useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
   const closedNow = useRef(closed);
   closedNow.current = closed;
   const present = useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
+
+  /* A document just made is only opening while it's the one open. */
+  useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
 
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
@@ -299,11 +308,11 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   return (
     <WsContext value={ws}>
      <LiveHostContext value={host}>
-      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null}>
+      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
-            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
+            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
             <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
               copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id) ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
               back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
@@ -311,13 +320,21 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         ) : (
           /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
           <WsDoc className={listOff ? undefined : 'is-bare'}>
-            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
+            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
             {empty
               ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
               : <WsPickDocument onDocument={canChange ? () => actions.newDocument(null) : undefined} />}
           </WsDoc>
         )}
       </WsPane>
+      {/* It comes and goes over 240 ms, and your own page is back underneath as it goes. */}
+      <AnimatePresence>
+        {watching && call && (
+          <motion.div key="presenting" className="ws-over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : DURATION[2], ease: EASE.out }}>
+            <Presentation ws={ws} presenting={call.presenting} />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {!call && <WsToasts toasts={toasts} />}
       <Find open={find.finding} onOpenChange={find.setFinding} onKeys={() => find.setListing(true)} />
       <Keys open={find.listing} onOpenChange={find.setListing} />

@@ -165,7 +165,7 @@ Read `docs/engineering/logging-and-errors.md`.
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsFullBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`,
   `WsTemplates`, `WsTail`, `WsTrash`, `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
-  `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` above the head.
+  `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` in place of the head.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
   `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsPresentPreview`, `WsUploadPicker`. The call's
