@@ -465,7 +465,7 @@ export class Board implements LiveStore<BoardState> {
     });
   }
 
-  /** The person has taken the camera: anything easing it stops where it is. */
+  /** The person has taken the camera, so it stops easing. A glide under way lands at once, because the camera is already where it was going. */
   stopGlide(): void {
     this.untouched = false;
     if (this.state.glide) this.set({ glide: false });

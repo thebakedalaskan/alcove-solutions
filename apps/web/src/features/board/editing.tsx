@@ -203,18 +203,29 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       }
     };
     let pressed = -PRESS_MS;
-    const press = (e: PointerEvent): void => { pressed = e.timeStamp; };
+    // A press in the field itself can't be why focus left it.
+    const press = (e: PointerEvent): void => { if (e.target !== el) pressed = e.timeStamp; };
     const blur = (e: FocusEvent): void => {
       // React puts focus back after moving a node, as a change of order does, so nothing's lost until that's over.
       queueMicrotask(() => {
+        // The event says what's taking focus, whoever moved it. The page may not show it yet, and nothing having focus would read as focus lost.
+        const to = e.relatedTarget instanceof Element ? e.relatedTarget : document.activeElement;
+        // Back with the page in front, a word being composed is over: Chrome ends it when a node moves, and doesn't say so.
+        if (to === el && document.hasFocus()) flush();
         // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
-        const to = document.activeElement;
         if (to === el || board.getSnapshot().edit !== id) return;
         if ((!to || to === document.body) && e.timeStamp - pressed >= PRESS_MS) board.fieldLost();
         else board.finishEdit();
       });
     };
+    // Hidden while the page has no focus, a field loses focus with no blur. Back on the page, it takes focus again, or it's closed like anything else nobody asked for.
+    const back = (): void => {
+      if (document.activeElement !== document.body || board.getSnapshot().edit !== id) return;
+      el.focus({ preventScroll: true });
+      if (document.activeElement !== el) board.fieldLost();
+    };
     addEventListener('pointerdown', press, true);
+    addEventListener('focus', back);
     el.addEventListener('keydown', key);
     el.addEventListener('blur', blur);
     el.focus({ preventScroll: true });
@@ -224,6 +235,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       board.flushTyping = null;
       stop();
       removeEventListener('pointerdown', press, true);
+      removeEventListener('focus', back);
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
     };
