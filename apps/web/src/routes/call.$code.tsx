@@ -1,5 +1,5 @@
 import {
-  CALL_LAYOUT_MAX, CAPTION_LANGUAGES, CallPanelTabSchema, MAIN_PLACE, errorMessage, notesAreOn, type CallAsker, type CallPanelGroup, type CallPanels, type CallPeopleMode, type CallSession, type CallState, type CaptionLanguage,
+  CALL_LAYOUT_MAX, CAPTION_LANGUAGES, CallPanelTabSchema, MAIN_PLACE, errorMessage, notesAreOn, type CallAsker, type CallPanelGroup, type CallPanelGroupId, type CallPanels, type CallPeopleMode, type CallSession, type CallState, type CaptionLanguage,
   type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
@@ -8,7 +8,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/access';
 import { useCaptions } from '~/features/call/captions';
 import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
@@ -29,7 +29,7 @@ import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/med
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { PanelHost, tabName, useCallArea, useHorizon, type PanelHostHandle } from '~/features/call/PanelHost';
 import {
-  PHONE_W, closeAll, closeGroup, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView,
+  PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView,
   type Leaf, type PanelFacts, type PanelPreset
 } from '~/features/call/panels';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
@@ -178,13 +178,17 @@ function InCall({ session }: { session: CallSession }) {
   const forgetLayout = layout.forget;
   const panels = layout.panels;
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
-  const showing = shownViews(panels, phone);
-  const panel: PanelView | null = frontGroup(panels)?.active ?? null;
+  // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
+  const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
+  const showing = shownViews(panels, phone, crowded);
+  const panel: PanelView | null = frontGroup(panels, crowded)?.active ?? null;
   const setPanel = (v: PanelView | null) => layout.arrange((p) => {
     if (v) return showView(p, v);
-    const g = frontGroup(p);
+    const g = frontGroup(p, crowded);
     return g ? closeGroup(p, g.id) : p;
   });
+  /* What's typed in Chat and Ask: moving either to another panel keeps it. */
+  const drafts = useRef({ chat: { text: '' }, ask: { text: '' } });
   const devices = useDevices(m.camera);
   const speaking = useSpeaking(media, m.mic);
   /* How loud each person is for you (only your playback), kept for this call in this tab. */
@@ -875,12 +879,12 @@ function InCall({ session }: { session: CallSession }) {
   useCaptureAlerts(state, controls);
   useNotesAskedNotifications(state);
   const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
-  const flip = (v: PanelView) => layout.arrange((p) => toggleView(p, v, phone));
+  const flip = (v: PanelView) => layout.arrange((p) => toggleView(p, v, phone, crowded));
   /* Notes in the dock stands for what's written from the call: whichever panel shows any of it closes, or Notes opens. */
   const isNotes = (v: PanelView) => v === 'notes' || v === 'yours' || v === 'transcript' || v === 'ask';
   const notesShowing = showing.some(isNotes);
   const flipNotes = () => layout.arrange((p) => {
-    const g = p.groups.find((x) => x.open && isNotes(x.active));
+    const g = p.groups.find((x) => x.open && !crowded.includes(x.id) && isNotes(x.active));
     return notesShowing && g ? closeGroup(p, g.id) : showView(p, 'notes');
   });
 
@@ -1210,6 +1214,11 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => {
     if (roomsGone) arrange((p) => { const g = p.groups.find((x) => x.active === 'rooms'); return g ? closeGroup(p, g.id) : p; });
   }, [roomsGone, arrange]);
+  /* Your own notes are your account's: a panel left on them from another call doesn't open in one you joined as a guest. */
+  const yoursGone = !own.enabled && showing.includes('yours');
+  useEffect(() => {
+    if (yoursGone) arrange((p) => { const g = p.groups.find((x) => x.open && x.active === 'yours'); return g ? closeGroup(p, g.id) : p; });
+  }, [yoursGone, arrange]);
 
   /*
    * ---------- the panels: where everything goes (panels.ts) ----------
@@ -1238,7 +1247,12 @@ function InCall({ session }: { session: CallSession }) {
   const bottom = capNode ? (stageW < 700 ? 150 : 124) : 0;
   const facts: PanelFacts = { ...noFacts, shown: [...seats.values()], top, bottom };
   const solved = useMemo(() => solve(panels, size, facts), [panels, size, surfaces.ws, surfaces.board, seatsKey, front, phone, !!stageRooms, top, bottom]);
-  const loudKey = solved.A.apart ? onStage.filter((p) => p.hand || p.speaking).map((p) => p.id).join(' ') : '';
+  useLayoutEffect(() => {
+    const now = crowdedOut(panels, solved);
+    setCrowded((was) => (was.join() === now.join() ? was : now));
+  }, [panels, solved]);
+  // Who has a place however little room there is, as Speaker view counts talking: if every word did, the few places would keep changing hands.
+  const loudKey = solved.A.apart ? onStage.filter((p) => p.hand || p.id === staged.speaker).map((p) => p.id).join(' ') : '';
   const frame = useMemo((): StageFrame => {
     const { A, rects } = solved;
     const shown = new Map([...seats].flatMap(([id, s]) => { const r = rects[s]; return r ? [[id, r] as const] : []; }));
@@ -1280,10 +1294,10 @@ function InCall({ session }: { session: CallSession }) {
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
         : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} />;
       case 'ask': return <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
-        catching={cu.catching} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
+        catching={cu.catching} draft={drafts.current.ask} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
       case 'chat': return <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
-        here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />;
+        here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} />;
       case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes}
         canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
         notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />;

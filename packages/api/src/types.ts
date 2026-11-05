@@ -1032,7 +1032,8 @@ export type CallPanelLeafId = z.infer<typeof CallPanelLeafIdSchema>;
 /** How you see people while something else is on the stage. */
 export const CallPeopleModeSchema = z.enum(['tiles', 'arches', 'hidden']);
 export type CallPeopleMode = z.infer<typeof CallPeopleModeSchema>;
-const PanelSizeSchema = z.number().positive().max(100_000);
+export const CALL_PANEL_SIZE_MAX = 100_000;
+const PanelSizeSchema = z.number().positive().max(CALL_PANEL_SIZE_MAX);
 /** A place in the tree: its share of the room (`flex`), or a size you gave it by dragging (`px` wide, `pxh` tall). */
 const PanelPlace = { flex: PanelSizeSchema.optional(), px: PanelSizeSchema.optional(), pxh: PanelSizeSchema.optional() };
 const CallPanelLeafSchema = z.object({ id: CallPanelLeafIdSchema, ...PanelPlace });

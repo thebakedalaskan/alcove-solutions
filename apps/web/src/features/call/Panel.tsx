@@ -1,7 +1,7 @@
 /*
  * The side panels: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
  * people, one tab at a time in each panel. A panel slides in and the stage makes room; any tab can be pulled out to
- * be a panel of its own, and panels sit wherever you put them (panels.ts, Panels.tsx). Notes, the transcript
+ * be a panel of its own, and panels sit wherever you put them (panels.ts, PanelHost.tsx). Notes, the transcript
  * and answers come from what was really said while notes were on; nothing here is invented. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
@@ -17,7 +17,7 @@ import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '.
 import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
 import type { LiveNotes } from './liveNotes';
-import { tabName } from './PanelHost';
+import { tabName, useDraft, type Draft } from './PanelHost';
 import type { VolumeActions } from './volume';
 import { VolumeControl } from './VolumeControl';
 
@@ -266,7 +266,7 @@ export function TranscriptView({ state, me, onMark }: { state: CallState; me: st
  * the people in it: the view marks where the conversation moved, and chat sent somewhere before you got there
  * can't be read here, which the view says.
  */
-export function ChatView({ chat, missed, ready, moving, here, placeName, who, onSend }: {
+export function ChatView({ chat, missed, ready, moving, here, placeName, who, draft, onSend }: {
   chat: CallChatMessage[];
   /** There was chat in this part of the call while you weren't in it. */
   missed: boolean;
@@ -279,16 +279,17 @@ export function ChatView({ chat, missed, ready, moving, here, placeName, who, on
   /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
   placeName: (place: string) => string;
   who: (id: string) => Person;
+  draft: Draft;
   onSend: (text: string) => Promise<void>;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useDraft(draft);
   const toast = useToast();
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
   /* A message that isn't sent is taken back: say so, and give the text back. */
   const send = (t: string) => {
     setText('');
-    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); setText((now) => now || t); });
+    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); draft.text ||= t; setText((now) => now || t); });
   };
   // Marks only matter once the conversation has been in more than one part of the call.
   const marked = new Set(chat.map((c) => c.place)).size > 1;

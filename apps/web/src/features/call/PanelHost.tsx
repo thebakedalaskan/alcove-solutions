@@ -4,25 +4,38 @@
  * about arranging them happens, for all of them alike: the lines between panels, the handle each has, tabs pulled out of
  * a panel, the sunrise glow that shows where something will land, and the same again from the keyboard.
  *
- * A drag changes the arrangement in memory; it's remembered when it's let go. Only your screen changes.
+ * A drag changes the arrangement in memory; it's remembered when it's let go, wherever that is. Only your screen changes.
  */
-import { CallPanelLeafIdSchema, CallPanelTabSchema, type CallPanelGroup, type CallPanelTab, type CallPanels } from '@alcove/api';
+import { CallPanelLeafIdSchema, CallPanelTabSchema, type CallPanelGroup, type CallPanelTab, type CallPanels, type CallPeopleMode } from '@alcove/api';
 import { Icon, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref, type RefObject } from 'react';
+import { log } from '~/lib/log';
 import {
-  dragDivider, dropAt, dropBox, dropSpots, evenDivider, groupLeaf, groupWith, moveLeaf, tearTab,
+  dragDivider, dropAt, dropBox, dropSpots, evenDivider, groupLeaf, groupWith, isShareLeaf, moveLeaf, solve, tearTab,
   type Divider, type Drop, type Horizon, type Leaf, type PanelFacts, type Size, type Solved
 } from './panels';
 import { GLIDE } from './Stage';
 import type { Box } from './stageLayout';
 
+const plog = log.child({ component: 'panels' });
+/** A side panel coming in from the edge it stands against, or going back there. */
+const SLIDE = { duration: 0.38, ease: [0.45, 0, 0.2, 1] } as const;
 const at = (r: Box) => ({ left: r.x, top: r.y, width: r.w, height: r.h });
 const isTab = (v: string | null): v is CallPanelTab => CallPanelTabSchema.options.some((t) => t === v);
 /** What a handle says it moves. */
 const leafOf = (v: string | null): Leaf | null => { const r = CallPanelLeafIdSchema.safeParse(v); return r.success ? r.data : null; };
 const TAB_NAMES: Record<CallPanelTab, string> = { notes: 'Notes', yours: 'Yours', transcript: 'Transcript', ask: 'Ask', chat: 'Chat', people: 'People' };
 export const tabName = (t: CallPanelTab) => TAB_NAMES[t];
+const PEOPLE_SAID: Record<CallPeopleMode, string> = { tiles: 'People back as tiles.', arches: 'People folded to arches.', hidden: 'People hidden. Shift and P brings them back.' };
+
+/** What's typed in a panel and not sent yet. It's kept above the panel: a tab moved to another panel starts afresh, and the words go with it. */
+export interface Draft { text: string }
+export function useDraft(draft: Draft) {
+  const [text, setText] = useState(draft.text);
+  useEffect(() => { draft.text = text; }, [draft, text]);
+  return [text, setText] as const;
+}
 
 /** The call's area, as it's measured. */
 export function useCallArea() {
@@ -68,12 +81,19 @@ export interface PanelHostHandle {
   pickUp(leaf: Leaf): void;
 }
 type Moving = { kind: 'panel'; id: Leaf } | { kind: 'tab'; id: CallPanelTab };
+/** What a pointer holds, from the press until it's let go, wherever that is. */
+type Press = { pointer: number; x: number; y: number } & ({ kind: 'line'; d: Divider; start: CallPanels; moved: boolean } | { kind: 'item'; moving: Moving; from: Element; going: boolean });
 interface Dragging {
   moving: Moving; label: string;
   /** The pointer, or for the keyboard the middle of what's lit. */
   x: number; y: number;
   drop: Drop | null;
   keys: boolean;
+}
+
+/** Holds on to a pointer while it's down, so letting go outside the window still comes here. */
+function keep(el: Element | null, pointer: number) {
+  try { el?.setPointerCapture(pointer); } catch (e) { plog.debug('pointer already let go', { err: e }); }
 }
 
 const DIRS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -127,9 +147,13 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
   const [drag, setDrag] = useState<Dragging | null>(null);
   const [sizing, setSizing] = useState<string | null>(null);
   const [said, setSaid] = useState('');
-  const line = useRef<{ d: Divider; x: number; y: number; start: CallPanels; moved: boolean } | null>(null);
-  const armed = useRef<{ moving: Moving; x: number; y: number; pointer: number } | null>(null);
-  const moved = useRef(false);
+  const press = useRef<Press | null>(null);
+  const unlisten = useRef<(() => void) | null>(null);
+  // What was just dragged, for the click that comes with letting it go. Nothing else's click is ever touched.
+  const dragged = useRef<Element | null>(null);
+  // Nothing is placed until the area has been measured, which is before the first paint: at no size at all, everything would start from a corner.
+  const measured = useRef(false);
+  if (size.w > 0) measured.current = true;
   // Panels stay where they last were while they have no place (behind others, or floating with no room), so they keep what's in them.
   const last = useRef(new Map<string, Box>());
 
@@ -150,62 +174,106 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
   };
   const nameOf = (m: Moving) => (m.kind === 'panel' ? label(m.id) : tabName(m.id));
 
+  /** Hardly moved from where it was picked up: a handle sits by the edge of the window, and a slip of the hand shouldn't send it there. */
+  const barely = (p: Press, q: { x: number; y: number }) => { const from = local({ clientX: p.x, clientY: p.y }); return Math.hypot(q.x - from.x, q.y - from.y) < 28; };
+  /** Ends what's held. `where`: the place it was let go, if it's to be put down there. */
+  const letGo = (where: { x: number; y: number } | null) => {
+    const p = press.current;
+    if (!p) return;
+    press.current = null;
+    unlisten.current?.();
+    if (p.kind === 'line') {
+      setSizing(null);
+      onLive(false);
+      // What's on screen is what's kept now.
+      if (p.moved) { arrange((a) => ({ ...a })); onArranged(); }
+      return;
+    }
+    if (!p.going) return;
+    setDrag(null);
+    dragged.current = p.from;
+    setTimeout(() => { dragged.current = null; });
+    const d = where && !barely(p, where) && spot(where.x, where.y, p.moving);
+    if (d) place(p.moving, d);
+  };
+  const follow = (e: PointerEvent) => {
+    const p = press.current;
+    if (!p) return;
+    // No button down: it was let go somewhere this page never heard of.
+    if (!e.buttons) { letGo(null); return; }
+    if (p.kind === 'line') {
+      const delta = p.d.dir === 'row' ? e.clientX - p.x : e.clientY - p.y;
+      if (!delta && !p.moved) return;
+      p.moved = true;
+      arrangeLive(dragDivider(p.start, p.d, delta));
+      return;
+    }
+    if (!p.going) {
+      if (Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) < 6) return;
+      p.going = true;
+      keep(area.current, p.pointer);
+    }
+    const q = local(e);
+    setDrag({ moving: p.moving, label: nameOf(p.moving), x: q.x, y: q.y, drop: barely(p, q) ? null : spot(q.x, q.y, p.moving), keys: false });
+  };
+  const pointer = useRef({ follow, letGo, local });
+  pointer.current = { follow, letGo, local };
+  /* A press is followed on the window until it's let go: the line it started on can go, and it can end anywhere. */
+  const hold = (p: Press) => {
+    press.current = p;
+    const mine = (e: PointerEvent) => e.pointerId === p.pointer;
+    const moved = (e: PointerEvent) => { if (mine(e)) pointer.current.follow(e); };
+    const up = (e: PointerEvent) => { if (mine(e)) pointer.current.letGo(e.type === 'pointerup' ? pointer.current.local(e) : null); };
+    // The line went from under the pointer, as the people fold away: the area holds on instead.
+    const lost = (e: PointerEvent) => { if (mine(e)) keep(area.current, e.pointerId); };
+    addEventListener('pointermove', moved, true);
+    addEventListener('pointerup', up, true);
+    addEventListener('pointercancel', up, true);
+    addEventListener('lostpointercapture', lost, true);
+    unlisten.current = () => {
+      unlisten.current = null;
+      removeEventListener('pointermove', moved, true);
+      removeEventListener('pointerup', up, true);
+      removeEventListener('pointercancel', up, true);
+      removeEventListener('lostpointercapture', lost, true);
+    };
+  };
+  useEffect(() => () => unlisten.current?.(), []);
+  /* What's held can go: a share ending takes its line and its handle with it. The people folding away is the drag itself, which can still bring them back. */
+  useEffect(() => {
+    const p = press.current;
+    if (!p) return;
+    const gone = p.kind === 'line' ? !solve(p.start, size, facts).dividers.some((x) => x.key === p.d.key)
+      : p.going && p.moving.kind === 'panel' && isShareLeaf(p.moving.id) && !facts.shown.includes(p.moving.id);
+    if (gone) letGo(null);
+  });
+
   const down = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || !(e.target instanceof Element)) return;
-    moved.current = false;
-    if (A.phone) return;
+    if (e.button !== 0 || !(e.target instanceof Element) || A.phone || drag?.keys) return;
+    // One thing at a time. A press that finds something still held means that was let go out of sight.
+    letGo(null);
+    const from = { pointer: e.pointerId, x: e.clientX, y: e.clientY };
     const dv = e.target.closest('[data-div]');
     if (dv) {
       const d = dividers.find((x) => x.key === dv.getAttribute('data-div'));
       if (!d) return;
       e.preventDefault();
-      line.current = { d, x: e.clientX, y: e.clientY, start: panels, moved: false };
+      hold({ ...from, kind: 'line', d, start: panels, moved: false });
       setSizing(d.key);
       onLive(true);
       // On the line itself, so a double-click still lands on it.
-      dv.setPointerCapture(e.pointerId);
+      keep(dv, e.pointerId);
       return;
     }
     const mv = e.target.closest('[data-move]');
     const leaf = mv ? leafOf(mv.getAttribute('data-move')) : null;
-    if (leaf) { armed.current = { moving: { kind: 'panel', id: leaf }, x: e.clientX, y: e.clientY, pointer: e.pointerId }; return; }
-    const tab = e.target.closest('[data-tab]')?.getAttribute('data-tab') ?? null;
-    if (isTab(tab)) armed.current = { moving: { kind: 'tab', id: tab }, x: e.clientX, y: e.clientY, pointer: e.pointerId };
+    if (mv && leaf) { hold({ ...from, kind: 'item', moving: { kind: 'panel', id: leaf }, from: mv, going: false }); return; }
+    const el = e.target.closest('[data-tab]');
+    const tab = el?.getAttribute('data-tab') ?? null;
+    if (el && isTab(tab)) hold({ ...from, kind: 'item', moving: { kind: 'tab', id: tab }, from: el, going: false });
   };
-  const move = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const l = line.current;
-    if (l) {
-      const delta = l.d.dir === 'row' ? e.clientX - l.x : e.clientY - l.y;
-      if (!delta && !l.moved) return;
-      l.moved = true;
-      arrangeLive(dragDivider(l.start, l.d, delta));
-      return;
-    }
-    const a = armed.current;
-    if (!a) return;
-    if (!drag && Math.abs(e.clientX - a.x) + Math.abs(e.clientY - a.y) < 6) return;
-    if (!drag) e.currentTarget.setPointerCapture(a.pointer);
-    const p = local(e);
-    setDrag({ moving: a.moving, label: nameOf(a.moving), x: p.x, y: p.y, drop: spot(p.x, p.y, a.moving), keys: false });
-  };
-  const up = (e: ReactPointerEvent) => {
-    const l = line.current;
-    if (l) {
-      line.current = null;
-      setSizing(null);
-      onLive(false);
-      // What's on screen is what's kept now.
-      if (l.moved) { arrange((p) => ({ ...p })); onArranged(); }
-      return;
-    }
-    armed.current = null;
-    if (!drag || drag.keys) return;
-    moved.current = true;
-    setDrag(null);
-    if (drag.drop && e.type === 'pointerup') place(drag.moving, drag.drop);
-  };
-  /** A drag let go over a tab isn't a click on it. */
-  const click = (e: ReactMouseEvent) => { if (moved.current) { moved.current = false; e.stopPropagation(); e.preventDefault(); } };
+  /** A drag let go over its own tab isn't a click on it. */
+  const click = (e: ReactMouseEvent) => { if (e.target instanceof Node && dragged.current?.contains(e.target)) { e.stopPropagation(); e.preventDefault(); } };
   const double = (e: ReactMouseEvent) => {
     if (!(e.target instanceof Element)) return;
     const key = e.target.closest('[data-div]')?.getAttribute('data-div');
@@ -234,8 +302,10 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
       if (by === null && e.key !== 'Enter') return;
       e.preventDefault();
       e.stopPropagation();
-      arrange((p) => (by === null ? evenDivider(p, d) : dragDivider(p, d, by)));
+      const next = by === null ? evenDivider(panels, d) : dragDivider(panels, d, by);
+      arrange(() => next);
       onArranged();
+      if (next.people !== panels.people) setSaid(PEOPLE_SAID[next.people]);
       return;
     }
     if (drag) return;
@@ -245,6 +315,19 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
     const tab = e.target.closest('[data-tab]')?.getAttribute('data-tab') ?? null;
     if (isTab(tab) && e.key === 'Enter' && e.shiftKey) { e.preventDefault(); e.stopPropagation(); pickUp({ kind: 'tab', id: tab }); }
   };
+
+  /* A line you're on can go from under you, when the people fold away: focus moves to what stood beside it. */
+  const lines = useRef(dividers);
+  const active = document.activeElement;
+  const onLine = active instanceof HTMLElement ? lines.current.find((d) => d.key === active.dataset['div']) : undefined;
+  useLayoutEffect(() => {
+    lines.current = dividers;
+    if (!onLine || dividers.some((d) => d.key === onLine.key)) return;
+    const beside = onLine.a === 'people' ? onLine.b : onLine.a;
+    const root = area.current;
+    (root?.querySelector<HTMLElement>(`[data-move="${beside}"]`) ?? root?.querySelector<HTMLElement>('[data-div], [data-move]'))?.focus();
+    if (panels.people === 'hidden') setSaid(PEOPLE_SAID.hidden);
+  });
 
   /* While something is held, Escape puts it back and, from the keyboard, the arrows and Enter are the drop's. */
   const held = useRef({ drag, solved, size, panels, place, spots: () => spotsFor(drag, solved, size, panels), label });
@@ -256,16 +339,21 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
       const h = held.current;
       const d = h.drag;
       if (!d) return;
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); armed.current = null; setDrag(null); setSaid(`${d.label} stays where it was.`); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pointer.current.letGo(null); setDrag(null); setSaid(`${d.label} stays where it was.`); return; }
       if (!d.keys) return;
       e.preventDefault();
       e.stopPropagation();
       if (e.key === 'Enter' || e.key === ' ') {
         setDrag(null);
         if (d.drop) { h.place(d.moving, d.drop); setSaid(`${d.label} moved.`); } else setSaid(`${d.label} stays where it was.`);
-        // Focus stays with what moved, which may have come back to life somewhere else.
-        const id = d.moving.kind === 'panel' ? d.moving.id : null;
-        if (id) requestAnimationFrame(() => { area.current?.querySelector<HTMLElement>(`[data-move="${id}"]`)?.focus(); });
+        // Focus stays with what moved, which may have come back to life somewhere else: a tab, or the panel it became.
+        const m = d.moving;
+        requestAnimationFrame(() => {
+          const root = area.current;
+          const tab = m.kind === 'tab' ? root?.querySelector<HTMLElement>(`[data-tab="${m.id}"]`) : null;
+          const el = m.kind === 'panel' ? root?.querySelector<HTMLElement>(`[data-move="${m.id}"]`) : tab instanceof HTMLButtonElement ? tab : tab?.closest('.ic-side')?.querySelector<HTMLElement>('[data-move]');
+          el?.focus();
+        });
         return;
       }
       const next = nextSpot(d.x, d.y, e.key, h.spots());
@@ -287,9 +375,12 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
   const sides = useMemo(() => open.flatMap((g) => {
     const leaf = groupLeaf(g.id);
     const r = shown(leaf) ?? { x: size.w - 336, y: 0, w: 336, h: size.h };
+    // A panel slides in from the edge it stands against, the stage making room. One in among the others fades in where it is.
+    const edge = r.x + r.w >= size.w - 1 ? r.w + 40 : r.x <= 1 ? -(r.w + 40) : null;
+    const away = reduce ? { opacity: 0 } : edge === null ? { opacity: 0, x: 12 } : { x: edge };
     return [(
       <motion.aside key={g.id} className={cn('ic-side', A.float && 'is-float', A.phone && 'is-phone', !rects[leaf] && 'is-off')} aria-label={label(leaf)} data-group={g.id}
-        initial={reduce ? { ...at(r), opacity: 0 } : { ...at(r), opacity: 0, x: 12 }} animate={{ ...at(r), opacity: 1, x: 0 }} exit={reduce ? { opacity: 0 } : { opacity: 0, x: 12 }} transition={slide}>
+        initial={{ ...at(r), ...away }} animate={{ ...at(r), opacity: 1, x: 0 }} exit={away} transition={reduce ? slide : { ...slide, x: SLIDE }}>
         {canMove && <button type="button" className="ic-grab" data-move={leaf} aria-label={`Drag to move ${label(leaf)}`} title="Drag to move" />}
         {group(g)}
       </motion.aside>
@@ -311,12 +402,12 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
 
   return (
     <div ref={area} className={cn('ic-main', sizing && 'is-resizing', drag && 'is-dragging')}
-      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onClickCapture={click} onDoubleClick={double} onKeyDown={keys}>
-      {tiles}
-      {surface('ws', 'Workspace', ws)}
-      {surface('board', 'Board', board)}
-      <AnimatePresence initial={false}>{sides}</AnimatePresence>
-      {dividers.map((d) => (
+      onPointerDown={down} onClickCapture={click} onDoubleClick={double} onKeyDown={keys}>
+      {measured.current && tiles}
+      {measured.current && surface('ws', 'Workspace', ws)}
+      {measured.current && surface('board', 'Board', board)}
+      <AnimatePresence>{measured.current && sides}</AnimatePresence>
+      {measured.current && dividers.map((d) => (
         <span key={d.key} className={cn('ic-div', d.dir === 'col' && 'is-col', sizing === d.key && 'is-on')} data-div={d.key} role="separator" tabIndex={0} style={at(d.rect)}
           aria-orientation={d.dir === 'row' ? 'vertical' : 'horizontal'} aria-label={`Room for ${label(d.a)} and ${label(d.b)}. Only your screen changes`}
           aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((100 * d.sa) / Math.max(1, d.sa + d.sb))} title="Drag to resize, double-click to even out"><i /></span>

@@ -189,7 +189,7 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
   const seated = useRef(new Map<string, ShareLeaf>());
   seated.current = seatShares(seated.current, plan.featured);
   wasBig.current = plan.featured;
-  return { ordered, fresh, looks, seenLooks, popped, plan, shareSeats: seated.current, narrow, shareIds };
+  return { ordered, fresh, looks, seenLooks, popped, plan, shareSeats: seated.current, narrow, shareIds, speaker: talk.speaker };
 }
 export type StagePlan = ReturnType<typeof useStagePlan>;
 
@@ -241,7 +241,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const { ordered, fresh, looks, seenLooks, popped, plan, shareSeats, narrow, shareIds } = staged;
+  const { ordered, fresh, looks, seenLooks, popped, plan, shareSeats, narrow, shareIds, speaker } = staged;
   const { prefs, layout: lay } = view;
   const { panels } = frame;
   const { x: fx, y: fy, w, h } = frame.box;
@@ -527,11 +527,13 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   const nothing = !L.slots.size && !L.shares.size;
   const instant = reduce || sizing || !!handle.current;
   const glide = instant ? { duration: 0 } : pace;
-  const loudOne = people.find((p) => p.hand) ?? people.find((p) => p.speaking);
+  // Who's said to be talking, on the horizon: someone who's been at it a moment, as Speaker view counts it, so a quick "yes" moves nothing.
+  const talking = (p: StageParticipant) => p.speaking && p.id === speaker;
+  const loudOne = people.find((p) => p.hand) ?? people.find(talking);
   const onHorizon = !!panels && panels.mode === 'hidden';
   const ground = onHorizon ? [...L.slots.entries()].filter(([k]) => !L.off.has(k)).reduce((x, [, r]) => Math.max(x, r[0] + r[2]), 0) : 0;
   const peopleBar = L.people && canMove && !narrow && (panels ? panels.mode !== 'hidden' : plan.shape === 'side') && L.slots.size > 0;
-  const arches = panels?.mode === 'arches';
+  const folded = panels?.mode === 'arches';
   return (
     <div ref={ref} className="ic-stage">
       <motion.div className="ic-frame" initial={false} animate={box([fx, fy, w, h])} transition={glide}>
@@ -641,7 +643,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
         const said = [p.isMe ? `${callName(p.person)} (you)` : callName(p.person), corner ? 'in your corner' : '', pin ? 'pinned for you' : '', spot ? 'spotlighted for everyone' : '', p.hand ? 'hand raised' : '', p.connecting ? 'connecting' : p.mic ? '' : 'microphone off', p.volume === null ? '' : volumeTag(p.volume)?.toLowerCase() ?? ''];
         return (
           <motion.div key={p.id} {...tileProps(p.id, said.filter(Boolean).join(', '))}
-            className={cn('ic-slot', dragging && 'is-drag', growing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner', opens && 'rg-opens', mode && `is-${mode}`, mode === 'horizon' && (p.hand || p.speaking) && 'is-up', L.off.has(p.id) && 'is-off')}
+            className={cn('ic-slot', dragging && 'is-drag', growing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner', opens && 'rg-opens', mode && `is-${mode}`, mode === 'horizon' && (p.hand || talking(p)) && 'is-up', L.off.has(p.id) && 'is-off')}
             title={mode ? callName(p.person) : undefined}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
             onClick={mode ? (e) => { if (e.target instanceof Node && e.currentTarget.contains(e.target)) setMenu(p.id); } : undefined}
@@ -682,7 +684,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
         {waiting.map((w) => {
           const r = L.slots.get(waitKey(w.id));
           return r ? (
-            <motion.div key={waitKey(w.id)} className="ic-slot" initial={{ ...box(r), opacity: 0, scale: 0.97 }} animate={{ ...box(r), opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            <motion.div key={waitKey(w.id)} className={cn('ic-slot', L.off.has(waitKey(w.id)) && 'is-off')} initial={{ ...box(r), opacity: 0, scale: 0.97 }} animate={{ ...box(r), opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
               transition={instant ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>{w.tile}</motion.div>
           ) : null;
         })}
@@ -702,7 +704,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
       {peopleBar && L.people && (
         <div className="ic-ppl" role="toolbar" aria-label="People" style={{ left: L.people.x + L.people.w / 2, top: L.people.y + 6 }}>
           <button type="button" className="b is-grab" data-move="people" aria-label="Drag to move people" title="Drag to move"><Icon name="grip" size={14} /></button>
-          <button type="button" className="b" aria-label={arches ? 'Show as tiles' : 'Fold to arches'} title={arches ? 'Show as tiles' : 'Fold to arches'} onClick={() => onPeopleMode(arches ? 'tiles' : 'arches')}><Icon name={arches ? 'grow' : 'shrink'} size={14} /></button>
+          <button type="button" className="b" aria-label={folded ? 'Show as tiles' : 'Fold to arches'} title={folded ? 'Show as tiles' : 'Fold to arches'} onClick={() => onPeopleMode(folded ? 'tiles' : 'arches')}><Icon name={arches ? 'grow' : 'shrink'} size={14} /></button>
           <button type="button" className="b" aria-label="Hide people" title="Hide people (⇧P)" aria-keyshortcuts="Shift+P" onClick={() => onPeopleMode('hidden')}><Icon name="eyeOff" size={14} /></button>
         </div>
       )}

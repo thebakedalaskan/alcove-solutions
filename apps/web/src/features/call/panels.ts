@@ -16,12 +16,11 @@
  * Everything here is pure: an arrangement in, a new one or some rectangles out.
  */
 import {
-  CallPanelGroupIdSchema, CallPanelLeafIdSchema, CallPanelTabSchema,
+  CALL_PANEL_SIZE_MAX, CallPanelGroupIdSchema, CallPanelLeafIdSchema, CallPanelTabSchema,
   type CallPanelBranch, type CallPanelGroup, type CallPanelGroupId, type CallPanelLeaf, type CallPanelLeafId, type CallPanelNode, type CallPanelTab, type CallPanelView, type CallPanels, type CallPeopleMode
 } from '@alcove/api';
 import type { Box } from './stageLayout';
 
-export type PanelTree = CallPanelNode;
 export type Leaf = CallPanelLeafId;
 export type ShareLeaf = 'share:1' | 'share:2';
 export type PeopleMode = CallPeopleMode;
@@ -458,7 +457,6 @@ export function moveLeaf(a: CallPanels, id: Leaf, target: Target, side: Side, si
   const leaf = detach(root, id);
   return leaf ? { ...next, tree: tidied(attach(root, leaf, onto, side)) } : a;
 }
-export const swapLeaves = (a: CallPanels, x: Leaf, y: Leaf): CallPanels => { const tree = structuredClone(a.tree); swapped(tree, x, y); return { ...a, tree: tidied(tree) }; };
 
 /** A panel made of a tab needs a name of its own: its tab's, or the first free one. */
 const freeGroup = (a: CallPanels, tab: CallPanelTab) => [tab, ...CallPanelGroupIdSchema.options].find((id) => !a.groups.some((g) => g.id === id)) ?? tab;
@@ -499,6 +497,8 @@ function sidesOf(a: CallPanels, d: Divider) {
   const sb = atPath(tree, d.pb);
   return ka && kb && sa && sb ? { tree, ka, kb, sa, sb, people: !isBranch(sa) && sa.id === 'people' ? sa : !isBranch(sb) && sb.id === 'people' ? sb : null } : null;
 }
+/** A size as the arrangement can keep it: anything else wouldn't read back through its schema, and the arrangement would be lost. */
+const keepable = (v: number) => (v > 0 ? Math.min(v, CALL_PANEL_SIZE_MAX) : 1);
 /** Whether a panel holds its size in pixels along this line, or takes a share of what's left. */
 const heldSize = (k: CallPanelNode, row: boolean) => (isBranch(k) ? row && allGroups(k) : k.id === 'people' || (row && groupOfLeaf(k.id) !== null) || (row ? k.px : k.pxh) !== undefined);
 
@@ -520,14 +520,14 @@ export function dragDivider(a: CallPanels, d: Divider, delta: number): CallPanel
     const size = people === s.sa ? na : nb;
     if (size < 52) return { ...a, tree, people: 'hidden' };
     if (size < (row ? 120 : 100)) { delete people[key]; return { ...a, tree, people: 'arches' }; }
-    people[key] = size;
+    people[key] = keepable(size);
     return { ...a, tree, people: 'tiles' };
   }
   const fa = heldSize(s.sa, row);
   const fb = heldSize(s.sb, row);
-  if (fa) s.sa[key] = na;
-  if (fb) s.sb[key] = nb;
-  if (!fa && !fb) { const f = (ka.flex ?? 1) + (kb.flex ?? 1); ka.flex = (f * na) / tot; kb.flex = (f * nb) / tot; }
+  if (fa) s.sa[key] = keepable(na);
+  if (fb) s.sb[key] = keepable(nb);
+  if (!fa && !fb) { const f = (ka.flex ?? 1) + (kb.flex ?? 1); ka.flex = keepable((f * na) / tot); kb.flex = keepable((f * nb) / tot); }
   return { ...a, tree };
 }
 /** Evens the two panels either side of a line; beside the people, it puts the people back to the width they start at. */
@@ -538,12 +538,12 @@ export function evenDivider(a: CallPanels, d: Divider): CallPanels {
   const row = d.dir === 'row';
   const key = row ? 'px' : 'pxh';
   if (people) { delete people[key]; return { ...a, tree, people: 'tiles' }; }
-  const half = (d.sa + d.sb) / 2;
+  const half = keepable((d.sa + d.sb) / 2);
   const fa = heldSize(s.sa, row);
   const fb = heldSize(s.sb, row);
   if (fa) s.sa[key] = half;
   if (fb) s.sb[key] = half;
-  if (!fa && !fb) { const f = ((ka.flex ?? 1) + (kb.flex ?? 1)) / 2; ka.flex = f; kb.flex = f; }
+  if (!fa && !fb) { const f = keepable(((ka.flex ?? 1) + (kb.flex ?? 1)) / 2); ka.flex = f; kb.flex = f; }
   return { ...a, tree };
 }
 
@@ -585,14 +585,25 @@ export function closeGroup(a: CallPanels, id: CallPanelGroupId): CallPanels {
   const groups = a.groups.map((g) => (g.id === id ? { ...g, open: false, active: g.active === 'rooms' ? g.tabs[0] ?? 'notes' : g.active } : g));
   return { ...a, groups, front: a.front === id ? groups.find((g) => g.open)?.id ?? null : a.front };
 }
+/**
+ * Panels that are open with nowhere to go: there's no room for all of them. What's in them can't be seen, so they count
+ * as hidden (`hidden` below) until they're brought up: their chat is unread, and one press shows them.
+ */
+export const crowdedOut = (a: CallPanels, s: Solved): CallPanelGroupId[] => a.groups.flatMap((g) => (g.open && !s.rects[groupLeaf(g.id)] ? [g.id] : []));
 /** The panel you last brought up, if it's open, or the first that is. */
-export const frontGroup = (a: CallPanels) => a.groups.find((g) => g.id === a.front && g.open) ?? a.groups.find((g) => g.open) ?? null;
+export function frontGroup(a: CallPanels, hidden: readonly CallPanelGroupId[] = []) {
+  const shown = a.groups.filter((g) => g.open && !hidden.includes(g.id));
+  return shown.find((g) => g.id === a.front) ?? shown[0] ?? null;
+}
 /** What's showing in the side panels: on a phone, only what's in front. */
-export const shownViews = (a: CallPanels, phone: boolean): CallPanelView[] => { const f = frontGroup(a); return phone ? (f ? [f.active] : []) : a.groups.flatMap((g) => (g.open ? [g.active] : [])); };
-export function toggleView(a: CallPanels, v: CallPanelView, phone: boolean): CallPanels {
+export function shownViews(a: CallPanels, phone: boolean, hidden: readonly CallPanelGroupId[] = []): CallPanelView[] {
+  const f = frontGroup(a, hidden);
+  return phone ? (f ? [f.active] : []) : a.groups.flatMap((g) => (g.open && !hidden.includes(g.id) ? [g.active] : []));
+}
+export function toggleView(a: CallPanels, v: CallPanelView, phone: boolean, hidden: readonly CallPanelGroupId[] = []): CallPanels {
   const g = homeOf(a, v);
   if (!g) return a;
-  return shownViews(a, phone).includes(v) ? closeGroup(a, g.id) : showView(a, v);
+  return shownViews(a, phone, hidden).includes(v) ? closeGroup(a, g.id) : showView(a, v);
 }
 /** Every panel closed: a phone starts with the stage, whatever was open when you left. */
 export const closeAll = (a: CallPanels): CallPanels => ({ ...a, front: null, groups: a.groups.map((g) => ({ ...g, open: false })) });
@@ -678,11 +689,11 @@ function keepLoud(items: TileItem[], n: number, loud: ReadonlySet<string>): Tile
   }
   return kept;
 }
-function result(items: TileItem[], kept: TileItem[], at: (it: TileItem, i: number) => TileSpot, chip: TileSpot | null): PeoplePlaced {
+function result(items: TileItem[], kept: TileItem[], at: (it: TileItem, i: number) => TileSpot, chip: TileSpot | null, nowhere?: TileSpot): PeoplePlaced {
   const spots = new Map(kept.map((it, i) => [it.id, at(it, i)]));
   const off = new Set(items.filter((it) => !spots.has(it.id)).map((it) => it.id));
   const [first] = kept;
-  const under = chip ?? (first ? at(first, 0) : null);
+  const under = chip ?? (first ? at(first, 0) : nowhere);
   if (under) for (const id of off) spots.set(id, under);
   return { spots, off, more: chip && off.size ? { ...chip, n: off.size } : null };
 }
@@ -691,15 +702,17 @@ function result(items: TileItem[], kept: TileItem[], at: (it: TileItem, i: numbe
 function onHorizon(items: TileItem[], h: Horizon, loud: ReadonlySet<string>): PeoplePlaced {
   const size = (it: TileItem) => (it.share ? { w: 54, h: 34 } : { w: 34, h: 38 });
   const room = h.dock - 8;
-  const widths = (list: TileItem[]) => sum(list.map((it) => size(it).w + 6));
+  /** Where a row of them ends. */
+  const end = (list: TileItem[]) => 2 + sum(list.map((it) => size(it).w + 6)) - 6;
   let n = items.length;
-  while (n > 1 && 2 + widths(items.slice(0, n)) + (n < items.length ? 40 : 0) > room) n--;
+  while (n > 1 && end(items.slice(0, n)) + (n < items.length ? 40 : 0) > room) n--;
   const kept = keepLoud(items, n, loud);
+  // With room for one, it's whoever's talking, with nothing else beside them. With none, nobody: the dock comes first.
+  while (kept.length && end(kept) > room) kept.pop();
   let x = 2;
   const xs = kept.map((it) => { const at = x; x += size(it).w + 6; return at; });
-  // With room for one, it's whoever's talking, with nothing else beside them.
-  const chip: TileSpot | null = n < items.length && x + 34 <= room ? { box: { x, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' } : null;
-  return result(items, kept, (it, i) => { const s = size(it); return { box: { x: xs[i] ?? 0, y: h.base - s.h, w: s.w, h: s.h }, mode: 'horizon' }; }, chip);
+  const chip: TileSpot | null = kept.length < items.length && x + 34 <= room ? { box: { x, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' } : null;
+  return result(items, kept, (it, i) => { const s = size(it); return { box: { x: xs[i] ?? 0, y: h.base - s.h, w: s.w, h: s.h }, mode: 'horizon' }; }, chip, { box: { x: 2, y: h.base - 38, w: 34, h: 38 }, mode: 'horizon' });
 }
 
 function inArches(r: Box, items: TileItem[], loud: ReadonlySet<string>, small: boolean): PeoplePlaced {

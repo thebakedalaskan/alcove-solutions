@@ -339,7 +339,7 @@ function inBox(plan: Plan, b: Box, ratio: number, split: number): Shapes {
     const part = Math.round(((portrait ? b.h : b.w) - GAP) * (portrait ? 0.42 : 0.4));
     slots.set(you, portrait ? [b.x, b.y, b.w, b.h - part - GAP] : [b.x, b.y, b.w - part - GAP, b.h]);
     set(arches, portrait ? fillGrid(arches.length, b.x, b.y + b.h - part, b.w, part, 1.1, 8) : fillGrid(arches.length, b.x + b.w - part, b.y, part, b.h, 1.1, GAP));
-    return { shape: 'grid', slots, shares, divider: null, split: null };
+    return { shape: 'grid', slots, shares, divider: null, split: null, people: null };
   }
   set(tiles, packGrid(tiles.map((k) => (portrait ? 1 : plan.big.has(k) ? 2 : 1)), b.x, b.y, b.w, b.h, portrait ? 1 : 1.45, portrait ? 8 : GAP));
   return { shape: 'grid', slots, shares, divider: null, split: null, people: null };
@@ -420,7 +420,9 @@ export function placeFrame(plan: Plan, f: StageFrame): Placed {
   }
   const folded = plan.self?.folded && p.people && p.mode === 'tiles';
   const people = folded && p.people ? { ...p.people, h: Math.max(0, p.people.h - CHIP_H - GAP) } : p.people;
-  const placed = placePeople(people, [...plan.leads, ...plan.rest].map((id) => ({ id, share: isShareKey(id) })), p.mode, p.horizon, p.loud, p.small);
+  // Someone rung waits in a tile: among arches or on the horizon they're in People, with what they said.
+  const who = [...plan.leads, ...plan.rest].filter((id) => p.mode === 'tiles' || !isWaitKey(id));
+  const placed = placePeople(people, who.map((id) => ({ id, share: isShareKey(id) })), p.mode, p.horizon, p.loud, p.small);
   const modes = new Map<string, TileMode>();
   const slots = new Map<string, Rect>();
   for (const [k, s] of placed.spots) { slots.set(k, rectOf(s.box)); if (s.mode !== 'tile') modes.set(k, s.mode); }
