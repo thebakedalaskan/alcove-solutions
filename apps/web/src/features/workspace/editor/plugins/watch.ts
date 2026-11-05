@@ -5,7 +5,7 @@
  */
 import { Plugin, PluginKey, TextSelection, type EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
-import { blockAt, selectedBlock } from '../commands';
+import { allBlocks, blockAt, isBlank, selectedBlock } from '../commands';
 import { slashGroups } from '../menus/rows';
 import type { EditorRuntime, FormatBarState, OpenMenu } from '../runtime';
 import { schema } from '../schema';
@@ -16,6 +16,9 @@ const TITLE_WAIT = 300;
 const TYPING_HOLD = 1500;
 
 const m = schema.marks;
+
+/** Whether the page has nothing on it but its title. */
+const nothingWritten = (state: EditorState) => allBlocks(state.doc).every((b) => isBlank(b.node));
 
 interface Trigger { kind: 'slash' | 'mention'; block: string; from: number; to: number; query: string }
 
@@ -43,7 +46,7 @@ function followTrigger(rt: EditorRuntime, state: EditorState, typed: boolean): v
   if (!t) rt.dismissed = null;
   const open = rt.menu.get();
   /* A search that's found nothing for three letters isn't a search. */
-  const wanted = t && !(t.kind === 'slash' && t.query.length > 2 && slashGroups(t.query, rt.props.call !== undefined).length === 0) ? t : null;
+  const wanted = t && !(t.kind === 'slash' && t.query.length > 2 && slashGroups(t.query, rt.props.call !== undefined, rt.props.onPick !== undefined).length === 0) ? t : null;
   if (open && (open.kind === 'slash' || open.kind === 'mention')) {
     if (!wanted || wanted.kind !== open.kind) rt.menu.set(null);
     else if (!sameMenu(open, wanted)) rt.menu.set(wanted);
@@ -84,6 +87,7 @@ export function watchPlugin(rt: EditorRuntime): Plugin {
         rt.props.onPresence?.(next);
       };
       const showBar = () => { rt.bar.set(barFor(rt, view)); };
+      rt.blank.set(nothingWritten(view.state));
       const onDown = (e: MouseEvent) => {
         if (e.button !== 0) return;
         rt.selecting = true;
@@ -112,6 +116,7 @@ export function watchPlugin(rt: EditorRuntime): Plugin {
           const typed = changed && !remote;
           followTrigger(rt, state, typed);
           showBar();
+          if (changed) rt.blank.set(nothingWritten(state));
 
           const nextTitle = state.doc.child(0).textContent;
           if (nextTitle !== title) {
