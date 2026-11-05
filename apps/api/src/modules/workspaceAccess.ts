@@ -144,8 +144,9 @@ export const limitKey = (r: Reader): string => r.account?.owner.ownerId ?? r.sea
  * connection and for nobody anywhere else, so it can go on a caret that someone outside the workspace sees: an address
  * can't. The address is in `email`, for `Room.seenBy` to pass on or not.
  */
+export const personKey = (o: Owner, principal: Uint8Array): string => b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), principal)).slice(0, 22);
 export function personIn(o: Owner, r: Reader): Person {
-  const id = b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), r.principals[0] ?? new Uint8Array(0))).slice(0, 22);
+  const id = personKey(o, r.principals[0] ?? new Uint8Array(0));
   const name = r.account?.name ?? r.seat?.name ?? '';
   return r.email === undefined ? { id, name, email: '', portrait: portraitFor(id) } : { ...personOf(r.email, name), id };
 }
@@ -366,6 +367,8 @@ export function requireSharing(who: Who, w: Workspace, documentId: string): Open
 const MAX_SHARES = 500;
 /** One person to give a document to: by address, or in a seat of a call, which ends with the call. */
 export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kind: 'seat'; callId: string; seat: string; name: string; role: DocumentRole };
+/** How access knows them. */
+export const principalOf = (d: Deps, g: Grant): Uint8Array => (g.kind === 'email' ? emailIndex(d, g.email) : seatIndex(d, g.callId, g.seat));
 
 /**
  * Gives one document to many people in a single statement, in the caller's transaction, which holds the workspace's row
@@ -375,7 +378,7 @@ export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kin
 export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, documentId: string, grants: Grant[]): Promise<void> {
   const o = w.owner;
   const byIndex = new Map(grants.map((g) => {
-    const index = g.kind === 'email' ? emailIndex(o, g.email) : seatIndex(o, g.callId, g.seat);
+    const index = principalOf(o, g);
     return [Buffer.from(index).toString('hex'), { ...g, index, accessId: id128() }] as const;
   }));
   const rowsToAdd = [...byIndex.values()];

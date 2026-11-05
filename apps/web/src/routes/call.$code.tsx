@@ -40,7 +40,7 @@ import { keepSeen, seenNotices } from '~/features/call/seen';
 import { SharePicker } from '~/features/call/SharePicker';
 import { VideoQuality } from '~/features/call/VideoQuality';
 import { CallEars, canListen } from '~/features/call/speech';
-import { GLIDE, Stage, useStagePlan, type StageParticipant, type StageRooms, type StageShare, type StageWaiter } from '~/features/call/Stage';
+import { GLIDE, Stage, useStagePlan, type StageParticipant, type StageRooms, type StageShare, type StageTogether, type StageWaiter } from '~/features/call/Stage';
 import type { StageFrame } from '~/features/call/stageLayout';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
@@ -962,6 +962,12 @@ function InCall({ session }: { session: CallSession }) {
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
+  /* `@` in the workspace: who's here and who's invited. The call changes all the time and these rarely do, and the workspace draws a lot. */
+  const spacePeopleKey = JSON.stringify(told.participants.map((p) => [p.id, p.seat, p.person, p.isMe]));
+  const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
+  const spaceInvitedKey = JSON.stringify(invited);
+  const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
+  const together: StageTogether = { ...work.together, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing };
   const zenOffered = !phone && !stageRooms;
   const zenOn = zenOffered && work.zen;
   const latestZen = useRef(zenOn);
@@ -1341,7 +1347,7 @@ function InCall({ session }: { session: CallSession }) {
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
       case 'chat': return <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
         here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} />;
-      case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes}
+      case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes} together={together}
         canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
         notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />;
       case 'rooms': return roomsPanel();
@@ -1405,12 +1411,13 @@ function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
-            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null}
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
               listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={resizing} phone={phone} people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
+                together={together}
                 bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onShareStarted={shareStarted} onShareStopped={shareStopped} onPeopleMode={setPeopleMode} onPickUp={(leaf) => hostHandle.current?.pickUp(leaf)}
                 onGrowShare={facts.ws || facts.board ? (seat) => layout.arrange((p) => growShare(p, seat)) : null} onMorePeople={() => openPanel('people')} />

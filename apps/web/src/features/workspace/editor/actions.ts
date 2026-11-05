@@ -2,6 +2,7 @@
  * What pressing something does: a `/` item, a tag, a row of a block's menu, a button on the format bar. These are the
  * same calls the EditorHandle makes, so a screen outside the editor gets exactly what the menus get.
  */
+import type { Person } from '@alcove/api';
 import { newBlockId, retire, seenIn } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
@@ -140,6 +141,25 @@ export function pickMention(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: '
     const dom = view.nodeDOM(menu.from);
     rt.props.onTagged?.(item.person, menu.block, dom instanceof Element ? dom.getBoundingClientRect() : null);
   }
+}
+
+/** Tag someone from their card: on the last line if nothing's written there, or a new one under it. */
+export function tagAtEnd(rt: EditorRuntime, person: Person): void {
+  const view = editing(rt);
+  if (!view) return;
+  const last = allBlocks(view.state.doc).at(-1);
+  const tr = view.state.tr;
+  const blank = last && last.id && isBlank(last.node);
+  const id = blank ? last.id ?? '' : newBlockId();
+  const at = blank ? last.pos + 1 : tr.doc.content.size + 1;
+  if (!blank) tr.insert(tr.doc.content.size, n.line.create({ id }));
+  tr.insert(at, [n.mention.create({ id: person.id, name: person.name }), schema.text(' ')]);
+  tr.setSelection(TextSelection.create(tr.doc, at + 2));
+  view.focus();
+  view.dispatch(tr.scrollIntoView());
+  flash(view, id);
+  const dom = view.nodeDOM(at);
+  rt.props.onTagged?.(person, id, dom instanceof Element ? dom.getBoundingClientRect() : null);
 }
 
 /** Link to a document: a block on a line of its own, under the line if there are words on it. */

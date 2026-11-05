@@ -7,7 +7,8 @@
  *  - writes notes still waiting (after a restart, or once a retry is due);
  *  - deletes moves to other devices that ran out;
  *  - deletes rings a day after they ran out, in calls that went on that long;
- *  - deletes for good what's been in a workspace's Trash for 30 days, and ends seats whose call is over;
+ *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over, and lets go of tags
+ *    nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it.
  */
 import { z } from 'zod';
@@ -19,6 +20,7 @@ import { reconcile } from './modules/calls';
 import { sweep as sweepLiveNotes } from './modules/liveNotes';
 import { sweep as sweepMoves } from './modules/moves';
 import { sweep as sweepRings } from './modules/rings';
+import { sweepMentions } from './modules/workspaceMentions';
 import { sweepSeats, sweepTrash } from './modules/workspaces';
 import { work } from './modules/writer';
 import { sweepSessions } from './sessions';
@@ -63,5 +65,6 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs));
   const seats = await quietly('seats', () => sweepSeats(d));
-  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats };
+  const mentions = await quietly('mentions', () => sweepMentions(d));
+  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, mentions };
 }

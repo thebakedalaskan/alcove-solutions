@@ -139,7 +139,7 @@ describe('a workspace', () => {
     await ann.api.workspaces.remove(id);
     expect(await code(ann.api.workspaces.get(id))).toBe('not-found');
     expect((await ann.api.workspaces.list()).map((w) => w.id)).toEqual([second.id]);
-    for (const t of ['owners', 'workspaces', 'workspace_members', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
+    for (const t of ['owners', 'workspaces', 'workspace_members', 'workspace_mentions', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
     expect(await code(ann.api.workspaces.remove(id))).toBe('not-found');
   });
 
@@ -1185,9 +1185,13 @@ describe('a new address from the provider', () => {
     await ann.api.workspaces.share.set(elsewhere, given, [{ email: old }], 'edit');
     const live = moved.api.workspaces.live(id);
     await until(() => liveNames(live).length === 2, 'the stream');
+    const tagged = await make(ann, id, 'document', 'Tagged in');
+    await ann.api.workspaces.mention(id, tagged, { to: { email: old }, block: null });
 
     const after = await withGoogle(fresh, sub);
     expect(after.ownerId).toBe(moved.ownerId);
+    // What was waiting for them still is.
+    expect((await after.api.workspaces.mentions()).map((m) => m.document)).toEqual([tagged]);
 
     expect((await after.api.workspaces.get(id)).role).toBe('edit');
     expect((await after.api.workspaces.items.get(id, made)).role).toBe('edit');
@@ -1252,7 +1256,7 @@ describe('the live stream', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'document', 'Doc');
     const live = theo.api.workspaces.live(id);
-    expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [] });
+    expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [], mentions: [] });
     await until(() => live.getSnapshot().status === 'live', 'the first line');
     expect(liveNames(live)).toEqual(['Doc']);
     let heard = 0;
@@ -1277,7 +1281,7 @@ describe('the live stream', () => {
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.removePerson(id, me);
     await until(() => live.getSnapshot().status === 'closed', 'being taken out to end the stream');
-    expect(live.getSnapshot()).toEqual({ status: 'closed', tree: null, here: [] });
+    expect(live.getSnapshot()).toEqual({ status: 'closed', tree: null, here: [], mentions: [] });
     live.close();
   });
 

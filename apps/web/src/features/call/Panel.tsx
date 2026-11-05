@@ -8,6 +8,7 @@
  */
 import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, cn, useToast, type IconName } from '@alcove/ui';
+import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
 import { rungWords } from '~/features/calls/RingWords';
@@ -416,8 +417,10 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, host, foot, volumes }: {
+export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, host, foot, volumes, together }: {
   here: PanelPerson[]; invited: Person[];
+  /** With the workspace open: where each is, and following them. */
+  together?: StageTogether | undefined;
   /** People asking to join: only whoever hosts sees them. */
   asking: CallAsker[];
   /** Letting someone signed in in adds them to the invite: only when the organizer does it. */
@@ -470,8 +473,11 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
         {here.map((p) => (
           <div key={p.id} className="ic-prow">
             <Avatar person={p.person} size={36} />
-            <div className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{p.tags.length ? p.tags.join(' · ') : p.detail}</small></div>
+            <div className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{(!p.isMe && together?.where[p.id]) || (p.tags.length ? p.tags.join(' · ') : p.detail)}</small></div>
             <div className="st">
+              {together?.following === p.id
+                ? <Button size="xs" variant="quiet" onClick={together.onStop}>Following</Button>
+                : together?.followable.includes(p.id) && <Button size="xs" onClick={() => together.onFollow(p.id)}>Follow</Button>}
               {p.hand && <Icon name="hand" size={16} />}
               {p.speaking && p.mic && <span className="ac-level" aria-label="Speaking"><i /><i /><i /></span>}
               {!p.mic && <Icon name="micOff" size={16} aria-label="Microphone off" />}

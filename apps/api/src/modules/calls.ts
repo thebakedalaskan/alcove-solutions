@@ -361,6 +361,12 @@ export async function seatedIn(o: Owner, callId: string, place?: string | undefi
   return new Map(s.people.filter((j) => j.status === 'in' && (place === undefined || placeOf(s, j) === place)).map((j) => [seatOf(key, j), j.name]));
 }
 export const seated = (v: Viewer): Promise<Map<string, string>> => seatedIn(v.organizer, v.pass.callId);
+/** The address someone in a seat of this call signed in with, if the call kept one. */
+export async function addressIn(v: Viewer, seat: string): Promise<string | undefined> {
+  const { state: s } = await load(v.organizer, v.organizer.pool, v.pass.callId);
+  const key = seatKey(v.organizer, v.pass.callId);
+  return s.people.find((j) => seatOf(key, j) === seat)?.email?.toLowerCase();
+}
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const o = v.organizer;
