@@ -7,7 +7,7 @@ import type { AudioSegment, RecordingProgress } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { equalBytes, id128, openKey, openRecord, random, sealKey, sealRecord, sha, type RecordHeader } from '../crypto';
-import { bytea, exec, maybeOne, rows, type Db } from '../db';
+import { bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { errorMessage } from '@alcove/api';
 import { InternalError, IntegrityError, NotFoundError, conflict } from '../errors';
 import { log } from '../log';
@@ -62,7 +62,9 @@ async function stored(o: Owner, recordingId: string, p: Piece): Promise<boolean>
 
 /**
  * Encrypts, stores and verifies one piece. Sending a piece that's stored already is a no-op, even
- * once the recording has paused or stopped, so retries and resumed uploads are safe.
+ * once the recording has paused or stopped, so retries and resumed uploads are safe. A piece is
+ * recorded holding the recording's row, which stopping changes: it either lands before the recording
+ * stops, where whatever stopping does to its pieces reaches it, or is refused and its object deleted.
  */
 export async function appendPiece(o: Owner, recordingId: string, p: Piece): Promise<void> {
   const where = { recordingId, segment: p.segment, seq: p.seq, atMs: p.atMs };
@@ -79,22 +81,28 @@ export async function appendPiece(o: Owner, recordingId: string, p: Piece): Prom
     await queueDelete(o, [objectId]);
     throw new InternalError('The encrypted audio didn’t store correctly. It will be retried.', { context: { recordingId, objectId, segment: p.segment, seq: p.seq, wrote: ct.length, readBack: back.length } });
   }
+  let outcome: 'stored' | 'raced' | 'stopped' | 'gone';
   try {
-    const inserted = await exec(o.pool, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, at_ms, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
-                                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, p.atMs, objectId, digest, ct.length, p.durationMs, p.mimeType]);
-    if (inserted === 1) {
-      await exec(o.pool, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
-      alog.debug('audio piece stored', { ...where, bytes: ct.length, durationMs: p.durationMs });
-      return;
-    }
+    outcome = await tx(o.pool, async (c) => {
+      const now = await maybeOne(c, z.object({ state: z.string() }), 'SELECT state FROM recordings WHERE owner_id = $1 AND recording_id = $2 FOR SHARE', [o.ownerId, recordingId]);
+      if (!now) return 'gone';
+      if (now.state === 'stopped') return 'stopped';
+      const inserted = await exec(c, `INSERT INTO recording_pieces (owner_id, recording_id, segment, seq, at_ms, object_id, cipher_sha256, cipher_bytes, duration_ms, mime_type)
+                                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`, [o.ownerId, recordingId, p.segment, p.seq, p.atMs, objectId, digest, ct.length, p.durationMs, p.mimeType]);
+      if (inserted !== 1) return 'raced';
+      await exec(c, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [o.ownerId, ct.length]);
+      return 'stored';
+    });
   } catch (e) {
     alog.warn('audio piece not recorded; deleting its object', { ...where, objectId, err: e });
     await queueDelete(o, [objectId]);
     throw e;
   }
-  // Another request stored this place first. Ours is a copy of that piece, unless it's a different one.
+  if (outcome === 'stored') { alog.debug('audio piece stored', { ...where, bytes: ct.length, durationMs: p.durationMs }); return; }
   await queueDelete(o, [objectId]);
-  if (await stored(o, recordingId, p)) alog.info('audio piece raced a retry; dropping the duplicate', where);
+  if (outcome === 'stopped') throw conflict('This recording has already stopped.', { ...where, state: outcome });
+  // Another request stored this place first. Ours is a copy of that piece, unless it's a different one.
+  if (outcome === 'raced' && await stored(o, recordingId, p)) alog.info('audio piece raced a retry; dropping the duplicate', where);
   else alog.info('audio piece raced its recording being deleted; dropping it', where);
 }
 
@@ -108,10 +116,25 @@ export async function queueDelete(o: Pick<Owner, 'pool' | 'objects' | 'ownerId'>
   }));
 }
 
+/**
+ * Deletes a recording's audio pieces, in the caller's transaction, for a call set not to keep its recording: stored
+ * bytes go down to match, and the recording's row stays, since its key seals the call's shared-screen frames. Returns
+ * the pieces' objects, for the caller to delete once the transaction commits (queueDelete).
+ */
+export async function purgeAudio(o: Owner, db: Db, recordingId: string): Promise<string[]> {
+  const gone = await rows(db, z.object({ object_id: z.string(), cipher_bytes: z.coerce.number() }),
+    'DELETE FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 RETURNING object_id, cipher_bytes', [o.ownerId, recordingId]);
+  if (!gone.length) return [];
+  await exec(db, 'UPDATE owners SET stored_bytes = greatest(0, stored_bytes - $2), version = version + 1 WHERE owner_id = $1', [o.ownerId, gone.reduce((n, p) => n + p.cipher_bytes, 0)]);
+  alog.info('recording deleted, as the call was set to', { recordingId, pieces: gone.length });
+  return gone.map((p) => p.object_id);
+}
+
 const Seg = z.object({ segment: z.number(), pieces: z.coerce.number(), ms: z.coerce.number(), mime_type: z.string() });
-export async function segments(o: Owner, recordingId: string): Promise<AudioSegment[]> {
-  return (await rows(o.pool, Seg, `SELECT segment, count(*) AS pieces, coalesce(sum(duration_ms),0) AS ms, min(mime_type) AS mime_type
-                                   FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 GROUP BY segment ORDER BY segment`, [o.ownerId, recordingId]))
+/** `db`: a transaction reads on its own connection. */
+export async function segments(o: Owner, recordingId: string, db: Db = o.pool): Promise<AudioSegment[]> {
+  return (await rows(db, Seg, `SELECT segment, count(*) AS pieces, coalesce(sum(duration_ms),0) AS ms, min(mime_type) AS mime_type
+                               FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 GROUP BY segment ORDER BY segment`, [o.ownerId, recordingId]))
     .map((s) => ({ index: s.segment, pieces: s.pieces, seconds: Math.round(s.ms / 1000), mimeType: s.mime_type }));
 }
 export async function progress(o: Owner, recordingId: string | null, segment: number): Promise<RecordingProgress> {

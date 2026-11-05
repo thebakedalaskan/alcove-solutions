@@ -1,14 +1,18 @@
 import type { Meeting, Person } from '@alcove/api';
 import { createContext, useContext } from 'react';
 
+/** What Start a call opens with: people already picked, and the group's name when they're one. */
+export interface StartOptions { people?: Person[] | undefined; name?: string | undefined }
 /**
- * What New call opens with: an empty line, a sentence already typed (`text`), people already invited (`people`), or a
- * scheduled call to change (`meeting`).
+ * Starting and opening calls, from anywhere inside the app shell. `start` opens Start a call. `open` opens a call's
+ * card; `onGone` is where focus goes if the call is cancelled from it, since the row it came from goes too.
  */
-export interface ComposerStart { text?: string | undefined; people?: Person[] | undefined; meeting?: Meeting | undefined }
-/** Opens the composer from anywhere inside the app shell. An empty line is the default. */
-export const ComposerContext = createContext<(start?: ComposerStart) => void>(() => {});
-export const useOpenComposer = () => useContext(ComposerContext);
+export interface CallFlow {
+  start(opts?: StartOptions): void;
+  open(meeting: Meeting, opts?: { onGone?: (() => void) | undefined }): void;
+}
+export const CallFlowContext = createContext<CallFlow>({ start: () => {}, open: () => {} });
+export const useCallFlow = () => useContext(CallFlowContext);
 
 /**
  * What the palette opens for: finding a note or asking your notes (`ask` asks that question straight

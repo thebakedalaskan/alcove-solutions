@@ -1,10 +1,18 @@
-/* How people are named in sentences across the app. */
+/* How people are named in sentences across the app, and how names and addresses are read. */
 import { firstName, type Person } from '@alcove/api';
-import { isEmail } from './parse';
 
 type Named = { name: string; email: string };
-/** Someone's first name, or their address when that's all there is. */
-export const callName = (p: Named) => (p.name && p.name !== p.email && !isEmail(p.name) ? firstName(p.name) : p.email);
+/** Whether this reads as a whole email address. */
+export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());
+/** Lower case without accents, for matching what's typed against a name. */
+export const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/** The name in an address, when it starts with one: "jamie.lee@…" is Jamie. */
+const nameInAddress = (email: string) => {
+  const word = /^\p{L}{2,}(?=[._+@-])/u.exec(email)?.[0];
+  return word ? word.charAt(0).toUpperCase() + word.slice(1) : email;
+};
+/** Someone's first name; with only an address to go on, the name in it, or the address itself ("r.okoye@…"). */
+export const callName = (p: Named) => (p.name && p.name !== p.email && !isEmail(p.name) ? firstName(p.name) : nameInAddress(p.email));
 /** "Theo", "Theo and Priya", "Theo, Priya and Kofi" */
 export function listNames(people: Named[]): string {
   const n = people.map(callName);

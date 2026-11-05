@@ -5,7 +5,7 @@
  * questions, and each breakout room's own notes from that room's transcript (one request a room),
  * and then writes them into the note, charges the recorded minutes and deletes the job in one
  * transaction. A failed attempt is tried again a little later, up to three times; after the
- * third, the note is finished without a summary, so its transcript and audio are still there. When
+ * third, the note is finished without a summary, so its transcript and any audio are still there. When
  * the notes model's evidence doesn't check out, or can't be checked, nothing was sent: the job waits
  * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
  * for each job and wiped after it. The organizer can have the notes written again from a corrected
@@ -20,9 +20,9 @@ import { NotFoundError, UnansweredError, UnverifiedError } from '../errors';
 import { inference } from '../inference';
 import { log } from '../log';
 import { openOwner } from '../owners';
-import { getItem, lockItem } from '../vault';
+import { getItem, lockItem, pruneRevisions } from '../vault';
 import { me, profile } from './account';
-import { segments } from './audio';
+import { purgeAudio, queueDelete, segments } from './audio';
 import * as billing from './billing';
 import { briefOf, draft, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
 import { NoteManifest, roomChapters, updateNote } from './notes';
@@ -148,15 +148,21 @@ async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promis
  * transcript) keep what people already confirmed or changed, in the call's notes and each room's, and aren't charged
  * again; when they can't be written, the notes stay as they were. `writtenAt` says when the notes read the transcript,
  * so a correction made since is offered for writing them again.
+ *
+ * A call set not to keep its transcript loses it here, once notes are written from it, and not before. Each part of
+ * the call goes with its own notes, the main room's and each breakout room's: the new revision has none of those, and
+ * every earlier revision goes, in the transaction that closes the job found through them, with any receipt that might
+ * copy one. Notes that can't be written leave their part's transcript in the new revision alone, so the organizer can
+ * have them written, and it goes when they are. A call set not to keep its recording lost its audio when it ended;
+ * anything that got in since goes here too.
  */
-async function settle(o: Owner, jobId: string, noteId: string, recordingId: string, wrote: Wrote | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
+async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | undefined, shown?: ScreenMoment[] | undefined): Promise<void> {
   const any = Boolean(wrote?.notes) || Boolean(wrote?.rooms.evidence.length);
-  const recorded = any ? (await segments(o, recordingId)).reduce((n, s) => n + s.seconds, 0) : 0;
-  await tx(o.pool, async (c) => {
+  const leftover = await tx(o.pool, async (c) => {
     let first = true;
     // Breakout rooms join the chapters the notes wrote, in order: the call's note covers the rooms too.
     // The notes model's verifications join the ones the transcript went to.
-    await updateNote(o, c, noteId, (m) => {
+    const next = await updateNote(o, c, noteId, (m) => {
       first = m.writtenAt === null;
       const rooms = roomChapters(m.breakouts);
       const chapters = [...(wrote?.notes?.chapters ?? m.chapters), ...rooms]
@@ -165,12 +171,13 @@ async function settle(o: Owner, jobId: string, noteId: string, recordingId: stri
       if (!wrote) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
       // Each room's section as it is now (a line corrected while the notes were written stays corrected), with its
       // notes as just written: written again, what people settled in it stays, as in the call's. A room whose notes
-      // couldn't be written keeps what it had: none the first time, which the note says.
+      // couldn't be written keeps what it had: none the first time, which the note says, and its transcript, to write
+      // them from. One that has its notes loses its transcript here, if the call was set to, as the call's does.
       const sections = m.rooms.map((r): RoomNote => {
         const w = wrote.rooms.rooms.find((x) => x.id === r.id);
         if (!w || !('notes' in w)) return r;
         const items = first ? { decisions: w.notes.decisions, questions: w.notes.questions, actions: w.notes.actions } : keepSettled(r, w.notes);
-        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items };
+        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items, transcript: m.keep.transcript ? r.transcript : [] };
       });
       const evidence = [...(wrote.notes ? [wrote.notes.evidence] : []), ...wrote.rooms.evidence];
       const inference = evidence.reduce((all, e) => (all.some((x) => verificationKey(x) === verificationKey(e)) ? all : [...all, e]), m.inference);
@@ -179,14 +186,22 @@ async function settle(o: Owner, jobId: string, noteId: string, recordingId: stri
       }
       const { evidence: _, ...written } = wrote.notes;
       const again = first ? {} : keepSettled(m, written);
-      return { ...m, status: 'ready', ...written, ...again, chapters, rooms: sections, writtenAt: wrote.readAt, inference };
+      return { ...m, status: 'ready', ...written, ...again, chapters, rooms: sections, writtenAt: wrote.readAt, transcript: m.keep.transcript ? m.transcript : [], inference };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (any && first) {
+      const recorded = next.recorded ?? (await segments(o, next.recordingId, c)).reduce((n, s) => n + s.seconds, 0);
       const minutes = Math.max(1, Math.ceil(recorded / 60));
       await billing.charge({ cfg: o.cfg }, c, o.ownerId, { amount: minutes * billing.PER_MINUTE, label: `Notes, ${minutes} min` });
     }
+    if (any && !next.keep.transcript) {
+      const revisions = await pruneRevisions(o, c, noteId);
+      await exec(c, 'DELETE FROM operations WHERE owner_id = $1', [o.ownerId]);
+      wlog.info('transcript deleted, as the call was set to', { noteId, revisions });
+    }
+    return next.keep.recording ? [] : purgeAudio(o, c, next.recordingId);
   });
+  await queueDelete(o, leftover);
 }
 
 async function attempt(d: Deps, job: Claimed): Promise<void> {
@@ -214,7 +229,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
     const readSoFar = async () => screens.withReadings(note.manifest.screens, note.manifest.screens.length ? await screens.framesOf(o, o.pool, noteId) : []);
     if (job.tried >= ATTEMPTS) {
       wlog.error('notes job outlived its last attempt; finishing the note without a summary', at);
-      await settle(o, job.job_id, noteId, recordingId, undefined, await readSoFar());
+      await settle(o, job.job_id, noteId, undefined, await readSoFar());
       return;
     }
     try {
@@ -233,14 +248,14 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       // Each breakout room's notes, from what was said there alone.
       const rooms = await writeRooms(o, note.manifest, organizer, style, renew, at);
       if (!lines) {
-        await settle(o, job.job_id, noteId, recordingId, { rooms, readAt }, shown);
+        await settle(o, job.job_id, noteId, { rooms, readAt }, shown);
         wlog.info(rooms.evidence.length ? 'only breakout rooms were transcribed; their notes written' : 'nothing was transcribed; note finished without notes',
           { ...at, screens: shown.length, rooms: note.manifest.rooms.length, roomsWritten: rooms.evidence.length });
         return;
       }
       await renew();
       const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown }, style);
-      await settle(o, job.job_id, noteId, recordingId, { notes, rooms, readAt });
+      await settle(o, job.job_id, noteId, { notes, rooms, readAt });
       wlog.info('notes written', {
         ...at, language: style.language, length: style.length, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length,
@@ -259,7 +274,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       }
       if (job.attempt >= ATTEMPTS) {
         wlog.error('notes could not be written after three attempts; finishing the note without a summary', { ...at, err: e });
-        await settle(o, job.job_id, noteId, recordingId, undefined, await readSoFar());
+        await settle(o, job.job_id, noteId, undefined, await readSoFar());
         return;
       }
       const wait = RETRY_SECONDS[job.attempt - 1] ?? 90;

@@ -77,34 +77,21 @@
   .hm-last > .ac-btn { grid-column: 2; justify-self: start; height: 30px; margin: -4px 0 -6px -14px; }
 }
 
-/* ------------------------------------------- the line to start a call */
-.hm-start {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "arch head" "arch body"; column-gap: 30px; align-items: center; padding: 32px;
-}
-.hm-start > .ac-arch-thumb { --w: 118px; grid-area: arch; align-self: center; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), var(--shadow-2); }
-.hm-start-head { grid-area: head; min-width: 0; align-self: end; }
-.hm-start-head h3 { margin-top: 8px; font-size: 32px; font-variation-settings: 'opsz' 32; }
-.hm-start-body { grid-area: body; min-width: 0; align-self: start; }
-.hm-start-body > p { margin-top: 8px; max-width: 52ch; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
-.hm-line.ac-composer { margin-top: 20px; min-height: 56px; padding: 0 6px 0 18px; box-shadow: inset 0 0 0 1px var(--line-control); }
-.hm-line:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
-.hm-line input.text { flex: 1; min-width: 0; height: 54px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 15.5px/1.4 var(--font-sans); }
-.hm-line input.text::placeholder { color: var(--ink-3); }
-.hm-line .ac-btn { flex: none; }
-.hm-line .ac-btn .go { display: none; }
-.hm-start .try { margin-top: 14px; }
-.hm-start .try button { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+/* -------------------------------------------- nothing ahead: start a call */
+.hm-begin { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 30px; align-items: center; padding: 32px; }
+.hm-begin > .ac-arch-thumb { --w: 118px; align-self: center; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), var(--shadow-2); }
+.hm-begin-in { min-width: 0; }
+.hm-begin-in h3 { margin-top: 8px; font-size: 32px; font-variation-settings: 'opsz' 32; }
+.hm-begin-in p { margin-top: 8px; max-width: 52ch; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.hm-begin-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 20px; }
+.hm-begin-acts .ac-kbd { margin-left: 2px; background: color-mix(in srgb, var(--on-sun) 18%, transparent); color: var(--on-sun); box-shadow: none; }
+@media (hover: none) { .hm-begin-acts .ac-kbd { display: none; } }
 @container (max-width: 639px) {
-  .hm-start > .ac-arch-thumb { --w: 56px; }
-  .hm-start { grid-template-areas: "arch head" "body body"; column-gap: 16px; padding: 22px 20px; }
-  .hm-start-head { align-self: center; }
-  .hm-start-head h3 { margin-top: 6px; font-size: 26px; font-variation-settings: 'opsz' 28; }
-  .hm-start-body > p { margin-top: 14px; font-size: 14.5px; }
-  .hm-line.ac-composer { margin-top: 16px; padding-left: 14px; gap: 10px; }
-  .hm-line input.text { font-size: 15px; }
-  .hm-line .ac-btn { width: 44px; padding: 0; }
-  .hm-line .ac-btn .lbl, .hm-line .ac-btn .kb { display: none; }
-  .hm-line .ac-btn .go { display: block; }
+  .hm-begin { grid-template-columns: minmax(0, 1fr); padding: 22px 20px; }
+  .hm-begin > .ac-arch-thumb { --w: 56px; margin-bottom: 14px; }
+  .hm-begin-in h3 { margin-top: 6px; font-size: 26px; font-variation-settings: 'opsz' 28; }
+  .hm-begin-in p { font-size: 14.5px; }
+  .hm-begin-acts { margin-top: 16px; }
 }
 
 /* ------------------------------------------------------- Waiting on you */
@@ -152,7 +139,11 @@
 .hm-soon-day .hm-grp { padding: 14px 0 0; }
 .hm-soon-day .ac-tl { margin-top: 2px; }
 .hm-anchor { border-radius: 4px; }
-.hm-today .ac-tl-item.is-new { animation: hm-arrive 1400ms var(--ease-out) both; }
+/* A call scheduled moments ago rises 8 px into its place, and the light on it fades. */
+.hm-today .ac-tl-item.is-new { animation: hm-rise var(--duration-3) var(--ease-out) both; }
+.hm-today .ac-tl-item.is-new .body { animation: hm-lit var(--duration-5) var(--ease-out) both; }
+@keyframes hm-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes hm-lit { 0%, 40% { background: var(--sun-soft); } }
 .ac-pop.hm-row-menu { width: min(270px, calc(100vw - 24px)); }
 
 /* ------------------------------------------------------- Ask your notes */

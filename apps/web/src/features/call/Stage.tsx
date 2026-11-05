@@ -31,7 +31,7 @@ import { LOOK_ARIA, ShareLooks } from './shareLook';
 import { ShareMarksDrawing, SharePointing, type PointingKeys } from './SharePointing';
 import { ShareAway, ShareMenuFor, ShareSurface, ShareWindow } from './ShareSurface';
 import { useSettledSpeakers } from './speakers';
-import { MAX_FEATURED, arrange, fitGrid, isShareKey, place, reslot, shareKey, steady, type Handle, type Rect } from './stageLayout';
+import { MAX_FEATURED, arrange, fitGrid, isShareKey, isWaitKey, place, reslot, shareKey, steady, waitKey, type Handle, type Rect } from './stageLayout';
 import { TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
@@ -69,6 +69,8 @@ export interface StageShare {
    */
   point: { sid: string; closed: 'call' | 'presenter' | null } | null;
 }
+/** Someone rung who isn't in the call, waiting in a tile of their own: who, and what the tile shows. */
+export interface StageWaiter { id: string; person: Person; tile: ReactNode }
 /** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
 /**
@@ -86,6 +88,8 @@ export interface StageRooms {
 }
 
 const GLIDE = { duration: 0.5, ease: [0.45, 0, 0.2, 1] } as const;
+/** Someone coming in: the tiles make room slowly enough to see who it's for. */
+const MAKE_ROOM = { duration: 0.9, ease: [0.45, 0, 0.2, 1] } as const;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const box = (r: Rect) => ({ left: r[0], top: r[1], width: r[2], height: r[3] });
@@ -120,8 +124,10 @@ function useSize<T extends HTMLElement>() {
   return { ref, ...size };
 }
 
-export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organizer, bar, caption, rooms, place: part, paused, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
+export function Stage({ people, waiting, shares, marks, me, whoIs, spotlight, view, organizer, bar, caption, rooms, place: part, paused, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped }: {
   people: StageParticipant[];
+  /** People rung who aren't in the call yet, each in a tile of their own after everyone who's here. */
+  waiting: StageWaiter[];
   /** What's shared now, in any order: the stage keeps them in the order they started. */
   shares: StageShare[];
   /** Pointers and marks on what's shared (null before the room connects), who you are, and who anyone pointing is. */
@@ -179,10 +185,11 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
   const popped = seenLooks.popped && shares.some((s) => s.id === seenLooks.popped?.id) ? seenLooks.popped.id : null;
   // The layout is worked out again only when something it depends on changes, not on every render (who's
   // speaking right now, a drag's pointer): in a big call it isn't free.
-  const peopleKey = people.map((p) => `${p.id} ${p.seat} ${p.isMe ? 1 : 0}`).join(',');
+  const awaited = waiting.map((w) => ({ id: waitKey(w.id), seat: waitKey(w.id), isMe: false, waiting: true }));
+  const peopleKey = [...people.map((p) => `${p.id} ${p.seat} ${p.isMe ? 1 : 0}`), ...awaited.map((w) => w.id)].join(',');
   const shareIds = ordered.map((s) => s.id).join(' ');
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
-  const raw = useMemo(() => arrange({ people, shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay }),
+  const raw = useMemo(() => arrange({ people: [...people, ...awaited], shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay }),
     [peopleKey, shareIds, own, popped, fit, spotlight, talk.speaker, talk.dominant, prefs, lay]);
   // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
   const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
@@ -200,19 +207,40 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
   const keptKey = [...plan.featured, ...(popped ? [popped] : [])].join(' ');
   useEffect(() => { looks.sync(othersKey ? othersKey.split(' ') : [], keptKey ? keptKey.split(' ') : []); }, [looks, othersKey, keptKey]);
 
+  /*
+   * Someone rung arriving: the arch they waited in opens into their tile, from where it was, and the others make room.
+   * Where each waited is kept by address, for the render they arrive in; anyone else coming in just makes room.
+   */
+  const arches = useRef(new Map<string, Rect>());
+  for (const w of waiting) { const r = L.slots.get(waitKey(w.id)); if (r) arches.current.set(w.person.email.toLowerCase(), r); }
+  const opening = useRef(new Map<string, { from: Rect; at: number }>());
+  const moment = performance.now();
+  for (const p of people) {
+    const from = arches.current.get(p.person.email.toLowerCase());
+    if (from && !opening.current.has(p.id)) opening.current.set(p.id, { from, at: moment });
+  }
+  const headcount = useRef({ n: people.length, grew: -Infinity });
+  if (people.length > headcount.current.n) headcount.current.grew = moment;
+  headcount.current.n = people.length;
+  const glide = moment - headcount.current.grew < 1000 ? MAKE_ROOM : GLIDE;
+  useEffect(() => {
+    for (const p of people) arches.current.delete(p.person.email.toLowerCase());
+    for (const [id, o] of opening.current) if (performance.now() - o.at > 1000) opening.current.delete(id);
+  });
+
   const byId = new Map(people.map((p) => [p.id, p]));
   const seatOf = (id: string) => byId.get(id)?.seat;
   const seats = (ids: string[]) => ids.flatMap((id) => { const s = seatOf(id); return s ? [s] : []; });
   const pinned = new Set(plan.leads.filter((id) => lay.pins.includes(seatOf(id) ?? '')));
   // What a move rearranges: your pins among themselves, or everyone else in your order. A spotlight or Alcove's pick stays put.
   const pinGroup = plan.leads.filter((id) => pinned.has(id));
-  const restGroup = plan.rest.filter((k) => !isShareKey(k));
+  const restGroup = plan.rest.filter((k) => !isShareKey(k) && !isWaitKey(k));
   const groupOf = (id: string) => (pinned.has(id) ? pinGroup : restGroup.includes(id) ? restGroup : null);
   // Dragging and resizing tiles: not on a phone, nor in a strip, nor while rooms are open.
   const handsOn = !narrow && plan.shape !== 'focus' && !rooms;
   const self = plan.self ? byId.get(plan.self.id) ?? null : null;
   const cornered = self && plan.self && !plan.self.folded ? self : null;
-  const focusables = [...plan.featured.map(shareKey), ...plan.leads, ...plan.rest, ...(cornered ? [cornered.id] : [])];
+  const focusables = [...plan.featured.map(shareKey), ...plan.leads, ...plan.rest.filter((k) => !isWaitKey(k)), ...(cornered ? [cornered.id] : [])];
 
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
@@ -529,13 +557,14 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
         const pin = pinned.has(p.id);
         const spot = spotlight === p.id;
         const at = dragging ? { left: drag.x, top: drag.y, width: r[2], height: r[3] } : sizing ? { left: r[0], top: r[1], width: size.w, height: size.h } : box(r);
+        const opens = opening.current.get(p.id);
         const said = [p.isMe ? `${callName(p.person)} (you)` : callName(p.person), corner ? 'in your corner' : '', pin ? 'pinned for you' : '', spot ? 'spotlighted for everyone' : '', p.hand ? 'hand raised' : '', p.connecting ? 'connecting' : p.mic ? '' : 'microphone off', p.volume === null ? '' : volumeTag(p.volume)?.toLowerCase() ?? ''];
         return (
           <motion.div key={p.id} {...tileProps(p.id, said.filter(Boolean).join(', '))}
-            className={cn('ic-slot', dragging && 'is-drag', sizing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner')}
+            className={cn('ic-slot', dragging && 'is-drag', sizing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner', opens && 'rg-opens')}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
-            initial={{ ...at, opacity: 0, scale: 0.97 }} animate={{ ...at, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
-            transition={reduce || dragging || sizing ? { duration: 0 } : { ...GLIDE, opacity: UI, scale: UI }}>
+            initial={opens ? { ...box(opens.from), opacity: 1, scale: 1 } : { ...at, opacity: 0, scale: 0.97 }} animate={{ ...at, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
+            transition={reduce || dragging || sizing ? { duration: 0 } : { ...glide, opacity: UI, scale: UI }}>
             <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot')}
               chrome={(
                 <>
@@ -567,6 +596,15 @@ export function Stage({ people, shares, marks, me, whoIs, spotlight, view, organ
           </motion.div>
         );
       })}
+      <AnimatePresence>
+        {waiting.map((w) => {
+          const r = L.slots.get(waitKey(w.id));
+          return r ? (
+            <motion.div key={waitKey(w.id)} className="ic-slot" initial={{ ...box(r), opacity: 0, scale: 0.97 }} animate={{ ...box(r), opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+              transition={reduce ? { duration: 0 } : { ...glide, opacity: UI, scale: UI }}>{w.tile}</motion.div>
+          ) : null;
+        })}
+      </AnimatePresence>
       {self && plan.self?.folded && L.self && (
         <Tooltip label="Show yourself. Everyone else sees you either way" side="top">
           <motion.button key="self-chip" type="button" className="ic-selfchip" aria-label="Show yourself. Only your view changes" onClick={() => onSelf('corner')}

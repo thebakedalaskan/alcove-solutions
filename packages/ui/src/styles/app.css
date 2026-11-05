@@ -10,28 +10,6 @@
 /* Lists in a page split into groups, as Notes groups by date. */
 .grp { padding: 18px 0 6px; font: 500 13px/16px var(--font-sans); color: var(--ink-3); }
 
-/* -------------------------------------------------------------- composer */
-.cmp-line { margin: 14px 14px 0; box-shadow: inset 0 0 0 1px var(--line); }
-/* A whole group invited (up to 50 people) scrolls here, so Start now stays on screen. */
-.cmp-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 54px; max-height: min(42vh, 330px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 14px 24px 18px; }
-.pchip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: var(--radius-sm); background: var(--sunk); color: var(--ink); font: 500 13.5px/1 var(--font-sans); transition: background-color var(--duration-1), box-shadow var(--duration-1); animation: ac-rise var(--duration-3) var(--ease-out) both; }
-.pchip:hover { box-shadow: inset 0 0 0 1px var(--line-control); }
-.pchip .ac-i { color: var(--ink-3); }
-.pchip.soft { background: transparent; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line); }
-.pchip.on-notes { background: var(--sun-soft); color: var(--sun-text); }
-.pchip.on-notes .ac-i { color: var(--sun-text); }
-.pchip.add { background: transparent; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-control); }
-.pchip.add:hover { background: var(--sunk); color: var(--ink); }
-.pchip.needs { background: var(--caution-soft); color: var(--caution); }
-.pchip.needs .q { margin-left: 2px; font-weight: 600; }
-.pchip.needs .ac-i { color: var(--caution); }
-.try { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--ink-3); font-size: 13px; }
-.try button { padding: 7px 11px; border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font-size: 13px; font-weight: 500; transition: background-color var(--duration-1), color var(--duration-1); }
-.try button:hover { background: var(--sunk); color: var(--ink); }
-.cmp-foot { display: flex; align-items: center; gap: 12px; padding: 14px 16px 14px 18px; border-top: 1px solid var(--line); }
-.cmp-foot .hint { flex: 1; min-width: 0; font-size: 13px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 7px; }
-.cmp-foot .hint span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 /* -------------------------------------------------------- people picker */
 /* Never taller than the room the window has for it: the suggestions scroll, the field and the button stay. */
 .ac-pop.pick-pop { display: flex; max-height: var(--radix-popover-content-available-height, 85vh); padding: 0; }
@@ -126,11 +104,4 @@
 @media (max-width: 860px) {
   .head h1 { font-size: 32px; }
 
-}
-@media (max-width: 560px) {
-  /* Who gets the notes is worth a whole line on a phone. */
-  .cmp-foot { flex-wrap: wrap; row-gap: 10px; }
-  .cmp-foot .hint { order: -1; flex-basis: 100%; }
-  .cmp-line { margin: 10px 10px 0; }
-  .cmp-chips { padding: 12px 14px 16px; }
 }

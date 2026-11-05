@@ -4,8 +4,9 @@
  * The server swaps the code for an ID token, checks Google's signature, the issuer, the audience,
  * the expiry and the nonce, and accepts only an email address Google has verified, because notes
  * are shared by email. It also asks for the Calendar (events only) with offline access, so Alcove
- * can show someone's meetings and put the calls they schedule on their calendar. Someone can
- * decline the calendar on Google's consent screen and still sign in.
+ * can show someone's meetings and put the calls they schedule on their calendar, and for free/busy on
+ * the calendars they can see, to find a time that suits people. Someone can decline the calendar on
+ * Google's consent screen and still sign in.
  */
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
@@ -21,7 +22,9 @@ const glog = log.child({ component: 'google' });
 /** How long a browser has to come back from Google. */
 export const ATTEMPT_MINUTES = 10;
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
-const SCOPE = `openid email profile ${CALENDAR_SCOPE}`;
+/** When people are free, on calendars this account can see. Connections from before it was asked for read nobody's. */
+const FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.events.freebusy';
+const SCOPE = `openid email profile ${CALENDAR_SCOPE} ${FREEBUSY_SCOPE}`;
 
 /** Why a sign-in didn't happen, as the welcome screen explains it. */
 export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | 'failed' | 'busy';

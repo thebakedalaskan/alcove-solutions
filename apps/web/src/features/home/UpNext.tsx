@@ -1,15 +1,13 @@
 /*
  * The top of Home: the next call with Join, and what happened last time in its series. With nothing ahead
- * (or before your first call) it's the line to start a call now or describe one to schedule it.
+ * (or before your first call) it's a card that starts one.
  */
-import { ArchThumb, Button, ComposerLine, Faces, Icon, IconButton, buttonClass, coverFor } from '@alcove/ui';
+import { ArchThumb, Button, Faces, Icon, IconButton, Kbd, buttonClass, coverFor } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { NotesFlag, useCopyLink } from '~/features/call/links';
-import { useCallLine } from '~/features/shell/callLine';
-import { useOpenComposer } from '~/features/shell/context';
-import { useMedia } from '~/lib/live';
+import { useCallFlow } from '~/features/shell/context';
 import { q } from '~/lib/queries';
 import { daysFromToday, hm, minutesUntil, noteDay, shortDay, startsLabel } from '~/lib/time';
 import { capital } from '~/lib/words';
@@ -48,15 +46,15 @@ export function UpNext({ next, now }: { next: Ahead; now: number }) {
 
 function CallActs({ next }: { next: Extract<Ahead, { kind: 'call' }> }) {
   const copy = useCopyLink();
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   const m = next.call;
   return (
     <div className="hm-next-acts">
       <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ variant: 'primary', size: 'lg' })} aria-keyshortcuts="J" data-tour="join">
         <Icon name="video" />Join<span className="kb" aria-hidden="true">J</span>
       </Link>
-      <Button variant="secondary" size="lg" icon="link" className="hm-copy" onClick={() => copy(m.code)}><span className="lbl">Copy link</span></Button>
-      {m.status === 'scheduled' && m.isOrganizer && <IconButton icon="pen" label="Change this call" aria-haspopup="dialog" onClick={() => open({ meeting: m })} />}
+      <Button variant="secondary" size="lg" icon="link" className="hm-copy" onClick={() => copy(m.seriesCode ?? m.code)}><span className="lbl">Copy link</span></Button>
+      {m.status === 'scheduled' && <IconButton icon={m.isOrganizer ? 'pen' : 'more'} label={m.isOrganizer ? 'Change this call' : 'Open this call'} aria-haspopup="dialog" onClick={() => flow.open(m)} />}
     </div>
   );
 }
@@ -121,42 +119,23 @@ function LastTime({ seriesId, next }: { seriesId: string; next: Ahead }) {
 }
 
 /**
- * The line to start a call now or describe one to schedule it, as New call reads it. Before your first
- * call it says so. A name it can't find an address for opens New call with the sentence, to add one.
+ * Nothing ahead: one button to start a call, which asks now or later, and recording in the room beside it for a
+ * conversation that isn't a call. Before your first call it says so.
  */
 export function StartCall({ first }: { first: boolean }) {
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   const h = useId();
-  const [text, setText] = useState('');
-  const input = useRef<HTMLInputElement>(null);
-  const line = useCallLine({ text });
-  const go = async () => {
-    const stop = await line.submit(() => setText(''));
-    if (stop) open({ text });
-  };
-  const label = line.p.when ? 'Schedule' : 'Start now';
-  // A phone has no Enter key to mention, and less room to say it in.
-  const phone = useMedia('(max-width: 860px)');
   return (
-    <section className="ac-card hm-start" aria-labelledby={h}>
+    <section className="ac-card hm-begin" aria-labelledby={h}>
       <ArchThumb cover="first" />
-      <div className="hm-start-head">
+      <div className="hm-begin-in">
         <div className="ac-eyebrow">{first ? 'Your first call' : 'Nothing scheduled'}</div>
-        <h3 id={h}>Start one now, or describe it to schedule it</h3>
-      </div>
-      <div className="hm-start-body">
+        <h3 id={h}>Start one now, or pick a time</h3>
         <p>Share the link with anyone. Everyone you invite gets the notes, written in confidential compute.</p>
-        <form onSubmit={(e) => { e.preventDefault(); void go(); }}>
-          <ComposerLine icon="video" className="hm-line" action={(
-            <Button type="submit" variant="primary" loading={line.busy} aria-label={label}>
-              <span className="lbl">{label}</span><span className="kb" aria-hidden="true">↵</span><Icon name="right" className="go" />
-            </Button>
-          )}>
-            <input ref={input} className="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={phone ? 'Describe the call' : 'Describe the call, or press Enter'}
-              aria-label="Describe the call, or press Enter to start now" autoComplete="off" spellCheck={false} enterKeyHint="go" />
-          </ComposerLine>
-        </form>
-        <div className="try">Try {line.tries.map((t) => <button key={t.text} type="button" onClick={() => { setText(t.text); input.current?.focus(); }}>{t.label}</button>)}</div>
+        <div className="hm-begin-acts">
+          <Button variant="primary" size="lg" icon="video" aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" onClick={() => flow.start()}>Start a call<Kbd>N</Kbd></Button>
+          <Link to="/record" className={buttonClass({ variant: 'quiet', size: 'lg' })}><Icon name="recordDot" size={18} />Record in the room</Link>
+        </div>
       </div>
     </section>
   );

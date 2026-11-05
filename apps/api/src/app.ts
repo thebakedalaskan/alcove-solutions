@@ -1,6 +1,6 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallHandOffBodySchema, CallJoinBodySchema, CallLeaveBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PersonalEditSchema, PersonalInputSchema, PreferencesSchema, PromoteBodySchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
+  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -12,7 +12,7 @@ import { z, ZodError } from 'zod';
 import type { Deps, Owner } from './context';
 import { b64u, equalBytes, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, utf8 } from './crypto';
 import { bytea, exec, maybeOne } from './db';
-import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, toAppError, type AppError } from './errors';
+import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound, toAppError, type AppError } from './errors';
 import { addLogContext, log, withLogContext } from './log';
 import * as google from './google';
 import { inference } from './inference';
@@ -26,6 +26,7 @@ import * as audioMod from './modules/audio';
 import * as billing from './modules/billing';
 import * as calendar from './modules/calendar';
 import * as calls from './modules/calls';
+import * as documents from './modules/documents';
 import * as meetings from './modules/meetings';
 import * as moves from './modules/moves';
 import * as notes from './modules/notes';
@@ -33,6 +34,7 @@ import * as people from './modules/people';
 import * as personal from './modules/personal';
 import * as photos from './modules/photos';
 import * as recordings from './modules/recordings';
+import * as rings from './modules/rings';
 import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
 import * as writer from './modules/writer';
@@ -46,23 +48,26 @@ const clog = log.child({ component: 'client', source: 'browser' });
  * logs. Every other path segment is a random ID.
  */
 const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code').replace(/^\/v1\/calendar\/events\/(?!$)[^/]+/, '/v1/calendar/events/:id');
-const QUIET = new Set(['/health', '/healthz']);
+const QUIET = new Set(['/health', '/healthz', '/v1/rings']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /**
- * Mutations that keep no stored receipt. Searching, asking and translating captions only read. Audio
+ * Mutations that keep no stored receipt. Searching, asking, translating captions and reading who's busy only read. Audio
  * pieces and transcript clips are already idempotent by their place in the recording (and their
  * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
  * decisions, open questions, follow-ups and transcript lines, sharing it, and having it written again
  * each set an explicit state, so a retry changes nothing; and their answer is the whole note, which a
- * receipt kept under someone it was given to would still hold after the organizer deleted it. Someone's
- * own notes, and what they add to the shared notes, keep none either: deleting them must leave no copy
- * of what they said for a day. Deleting the account deletes its receipts, so there is no account left
- * to keep one under.
+ * receipt kept under someone it was given to would still hold after the organizer deleted it. Saying
+ * whether you're coming to a call is the same: it sets one value, and what comes back is the organizer's
+ * call. Someone's own notes, and what they add to the shared notes, keep none either: deleting them must
+ * leave no copy of what they said for a day. Deleting the account deletes its receipts, so there is no
+ * account left to keep one under. Answering a ring sets an explicit state too, and a receipt's clear
+ * method and time would say an account was rung for a day after the ring had gone.
  */
 const NO_RECEIPT = [
+  /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/account$/,
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
@@ -92,7 +97,8 @@ function rateLimit(max: number, windowMs: number) {
 const clientAddress = (c: Context) => c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim() || 'direct';
 const StoredResult = z.object({ status: z.number(), body: z.string() });
 
-export function createApp(d: Deps) {
+/** `stopping`: the process is shutting down, so what holds a connection open lets it go. */
+export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const app = new Hono<Env>();
   const secure = d.cfg.WEB_ORIGIN.startsWith('https://');
   const COOKIE = cookieName(secure);
@@ -112,6 +118,8 @@ export function createApp(d: Deps) {
   const askLimiter = rateLimit(20, 60_000);
   /** Joining by link: public, so limited per client address. */
   const callLimiter = rateLimit(120, 60_000);
+  /** Picking one of the times a call offers: public too, and one person does it once. */
+  const pickLimiter = rateLimit(30, 60_000);
   /**
    * Reading a call's card: public too, and every pre-join keeps reading it while it waits, once every 4 s on average
    * (15 a minute) until the organizer is there. This lets 40 people wait behind one address, as an office does.
@@ -146,6 +154,23 @@ export function createApp(d: Deps) {
   const shareEndLimiter = rateLimit(30, 60_000);
   /** Opening a moment of the live transcript reads all of it, per connection to the call. */
   const momentLimiter = rateLimit(60, 60_000);
+  /**
+   * Making calls, per account, however it's done: anyone can invite any address, and each call lands on the Home of
+   * everyone invited, as many as 60 of them at a time for a call that repeats.
+   */
+  const makeLimiter = rateLimit(30, 60_000);
+  /** Reading who's busy asks Google, for up to 300 people at a time, per account. */
+  const busyLimiter = rateLimit(60, 60_000);
+  /**
+   * Ringing, per organizer: each ring reaches someone's screen, with a sound. Answering, per person: each answer tells
+   * the room. And opening the stream of rings, per person: a tab opens one every few minutes, so this leaves room for
+   * plenty of tabs, and keeps tabs taking turns over an account's streams from going round too fast. How many streams
+   * can be open at once is `RingStreams`'.
+   */
+  const ringLimiter = rateLimit(20, 60_000);
+  const ringAnswerLimiter = rateLimit(30, 60_000);
+  const ringStreamLimiter = rateLimit(30, 60_000);
+  const ringStreams = new rings.RingStreams(d, stopping);
   /** Your own notes, per connection to a call or per account: reading them in a call reads its live transcript too. */
   const personalLimiter = rateLimit(120, 60_000);
 
@@ -294,6 +319,11 @@ export function createApp(d: Deps) {
     return s ? openOwner(d, s.ownerId, s) : undefined;
   };
   app.get('/v1/calls/:code/card', async (c) => { cardLimiter(clientAddress(c), 'call card'); return c.json(await calls.card(d, c.req.param('code'), await optionalOwner(c))); });
+  app.use('/v1/calls/:code/pick', capped(1024));
+  app.post('/v1/calls/:code/pick', async (c) => {
+    pickLimiter(clientAddress(c), 'call pick');
+    return c.json(await calls.pick(d, c.req.param('code'), (await body(c, PickTimeBodySchema)).at, await optionalOwner(c)));
+  });
   app.post('/v1/calls/:code/join', async (c) => {
     callLimiter(clientAddress(c), 'call join');
     const b = await body(c, CallJoinBodySchema);
@@ -385,6 +415,7 @@ export function createApp(d: Deps) {
     // Each ask reaches the organizer, so nobody can keep asking.
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
+    if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
   });
   /*
@@ -586,22 +617,64 @@ export function createApp(d: Deps) {
   /* meetings */
   app.get('/v1/meetings', async (c) => c.json(c.req.query('range') === 'past' ? await meetings.past(c.get('owner')) : await meetings.upcoming(c.get('owner'))));
   app.get('/v1/meetings/:id', async (c) => c.json(await meetings.get(c.get('owner'), c.req.param('id'))));
-  app.post('/v1/meetings', async (c) => c.json(await meetings.create(c.get('owner'), await body(c, MeetingInputSchema))));
-  app.patch('/v1/meetings/:id', async (c) => c.json(await meetings.update(c.get('owner'), c.req.param('id'), await body(c, MeetingInputSchema.partial()))));
-  app.delete('/v1/meetings/:id', async (c) => { await meetings.cancel(c.get('owner'), c.req.param('id')); return c.json({ cancelled: true }); });
-  app.post('/v1/meetings/:id/next', async (c) => c.json(await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt)));
+  app.post('/v1/meetings', async (c) => {
+    makeLimiter(c.get('owner').ownerId, 'calls');
+    return c.json(await meetings.create(c.get('owner'), await body(c, MeetingInputSchema)));
+  });
+  /* How far a change to a call in a series reaches. */
+  const scopeOf = (c: Context) => {
+    const scope = ChangeScopeSchema.optional().safeParse(c.req.query('scope'));
+    if (!scope.success) throw new ValidationError('A change reaches this call, or this and later calls.');
+    return scope.data;
+  };
+  app.patch('/v1/meetings/:id', async (c) => {
+    const patch = await body(c, MeetingInputSchema.partial());
+    // Making a call repeat, or how it repeats, makes calls.
+    if (patch.repeat) makeLimiter(c.get('owner').ownerId, 'calls');
+    return c.json(await meetings.update(c.get('owner'), c.req.param('id'), patch, scopeOf(c)));
+  });
+  app.delete('/v1/meetings/:id', async (c) => { await meetings.cancel(c.get('owner'), c.req.param('id'), scopeOf(c)); return c.json({ cancelled: true }); });
+  app.post('/v1/meetings/:id/next', async (c) => {
+    makeLimiter(c.get('owner').ownerId, 'calls');
+    return c.json(await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt));
+  });
+  app.post('/v1/meetings/:id/answer', async (c) => c.json(await meetings.answer(c.get('owner'), c.req.param('id'), (await body(c, RsvpBodySchema)).answer)));
 
   /* calendar: someone's other events, and making one of them an Alcove call */
   app.get('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.view(o, () => meetings.recurringSeries(o))); });
   app.delete('/v1/calendar', async (c) => { const o = c.get('owner'); return c.json(await calendar.disconnect(o, () => meetings.recurringSeries(o))); });
+  app.post('/v1/calendar/busy', async (c) => {
+    const o = c.get('owner');
+    busyLimiter(o.ownerId, 'busy');
+    return c.json(await calendar.busy(o, await body(c, BusyBodySchema), () => meetings.all(o)));
+  });
   app.post('/v1/calendar/events/:id/adopt', async (c) => {
     const { notes } = await body(c, z.object({ notes: NotesSettingSchema.optional() }));
     return c.json(await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
   });
   app.get('/v1/calls/:code/meeting', async (c) => c.json(await meetings.byCode(c.get('owner'), c.req.param('code'))));
 
+  /* documents people can bring to calls */
+  app.get('/v1/documents', async (c) => c.json(await documents.library(c.get('owner'))));
+
   /* calls */
-  app.post('/v1/calls', async (c) => c.json(await meetings.startNow(c.get('owner'), await body(c, InstantCallInputSchema))));
+  app.post('/v1/calls', async (c) => {
+    makeLimiter(c.get('owner').ownerId, 'calls');
+    return c.json(await meetings.startNow(c.get('owner'), await body(c, InstantCallInputSchema)));
+  });
+
+  /* rings: who's ringing you, as it changes. Nothing here keeps the request's context or the account's keys: the stream outlives both. */
+  app.get('/v1/rings', async (c) => {
+    ringStreamLimiter(c.get('owner').ownerId, 'rings');
+    return new Response(await ringStreams.connect(await rings.listenerOf(c.get('owner'))), { headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' } });
+  });
+  app.post('/v1/rings/:id/answer', async (c) => {
+    ringAnswerLimiter(c.get('owner').ownerId, 'ring answer');
+    const id = c.req.param('id');
+    if (!ID128.test(id)) throw notFound('That ring');
+    await calls.answerRing(c.get('owner'), id, (await body(c, RingAnswerBodySchema)).reply);
+    return c.json({ answered: true });
+  });
 
   /* room recordings */
   app.post('/v1/recordings', async (c) => c.json(await recordings.start(c.get('owner'), await body(c, RoomRecordingInputSchema))));

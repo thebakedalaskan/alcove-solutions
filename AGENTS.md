@@ -152,10 +152,15 @@ Read `docs/engineering/logging-and-errors.md`.
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `Toast`,
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
-  `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Timeline` with
-  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
+  `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
+  the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Timeline` with
+  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
-  `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another), and
+  `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
+  `SwitchLine`, `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`) and `WsDoc` (`WsDocHead` with `WsSaveState`,
   `WsFollowBar`, `WsOfflineBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`,
@@ -166,8 +171,8 @@ Read `docs/engineering/logging-and-errors.md`.
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKnock`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
-  `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
-  `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
+  `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something, and a `TimelineItem` a button; a
+  `TimelineItem` can take `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
   values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
@@ -176,9 +181,10 @@ Read `docs/engineering/logging-and-errors.md`.
   you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
-  start with `rec-`); the workspace in `styles/workspace.css` (`wt-` the list, `wd-` a document, `wm-` menus, `wv-`
-  popovers, `wp-` presenting, `wh-` history, `wl-` the call's live pages); the other screens in `styles/app.css`,
-  `call.css` and `welcome.css`.
+  start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
+  lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
+  (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wp-` presenting, `wh-` history, `wl-` the call's live
+  pages); the other screens in `styles/app.css`, `call.css` and `welcome.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.

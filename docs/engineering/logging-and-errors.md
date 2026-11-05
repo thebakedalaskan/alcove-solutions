@@ -75,8 +75,13 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
   (240 a minute, calls and room recordings together; 40 for each voice in a call) and `ask` (20 a minute, writing a note's notes again included) per account, and
   `request-notes` (10 a minute), `others-point` (20 a minute), `frames` (24 a minute) and `share-ended` (30 a minute)
-  per person in a call. Google sign-in
+  per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
+  account, `calls` (30 a minute) per account on everything that makes one, and `open rings` when a process holds all
+  the streams of rings it takes. Google sign-in
   goes back to the welcome screen with `signin=busy` instead.
+- Every tab holds a stream of rings and opens a new one every few minutes, so `GET /v1/rings` is logged at debug, like
+  a health check, unless it's refused. Rings say who rang how many and that a ring was answered, by IDs and counts:
+  never an address, and never the answer, which is sealed so that nothing shows who's coming.
 - An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES` or a shared-screen frame over
   `MAX_FRAME_BYTES` is refused as `400 invalid` from its `content-length`, before the body is read.
 - A frame past a call's `SCREEN_FRAMES_MAX` is refused as `409 conflict` and logged at info (`frame refused: the

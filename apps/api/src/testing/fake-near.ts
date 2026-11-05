@@ -80,8 +80,12 @@ export interface FakeNear {
   rotate(task: Task): void;
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
-  /** The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape and nothing in it. */
-  failNext(n: number, how: 'down' | 'prose' | 'stub'): void;
+  /**
+   * The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape and
+   * nothing in it. With `only`, just the requests with that in their prompt fail, and count: one part of a note goes
+   * wrong while the rest is written.
+   */
+  failNext(n: number, how: 'down' | 'prose' | 'stub', only?: string | undefined): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number): void;
   close(): Promise<void>;
@@ -431,6 +435,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
   let failure: 'down' | 'prose' | 'stub' = 'down';
+  let failingOnly: string | undefined;
   let slow = 0;
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
@@ -528,7 +533,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     }
     if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
     let content: string;
-    if (failing > 0) {
+    if (failing > 0 && (failingOnly === undefined || user.includes(failingOnly))) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
       content = failure === 'stub'
@@ -632,7 +637,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       models[task] = { ...machine(m.name, m.image, m.compose, ohttpIds++), appId: m.appId };
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
-    failNext(count, how) { failing = count; failure = how; },
+    failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     slowNext(ms) { slow = ms; },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };

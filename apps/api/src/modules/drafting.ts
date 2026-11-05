@@ -39,17 +39,21 @@ export interface Brief {
   live?: boolean | undefined;
   /** For notes written again: what people already settled, which the model is told not to list again (settledOf). */
   settled?: string[] | undefined;
+  /** What the notes say, for questions once the transcript they were written from has been deleted. */
+  written?: Pick<NoteManifest, 'decisions' | 'questions' | 'actions' | 'chapters'> | undefined;
+  /** The notes are written and the call wasn't set to keep what they were written from, so the main room's transcript is gone. */
+  deleted?: boolean | undefined;
   /** The breakout room these lines were said in, by name, when the notes are that room's own. */
   room?: string | undefined;
   /** Each breakout room's section of a finished note, for questions about it. */
   rooms?: RoomNote[] | undefined;
 }
 /** A finished note, as the model reads it: the main room's transcript, and each breakout room's section. */
-export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief =>
-  ({
-    title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary,
-    settled: m.writtenAt === null ? [] : settledOf(m), rooms: m.rooms
-  });
+export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief => ({
+  title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary,
+  settled: m.writtenAt === null ? [] : settledOf(m), written: { decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters },
+  deleted: !m.keep.transcript && m.writtenAt !== null, rooms: m.rooms
+});
 
 /** What people settle in written notes: a part's decisions, open questions and follow-ups. */
 export type Settled = Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>;
@@ -81,9 +85,15 @@ export const roomBriefOf = (m: NoteManifest, room: RoomNote, organizer: Person):
   seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: m.writtenAt === null ? [] : settledOf(room)
 });
 
-/** Each breakout room's section, after the main room's, for a question about the whole note; `texts` are their transcripts as fitted. */
-const roomsText = (rooms: RoomNote[], texts: string[]): string => rooms.map((r, i) =>
-  `\n\nBreakout room “${oneLine(r.name)}” (${r.people.map((x) => oneLine(x.name)).join(', ') || 'nobody named'}):\nSummary: ${r.summary || '(none)'}\nTranscript:\n${fenced(texts[i] ?? '')}`).join('');
+/**
+ * Each breakout room's section, after the main room's, for a question about the whole note; `texts` are their transcripts
+ * as fitted. Without one, because the call wasn't set to keep it, what the room's notes say is all there is to go on.
+ */
+const roomsText = (rooms: RoomNote[], texts: string[]): string => rooms.map((r, i) => {
+  const who = r.people.map((x) => oneLine(x.name)).join(', ') || 'nobody named';
+  const said = r.transcript.length ? `Transcript:\n${fenced(texts[i] ?? '')}` : `Notes:\n${writtenText(r)}\nThe transcript was deleted once the notes were written.`;
+  return `\n\nBreakout room “${oneLine(r.name)}” (${who}):\nSummary: ${r.summary || '(none)'}\n${said}`;
+}).join('');
 
 /** About 30,000 tokens of transcript; longer calls keep their beginning and end. */
 const MAX_TRANSCRIPT_CHARS = 120_000;
@@ -348,21 +358,27 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
 
 const ASK_PROMPT = `You answer a question about one meeting, using only its transcript and notes. Reply with a single JSON object and nothing else: {"answer": string, "moments": [number], "screens": [number]}
 
-answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the transcript doesn't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it. A line starting "[mm:ss] [screen N" says what was on a shared screen from then on, as it was read: never say a screen showed more than its line says. ${DOUBT} ${SAID_ONLY}
-moments: the seconds the answer comes from, read from the transcript's [mm:ss] marks; at most four, in order. An empty list if there are none.
+answer: plain and direct, at most four sentences, unless the question asks for a draft such as an email or a list, which can be longer. "I", "me" and "my" in the question mean the person asking. If the transcript and notes don't cover it, say so plainly. A line starting "--" marks a stretch when nothing was recorded: never say or guess what was said in it. A line starting "[mm:ss] [screen N" says what was on a shared screen from then on, as it was read: never say a screen showed more than its line says. ${DOUBT} ${SAID_ONLY}
+moments: the seconds the answer comes from, read from the [mm:ss] marks; at most four, in order. An empty list if there are none.
 screens: the N of each shared screen the answer comes from; at most two. An empty list if there are none.`;
 
 const Answer = z.object({ answer: z.string().min(1), moments: z.array(z.coerce.number()).catch([]), screens: z.array(z.coerce.number()).catch([]) });
 
-/** Answers a question about a written-up call, with the moments in its note's recording and the shared screens it comes from. */
+/**
+ * Answers a question about a written-up call, with the moments in its note's recording and the shared screens it comes
+ * from. Where a call wasn't set to keep its transcript, what the notes say is all there is to go on, in the main room
+ * and each breakout room.
+ */
 export async function answer(cfg: Config, noteId: string, b: Brief, asker: Person, question: string): Promise<AnswerPart[]> {
   const shown = b.screens ?? [];
-  // The call's transcript and each breakout room's share one budget, so a call with many rooms still fits.
-  const rooms = (b.rooms ?? []).filter((r) => r.transcript.length);
+  const notes = b.deleted && b.written ? `Notes:\n${writtenText(b.written)}\n\nThe transcript was deleted once the notes were written.\n\n` : '';
+  // The call's transcript and each breakout room's share one budget, so a call with many rooms still fits. A room with
+  // no transcript left goes by what its notes say; one with neither has nothing to read.
+  const rooms = (b.rooms ?? []).filter((r) => r.transcript.length || r.summary);
   const [said = '', ...roomTexts] = fitTogether([{ lines: b.lines, gaps: b.gaps, screens: shown }, ...rooms.map((r) => ({ lines: r.transcript, gaps: r.gaps, screens: [] }))]);
   const reply = Answer.safeParse(await completeJson(cfg, [
     { role: 'system', content: ASK_PROMPT },
-    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\nTranscript:\n${fenced(said)}${roomsText(rooms, roomTexts)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
+    { role: 'user', content: `${about(b)}\n\nSummary: ${b.summary || '(none)'}\n\n${notes}Transcript:\n${fenced(said)}${roomsText(rooms, roomTexts)}\n\nAsked by: ${called(asker)}\nQuestion: ${question}` }
   ], { what: 'ask', maxTokens: 1200, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask', issues: issues(reply.error) } });
   const at = moment(b);
@@ -411,14 +427,35 @@ const mark = (s: number | undefined) => (s === undefined ? '' : `[${mmss(s)}] `)
 /** How a decision stands, as a question across notes reads it. */
 const STANDING: Record<Decision['state'], string> = { proposed: 'not confirmed', confirmed: 'confirmed', superseded: 'no longer holds', rejected: 'not decided' };
 
+/**
+ * A note's decisions and follow-ups as a model reads them. A decision someone said wasn't made isn't one, one nobody has
+ * confirmed is only what the notes heard, and one a later one replaced no longer holds. Each on one line, whatever people
+ * typed: nothing in them can pass for another line of the notes or a transcript.
+ */
+const decidedLines = (decisions: Decision[]) => decisions.filter((d) => d.state !== 'rejected').map((d) => `- ${mark(d.at)}${oneLine(d.text)} (${STANDING[d.state]})`);
+const followUpLines = (actions: ActionItem[]) =>
+  actions.map((a) => `- ${mark(a.at)}${oneLine(a.text)} (${[a.owner ? oneLine(a.owner.name) : 'nobody named', ...(a.due ? [`due ${oneLine(a.due)}`] : []), ...(a.done ? ['done'] : [])].join(', ')})`);
+
+/** What written notes say, past their summary, as a question reads them once the transcript is gone. */
+function writtenText(w: NonNullable<Brief['written']>): string {
+  const section = (title: string, lines: string[]) => (lines.length ? [`${title}:`, ...lines] : []);
+  return [
+    ...section('Decisions', decidedLines(w.decisions)),
+    ...section('Open questions', w.questions.filter((q) => q.state === 'open').map((q) => `- ${mark(q.at)}${oneLine(q.text)}`)),
+    ...section('Follow-ups', followUpLines(w.actions)),
+    ...section('Parts of the meeting', w.chapters.map((c) => `- ${mark(c.at)}${oneLine(c.title)}: ${oneLine(c.summary)}`))
+  ].join('\n') || '(none)';
+}
+
+/** What each breakout room's notes sum up, as a question across notes reads them: a room's decisions and follow-ups are among the note's. */
+const roomSummaries = (b: Brief) => (b.rooms ?? []).filter((r) => r.summary).map((r) => `Breakout room “${oneLine(r.name)}”: ${oneLine(r.summary)}`);
+
 /** A note as a question across notes reads it, before its transcript: the meeting, its date, summary, decisions and follow-ups. */
 function headOf(n: NoteBrief): string {
-  // A decision someone said wasn't made isn't one, one nobody has confirmed is only what the notes heard, and one a later one replaced no longer holds.
-  // Each on one line, whatever people typed: nothing in them can pass for another line of the notes or a transcript.
-  const decided = n.decisions.filter((d) => d.state !== 'rejected').map((d) => `- ${mark(d.at)}${oneLine(d.text)} (${STANDING[d.state]})`);
-  const todo = n.actions.map((a) => `- ${mark(a.at)}${oneLine(a.text)} (${[a.owner ? oneLine(a.owner.name) : 'nobody named', ...(a.due ? [`due ${oneLine(a.due)}`] : []), ...(a.done ? ['done'] : [])].join(', ')})`);
+  const decided = decidedLines(n.decisions);
+  const todo = followUpLines(n.actions);
   return [
-    about(n.brief), `Date: ${day(n.startedAt)}`, `Summary: ${oneLine(n.brief.summary ?? '') || '(none)'}`,
+    about(n.brief), `Date: ${day(n.startedAt)}`, `Summary: ${oneLine(n.brief.summary ?? '') || '(none)'}`, ...roomSummaries(n.brief),
     decided.length ? `Decisions:\n${decided.join('\n')}` : 'Decisions: none',
     todo.length ? `Follow-ups:\n${todo.join('\n')}` : 'Follow-ups: none'
   ].join('\n');
@@ -473,7 +510,7 @@ export async function answerFromNotes(cfg: Config, notes: NoteBrief[], asker: Pe
   const shared = (text: string) => new Set(wordsOf(text).filter((w) => terms.has(w)));
   const found = notes.map((n) => ({
     n,
-    words: shared([n.brief.title, n.brief.summary ?? '', ...n.decisions.map((d) => d.text), ...n.actions.map((a) => `${a.text} ${a.owner?.name ?? ''} ${a.due ?? ''}`), ...n.brief.lines.map(heard)].join('\n'))
+    words: shared([n.brief.title, n.brief.summary ?? '', ...roomSummaries(n.brief), ...n.decisions.map((d) => d.text), ...n.actions.map((a) => `${a.text} ${a.owner?.name ?? ''} ${a.due ?? ''}`), ...n.brief.lines.map(heard)].join('\n'))
   }));
   // A word in every note says little about which one a question is about; a word in one note says a lot.
   const weight = new Map([...terms].map((t) => [t, Math.log(1 + notes.length / Math.max(1, found.filter((f) => f.words.has(t)).length))]));
@@ -514,7 +551,7 @@ export async function answerFromNotes(cfg: Config, notes: NoteBrief[], asker: Pe
   const shown = [...chosen].sort((a, b) => b.n.startedAt.localeCompare(a.n.startedAt));
   const user = [
     `Today: ${day(new Date().toISOString())}`, '',
-    shown.map((c, i) => `[Note ${i + 1}]\n${c.head}\nTranscript:\n${fenced(excerpt(c.n.brief.lines, c.taken))}`).join('\n\n'), '',
+    shown.map((c, i) => `[Note ${i + 1}]\n${c.head}\nTranscript:\n${c.n.brief.deleted ? '(deleted once the notes were written)' : fenced(excerpt(c.n.brief.lines, c.taken))}`).join('\n\n'), '',
     `Asked by: ${called(asker)}`, `Question: ${question}`
   ].join('\n');
   const reply = AcrossReply.safeParse(await completeJson(cfg, [

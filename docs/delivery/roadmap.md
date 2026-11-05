@@ -4,7 +4,7 @@
 
 ## Done
 
-- Monorepo, design system, web app: sign-in, Home with the day's calls, the one-line call composer, pre-join,
+- Monorepo, design system, web app: sign-in, Home with the day's calls, starting and scheduling calls, pre-join,
   the full-screen call, notes, the room recorder and account.
 - API with encrypted vault, account keys wrapped under `KMASTER` and opened per request, sessions in Postgres,
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
@@ -22,8 +22,8 @@
   against a fresh nonce; speech and transcripts go by Oblivious HTTP sealed to the models' attested keys, at
   their own endpoints; notes wait through a verification outage; each note shows which verified models wrote
   it and what was checked ([Verified private inference](../engineering/notes-and-inference.md#verified-private-inference)).
-- Memory across a series: the occurrences of a recurring Google event held in Alcove, and calls scheduled as
-  the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
+- Memory across a series: calls scheduled to repeat, the occurrences of a recurring Google event held in Alcove,
+  and calls scheduled as the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
   series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
   calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
 - What a call captures, for everyone: recording, transcript, AI notes and shared screens, each on, paused or

@@ -1,10 +1,11 @@
-import type { CallCard, CallSession, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
+import type { CallCard, CallSession, LiveStore, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
 import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
+import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
-  AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
-  Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
+  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
+  PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
 /** A partial update: any field may be missing or explicitly undefined. */
@@ -45,16 +46,27 @@ export interface AlcoveApi {
     inviteToTeam(emails: string[]): Promise<Team>;
   };
   meetings: {
+    /** Your calls still to come, and the calls you're invited to, soonest first. */
     upcoming(): Promise<Meeting[]>;
     past(): Promise<Meeting[]>;
+    /** One of your calls, or one you're invited to that hasn't ended. */
     get(id: ID): Promise<Meeting>;
     byCode(code: string): Promise<Meeting | null>;
-    /** Schedules a call. With Google Calendar connected it goes on the calendar, which sends everyone invited an invitation. */
+    /**
+     * Schedules a call, or with `repeat` a series of them, with one link. With Google Calendar connected it goes on the
+     * calendar, which sends everyone invited one invitation. With `offer` it goes on no calendar until a time is picked.
+     */
     create(input: MeetingInput): Promise<Meeting>;
-    /** Changes a call; a connected calendar sends everyone the update. */
-    update(id: ID, input: Patch<MeetingInput>): Promise<Meeting>;
-    /** Cancels a call; a connected calendar tells everyone. */
-    cancel(id: ID): Promise<void>;
+    /**
+     * Changes a call; a connected calendar sends everyone the update. In a series, `scope: 'following'` changes this
+     * call and every later one too, and moving them says how with `repeat`, whose occurrences start at this call.
+     * `repeat` on a call that doesn't repeat makes it a series.
+     */
+    update(id: ID, input: Patch<MeetingInput>, opts?: { scope?: ChangeScope | undefined }): Promise<Meeting>;
+    /** Cancels a call; a connected calendar tells everyone. In a series, `scope: 'following'` cancels this call and every later one. */
+    cancel(id: ID, opts?: { scope?: ChangeScope | undefined }): Promise<void>;
+    /** Says whether you're coming to a call you're invited to. Your organizer sees the answer; Google Calendar doesn't hear about it. */
+    answer(id: ID, answer: Rsvp): Promise<Meeting>;
     /**
      * Schedules the next call in a call's series, starting the series if it isn't in one: the same
      * title, people, length and notes setting, at `startsAt`, which must be still to come and after the
@@ -67,6 +79,8 @@ export interface AlcoveApi {
   calendar: {
     /** The coming week's other calendar events, beside Alcove's own calls. */
     get(): Promise<Calendar>;
+    /** When you and these people are busy between two times, from what's readable: see `Busy`. */
+    busy(emails: string[], range: { from: ISODate; to: ISODate }): Promise<Busy>;
     /** Where the browser goes to give Alcove access to the Google Calendar of the account it's signed in with. */
     connectUrl(): string;
     /** Forgets the Google connection: Alcove's stored access is deleted and scheduling no longer touches Google. Connect again from `connectUrl()`. */
@@ -79,6 +93,11 @@ export interface AlcoveApi {
     startNow(input?: InstantCallInput): Promise<{ code: string }>;
     /** What a call's link says before joining, for anyone, signed in or not: its title and organizer, whether notes are on, and where you stand. */
     card(code: string): Promise<CallCard>;
+    /**
+     * Settles a call that offers times on one of them, for anyone with its link, signed in or not. It goes on the organizer's
+     * calendar then. Picking again once it's settled is refused.
+     */
+    pick(code: string, at: ISODate): Promise<CallCard>;
     /**
      * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else asks to
      * join: signed in, under their account, otherwise with `name` (1–60 characters). Refused until the organizer is
@@ -93,6 +112,23 @@ export interface AlcoveApi {
     openMove(code: string): Promise<CallMoveIn>;
     /** Picks up a move this tab opened before it went to sign in, by the claim it kept (in this tab's sessionStorage). */
     resumeMove(claim: string): Promise<CallMoveIn>;
+  };
+  rings: {
+    /**
+     * Who's ringing you now, pushed as it changes for as long as it's open. It reconnects by itself; `close` ends it.
+     * A browser opens one and the whole app reads it.
+     */
+    live(): LiveStore<IncomingRing[]> & { close(): void };
+    /**
+     * Answers a ring, which leaves `live()` at once: `join` takes it off your screen on the way to the call; the others
+     * tell the organizer, and `in-5` and `in-15` ring you again then. `not-found` once the ring is gone: it was stopped,
+     * or the call ended.
+     */
+    answer(id: ID, reply: RingReply): Promise<void>;
+  };
+  documents: {
+    /** The documents you can bring to a call. */
+    list(): Promise<DocumentLibrary>;
   };
   recordings: {
     /**
@@ -128,7 +164,7 @@ export interface AlcoveApi {
      * decisions, open questions and follow-ups someone has already confirmed or changed stay as they are.
      */
     rewrite(noteId: ID): Promise<Note>;
-    /** Answers a question about one written note from its transcript, citing moments in it and the shared screens it read. */
+    /** Answers a question about one written note from its transcript, or from the notes once that's deleted, citing moments in it and the shared screens it read. */
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
     /**
      * Answers a question from every note you have, your own and ones shared with you, citing the notes

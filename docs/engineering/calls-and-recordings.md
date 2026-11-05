@@ -79,15 +79,32 @@ production), end-to-end encrypted: LiveKit forwards frames it can't read ([below
 The call itself stays in the API: who's let in, notes and the transcript.
 
 - **Joining.** `GET /v1/calls/:code/card` (no account needed; 600 a minute per client address, since every
-  pre-join keeps reading it) gives the title, organizer's name, whether the organizer is there, whether the call
-  is locked, whether it was scheduled with notes, once it has started what it captures (`capture`, without
-  anyone's name), whether it has ended (and nobody started it again), where the person asking stands (`you`:
-  invited, asking with an account the notes may go to, or a guest) and which ways of signing in get the notes
-  (`signInForNotes`). `POST /v1/calls/:code/join` (120 a minute per address) takes `{mic, cam}`, this
+  pre-join keeps reading it) gives the title, organizer's name, when it starts, whether the organizer is there,
+  whether the call is locked, whether it was scheduled with notes and what they keep, whether everyone joins muted,
+  once it has started what it captures (`capture`, without anyone's name), whether it has ended (and nobody started
+  it again), where the person asking stands (`you`: invited, asking with an account the notes may go to, or a guest),
+  which ways of signing in get the notes (`signInForNotes`), and while the call offers times, those still to come and
+  how long it is (`offer`). A series that repeats has a link of its own too: every code here can be that one, and it
+  leads to the call that's on now, else the next one, else the latest, with a call that just ended keeping it for
+  an hour past its time, for anyone, by that call's own guests
+  ([Notes and inference › Series](notes-and-inference.md#series)). The call a link leads to is the one a call session
+  then belongs to: its `code` is the call's own.
+  `POST /v1/calls/:code/join` (120 a minute per address) takes `{mic, cam}`, this
   connection's random `identity` and MLS `keyPackage` (made in the browser), a `name` (1–60 characters) without
   an account, and `previous`, this tab's last pass for the call, if it has one. Someone signed in joins under
   their account's name; a typed name is only for guests. It returns a ticket: the LiveKit URL and room, the
   identity, the role and a **call pass**. No LiveKit token: that comes only once you're let in.
+- **One event.** A call has at most one calendar event, however a pick and a change cross. Whoever puts it on the
+  calendar claims it first, under its lock (`placing`, for a minute at most, so a process that dies lets go of it), and
+  asks Google holding nothing. Anything else that would place it finds the claim and leaves it, what changed meanwhile
+  goes to the event once it's there, and a call cancelled meanwhile takes the event with it.
+- **Picking a time.** A call can offer two or three times instead of settling on one. It goes on no calendar, and
+  nobody joins it (`409 conflict`), the organizer included, until someone with the link picks one:
+  `POST /v1/calls/:code/pick` (30 a minute per address, no account needed) takes `{at}`, one of the times still
+  to come (`400 invalid` otherwise). It sets the call's times, lets the others go and puts it on the organizer's
+  calendar, which sends the invitations. It runs under the call's lock, so of two people picking at once the first
+  wins, and every later pick is `409 conflict`. Meanwhile `update` can't move it (`409`), and it can be cancelled
+  like any other call.
 - **Who gets in.** The organizer by their account; it starts the call and makes the room (`r_<random>`;
   LiveKit never creates rooms itself). Invited people (signed in with an invited address) are let in by the
   host's browser without anyone asking, and so is someone let in before who comes back with their old
@@ -105,7 +122,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
   who asked counts (the organizer saw who it was), and an address comes with an ask only when the notes may go to
   that account: a real one (Google), or any when the organizer's own account is a demo one, since demo sign-ins
   check nobody and Microsoft's is one account everyone trying Alcove shares. Invites keep their usual rules, up
-  to 100 people; past that, someone let in is a guest without the notes. From then on they're invited: the call
+  to 300 people; past that, someone let in is a guest without the notes. From then on they're invited: the call
   shows them their role as `invited` (`CallState.role`, which can be more than their pass says), they see people
   as invited people do, a reload or another device comes in without asking, and the organizer can send them to a
   breakout room. An earlier pass brings someone back only as the same account (or still none). The meeting keeps
@@ -481,13 +498,16 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   browsers. Shared screens are captured only as the frames a presenter's own browser sends while screen notes
   are on. The earlier pictures of a share a viewer can step back through stay in that viewer's browser's memory and
   go when the share stops; none are kept while notes are paused ([Looking closer at a share](#looking-closer-at-a-share)).
-  Nothing stops someone recording their own screen or speakers. Retention has one fixed behaviour,
-  with no settings: the live transcript and caption translations last only until the call ends; the audio,
-  transcript, shared-screen frames, what was read on them and the notes (every revision of them, corrections
-  included) stay in the organizer's vault until the organizer deletes the note, and deleting is physical
+  Nothing stops someone recording their own screen or speakers. The live transcript and caption translations
+  last only until the call ends; the audio, transcript, shared-screen frames, what was read on them and the
+  notes (every revision of them, corrections included) stay in the organizer's vault until the organizer deletes
+  the note, and deleting is physical. Whoever schedules a call can have it keep less
+  (`MeetingInput.choices`, which everyone sees on the call's card): without the recording, the audio still uploads,
+  since it places what's said, and it's deleted when the call ends; without the transcript, it's used to write the
+  notes and deleted when they're written, every breakout room's included
   ([Notes and inference › What's kept, and for how long](notes-and-inference.md#whats-kept-and-for-how-long),
-  [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). Paused stretches capture nothing, so there's
-  nothing of them to keep.
+  [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). Capture says recording either way, which is true
+  while the call runs. Paused stretches capture nothing, so there's nothing of them to keep.
 
 ## Shared screens
 
@@ -498,7 +518,9 @@ presenter's own browser sends frames of its own share to the API, which holds ea
 call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`).
 
 - **Turning it on.** Only the organizer (`POST /v1/live/calls/:id/actions` with `{type: "screens", on}`), and
-  only while notes are on or paused (`409 conflict` otherwise: "Turn on notes first"). Pausing holds it with
+  only while notes are on or paused (`409 conflict` otherwise: "Turn on notes first"), or the call's schedule: a
+  call set to read shared screens (`choices.readScreens`) has them read from the moment its notes first start,
+  as scheduled, or when the organizer turns them on if it was scheduled without. Pausing holds it with
   everything else and resuming brings it back; turning notes off turns it off too, and turning them on again
   doesn't bring it back: that's the organizer's choice each time. Every change is a notice for everyone, and
   the card, the join page and someone waiting see `capture.screen` like the other parts, without a name. Its
@@ -786,6 +808,78 @@ sealed under the organizer's keys as a `call-move` record bound to the call and 
 whether the microphone and camera are on, and the new device's identity, key package and kind ("iPhone · Safari",
 never logged). Upkeep deletes those that ran out, and a call's go when it ends.
 
+## Ringing
+
+The organizer rings people into a live call, and each sees a card on whatever Alcove page they have open:
+`modules/rings.ts`, `packages/api-http/src/rings.ts` and, in the app, `features/calls/Ring*`. It's for reaching someone
+now, so it only works once the call is on: "Join and ring" is joining first, then `session.ring(emails)`.
+
+1. **Who can be rung.** Teammates (the people `GET /v1/team` lists) and people invited who said yes to this call (their
+   answer in `meeting_access`), by the organizer only, up to 20 at once and 20 times a minute. Being invited isn't
+   enough: anyone can put any address on an invite, and a ring is the call's title on someone's screen. Everyone else
+   gets one refusal that names nobody, whether or not they have an account or answered, so ringing can't be used to
+   find out whether an address is on Alcove, online, or what it said. Someone
+   already in the call isn't rung, nobody is rung into a locked call (`409`), and an invite that's full refuses the
+   ring rather than leave someone rung who'd have to ask.
+2. **The ring.** Everyone rung goes on the invite and the note's invited people (`modules/invites.ts`), so they get
+   the notes and come in without asking, whether or not they pick up. It's the same as for someone let in from the
+   link: removing them from the call takes them off it, and the calendar event isn't changed. Each person has one
+   ring per call in `call_rings`: ringing them again starts it over, with the same ID, whatever they said to it.
+3. **Delivery.** `GET /v1/rings`, signed in, is a stream of newline-delimited JSON (`RingsSnapshotSchema`): everything
+   ringing this person now, in full, on connecting and each time that changes. Each browser tab holds one, read by
+   `api.rings.live()`, a `LiveStore`. One ticker per API process runs while anyone is listening, once a second, with
+   one indexed query for everyone listening; only a stream whose rings changed reads any further, opening the
+   organizer's keys to read the title and who's ringing from the call, and dropping them after. So a ring reaches its
+   person within about a second, and a ring running out, or coming back, needs no request from anyone. Postgres is
+   the only truth: an instance knows nothing another doesn't, so a ring taken by one is delivered by whichever holds
+   the stream.
+4. **Answering.** `POST /v1/rings/:id/answer`, found by the hash of the caller's own address, so for anyone else the
+   ring doesn't exist (`404`). `join` and `no` end the ring at once. `in-5` and `in-15` put it off: it rings again
+   then, for another 45 seconds, if the call is still on. Each tells the room, so the organizer's arch changes at once.
+   An answer leaves every tab: this one straight away, others within a second. An answer that arrives after a ring ran
+   out still counts, and the last answer stands.
+5. **What the organizer sees.** `CallState.ringing`, for the organizer alone: each person rung who isn't in the call,
+   as `ringing`, `coming` (said Join), `later` (with when they'll be rung again), `declined` or `missed`. That's worked
+   out from the row each time the call is read, so a ring running out shows on the call's next read, within a few
+   seconds. **Missed never means offline:** someone with no Alcove tab open, someone who ignored it and an address with
+   no account at all look the same, and nothing else says which it was. Stop (`stopRing`) deletes the ring, card and
+   arch; they stay on the invite.
+6. **How it ends.** A ring goes when its person is let into the call, in the commit that lets them in, so an arch
+   becomes a tile with no gap; when the organizer stops it; and with the call, in the transaction that ends it. One
+   left in a call that runs for a day goes a day after it ran out. An account going takes the rings to its address
+   with it.
+
+**A demo account's rings stay among demo accounts.** Single sign-on checks nobody, so a ring never reaches a real
+account from a demo one, whose name and address could be anyone's, nor a demo account from a real organizer, as with
+notes. It's filtered at delivery and on answering, never when ringing: the organizer sees only that nobody answered.
+
+**How many.** Streams are counted as they stand, not as they open, since each holds a request for minutes: an account
+holds at most 8 at once and a process 300, which leaves the rest of its 500 requests for calls. Past either limit,
+someone with a stream gives up their oldest, likeliest a tab that went without the server hearing, so a tab coming back
+always gets in, and a tab still there opens another. Someone with none, on a full process, gets `503 unavailable`, and
+their browser tries again, more slowly each time.
+
+**The stream.** It ends after about 4 minutes (`RING_STREAM_SECONDS`: 210 to 240 seconds, so streams that opened
+together don't end together), under Cloud Run's 300-second limit, and the browser opens another within a second, or
+backs off to at most 30 seconds while the API can't be reached. Each line says everything, so reconnecting shows the
+right thing with nothing to replay. The server repeats itself every 20 seconds, so a browser that hears nothing for 50
+gives up and opens another: a laptop waking up can hold a connection that's dead without knowing it. A stream keeps
+the person's owner ID, the hash of their address, whether it's a demo account and the session's hash: never their
+keys, which go when the request does. It holds no database connection while idle, and it's released when the browser
+goes. It lasts no longer than its session: before sending anything new it checks the session is still there, so
+someone who signed out, or deleted their account, gets nothing more. A process shutting down ends its streams, so they
+don't hold up the shutdown, and each browser goes to another instance.
+
+Rings past their time also drop by a timer in the browser, so a card doesn't outstay a dropped stream. That timer trusts
+the server over the browser's own clock: a ring the server just sent is ringing, so a clock that's wrong can't hide it.
+
+**What it can't do.** Reach someone with no Alcove tab open. Browser notifications and Web Push are for later (#88).
+
+Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash of the address (blind index purpose
+`ring`). The address and the answer are sealed as a `call-ring` record bound to the meeting and the ring;
+`deliver_at` and `expires_at` are clear, so the ticker can read them. What that shows is in
+[Privacy, keys and sessions › What is still visible](privacy-keys-and-sessions.md#what-is-still-visible).
+
 ## Hands, spotlight, breakout rooms and captions
 
 - **Raised hands** are call state, one per person (`{type: "hand", up}`): anyone in the call raises or lowers
@@ -843,7 +937,8 @@ never logged). Upkeep deletes those that ran out, and a call's go when it ends.
   captions, catch-up, questions and caption translations show someone the lines said in the part of the call
   they're in now, and of those said while rooms were open, only the ones said while they were there. A room's
   lines stay sealed in the live transcript once it closes, read live by nobody (no part of the call is that room
-  any more), until the call ends and they go into the note as the room's section, for everyone the notes go to.
+  any more), until the call ends and they go into the note as the room's section, for everyone the notes go to
+  (or, in a call set not to keep its transcript, for the organizer alone, until that room's notes are written).
   The organizer's notes recording hears silence while it's in a room and isn't recorded in any room, so the
   note's audio has none of a room's talk: a room's section has its words, never its sound. Each room has its own
   capture state, which the organizer can pause ([What's captured](#whats-captured)).
@@ -861,13 +956,15 @@ never logged). Upkeep deletes those that ran out, and a call's go when it ends.
 ## The join page
 
 `apps/web/src/routes/join.$code.tsx` (with `apps/web/src/features/join/`) is the pre-join for everyone with the
-link: the organizer by their account, and anyone else from the call's card.
+link: the organizer's lobby (`features/calls/Lobby.tsx`) by their account, and anyone else from the call's card.
 
 - **What it says before anyone joins.** The title and organizer, and what the call captures (`CaptureSummary`, the
   same for everyone), with who gets the notes said for the person looking (`PrejoinCapture`, one component for
   every pre-join, the organizer's included): the organizer and who's invited; "You're invited, so you get them";
   for someone whom letting in adds to the invite, that once they're let in they're added and get them; for a
-  guest, that the people invited get them. Nobody's name but the organizer's. The card is read again every 3 to 5
+  guest, that the people invited get them. Nobody's name but the organizer's. It says what won't be kept (from
+  `card.choices`) and when everyone joins muted (`card.joinMuted`), which starts the camera off and the microphone
+  muted. The card is read again every 3 to 5
   seconds while the organizer isn't there (a little apart, so many people waiting don't read it in step), every
   10 to 17 after (capture changing, a lock), and every 30 to 50 once it has ended, so the page follows the call. A
   read that's refused (too many from one address) or fails keeps the last answer and waits 20 to 33 seconds; only a
@@ -884,7 +981,23 @@ link: the organizer by their account, and anyone else from the call's card.
   a guest, with a way to sign in another way. Asking can be taken back (**Stop asking**).
 - **Camera and microphone.** They start as soon as there's a call to join, while the rest of the page loads
   (`LocalMedia`, [Media in the browser](#media-in-the-browser)), and stop when the page turns into one with
-  nothing to join (it ended, or the link leads nowhere). Joining works with either or both off.
+  nothing to join (it ended, or the link leads nowhere). Joining works with either or both off. A link that offers
+  times isn't a call to join yet, so they don't start, and a page that showed times stays that way when the offer
+  goes: opening the link again goes to the pre-join.
+- **The organizer's lobby.** Until the call has started, its name (Enter or leaving the field saves, Escape puts it
+  back) and notes change here through `meetings.update`; a save that fails says so and the old value comes back.
+  Live, it's read-only and shows what's captured instead. On a team, a call started just now offers arches of
+  teammates on Alcove (`LobbyRing.tsx`: free first, busy dimmed where a calendar can be read, Add for the rest), and
+  whoever it was started with comes picked. Picks stay in the page, never in an address or storage, and go to
+  `CallSession.ring` once joined; a ring that fails leaves the organizer in the call and says so once. On your own,
+  or with nobody on Alcove to ring, the link comes first. Backing out of a call started just now cancels it, once and
+  best effort, by leaving the page any way but joining; a reload doesn't, and neither does leaving once this tab has
+  copied the link (kept in `sessionStorage` for the tab, by code): someone may be on their way, so the call stays until
+  starting a new one sweeps it, a day on.
+- **Picking a time.** While a link offers times (`card.offer`) it shows `PickTime`, public and in the guest's own
+  time zone, which it names. The first `calls.pick` settles it; anyone after that gets `conflict`, and the card, read
+  again, says when the call is (`card.startsAt`), with its link. Add to my calendar is an `.ics` made in the browser
+  (`PickTimeCalendar.ts`), so nothing else sees the title. The organizer on their own link sees who it's waiting for.
 - **When it can't go on.** A code that leads nowhere, a call that's over, or a card that can't be read each get
   their own page; a refused join (locked, ended, the organizer not there) shows under the button. Every failed
   request's reference (its request ID, `RequestRef`) is shown, finds its lines in the server's log, and says
@@ -922,12 +1035,11 @@ device pickers.
   publishes `LocalMedia`'s mic, camera and screen (with its sound), and plays only encrypted media from
   members of the browser's MLS group; screens are under the same per-sender encryption as everything else. LiveKit's own logs go to the app's logger at debug; a decryption error
   is logged at debug when a key is briefly missing around a key change, and as a warning otherwise.
-- **Asking to join.** The organizer gets a toast, a count on the People button, and an Asking to join section in
-  People to let people in or turn them away: someone signed in with their address and "Gets the notes once let
-  in", a guest as "Guest, by name only" and "Doesn't get the notes". A guest's toast has Let in; letting in
-  someone with an address gives them the notes, so their toast has Review, which opens People. The toast goes as
-  soon as the ask is answered, wherever that happens (let in or turned away in People, or on another device), when
-  the asker takes it back or leaves, and when the organizer leaves the call. A Let in pressed too late lets nobody
+- **Asking to join.** The organizer gets a card at the top of the stage, which stays until it's answered, a count
+  on the People button, and an Asking to join section in People to let people in or turn them away: someone signed in
+  with their address and "Gets the notes once let in", a guest as "Guest, by name only". Two cards show at a time,
+  with how many more are asking, and none while People is open. A card goes as soon as the ask is answered, wherever
+  that happens (here, in People, or on another device), and when the asker takes it back or leaves. A Let in pressed too late lets nobody
   in: it checks the call first and says the person is already in, or isn't asking any more (the organizer's
   browser adds only people still asking anyway, so a late admit changes nothing). Their call
   re-reads the meeting when someone with an account is in it and not on the invite yet, and after they remove

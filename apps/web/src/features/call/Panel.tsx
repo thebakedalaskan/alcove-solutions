@@ -4,10 +4,11 @@
  * and answers come from what was really said while notes were on; nothing here is invented. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallState, type CatchUpItem, type Person, type TranscriptMoment } from '@alcove/api';
+import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallState, type CatchUpItem, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { rungWords } from '~/features/calls/RingWords';
 import { captureHere } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
@@ -357,12 +358,19 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, invites = false, notesAsks, host, foot, volumes }: {
+export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, host, foot, volumes }: {
   here: PanelPerson[]; invited: Person[];
   /** People asking to join: only whoever hosts sees them. */
   asking: CallAsker[];
   /** Letting someone signed in in adds them to the invite: only when the organizer does it. */
   invites?: boolean;
+  /** People the organizer rang who aren't here, and how each answered: only the organizer sees them. */
+  ringing: Rung[];
+  /** Whether someone invited can be rung, and ringing them: the organizer's, while the call is on. */
+  canRing?: ((p: Person) => boolean) | undefined;
+  onRing?: ((p: Person) => void) | undefined;
+  /** The organizer stops ringing someone, here or when a ring comes due later. */
+  onStopRing?: ((id: string) => void) | undefined;
   /** People asking for notes, for the organizer to answer; shown under those asking to join. */
   notesAsks?: ReactNode;
   /** The organizer's controls; absent for everyone else. */
@@ -372,7 +380,8 @@ export function PeopleView({ here, invited, asking, invites = false, notesAsks, 
   /** How loud someone is for you: your own playback only. */
   volumes?: VolumeActions | undefined;
 }) {
-  const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)));
+  const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)) && !ringing.some((r) => sameEmail(r.person, g)));
+  const now = Date.now();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const decide = (id: string, f: (id: string) => Promise<void>) => {
@@ -413,6 +422,24 @@ export function PeopleView({ here, invited, asking, invites = false, notesAsks, 
             </div>
           </div>
         ))}
+        {ringing.length > 0 && (
+          <>
+            <div className="ac-eyebrow ic-cap-h mt">Ringing · {ringing.length}</div>
+            {ringing.map((r) => {
+              const said = rungWords(r, now);
+              return (
+                <div key={r.id} className="ic-prow">
+                  <Avatar person={r.person} size={36} />
+                  <div className="min-w-0"><b>{r.person.name}</b><small>{said.line}</small></div>
+                  <div className="st">
+                    {said.again && onRing && <IconButton icon="phoneCall" size={16} label={`Ring ${callName(r.person)} again`} className="ic-pmore" onClick={() => onRing(r.person)} />}
+                    {(r.state === 'ringing' || r.state === 'later') && onStopRing && <IconButton icon="x" size={16} label={`Stop ringing ${callName(r.person)}`} className="ic-pmore" onClick={() => onStopRing(r.id)} />}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
         {away.length > 0 && (
           <>
             <div className="ac-eyebrow ic-cap-h mt">Invited, not here · {away.length}</div>
@@ -420,7 +447,7 @@ export function PeopleView({ here, invited, asking, invites = false, notesAsks, 
               <div key={g.email} className="ic-prow is-away">
                 <Avatar person={g} size={36} />
                 <div className="min-w-0"><b>{g.name}</b><small>Gets the notes</small></div>
-                <div className="st" />
+                <div className="st">{onRing && canRing?.(g) && <IconButton icon="phoneCall" size={16} label={`Ring ${callName(g)}`} className="ic-pmore" onClick={() => onRing(g)} />}</div>
               </div>
             ))}
           </>

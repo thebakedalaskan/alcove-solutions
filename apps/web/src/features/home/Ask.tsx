@@ -6,8 +6,7 @@ import { firstName, type NoteSummary, type Person } from '@alcove/api';
 import { Card, Icon, Scope } from '@alcove/ui';
 import { useState } from 'react';
 import { useOpenPalette } from '~/features/shell/context';
-import { isEmail } from '~/lib/parse';
-import { sameEmail } from '~/lib/people';
+import { isEmail, sameEmail } from '~/lib/people';
 
 const MONTH = 30 * 86_400_000;
 

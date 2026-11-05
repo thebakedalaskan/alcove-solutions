@@ -40,10 +40,10 @@ export type OfflineStretch = z.infer<typeof OfflineStretch>;
 
 /**
  * Shared screens read for the notes, or stopped, `at` seconds into the call (to a tenth), while the recording was in
- * `segment`: the organizer's choice. Turning notes off stops it too, at the same moment, and so does the notes having
- * kept as many frames as they can.
+ * `segment`: the organizer's choice, or (`by`) the call's schedule, with notes starting. Turning notes off stops it too,
+ * at the same moment, and so does the notes having kept as many frames as they can.
  */
-export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int() });
+export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int(), by: CaptureChange.shape.by.default('organizer') });
 export type ScreenChange = z.infer<typeof ScreenChange>;
 
 /** The paths that capture something, or send what was captured to the AI. */
@@ -294,7 +294,7 @@ export function roomStateFor(c: {
 function screenPart(c: { status: CaptureStatus; history: CaptureChange[]; screens: { on: boolean; history: ScreenChange[] } }, when: (at: number) => string, actor: (by: CaptureChange['by']) => CaptureActor): CapturePart {
   const events = [
     ...c.history.map((h) => ({ at: h.at, by: h.by, status: h.status, on: undefined })),
-    ...c.screens.history.map((s) => ({ at: s.at, by: 'organizer' as const, status: undefined, on: s.on }))
+    ...c.screens.history.map((s) => ({ at: s.at, by: s.by, status: undefined, on: s.on }))
   ].sort((a, b) => a.at - b.at);
   let status: CaptureStatus = 'off';
   let on = false;
@@ -308,6 +308,6 @@ function screenPart(c: { status: CaptureStatus; history: CaptureChange[]; screen
   }
   // A choice the organizer made that changed nothing yet still says who made it (screens off while notes were off).
   const latest = c.screens.history.at(-1);
-  if (!last && latest) return { mode: 'off', since: when(latest.at), by: actor('organizer') };
+  if (!last && latest) return { mode: 'off', since: when(latest.at), by: actor(latest.by) };
   return { mode: c.screens.on ? c.status : 'off', since: last ? when(last.at) : null, by: last ? actor(last.by) : null };
 }

@@ -51,8 +51,8 @@ export async function search(o: Owner, query: string): Promise<PersonSuggestion[
   return out.map((p) => ({ person: personOf(p.email, p.name), source: p.source, onAlcove: p.listed || users.has(p.email) }));
 }
 
-/** Email domains of people who have no company: nothing ties their contacts together. */
-const PERSONAL = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'yahoo.com', 'aol.com', 'proton.me', 'protonmail.com']);
+/** Email domains of people who have no company: nothing ties their contacts together. `personal.example` is for trying Alcove on your own with a demo account. */
+const PERSONAL = new Set(['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'yahoo.com', 'aol.com', 'proton.me', 'protonmail.com', 'personal.example']);
 const domainOf = (email: string) => email.slice(email.lastIndexOf('@') + 1);
 const titled = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -69,6 +69,11 @@ async function candidates(o: Owner, mine: string): Promise<{ name: string; domai
   for (const m of await allMeetings(o)) for (const e of m.manifest.guests) add(e);
   for (const e of await metEmails(o)) add(e);
   return { name: titled(domain.split('.')[0] ?? domain), domain, people };
+}
+
+/** The addresses on your team: none at a personal address. Knowing them can take a calendar read of up to 4 seconds. */
+export async function teammates(o: Owner): Promise<Set<string>> {
+  return new Set(((await candidates(o, (await profile(o)).email))?.people ?? []).map((c) => c.email));
 }
 
 /** Your team; null at a personal address. */

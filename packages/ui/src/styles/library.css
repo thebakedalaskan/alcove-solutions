@@ -170,6 +170,10 @@
 .steps .ac-dots i { width: 3.5px; height: 3.5px; }
 .note-empty { margin-top: 8px; padding: 40px 24px 44px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
 .note-empty p { max-width: 34ch; }
+/* What a call didn't keep, in one quiet line where it would have been. */
+.note-kept { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
+.note-kept .ac-i { flex: none; margin-top: 2px; }
+.doc > .note-kept { margin-top: 32px; }
 .dec { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 13px 0; border-top: 1px solid var(--line); font-size: 16px; }
 .dec .n { padding-top: 5px; font: 500 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .act { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto 36px; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); font-size: 15.5px; }

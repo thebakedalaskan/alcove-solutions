@@ -6,7 +6,8 @@ import { z } from './zod';
 import { CaptureDevicePartSchema } from './capture';
 import { CallPlaceSchema } from './live';
 import { CatchUpRangeSchema } from './catchup';
-import { CaptionLanguageSchema } from './types';
+import { CaptionLanguageSchema, ISODateSchema, RsvpSchema, isTimeZone } from './types';
+import { RingReplySchema } from './rings';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
  * Vandelay, and single sign-on is whoever's work email is typed. Google is real: the browser goes
@@ -55,6 +56,13 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
+  /**
+   * The organizer rings teammates, or people invited who've said yes, into the call: a card on whatever page they have open, for 45 seconds.
+   * Everyone rung is added to the invite, so they get the notes and come in without asking. Ringing someone again starts over.
+   */
+  z.object({ type: z.literal('ring'), emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(20) }),
+  /** The organizer stops ringing someone: their card goes, and so does their arch. They stay on the invite. */
+  z.object({ type: z.literal('stop-ring'), ringId: z.string().min(1).max(64) }),
   /** Turns away someone asking to join. Letting someone in is the host's browser adding them to the call's MLS group. */
   z.object({ type: z.literal('deny'), identity: z.string().min(1).max(64) }),
   /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */
@@ -162,15 +170,6 @@ export const ShareEndedBodySchema = z.object({ share: ShareIdSchema });
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
 
-/** Whether dates can be read in `name`: a time zone the runtime knows, such as "Europe/London". Anything else throws a RangeError. */
-function isTimeZone(name: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-GB', { timeZone: name });
-    return true;
-  } catch {
-    return false;
-  }
-}
 /** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
 export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
 /**
@@ -195,6 +194,22 @@ export const QuestionPatchSchema = z.object({
   text: oneLine(300).optional()
 }).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
 export type QuestionPatch = z.infer<typeof QuestionPatchSchema>;
+
+/** Saying whether you're coming to a call you're invited to. */
+export const RsvpBodySchema = z.object({ answer: RsvpSchema });
+/**
+ * When people are busy, between two times. Addresses travel in the body so they never appear in URLs or access logs.
+ * `timeZone` is where the person asking is, which is where an all-day event without a zone of its own falls and where a
+ * demo account's made-up week keeps working hours: a name this server doesn't know reads as none, and none as UTC.
+ */
+export const BusyBodySchema = z.object({
+  emails: z.array(z.string().trim().toLowerCase().max(254)).max(300), from: ISODateSchema, to: ISODateSchema,
+  timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional().catch(undefined)
+});
+/** Picking one of the times a call offers: anyone with the link can, once. */
+export const PickTimeBodySchema = z.object({ at: ISODateSchema });
+/** Answering a ring. */
+export const RingAnswerBodySchema = z.object({ reply: RingReplySchema });
 
 /** Scheduling the next call in a series: when it starts (the app sends the same clock time a week on). */
 export const NextCallBodySchema = z.object({ startsAt: z.string().max(40) });

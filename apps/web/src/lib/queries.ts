@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type ChangeScope, type DecisionPatch, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
@@ -17,6 +17,9 @@ export const qk = {
   byCode: (code: string) => ['meetings', 'code', code] as const,
   card: (code: string) => ['calls', 'card', code] as const,
   calendar: ['meetings', 'calendar'] as const,
+  meeting: (id: string) => ['meetings', 'one', id] as const,
+  busy: (emails: readonly string[], from: ISODate, to: ISODate) => ['meetings', 'busy', from, to, ...emails] as const,
+  documents: ['documents'] as const,
   notes: ['notes'] as const,
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
@@ -88,7 +91,17 @@ export const q = {
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
-  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 })
+  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
+
+  /* Starting and scheduling calls. */
+  /** One call as it is now, for its card: the answers people have given change while it's open. */
+  meeting: (id: string) => queryOptions({ queryKey: qk.meeting(id), queryFn: () => api.meetings.get(id), retry: false }),
+  /** When you and these people are busy. Nothing is kept: it's read when it's asked for, and a failed read is said plainly, not retried. */
+  busy: (emails: readonly string[], range: { from: ISODate; to: ISODate }) => queryOptions({
+    queryKey: qk.busy(emails, range.from, range.to), queryFn: () => api.calendar.busy([...emails], range), staleTime: 60_000, retry: false
+  }),
+  /** What you can bring to a call. */
+  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false })
 };
 
 /* ---------- account ---------- */
@@ -218,9 +231,10 @@ export function useScheduleCall() {
 }
 /** A call changed or went: Home's calls, and any series it's the next call of, catch up. */
 const callsChanged = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.meetings }); void qc.invalidateQueries({ queryKey: qk.allSeries }); };
+/** Changes a call. In a series, `scope: 'following'` changes this call and every later one. */
 export function useUpdateCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput> }) => api.meetings.update(v.id, v.input), onSuccess: () => callsChanged(qc) });
+  return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput>; scope?: ChangeScope | undefined }) => api.meetings.update(v.id, v.input, { scope: v.scope }), onSuccess: () => callsChanged(qc) });
 }
 /** Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. */
 export function useAdoptEvent() {
@@ -234,9 +248,36 @@ export function useDisconnectCalendar() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
 }
+/**
+ * Cancels a call. In a series, `scope: 'following'` cancels this call and every later one. Its link leads nowhere now, so
+ * what's cached of the link goes with it: coming Back to it reads that first, and opens no lobby or camera on the way.
+ */
 export function useCancelCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.meetings.cancel(id), onSuccess: () => callsChanged(qc) });
+  return useMutation({
+    mutationFn: (v: { id: string; code: string; scope?: ChangeScope | undefined }) => api.meetings.cancel(v.id, { scope: v.scope }),
+    onSuccess: (_r, v) => {
+      qc.removeQueries({ queryKey: qk.byCode(v.code) });
+      qc.removeQueries({ queryKey: qk.card(v.code) });
+      callsChanged(qc);
+    }
+  });
+}
+/** Says whether you're coming to a call you're invited to. The card shows the answer at once, and goes back if it's refused. */
+export function useAnswerCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; answer: Rsvp }) => api.meetings.answer(v.id, v.answer),
+    onMutate: async (v) => {
+      const key = qk.meeting(v.id);
+      await qc.cancelQueries({ queryKey: key });
+      const before = qc.getQueryData(q.meeting(v.id).queryKey);
+      qc.setQueryData(q.meeting(v.id).queryKey, (m) => m && { ...m, rsvp: v.answer });
+      return { before };
+    },
+    onError: (_e, v, ctx) => { if (ctx?.before) qc.setQueryData(q.meeting(v.id).queryKey, ctx.before); },
+    onSuccess: (m) => { qc.setQueryData(q.meeting(m.id).queryKey, m); void qc.invalidateQueries({ queryKey: qk.upcoming }); }
+  });
 }
 export function useStartNow() {
   const qc = useQueryClient();
@@ -358,5 +399,33 @@ export function useDeleteNote() {
     onSuccess: () => {
       for (const key of [['notes', 'list'], qk.inbox, qk.meetings, qk.allSeries]) void qc.invalidateQueries({ queryKey: key });
     }
+  });
+}
+
+/* ---------- ringing, and picking a time ---------- */
+
+/**
+ * Which of these people are busy right now, by lowercase address, as far as their calendars can be read: nobody is
+ * "busy" whose calendar can't be. Read when it's asked for; a failed read just says nobody is.
+ */
+export const busyNow = (emails: string[]) => queryOptions({
+  queryKey: ['calendar', 'busy-now', emails],
+  queryFn: async (): Promise<ReadonlySet<string>> => {
+    const now = new Date();
+    const b = await api.calendar.busy(emails, { from: now.toISOString(), to: new Date(now.getTime() + 60_000).toISOString() });
+    return new Set(b.people.filter((p) => p.busy?.some((i) => new Date(i.from) <= now && now < new Date(i.to))).map((p) => p.email.toLowerCase()));
+  },
+  staleTime: 60_000, retry: false, enabled: emails.length > 0
+});
+/** Answers a ring. */
+export function useRingAnswer() {
+  return useMutation({ mutationFn: (v: { id: string; reply: RingReply }) => api.rings.answer(v.id, v.reply) });
+}
+/** Settles a call that offers times on one of them. When someone got there first, the link's card is read again before this finishes: it says the time they took. */
+export function usePickTime(code: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (at: string) => api.calls.pick(code, at),
+    onError: (e) => (errorCode(e) === 'conflict' ? qc.invalidateQueries({ queryKey: qk.card(code) }) : undefined)
   });
 }

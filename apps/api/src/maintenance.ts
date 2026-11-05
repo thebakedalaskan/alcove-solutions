@@ -5,7 +5,8 @@
  *  - retries failed object deletions;
  *  - removes objects older than 24 hours that nothing references (audio or frame writes whose SQL commit failed);
  *  - writes notes still waiting (after a restart, or once a retry is due);
- *  - deletes moves to other devices that ran out.
+ *  - deletes moves to other devices that ran out;
+ *  - deletes rings a day after they ran out, in calls that went on that long.
  */
 import { z } from 'zod';
 import type { Deps } from './context';
@@ -14,6 +15,7 @@ import { errorMessage } from '@alcove/api';
 import { log } from './log';
 import { reconcile } from './modules/calls';
 import { sweep as sweepMoves } from './modules/moves';
+import { sweep as sweepRings } from './modules/rings';
 import { work } from './modules/writer';
 import { sweepSessions } from './sessions';
 
@@ -51,5 +53,6 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
   const notes = await work(d);
   const calls = await reconcile(d);
   const moves = await sweepMoves(d);
-  return { sessions, receipts, retried, orphans, notes, calls, moves };
+  const rings = await sweepRings(d);
+  return { sessions, receipts, retried, orphans, notes, calls, moves, rings };
 }

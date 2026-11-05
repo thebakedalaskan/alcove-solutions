@@ -13,12 +13,34 @@ export type Ahead =
   | { kind: 'call'; id: string; title: string; startsAt: string; endsAt: string; call: Meeting }
   | { kind: 'event'; id: string; title: string; startsAt: string; endsAt: string; event: CalendarEvent };
 
-/** Alcove calls that are going or still to come, and calendar meetings that haven't ended, soonest first. */
+/** A call that's offering times: `startsAt` means nothing until someone picks one. */
+export const isOffered = (a: Ahead) => a.kind === 'call' && !!a.call.offer;
+
+/** Still to come: a call offering times until the last of them has gone, anything else until it ends. */
+const stillOn = (m: Meeting, now: number) => {
+  if (m.status === 'live') return true;
+  if (m.status !== 'scheduled') return false;
+  const last = m.offer?.times.at(-1);
+  return new Date(last ?? m.endsAt).getTime() > now;
+};
+
+/**
+ * Alcove calls that are going or still to come, and calendar meetings that haven't ended, soonest first. A series
+ * shows its next call only, and a calendar event that's a copy of a listed call, as someone invited has in their
+ * own calendar, isn't listed twice.
+ */
 export function aheadOf(calls: readonly Meeting[], events: readonly CalendarEvent[], now: number): Ahead[] {
+  const series = new Set<string>();
+  const listed = [...calls].filter((m) => stillOn(m, now)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)).filter((m) => {
+    if (!m.seriesId) return true;
+    if (series.has(m.seriesId)) return false;
+    series.add(m.seriesId);
+    return true;
+  });
+  const codes = new Set(calls.flatMap((m) => [m.code, ...(m.seriesCode ? [m.seriesCode] : [])]));
   return [
-    ...calls.filter((m) => m.status === 'live' || (m.status === 'scheduled' && new Date(m.endsAt).getTime() > now))
-      .map((m): Ahead => ({ kind: 'call', id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, call: m })),
-    ...events.filter((e) => new Date(e.endsAt).getTime() > now)
+    ...listed.map((m): Ahead => ({ kind: 'call', id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, call: m })),
+    ...events.filter((e) => new Date(e.endsAt).getTime() > now && !(e.alcoveCode && codes.has(e.alcoveCode)))
       .map((e): Ahead => ({ kind: 'event', id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, event: e }))
   ].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
@@ -34,8 +56,8 @@ export function everyWeek(calls: readonly { startedAt: string }[]): string | und
   return apart(a, b) === 7 && apart(b, c) === 7 ? `Every ${weekday(new Date(a.startedAt))}` : undefined;
 }
 
-/** It has started: a live call, or a meeting whose time has come. */
-export const started = (a: Ahead, now: number) => (a.kind === 'call' && a.call.status === 'live') || new Date(a.startsAt).getTime() <= now;
+/** It has started: a live call, or a meeting whose time has come. A call nobody has picked a time for hasn't. */
+export const started = (a: Ahead, now: number) => !isOffered(a) && ((a.kind === 'call' && a.call.status === 'live') || new Date(a.startsAt).getTime() <= now);
 
 const organizerOf = (a: Ahead) => (a.kind === 'call' ? a.call.organizer : a.event.organizer);
 const yours = (a: Ahead) => (a.kind === 'call' ? a.call.isOrganizer : a.event.isOrganizer);
@@ -60,7 +82,7 @@ export function whoOn(a: Ahead, me: string | undefined, names = 3): string {
 /**
  * Today's line: the notes from earlier today, what's going now, and what's still to come today, each
  * soonest first. Now falls between what's going and what's coming; the first of those is up next. `soon`
- * is the next seven days after today.
+ * is everything after today, and `waiting` the calls whose guest hasn't picked a time, which belong to no day yet.
  */
 export function todayOf(notes: readonly NoteSummary[], ahead: readonly Ahead[], now: number) {
   // A call that's going shows as the call, not as its note being recorded.
@@ -68,10 +90,12 @@ export function todayOf(notes: readonly NoteSummary[], ahead: readonly Ahead[], 
   const past = notes
     .filter((n) => daysFromToday(new Date(n.startedAt), new Date(now)) === 0 && !(n.meetingId && calls.has(n.meetingId)))
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  const going = ahead.filter((a) => started(a, now));
-  const coming = ahead.filter((a) => !started(a, now) && daysFromToday(new Date(a.startsAt), new Date(now)) === 0);
-  const soon = ahead.filter((a) => { const d = daysFromToday(new Date(a.startsAt), new Date(now)); return d >= 1 && d <= 7; });
-  return { past, going, coming, soon };
+  const waiting = ahead.filter(isOffered);
+  const dated = ahead.filter((a) => !isOffered(a));
+  const going = dated.filter((a) => started(a, now));
+  const coming = dated.filter((a) => !started(a, now) && daysFromToday(new Date(a.startsAt), new Date(now)) === 0);
+  const soon = dated.filter((a) => daysFromToday(new Date(a.startsAt), new Date(now)) >= 1);
+  return { past, going, coming, soon, waiting };
 }
 
 /* ---------- words ---------- */

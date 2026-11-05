@@ -1,7 +1,8 @@
 /*
- * The side panel, beside every page and dark in both themes: New call, the app's places, the next call with
- * Join, pinned notes, groups, the confidential-compute check and the minutes of notes left. It can be hidden.
- * At 860px and narrower the phone's top bar and tab bar (TabBar.tsx) take its place.
+ * The side panel, beside every page and dark in both themes: Start a call, the app's places, the next call with
+ * Join, pinned notes, groups, the confidential-compute check and the minutes of notes left. Someone on their own has
+ * no Team page and no groups. It can be hidden. At 860px and narrower the phone's top bar and tab bar (TabBar.tsx)
+ * take its place.
  */
 import { NEW_GROUP, type CalendarEvent, type Meeting, type Person } from '@alcove/api';
 import { ArchThumb, Faces, Icon, IconButton, Kbd, Logo, Meter, NavItemContent, SidebarNav, buttonClass, cn, coverFor } from '@alcove/ui';
@@ -14,7 +15,7 @@ import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q, trustLine } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/lib/time';
-import { NAV, useCounts } from './places';
+import { NAV, places, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
 const slog = log.child({ component: 'shell' });
@@ -72,6 +73,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
 }) {
   const online = useOnline();
   const counts = useCounts();
+  const team = useQuery(q.team()).data;
   const path = useRouterState({ select: (s) => s.location.pathname });
   return (
     <aside className="sb dark" aria-label="Side panel" inert={hidden}>
@@ -81,16 +83,16 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
           <IconButton ref={hideRef} icon="panel" label="Hide the side panel" onClick={onHide} />
         </div>
         <Offline className="sb-offline" />
-        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'sb-new')} onClick={onNew} aria-label="New call" aria-keyshortcuts="N" data-tour="new-call">
-          <Icon name="plus" size={18} /><span>New call</span><Kbd>N</Kbd>
+        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" data-tour="new-call">
+          <Icon name="video" size={18} /><span>Start a call</span><Kbd>N</Kbd>
         </button>
         <SidebarNav>
-          {NAV.map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}
+          {places(NAV, team).map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}
         </SidebarNav>
         <div className="sb-mid">
           {online && path !== '/home' && <UpNext />}
           <Pinned onPin={onPin} />
-          <Groups />
+          {team !== null && <Groups />}
         </div>
         <Foot online={online} />
       </div>
@@ -104,7 +106,7 @@ interface Next { id: string; title: string; startsAt: string; endsAt: string; pe
 function nextToday(calls: Meeting[], events: CalendarEvent[], me: string | undefined, now: number): Next | undefined {
   const others = (people: Person[]) => people.filter((p) => !me || !sameEmail(p, { email: me }));
   const all: Next[] = [
-    ...calls.filter((m) => m.status !== 'ended').map((m): Next => ({
+    ...calls.filter((m) => m.status !== 'ended' && !m.offer).map((m): Next => ({
       id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, people: others(m.isOrganizer ? m.guests : [m.organizer, ...m.guests]), join: { kind: 'call', code: m.code }
     })),
     ...events.flatMap((e): Next[] => (e.join ? [{

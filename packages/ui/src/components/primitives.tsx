@@ -174,7 +174,7 @@ export function Segmented<T extends string>({ value, onChange, options, label, d
     <div className={cn('ac-seg', className)} role="group" aria-label={label} aria-disabled={disabled || undefined}>
       {options.map((o) => (
         <button key={o.value} type="button" aria-pressed={o.value === value} disabled={disabled} onClick={() => onChange(o.value)}>
-          {o.value === value && <motion.span layoutId={pill} className="pill" aria-hidden="true" transition={reduce ? { duration: 0 } : { duration: 0.55, ease: EASE.inOut }} />}
+          {o.value === value && <motion.span layoutId={pill} layoutDependency={value} className="pill" aria-hidden="true" transition={reduce ? { duration: 0 } : { duration: 0.55, ease: EASE.inOut }} />}
           <span className="lbl">{o.icon && <Icon name={o.icon} size={16} />}{o.label}</span>
         </button>
       ))}

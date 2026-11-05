@@ -63,16 +63,16 @@ export interface Harness {
   /** The NEAR AI Cloud the API transcribes speech and writes notes with, and the stand-ins that vouch for it. */
   near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
-  browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callRekeyMs?: number | undefined }): Browser;
+  browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
   /** Stops every call session this harness's browsers joined from keeping up with its call (nobody leaves). */
   closeCalls(): void;
-  /** Another API process on the same database and bucket, as after a restart, on a second instance, or with other settings. */
-  secondServer(cfg?: Partial<Config>): Promise<{ baseUrl: string; close(): Promise<void> }>;
+  /** Another API process on the same database and bucket, as after a restart, on a second instance, or with other settings. `stopping`: says it's shutting down. `pool`: its own connections to the database. */
+  secondServer(cfg?: Partial<Config>, stopping?: AbortSignal | undefined, pool?: pg.Pool | undefined): Promise<{ baseUrl: string; close(): Promise<void> }>;
   close(): Promise<void>;
 }
 
-async function listen(deps: Deps): Promise<{ server: ServerType; baseUrl: string }> {
-  const app = createApp(deps);
+async function listen(deps: Deps, stopping?: AbortSignal | undefined): Promise<{ server: ServerType; baseUrl: string }> {
+  const app = createApp(deps, stopping);
   const server: ServerType = await new Promise((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s)); });
   const addr = server.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -130,13 +130,13 @@ export async function startHarness(): Promise<Harness> {
     browser(o = {}) {
       const f = o.fetch ?? cookieFetch(ORIGIN);
       // Calls keep up with their keys quickly here; browsers wait 1.5 s between checks while nothing nudges them.
-      const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
+      const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.ringSilenceMs ? { ringSilenceMs: o.ringSilenceMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
       const join: AlcoveApi['calls']['join'] = async (code, opts) => { const s = await api.calls.join(code, opts); calls.push(s); return s; };
       return { api: { ...api, calls: { ...api.calls, join } }, fetch: f };
     },
     closeCalls,
-    async secondServer(more = {}) {
-      const second = await listen({ ...deps, cfg: { ...deps.cfg, ...more } });
+    async secondServer(more = {}, stopping = undefined, own = undefined) {
+      const second = await listen({ ...deps, cfg: { ...deps.cfg, ...more }, ...(own ? { pool: own } : {}) }, stopping);
       return { baseUrl: second.baseUrl, close: () => stop(second.server) };
     },
     async close() {

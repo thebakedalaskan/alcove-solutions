@@ -247,10 +247,11 @@ a.ac-note-tile:active { transform: none; }
 .ac-tl-item.is-past .dot { background: var(--line-control); box-shadow: none; }
 .ac-tl-item.is-next .dot { background: var(--sun); box-shadow: 0 0 0 4px var(--sun-soft); }
 .ac-tl-item .body { min-width: 0; display: grid; gap: 7px; padding: 9px 12px 10px; border-radius: var(--radius-md); color: var(--ink); text-decoration: none; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
-.ac-tl-item a.body:hover { background: var(--sunk); }
-.ac-tl-item a.body:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.ac-tl-item button.body { width: 100%; text-align: left; cursor: pointer; }
+.ac-tl-item :is(a, button).body:hover { background: var(--sunk); }
+.ac-tl-item :is(a, button).body:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 .ac-tl-item.is-next .body { background: var(--sun-soft); }
-.ac-tl-item.is-next a.body:hover { background: var(--sun-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sun) 40%, transparent); }
+.ac-tl-item.is-next :is(a, button).body:hover { background: var(--sun-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sun) 40%, transparent); }
 .ac-tl-item .body > b { font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ac-tl-item.is-past .body > b { color: var(--ink-2); }
 .ac-tl-item .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
@@ -290,14 +291,12 @@ a.ac-note-tile:active { transform: none; }
 .ac-set-row > .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
 @media (max-width: 600px) { .ac-set-card { padding: 20px 18px 6px; } }
 
-/* ---- Composer, Field ---- */
+/* ---- The palette's line, Field ---- */
 .ac-composer { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 8px 0 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); color: var(--ink-3); font: 400 15.5px/1.4 var(--font-sans); }
 .ac-composer > .ac-i { color: var(--sun-text); }
 .ac-composer .text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-composer .text b { color: var(--ink); font-weight: 500; }
 .ac-composer input.text { height: 58px; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; }
 .ac-composer input.text::placeholder { color: var(--ink-3); }
-.ac-composer .parsed { display: flex; flex-wrap: wrap; gap: 6px; }
 .ac-field { display: grid; gap: 6px; }
 .ac-field label { font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .ac-field .hint { font-size: 12.5px; color: var(--ink-3); }
@@ -376,7 +375,7 @@ a.ac-note-tile:active { transform: none; }
 .ac-coach::before { content: ""; position: absolute; left: 22px; top: -6px; width: 12px; height: 12px; border-radius: 2px; background: var(--ink); transform: rotate(45deg); }
 .ac-spot { box-shadow: 0 0 0 3px var(--ground), 0 0 0 5px var(--sun); border-radius: var(--radius-md); }
 
-/* ---- Sheet: the one panel that drops from the top (the new-call line) ---- */
+/* ---- Sheet: the one panel that drops from the top (the palette's line) ---- */
 .ac-sheet { position: fixed; z-index: 51; left: 50%; top: 13vh; width: min(720px, calc(100vw - 28px)); transform: translateX(-50%); border-radius: var(--radius-xl); background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-3); outline: none; animation: ac-sheet-in var(--duration-3) var(--ease-out) both; }
 .ac-sheet[data-state="closed"] { animation: ac-sheet-out 180ms var(--ease-in) forwards; }
 

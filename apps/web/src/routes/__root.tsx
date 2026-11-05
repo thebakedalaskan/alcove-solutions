@@ -2,6 +2,7 @@ import { EmptyState, ThemeProvider, buttonClass, ToastProvider, TooltipProvider,
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import { type ReactNode, useEffect } from 'react';
+import { RingHost } from '~/features/calls/RingHost';
 import { Arrival } from '~/features/onboarding/Arrival';
 import { useNotifications } from '~/features/shell/notify';
 import { registerServiceWorker } from '~/lib/serviceWorker';
@@ -46,6 +47,7 @@ function Root() {
           <ToastProvider>
             <Outlet />
             <Arrival />
+            <RingHost />
             <Notifications />
           </ToastProvider>
         </TooltipProvider>
