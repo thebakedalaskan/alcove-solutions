@@ -369,7 +369,8 @@ A refusal never lets go of anything. What's refused stays in memory and in `keep
 page in page order, a paragraph to a line, then what Yjs has nowhere to put, read from what it's holding, in the order it was
 written. It reads them by the clocks the waiting updates bring, so nothing anyone else wrote, nothing that went, and nothing
 deleted is in it: a new document made of it can't carry what someone can't open any more, or deleted. The app makes that
-document with `saveCopy` (`POST …/adopt`, which only takes a document nobody's written to, and judges what it's given like
+document with `saveCopy` (`POST …/adopt`, which needs an account, as making that document does, accepts only a document
+nobody's written to, and judges what it's given like
 anything from a browser), then calls `discardUnsaved(token)`, the only thing that forgets what Alcove doesn't have: what the
 copy holds that can't reach this document, refused, with the session over, or with only reading allowed now, and nothing written since, nothing that can still
 go, and nothing another tab keeps. It closes the session, whose `Y.Doc` still holds what was let go of; opened again, what's
@@ -548,7 +549,7 @@ and this way it runs through the same auth, origin check and tests as everything
 - **A document's stream** (`GET /v1/workspaces/:id/documents/:doc/live?after=<seq>`). First `sync`: what this browser
   doesn't have as one update, the `seq` that reaches, and what they can do. Then `update`, in order; `awareness`; `access`,
   when their role changes or it goes to Trash or comes back; `ping`; and `closed`, saying why it's over: `access`, `deleted`,
-  `session` or `unavailable`. Up: `POST …/updates`, `POST …/awareness`, and `POST …/adopt` for a new document's first state ([In a browser](#in-a-browser)). A notice is `<document>:<seq>`, and each is read once on
+  `session` or `unavailable`. Up: `POST …/updates`, `POST …/awareness`, and, with an account, `POST …/adopt` for a new document's first state ([In a browser](#in-a-browser)). A notice is `<document>:<seq>`, and each is read once on
   each instance, by the document's room, which keeps the lines not everyone has been told, each made once. Rows are read before
   how far the snapshot reaches, and it's the rows that say what a compaction took: seqs have no gaps until one makes them, and
   anyone who hadn't been told what's gone starts again from where they got to. A stream keeps only its place: nothing of
