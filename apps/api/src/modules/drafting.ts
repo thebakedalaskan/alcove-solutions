@@ -626,22 +626,29 @@ Each item is one short sentence. lines are the numbers of the transcript lines i
 
 const Items = z.array(z.object({
   text: z.string(), lines: Refs, owner: z.string().nullish().catch(null), due: z.string().nullish().catch(null)
-})).catch([]);
-const CatchUpReply = z.object({ summary: z.string().catch(''), decided: Items, proposed: Items, open: Items, next: Items });
-/** A point in a catch-up and the lines it comes from: indices (from 0) into the lines the model was sent. */
-export interface Cited { text: string; owner?: string; due?: string; refs: number[] }
+}));
+/** All of it, with words in its summary: a reply that doesn't say what it's asked to isn't a catch-up that found nothing. */
+const CatchUpReply = z.object({ summary: z.string().regex(/[\p{L}\p{N}]/u), decided: Items, proposed: Items, open: Items, next: Items });
+/**
+ * A point in a catch-up and the lines it comes from, as indices (from 0) into the lines the model was sent: `cited`,
+ * every one it named, and `refs`, the first three, which are the moments shown.
+ */
+export interface Cited { text: string; owner?: string; due?: string; refs: number[]; cited: number[] }
 /**
  * A catch-up as the model sorted it, every point tied to lines it was sent. `uncited` counts the points it couldn't tie
  * to one, which are left out; `cut` is what didn't fit and wasn't read.
  */
 export interface Sorted { summary: string; decided: Cited[]; proposed: Cited[]; open: Cited[]; next: Cited[]; uncited: number; cut: Cut | null }
 
-/** The most points kept from each list of a catch-up. */
+/** The most points kept from each list of a catch-up: the newest, as what was said last is what's still going on. */
 const POINTS = 8;
+/** The most moments shown for a point. */
+const MOMENTS = 3;
 /**
  * Where a stretch of a call in progress has got to, sorted into decided, proposed, still open, and what's next, each
- * point with the lines it comes from. `reading` says which stretch it is ("the last 5 minutes"). `followUps`: the most
- * next steps kept, when more matter than the points in a short stretch (a whole call's live notes), with room to say them.
+ * point with the lines it comes from, in the order they were said. `reading` says which stretch it is ("the last 5
+ * minutes"). `followUps`: the most next steps kept, when more matter than the points in a short stretch (a whole call's
+ * live notes), with room to say them. A reply that isn't what was asked for fails, and nothing is made of it.
  */
 export async function catchUp(cfg: Config, b: Brief, reading: string, followUps = POINTS): Promise<Sorted> {
   const sent = numberedText(b.lines, b.gaps);
@@ -651,17 +658,18 @@ export async function catchUp(cfg: Config, b: Brief, reading: string, followUps 
   ], { what: 'catch-up', maxTokens: followUps > POINTS ? 2500 : 1500, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The catch-up came back in the wrong shape. Try again.', { context: { what: 'catch-up', issues: issues(reply.error) } });
   let uncited = 0;
+  const lastOf = (c: Cited) => c.cited.at(-1) ?? 0;
   const items = (xs: z.infer<typeof Items>, todo = false, most = POINTS): Cited[] => xs.filter((x) => x.text.trim()).flatMap((x): Cited[] => {
-    const refs = refsOf(x.lines, sent.kept, 3);
+    const cited = refsOf(x.lines, sent.kept, Number.POSITIVE_INFINITY);
     // A point with no line behind it is the model's word alone: it's left out, never shown without evidence.
-    if (!refs.length) { uncited++; return []; }
+    if (!cited.length) { uncited++; return []; }
     const owner = x.owner?.trim() ?? '';
     const due = x.due?.trim() ?? '';
     return [{
-      text: clip(x.text.trim(), 300), refs,
+      text: clip(x.text.trim(), 300), refs: cited.slice(0, MOMENTS), cited,
       ...(todo && owner && !NOBODY.has(fold(owner)) ? { owner: clip(owner, 80) } : {}), ...(todo && due ? { due: clip(due, 40) } : {})
     }];
-  }).slice(0, most);
+  }).sort((a, b) => lastOf(a) - lastOf(b)).slice(-most);
   const d = reply.data;
   return { summary: clip(d.summary.trim(), 600), decided: items(d.decided), proposed: items(d.proposed), open: items(d.open), next: items(d.next, true, followUps), uncited, cut: sent.cut };
 }

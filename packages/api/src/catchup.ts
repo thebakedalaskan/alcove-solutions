@@ -102,21 +102,20 @@ export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done:
 export type LiveFollowUp = z.infer<typeof LiveFollowUpSchema>;
 
 /**
- * A call's live notes (docs: Notes and inference › Live notes): one set for each part of the call, kept sealed on the
- * server and refreshed at most every 30 seconds while someone is watching (CallSession.watchNotes), whoever is watching.
- * As a catch-up on the whole of that part of the call, with its follow-ups tickable.
+ * A call's live notes (docs: Notes and inference › Live notes): kept sealed on the server for each part of the call and
+ * refreshed at most every 30 seconds while someone is watching (CallSession.watchNotes), in one run for everyone who can
+ * read the same lines. As a catch-up on the whole of that part of the call, with its follow-ups tickable.
  */
 export const LiveNotesSchema = z.object({
   /**
-   * Null until the first are written. Everyone in the part of the call reads the same notes, each of them what they may
-   * read: a point shows only to someone who may read every line behind it, and the summary only to someone who may read
-   * every line the notes read. `read.whileHere` says that left something out, and `read.lines` then counts only the
-   * lines behind what's shown.
+   * Null until the first are written. Everyone who may read everything said in the part of the call reads one set. Anyone
+   * who may not (a guest with the link who wasn't here for all of it, someone who came late into a breakout room) gets
+   * notes written only from what they may read: `read.whileHere` says so, and they can't be ticked.
    */
   notes: CatchUpSchema.extend({ next: z.array(LiveFollowUpSchema) }).nullable(),
   /** They're being refreshed now. */
   writing: z.boolean(),
-  /** Why the latest refresh didn't work; the notes stay as they were, and it's tried again. Null otherwise. */
+  /** Why the latest refresh of these notes didn't work; they stay as they were, and it's tried again. Null otherwise. */
   error: z.string().nullable()
 });
 export type LiveNotes = z.infer<typeof LiveNotesSchema>;

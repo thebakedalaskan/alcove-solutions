@@ -51,7 +51,7 @@ export type Tamper =
   | 'report-down' | 'refuse' | 'reply-sealed';
 export type Task = 'transcript' | 'notes';
 /** How a reply can fail: the service down, prose instead of JSON, empty notes, or a reply that ran out of tokens part way. */
-export type Failure = 'down' | 'prose' | 'stub' | 'cut-off';
+export type Failure = 'down' | 'prose' | 'stub' | 'cut-off' | 'empty' | 'partial';
 
 export interface FakeNear {
   /** What the API is configured with to use this NEAR AI, and the stand-in Intel and NVIDIA that vouch for it. */
@@ -86,8 +86,9 @@ export interface FakeNear {
   verdictLifetime(seconds: number): void;
   /**
    * The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, with the shape and
-   * nothing in it, or runs out of tokens part way. With `only`, just the requests with that in their prompt fail, and
-   * count: one part of a note goes wrong while the rest is written.
+   * nothing in it, with an empty object, with an object that has a summary and nothing else that's any use, or runs out
+   * of tokens part way. With `only`, just the requests with that in their prompt fail, and count: one part of a note goes
+   * wrong while the rest is written.
    */
   failNext(n: number, how: Failure, only?: string | undefined): void;
   /** The next chat reply takes this long, as a busy model does. */
@@ -97,6 +98,8 @@ export interface FakeNear {
    * model words a thing afresh each time; '' and it no longer lists it; null and it goes back to the words it hears.
    */
   reword(line: string, text: string | null): void;
+  /** From now on the follow-up heard in `line` also cites these lines, by what was said in them; null and it cites its own line. */
+  cite(line: string, lines: string[] | null): void;
   close(): Promise<void>;
 }
 
@@ -252,7 +255,7 @@ function notesIn(prompt: string): { n: number; heard: Heard[] }[] {
 const wordsAsked = (user: string) => (/\nQuestion: (.*)$/s.exec(user)?.[1] ?? '').toLowerCase().split(/\W+/).filter((w) => w.length > 3);
 
 /** What the notes model writes for a system prompt, a user message and the images sent with it. */
-function notesReply(system: string, user: string, images: Buffer[], reworded: ReadonlyMap<string, string>): unknown {
+function notesReply(system: string, user: string, images: Buffer[], reworded: ReadonlyMap<string, string>, citing: ReadonlyMap<string, string[]>): unknown {
   if (system.startsWith('You read one frame')) {
     // Reads what a test wrote on the frame, exactly; a frame without it can't be made out.
     const shown = images[0] ? shownIn(images[0]) : null;
@@ -280,13 +283,13 @@ function notesReply(system: string, user: string, images: Buffer[], reworded: Re
     // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
     // can't back with any line it was sent: what Alcove shows must come only from lines that were read.
     const nowhere = heard.length + 7;
-    const cited = (h: Heard) => ({ text: h.text, lines: [h.ref, `L${nowhere}`, 0] });
+    const cited = (h: Heard) => ({ text: h.text, lines: [h.ref, ...heard.filter((x) => citing.get(h.text)?.includes(x.text)).map((x) => x.ref), `L${nowhere}`, 0] });
     return {
       summary: `Catching up on ${heard.length} lines.`,
       decided: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(cited), { text: 'Everyone agreed to double the budget.', lines: [nowhere] }],
       proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(cited),
       open: heard.filter((h) => h.text.trim().endsWith('?')).map(cited),
-      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...cited(h), text: reworded.get(h.text) ?? h.text, owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
+      next: heard.filter((h) => /\bwill\b|ます。$/i.test(h.text)).map((h) => ({ ...cited(h), text: reworded.get(h.text) ?? h.text, owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
     };
   }
   if (system.startsWith('You translate')) {
@@ -319,7 +322,7 @@ function notesReply(system: string, user: string, images: Buffer[], reworded: Re
       questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
-        if (!m) return [];
+        if (!m) return /ます。$/.test(h.text) ? [{ text: reworded.get(h.text) ?? h.text, owner: null, due: null, at: h.at, ...onScreen(h) }] : [];
         const rest = m[2] ?? '';
         return [{ text: reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }];
       }),
@@ -485,6 +488,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let slow = 0;
   let slowOnly: string | undefined;
   const reworded = new Map<string, string>();
+  const citing = new Map<string, string[]>();
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
@@ -585,11 +589,13 @@ export async function startFakeNear(): Promise<FakeNear> {
     if (failing > 0 && (failingOnly === undefined || user.includes(failingOnly))) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
-      if (failure === 'cut-off') { finish = 'length'; content = JSON.stringify(notesReply(system, user, sent)).slice(0, 60); }
+      if (failure === 'cut-off') { finish = 'length'; content = JSON.stringify(notesReply(system, user, sent, reworded, citing)).slice(0, 60); }
       else content = failure === 'stub'
         ? JSON.stringify({ summary: '...', decisions: [], questions: [], actions: [], chapters: [], suggestedQuestions: [], screens: [] })
-        : 'Here are your notes! The team talked about a few things.';
-    } else content = JSON.stringify(notesReply(system, user, sent, reworded));
+        : failure === 'empty' ? '{}'
+          : failure === 'partial' ? JSON.stringify({ summary: 'Catching up.', decided: 'none of it' })
+            : 'Here are your notes! The team talked about a few things.';
+    } else content = JSON.stringify(notesReply(system, user, sent, reworded, citing));
     return {
       status: 200,
       body: {
@@ -690,6 +696,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     reword(line, text) { if (text === null) reworded.delete(line); else reworded.set(line, text); },
+    cite(line, lines) { if (lines === null) citing.delete(line); else citing.set(line, lines); },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }

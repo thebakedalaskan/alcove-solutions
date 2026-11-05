@@ -1691,18 +1691,20 @@ const NO_NOTES: LiveNotes = { notes: null, writing: false, error: null };
 /** As much of a whole call's follow-ups as its live notes keep from one refresh, as many as the notes at the end may have. */
 const FOLLOW_UPS_READ = 20;
 
-/** The live notes of the part of the call someone is in now, as far as they may read them: the call's one reading rule, point by point. */
+/** Who's reading the live notes of the part of the call someone is in: as lines list their readers, and for a guest, their time in the call. */
+const readerFor = (v: Viewer, s: Stored, mine: Joined, startedAt: Date, invited: Set<string>): liveNotes.Reader => ({ me: readerOf(mine), here: onlyHere(v, s, mine, startedAt, invited) });
+
+/** The live notes of the part of the call someone is in now: everyone's, or notes of their own from what they may read. */
 async function notesFor(v: Viewer, db: Db, row: Row, s: Stored, mine: Joined | undefined, place: string, invited: Set<string>): Promise<LiveNotes> {
   if (!mine || row.state !== 'live' || !s.notes.noteId) return NO_NOTES;
-  const reader = { me: readerOf(mine), here: onlyHere(v, s, mine, row.started_at, invited) };
-  return liveNotes.shownTo(await liveNotes.read(v.organizer, db, row.call_id, place), reader, capturing(row, s, place).status === 'on');
+  return liveNotes.shownTo(await liveNotes.find(v.organizer, db, row.call_id, place, readerFor(v, s, mine, row.started_at, invited)), capturing(row, s, place).status === 'on');
 }
 
 /**
- * What a part of the call's shared notes read: everything said there, whoever may read each line, as each reader is
- * shown only what rests on lines they may read. Except that what the main room said while rooms were open is for the
- * people who stayed: it's read while those rooms are open, and once they've closed it's left out, so everyone back in
- * the main room reads one summary. It stays in the transcript of whoever may read it, in their catching up, and the note.
+ * What a part of the call's notes read: everything said there. Except that what the main room said while rooms were open
+ * is for the people who stayed: it's read while those rooms are open, and left out once they've closed, so that everyone
+ * back in the main room can read one set of notes, and tick them. It stays in the transcript of whoever may read it, in
+ * their catching up, and the note.
  */
 function sharedIn(row: Pick<Row, 'started_at'>, s: Stored, place: string): (l: transcripts.Line) => boolean {
   const open = s.breakouts.open;
@@ -1710,66 +1712,80 @@ function sharedIn(row: Pick<Row, 'started_at'>, s: Stored, place: string): (l: t
   return (l) => (l.room ?? MAIN_PLACE) === place && (place !== MAIN_PLACE || l.readers === undefined || (open !== null && (said(l) ?? 0) >= open.from));
 }
 
+/** Connections that looked and found nothing they could have written, until when they don't need to look again. They have no row to say so. */
+const resting = new Map<string, number>();
+const REST_MS = 30_000;
+
 /**
- * Someone in the call is looking at the live notes. If that part of the call has something new, it's been at least
- * half a minute and nobody else is at it, they're refreshed now, from everything said there (not only what this person
- * may read), for everyone there. Nobody's credits pay for it, as for catching up. True when this look refreshed them;
- * any other look at the same time answers false at once. Nothing is held while the notes model reads.
+ * Someone in the call is looking at the live notes. What the notes read of this part of the call is split by what this
+ * person may read of it: all of it is everyone's view, and anything less is a view of its own, named by what they can't
+ * read, which the notes model never sees for them. If that view has something new, it's been at least half a minute and
+ * nobody else is at it, it's refreshed now, for everyone in it. Nobody's credits pay for it, as for catching up. True when
+ * this look refreshed them; any other look at the same time answers false at once. Nothing is held while the model reads.
  */
 export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
   if (row.state !== 'live') throw new ConflictError('This call has ended. Its notes have everything.', { context: { callId, what: 'live-notes' } });
-  const seen = settle(state, row);
-  const mine = seen.people.find((j) => j.identity === v.pass.identity);
-  const place = mine ? placeOf(seen, mine) : MAIN_PLACE;
-  const here = capturing(row, seen, place);
-  if (here.status !== 'on' || !here.noteId || !(await liveNotes.due(o, o.pool, callId, place, here.noteId))) return false;
-  const ctx = { callId, part: place !== MAIN_PLACE ? 'room' : 'main' };
-  // Under the call's row, shared: a pause is either here to see, and nothing is claimed, or comes after what got through.
-  const run = await tx(o.pool, async (c) => {
-    const now = await load(o, c, callId, 'share');
-    const s = settle(now.state, now.row);
-    if (!placesOf(s).includes(place)) return null;
-    const into = capture.mayCapture(capturing(now.row, s, place), 'live-notes', ctx);
-    const claim = await liveNotes.claim(o, c, callId, place, into.noteId);
-    return claim ? { claim, into, row: now.row, s } : null;
-  });
-  if (!run) return false;
-  try {
-    return await refreshNotes(o, callId, place, run, ctx);
-  } catch (e) {
-    clog.warn('live notes not refreshed', { ...ctx, err: e });
-    if (await liveNotes.failed(o, callId, place, run.claim, toAppError(e).message)) await nudge(o, run.row.room_name, callId, { call: true, log: false });
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  if (!mine) return false;
+  const place = placeOf(s, mine);
+  const { status, noteId, recordingId } = capturing(row, s, place);
+  if (status !== 'on' || !noteId || !recordingId) return false;
+  const restKey = `${callId}|${v.pass.identity}`;
+  if ((resting.get(restKey) ?? 0) > Date.now()) return false;
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const invited = invitedIn(meeting);
+  const found = await liveNotes.find(o, o.pool, callId, place, readerFor(v, s, mine, row.started_at, invited));
+  // Their notes are up to date, or it isn't time: said without opening anything, which is nearly every look.
+  if (found.view !== null && !(await liveNotes.due(o, o.pool, callId, place, found.view, noteId))) return false;
+  const clips = await liveNotes.clipsOf(o, o.pool, noteId);
+  const part = await soFarIn(o, row, s, { noteId, recordingId }, meeting, place, sharedIn(row, s, place), (gaps) => catchup.windowOf(tenthsIn(row.started_at), row.started_at.getTime(), [], true, gaps));
+  const may = mayRead(v, s, mine, row.started_at, invited);
+  const barred = part.all.flatMap((l) => (!may(l) && l.said !== undefined ? [{ ...l, said: l.said }] : []));
+  const view = barred.length ? liveNotes.digestOf(barred) : liveNotes.ALL;
+  const ctx = { callId, part: place !== MAIN_PLACE ? 'room' : 'main', view: barred.length ? 'narrowed' : 'all' };
+  const whole: CatchUpRange = { kind: 'all' };
+  const { lines, read } = catchup.readOf(barred.length ? part.all.filter(may) : part.all, whole, part.window, part.missed, ctx);
+  if (!lines.length) {
+    if (resting.size > 10_000) resting.clear();
+    resting.set(restKey, Date.now() + REST_MS);
     return false;
   }
-}
-
-/** One refresh of a part of the call's live notes, on a claim. Nothing new there (what changed was elsewhere in the call), and the notes model isn't asked. */
-async function refreshNotes(o: Owner, callId: string, place: string, run: { claim: liveNotes.Claim; into: { noteId: string; recordingId: string }; row: Row; s: Stored }, ctx: { callId: string; part: string }): Promise<boolean> {
-  const { claim, into, row, s } = run;
-  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-  const startedAt = row.started_at.getTime();
-  const { all, window, missed, brief } = await soFarIn(o, row, s, into, meeting, place, sharedIn(row, s, place), (gaps) => catchup.windowOf(tenthsIn(row.started_at), startedAt, [], true, gaps));
-  const whole: CatchUpRange = { kind: 'all' };
-  const { lines, read } = catchup.readOf(all, whole, window, missed, ctx);
-  if (!lines.length || liveNotes.heardFrom(lines) === claim.heard) {
-    await liveNotes.release(o, callId, place, claim);
+  // Under the call's row, shared: a pause is either here to see, and nothing is claimed, or comes after what got through.
+  const claim = await tx(o.pool, async (c) => {
+    const now = await load(o, c, callId, 'share');
+    const at = settle(now.state, now.row);
+    if (!placesOf(at).includes(place)) return null;
+    capture.mayCapture(capturing(now.row, at, place), 'live-notes', ctx);
+    return liveNotes.claim(o, c, callId, place, view, clips);
+  });
+  if (!claim) return false;
+  if (liveNotes.digestOf(lines) === claim.heard) {
+    await liveNotes.release(o, callId, place, view, claim);
     clog.debug('nothing new for the live notes', { ...ctx, lines: lines.length });
     return false;
   }
-  // Everyone there sees they're being written.
-  await nudge(o, row.room_name, callId, { call: true, log: false });
-  const t0 = performance.now();
-  const sorted = await drafting.catchUp(o.cfg, brief(lines, read.gaps), catchup.describe(whole, false), FOLLOW_UPS_READ);
-  const done = { lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0) };
-  if (!await liveNotes.keep(o, callId, place, claim, liveNotes.runOf(sorted, lines, catchup.withCut(read, sorted.cut, lines)))) {
-    clog.info('live notes written too late to keep', { ...ctx, ...done });
+  try {
+    // Everyone reading them sees they're being written.
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+    const t0 = performance.now();
+    const sorted = await drafting.catchUp(o.cfg, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), FOLLOW_UPS_READ);
+    const done = { lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0) };
+    const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 });
+    if (!await liveNotes.keep(o, callId, place, view, claim, run)) {
+      clog.info('live notes written too late to keep', { ...ctx, ...done });
+      return false;
+    }
+    clog.info('live notes written', { ...ctx, ...done, points: sorted.decided.length + sorted.proposed.length + sorted.open.length + sorted.next.length });
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+    return true;
+  } catch (e) {
+    clog.warn('live notes not refreshed', { ...ctx, err: e });
+    if (await liveNotes.failed(o, callId, place, view, claim, toAppError(e).message)) await nudge(o, row.room_name, callId, { call: true, log: false });
     return false;
   }
-  clog.info('live notes written', { ...ctx, ...done, points: sorted.decided.length + sorted.proposed.length + sorted.open.length + sorted.next.length });
-  await nudge(o, row.room_name, callId, { call: true, log: false });
-  return true;
 }
 
 /**
@@ -1781,11 +1797,11 @@ async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<Ca
   const o = v.organizer;
   const mine = s.people.find((j) => j.identity === v.pass.identity);
   const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-  const here = onlyHere(v, s, mine, row.started_at, invitedIn(meeting));
-  if (!mine || here !== null) throw new ForbiddenError('The notes go to the people invited, so only they can tick follow-ups.', { context: { callId: row.call_id, role: v.pass.role, what: a.type } });
+  const invited = invitedIn(meeting);
+  if (!mine || onlyHere(v, s, mine, row.started_at, invited) !== null) throw new ForbiddenError('The notes go to the people invited, so only they can tick follow-ups.', { context: { callId: row.call_id, role: v.pass.role, what: a.type } });
   const organizer = mine.role === 'host' ? await me(o) : undefined;
   const by = { name: organizer?.name ?? mine.name, email: organizer?.email ?? mine.email ?? '' };
-  await liveNotes.tick(o, c, row.call_id, placeOf(s, mine), a.id, a.done, by, { me: readerOf(mine), here });
+  await liveNotes.tick(o, c, row.call_id, placeOf(s, mine), a.id, a.done, by, readerFor(v, s, mine, row.started_at, invited));
 }
 
 /** What this person can catch up on, for choosing what to read. */

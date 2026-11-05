@@ -308,7 +308,7 @@ export const CallStateSchema = z.object({
    * of the call you're in now only. What's said in one breakout room never shows in another, or in the main room.
    */
   transcript: z.array(TranscriptLineSchema),
-  /** The shared live notes of the part of the call you're in, as far as you may read them. Nothing for someone waiting to be let in. */
+  /** The shared live notes of the part of the call you're in, written only from what you may read. Nothing for someone waiting to be let in. */
   liveNotes: LiveNotesSchema,
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
@@ -555,7 +555,8 @@ export interface CallSession extends LiveStore<CallState> {
   /**
    * Anyone in the call who gets the notes: ticks a follow-up of the live notes, or takes the tick back, for everyone in
    * that part of the call. It stays ticked through every refresh, and is done in the note when the call ends. A guest
-   * with the link is refused. Resolves once the server has it.
+   * with the link is refused, and notes written for a narrower view (`read.whileHere`) can't be ticked. Resolves once the
+   * server has it.
    */
   tickFollowUp(id: string, done: boolean): Promise<void>;
   /** What was said in `range`, for you alone: decided, proposed, still open and next, each with the moments it comes from. */

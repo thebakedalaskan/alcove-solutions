@@ -94,7 +94,7 @@ function DecidedRows({ items, times, onSeek }: { items: CatchUpItem[]; times: Ca
   );
 }
 
-/** What people said they'd do. `onTick`: done for everyone in this part of the call; absent for a guest, who doesn't get the notes. */
+/** What people said they'd do. `onTick`: done for everyone in this part of the call; absent for a guest, who doesn't get the notes, and in notes written for what someone may read of it. */
 function FollowUpRows({ items, times, onSeek, onTick }: { items: LiveFollowUp[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; onTick: ((id: string, done: boolean) => void) | undefined }) {
   return (
     <>
@@ -221,7 +221,7 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
             <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n.decided.length}</span></div>
               {n.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
             <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{n.next.length}</span></div>
-              {n.next.length ? <FollowUpRows items={n.next} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' ? undefined : onTick} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
+              {n.next.length ? <FollowUpRows items={n.next} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' || n.read.whileHere ? undefined : onTick} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
             {held.length > 0 && (
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
@@ -232,9 +232,9 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
                 ))}
               </div>
             )}
-            <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">{n.read.whileHere ? 'It covers more than you were here for, so it isn’t shown.' : 'Nothing to sum up yet.'}</p>}</div>
+            <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
             {n.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
-            {on && (live.writing || n.read.lines > 0) && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+            {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
           </div>
         )}
         {(problems.length > 0 || live.error) && (

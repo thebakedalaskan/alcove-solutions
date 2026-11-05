@@ -26,6 +26,7 @@ const open: TestParticipant[] = [];
 afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
+const said = (e: unknown) => (e instanceof AlcoveApiError ? e.message : 'not-an-api-error');
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
 async function account(email = unique()) {
@@ -51,6 +52,8 @@ async function settle(call: CallSession, pred: (s: CallState) => boolean, ms = 1
   while (!pred(call.getSnapshot()) && Date.now() < until) { await call.refresh(); await sleep(30); }
   return call.getSnapshot();
 }
+/** Waits until the organizer no longer lists someone: the goodbye their page sent as it went has arrived. */
+const gone = (host: CallSession, who: CallSession) => settle(host, (x) => !x.participants.some((p) => p.id === who.ticket.identity));
 const inGroup = (call: CallSession) => waitFor(() => call.crypto.getSnapshot().status === 'in' && call.crypto.getSnapshot().media !== null, `${call.ticket.role} in the call’s group`);
 const inPlace = (call: CallSession, place: string) => waitFor(() => { const s = call.crypto.getSnapshot(); return s.status === 'in' && s.place === place && Boolean(s.media?.send); }, `${call.ticket.role} in ${place === 'main' ? 'the main room' : 'a room'}`);
 async function letIn(host: CallSession, who: CallSession) {
@@ -72,6 +75,8 @@ async function twoInCall(notes: 'on' | 'off' = 'on') {
   return { org, host, kofi, invited, code: c, email };
 }
 const say = (host: CallSession, words: string, atMs = 0) => host.transcribe(speech(words, 0, atMs), host.ticket.identity);
+/** Said a moment ago, so it falls after someone who just came in came in. */
+const sayNow = (host: CallSession, words: string, atMs: number) => host.transcribe({ ...speech(words, 0, atMs), heardAt: performance.now() - 50 }, host.ticket.identity);
 
 /** Requests that reached the notes model as a refresh of live notes (or a catch-up: both are asked the same way). */
 const runs = () => h.near.instructions.filter((s) => s.startsWith('You help someone catch up')).length;
@@ -235,6 +240,27 @@ describe('one set of live notes for the call', () => {
     await host.leave();
   });
 
+  it('counts a reply it can’t use as a failed refresh, whatever shape it came in', async () => {
+    for (const how of ['empty', 'partial'] as const) {
+      const { host, kofi } = await twoInCall();
+      await say(host, A);
+      await say(host, B, 4000);
+      const stop = kofi.watchNotes();
+      const seen = await notesOf(kofi);
+      await say(host, C, 8000);
+      h.near.failNext(1, how);
+      await later(kofi);
+      const failed = await settle(host, (s) => s.liveNotes.error !== null);
+      expect(failed.liveNotes.error).toBe('The catch-up came back in the wrong shape. Try again.');
+      expect(failed.liveNotes.notes).toEqual(seen);
+      await later(kofi);
+      expect((await notesOf(host, (n) => n.read.lines === 3)).summary).toBe('Catching up on 3 lines.');
+      expect((await settle(host, (s) => s.liveNotes.error === null)).liveNotes.error).toBeNull();
+      stop();
+      await host.leave();
+    }
+  });
+
   it('is free: it charges nobody, and the notes at the end are charged as ever', async () => {
     const { org, host, kofi, invited } = await twoInCall();
     const [organizer, guest] = [await org.api.credits.balance(), await invited.api.credits.balance()];
@@ -269,43 +295,171 @@ describe('one set of live notes for the call', () => {
 });
 
 describe('who reads what of them', () => {
-  it('shows a guest with the link only what rests on what was said while they were here, and no summary of the rest', async () => {
+  it('writes a guest’s notes from what they may read alone: nothing else reaches the notes model for them', async () => {
     const { host, kofi, code: c } = await twoInCall();
-    await say(host, 'We agreed on the budget before Sam came.');
+    const BEFORE = 'We agreed on the budget before Sam came.';
+    await say(host, BEFORE);
     await sleep(1100);
     const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, sam);
-    const joined = (await sam.catchUpWindow()).joined;
     const SAID = 'Sam will review the plan by Monday.';
     await sleep(300);
-    await host.transcribe({ ...speech(SAID, 0, Math.round(joined * 1000) + 500), heardAt: performance.now() - 50 }, host.ticket.identity);
+    await sayNow(host, SAID, 6000);
 
-    // Watching counts from anyone in the call: the notes read the whole of it, once.
+    // Only Sam is watching: the model reads what Sam may read, and not a word more.
     const before = runs();
     const stop = sam.watchNotes();
-    await waitFor(() => runs() > before, 'the notes model to be asked');
-    stop();
-    // Someone invited reads all of it...
-    const full = await notesOf(kofi, (n) => n.read.lines === 2);
-    expect(texts(full.decided)).toEqual(['We agreed on the budget before Sam came.']);
-    expect(texts(full.next)).toEqual([SAID]);
-    expect(full.summary).toBe('Catching up on 2 lines.');
-    expect(full.read.whileHere).toBe(false);
-    // ...and Sam, on the same notes, only what they were here for.
     const theirs = await notesOf(sam);
+    stop();
+    expect(runs()).toBe(before + 1);
+    expect(sentSince(before)[0]).toContain(SAID);
+    expect(sentSince(before)[0]).not.toContain('budget');
+    expect(theirs.summary).toBe('Catching up on 1 lines.');
+    expect(texts(theirs.next)).toEqual([SAID]);
     expect(theirs.decided).toEqual([]);
-    expect(theirs.next).toEqual(full.next);
-    expect(theirs.summary).toBe('');
-    expect(theirs.read).toMatchObject({ lines: 1, whileHere: true, skipped: null });
+    expect(theirs.read).toMatchObject({ lines: 1, whileHere: true });
     expect(JSON.stringify(sam.getSnapshot().liveNotes)).not.toContain('budget');
+    // Nobody who may read the rest was watching, so nothing was written for them, and they don't read Sam's.
+    await kofi.refresh();
+    expect(kofi.getSnapshot().liveNotes.notes).toBeNull();
 
-    // A guest doesn't get the notes, so ticks nothing, in the notes they can read or out of them.
-    const id = full.next[0]?.id ?? '';
+    // Someone invited reads all of it, from a run of its own over every line.
+    const full = await (async () => { const s = kofi.watchNotes(); const n = await notesOf(kofi); s(); return n; })();
+    expect(runs()).toBe(before + 2);
+    expect(sentSince(before)[1]).toContain(BEFORE);
+    expect(sentSince(before)[1]).toContain(SAID);
+    expect(texts(full.decided)).toEqual([BEFORE]);
+    expect(texts(full.next)).toEqual([SAID]);
+    expect(full).toMatchObject({ summary: 'Catching up on 2 lines.', read: { lines: 2, whileHere: false } });
+    expect(await notesRows(host.ticket.callId)).toBe(2);
+    await sam.refresh();
+    expect(sam.getSnapshot().liveNotes.notes).toEqual(theirs);
+
+    // Sam's notes are read-only: a guest ticks nothing, and nobody ticks anything of theirs.
+    const [id, samsId] = [full.next[0]?.id ?? '', theirs.next[0]?.id ?? ''];
     expect(code(await sam.tickFollowUp(id, true).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await sam.tickFollowUp(samsId, true).catch((e: unknown) => e))).toBe('forbidden');
+    expect(code(await kofi.tickFollowUp(samsId, true).catch((e: unknown) => e))).toBe('not-found');
     expect((await notesOf(kofi)).next[0]?.done).toBe(false);
-    // Someone who gets the notes can, and the guest sees it done.
+    // Someone who gets the notes ticks it, and Sam sees that one done.
     await kofi.tickFollowUp(id, true);
-    expect((await notesOf(sam, (n) => n.next[0]?.done === true)).next[0]?.done).toBe(true);
+    expect((await notesOf(sam, (n) => n.next[0]?.done === true)).next[0]?.id).toBe(samsId);
+    await host.leave();
+  });
+
+  it('shares one run among everyone who can read the same lines, and costs another only for a different view', async () => {
+    const { host, code: c } = await twoInCall();
+    await say(host, 'We agreed on the budget before anyone came.');
+    await sleep(1100);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    await sleep(300);
+    await sayNow(host, 'We agreed on the plan with both of them here.', 6000);
+
+    // Came in at different moments, with nothing said in between: the same lines, so one set of notes.
+    const before = runs();
+    h.near.slowNext(300);
+    const stop = [sam.watchNotes(), lee.watchNotes()];
+    const theirs = await notesOf(sam);
+    expect(await notesOf(lee)).toEqual(theirs);
+    await sleep(600);
+    for (const s of stop) s();
+    expect(runs()).toBe(before + 1);
+    expect(await notesRows(host.ticket.callId)).toBe(1);
+
+    // Someone who came in after that line has other lines: a run of their own, which doesn't read it.
+    const kim = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kim' });
+    await letIn(host, kim);
+    await sleep(300);
+    const LATER = 'We agreed Kim reads this much.';
+    await sayNow(host, LATER, 9000);
+    const next = runs();
+    const k = kim.watchNotes();
+    const hers = await notesOf(kim);
+    k();
+    expect(texts(hers.decided)).toEqual([LATER]);
+    expect(runs()).toBe(next + 1);
+    expect(sentSince(next)[0]).not.toContain('both of them');
+    // Sam and Lee read on: the same rules, one run for the two of them.
+    await later(sam);
+    const again = [sam.watchNotes(), lee.watchNotes()];
+    const more = await notesOf(sam, (n) => n.read.lines === 2);
+    expect(await notesOf(lee, (n) => n.read.lines === 2)).toEqual(more);
+    for (const s of again) s();
+    expect(runs()).toBe(next + 2);
+    await host.leave();
+  });
+
+  it('never shows someone back from time away notes that read what was said while they were gone', async () => {
+    const { host, code: c } = await twoInCall();
+    await say(host, 'We agreed on the budget before anyone came.');
+    await sleep(1100);
+    const browser = guestBrowser();
+    const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    await sleep(300);
+    const FIRST = 'We agreed on the first plan.';
+    await sayNow(host, FIRST, 6000);
+    const stop = lee.watchNotes();
+    await notesOf(lee);
+    // Sam shares Lee's notes, and then Sam's page goes away. Lee hears what's said meanwhile.
+    await settle(sam, (s) => s.liveNotes.notes !== null);
+    sam.closing();
+    await gone(host, sam);
+    await sleep(1200);
+    const WHILE = 'We agreed on the second plan while Sam was away.';
+    await sayNow(host, WHILE, 8000);
+    await later(lee);
+    await notesOf(lee, (n) => n.read.lines === 2);
+    stop();
+
+    // Back: the notes Sam shared now read that line, so Sam doesn't read them.
+    const back = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    await inGroup(back);
+    await back.refresh();
+    expect(JSON.stringify(back.getSnapshot().liveNotes)).not.toContain('second plan');
+    // Watching writes notes for what Sam may read now.
+    const before = runs();
+    const s = back.watchNotes();
+    const own = await notesOf(back);
+    s();
+    expect(texts(own.decided)).toEqual([FIRST]);
+    expect(sentSince(before)[0]).not.toContain('second plan');
+    await host.leave();
+  });
+
+  it('lets a guest who missed nothing read everyone’s notes, however often their page came back', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    await host.appendAudio(piece(audioBytes('reload'), 0, 0));
+    const browser = guestBrowser();
+    const sam = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    await sleep(300);
+    await sayNow(host, 'We agreed on the first plan.', 1000);
+    // A reload with nothing said while the page was away.
+    sam.closing();
+    await gone(host, sam);
+    await sleep(1200);
+    const back = await browser.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    await inGroup(back);
+    await sleep(300);
+    await sayNow(host, 'We agreed on the second plan.', 3000);
+    const before = runs();
+    const stop = [host.watchNotes(), back.watchNotes()];
+    const seen = await notesOf(host);
+    expect(await notesOf(back)).toEqual(seen);
+    await sleep(400);
+    for (const s of stop) s();
+    expect(seen.read).toMatchObject({ lines: 2, whileHere: false });
+    expect(runs()).toBe(before + 1);
+    expect(await notesRows(host.ticket.callId)).toBe(1);
     await host.leave();
   });
 
@@ -406,46 +560,96 @@ describe('breakout rooms', () => {
     await lena.tickFollowUp(id, true);
     await notesOf(lena, (n) => n.next[0]?.done === true);
 
-    // The organizer visiting a room reads what's said once it's there, not what was said before.
+    // The organizer visiting a room gets notes of its own from what's said once it's there: what was said before never
+    // reaches them, and it can't tick anything in them.
     host.visitRoom(design);
     await inPlace(host, design);
-    const visiting = await notesOf(host);
-    expect(visiting).toMatchObject({ decided: [], summary: '', read: { whileHere: true } });
+    await host.refresh();
+    expect(host.getSnapshot().liveNotes.notes).toBeNull();
     const WITH = 'We agreed the organizer likes the blue.';
     await kofi.transcribe(speech(WITH, 0, 6000), host.ticket.identity);
-    const room = kofi.watchNotes();
+    const visitRun = runs();
+    const visit = host.watchNotes();
+    const visiting = await notesOf(host);
+    visit();
+    expect(texts(visiting.decided)).toEqual([WITH]);
+    expect(visiting.read).toMatchObject({ lines: 1, whileHere: true });
+    expect(sentSince(visitRun)[0]).not.toContain('CANARY-DESIGN');
+    // The room's own people read all of it, in notes of their own.
     await later(kofi);
-    await notesOf(kofi, (n) => n.read.lines === 2);
+    const room = kofi.watchNotes();
+    expect(texts((await notesOf(kofi, (n) => n.read.lines === 2)).decided)).toEqual([DESIGN, WITH]);
     room();
-    expect(texts((await notesOf(host, (n) => n.decided.length > 0)).decided)).toEqual([WITH]);
+    expect((await notesOf(kofi)).read.whileHere).toBe(false);
     host.visitRoom(null);
     await inPlace(host, 'main');
 
-    // Rooms close. Everyone reads the main room's notes, and no room's. The talk in the main room while they were away
-    // was for the people there: Kofi doesn't read it, and once the notes are next written they leave it out for everyone.
+    // Rooms close. The main room's notes read what the organizer said there while they were away, so Kofi can't read them.
     host.closeRooms();
     await inPlace(kofi, 'main');
     await inPlace(lena, 'main');
-    const back = await notesOf(kofi);
-    expect(texts(back.decided)).toEqual([MAIN]);
-    expect(back).toMatchObject({ summary: '', read: { whileHere: true } });
+    await kofi.refresh();
+    expect(kofi.getSnapshot().liveNotes.notes).toBeNull();
+    // The next look writes them again without that talk, even with nothing new said, and then everyone reads one set.
+    await later(kofi);
+    const back = kofi.watchNotes();
+    const after = await notesOf(kofi);
+    back();
+    expect(texts(after.decided)).toEqual([MAIN]);
+    expect(after).toMatchObject({ summary: 'Catching up on 1 lines.', read: { lines: 1, whileHere: false } });
     expect(JSON.stringify(kofi.getSnapshot().liveNotes)).not.toContain('CANARY-DESIGN');
-    await say(host, 'We agreed to wrap up.', 9000);
-    const wrap = host.watchNotes();
-    await later(host);
-    await notesOf(host, (n) => n.decided.some((d) => d.text === 'We agreed to wrap up.'));
-    wrap();
-    const after = await notesOf(kofi, (n) => n.decided.some((d) => d.text === 'We agreed to wrap up.'));
-    expect(after.summary).toBe('Catching up on 2 lines.');
-    expect(after.read.whileHere).toBe(false);
-    expect(texts(after.decided)).toEqual([MAIN, 'We agreed to wrap up.']);
+    await Promise.all([host.refresh(), lena.refresh()]);
     expect(await notesOf(host)).toEqual(after);
+    expect(await notesOf(lena)).toEqual(after);
+    await say(host, 'We agreed to wrap up.', 9000);
+    await later(host);
+    const wrap = host.watchNotes();
+    const wrapped = await notesOf(host, (n) => n.decided.some((d) => d.text === 'We agreed to wrap up.'));
+    wrap();
+    expect(wrapped).toMatchObject({ summary: 'Catching up on 2 lines.', read: { whileHere: false } });
+    expect(await notesOf(kofi, (n) => n.read.lines === 2)).toEqual(wrapped);
 
     // What was ticked in a room is done in the room's section of the note.
     const ended = await host.leave();
     const note = await written(org.api, ended?.pendingNoteId);
     expect(note.rooms.find((r) => r.name === 'Support')?.actions).toEqual([expect.objectContaining({ text: 'Call the customer by Monday', done: true })]);
     expect(await notesRows(host.ticket.callId)).toBe(0);
+  });
+
+  it('goes by every line a follow-up cites, not the three it shows, for what someone may read', async () => {
+    const { org, host, kofi, kofiEmail, lenaEmail } = await roomsCall();
+    const [ONE, TWO, TASK, SECRET] = ['We talked about the plan.', 'We talked about the launch.', 'Kofi will book the hall by Friday.', 'The hall is for the surprise party.'];
+    await say(host, ONE);
+    await say(host, TWO, 1000);
+    await say(host, TASK, 2000);
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    const [design = ''] = await roomIds(host);
+    await inPlace(kofi, design);
+    await say(host, SECRET, 3000);
+    // The model says it comes from all four lines. The fourth was said with Kofi away in a room.
+    h.near.cite(TASK, [ONE, TWO, SECRET]);
+    const stop = host.watchNotes();
+    const task = followUp((await notesOf(host)).next, TASK);
+    stop();
+    expect(task.evidence).toHaveLength(3);
+    await host.tickFollowUp(task.id, true);
+
+    // Back in the main room, the model no longer lists it, so only the tick keeps it there.
+    h.near.reword(TASK, '');
+    host.closeRooms();
+    await inPlace(kofi, 'main');
+    await later(kofi);
+    const back = kofi.watchNotes();
+    const after = await notesOf(kofi);
+    back();
+    expect(after.read.lines).toBe(3);
+    expect(after.next).toEqual([]);
+
+    // It's still done in the note, where everyone reads the lines it rests on.
+    h.near.reword(TASK, null);
+    h.near.cite(TASK, null);
+    const ended = await host.leave();
+    expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: 'Book the hall by Friday', done: true })]);
   });
 
   it('stops a paused room’s notes while the others go on', async () => {
@@ -578,6 +782,103 @@ describe('ticking a follow-up', () => {
     await host.leave();
   });
 
+  it('never hands a tick to another follow-up with most of its words', async () => {
+    const { host } = await twoInCall();
+    const REPORT = 'Kofi will send the report to legal by Friday.';
+    const INVOICE = 'Kofi will send the invoice to legal by Friday.';
+    await say(host, REPORT);
+    const stop = host.watchNotes();
+    const report = followUp((await notesOf(host)).next, REPORT);
+    await host.tickFollowUp(report.id, true);
+    // The model stops listing the report, and hears the invoice a moment later, in nearly the same words.
+    h.near.reword(REPORT, '');
+    await say(host, INVOICE, 3000);
+    await later(host);
+    const n = await notesOf(host, (x) => x.read.lines === 2);
+    stop();
+    h.near.reword(REPORT, null);
+    expect(n.next.map((x) => [x.text, x.done])).toEqual([[REPORT, true], [INVOICE, false]]);
+    expect(followUp(n.next, REPORT).id).toBe(report.id);
+    expect(followUp(n.next, INVOICE).id).not.toBe(report.id);
+    await host.leave();
+  });
+
+  it('tells two things from one sentence apart, however many words they share', async () => {
+    const { host } = await twoInCall();
+    const BOTH = 'Kofi will send the report and the invoice to legal by Friday.';
+    await say(host, BOTH);
+    h.near.reword(BOTH, 'Send the report to legal by Friday');
+    const stop = host.watchNotes();
+    const report = (await notesOf(host)).next[0];
+    await host.tickFollowUp(report?.id ?? '', true);
+    // The next run lists the other thing that sentence said, instead.
+    h.near.reword(BOTH, 'Send the invoice to legal by Friday');
+    await say(host, A, 3000);
+    await later(host);
+    const n = await notesOf(host, (x) => x.read.lines === 2);
+    stop();
+    h.near.reword(BOTH, null);
+    expect(n.next.map((x) => [x.text, x.done])).toEqual([['Send the report to legal by Friday', true], ['Send the invoice to legal by Friday', false]]);
+    await host.leave();
+  });
+
+  it('tells follow-ups apart by their numbers', async () => {
+    const { host } = await twoInCall();
+    const [SEVEN, EIGHT] = ['Kofi will finish job 7 by Friday.', 'Kofi will finish job 8 by Friday.'];
+    await say(host, SEVEN);
+    const stop = host.watchNotes();
+    const seven = followUp((await notesOf(host)).next, SEVEN);
+    await host.tickFollowUp(seven.id, true);
+    h.near.reword(SEVEN, '');
+    await say(host, EIGHT, 3000);
+    await later(host);
+    const n = await notesOf(host, (x) => x.read.lines === 2);
+    stop();
+    h.near.reword(SEVEN, null);
+    expect(n.next.map((x) => [x.text, x.done])).toEqual([[SEVEN, true], [EIGHT, false]]);
+    await host.leave();
+  });
+
+  it('keeps its IDs in text without spaces', async () => {
+    const { host } = await twoInCall();
+    const [LINE, OTHER] = ['田中さんが金曜日までに資料を法務に送ります。', '鈴木さんが来週までに見積もりを作ります。'];
+    await say(host, LINE);
+    const stop = host.watchNotes();
+    const first = followUp((await notesOf(host)).next, LINE);
+    await host.tickFollowUp(first.id, true);
+    const WORDED = '金曜日までに資料を法務に送る';
+    h.near.reword(LINE, WORDED);
+    await say(host, OTHER, 3000);
+    await later(host);
+    const n = await notesOf(host, (x) => x.read.lines === 2);
+    stop();
+    h.near.reword(LINE, null);
+    expect(n.next.map((x) => [x.text, x.done])).toEqual([[WORDED, true], [OTHER, false]]);
+    expect(followUp(n.next, WORDED).id).toBe(first.id);
+    await host.leave();
+  });
+
+  it('keeps the newest follow-ups of a long call, and never loses a ticked one', async () => {
+    const { host } = await twoInCall();
+    const task = (n: number) => `Kofi will finish item ${n} by Friday.`;
+    for (let n = 1; n <= 25; n++) await say(host, task(n), n * 400);
+    const stop = host.watchNotes();
+    const first = await notesOf(host);
+    // At most 20 at a time, and they're the newest.
+    expect(texts(first.next)).toEqual(Array.from({ length: 20 }, (_, i) => task(i + 6)));
+    const oldest = followUp(first.next, task(6));
+    await host.tickFollowUp(oldest.id, true);
+    await say(host, task(26), 10_400);
+    await say(host, task(27), 10_800);
+    await later(host);
+    const second = await notesOf(host, (n) => n.read.lines === 27);
+    stop();
+    // The two new ones are in, the oldest unticked ones give way, and what was ticked stays where it was.
+    expect(texts(second.next)).toEqual([task(6), ...Array.from({ length: 20 }, (_, i) => task(i + 8))]);
+    expect(followUp(second.next, task(6))).toMatchObject({ id: oldest.id, done: true });
+    await host.leave();
+  });
+
   it('never takes one person’s follow-up for another’s, however alike their words', async () => {
     const { org, host } = await twoInCall();
     const KOFI = 'Kofi will send the deck to legal by Friday.';
@@ -683,6 +984,80 @@ describe('into the note', () => {
     const again = await org.api.notes.get(note.id);
     expect(again.actions.filter((a) => a.done).map((a) => a.text)).toEqual(expect.arrayContaining([WORDED, PLANTS]));
     expect(again.actions.filter((a) => a.done)).toHaveLength(3);
+  });
+
+  it('marks nothing else done when the notes leave out what was ticked', async () => {
+    const { org, host, kofi } = await twoInCall();
+    const [BANK, CLIENT] = ['Kofi will call the bank by Friday.', 'Kofi will call the client by Friday.'];
+    await say(host, BANK);
+    await say(host, CLIENT, 1000);
+    const stop = kofi.watchNotes();
+    const seen = await notesOf(kofi);
+    stop();
+    await kofi.tickFollowUp(followUp(seen.next, BANK).id, true);
+    // The notes never list the bank. The client, a second later and in nearly the same words, isn't it.
+    h.near.reword(BANK, '');
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    h.near.reword(BANK, null);
+    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[BANK, true], ['Call the client by Friday', false]]);
+  });
+
+  it('finds what was ticked in notes written in another language, by the moment it came up', async () => {
+    const { org, host, kofi } = await twoInCall();
+    await org.api.account.updatePreferences({ notesLanguage: 'fr' });
+    await say(host, DECK);
+    await say(host, ROOM, 6000);
+    const stop = kofi.watchNotes();
+    const seen = await notesOf(kofi);
+    stop();
+    await kofi.tickFollowUp(followUp(seen.next, DECK).id, true);
+    const [SENT, BOOKED] = ['Envoyer la présentation au service juridique avant vendredi', 'Réserver la salle avant lundi'];
+    h.near.reword(DECK, SENT);
+    h.near.reword(ROOM, BOOKED);
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    h.near.reword(DECK, null);
+    h.near.reword(ROOM, null);
+    expect(h.near.instructions.at(-1)).toContain('Write in French.');
+    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[SENT, true], [BOOKED, false]]);
+  });
+
+  it('goes by the moment only when it’s the one candidate there', async () => {
+    const { org, host, kofi } = await twoInCall();
+    await org.api.account.updatePreferences({ notesLanguage: 'fr' });
+    await say(host, DECK);
+    await say(host, ROOM, 300);
+    const stop = kofi.watchNotes();
+    const seen = await notesOf(kofi);
+    stop();
+    await kofi.tickFollowUp(followUp(seen.next, DECK).id, true);
+    const [SENT, BOOKED] = ['Envoyer la présentation au service juridique avant vendredi', 'Réserver la salle avant lundi'];
+    h.near.reword(DECK, SENT);
+    h.near.reword(ROOM, BOOKED);
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    h.near.reword(DECK, null);
+    h.near.reword(ROOM, null);
+    // Two follow-ups at that second, and no words to tell them by: neither is marked, and the tick stands on its own.
+    expect(note.actions.filter((a) => a.done).map((a) => a.text)).toEqual([DECK]);
+    expect(note.actions.filter((a) => !a.done).map((a) => a.text).sort()).toEqual([BOOKED, SENT].sort());
+  });
+
+  it('finds what was ticked in text without spaces', async () => {
+    const { org, host, kofi } = await twoInCall();
+    const LINE = '田中さんが金曜日までに資料を法務に送ります。';
+    await say(host, LINE);
+    const stop = kofi.watchNotes();
+    const seen = await notesOf(kofi);
+    stop();
+    await kofi.tickFollowUp(followUp(seen.next, LINE).id, true);
+    const WORDED = '資料を金曜日までに法務へ送る';
+    h.near.reword(LINE, WORDED);
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    h.near.reword(LINE, null);
+    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[WORDED, true]]);
   });
 
   it('waits for notes that couldn’t be written, and marks them done when they are', async () => {
@@ -800,6 +1175,25 @@ describe('what stays', () => {
     await kofi.tickFollowUp(seen.next[0]?.id ?? '', true);
     const ended = await host.leave();
     expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: 'Send the deck by Friday', done: true })]);
+  });
+
+  it('won’t delete a note while its call is live, and deletes it as ever once the call has ended', async () => {
+    const { org, host, kofi } = await twoInCall();
+    await say(host, 'Kofi will send the deck by Friday.');
+    const stop = kofi.watchNotes();
+    const seen = await notesOf(kofi);
+    stop();
+    const noteId = host.getSnapshot().notes.noteId ?? '';
+    const refused = await org.api.notes.delete(noteId).catch((e: unknown) => e);
+    expect([code(refused), said(refused)]).toEqual(['conflict', 'This call is still going. You can delete its notes once it ends.']);
+    // Nothing changed: everyone reads the same notes, and the call ends as ever.
+    await kofi.refresh();
+    expect(kofi.getSnapshot().liveNotes.notes).toEqual(seen);
+    const ended = await host.leave();
+    expect(ended?.pendingNoteId).toBe(noteId);
+    await written(org.api, noteId);
+    await org.api.notes.delete(noteId);
+    expect(code(await org.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
   });
 
   it('goes when the call ends, and with the account; a call ended by an earlier release is swept', async () => {

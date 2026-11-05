@@ -1010,6 +1010,8 @@ export async function share(o: Owner, id: string, to: { emails: string[]; group?
  * Deletes your own note for everyone (deleteOwnNote), its audio and shared-screen objects after the
  * commit, and your pin to it. Someone else's note is only removed from your notes, with your own notes
  * on it: they can quote it, and you no longer have it. What you added to the shared notes stays with them.
+ * A call's note can't go while the call is on: the call is still writing to it, and everything live hangs
+ * off it. Asked holding the note, as ending the call finishes it holding the note.
  */
 export async function remove(o: Owner, id: string): Promise<void> {
   const l = await locate(o, id);
@@ -1022,7 +1024,12 @@ export async function remove(o: Owner, id: string): Promise<void> {
     nlog.info('shared note removed from my notes', { noteId: id });
     return;
   }
-  const { ids, frames } = await tx(o.pool, (c) => deleteOwnNote(o, c, id));
+  const { ids, frames } = await tx(o.pool, async (c) => {
+    await lockItem(o, c, id);
+    const { kind, status } = (await getItem(o, c, 'note', id, NoteManifest, 'Those notes')).manifest;
+    if (kind === 'call' && status === 'recording') throw new ConflictError('This call is still going. You can delete its notes once it ends.', { context: { noteId: id } });
+    return deleteOwnNote(o, c, id);
+  });
   await queueDelete(o, ids);
   await unpin(o, id);
   nlog.info('note deleted', { noteId: id, recordingId: l.note.manifest.recordingId, objects: ids.length, frames });
