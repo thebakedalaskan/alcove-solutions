@@ -282,7 +282,7 @@ export interface AlcoveApi {
      * once, and stays up through dropped connections and restarts: what's typed meanwhile sends when it can, and with `keep`
      * survives a reload.
      */
-    document(id: ID, documentId: ID, opts?: DocSessionOptions): DocSession;
+    document(id: ID, documentId: ID, opts?: DocSessionOptions): Promise<DocSession>;
     /** What a document looked like: the versions kept of it, the newest first. For anyone who can open it. */
     versions(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocVersionSummary[]>;
     /** One version with its whole state, for showing it. */
@@ -310,7 +310,7 @@ export interface AlcoveApi {
 
 export type AlcoveErrorCode =
   | 'unauthenticated' | 'not-found' | 'forbidden' | 'invalid' | 'insufficient-credits' | 'conflict' | 'unavailable'
-  | 'key-unavailable' | 'network' | 'unknown';
+  | 'key-unavailable' | 'too-large' | 'network' | 'unknown';
 
 /** Where a failed request went, for logs and bug reports. `requestId` matches the server's log lines. */
 export interface ErrorDetails { requestId?: string | undefined; status?: number | undefined; method?: string | undefined; path?: string | undefined; cause?: unknown }
@@ -332,7 +332,7 @@ export class AlcoveApiError extends Error {
 /** The server's request ID behind an error, if it has one: quote it when reporting a problem. */
 export const errorRequestId = (e: unknown): string | undefined => (e instanceof AlcoveApiError ? e.requestId : undefined);
 
-export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'network', 'unknown'];
+export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'too-large', 'network', 'unknown'];
 export const isAlcoveErrorCode = (v: unknown): v is AlcoveErrorCode => typeof v === 'string' && ALCOVE_ERROR_CODES.some((c) => c === v);
 
 /** A user-facing message for anything thrown. */

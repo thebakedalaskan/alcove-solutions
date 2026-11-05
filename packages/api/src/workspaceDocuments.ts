@@ -27,8 +27,11 @@ export const DOC_SEED: Uint8Array = new Uint8Array([
   1, 3, 1, 0, 7, 1, 7, 99, 111, 110, 116, 101, 110, 116, 3, 5, 116, 105, 116, 108, 101, 135, 1, 0, 3, 4, 108, 105, 110, 101, 40, 0, 1, 1, 2, 105, 100, 1, 119, 5, 102, 105, 114, 115, 116, 0
 ]);
 
-/** The most one update can be. A browser that has more waiting sends it in several; one change bigger than this can't be saved. */
-export const MAX_DOC_UPDATE_BYTES = 1024 * 1024;
+/**
+ * The most one update can be, which is thousands of pages of pasted text. A browser that has more waiting sends it in several;
+ * one change bigger than this can't be saved, and waits to be undone.
+ */
+export const MAX_DOC_UPDATE_BYTES = 4 * 1024 * 1024;
 /** The most what's on one browser's cursor can be: it travels sealed in a Postgres notice, which is small. */
 export const MAX_DOC_AWARENESS_BYTES = 4 * 1024;
 /** How big a document's state can grow: every reader is sent it whole when they open it. */
@@ -52,15 +55,19 @@ const binary = (max: number) => z.string().regex(/^[A-Za-z0-9_-]*$/).max(Math.ce
 
 /* ---------- requests ---------- */
 
-export const DocUpdateBodySchema = z.object({ update: binary(MAX_DOC_UPDATE_BYTES).min(1) });
+/** An update goes up as it is: a paste can be megabytes, and there's nothing to gain from encoding them. */
+export const DOC_UPDATE_TYPE = 'application/octet-stream';
 export const DocAwarenessBodySchema = z.object({ update: binary(MAX_DOC_AWARENESS_BYTES).min(1) });
 /** Where an update landed in the document's log. */
 export const DocAppendedSchema = z.object({ seq: z.number() });
 
 /* ---------- live ---------- */
 
-/** Why a document's stream ended for good: you can't open it now, it's gone for everyone, or your session or call ended. */
-export const DocClosedSchema = z.enum(['access', 'deleted', 'session']);
+/**
+ * Why a document's stream ended for good: you can't open it now, it's gone for everyone, your session or call ended, or it
+ * can't be opened right now, by anyone, and has to be opened again to find out. History still reads, and can put it back.
+ */
+export const DocClosedSchema = z.enum(['access', 'deleted', 'session', 'unavailable']);
 export type DocClosed = z.infer<typeof DocClosedSchema>;
 
 /**
@@ -80,10 +87,12 @@ export const DocLiveEventSchema = z.discriminatedUnion('type', [
 export type DocLiveEvent = z.infer<typeof DocLiveEventSchema>;
 
 /**
- * Why what's typed here isn't reaching Alcove, though there's a connection: you can only read this, it's in Trash, or
- * it's too big. What was typed stays here, and goes if that changes.
+ * Why what's typed here isn't reaching Alcove, though there's a connection: you can only read this, it's in Trash, or it's
+ * too much, whether in one go or for the document, which counts its size and how many separate pieces it's made of. What was
+ * typed stays here, and goes once that changes: undoing a paste, or deleting something, is enough. `rejected`: Alcove can
+ * never take it, which no browser should see. What's on screen stays until it's reloaded, and goes then.
  */
-export type DocRefusal = 'read-only' | 'trashed' | 'too-large';
+export type DocRefusal = 'read-only' | 'trashed' | 'too-large' | 'rejected';
 
 export interface DocStatus {
   /**
@@ -100,8 +109,8 @@ export interface DocStatus {
   closed: DocClosed | null;
 }
 
-/** An edit this browser is keeping until Alcove has it. */
-export interface KeptUpdate { key: number; update: Uint8Array }
+/** An edit this browser is keeping until Alcove has it, and when it was made, in ms since the epoch: nothing reads that yet. */
+export interface KeptUpdate { key: number; update: Uint8Array; at: number }
 /**
  * Where a session keeps what Alcove doesn't have yet, so edits made offline survive a reload and send on return. The app
  * backs it with IndexedDB, sealed under the device key. One store for one document in one account.
@@ -109,8 +118,8 @@ export interface KeptUpdate { key: number; update: Uint8Array }
 export interface KeptUpdates {
   /** Everything kept, the oldest first. */
   load(): Promise<KeptUpdate[]>;
-  /** Keeps an update. Resolves once it's kept, with what `remove` knows it by. */
-  add(update: Uint8Array): Promise<number>;
+  /** Keeps an update, made at `at`. Resolves once it's kept, with what `remove` knows it by. */
+  add(update: Uint8Array, at: number): Promise<number>;
   /** Forgets updates Alcove has now. */
   remove(keys: number[]): Promise<void>;
 }
@@ -146,7 +155,11 @@ export const DocVersionSummarySchema = z.object({
   reason: DocVersionReasonSchema
 });
 export type DocVersionSummary = z.infer<typeof DocVersionSummarySchema>;
-export const DocVersionWireSchema = DocVersionSummarySchema.extend({ update: z.string() });
+/** A version on its way: what it is, then its parts in order, as a document can be big and a reader slow. */
+export const DocVersionLineSchema = z.discriminatedUnion('type', [
+  DocVersionSummarySchema.extend({ type: z.literal('version'), parts: z.number() }),
+  z.object({ type: z.literal('part'), update: z.string() })
+]);
 /** A version with its whole state: a `Y.Doc` that applies `update` shows it. */
 export interface DocVersion extends DocVersionSummary { update: Uint8Array }
 
