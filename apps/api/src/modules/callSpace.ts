@@ -51,13 +51,14 @@ export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: []
 /** Nothing presented or playing is left: the call moved to another workspace. */
 export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], play: [] });
 
-/** A board open in one part of the call. Only IDs, and who opened it: what it's called and what's on it stay in its workspace. */
+/** A board open in one part of the call: where it is, and who opened it. What it's called and what's on it stay in its workspace. */
 const OpenBoard = z.object({ workspaceId: z.string(), documentId: z.string(), by: Controller });
 export type OpenBoard = z.infer<typeof OpenBoard>;
 /**
  * A board the call lets everyone into, whether it's open or not: a policy, not a list, so anyone let into the call later gets
- * a seat too. `by` is whoever decided that, whose right to share it is asked again each time; null for a board the call made.
- * `seen` is the seats it's been worked out for: nobody is asked about twice, so someone it's been taken back from stays out.
+ * a seat too. `by` is whoever decided that, whose right to share it is asked again each time; null for a board the call made,
+ * which is the call's to give while it isn't restricted and the organizer can edit there. `seen` is the seats it's been worked
+ * out for: nobody is asked about twice, so someone it's been taken back from stays out.
  */
 const BoardLetIn = z.object({ workspaceId: z.string(), documentId: z.string(), by: Controller.nullable(), seen: z.array(z.string()) });
 export type BoardLetIn = z.infer<typeof BoardLetIn>;

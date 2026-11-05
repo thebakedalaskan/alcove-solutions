@@ -418,6 +418,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **A call adds and lets in only as far as the workspace says.** Anyone invited can make a board in the call's workspace, while
   its organizer can edit there ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting
   people into a saved board needs the right to share it, asked again for everyone who comes later, and each seat ends with the call.
+  A board the call made goes on being given to whoever comes only until it's restricted or the organizer can't edit there.
 - **In Trash**, something stays readable to whoever could open it, and anyone who can edit it can bring it back; nothing
   else can change it until then (`409 conflict`).
 - **Through a folder**, nobody reaches further than they could directly: sending a folder to Trash, or deleting it, takes

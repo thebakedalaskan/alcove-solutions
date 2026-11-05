@@ -1,8 +1,9 @@
 /*
  * A board in a call (docs: Calls and recordings › A board in a call). A board is a workspace item. What's the call's is which
- * one is open in each part of it, and which boards it lets people into, kept in its sealed state (modules/callSpace.ts) as IDs
- * and nothing else. What a board is called, and who can open it, are read from its workspace for each person every time, so
- * someone who loses one stops being told about it at once, and someone who can't open one is told nothing that names it.
+ * one is open in each part of it, and which boards it lets people into, kept in its sealed state (modules/callSpace.ts): where
+ * each is, who opened it or let people in, by their name, address and seat, and the seats it's been worked out for. What a
+ * board is called, and who can open it, aren't kept: they're read from its workspace for each person every time, so someone
+ * who loses one stops being told about it at once, and someone who can't open one is told nothing that names it.
  *
  * Nothing here decides who can open what: modules/workspaceAccess.ts does. `calls.ts` holds the call's row and says when to do
  * what; this is what's done.
@@ -20,8 +21,8 @@ import { controllerOf, placeOfBrought } from './callWorkspace';
 import { MeetingManifest } from './meetings';
 import type { Placing } from './places';
 import {
-  cantOpen, grant, holdersOf, readerInCall, requireDocument, requireOrganizerEdits, requireSharing, roleOf, seatIndex, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor,
-  type Grant, type HeldWorkspace, type Maker, type Reader, type Who, type Workspace
+  cantEdit, cantOpen, grant, heldBy, holdersOf, organizerEdits, readerInCall, requireDocument, requireSharing, roleOf, seatIndex, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor,
+  type Grant, type HeldWorkspace, type Maker, type Reader, type Who, type Workspace, type WorkspaceAs
 } from './workspaceAccess';
 import { addBoard } from './workspaces';
 
@@ -36,7 +37,7 @@ export type BoardAction = Extract<CallAction, { type: 'board-open' | 'board-clos
 export const isBoardAction = (a: CallAction): a is BoardAction => a.type === 'board-open' || a.type === 'board-close';
 
 /** What the rules here read of a call. */
-export interface Boarded extends Placing { board: CallBoards }
+export interface Boarded extends Placing { board: CallBoards; removed: string[] }
 /** Someone in the call, as a seat on a board names them. */
 export interface Here { seat: string; name: string; email: string | null }
 
@@ -79,7 +80,7 @@ export function requireStarter(v: Viewer, what: string): void {
   if (v.role === 'guest') throw new ForbiddenError('Guests can add to a board, but can’t start one.', { context: { callId: v.pass.callId, role: v.role, what }, level: 'info' });
 }
 /** Boards are for the main room until rooms have their own: a room's has to stay with the people in it. */
-function requireMainRoom(callId: string, place: string, what: string): void {
+export function requireMainRoom(callId: string, place: string, what: string): void {
   if (place !== MAIN_PLACE) throw new ConflictError('Open a board from the main room.', { context: { callId, what } });
 }
 
@@ -101,7 +102,7 @@ async function bringable(o: Owner, reader: Reader, m: Pick<MeetingManifest, 'wor
     throw e instanceof NotFoundError ? noBoard(documentId) : e;
   }
 }
-const mayShare = (who: Who, w: Workspace, documentId: string): boolean => {
+const mayShare = (who: Who, w: WorkspaceAs, documentId: string): boolean => {
   try {
     requireSharing(who, w, documentId);
     return true;
@@ -122,60 +123,63 @@ export async function check(o: Owner, reader: Reader, x: { callId: string; meeti
 /* ---------- letting people in ---------- */
 
 /**
- * Works a board out for everyone here it hasn't been yet: whoever can't open it gets a seat, which ends with the call, and
- * nobody else is touched, so what someone has from the workspace stays what they have. In the caller's transaction, which
- * holds the workspace's row.
+ * Works a board out for everyone here it hasn't been yet: whoever it isn't open to gets a seat, which ends with the call. On
+ * a board the call made that's whoever can't edit it, because everyone here works on it. On a saved one it's whoever can't
+ * open it, and what the workspace gives anyone else stays what they have. In the caller's transaction, which holds the
+ * workspace's row.
  */
 async function letInHere(w: HeldWorkspace, db: Db, callId: string, entry: BoardLetIn, here: Here[]): Promise<BoardLetIn> {
   const fresh = here.filter((p) => !entry.seen.includes(p.seat));
   if (!fresh.length) return entry;
-  const left = await cantOpen(w, db, entry.documentId, fresh.map((p) => ({ ...p, who: whoInCall(w.owner, callId, p) })));
+  const left = await (entry.by === null ? cantEdit : cantOpen)(w, db, entry.documentId, fresh.map((p) => ({ ...p, who: whoInCall(w.owner, callId, p) })));
   if (left.length) await grant(w, db, entry.documentId, left.map((p): Grant => ({ kind: 'seat', callId, seat: p.seat, name: p.name, role: 'edit' })));
   return { ...entry, seen: [...entry.seen, ...fresh.map((p) => p.seat)] };
 }
 /** Whether someone who let people in still may: a seat outlives whoever gave it, but nobody new gets one in their name. */
-async function stillShares(o: Owner, db: Db, callId: string, by: Controller, entry: BoardLetIn): Promise<boolean> {
-  const who = whoInCall(o, callId, by);
-  try {
-    return mayShare(who, await workspaceFor(o, who, entry.workspaceId, db), entry.documentId);
-  } catch (e) {
-    if (e instanceof NotFoundError) return false;
-    throw e;
-  }
+async function stillShares(w: HeldWorkspace, db: Db, callId: string, by: Controller, documentId: string): Promise<boolean> {
+  const who = whoInCall(w.owner, callId, by);
+  return mayShare(who, await heldBy(w, db, who), documentId);
 }
 /**
- * Everyone here who's new to what the call lets people into in one workspace, in the caller's transaction, which holds the
- * call's row. The same `board` back when nothing changed.
+ * Whether a board the call made is still the call's to give. Restricted, someone has decided who has it. And a call adds to a
+ * workspace on its organizer's word alone, so that goes when they can't edit there.
  */
-export async function seatNewcomers(o: Owner, db: Db, callId: string, workspaceId: string, board: CallBoards, here: Here[]): Promise<CallBoards> {
-  const due = board.letIn.filter((e) => e.workspaceId === workspaceId && here.some((p) => !e.seen.includes(p.seat)));
-  const w = due.length ? await serverWorkspace(o, workspaceId, db, 'change') : undefined;
-  if (!w) return board;
-  const next = new Map<BoardLetIn, BoardLetIn>();
-  for (const e of due) {
-    if (!w.state.items[e.documentId] || trashOf(w.state, e.documentId) || (e.by && !(await stillShares(o, db, callId, e.by, e)))) continue;
-    next.set(e, await letInHere(w, db, callId, e, here));
-  }
-  return next.size ? { ...board, letIn: board.letIn.map((e) => next.get(e) ?? e) } : board;
+const stillTheCalls = async (o: Owner, w: HeldWorkspace, db: Db, documentId: string): Promise<boolean> =>
+  w.state.items[documentId]?.restricted === false && organizerEdits(o, w, db, (await profile(o, db)).email);
+
+/** What the call lets people into that has someone here it hasn't been worked out for. */
+export const dueIn = (board: CallBoards, here: Here[]): BoardLetIn[] => board.letIn.filter((e) => here.some((p) => !e.seen.includes(p.seat)));
+/**
+ * Everyone here who's new to one board the call lets people into, on the word of whoever decided that, if it still stands. In
+ * the caller's transaction, which holds the call's row. The same `board` back when nothing changed.
+ */
+export async function seatNewcomers(o: Owner, db: Db, callId: string, documentId: string, board: CallBoards, here: Here[]): Promise<CallBoards> {
+  const entry = dueIn(board, here).find((e) => e.documentId === documentId);
+  const w = entry && await serverWorkspace(o, entry.workspaceId, db, 'change');
+  if (!entry || !w?.state.items[documentId] || trashOf(w.state, documentId)) return board;
+  if (!(await (entry.by ? stillShares(w, db, callId, entry.by, documentId) : stillTheCalls(o, w, db, documentId)))) return board;
+  const next = await letInHere(w, db, callId, entry, here);
+  return { ...board, letIn: board.letIn.map((e) => (e === entry ? next : e)) };
 }
 /**
- * When a call ends, with nothing held and before its seats go: someone who joined the invite during it keeps what it made by
- * email, as everyone on the invite when it was made does, if they still have their seat. Taken out of the call, they came off
- * the invite with it, and a seat taken back in Share stays taken back. None of this is worth failing the end of a call.
+ * When a call ends, with nothing held and before its seats go: someone on the invite who has a seat on a board the call made
+ * keeps it by email, as everyone on the invite when it was made does, if it's still the call's to give. Taken out of the call
+ * or with their seat taken back in Share, they have no seat. One that can't be kept stops nothing else, and none of this is
+ * worth failing the end of a call.
  */
 export async function keepForInvited(o: Owner, callId: string, meetingId: string, board: CallBoards, people: Here[]): Promise<void> {
   try {
     const made = board.letIn.filter((e) => e.by === null);
-    const late = new Set(made.length ? ((await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest))?.manifest.addedFromLink ?? []).map((e) => e.toLowerCase()) : []);
-    const invited = people.flatMap((p) => (p.email && late.has(p.email) ? [{ email: p.email, who: { email: undefined, principals: [seatIndex(o, callId, p.seat)] } }] : []));
+    const onInvite = new Set(made.length ? (await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest))?.manifest.guests.map((e) => e.toLowerCase()) : []);
+    const invited = people.flatMap((p) => (p.email && onInvite.has(p.email) ? [{ email: p.email, who: { email: undefined, principals: [seatIndex(o, callId, p.seat)] } }] : []));
     for (const e of invited.length ? made : []) {
       await tx(o.pool, async (c) => {
         const w = await serverWorkspace(o, e.workspaceId, c, 'change');
-        if (!w?.state.items[e.documentId]) return;
+        if (!w?.state.items[e.documentId] || !(await stillTheCalls(o, w, c, e.documentId))) return;
         const seatless = new Set(await cantOpen(w, c, e.documentId, invited));
         const seated = invited.filter((p) => !seatless.has(p));
         if (seated.length) await grant(w, c, e.documentId, seated.map(({ email }): Grant => ({ kind: 'email', email, role: 'edit' })));
-      });
+      }).catch((err: unknown) => blog.warn('board not kept for someone invited', { callId, workspaceId: e.workspaceId, documentId: e.documentId, err }));
     }
   } catch (e) {
     blog.warn('boards not kept for people added during a call', { callId, err: e });
@@ -205,7 +209,8 @@ const opening = <S extends Boarded>(s: S, place: string, open: OpenBoard, letIn:
  * A new board in the workspace the call uses. The people invited get it by email, so it stays theirs through the note, and
  * anyone else here a seat. Someone on the invite because they were let in from the link has a seat too, for now: taking them out
  * of the call takes them off the invite, and a seat goes with them where an address wouldn't. `keepForInvited` sees to whoever's
- * still on it when the call ends.
+ * still on it when the call ends. Nobody taken out of the call is given what's opened after they went, though they stay on the
+ * invite: what they had before, they keep, as they keep the note.
  */
 async function openNew<S extends Boarded>(x: Changing<S>, template: BoardTemplate): Promise<Changed<S>> {
   const { v, c, s, callId, meeting } = x;
@@ -213,10 +218,13 @@ async function openNew<S extends Boarded>(x: Changing<S>, template: BoardTemplat
   if (s.board.letIn.length >= MAX_BOARDS) throw fullUp(callId);
   const w = meeting.workspaceId ? await serverWorkspace(o, meeting.workspaceId, c, 'change') : undefined;
   if (!w) throw notFound('That workspace', { callId });
-  await requireOrganizerEdits(o, w, c, callId, (await profile(o, c)).email);
+  if (!(await organizerEdits(o, w, c, (await profile(o, c)).email))) {
+    throw new ConflictError(v.isOrganizer ? 'You can’t add to this call’s workspace any more. Choose another.' : 'This call’s workspace can’t take a new board. Ask the organizer to choose another.', { context: { callId, workspaceId: w.workspaceId } });
+  }
   const documentId = await addBoard(w, c, nameOf(meeting.title), x.maker);
-  const fromLink = new Set((meeting.addedFromLink ?? []).map((e) => e.toLowerCase()));
-  const invited = meeting.guests.filter((e) => !fromLink.has(e.toLowerCase()));
+  const removed = s.people.flatMap((j) => (j.email && s.removed.includes(j.person) ? [j.email] : []));
+  const notNow = new Set([...(meeting.addedFromLink ?? []), ...removed].map((e) => e.toLowerCase()));
+  const invited = meeting.guests.filter((e) => !notNow.has(e.toLowerCase()));
   if (invited.length) await grant(w, c, documentId, invited.map((email): Grant => ({ kind: 'email', email, role: 'edit' })));
   const entry = await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: null, seen: [] }, x.here);
   blog.info('board opened', { callId, workspaceId: w.workspaceId, documentId, made: true, invited: invited.length, here: entry.seen.length });
@@ -225,7 +233,7 @@ async function openNew<S extends Boarded>(x: Changing<S>, template: BoardTemplat
 
 /**
  * A saved board. `letIn` is a new decision about everyone here, so it's worked out afresh. A board the call made stays the
- * call's to give, whoever brings it back.
+ * call's to give, whoever brings it back, for as long as it's the call's to give: past that it's on this person's word.
  */
 async function openSaved<S extends Boarded>(x: Changing<S>, documentId: string, letIn: boolean): Promise<Changed<S>> {
   const { v, reader, c, s, callId } = x;
@@ -233,7 +241,7 @@ async function openSaved<S extends Boarded>(x: Changing<S>, documentId: string, 
   const by = controllerOf(v, reader);
   const there = s.board.letIn.find((e) => e.documentId === documentId);
   if (letIn && !there && s.board.letIn.length >= MAX_BOARDS) throw fullUp(callId);
-  const entry = letIn ? await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: there?.by === null ? null : by, seen: [] }, x.here) : undefined;
+  const entry = letIn ? await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: there?.by === null && await stillTheCalls(v.organizer, w, c, documentId) ? null : by, seen: [] }, x.here) : undefined;
   blog.info('board opened', { callId, workspaceId: w.workspaceId, documentId, made: false, letIn });
   return { s: opening(s, x.place, { workspaceId: w.workspaceId, documentId, by }, entry ? [...s.board.letIn.filter((e) => e !== there), entry] : s.board.letIn) };
 }

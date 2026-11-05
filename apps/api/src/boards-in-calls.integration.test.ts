@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from './crypto';
 import { startHarness, type Browser, type Harness } from './testing/harness';
 import { connect, disposeLiveKit, type TestParticipant } from './testing/livekit';
+import { reconcile } from './modules/calls';
 import { MeetingManifest } from './modules/meetings';
 import { openOwner } from './owners';
 import { getItem, saveRevision } from './vault';
@@ -302,10 +303,12 @@ describe('a new board', () => {
     const them = people.find((p) => p.person.email === art.email)?.id ?? '';
     await lena.api.workspaces.setRole(id, them, 'read');
     const told = { code: 'conflict', status: 409, message: 'This call’s workspace can’t take a new board. Ask the organizer to choose another.' };
+    const toldThem = { code: 'conflict', status: 409, message: 'You can’t add to this call’s workspace any more. Choose another.' };
     expect(await refusal(k.openBoard({ template: 'blank' }))).toEqual(told);
+    expect(await refusal(host.openBoard({ template: 'blank' }))).toEqual(toldThem);
     await lena.api.workspaces.removePerson(id, them);
     expect(await refusal(k.openBoard({ template: 'blank' }))).toEqual(told);
-    expect(await refusal(host.openBoard({ template: 'blank' }))).toEqual(told);
+    expect(await refusal(host.openBoard({ template: 'blank' }))).toEqual(toldThem);
     expect((await lena.api.workspaces.get(id)).items).toEqual([]);
     expect(await opened(k)).toBeNull();
     // Choosing another puts it right.
@@ -576,6 +579,32 @@ describe('a saved board', () => {
     expect(await seats(board)).toBe(0);
   });
 
+  it('goes at once from anyone it’s restricted away from while it’s open, naming nothing, even whoever opened it', async () => {
+    const { art, priya, theo, id, board, host, code: c } = await room();
+    const p = await invited(host, c, priya);
+    const t = await invited(host, c, theo);
+    await p.openBoard({ documentId: board, letIn: true });
+    const page = await open(priya, id, board, { pass: p.ticket.pass });
+    await art.api.workspaces.share.restrict(id, board, true);
+    // Priya had it through the workspace. She can still close it, as whoever opened it, and that's all she's told.
+    const seen = await read(p);
+    expect(seen.board.open).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, canClose: true, role: null, seal: 'Sealed' });
+    expect(said(seen)).not.toContain('Onboarding flow');
+    await until(() => page.getSnapshot().closed === 'access', 'her page to close');
+    expect(await code(p.openBoard({ documentId: board, letIn: false }))).toBe('not-found');
+    expect(await code(p.boardCheck(board))).toBe('not-found');
+    // Its creator keeps it, and a seat is an entry, which restricting leaves: Share is where those are taken back.
+    expect(await opened(host)).toMatchObject({ documentId: board, role: 'edit' });
+    expect(await opened(t)).toMatchObject({ documentId: board, role: 'edit' });
+    // Whoever let people in can't share it now, so nobody new gets a seat in her name.
+    const jamie = await guest(host, c);
+    await rest(150);
+    expect(await opened(jamie.call)).toMatchObject({ role: null, name: null });
+    expect(await seats(board)).toBe(1);
+    await p.closeBoard();
+    expect(await opened(host)).toBeNull();
+  });
+
   it('gives the organizer a seat too when they come back to what they can’t open: being organizer gives nothing', async () => {
     const lena = await account();
     const art = await account();
@@ -697,6 +726,186 @@ describe('someone who joins the invite during a call', () => {
     await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
     expect((await nora.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
     for (const who of [omar, pia, rosa]) expect(await code(who.api.workspaces.get(id))).toBe('not-found');
+  });
+});
+
+describe('a board the call made', () => {
+  it('lets a teammate who can only read add to it, as it lets a guest: everyone here works on it', async () => {
+    const art = await account();
+    const rita = await account();
+    const sara = await account();
+    const id = await workspace(art, 'Product', [[rita, 'read'], [sara, 'read']]);
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    // In the call from the link, so not on the invite when it's made: the workspace lets her read it.
+    const r = await rita.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, r);
+    await host.openBoard({ template: 'retro' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    expect(await opened(r)).toMatchObject({ documentId: board, role: 'edit' });
+    const page = await open(rita, id, board, { pass: r.ticket.pass });
+    expect(page.getSnapshot().role).toBe('edit');
+    page.doc.getMap('objects').set('a', 'a teammate’s sticky');
+    await stored(page);
+    expect(page.getSnapshot().refused).toBeNull();
+    // And anyone like her who comes after it's open.
+    const s = await sara.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, s);
+    await until(async () => (await opened(s))?.role === 'edit', 'Sara to be able to add to it');
+    // Her seat ends with the call, and being on the invite by then, she keeps it as anyone invited does.
+    await host.leave();
+    await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
+    for (const who of [rita, sara]) expect((await who.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
+  });
+
+  it('stops being given to anyone new once someone restricts it: that’s someone deciding who has it', async () => {
+    const art = await account();
+    const nora = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    const n = await nora.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, n);
+    await until(async () => (await opened(n))?.role === 'edit', 'a seat for Nora');
+    await art.api.workspaces.share.restrict(id, board, true);
+    const jamie = await guest(host, c);
+    await rest(150);
+    expect(await opened(jamie.call)).toMatchObject({ role: null, name: null });
+    expect(await seats(board)).toBe(1);
+    // A seat she had stays until the call ends, and nothing turns it into an address.
+    await host.leave();
+    await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
+    expect(await entries(board)).toBe(0);
+    expect(await code(nora.api.workspaces.get(id))).toBe('not-found');
+  });
+
+  it('stops being given to anyone new once the organizer can’t edit in its workspace', async () => {
+    const lena = await account();
+    const art = await account();
+    const nora = await account();
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit']]);
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    const n = await nora.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, n);
+    await until(async () => (await opened(n))?.role === 'edit', 'a seat for Nora');
+    const people = await lena.api.workspaces.people(id);
+    await lena.api.workspaces.setRole(id, people.find((p) => p.person.email === art.email)?.id ?? '', 'read');
+    const jamie = await guest(host, c);
+    await rest(150);
+    expect(await opened(jamie.call)).toMatchObject({ role: null, name: null });
+    expect(await seats(board)).toBe(1);
+    await host.leave();
+    await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
+    expect(await entries(board)).toBe(0);
+    expect(await code(nora.api.workspaces.get(id))).toBe('not-found');
+  });
+
+  it('can still be opened to people by someone who may share it, on their word and not the call’s', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    await art.api.workspaces.share.restrict(id, board, true);
+    const jamie = await guest(host, c);
+    await rest(150);
+    expect(await opened(jamie.call)).toMatchObject({ role: null });
+    // Art made it, so Art can share it. Everyone here is let in, and so is anyone after.
+    await host.openBoard({ documentId: board, letIn: true });
+    expect(await opened(jamie.call)).toMatchObject({ role: 'edit' });
+    const sam = await guest(host, c, 'Sam Guest');
+    await until(async () => (await opened(sam.call))?.role === 'edit', 'a seat for Sam');
+  });
+
+  it('gives someone taken out of the call nothing opened after they went, and leaves them what they had, as the note does', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email] });
+    await host.setWorkspace(id);
+    const k = await invited(host, c, kofi);
+    await invited(host, c, priya);
+    await host.openBoard({ template: 'blank' });
+    const before = host.getSnapshot().board.open?.documentId ?? '';
+    await host.remove(k.ticket.identity);
+    await host.openBoard({ template: 'blank' });
+    const after = host.getSnapshot().board.open?.documentId ?? '';
+    expect((await art.api.workspaces.share.list(id, after)).entries.map((e) => e.person.email)).toEqual([priya.email]);
+    await host.leave();
+    await until(async () => (await count("SELECT count(*)::int AS n FROM document_access WHERE kind = 'seat' AND call_id = $1", [host.ticket.callId])) === 0, 'the seats to end with the call');
+    expect((await kofi.api.workspaces.get(id)).items.map((x) => x.id)).toEqual([before]);
+    expect((await priya.api.workspaces.get(id)).items.map((x) => x.id).sort()).toEqual([before, after].sort());
+  });
+
+  it('stays with whoever’s on the invite and has a seat when the call ends, however they got there', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
+    await host.setWorkspace(id);
+    const k = await invited(host, c, kofi);
+    // Taken out and back by the link: they were invited from the start, so they're still on the invite, and not from the link.
+    await host.remove(k.ticket.identity);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    const back = await invited(host, c, kofi);
+    await until(async () => (await opened(back))?.role === 'edit', 'a seat for Kofi');
+    await host.leave();
+    await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
+    expect((await kofi.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
+  });
+});
+
+describe('keeping seats in step', () => {
+  it('puts right at the next upkeep a seat that a crash kept from someone let in', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    const jamie = await guest(host, c);
+    await until(async () => (await opened(jamie.call))?.role === 'edit', 'a seat for Jamie');
+    // As it stands if the process stopped after they were let in and before anything was done about their seat.
+    await h.pool.query("DELETE FROM document_access WHERE document_id = $1 AND kind = 'seat'", [board]);
+    const was = await storedCall(art.ownerId, host.ticket.callId);
+    const kept = z.object({ open: z.record(z.string(), z.unknown()), letIn: z.array(z.object({ seen: z.array(z.string()) }).passthrough()) }).parse(was.state['board']);
+    const forgotten = { ...kept, letIn: kept.letIn.map((e) => ({ ...e, seen: e.seen.slice(0, 1) })) };
+    await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [art.ownerId, host.ticket.callId, sealJson(was.key, was.header, toJson({ ...was.state, board: forgotten }))]);
+    expect(await opened(jamie.call)).toMatchObject({ role: null });
+    await reconcile(h.deps);
+    expect(await opened(jamie.call)).toMatchObject({ documentId: board, role: 'edit' });
+    expect(await seats(board)).toBe(1);
+  });
+
+  it('doesn’t let one board that can’t take anyone more stop the rest, in its workspace or another', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const other = await workspace(art, 'Other');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const full = host.getSnapshot().board.open?.documentId ?? '';
+    await host.openBoard({ template: 'blank' });
+    const beside = host.getSnapshot().board.open?.documentId ?? '';
+    await host.setWorkspace(other);
+    await host.openBoard({ template: 'blank' });
+    const elsewhere = host.getSnapshot().board.open?.documentId ?? '';
+    for (let i = 0; i < 5; i++) await art.api.workspaces.share.set(id, full, Array.from({ length: 100 }, () => ({ email: unique('full') })), 'read');
+    expect(await entries(full)).toBe(500);
+    const from = h.logs.length;
+    const jamie = await guest(host, c);
+    await until(async () => (await seats(beside)) === 1 && (await seats(elsewhere)) === 1, 'the seats that can be given');
+    expect(await opened(jamie.call)).toMatchObject({ documentId: elsewhere, role: 'edit' });
+    expect(await seats(full)).toBe(0);
+    expect(linesSince(from).find((l) => l.msg === 'seats on a board not kept up')).toMatchObject({ level: 40, documentId: full });
   });
 });
 
@@ -835,6 +1044,19 @@ describe('breakout rooms', () => {
     await until(async () => (await opened(k))?.documentId === board, 'Kofi to find it back in the main room');
   });
 
+  it('settle nothing by being refused: a workspace isn’t made for a board that won’t open', async () => {
+    const art = await account();
+    const kofi = await account();
+    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
+    const k = await invited(host, c, kofi);
+    host.openRooms({ rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [] }], minutes: 5 });
+    const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
+    await until(() => k.crypto.getSnapshot().place === rooms[0]?.id, 'Kofi to be in their room');
+    expect(await code(k.openBoard({ template: 'blank' }))).toBe('conflict');
+    expect(await art.api.workspaces.list()).toEqual([]);
+    expect((await art.api.meetings.get(host.getSnapshot().meetingId)).workspaceId).toBeNull();
+  });
+
   it('counts whoever’s in one among the people a main board leaves out, and seats them too', async () => {
     const art = await account();
     const theo = await account();
@@ -879,7 +1101,7 @@ describe('what the previous release stored', () => {
     await k.openBoard({ template: 'retro' });
     const open1 = await opened(host);
     expect(open1).toMatchObject({ openedBy: k.ticket.identity, role: 'edit', seal: 'Sealed' });
-    // And it's stored in the new shape from then on, in the part of the call it's in, with IDs and nothing else.
+    // And it's stored in the new shape from then on, in the part of the call it's in: where it is and who opened it, and no template.
     const after = await storedCall(art.ownerId, callId);
     expect(after.state['board']).toMatchObject({ open: { main: { workspaceId: open1?.workspaceId, documentId: open1?.documentId } } });
     expect(JSON.stringify(after.state['board'])).not.toContain('template');

@@ -288,6 +288,11 @@ export async function workspaceAt(db: Db, workspaceId: string): Promise<{ ownerI
   return row && { ownerId: row.owner_id, version: row.version };
 }
 
+/** A workspace, and where someone stands in it: what's needed to ask what they can do there. */
+export type WorkspaceAs = HeldWorkspace & Standing;
+/** How someone stands in a workspace that's already held, with nothing opened again. */
+export const heldBy = async (w: HeldWorkspace, db: Db, who: Who): Promise<WorkspaceAs> => ({ ...w, ...standingIn(await holdersOf(db, w.owner.ownerId, who.principals), who) });
+
 /** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
 export async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {
   const since = Object.values(w.state.items).flatMap((i) => (i.trashedAt ? [i.trashedAt] : [])).sort()[0] ?? null;
@@ -324,20 +329,20 @@ export function trashOf(s: WorkspaceState, id: string | null): { at: string; by:
   }
   return null;
 }
-const lookedUp = (who: Who, w: Workspace, id: string): Opened | undefined => {
+const lookedUp = (who: Who, w: WorkspaceAs, id: string): Opened | undefined => {
   const item = ID128.test(id) ? w.state.items[id] : undefined;
   const role = item && roleOf(who, w, id, item);
   return item && role ? { id, item, role } : undefined;
 };
 /** Anything in the tree this reader can open, folders too. */
-export function requireItem(who: Who, w: Workspace, id: string): Opened {
+export function requireItem(who: Who, w: WorkspaceAs, id: string): Opened {
   const found = lookedUp(who, w, id);
   if (!found) throw notFound('That item', { workspaceId: w.workspaceId, itemId: id });
   return found;
 }
-const refuse = (w: Workspace, id: string) => new ForbiddenError('You can read this, but not change it.', { context: { workspaceId: w.workspaceId, itemId: id } });
+const refuse = (w: WorkspaceAs, id: string) => new ForbiddenError('You can read this, but not change it.', { context: { workspaceId: w.workspaceId, itemId: id } });
 /** The same, to change: it needs `edit`, and to be in the tree (`inTrash` when it's fine in Trash). */
-export function requireEditable(who: Who, w: Workspace, id: string, inTrash: 'fine' | 'refused' = 'refused'): Opened {
+export function requireEditable(who: Who, w: WorkspaceAs, id: string, inTrash: 'fine' | 'refused' = 'refused'): Opened {
   const found = requireItem(who, w, id);
   if (found.role !== 'edit') throw refuse(w, id);
   if (inTrash === 'refused' && trashOf(w.state, id)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, itemId: id } });
@@ -348,18 +353,18 @@ export function requireEditable(who: Who, w: Workspace, id: string, inTrash: 'fi
  * open and one that was never there; `forbidden` for someone who can only read it; `conflict` to edit one in Trash, which
  * stays readable to whoever could open it, until it's back or gone.
  */
-export function requireDocument(who: Who, w: Workspace, documentId: string, need: DocumentRole): Opened {
+export function requireDocument(who: Who, w: WorkspaceAs, documentId: string, need: DocumentRole): Opened {
   const found = lookedUp(who, w, documentId);
   if (!found || found.item.kind === 'folder') throw notFound('That document', { workspaceId: w.workspaceId, documentId });
   return need === 'edit' ? requireEditable(who, w, documentId) : found;
 }
 /** What's only for people in the workspace. Anyone else, it doesn't exist for; a role that's too low is refused. */
-export function requireRole(w: Workspace, need: 'in' | 'edit' | 'admin'): void {
+export function requireRole(w: WorkspaceAs, need: 'in' | 'edit' | 'admin'): void {
   if (w.role === null) throw missing(w.workspaceId);
   if ((need === 'admin' && w.role !== 'admin') || (need === 'edit' && w.role === 'read')) throw new ForbiddenError(need === 'admin' ? 'Only an admin can do that.' : 'You can read this workspace, but not change it.', { context: { workspaceId: w.workspaceId, need } });
 }
 /** Who gets to say who has a document: someone in the workspace who can edit it, in Trash or not. */
-export function requireSharing(who: Who, w: Workspace, documentId: string): Opened {
+export function requireSharing(who: Who, w: WorkspaceAs, documentId: string): Opened {
   requireRole(w, 'in');
   const found = requireDocument(who, w, documentId, 'read');
   if (found.role !== 'edit') throw refuse(w, documentId);
@@ -430,22 +435,28 @@ export async function grantDocumentToCall(d: Deps, workspace: Pick<Workspace, 'w
   await nudgeCall(d, call.callId);
 }
 
-/** Whichever of these people can't open a document, by what each of them has now. */
-export async function cantOpen<T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<T[]> {
+/** What each of these people can do with a document now. */
+async function rolesOn<T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<{ person: T; role: DocumentRole | undefined }[]> {
   const item = w.state.items[documentId];
-  if (!item) return people;
+  if (!item) return people.map((person) => ({ person, role: undefined }));
   const holders = await holdersOf(db, w.owner.ownerId, people.flatMap((p) => p.who.principals));
-  return people.filter((p) => !roleOf(p.who, standingIn(holders, p.who), documentId, item));
+  return people.map((person) => ({ person, role: roleOf(person.who, standingIn(holders, person.who), documentId, item) }));
 }
+/** Whichever of these people can't open a document, by what each of them has now. */
+export const cantOpen = async <T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<T[]> =>
+  (await rolesOn(w, db, documentId, people)).filter((x) => x.role === undefined).map((x) => x.person);
+/** The same for changing it: those who can't open it, and those who can only read it. */
+export const cantEdit = async <T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<T[]> =>
+  (await rolesOn(w, db, documentId, people)).filter((x) => x.role !== 'edit').map((x) => x.person);
 
 /**
- * A call adds to a workspace only while its organizer can edit there. It only ever takes one they could, and nobody else in
- * the call need be in it, so it stops being theirs to add to the moment it stops being the organizer's.
+ * Whether a call's organizer can still edit in a workspace. A call adds to one, or gives away what it made there, only while
+ * they can: it only ever took one they could, and nobody else in the call need be in it.
  */
-export async function requireOrganizerEdits(d: Deps, w: HeldWorkspace, db: Db, callId: string, email: string): Promise<void> {
+export async function organizerEdits(d: Deps, w: HeldWorkspace, db: Db, email: string): Promise<boolean> {
   const who: Who = { email, principals: [emailIndex(d, email)] };
   const { role } = standingIn(await holdersOf(db, w.owner.ownerId, who.principals), who);
-  if (role !== 'admin' && role !== 'edit') throw new ConflictError('This call’s workspace can’t take a new board. Ask the organizer to choose another.', { context: { callId, workspaceId: w.workspaceId } });
+  return role === 'admin' || role === 'edit';
 }
 
 /** What `ShareTarget`s from a browser mean: an address as it is, and a seat in the sharer's own call, with who's in it. */

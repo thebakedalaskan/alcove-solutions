@@ -1196,16 +1196,26 @@ function seatsOf(o: Owner, callId: string, people: Joined[]): boards.Here[] {
 }
 /** Everyone in the call now, wherever they are in it: a main board is for the whole call. */
 const hereIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in'));
+/** The part of the call someone asking is in. */
+function whereIs(v: Viewer, s: Stored): string {
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  return mine ? placeOf(s, mine) : MAIN_PLACE;
+}
 
 /**
  * Someone opens or closes a board, under the call's row. Who's asking, and for a new board which workspace the call uses, are
- * settled before that's taken: settling takes the row itself, and a guest settles nothing.
+ * settled before that's taken, as settling takes the row itself. What's refused whatever happens is refused first, so a guest,
+ * or someone in a breakout room, settles nothing. It's asked again under the row.
  */
 async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Promise<CallState> {
   const o = v.organizer;
-  if (a.type === 'board-open') boards.requireStarter(v, a.type);
+  if (a.type === 'board-open') {
+    boards.requireStarter(v, a.type);
+    const { row, state } = await load(o, o.pool, callId);
+    boards.requireMainRoom(callId, whereIs(v, settle(state, row)), a.type);
+    if ('template' in a) await workspaceForCall(o, { organizer: o, callId });
+  }
   const reader = await readerInCall(v);
-  if (a.type === 'board-open' && 'template' in a) await workspaceForCall(o, { organizer: o, callId });
   const { room, made } = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
@@ -1213,7 +1223,7 @@ async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Pro
     const mine = settled.people.find((j) => j.identity === v.pass.identity);
     const { manifest } = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
     const done = await boards.change({
-      v, reader, c, callId, meeting: manifest, s: settled, place: mine ? placeOf(settled, mine) : MAIN_PLACE, here: hereIn(o, callId, settled), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }
+      v, reader, c, callId, meeting: manifest, s: settled, place: whereIs(v, settled), here: hereIn(o, callId, settled), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }
     }, a);
     await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, done.s)));
     return { room: row.room_name, made: done.made };
@@ -1231,15 +1241,15 @@ export async function boardCheck(v: Viewer, callId: string, documentId: string):
   const { row, state } = await load(o, o.pool, callId);
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'board-check' } });
   const s = settle(state, row);
-  const mine = s.people.find((j) => j.identity === v.pass.identity);
   const { manifest } = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-  return boards.check(o, await readerInCall(v), { callId, meeting: manifest, place: mine ? placeOf(s, mine) : MAIN_PLACE, here: hereIn(o, callId, s) }, documentId);
+  return boards.check(o, await readerInCall(v), { callId, meeting: manifest, place: whereIs(v, s), here: hereIn(o, callId, s) }, documentId);
 }
 
 /**
- * Keeps what the call lets people into in step with who's in it: called wherever someone's let in, as a seat ends with the
- * call and comes from it. One workspace at a time, so nothing here holds two of their locks, and under the call's row, so it
- * can't land after whoever it's for is taken out. Letting someone in is done by then: this fails on its own, with a log line.
+ * Keeps what the call lets people into in step with who's in it: called wherever someone's let in, and by upkeep, for anyone a
+ * crash left without their seat. One board at a time, so nothing here holds two workspaces' locks and one that can't take
+ * anyone more stops nothing else, and under the call's row, so it can't land after whoever it's for is taken out. Letting
+ * someone in is done by then: this fails on its own, with a log line.
  */
 export async function syncBoardSeats(call: CallRef): Promise<void> {
   const { organizer: o, callId } = call;
@@ -1247,13 +1257,16 @@ export async function syncBoardSeats(call: CallRef): Promise<void> {
     const { row, state } = await load(o, o.pool, callId);
     if (row.state !== 'live') return;
     let changed = false;
-    for (const workspaceId of new Set(state.board.letIn.map((e) => e.workspaceId))) {
+    for (const e of boards.dueIn(state.board, hereIn(o, callId, state))) {
       const seated = await tx(o.pool, async (c) => {
         const held = await load(o, c, callId, true);
         if (held.row.state !== 'live') return false;
-        const board = await boards.seatNewcomers(o, c, callId, workspaceId, held.state.board, hereIn(o, callId, held.state));
+        const board = await boards.seatNewcomers(o, c, callId, e.documentId, held.state.board, hereIn(o, callId, held.state));
         if (board !== held.state.board) await save(o, c, callId, { ...held.state, board });
         return board !== held.state.board;
+      }).catch((err: unknown) => {
+        clog.warn('seats on a board not kept up', { callId, workspaceId: e.workspaceId, documentId: e.documentId, err });
+        return false;
       });
       changed ||= seated;
     }
@@ -2440,6 +2453,8 @@ export const ARRIVAL_MS = 90_000;
 async function arrivals(d: Deps, ownerId: string, callId: string, roomName: string, now: number): Promise<void> {
   const o = await openOwner(d, ownerId, undefined);
   const { row, state } = await load(o, o.pool, callId);
+  // Upkeep comes through here, so a seat that a crash kept from someone let in is put right.
+  if (row.state === 'live' && state.board.letIn.length) await syncBoardSeats({ organizer: o, callId });
   const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.identity !== state.host && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
   if (!due.length) return;
   const here = new Set((await d.livekit.participants(roomName)).map((p) => p.identity));
