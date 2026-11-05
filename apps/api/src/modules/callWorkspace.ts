@@ -27,7 +27,7 @@ import type { DocTodo, FollowUpLimits, Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
 import { placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
-import { TREE_NOTICE, canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, workspaceOwner, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
+import { TREE_NOTICE, canOpen, emailIndex, grant, holdersOf, organizerEdits, readerInCall, requireDocument, requireRole, requireSharing, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
 import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
 import { addBeside, addCallFolder, createIn, followInvite, makeHome, type CallFolder } from './workspaces';
 
@@ -44,7 +44,7 @@ export interface Spaced extends Placing { workspace: CallSpace; removed: string[
  */
 const broughtId = (workspaceId: string, documentId: string): string => `${workspaceId}.${documentId}`;
 const BROUGHT = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{22})$/;
-const placeOfBrought = (id: string): { workspaceId: string; documentId: string } | undefined => {
+export const placeOfBrought = (id: string): { workspaceId: string; documentId: string } | undefined => {
   const [, workspaceId, documentId] = BROUGHT.exec(id) ?? [];
   return workspaceId && documentId ? { workspaceId, documentId } : undefined;
 };
@@ -84,7 +84,7 @@ export function tidied<S extends Spaced>(s: S): S {
   return { ...s, workspace: { ...w, present: w.present.filter((x) => !over(s, x)), play: w.play.filter((x) => !over(s, x)), asks: w.asks.filter((a) => !s.removed.includes(a.person)) } };
 }
 /** Who started something, by the name they came into the call with, which is how everyone there knows them. */
-const controllerOf = (v: Viewer, reader: Reader): Controller => ({ person: v.pass.person, seat: seatOfViewer(v), name: v.pass.name, email: reader.email ?? null });
+export const controllerOf = (v: Viewer, reader: Reader): Controller => ({ person: v.pass.person, seat: seatOfViewer(v), name: v.pass.name, email: reader.email ?? null });
 const whoStarted = (d: Deps, callId: string, by: Controller): Who => whoInCall(d, callId, by);
 const asSeat = (by: Controller) => ({ seat: by.seat, name: by.name });
 
@@ -279,15 +279,12 @@ export const homeOf = (made: MadeFor | null, m: Loaded<MeetingManifest>): boolea
   made !== null && (made.meetingId === m.itemId || (made.seriesId !== null && made.seriesId === (m.manifest.seriesId ?? null)));
 
 /**
- * Whether the organizer can still make things in a workspace chosen as a call's home: the call writes its folder there in
- * their name, so it takes what making a folder takes. Asked from who's in it, without opening it.
+ * A workspace chosen as a call's home, if its organizer can still make things there: the call writes its folder in their
+ * name, so it takes what making a folder takes (`organizerEdits`). Undefined for one deleted since, or theirs no longer.
  */
-export async function organizerEdits(o: Owner, email: string, workspaceId: string, db: Db = o.pool): Promise<boolean> {
-  const ownerId = await workspaceOwner(db, workspaceId);
-  if (!ownerId) return false;
-  const who = accountWho(o, email);
-  const { role } = standingIn(await holdersOf(db, ownerId, who.principals), who);
-  return role === 'admin' || role === 'edit';
+export async function usableHome(o: Owner, email: string, workspaceId: string | null): Promise<HeldWorkspace | undefined> {
+  const w = workspaceId ? await serverWorkspace(o, workspaceId) : undefined;
+  return w && await organizerEdits(o, w, o.pool, email) ? w : undefined;
 }
 
 /**
@@ -746,7 +743,7 @@ async function homeAfter(o: Owner, end: Ended): Promise<void> {
   if (!end.noteId) return;
   const chosen = m.manifest.workspaceId;
   const folder = over(id128());
-  if (chosen && await organizerEdits(o, organizer, chosen) && await folderIn(o, chosen, folder, m, organizer)) {
+  if (chosen && await usableHome(o, organizer, chosen) && await folderIn(o, chosen, folder, m, organizer)) {
     wlog.info('call folder made after the call', { callId: end.callId, workspaceId: chosen });
     return;
   }

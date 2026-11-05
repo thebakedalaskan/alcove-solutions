@@ -488,6 +488,13 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     spaceLimiter(v.pass.person, 'workspace');
     return c.json(await calls.previewWorkspace(v, c.req.param('id'), c.req.param('workspace')));
   });
+  /* What opening a saved board would mean, for the menu to ask before anything opens. */
+  app.get('/v1/live/calls/:id/boards/:document', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'board-check');
+    spaceLimiter(v.pass.person, 'workspace');
+    return c.json(await calls.boardCheck(v, c.req.param('id'), c.req.param('document')));
+  });
   app.use('/v1/live/calls/:id/follow-ups', capped(1024));
   app.get('/v1/live/calls/:id/follow-ups', async (c) => {
     const v = c.get('viewer');
@@ -503,9 +510,9 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   });
   app.post('/v1/live/calls/:id/actions', async (c) => {
     const a = await body(c, CallActionSchema);
-    // A raised hand, an ask for notes, whether others may point at your share, ticking a follow-up and what goes by what you
-    // can open in the workspace are anyone's in the call (calls.act says who gets what); keeping the call running is whoever
-    // hosts'; the rest is the organizer's.
+    // A raised hand, an ask for notes, whether others may point at your share, ticking a follow-up, what goes by what you
+    // can open in the workspace and a board are anyone's in the call (calls.act says who gets what); keeping the call running
+    // is whoever hosts'; the rest is the organizer's.
     if (calls.anyone(a)) calls.requireIn(c.get('viewer'), a.type);
     else if (HOST_ACTIONS.has(a.type)) hostOnly(c);
     else organizerOnly(c);
@@ -515,7 +522,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
     if (a.type === 'follow-up' || a.type === 'follow-up-add') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
-    else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
+    else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-') || a.type.startsWith('board-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
   });
   /*

@@ -3156,6 +3156,16 @@ describe('privacy at rest', () => {
     await c.api.workspaces.items.trash(space.id, spaceFolder.id);
     // A refusal says nothing either: not the address, the name, or that anything's there.
     expect(await c.api.workspaces.addPerson(space.id, 'not-an-address-CANARY-WSREFUSED', 'read').catch((e: unknown) => code(e))).toBe('invalid');
+    // A board in a call: named after it and saved in its workspace, with only IDs in the call. A guest's seat on it goes by a
+    // name sealed with the entry, and it's still there to scan: the call goes on.
+    const boardCall = await c.api.calls.startNow({ title: 'CANARY-BOARDCALL merger', notes: 'off' });
+    const boardHost = await c.api.calls.join(boardCall.code, { mic: false, cam: false });
+    await boardHost.setWorkspace(space.id);
+    await boardHost.openBoard({ template: 'retro' });
+    const boardGuest = await tapped().api.calls.join(boardCall.code, { mic: false, cam: false, name: 'CANARY-BOARDGUEST' });
+    await settle(boardHost, (s) => s.waiting.some((w) => w.id === boardGuest.ticket.identity));
+    await boardHost.admit(boardGuest.ticket.identity);
+    expect((await settle(boardGuest, (s) => s.board.open?.role === 'edit')).board.open?.name).toBe('CANARY-BOARDCALL merger');
     // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too,
     // and so does the call they put on their Google Calendar.
     const g = tapped();
@@ -3202,7 +3212,8 @@ describe('privacy at rest', () => {
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
       '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
-      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared'
+      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
+      'CANARY-BOARDCALL', 'CANARY-BOARDGUEST'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
