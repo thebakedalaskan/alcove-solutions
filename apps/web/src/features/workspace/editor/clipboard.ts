@@ -3,8 +3,8 @@
  * shortcuts, so a list stays a list wherever it lands. In: what comes from Word, Google Docs, Notion and the web is
  * turned into plain HTML first (nested lists flattened, paragraphs in a cell joined), and the schema's rules read that.
  */
-import { MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES } from '@alcove/api';
-import { newBlockId } from '@alcove/api/retire';
+import { MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES } from '@alcove/api';
+import { itemsOnPage, newBlockId } from '@alcove/api/retire';
 import { DOMSerializer, Fragment, Slice, type DOMOutputSpec, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
@@ -392,25 +392,21 @@ export function textToSlice(text: string, $context: ResolvedPos, plain: boolean)
 /* -------- too much to take in */
 
 /**
- * The most one paste or drop can bring. It goes up as one change, and the API takes 200,000 items and 4 MiB in one. A line
- * is about 4 items and a cell 5, and undoing a paste is half that again, so these leave room for what's typed around it.
+ * The most one paste or drop can bring. It goes up as one change, and the API takes as much in one as a document can hold. A
+ * line is about 4 items and a cell 5, and undoing a paste is half that again, so these leave room for what's typed around it.
  */
 const MAX_PASTE_BLOCKS = 20_000;
 const MAX_PASTE_CHARS = 1_000_000;
 const MAX_PASTE_BYTES = MAX_DOC_UPDATE_BYTES - 512 * 1024;
-/** The most items a document can hold, as far as a browser can tell. Its bytes are `MAX_DOC_BYTES`. */
-const MAX_DOC_ITEMS = 500_000;
 /** What a line or a cell comes to besides its words, measured. */
 const ITEMS_PER_BLOCK = 5;
 const BYTES_PER_BLOCK = 80;
 
 const TOO_MUCH = 'That’s too much to add to this document, so nothing was added. Try a smaller part of it.';
 
-/** Whether a document has room for this much, by what can be told here: the API has the last word. */
+/** Whether a document has room for this much, counted as the API counts it: what's on its page. The API has the last word. */
 function hasRoom(doc: Y.Doc, blocks: number, bytes: number): boolean {
-  let items = 0;
-  doc.store.clients.forEach((structs) => { items += structs.length; });
-  return items + blocks * ITEMS_PER_BLOCK <= MAX_DOC_ITEMS && Y.encodeStateAsUpdate(doc).length + bytes <= MAX_DOC_BYTES;
+  return itemsOnPage(doc) + blocks * ITEMS_PER_BLOCK <= MAX_DOC_ITEMS && Y.encodeStateAsUpdate(doc).length + bytes <= MAX_DOC_BYTES;
 }
 
 function fits(rt: EditorRuntime, slice: Slice): boolean {

@@ -496,7 +496,8 @@ describe('what a guest’s pass reaches', () => {
     const BY_PASS = new Set([
       'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
       'GET /v1/workspaces/:id/documents/:doc/live', 'POST /v1/workspaces/:id/documents/:doc/updates', 'POST /v1/workspaces/:id/documents/:doc/awareness', 'GET /v1/workspaces/:id/documents/:doc/versions',
-      'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore'
+      'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore',
+      'GET /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/ask'
     ]);
     const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);
     const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
@@ -514,7 +515,10 @@ describe('what a guest’s pass reaches', () => {
     // Each with what it takes, so what answers is whether it's there to reach and not what was sent.
     const update = 'AQHpxYYMAAQBB2NvbnRlbnQBeAA';
     const presence = { connection: 'x'.repeat(22), document: null, block: null, typing: false };
-    const asking: Record<string, unknown> = { 'POST /v1/workspaces/:id/presence': presence, 'POST /v1/workspaces/:id/documents/:doc/updates': { update }, 'POST /v1/workspaces/:id/documents/:doc/awareness': { update: 'AA' } };
+    const asking: Record<string, unknown> = {
+      'POST /v1/workspaces/:id/presence': presence, 'POST /v1/workspaces/:id/documents/:doc/updates': { update }, 'POST /v1/workspaces/:id/documents/:doc/awareness': { update: 'AA' },
+      'POST /v1/workspaces/:id/documents/:doc/presenter-notes': { text: 'Mine' }, 'POST /v1/workspaces/:id/documents/:doc/ask': { action: 'shorter', text: 'Words' }
+    };
     for (const r of passRoutes) {
       const res = await send(r.method, fill(r.path), JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));
       expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 404`);

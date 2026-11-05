@@ -85,7 +85,7 @@ describe('reading someone’s own calendar', () => {
   });
 
   it('counts a call started now only once someone is in it, not one that’s over, and not one still waiting for a time', async () => {
-    const me = person('ben');
+    const me = person('bram');
     const b = h.browser();
     await viaGoogle(b, me, 'no-calendar');
     const ownerId = (await b.api.auth.getSession())?.ownerId ?? '';

@@ -3,13 +3,13 @@
  * notes open in place. The button says what it will do, and the line beside it who will hear about it.
  */
 import type { MeetingInput, Person } from '@alcove/api';
-import { Button, Faces, FlowBody, FlowFoot, FlowRow, Switch, SwitchLine } from '@alcove/ui';
+import { Button, Faces, FlowBody, FlowFoot, FlowRow, NotesSwitches, Switch, SwitchLine } from '@alcove/ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { callName } from '~/lib/people';
 import { timeZone } from '~/lib/time';
 import { docNames } from './Documents';
 import { BIG_CALL, peopleLine, repeatInput, ruleOf, titleFor, type Draft } from './draft';
-import { Failed, NotesSwitches } from './parts';
+import { Failed } from './parts';
 import { callCount, invitationLine, notesWord, repeatLine, timeLine } from './words';
 
 /** What Schedule does with this draft, for whoever's on it. Only a calendar that takes the call invites anyone. */

@@ -1,0 +1,289 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-04T20:22:56Z"
+ },
+ "title": "Alcove design",
+ "launch": {
+  "view": "canvas",
+  "page": "life"
+ },
+ "pages": [
+  {
+   "id": "life",
+   "name": "Everything that moves"
+  },
+  {
+   "id": "app",
+   "name": "The app"
+  },
+  {
+   "id": "steps-i",
+   "name": "Home step by step"
+  },
+  {
+   "id": "steps-notes",
+   "name": "Notes step by step"
+  },
+  {
+   "id": "steps-note",
+   "name": "A note step by step"
+  },
+  {
+   "id": "steps-team",
+   "name": "Team step by step"
+  },
+  {
+   "id": "steps-record",
+   "name": "Record step by step"
+  },
+  {
+   "id": "steps-settings",
+   "name": "Settings step by step"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Faces.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1000,
+   "h": 820,
+   "title": "People in the arch",
+   "page": "parts"
+  },
+  "Overlays.dc.html": {
+   "x": 1080,
+   "y": 0,
+   "w": 1000,
+   "h": 300,
+   "title": "What opens over Home",
+   "page": "parts"
+  },
+  "Side.dc.html": {
+   "x": 2160,
+   "y": 0,
+   "w": 256,
+   "h": 800,
+   "title": "The sidebar",
+   "page": "parts"
+  },
+  "SkyArt.dc.html": {
+   "x": 0,
+   "y": 940,
+   "w": 1000,
+   "h": 340,
+   "title": "The sunset, drawn",
+   "page": "parts"
+  },
+  "Home.dc.html": {
+   "x": 0,
+   "y": 1340,
+   "w": 1440,
+   "h": 900,
+   "title": "Home",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "StepsPage.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 5722,
+   "title": "Home, every journey step by step",
+   "page": "steps-i"
+  },
+  "App.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 960,
+   "title": "Walk the app",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Evening.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1560,
+   "h": 820,
+   "title": "One evening, page by page",
+   "page": "app"
+  },
+  "Notes.dc.html": {
+   "x": 1520,
+   "y": 1340,
+   "w": 1440,
+   "h": 900,
+   "title": "Notes",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Note.dc.html": {
+   "x": 3040,
+   "y": 1340,
+   "w": 1440,
+   "h": 900,
+   "title": "A note",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Team.dc.html": {
+   "x": 0,
+   "y": 2360,
+   "w": 1440,
+   "h": 900,
+   "title": "Team",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Record.dc.html": {
+   "x": 1520,
+   "y": 2360,
+   "w": 1440,
+   "h": 900,
+   "title": "Record",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Settings.dc.html": {
+   "x": 3040,
+   "y": 2360,
+   "w": 1440,
+   "h": 900,
+   "title": "Settings",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "StepsNotes.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 14337,
+   "title": "Notes, every journey step by step",
+   "page": "steps-notes"
+  },
+  "StepsNote.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 14952,
+   "title": "A note, every journey step by step",
+   "page": "steps-note"
+  },
+  "StepsTeam.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 13722,
+   "title": "Team, every journey step by step",
+   "page": "steps-team"
+  },
+  "StepsRecord.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 11261,
+   "title": "Record, every journey step by step",
+   "page": "steps-record"
+  },
+  "StepsSettings.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 3904,
+   "h": 14952,
+   "title": "Settings, every journey step by step",
+   "page": "steps-settings"
+  },
+  "Scene.dc.html": {
+   "x": 0,
+   "y": 1400,
+   "w": 1200,
+   "h": 420,
+   "title": "One evening, drawn",
+   "page": "parts"
+  },
+  "Life.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1270,
+   "title": "Everything that moves",
+   "page": "life",
+   "expand": "fill",
+   "is_interactive": true
+  },
+  "Visitors.dc.html": {
+   "x": 1280,
+   "y": 1400,
+   "w": 1200,
+   "h": 420,
+   "title": "What passes through",
+   "page": "parts"
+  },
+  "Series.dc.html": {
+   "x": 4560,
+   "y": 1340,
+   "w": 1440,
+   "h": 900,
+   "title": "A series",
+   "page": "app",
+   "expand": "fill",
+   "is_interactive": true
+  }
+ },
+ "order": [
+  "Life.dc.html",
+  "App.dc.html",
+  "Evening.dc.html",
+  "Home.dc.html",
+  "Notes.dc.html",
+  "Note.dc.html",
+  "Series.dc.html",
+  "Team.dc.html",
+  "Record.dc.html",
+  "Settings.dc.html",
+  "StepsPage.dc.html",
+  "StepsNotes.dc.html",
+  "StepsNote.dc.html",
+  "StepsTeam.dc.html",
+  "StepsRecord.dc.html",
+  "StepsSettings.dc.html",
+  "Faces.dc.html",
+  "Overlays.dc.html",
+  "Side.dc.html",
+  "SkyArt.dc.html",
+  "Visitors.dc.html",
+  "Scene.dc.html"
+ ],
+ "notes": {
+  "app-title": {
+   "x": 0,
+   "y": -300,
+   "text": "The app",
+   "kind": "title1",
+   "maxW": 3080,
+   "page": "app"
+  },
+  "app-pages": {
+   "x": 0,
+   "y": 1040,
+   "text": "Each page",
+   "kind": "title1",
+   "maxW": 6000,
+   "page": "app"
+  }
+ },
+ "designSystems": []
+}

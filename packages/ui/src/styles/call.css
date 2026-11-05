@@ -806,14 +806,14 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
   .ic-dockbar .ac-dock-chev { height: 38px; width: 18px; }
   .ic-dockbar .ac-dock-sep { margin: 0 2px; }
   .ic-dockbar .ac-dock-leave { padding: 0 12px; }
-  .ic-dockbar .ac-dock-leave .lt { display: none; }
+  .ic-dockbar .ac-dock-leave .lt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .ic-rs { display: none; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
   .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 @media (max-width: 560px) {
   .ic-call { padding: 0 8px; }
-  .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:first-of-type { display: none; }
+  .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:not(.ac-dock-sep ~ .ac-dock-sep) { display: none; }
   .ic-menu .only-narrow { display: flex; }
   .ic-catch, .ic-reset { display: none; }
   .ic-dockbar .ac-dock-chev { display: none; }

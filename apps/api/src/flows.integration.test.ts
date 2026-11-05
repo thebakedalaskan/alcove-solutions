@@ -297,22 +297,22 @@ describe('signing in with Google', () => {
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
 
-    // Someone invites Ben to a call with notes before he has ever used Alcove.
-    const ben: GoogleUser = { sub: '104412233445566778899', email: 'Ben.Kay@Example.com', name: 'Ben Kay', picture: `${h.google.issuer}/photo/ben-1` };
+    // Someone invites Bram to a call with notes before they've ever used Alcove.
+    const bram: GoogleUser = { sub: '104412233445566778899', email: 'Bram.Kay@Example.com', name: 'Bram Kay', picture: `${h.google.issuer}/photo/bram-1` };
     const host = await account();
-    const call = await host.api.calls.join((await host.api.calls.startNow({ notes: 'on', guests: ['ben.kay@example.com'] })).code, { mic: true, cam: false });
-    await call.appendAudio(piece(audioBytes('for-ben'), 0, 0));
+    const call = await host.api.calls.join((await host.api.calls.startNow({ notes: 'on', guests: ['bram.kay@example.com'] })).code, { mic: true, cam: false });
+    await call.appendAudio(piece(audioBytes('for-bram'), 0, 0));
     const noteId = call.getSnapshot().notes.noteId ?? '';
     await call.leave();
 
     // His first sign-in creates his account from what Google verified, and lands on the welcome step.
-    expect(landed(await viaGoogle(b, ben))).toBe('/ready');
+    expect(landed(await viaGoogle(b, bram))).toBe('/ready');
     const s = await b.api.auth.getSession();
-    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Ben Kay', email: 'ben.kay@example.com' } });
+    expect(s).toMatchObject({ provider: 'google', sample: false, user: { name: 'Bram Kay', email: 'bram.kay@example.com' } });
     // The photo comes from Alcove, not from Google: an opaque URL on the API that only works signed in.
     const photo = s?.user.photoUrl ?? '';
     expect(photo.startsWith(`${h.baseUrl}/v1/photos/`)).toBe(true);
-    expect(photo).not.toContain('ben-1');
+    expect(photo).not.toContain('bram-1');
     const fetchesBefore = h.google.photoFetches();
     const got = await b.fetch(photo);
     expect([got.status, got.headers.get('content-type')]).toEqual([200, 'image/png']);
@@ -329,7 +329,7 @@ describe('signing in with Google', () => {
 
     // Again, in another browser: the same account, straight to Home, with the photo Google has now.
     const later = h.browser();
-    expect(landed(await viaGoogle(later, { ...ben, picture: `${h.google.issuer}/photo/ben-2` }))).toBe('/home');
+    expect(landed(await viaGoogle(later, { ...bram, picture: `${h.google.issuer}/photo/bram-2` }))).toBe('/home');
     const again = await later.api.auth.getSession();
     expect(again?.ownerId).toBe(s?.ownerId);
     // A new photo at Google is a new URL here too, and still never Google's own.
@@ -401,15 +401,15 @@ describe('Google Calendar', () => {
   });
 
   it('puts scheduled calls on the calendar, so Google invites everyone, and keeps the event in step', async () => {
-    const ben = person('ben');
+    const bram = person('bram');
     const b = h.browser();
-    await viaGoogle(b, ben);
+    await viaGoogle(b, bram);
     const calls = () => h.google.calls.filter((c) => c.method !== 'GET').map((c) => [c.method, c.sendUpdates]);
     const before = h.google.calls.length;
 
     const m = await b.api.meetings.create({ title: 'Pricing review', startsAt: at(1, 14), durationMinutes: 45, guests: ['priya@example.com', 'kofi@example.com'], notes: 'on' });
     expect(m.calendarUrl).toMatch(/^https:\/\/calendar\.google\.com\//);
-    const [event] = h.google.calendar(ben.sub);
+    const [event] = h.google.calendar(bram.sub);
     expect(event).toMatchObject({
       summary: 'Pricing review', location: `${ORIGIN}/join/${m.code}`, attendees: [{ email: 'priya@example.com' }, { email: 'kofi@example.com' }],
       start: { dateTime: m.startsAt }, end: { dateTime: m.endsAt }, extendedProperties: { private: { alcoveMeeting: m.id } }
@@ -419,13 +419,13 @@ describe('Google Calendar', () => {
 
     // Changes go to everyone through the calendar.
     const moved = await b.api.meetings.update(m.id, { startsAt: at(1, 16), durationMinutes: 30, guests: ['priya@example.com'], notes: 'off' });
-    expect(h.google.calendar(ben.sub)[0]).toMatchObject({ start: { dateTime: moved.startsAt }, attendees: [{ email: 'priya@example.com' }] });
-    expect(h.google.calendar(ben.sub)[0]?.description).not.toContain('Notes are on');
+    expect(h.google.calendar(bram.sub)[0]).toMatchObject({ start: { dateTime: moved.startsAt }, attendees: [{ email: 'priya@example.com' }] });
+    expect(h.google.calendar(bram.sub)[0]?.description).not.toContain('Notes are on');
     // Alcove's own calls aren't listed twice.
     expect((await b.api.calendar.get()).events).toEqual([]);
 
     await b.api.meetings.cancel(m.id);
-    expect(h.google.calendar(ben.sub)).toEqual([]);
+    expect(h.google.calendar(bram.sub)).toEqual([]);
     expect(h.google.calls.slice(before).filter((c) => c.method !== 'GET').map((c) => [c.method, c.sendUpdates])).toEqual([['POST', 'all'], ['PATCH', 'all'], ['DELETE', 'all']]);
     expect(calls().length).toBeGreaterThanOrEqual(3);
   });
@@ -667,17 +667,17 @@ describe('meetings', () => {
   it('schedules with people invited by email, edits, changes notes and cancels', async () => {
     const { api, session } = await account();
     const start = new Date(Date.now() + 2 * 86_400_000).toISOString();
-    const m = await api.meetings.create({ title: 'Harbor kickoff', startsAt: start, durationMinutes: 30, guests: ['Ben@Harbor.health', 'sam@fastmail.com', 'ben@harbor.health', session.user.email], notes: 'on' });
+    const m = await api.meetings.create({ title: 'Harbor kickoff', startsAt: start, durationMinutes: 30, guests: ['Bram@Harbor.health', 'sam@fastmail.com', 'bram@harbor.health', session.user.email], notes: 'on' });
     expect(m).toMatchObject({ title: 'Harbor kickoff', isOrganizer: true, status: 'scheduled', notes: 'on', organizer: { id: session.ownerId } });
     // Lower-cased, once each, and never the organizer.
-    expect(m.guests.map((g) => g.email)).toEqual(['ben@harbor.health', 'sam@fastmail.com']);
+    expect(m.guests.map((g) => g.email)).toEqual(['bram@harbor.health', 'sam@fastmail.com']);
     expect(m.code).toMatch(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
     expect((await api.meetings.byCode(m.code))?.id).toBe(m.id);
 
-    const edited = await api.meetings.update(m.id, { title: 'Harbor kickoff (moved)', durationMinutes: 45, guests: ['ben@harbor.health'], notes: 'off' });
+    const edited = await api.meetings.update(m.id, { title: 'Harbor kickoff (moved)', durationMinutes: 45, guests: ['bram@harbor.health'], notes: 'off' });
     expect(edited).toMatchObject({ title: 'Harbor kickoff (moved)', notes: 'off' });
     expect((new Date(edited.endsAt).getTime() - new Date(edited.startsAt).getTime()) / 60_000).toBe(45);
-    expect(edited.guests.map((g) => g.email)).toEqual(['ben@harbor.health']);
+    expect(edited.guests.map((g) => g.email)).toEqual(['bram@harbor.health']);
     expect(code(await api.meetings.update(m.id, { guests: ['not an address'] }).catch((e: unknown) => e))).toBe('invalid');
 
     await api.meetings.cancel(m.id);
@@ -2552,7 +2552,7 @@ describe('room recordings', () => {
     for (const [seq, bytes] of takes.entries()) await again.appendAudio(piece(bytes, 0, seq));
     await again.appendAudio(piece(takes[2] ?? audioBytes(''), 0, 2)); // and a retry of the last one
     await again.transcribe(speech('We agreed to start with the roof.', 0, 1));
-    await again.transcribe(speech('Ben brings the ladder.', 0, 9));
+    await again.transcribe(speech('Bram brings the ladder.', 0, 9));
     // A different piece can't take the place of one already stored: one that starts elsewhere, or lasts longer or shorter.
     expect(code(await again.appendAudio(piece(audioBytes('not-take-1'), 0, 1, 6)).catch((e: unknown) => e))).toBe('conflict');
     expect(code(await again.appendAudio({ ...piece(audioBytes('not-take-2'), 0, 2), durationMs: 4000 }).catch((e: unknown) => e))).toBe('conflict');
@@ -2568,7 +2568,7 @@ describe('room recordings', () => {
     expect((await api.notes.list({ kind: 'room' })).map((n) => n.id)).toEqual([pendingNoteId]);
     const note = await api.notes.get(pendingNoteId);
     expect(note.audio).toEqual([expect.objectContaining({ index: 0, pieces: 3, seconds: 15 })]);
-    expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to start with the roof.'], [9, 'Ben brings the ladder.']]);
+    expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to start with the roof.'], [9, 'Bram brings the ladder.']]);
     expect(transcribed() - heardBefore).toBe(2);
     const audio = Buffer.from(await (await own(api.notes.audioUrl(pendingNoteId, 0, 3))).arrayBuffer());
     expect(audio.equals(Buffer.concat(takes))).toBe(true);
@@ -2739,11 +2739,16 @@ describe('deleting an account', () => {
     const own = (await b.api.notes.personal(callNote).add({ kind: 'note', text: 'For everyone with it.' })).entries[0]?.id ?? '';
     await b.api.notes.addToShared(callNote, own, { text: 'For everyone with it.', seal: (await b.api.notes.previewAddition(callNote, own)).seal });
 
+    // What she keeps beside a document for presenting it, under her own account.
+    const hers = await b.api.workspaces.create('Hers');
+    const plan = await b.api.workspaces.items.create(hers.id, { kind: 'document', name: 'Plan' });
+    await b.api.workspaces.presenterNotes.set(hers.id, plan.id, 'Thank everyone.');
+
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
       'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
+      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_members', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
@@ -2900,7 +2905,7 @@ describe('deleting an account', () => {
     const moved = await cleo.api.calendar.adopt('her-own', 'off');
     // A call whose time has come but hasn't started, and one she started early.
     await cleo.api.meetings.create({ title: 'Ten minutes in', startsAt: minutes(-10), durationMinutes: 30, guests: ['ann@guests.example'], notes: 'off' });
-    const early = await cleo.api.meetings.create({ title: 'Tomorrow, begun now', startsAt: days(1), durationMinutes: 30, guests: ['ben@guests.example'], notes: 'off' });
+    const early = await cleo.api.meetings.create({ title: 'Tomorrow, begun now', startsAt: days(1), durationMinutes: 30, guests: ['bram@guests.example'], notes: 'off' });
     const live = await cleo.api.calls.join(early.code, { mic: true, cam: false });
     expect((await cleo.api.meetings.upcoming()).map((m) => m.status).sort()).toEqual(['live', 'scheduled', 'scheduled']);
     const own = structuredClone(h.google.calendar(who.sub).find((e) => e.id === 'her-own'));
@@ -3151,6 +3156,16 @@ describe('privacy at rest', () => {
     await c.api.workspaces.items.trash(space.id, spaceFolder.id);
     // A refusal says nothing either: not the address, the name, or that anything's there.
     expect(await c.api.workspaces.addPerson(space.id, 'not-an-address-CANARY-WSREFUSED', 'read').catch((e: unknown) => code(e))).toBe('invalid');
+    // A board in a call: named after it and saved in its workspace, with only IDs in the call. A guest's seat on it goes by a
+    // name sealed with the entry, and it's still there to scan: the call goes on.
+    const boardCall = await c.api.calls.startNow({ title: 'CANARY-BOARDCALL merger', notes: 'off' });
+    const boardHost = await c.api.calls.join(boardCall.code, { mic: false, cam: false });
+    await boardHost.setWorkspace(space.id);
+    await boardHost.openBoard({ template: 'retro' });
+    const boardGuest = await tapped().api.calls.join(boardCall.code, { mic: false, cam: false, name: 'CANARY-BOARDGUEST' });
+    await settle(boardHost, (s) => s.waiting.some((w) => w.id === boardGuest.ticket.identity));
+    await boardHost.admit(boardGuest.ticket.identity);
+    expect((await settle(boardGuest, (s) => s.board.open?.role === 'edit')).board.open?.name).toBe('CANARY-BOARDCALL merger');
     // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too,
     // and so does the call they put on their Google Calendar.
     const g = tapped();
@@ -3197,7 +3212,8 @@ describe('privacy at rest', () => {
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
       '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
-      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared'
+      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
+      'CANARY-BOARDCALL', 'CANARY-BOARDGUEST'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.

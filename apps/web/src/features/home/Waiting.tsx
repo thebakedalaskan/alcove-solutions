@@ -4,7 +4,7 @@
  * what you did, until you leave Home, so nothing moves under your pointer.
  */
 import { errorMessage, firstName, mayDecide, proposerOf, type ActionPatch, type DecisionPatch, type Inbox, type NoteReader, type NoteSummary, type OpenAction, type PendingDecision } from '@alcove/api';
-import { Icon, cn, useToast } from '@alcove/ui';
+import { Icon, ShowMore, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -12,7 +12,7 @@ import { Backing, EvidenceFlags, useNoteReader } from '~/features/notes/entries'
 import { MomentLink, decisionLine, proposedLine } from '~/features/notes/parts';
 import { q, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { sharedLately } from './day';
-import { Moment, More } from './parts';
+import { Moment } from './parts';
 
 type Item =
   | { kind: 'decision'; key: string; at: string; d: PendingDecision }
@@ -87,7 +87,7 @@ export function Waiting({ items, onAnswer }: { items: Item[]; onAnswer: () => vo
       <ul className="hm-tiles">
         {visible.map((item) => <Tile key={item.key} item={item} outcome={outcomeOf(item.key)} busy={busy.has(item.key)} me={me} reader={item.kind === 'decision' ? readerAs(item.d.role) : undefined} run={(o) => void run(item, o)} />)}
       </ul>
-      {shown.length > FIRST + 1 && <More all={all} more={shown.length - FIRST} onToggle={() => setAll((a) => !a)} />}
+      {shown.length > FIRST + 1 && <ShowMore all={all} more={shown.length - FIRST} onToggle={() => setAll((a) => !a)} />}
     </>
   );
 }

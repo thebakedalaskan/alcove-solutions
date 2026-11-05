@@ -4,18 +4,24 @@
  * anyone else does comes down the document's stream, which picks up from the last `seq` it heard however it ended. Yjs
  * updates can arrive twice and in any order, so a retry never does harm and there's nothing to reconcile.
  *
- * Nothing typed is let go of until the API has it. With a `keep` store, that survives a reload too.
+ * Nothing typed is let go of until the API has it, or until someone chooses to. A refusal never does: what's refused stays
+ * here and in `keep`, through reloads, until it goes or someone takes it out with `unsentCopy`.
  *
  * A refused update can't hold up what's behind it. A client's clocks have to reach the API in order, so anything written as
  * the same client is stuck behind it: this document moves to a new client, and what's written from then on goes as usual,
- * unless it builds on what's stuck. What's stuck is worked out afresh from time to time. Yjs lets go of what's been deleted, so
- * once a paste is undone or cut down, what's left of it is small.
+ * unless it builds on what's stuck. It only moves so many times, as a client costs the API a row: after that what's written
+ * waits with the rest. What's stuck is worked out afresh from time to time, and always goes whole: a change is never split,
+ * so a move can't arrive as a delete. Yjs lets go of what's been deleted, so once a paste is undone or cut down, what's left
+ * of it is small, and at the limit anything that doesn't add to the page goes.
  *
  * This module holds Yjs, and loads with the first document someone opens.
  */
 import {
-  AlcoveApiError, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, toBase64Url, type DocClosed, type DocLiveEvent, type DocRefusal, type DocSession, type DocStatus, type KeptUpdates
+  AlcoveApiError, DOC_FRAGMENT, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, toBase64Url, type DocClosed, type DocCopyToken, type DocLiveEvent, type DocRefusal, type DocSession,
+  type DocSize, type DocStatus, type DocUnsentCopy, type KeptUpdates
 } from '@alcove/api';
+import { TAGS, itemsOnPage } from '@alcove/api/retire';
+import * as encoding from 'lib0/encoding';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { unref } from './workspaces';
@@ -29,11 +35,14 @@ const LONGEST_WAIT_MS = 10_000;
 const STEADY_MS = 1_000;
 /** What one request carries, leaving room for what merging adds. */
 const REQUEST_BYTES = MAX_DOC_UPDATE_BYTES - 64 * 1024;
-/** How many updates go in one request: each can be a client of its own, and the API takes so many at once. */
+/** How many updates go in one request, however small: merging them isn't free. */
 const REQUEST_UPDATES = 64;
-/** How soon after something changes what's stuck is tried again, and how often if nothing does: room may have been made by someone else. */
+/** How soon after something changes here what's stuck is tried again, then how soon after that, doubling up to how often if nothing does: room may have been made by someone else. */
 const STUCK_SOON_MS = 1_000;
+const STUCK_AGAIN_MS = 3_000;
 const STUCK_WAIT_MS = 30_000;
+/** How many new clients one stretch of being stuck gets, however long it lasts: each is a client the API has for good. */
+const MOST_MOVES = 4;
 
 /** Whatever Yjs applies with this came from Alcove or from `keep`, and isn't new here. */
 const HEARD = Symbol('heard');
@@ -45,16 +54,124 @@ export interface DocTransport {
   awareness(update: string, keepalive: boolean): Promise<unknown>;
 }
 
-/** An edit Alcove doesn't have yet, and its place in `keep`, if it has one. `stuck`: it's waiting on something other than the connection. */
-interface Unsent { update: Uint8Array; kept: Promise<number | null> | null; stuck: boolean }
+/** An edit Alcove doesn't have yet, and its place in `keep`, if it has one, once that's known. `stuck`: it's waiting on something other than the connection. */
+interface Unsent { update: Uint8Array; kept: Promise<number | null> | null; key: number | null; stuck: boolean; clients: Set<number>; items: number }
 type Ending = { over: DocClosed } | 'ended' | 'failed';
+type Struct = ReturnType<typeof Y.decodeUpdate>['structs'][number];
+type Deletes = ReturnType<typeof Y.createDeleteSet>;
+
+/** What of a delete set reaches past what Alcove has: deletes of what's new. */
+function deletesPast(ds: Deletes, known: Map<number, number>): Deletes {
+  const out = Y.createDeleteSet();
+  for (const [client, ranges] of ds.clients) {
+    const reach = known.get(client) ?? 0;
+    const past = ranges.flatMap(({ clock, len }) => (clock + len > reach ? [{ clock: Math.max(clock, reach), len: clock + len - Math.max(clock, reach) }] : []));
+    if (past.length) out.clients.set(client, past);
+  }
+  return out;
+}
+/** An update of these structs, one client at a time in clock order as `decodeUpdate` gives them, and these deletes. */
+function encodeUpdate(structs: Struct[], ds: Deletes): Uint8Array {
+  const encoder = new Y.UpdateEncoderV1();
+  const byClient = new Map<number, Struct[]>();
+  for (const s of structs) {
+    const list = byClient.get(s.id.client);
+    if (list) list.push(s);
+    else byClient.set(s.id.client, [s]);
+  }
+  encoding.writeVarUint(encoder.restEncoder, byClient.size);
+  for (const [client, list] of byClient) {
+    encoding.writeVarUint(encoder.restEncoder, list.length);
+    encoder.writeClient(client);
+    encoding.writeVarUint(encoder.restEncoder, list[0]?.id.clock ?? 0);
+    for (const s of list) s.write(encoder, 0);
+  }
+  encoding.writeVarUint(encoder.restEncoder, ds.clients.size);
+  for (const [client, ranges] of ds.clients) {
+    encoder.resetDsCurVal();
+    encoding.writeVarUint(encoder.restEncoder, client);
+    encoding.writeVarUint(encoder.restEncoder, ranges.length);
+    for (const { clock, len } of ranges) { encoder.writeDsClock(clock); encoder.writeDsLen(len); }
+  }
+  return encoder.toUint8Array();
+}
+
+/** What's in an update, as a request counts it. */
+function shapeOf(update: Uint8Array): Pick<Unsent, 'clients' | 'items'> {
+  const { structs } = Y.decodeUpdate(update);
+  return { clients: new Set(structs.map((s) => s.id.client)), items: structs.length };
+}
+
+/** The clocks of what's unsent, by writer: `[from, to)`. */
+type Ranges = Map<number, [number, number][]>;
+/** What of a run of clocks, starting at `clock`, is unsent: as offsets into it. */
+function unsentIn(mine: Ranges, client: number, clock: number, length: number): [number, number][] {
+  return (mine.get(client) ?? []).flatMap(([from, to]) => {
+    const start = Math.max(from, clock);
+    const end = Math.min(to, clock + length);
+    return start < end ? [[start - clock, end - clock] satisfies [number, number]] : [];
+  });
+}
+/** The unsent words of one string item, which Yjs may have merged with words that went. */
+function unsentWords(item: Y.Item, mine: Ranges): string {
+  if (item.deleted || !(item.content instanceof Y.ContentString)) return '';
+  const { str } = item.content;
+  return unsentIn(mine, item.id.client, item.id.clock, item.length).map(([a, b]) => str.slice(a, b)).join('');
+}
+const isUnsent = (item: Y.Item | null, mine: Ranges): boolean => item !== null && !item.deleted && unsentIn(mine, item.id.client, item.id.clock, 1).length > 0;
+/** Unsent words in what's given, a paragraph to each line, in the order they're on the page. Mentions and dates go as what they say. */
+function paragraphsOf<E>(type: Y.AbstractType<E>, mine: Ranges, out: string[]): void {
+  let line = '';
+  const flush = () => { if (line.trim()) out.push(line.trim()); line = ''; };
+  if (type instanceof Y.XmlFragment) {
+    for (const child of type.toArray()) {
+      if (child instanceof Y.XmlText) {
+        for (let item = child._start; item; item = item.right) line += unsentWords(item, mine);
+      } else if (child instanceof Y.XmlElement && child.nodeName === 'hardBreak') {
+        if (isUnsent(child._item, mine)) line += '\n';
+      } else if (child instanceof Y.XmlElement && TAGS.has(child.nodeName)) {
+        if (isUnsent(child._item, mine)) line += String(child.getAttribute('name') ?? child.getAttribute('date') ?? '');
+      } else if (child instanceof Y.XmlElement) {
+        flush();
+        paragraphsOf(child, mine, out);
+      }
+    }
+    flush();
+    return;
+  }
+  for (let item = type._start; item; item = item.right) {
+    if (item.deleted) continue;
+    line += unsentWords(item, mine);
+    if (item.content instanceof Y.ContentType) { flush(); paragraphsOf(item.content.type, mine, out); }
+  }
+  flush();
+  for (const item of type._map.values()) if (!item.deleted && item.content instanceof Y.ContentType) paragraphsOf(item.content.type, mine, out);
+}
+/** Unsent words Yjs is holding with nowhere to put them, because what they were built on isn't here: a paragraph to each run of them. */
+function wordsWaiting(doc: Y.Doc, mine: Ranges): string[] {
+  const pending = doc.store.pendingStructs;
+  if (!pending) return [];
+  const out: string[] = [];
+  let run = '';
+  let next: { client: number; clock: number } | null = null;
+  for (const s of Y.decodeUpdateV2(pending.update).structs) {
+    if (!(s instanceof Y.Item)) continue;
+    const words = unsentWords(s, mine);
+    if (!words) continue;
+    if (next && (next.client !== s.id.client || next.clock !== s.id.clock) && run.trim()) { out.push(run.trim()); run = ''; }
+    run += words;
+    next = { client: s.id.client, clock: s.id.clock + s.length };
+  }
+  if (run.trim()) out.push(run.trim());
+  return out;
+}
 
 export class HttpDocSession implements DocSession {
   readonly doc = new Y.Doc();
   readonly awareness = new Awareness(this.doc);
   readonly ready: Promise<void>;
   private settle: { resolve: () => void; reject: (e: unknown) => void } | null = null;
-  private view: DocStatus = { status: 'saved', refused: null, role: null, trashed: false, closed: null };
+  private view: DocStatus = { status: 'saved', refused: null, role: null, trashed: false, closed: null, unsent: false };
   private readonly listeners = new Set<() => void>();
   /** `close()` was called, or the stream ended for good: nothing more is heard. */
   private stopped = false;
@@ -70,10 +187,17 @@ export class HttpDocSession implements DocSession {
   private sendDown = false;
   /** Why nothing can go at all, until an `access` line says otherwise. */
   private shut: 'read-only' | 'trashed' | null = null;
-  /** Alcove will never take what was stuck here. */
+  /** Alcove won't take what's stuck here as it stands. */
   private rejected = false;
   /** What's stuck is too much, for one request or for the document. Otherwise it may only need working out afresh. */
   private tooMuch = false;
+  /** Whose clocks can't reach Alcove until what's stuck does, and how many times this has moved on from one. */
+  private readonly stuckClients = new Set<number>();
+  private moves = 0;
+  /** How long until what's stuck is tried again, after this try. */
+  private stuckWait = STUCK_AGAIN_MS;
+  /** What each copy held, so letting go of it lets go of that and nothing else. */
+  private readonly copies = new WeakMap<DocCopyToken, ReadonlySet<Unsent>>();
   /** Why the stream last failed, for `ready`. */
   private settleFailure: unknown;
 
@@ -127,16 +251,56 @@ export class HttpDocSession implements DocSession {
     void this.send().finally(() => this.doc.destroy());
   };
 
+  /**
+   * The words this browser wrote that Alcove hasn't taken, and nothing else: the clocks every waiting update brings, read off
+   * the page in order, then off what Yjs is holding with nowhere to put it. Its token remembers what was waiting, all of which
+   * the copy holds the words of.
+   */
+  unsentCopy = (): DocUnsentCopy => {
+    this.cut();
+    const mine: Ranges = new Map();
+    for (const u of this.unsent) {
+      const { from, to } = Y.parseUpdateMeta(u.update);
+      for (const [client, end] of to) {
+        const range: [number, number] = [from.get(client) ?? 0, end];
+        mine.set(client, [...(mine.get(client) ?? []), range]);
+      }
+    }
+    const paragraphs: string[] = [];
+    paragraphsOf(this.doc.getXmlFragment(DOC_FRAGMENT), mine, paragraphs);
+    for (const [name, type] of this.doc.share) if (name !== DOC_FRAGMENT) paragraphsOf(type, mine, paragraphs);
+    const text = [...paragraphs, ...wordsWaiting(this.doc, mine)].join('\n');
+    const token: DocCopyToken = { vector: Y.encodeStateVector(this.doc), keys: this.unsent.flatMap((u) => (u.key === null ? [] : [u.key])) };
+    this.copies.set(token, new Set(this.unsent));
+    return { text, token };
+  };
+  size = (): DocSize => ({ bytes: Y.encodeStateAsUpdate(this.doc).length, items: itemsOnPage(this.doc) });
+  /**
+   * The one thing that forgets what Alcove doesn't have, for someone who chose to: what a copy holds that can't reach this
+   * document. This one still holds it, so it closes, for it to be opened again from what Alcove has, with what's still kept.
+   */
+  discardUnsaved = async (token: DocCopyToken): Promise<void> => {
+    const held = this.copies.get(token);
+    // Nothing here goes any more: the session's over, or this person can only read now, which an edit never changes back.
+    const nowhere = this.view.closed !== null || this.shut === 'read-only';
+    const letGo = held ? this.unsent.filter((u) => held.has(u) && (u.stuck || nowhere)) : [];
+    this.unsent = this.unsent.filter((u) => !letGo.includes(u));
+    await this.forget(letGo);
+    this.publish();
+    this.close();
+  };
+
+  private get stuck(): boolean { return this.unsent.some((u) => u.stuck); }
   private get refused(): DocRefusal | null {
-    return this.shut ?? (this.rejected ? 'rejected' : this.tooMuch && this.unsent.some((u) => u.stuck) ? 'too-large' : null);
+    return this.shut ?? (!this.stuck ? null : this.rejected ? 'rejected' : this.tooMuch ? 'too-large' : null);
   }
   private publish(): void {
-    const waiting = this.fresh.length > 0 || this.unsent.length > 0;
+    const unsent = this.fresh.length > 0 || this.unsent.length > 0;
     const { refused } = this;
-    const status: DocStatus['status'] = refused ? 'failed' : this.streamDown || this.sendDown ? 'offline' : waiting ? 'saving' : 'saved';
+    const status: DocStatus['status'] = refused ? 'failed' : this.streamDown || this.sendDown ? 'offline' : unsent ? 'saving' : 'saved';
     const v = this.view;
-    if (v.status === status && v.refused === refused) return;
-    this.view = { ...v, status, refused };
+    if (v.status === status && v.refused === refused && v.unsent === unsent) return;
+    this.view = { ...v, status, refused, unsent };
     this.listeners.forEach((l) => l());
   }
   private set(p: Partial<DocStatus>): void {
@@ -148,45 +312,52 @@ export class HttpDocSession implements DocSession {
 
   private edited(update: Uint8Array): void {
     this.fresh.push(update);
+    // Nothing goes from here, but it's kept like anything else.
+    if (this.stopped) { this.cut(); this.publish(); return; }
     this.publish();
-    if (this.unsent.some((u) => u.stuck)) this.tryStuck(STUCK_SOON_MS);
-    if (this.batch !== undefined || this.stopped) return;
+    if (this.stuck) { this.stuckWait = STUCK_AGAIN_MS; this.tryStuck(STUCK_SOON_MS); }
+    if (this.batch !== undefined) return;
     this.batch = setTimeout(() => { this.batch = undefined; this.cut(); void this.send(); }, BATCH_MS);
     unref(this.batch);
   }
-  private add(update: Uint8Array, stuck: boolean): Unsent {
-    return { update, kept: this.keep ? this.keep.add(update, Date.now()).catch(() => null) : null, stuck };
-  }
-  /** Ends a batch: it's kept here until Alcove has it, whatever happens to this tab. */
+  /** Ends a batch: it's kept here until Alcove has it, whatever happens to this tab. Written as a client that's stuck, it can't go ahead of what's stuck. */
   private cut(): void {
     clearTimeout(this.batch);
     this.batch = undefined;
     if (!this.fresh.length) return;
     const update = this.fresh.length === 1 && this.fresh[0] ? this.fresh[0] : Y.mergeUpdates(this.fresh);
     this.fresh = [];
-    this.unsent.push(this.add(update, false));
+    const shape = shapeOf(update);
+    const entry: Unsent = { update, kept: null, key: null, stuck: [...shape.clients].some((c) => this.stuckClients.has(c)), ...shape };
+    entry.kept = this.keep ? this.keep.add(update, Date.now()).then((key) => { entry.key = key; return key; }, () => null) : null;
+    this.unsent.push(entry);
   }
   /** As much as fits in one request, the oldest first, and always at least one. */
   private nextBatch(): Unsent[] {
     let bytes = 0;
+    let items = 0;
     const batch: Unsent[] = [];
     for (const u of this.unsent) {
       if (u.stuck) continue;
-      if (batch.length && (bytes + u.update.length > REQUEST_BYTES || batch.length >= REQUEST_UPDATES)) break;
+      if (batch.length && (bytes + u.update.length > REQUEST_BYTES || items + u.items > MAX_DOC_ITEMS || batch.length >= REQUEST_UPDATES)) break;
       batch.push(u);
       bytes += u.update.length;
+      items += u.items;
     }
     return batch;
   }
   /**
    * What's in this batch can't go, nor can anything else its clients wrote, as their clocks have to arrive in order. Whatever
-   * comes next is written as someone new, so it isn't behind any of it.
+   * comes next is written as someone new, so it isn't behind any of it, until that's happened so many times that it waits too.
    */
   private stick(batch: Unsent[]): void {
     this.cut();
-    const clients = new Set(batch.flatMap((u) => [...Y.parseUpdateMeta(u.update).to.keys()]));
-    for (const u of this.unsent) if (batch.includes(u) || [...Y.parseUpdateMeta(u.update).to.keys()].some((c) => clients.has(c))) u.stuck = true;
-    if (clients.has(this.doc.clientID)) this.becomeNew();
+    for (const u of batch) for (const client of u.clients) this.stuckClients.add(client);
+    for (const u of this.unsent) if (batch.includes(u) || [...u.clients].some((c) => this.stuckClients.has(c))) u.stuck = true;
+    if (this.stuckClients.has(this.doc.clientID) && this.moves < MOST_MOVES) {
+      this.moves += 1;
+      this.becomeNew();
+    }
     this.tryStuck(STUCK_SOON_MS);
   }
   /** A new client, for Yjs and for the caret that goes with it: an editor tells its own caret from others' by the two matching. */
@@ -205,7 +376,7 @@ export class HttpDocSession implements DocSession {
   }
   /** One request at a time, oldest first, so a retry only ever repeats what the API may not have. */
   private async send(): Promise<void> {
-    if (this.sending || this.barred || this.shut || this.rejected) return;
+    if (this.sending || this.barred || this.shut) return;
     this.sending = true;
     try {
       for (;;) {
@@ -232,6 +403,13 @@ export class HttpDocSession implements DocSession {
     this.retryWait = FIRST_WAIT_MS;
     this.unsent = this.unsent.filter((u) => !batch.includes(u));
     void this.forget(batch);
+    if (!this.stuck) {
+      this.stuckClients.clear();
+      this.moves = 0;
+      this.tooMuch = false;
+      this.rejected = false;
+      this.stuckWait = STUCK_AGAIN_MS;
+    }
     this.publish();
   }
   /** Whether what's behind this can go now. Otherwise what's waiting stays until what stopped it changes: an `access` line, the stream saying it's over, or the connection coming back. */
@@ -255,7 +433,7 @@ export class HttpDocSession implements DocSession {
   }
   private tryStuck(ms: number): void {
     clearTimeout(this.stuckTry);
-    if (this.stopped || this.rejected) return;
+    if (this.stopped) return;
     this.stuckTry = setTimeout(() => { void this.sendStuck(); }, ms);
     unref(this.stuckTry);
   }
@@ -269,46 +447,78 @@ export class HttpDocSession implements DocSession {
   }
   /**
    * Everything Alcove doesn't have, worked out from what's here now, in a document of its own: nothing here is keeping what
-   * was deleted for undo there, so whatever's been taken out is sent as the small thing it now is.
+   * was deleted for undo there, so whatever's been taken out is sent as the small thing it now is. Of what's deleted, only
+   * what Alcove may not have: what's waiting deleted, and what's new and gone already. All that's ever been deleted is what
+   * Yjs would send, which says nothing new, and would cost a row every time.
    */
   private composed(): Uint8Array {
     const scratch = new Y.Doc();
     Y.applyUpdate(scratch, Y.encodeStateAsUpdate(this.doc));
     scratch.store.pendingStructs = null;
     scratch.store.pendingDs = null;
-    const update = Y.encodeStateAsUpdate(scratch, this.knownToAlcove());
+    const known = this.knownToAlcove();
+    const { structs, ds } = Y.decodeUpdate(Y.encodeStateAsUpdate(scratch, known));
     scratch.destroy();
-    return update;
+    const waiting = this.placed(this.unsent).map((u) => Y.decodeUpdate(u.update).ds);
+    return encodeUpdate(structs, Y.mergeDeleteSets([deletesPast(ds, Y.decodeStateVector(known)), ...waiting]));
   }
-  /** Takes the place of everything waiting, if it's something Alcove can take. Tried again until it is, or until Alcove says it never will be. */
+  /** Which of what's waiting is in this document: anything else Yjs has nowhere to put, and nothing worked out from here holds it. */
+  private placed(waiting: Unsent[]): Unsent[] {
+    const here = Y.decodeStateVector(Y.encodeStateVector(this.doc));
+    return waiting.filter((u) => [...Y.parseUpdateMeta(u.update).to].every(([client, clock]) => (here.get(client) ?? 0) >= clock));
+  }
+  private laterStuck(): number {
+    const ms = this.stuckWait;
+    this.stuckWait = Math.min(ms * 2, STUCK_WAIT_MS);
+    return ms;
+  }
+  /** What stopped what's stuck, and how long until it's tried again. Null: it's for an `access` line to start it again. */
+  private async stuckFailed(e: unknown): Promise<number | null> {
+    const code = errorCode(e);
+    if (code === 'too-large') {
+      this.tooMuch = true;
+      this.rejected = false;
+      return this.laterStuck();
+    }
+    if (code === 'invalid') {
+      // There's nothing more this browser can do with it, but what's refused may change, and everything else carries on. It stays here for someone to take out.
+      this.rejected = true;
+      return this.laterStuck();
+    }
+    if (code === 'forbidden') this.shut = 'read-only';
+    else if (code === 'conflict') this.shut = 'trashed';
+    else if (code === 'not-found' || code === 'unauthenticated') this.barred = true;
+    else return STUCK_WAIT_MS;
+    return null;
+  }
+  /** Tries everything waiting, worked out afresh. Only what's in it is let go of, once Alcove has it. */
+  private async sendComposed(): Promise<number | null> {
+    const update = this.composed();
+    const waiting = this.placed(this.unsent);
+    if (update.length > MAX_DOC_UPDATE_BYTES) {
+      this.tooMuch = true;
+      return this.laterStuck();
+    }
+    try {
+      // Nothing new, and nothing gone: what was stuck isn't anywhere in this document any more, or is somewhere Yjs can't place it, which nothing sent from here would change.
+      if (Y.parseUpdateMeta(update).to.size || Y.decodeUpdate(update).ds.clients.size) await this.net.update(update);
+    } catch (e) {
+      return this.stuckFailed(e);
+    }
+    this.delivered(waiting);
+    if (!this.stuck) return null;
+    this.rejected = true;
+    return this.laterStuck();
+  }
+  /** Takes the place of everything waiting, if it's something Alcove can take. Tried again from time to time, as what's refused can change. */
   private async sendStuck(): Promise<void> {
-    if (this.stopped || this.barred || this.shut || this.rejected) return;
-    if (this.sending || !this.unsent.some((u) => u.stuck)) { if (this.unsent.some((u) => u.stuck)) this.tryStuck(STUCK_SOON_MS); return; }
+    if (this.stopped || this.barred || this.shut || !this.stuck) return;
+    if (this.sending) { this.tryStuck(STUCK_SOON_MS); return; }
     this.sending = true;
-    let again: number | null = STUCK_WAIT_MS;
+    let again: number | null = null;
     try {
       this.cut();
-      const update = this.composed();
-      const waiting = [...this.unsent];
-      if (update.length > MAX_DOC_UPDATE_BYTES) { this.tooMuch = true; return; }
-      try {
-        // Nothing new, and nothing gone: what was stuck isn't anywhere in this document any more.
-        if (Y.parseUpdateMeta(update).to.size || Y.decodeUpdate(update).ds.clients.size) await this.net.update(update);
-        this.delivered(waiting);
-        this.tooMuch = false;
-        again = null;
-      } catch (e) {
-        const code = errorCode(e);
-        if (code === 'too-large') this.tooMuch = true;
-        else if (code === 'invalid') {
-          // There's nothing more this browser can do with it. What's on screen stays, for someone to copy; a reload starts from what Alcove has.
-          this.rejected = true;
-          again = null;
-          void this.forget(this.unsent.splice(0));
-        } else if (code === 'forbidden') this.shut = 'read-only';
-        else if (code === 'conflict') this.shut = 'trashed';
-        else if (code === 'not-found' || code === 'unauthenticated') this.barred = true;
-      }
+      again = await this.sendComposed();
     } finally {
       this.sending = false;
       this.publish();
@@ -353,6 +563,7 @@ export class HttpDocSession implements DocSession {
     if (role === 'edit' && !trashed) {
       this.shut = null;
       this.barred = false;
+      if (this.stuck) this.tryStuck(0);
     }
     void this.send();
     this.publish();
@@ -429,7 +640,7 @@ export class HttpDocSession implements DocSession {
       try {
         for (const k of await this.keep.load()) {
           Y.applyUpdate(this.doc, k.update, HEARD);
-          this.unsent.push({ update: k.update, kept: Promise.resolve(k.key), stuck: false });
+          this.unsent.push({ update: k.update, kept: Promise.resolve(k.key), key: k.key, stuck: false, ...shapeOf(k.update) });
         }
       } catch {
         /* What's kept can't be read here: this session has nothing of it to send, and it's kept all the same. */
@@ -457,17 +668,17 @@ export class HttpDocSession implements DocSession {
     }
   }
 
-  /** It ended for good: nothing more goes up or comes down. What's unsent stays kept, unless there's nothing left for it to go to. */
+  /** It ended for good: nothing more goes up or comes down. What's unsent stays kept, even if there's nothing left for it to go to, for someone to take out. */
   private over(why: DocClosed): void {
     this.stopped = true;
     this.barred = true;
-    clearTimeout(this.batch);
+    this.cut();
     clearTimeout(this.retry);
     clearTimeout(this.caret);
     clearTimeout(this.stuckTry);
     this.awareness.destroy();
     this.settle?.reject(this.settleFailure ?? new AlcoveApiError('unavailable', 'This document can’t be opened right now.'));
-    if (why === 'deleted') { this.cut(); void this.forget(this.unsent.splice(0)); }
     this.set({ closed: why });
+    this.publish();
   }
 }

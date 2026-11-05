@@ -1,7 +1,7 @@
 # Starting and scheduling calls
 
 Visual design: the "Starting and scheduling calls" canvas (claude.ai artifact `Hg42pwdjn3vRfxughTeffj`, private to
-Ben). It has two playable prototypes, every journey step by step, and every animation. This page records the
+its owner). It has two playable prototypes, every journey step by step, and every animation. This page records the
 decisions behind it and what the build has to provide.
 
 ## Why

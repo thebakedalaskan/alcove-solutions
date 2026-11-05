@@ -198,6 +198,11 @@ export function TourDialog({ slides, onClose }: { slides: TourSlide[]; onClose: 
     const a = arrowFor(p.side, { x: p.x, y: p.y, w: cw, h: ch }, t);
     const showArrow = (animated: boolean) => { gliding.current = false; setArrow(a ? { ...a, n: ++arrows.current, draw: animated } : null); };
     stop();
+    // Moving on can cut the first slide's fade-in short (→ pressed quickly): the tour and its card are in by now, whatever it stopped.
+    if (how !== 'first') {
+      c.style.opacity = '1';
+      if (root.current) root.current.style.opacity = '1';
+    }
     if (how === 'instant' || how === 'track' || reduce) {
       if (dy) scrollTo(0, scrollY + dy);
       spot.current = t;

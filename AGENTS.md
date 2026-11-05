@@ -5,12 +5,13 @@ Alcove is private video calls with an AI note taker. This repo is a pnpm + Turbo
 ```
 apps/web            TanStack Start app (React 19, Tailwind v4, Motion). SPA mode.
 apps/api            The API (@alcove/server): Hono, Postgres, S3-compatible objects, sign-in, crypto.
+apps/storybook      Storybook: the foundations, every component, page and journey, the real app on a stand-in API.
 packages/ui         The design system: tokens, components, illustrations. Everything visual lives here.
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
 packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
 packages/board      The shape of a board's Y.Doc and the logic the app and API share. No React.
 infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
-docs/               Product, engineering and design docs. Keep them true to the code.
+docs/               Product, engineering and design docs. Keep them true to the code. docs/design/ also holds the design canvas.
 ```
 
 ## Commands
@@ -18,6 +19,7 @@ docs/               Product, engineering and design docs. Keep them true to the 
 ```
 pnpm install
 pnpm dev            # Postgres + RustFS in Docker, API on :8787, web app on http://localhost:3000
+pnpm storybook      # Storybook on http://localhost:6006: no Docker, no API
 pnpm migrate        # apply database migrations (the API also does this at start)
 pnpm typecheck      # strict-typing guard, then tsc in every package
 pnpm test           # test-policy guard, then integration tests
@@ -33,8 +35,8 @@ exception is data that's already stored: it survives every deploy (next section)
 - **Remove, don't keep.** No compatibility shims, deprecated aliases, fallbacks for an old shape, "kept
   for now" fields, re-exports of moved code, or commented-out code. If nothing should use it any more,
   it's deleted.
-- **One shape at a time.** A contract change in `packages/api` updates the server, `@alcove/api-http`
-  and the app together. Nothing on the wire parses or accepts both the old and the new form.
+- **One shape at a time.** A contract change in `packages/api` updates the server, `@alcove/api-http`,
+  the app and Storybook's stand-in API together. Nothing on the wire parses or accepts both the old and the new form.
 - **No flags that keep an old flow alive** next to its replacement.
 - **Tests follow the same rule.** Integration tests only, never unit tests (see Testing). Delete tests
   for removed behaviour instead of adapting them to keep it alive.
@@ -70,8 +72,11 @@ change, in production or locally (`pnpm db:reset` is only for starting your own 
   e.g. "create account → schedule → join → record → leave → note saved".
   Don't test individual functions, hooks or components in isolation.
 - **No browser tests.** No Playwright, Cypress, Puppeteer, WebdriverIO or Vitest browser mode.
-- **No component or Storybook tests.** No Storybook, no `*.stories.*`, no Testing Library, no jsdom
-  or happy-dom.
+- **No component tests.** No Testing Library, no jsdom or happy-dom.
+- **Storybook shows; it never tests.** It lives in `apps/storybook` alone: its packages, its `.storybook/` and
+  `*.stories.tsx` are allowed there and nowhere else. No Storybook test runner, Vitest addon or Chromatic, no Testing
+  Library as a dependency, and no `expect(` in its source: a journey plays its steps with Storybook's `userEvent` and
+  checks nothing.
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
 - When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
@@ -114,6 +119,9 @@ See `.claude/skills/strict-typescript/SKILL.md` for worked examples.
   there instead of calling `api` inside a component, except for streaming and live sessions.
 - Changing what the backend must provide means changing `packages/api` first, then the server and
   `@alcove/api-http`. Every response is parsed with the contract's schemas on the client.
+- Storybook's stand-in (`apps/storybook/src/api`) implements `AlcoveApi` too, so a contract change doesn't compile until
+  it's extended: give it the new method or data, a scenario where it shows, and the stories that show it, in the same
+  pull request. A branch that changes `packages/api` extends it when it merges.
 - Live things (calls, room recordings) are `LiveStore`s that push whole snapshots. Read them with
   `useLive()`. Don't mirror their state in React state.
 - The app reaches the API at `/api` (Vite proxy locally) or `VITE_ALCOVE_API_URL` in production.
@@ -148,20 +156,31 @@ Read `docs/engineering/logging-and-errors.md`.
 
 ## Design system
 
+Before you design or restyle anything, read [docs/design/](docs/design/README.md): the principles behind the look, how each
+page is designed, how to make a design canvas from the kit in `docs/design/canvas/`, and how to build one into the app.
+
+- Storybook (`apps/storybook`, `pnpm storybook`) is the record of what's built: every foundation, component, page and
+  journey, rendered by the real code on made-up data. A change to a component or a page updates its stories in the same
+  pull request: a page's scenarios (states) and its journeys, numbered as `docs/product/user-flows.md` is. The design
+  canvas is for new ideas, and its boards don't have to follow the app.
+
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `Toast`,
-  `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
+  `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
+  in a popover: one, or several with ticks), `CallTile`, `CallDock`, `VolumeControl` (how loud someone is for you, said
+  beside their name by `volumeTag`),
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
-  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `ShowMore` (Show 4 more under a list), `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsPart`, `SettingRow` and `SettingFact` (Settings' sheet: a heading, then a label and a control on one axis), `SunLine` (time left, on a row's hairline), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
   the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another), and
   `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
-  `SwitchLine`, `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
+  `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
+  calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`) and `WsDoc` (`WsDocHead` with `WsSaveState`,
   `WsFollowBar`, `WsOfflineBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`,
@@ -222,3 +241,5 @@ Read `docs/engineering/logging-and-errors.md`.
 
 - UI copy is plain and specific: say what happens, not slogans. No marketing taglines.
 - People and pronouns: use names or "they".
+- Demo data, examples and designs use made-up people only (the demo company is Vandelay Industries). Never write a real
+  person's name.

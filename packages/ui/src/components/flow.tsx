@@ -2,13 +2,14 @@
  * The pieces of starting and scheduling a call: one modal that asks one thing at a time, and the card a scheduled
  * call opens. What each says and does is the app's; how each looks and moves is here (styles/flow.css).
  */
+import type { ChangeScope, NotesChoices, NotesSetting } from '@alcove/api';
 import { forwardRef, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Avatar, Faces, type AvatarPerson } from './people';
-import { IconButton, Kbd } from './primitives';
+import { IconButton, Kbd, Segmented, Switch } from './primitives';
 
 /* ---------- what's on every view ---------- */
 
@@ -262,6 +263,40 @@ export function FlowRow({ icon, title, sub, end, on = false, expanded, onClick, 
 /** A switch with what it does: `control` is the Switch. */
 export function SwitchLine({ title, sub, control }: { title: ReactNode; sub?: ReactNode; control: ReactNode }) {
   return <div className="cf-sw"><span><b>{title}</b>{sub !== undefined && <small>{sub}</small>}</span>{control}</div>;
+}
+
+/* ---------- what a call keeps, and which calls ---------- */
+
+/** Whether a call writes notes, and what they keep. Off, nothing else matters. */
+export function NotesSwitches({ notes, choices, onNotes, onChoices }: { notes: NotesSetting; choices: NotesChoices; onNotes: (n: NotesSetting) => void; onChoices: (c: NotesChoices) => void }) {
+  const on = notes === 'on';
+  return (
+    <>
+      <SwitchLine title="Write notes" sub={on ? 'Everyone invited gets them' : 'Nothing is recorded. You can turn them on during the call.'}
+        control={<Switch checked={on} label="Write notes" onChange={(o) => onNotes(o ? 'on' : 'off')} />} />
+      {on && (
+        <>
+          <SwitchLine title="Keep the transcript" sub={choices.keepTranscript ? 'Who said what, and anyone invited can correct it' : 'Used to write the notes, then deleted'}
+            control={<Switch checked={choices.keepTranscript} label="Keep the transcript" onChange={(keepTranscript) => onChoices({ ...choices, keepTranscript })} />} />
+          <SwitchLine title="Keep the recording" sub={choices.keepRecording ? 'Play back any moment from the notes' : 'Deleted when the call ends'}
+            control={<Switch checked={choices.keepRecording} label="Keep the recording" onChange={(keepRecording) => onChoices({ ...choices, keepRecording })} />} />
+          <SwitchLine title="Read shared screens" sub="Slides and demos go into the notes"
+            control={<Switch checked={choices.readScreens} label="Read shared screens" onChange={(readScreens) => onChoices({ ...choices, readScreens })} />} />
+          <p className="cf-sealed"><Icon name="sealed" size={14} />Written in confidential compute. Alcove can’t read them.</p>
+        </>
+      )}
+    </>
+  );
+}
+
+/** In a series: which calls a change is for. */
+export function ScopeBar({ value, onChange, label = 'Change' }: { value: ChangeScope; onChange: (s: ChangeScope) => void; label?: string | undefined }) {
+  return (
+    <div className="cf-scope">
+      <b>{label}</b>
+      <Segmented value={value} onChange={onChange} label="Which calls" options={[{ value: 'this', label: 'This call' }, { value: 'following', label: 'This and later calls' }]} />
+    </div>
+  );
 }
 
 /* ---------- the flood ---------- */
