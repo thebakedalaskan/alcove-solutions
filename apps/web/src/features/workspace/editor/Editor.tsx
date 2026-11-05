@@ -86,7 +86,6 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     fits = false;
   }
   const plugins: Plugin[] = [
-    /* Before ySyncPlugin: a block's element is retired just before y-prosemirror writes the rest of the change. */
     retirePlugin(rt),
     ySyncPlugin(fragment, { mapping: new NodeRecord(start.mapping) }),
     yUndoPlugin({ undoManager: undoManagerFor(fragment) }),

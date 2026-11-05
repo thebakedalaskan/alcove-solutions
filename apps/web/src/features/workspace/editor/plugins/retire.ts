@@ -1,9 +1,10 @@
 /*
- * Blocks leaving the page without their elements being deleted (../retire.ts says why), and what's left to tidy afterwards.
+ * Blocks leaving the page without their elements being deleted (`@alcove/api/retire` says why), and what's left to tidy afterwards.
  *
  * - Anything done here that takes a block off the page, however it was done, puts an empty stand-in back where it was. So
- *   ProseMirror still has one node per element, y-prosemirror never deletes an element, and the element is retired just
- *   before y-prosemirror writes the rest. The stand-in is what the element will be, so the two stay the same document.
+ *   ProseMirror still has one node per element, the writer never deletes an element, and the element is retired just
+ *   before the rest is written, in the same change. The stand-in is what the element will be, so the two stay the same
+ *   document.
  * - `moveBlock` works on the Yjs elements directly. Left to y-prosemirror, which compares by position, a move would rewrite
  *   the text of every block it passes, and the words of anyone typing in those would land in the wrong place.
  * - A caret doesn't stay in a block that isn't on the page: it goes where the words went, or to the next block.
@@ -218,7 +219,7 @@ function keepBlocks(tr: Transaction, transactions: readonly Transaction[], befor
 }
 
 /** The nearest place for a caret that can't stay in the block at `index`: on the way it was going. */
-function beside(doc: PMNode, index: number, upwards: boolean): Selection {
+export function beside(doc: PMNode, index: number, upwards: boolean): Selection {
   const blocks = allBlocks(doc);
   const after = blocks.find((b) => b.index > index), before = blocks.filter((b) => b.index < index).at(-1);
   const next = upwards ? before ?? after : after ?? before;
@@ -235,7 +236,11 @@ function keepCaretOnPage(tr: Transaction, before: EditorState): void {
   const { $head } = before.selection;
   /* Its own arrow key took it there, across a block's edge, or the block left the page under it. */
   const walked = inside.node === blockAt($head)?.node ? false : before.doc.eq(tr.doc);
-  if (walked) { tr.setSelection(beside(tr.doc, inside.index, sel.head < $head.pos)); return; }
+  if (walked) {
+    const next = beside(tr.doc, inside.index, sel.head < $head.pos);
+    tr.setSelection(sel instanceof TextSelection && !sel.empty ? TextSelection.between(sel.$anchor, next.$head) : next);
+    return;
+  }
   const target = textAttr(inside.node, 'gone');
   const to = target ? findBlock(tr.doc, target) : null;
   if (!to) { tr.setSelection(beside(tr.doc, inside.index, false)); return; }
@@ -284,6 +289,24 @@ function remember(binding: SyncBinding, element: Y.XmlElement, node: PMNode): vo
     remember(binding, part, node.child(index));
     index += 1;
   }
+}
+
+const retired = new WeakMap<EditorView, readonly Leaving[]>();
+
+/**
+ * Retires what's left the page. This goes first in the same Yjs change as whatever else is being written, so nobody hears of
+ * a block leaving without the words that went with it, and a join can't be split into what adds and what takes away.
+ */
+export function retireLeaving(view: EditorView): void {
+  const sync = syncOf(view.state);
+  const leaving = key.getState(view.state) ?? [];
+  if (!sync || leaving.length === 0 || leaving === retired.get(view)) return;
+  for (const { element, node } of leaving) {
+    forget(sync.binding, element);
+    retire(element, blockIdOf(node) ?? newBlockId(), textAttr(node, 'gone') ?? '');
+    remember(sync.binding, element, node);
+  }
+  retired.set(view, leaving);
 }
 
 export function retirePlugin(rt: EditorRuntime): Plugin {
@@ -387,29 +410,14 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
           }
         });
         const touched: ReadonlyMap<unknown, unknown> = tr.changed;
-        if (undone || strays.length > 0 || arrived.length > 0 || touched.has(fragment)) tidy(strays, arrived, unnamed, redone);
+        if (undone || strays.length > 0 || arrived.length > 0 || cuts.length > 0 || touched.has(fragment)) tidy({ strays, arrived, unnamed, redone, cuts });
       };
 
+      /* Two people may have moved a block and left before hearing each other. */
+      tidy({ strays: [], arrived: [], unnamed: [], redone: [], cuts: [] });
+
       doc.on('afterTransaction', after);
-      return {
-        update() {
-          const leaving = key.getState(view.state) ?? [];
-          if (leaving.length === 0 || leaving === done) return;
-          done = leaving;
-          const history = syncOf(view.state)?.addToHistory !== false;
-          binding.mux(() => {
-            doc.transact((tr) => {
-              tr.meta.set('addToHistory', history);
-              for (const { element, node } of leaving) {
-                forget(binding, element);
-                retire(element, blockIdOf(node) ?? newBlockId(), textAttr(node, 'gone') ?? '');
-                remember(binding, element, node);
-              }
-            }, ySyncPluginKey);
-          });
-        },
-        destroy() { doc.off('afterTransaction', after); }
-      };
+      return { destroy() { doc.off('afterTransaction', after); } };
     }
   });
 }

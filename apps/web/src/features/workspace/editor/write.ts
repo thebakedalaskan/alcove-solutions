@@ -169,15 +169,16 @@ function commonEnds(was: Flat<Y.XmlElement>, now: Flat<PMNode>, meta: WriteMeta)
   return { left, right };
 }
 
+const sizeOf = (child: unknown): number => (child instanceof Y.XmlText ? child.length : child instanceof Y.XmlElement ? 1 : 0);
+
 /** Takes a stretch out of a line. Its texts stay, with their words gone. */
 function takeOut(line: Y.XmlFragment, from: number, to: number, meta: WriteMeta): void {
   const children = line.toArray();
   const spans: { start: number; end: number }[] = [];
   let at = 0;
   for (const child of children) {
-    const size = child instanceof Y.XmlText ? child.length : 1;
-    spans.push({ start: at, end: at + size });
-    at += size;
+    spans.push({ start: at, end: at + sizeOf(child) });
+    at += sizeOf(child);
   }
   for (let i = children.length - 1; i >= 0; i -= 1) {
     const child = children[i], span = spans[i];
@@ -211,10 +212,9 @@ function partsBetween(now: Flat<PMNode>, from: number, to: number): (string | PM
 function spotIn(children: readonly unknown[], place: number): { text: Y.XmlText | null; within: number; index: number } {
   let at = 0, index = 0;
   for (const child of children) {
-    const size = child instanceof Y.XmlText ? child.length : 1;
-    if (child instanceof Y.XmlText && place <= at + size) return { text: child, within: place - at, index };
+    if (child instanceof Y.XmlText && place <= at + child.length) return { text: child, within: place - at, index };
     if (place === at) break;
-    at += size;
+    at += sizeOf(child);
     index += 1;
   }
   return { text: null, within: 0, index };
@@ -442,10 +442,11 @@ function writeBlocks(parent: Y.XmlFragment, node: PMNode, meta: WriteMeta): void
 }
 
 function write(type: Y.XmlFragment, node: PMNode, meta: WriteMeta): void {
-  meta.mapping.set(type, node);
   if (type instanceof Y.XmlElement) writeAttrs(type, node);
   if (node.inlineContent) writeLine(type, node, meta);
   else writeBlocks(type, node, meta);
+  /* Last, so that if this fails, writing again doesn't take it as done. */
+  meta.mapping.set(type, node);
 }
 
 /** Makes a document's blocks say what `node` says, writing only what differs. */
