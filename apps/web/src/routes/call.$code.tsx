@@ -27,6 +27,8 @@ import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { PanelHost, tabName, useCallArea, useHorizon, type PanelHostHandle } from '~/features/call/PanelHost';
+import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/PlayTogether';
+import { usePresenting } from '~/features/call/presenting';
 import {
   PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView, zenRoom,
   type Leaf, type PanelFacts, type PanelPreset, type ShareLeaf
@@ -40,7 +42,7 @@ import { keepSeen, seenNotices } from '~/features/call/seen';
 import { SharePicker } from '~/features/call/SharePicker';
 import { VideoQuality } from '~/features/call/VideoQuality';
 import { CallEars, canListen } from '~/features/call/speech';
-import { GLIDE, Stage, useStagePlan, type StageParticipant, type StageRooms, type StageShare, type StageWaiter } from '~/features/call/Stage';
+import { GLIDE, Stage, useStagePlan, type StageParticipant, type StageRooms, type StageShare, type StageTogether, type StageWaiter } from '~/features/call/Stage';
 import type { StageFrame } from '~/features/call/stageLayout';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
@@ -48,12 +50,15 @@ import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
 import { volumeTag } from '~/features/call/VolumeControl';
+import { useLiveCall } from '~/features/call/liveCall';
+import { WorkspaceKnock } from '~/features/call/WorkspaceAsks';
 import { WorkspacePanel, useWorkspacePanel } from '~/features/call/WorkspacePanel';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
-import { overlayOpen, typing, withModShift } from '~/lib/keys';
+import { tickEverywhere } from '~/features/workspace/live/useFollowUps';
+import { overlayOpen, typing, withMod, withModShift } from '~/lib/keys';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -177,12 +182,13 @@ function InCall({ session }: { session: CallSession }) {
   const layout = useCallView(state.callId, account.data ? account.data.ownerId : account.isPending ? undefined : null, startPanels);
   const forgetLayout = layout.forget;
   const panels = layout.panels;
-  // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot.
-  const spaceKey = JSON.stringify(told.workspace);
+  // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot. A
+  // video playing tells the server's time on every read, which only its player uses, and it reads the call itself.
+  const spaceKey = JSON.stringify(told.workspace, (k, v: unknown) => (k === 'nowMs' ? undefined : v));
   const space = useMemo(() => told.workspace, [spaceKey]);
   const work = useWorkspacePanel(session, space, layout);
-  // What's been brought to this call, as the list will show it.
-  const broughtHere = space.documents.filter((d) => space.id === null || d.workspaceId === space.id).length;
+  // What's been brought to this call, as the list will show it: what's in the workspace the call uses now.
+  const broughtHere = space.documents.filter((d) => d.workspaceId === space.id).length;
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
   // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
   const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
@@ -962,6 +968,12 @@ function InCall({ session }: { session: CallSession }) {
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
+  /* `@` in the workspace: who's here and who's invited. The call changes all the time and these rarely do, and the workspace draws a lot. */
+  const spacePeopleKey = JSON.stringify(told.participants.map((p) => [p.id, p.seat, p.person, p.isMe]));
+  const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
+  const spaceInvitedKey = JSON.stringify(invited);
+  const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
+  const together: StageTogether = { ...work.together, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing };
   const zenOffered = !phone && !stageRooms;
   const zenOn = zenOffered && work.zen;
   const latestZen = useRef(zenOn);
@@ -973,6 +985,9 @@ function InCall({ session }: { session: CallSession }) {
     const onKey = (e: KeyboardEvent) => {
       // Wherever the caret is, this gives you just the document, and everything back.
       if (withModShift(e) && e.key.toLowerCase() === 'f') { if (keys.current.zenOffered) { e.preventDefault(); toggleZen(); } return; }
+      // Find, from anywhere in the call. With the workspace in sight it's taken this already, and with words selected the editor has.
+      // Behind something it's taking turns with, it comes to the front, so the line Find lands on is one you can see.
+      if (withMod(e) && e.key.toLowerCase() === 'k') { if (!e.defaultPrevented && !overlayOpen()) { e.preventDefault(); work.act.find(); setFront('ws'); } return; }
       // The call's letters sleep while you're typing, in a field or in a document.
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
@@ -1271,6 +1286,13 @@ function InCall({ session }: { session: CallSession }) {
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
   const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
   const seats = staged.shareSeats;
+  // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
+  const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
+  const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
+    // A list over the page goes, or it would cover what the panel opens beside.
+    notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); layout.arrange((p) => showView(p, v)); },
+    reveal: () => { work.act.reveal(); if (phone) layout.arrange(closeAll); }, covered: () => phone && showing.length > 0
+  });
   const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const wasBig = useRef(new Set(seats.keys()));
   useEffect(() => {
@@ -1330,18 +1352,19 @@ function InCall({ session }: { session: CallSession }) {
     : <RoomsSetup people={candidates} guests={guestsHere} onOpen={openRooms} />);
   const panelBody = (v: PanelView) => {
     switch (v) {
-      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
-        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { session.tickFollowUp(id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
+      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)} put={put}
+        onPage={() => { work.act.reveal(); work.act.go({ kind: 'live', page: 'notes' }); }}
+        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { tickEverywhere(session, id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
       case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} />;
+        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} put={put} />;
       case 'ask': return <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
         catching={cu.catching} draft={drafts.current.ask} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
       case 'chat': return <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
         here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} />;
-      case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes}
+      case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes} together={together}
         canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
         notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />;
       case 'rooms': return roomsPanel();
@@ -1381,6 +1404,16 @@ function InCall({ session }: { session: CallSession }) {
   listShow.current = showList;
   const onShowList = useCallback(() => { listShow.current(); }, []);
 
+  /* Presenting: what's presented where you are, drawn over your own page or worked on beside it (presenting.ts). */
+  const presenting = usePresenting({
+    session, present: space.present, participants: state.participants, open: work.open, inSight: work.open && !!solved.rects.ws,
+    show: work.act.show, hide: work.act.hide, go: work.act.go, say: work.act.say, failed: work.act.failed
+  });
+  /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
+  const player = useSharedVideo(session, !ended, work.act.failed);
+  const startPlaying = useCallback((documentId: string, mediaId: string) => { session.startPlaying(documentId, mediaId, 0).catch(work.act.failed); }, [session, work.act]);
+  const playing = useWorkspacePlaying(player, startPlaying);
+
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
       sessions.call = null;
@@ -1405,12 +1438,13 @@ function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
-            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null}
-              listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
+              listOff={!solved.A.list} listPeek={work.peek} live={liveCall} act={work.act} presenting={presenting} playing={playing} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={resizing} phone={phone} people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
+                together={together}
                 bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onShareStarted={shareStarted} onShareStopped={shareStopped} onPeopleMode={setPeopleMode} onPickUp={(leaf) => hostHandle.current?.pickUp(leaf)}
                 onGrowShare={facts.ws || facts.board ? (seat) => layout.arrange((p) => growShare(p, seat)) : null} onMorePeople={() => openPanel('people')} />
@@ -1436,6 +1470,7 @@ function InCall({ session }: { session: CallSession }) {
               </motion.div>
             </>
           )} />
+        {player && <PlayTogetherBar player={player} />}
         <footer ref={dockBar} className="ic-dockbar">
           <CallDock tucked={zenOn}>
             <DockSplit className="keep">
@@ -1495,6 +1530,7 @@ function InCall({ session }: { session: CallSession }) {
           </CallDock>
         </footer>
       </div>
+      <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act} />
       <SharePicker open={sharePick} onOpenChange={(o) => { setSharePick(o); if (!o) setShareTrouble(null); }} sharing={!!m.screen}
         others={sharing.map((s) => s.presenter)} trouble={shareTrouble} read={sharingInRoom ? undefined : screenRead(state.capture.screen.mode)} onShare={share} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}

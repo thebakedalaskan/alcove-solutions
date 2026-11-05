@@ -7,7 +7,8 @@
  *  - writes notes still waiting (after a restart, or once a retry is due);
  *  - deletes moves to other devices that ran out;
  *  - deletes rings a day after they ran out, in calls that went on that long;
- *  - deletes for good what's been in a workspace's Trash for 30 days, and ends seats whose call is over;
+ *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over, and lets go of tags
+ *    nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
  */
@@ -21,6 +22,7 @@ import { sweep as sweepLiveNotes } from './modules/liveNotes';
 import { pruneUploadDays, sweepUploads } from './modules/media';
 import { sweep as sweepMoves } from './modules/moves';
 import { sweep as sweepRings } from './modules/rings';
+import { sweepMentions } from './modules/workspaceMentions';
 import { sweepSeats, sweepTrash } from './modules/workspaces';
 import { work } from './modules/writer';
 import { sweepSessions } from './sessions';
@@ -57,5 +59,6 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const seats = await quietly('seats', () => sweepSeats(d));
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
-  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays };
+  const mentions = await quietly('mentions', () => sweepMentions(d));
+  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays, mentions };
 }

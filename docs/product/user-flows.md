@@ -75,7 +75,8 @@ Beside every page, dark in both themes:
 
 At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
 below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass. Notes has
-its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8).
+its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8). In the workspace
+the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Workspace** and **Team**
@@ -465,8 +466,7 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-Opening it, sharing beside it, arranging it and going to just the document work on screen. The rest of this list comes from
-the server today, and its screens are being built.
+All of this works on screen except **Play for everyone**, which isn't offered until videos can go in documents.
 
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
    column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
@@ -488,28 +488,78 @@ the server today, and its screens are being built.
    - **Just the document** (**⌘⇧F**, the arrows at the top right of the page, or View): the bars slide off, everyone drops to
      arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
      who has a hand up. **Show everything** or **Esc** brings it all back as it was, with the caret where you left it.
+   - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
+     its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
+     **@** lists who's in the call first, then who's invited, then the workspace and the company, and tagging someone in
+     the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
+     **Go there** opens it on the line. Putting the workspace away, or bringing in something it takes turns with, stops
+     following, and for everyone else you've left it.
    - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them. Just the
      document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
    - **An organizer taken out of the workspace** the call uses is told so, and **New workspace** moves the call to one of
      their own. Everyone else carries on.
-2. **Only the organizer changes it**, to a workspace they can edit in. One question says who can't open it, and
-   nobody is interrupted: they stay in the call and see that it's private. **New workspace** makes one with just them in it.
-3. **Someone who can't open it** is told it's private, and nothing else: no names, no folders, nobody's whereabouts. They can
-   **Ask** the organizer, who shares one document, to read or edit, or says not now. It opens by itself, and it ends
-   with the call, or from Share.
-4. **Follow-ups** are what the notes heard and the to-dos with a person and a date in the documents worked on in this
-   call, each for whoever can open it. Ticking one ticks it in the document. With notes off they come from documents alone, and
-   say so.
-5. **Present** shows a document one section at a time. Whoever started it or the organizer moves it on and stops it, and
-   nobody's access changes: someone who can't open it is told it's on, not what it is. Your own notes beside it are
-   yours alone.
-6. **Play for everyone** plays a video in a document at the same moment for everyone who can open it, late joiners too.
-   Losing the document, a new workspace, another room or the call ending stops it, and the video stays where it is.
-7. **After the call**, the note says what was worked on and by whom, for each person only what they can open, and each
-   document keeps a version of how the call left it. **The next call in a series** finds a new agenda beside the last one,
-   holding only what was left open.
-8. **Make this shorter** and **Turn this into a checklist** work on what's selected, in confidential compute, for anyone who
-   can edit the document. Nothing is kept.
+2. **Only the organizer changes it**, from the name at the top of the list: their workspaces they can edit in, with who's in
+   each, and **New workspace**. Picking one asks once, in place, and says who in the call can't open it; **Switch to …**
+   changes the list for everyone at once, and **Back** on the toast changes it back. Nobody is interrupted and nothing is
+   moved or copied: sound and video carry on, and whoever can't open it stays in the call and sees that it's private, not
+   what's in it. What was brought to the call from the workspace before stays with that one. **New workspace** makes one
+   with just the organizer in it, named after the call, and opens a blank document in it; it's still there after the
+   call. Everyone else sees the name, and that the organizer chooses.
+3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
+   names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
+   with the call. The organizer sees who's asking at the top of the call, and shares the document in front of them:
+   **Let … read**, **Let … edit**, or **Not now** (with nothing open, **Open the workspace** finds one). Only that document
+   opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
+   is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
+   ends with the call.
+4. **Notes, Follow-ups and Transcript** are always at the top of the list, for everyone in the call, whether or not they can open
+   the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
+   empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
+   says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
+   that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
+   open beside the document from the button on their row, as side panels you can pull out to sit anywhere, and **Open in the
+   workspace** in the Notes panel goes the other way.
+   - **Follow-ups** are what the notes heard, what people added, and the to-dos with a person and a date in the documents worked on
+     in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone and ticks the line in
+     its document, and where it came from opens that line. **Add a follow-up** adds one of your own, which anyone can tick and which
+     goes into the note. A guest with the link reads what's written for them and doesn't tick or add. With notes off they come from
+     documents alone, and say so.
+   - **Sending to a document:** the arrow on a line sends it to the document you were last in, if you can edit it: something decided
+     as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
+     transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
+     opens it. With no document to send to, there are no arrows.
+   - **From the call** in **/**: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
+     and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
+     notes off they say so.
+   - **Hear it** on a quote plays that moment, for anyone with the notes, once the note exists.
+5. **Present** is at the top of every document in a call (in **⋯** on a phone). Its preview shows what people will see and
+   how many sections the document splits into, at each first- or second-level heading, and **Present N sections** starts it.
+   - **Everyone who can open it** sees it in place of their own page: one section at a time, with no list, menus or
+     anyone's caret, and the strip at the top saying who's presenting what. The workspace opens for it if it wasn't open.
+   - **Whoever presents** also gets, beside it and for them alone, where they are and what's next, **Back** and **Next**
+     (or **←** and **→**), their own notes for that document, kept for next time, and **Stop presenting**, always at the foot.
+   - **Work on my own** goes back to your own page, or to the document itself, while the presentation carries on; the strip
+     says **Back to the presentation**. The organizer can also stop someone else's from the strip.
+   - **Stop presenting** puts everyone back exactly where they were: your own page as you left it, and the workspace put
+     away again if it opened for the presentation. Nobody's access changes: someone who can't open it is told who's
+     presenting, never what.
+6. **Play for everyone**, on a video in a document, plays it at the same moment on the screen of everyone who can open it,
+   from the workspace: no screen share, and nobody hears it twice. Late joiners land at the same moment.
+   - **The bar** above the dock says what's playing and who started it, and has your own volume. Whoever started it, or the
+     organizer, can pause it for everyone, move it along, and stop it with **×**.
+   - **If your browser holds it back**, the bar says so, and **Play here** brings you in. Paused with your computer's own
+     pause key, **Back to everyone** puts you where everyone is. A file your browser can't play says so.
+   - Losing the document, a new workspace, another room or the call ending stops it, and the video stays where it is.
+7. **After the call**, the note has **Worked on in this call** under the follow-ups: each document worked on and by whom
+   ("Priya and you edited this"), for each person only what they can open. Each opens in the app, in your theme: the same
+   document, nothing copied. Each document keeps a version of how the call left it. **The next call in a series** finds a
+   new agenda beside the last one, at the top of This call, holding only what was left open.
+8. **⌘K** finds anything in the workspace from anywhere in the call. It opens the workspace first if it's closed, and brings it
+   to the front if it's taking turns with a share, so the line it lands on is one you can see.
+9. **Ask** on what's selected (flow 12) answers **What was said about this?** from this call: everything said in it that you
+   may read.
+10. **History** files what was worked on under the call: **During this call** while it's on, and after it under the call's name
+    for anyone who has its notes.
 
 ## 7. End the call and get the notes
 
@@ -614,7 +664,9 @@ the server today, and its screens are being built.
   beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
   so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
   keep its recording has the line and no player.
-- A written note shows the summary, **Decided**, **Still open**, **Follow-ups**, the transcript (its first five lines,
+- A written note shows the summary, **Decided**, **Still open**, **Follow-ups**, **Worked on in this call** (each document
+  worked on in the call that you can open, who changed it, and a row that opens it; there whether or not the notes are
+  written yet), the transcript (its first five lines,
   then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
   notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
   going to a moment never takes the note away. It takes questions about the call: a suggested question or your own, in
@@ -843,11 +895,12 @@ goes back, with a toast saying why. Parts that don't load say so, with **Try aga
   call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
   screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
   someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
-  so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
+  so itself); when someone tags you in a document you can open, while you're somewhere else (in front of you, the
+  workspace says so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
   as a day, so not "next week" or "ASAP"; not when the due day was set after 9:00 that day). One tab in the browser shows them, and the next takes over when it closes. Each shows
   once, in any tab and across reloads, and several at once (after the computer wakes, or the connection comes back)
   arrive as one: "3 notes are ready", "2 follow-ups are due today". Clicking one brings Alcove forward: on the
-  call's join page, the note, Notes, Home, or the call you're in, in the tab already there or else the one used
+  call's join page, the note, Notes, Home, the line someone tagged you on, or the call you're in, in the tab already there or else the one used
   last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
   deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
   preferences, and one changed in another tab or on another device takes effect within a minute.
@@ -930,6 +983,29 @@ folder, **Enter** opens a row and Tab reaches its buttons. **F2** renames, **Del
 a row among its neighbours, and the menu key opens its menu. **⌘\** hides or shows the list. While the caret is in a
 document, **N** and **⇧N** type letters; **Esc** goes to the block's handles, and again to the document's row in the list.
 
+**Find.** The magnifier at the top of the list, or **⌘K** (**Ctrl+K**), finds any document or any line you can open. What
+you opened last is ready, so **Enter** goes straight back to it. Typing looks through names and lines, and results arrive as
+documents do. It happens in your browser, so what you type isn't sent anywhere. **↑** and **↓** move through what's found,
+and **Enter** lands on the line, which glows, with the caret on it. Words typed a moment ago in the open document are found too;
+what others wrote is found from the next time Find opens. **Keyboard**, at the foot of Find, or **?**, lists every key.
+
+**History.** **⋯** at the top of a document, then **History**: now, then each stretch of work, the newest first. A call's versions
+are one row, under the call's name if you have its notes; other edits are a row a day; what was kept before a restore is a row
+of its own; and the last says who made the document and when. Pressing a row shows the document as it was in the page's place,
+read-only, with what changed in that stretch tinted. **↑** and **↓** move through them, and **Esc** puts it away.
+
+**Restore this version**, for anyone who can edit, makes the document that for everyone, and what it said a moment ago is kept
+as a version too, so **Undo** in the toast brings it back. If anyone else is in the document, you're told who first, and who's
+typing, and you choose **Restore for everyone** or **Not yet**. Everyone in it is told who restored what, with **History** one
+press away. Someone typing through it sees **Saving…**, and what they type lands on what's restored. A block they're in that the
+version doesn't have stays on the page, holding what they typed since; what they'd typed before that is in the version kept.
+
+**Ask Alcove.** **Ask**, on the bar over what's selected, offers **Make this shorter**, **Turn this into a checklist** and **What
+was said about this?**, written in confidential compute. The words stay marked with dots beside them, and the caret steps off
+them, so you can keep writing. What comes back takes their place wherever they've got to, for everyone, and **⌘Z** takes it
+back. If someone changes the words meanwhile, what they wrote stays and the answer goes under it. **What was said about
+this?** answers beside the words, from every note you have, or in a call from what's been said in it. Nothing is kept.
+
 **Trash.** A quiet row at the foot of the list, with how much is in it. It lists what was moved there, by whom, when and
 how long it has left: things stay for 30 days. **Restore** puts something back in its folder, or at the top if the folder
 has gone, and **Delete forever** asks once, then deletes it for everyone. A document in Trash still opens, to read.
@@ -939,6 +1015,30 @@ each with what they can do. Typing a name or an address finds people (**Enter** 
 knows); they can edit, and their row changes that to **Can read** or takes them off. The workspace's row can close the
 document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
 everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone.
+
+**Who's here.** Faces on a row and at the top of a document show who has it open, live, and go when they do. Pressing a face
+opens their card: where they are, in the words you may know (a document you can't open is **A document you can’t open**, never
+its name), **Follow**, **Go to where they are**, and **Tag them in this document** where you can write. Their caret shows their
+face and first name while they move, which fade after three seconds of quiet. Opening a document only moves you.
+
+**Following someone.** **Follow** goes where they go, to the same line: a frame around the workspace and a bar under the head
+say so, and the page scrolls to them. Nobody else moves, and they do nothing. If they open something you can't, you stay put
+and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following** or **Esc** ends
+it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are, and a toast offers
+**Follow again**.
+
+**Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
+first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
+before you pick. Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
+edit**, **Read only** or **Not now**. A tag never shares anything by itself, and someone who can't open it isn't told. Being
+tagged is a toast saying who and where, and nothing moves until **Go there**, which lands on the line. Someone away hears when
+they're back: **Workspace** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.
+
+**Comments.** Select words: the bar over them has **Comment**, as does a block's menu, and **⌘⇧M** does the same. The words
+stay marked while you write, and **@** works here too, for people and dates. **Enter** marks them for everyone, with a count in
+the margin; pressing the words or the count opens the thread, and replies arrive as they're sent. **Resolve** takes the mark
+away for everyone, and the toast's **Reopen** brings it back for a moment; History keeps the thread. Someone who can only
+read can open a thread and has nothing to press.
 
 **Workspaces.** The name at the top of the list lists your workspaces with who's in each, and opens another. **People**
 shows who's in this one in the same sheet as Share: an admin adds people by name or address and sets each to **Admin**,
@@ -977,4 +1077,4 @@ your workspaces.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
-touch screen: **Move to…** does that. A bar's buttons go under its words.
+touch screen: **Move to…** does that. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.

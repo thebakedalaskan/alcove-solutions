@@ -2,18 +2,20 @@
  * What pressing something does: a `/` item, a tag, a row of a block's menu, a button on the format bar. These are the
  * same calls the EditorHandle makes, so a screen outside the editor gets exactly what the menus get.
  */
+import type { Person } from '@alcove/api';
 import { newBlockId, retire, seenIn } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
-import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
+import { blockAt, blockLabel, caretInto, findBlock, isBlank, leafWords, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
 import type { SlashId } from './menus/rows';
-import { appear, decorChange, flash, holdRange, rangeOf } from './plugins/decor';
+import { appear, decorChange, flash, holding, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
+import type { HeldRange } from './plugins/decor';
 import { blockFromJSON, captionKey, hasBlockId, learnAttrs, lineKind, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
@@ -91,7 +93,7 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
     case 'decided':
     case 'followups': {
       const block = empty && ref.id ? ref.id : newBlockId();
-      const at = placeFor(tr, ref, () => [n.live.create({ id: block, what: id }), n.line.create({ id: newBlockId() })]);
+      const at = placeFor(tr, ref, () => [n.live.create({ id: block, what: id, call: rt.props.call?.id ?? null }), n.line.create({ id: newBlockId() })]);
       view.dispatch(caretInto(tr, at + 2).scrollIntoView());
       view.focus();
       rt.props.call?.onLive?.(id, block);
@@ -142,6 +144,25 @@ export function pickMention(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: '
   }
 }
 
+/** Tag someone from their card: on the last line if nothing's written there, or a new one under it. */
+export function tagAtEnd(rt: EditorRuntime, person: Person): void {
+  const view = editing(rt);
+  if (!view) return;
+  const last = allBlocks(view.state.doc).at(-1);
+  const tr = view.state.tr;
+  const blank = last && last.id && isBlank(last.node);
+  const id = blank ? last.id ?? '' : newBlockId();
+  const at = blank ? last.pos + 1 : tr.doc.content.size + 1;
+  if (!blank) tr.insert(tr.doc.content.size, n.line.create({ id }));
+  tr.insert(at, [n.mention.create({ id: person.id, name: person.name }), schema.text(' ')]);
+  tr.setSelection(TextSelection.create(tr.doc, at + 2));
+  view.focus();
+  view.dispatch(tr.scrollIntoView());
+  flash(view, id);
+  const dom = view.nodeDOM(at);
+  rt.props.onTagged?.(person, id, dom instanceof Element ? dom.getBoundingClientRect() : null);
+}
+
 /** Link to a document: a block on a line of its own, under the line if there are words on it. */
 export function pickDocument(rt: EditorRuntime, block: string, doc: string): void {
   const view = editing(rt);
@@ -163,7 +184,7 @@ export function pickMoment(rt: EditorRuntime, block: string, line: MomentLine): 
   const id = isBlank(ref.node) && ref.id ? ref.id : newBlockId();
   const tr = view.state.tr;
   const at = placeFor(tr, ref, () => [
-    n.moment.create({ id, person: line.person?.id ?? null, name: line.person?.name ?? line.name, at: line.at, text: line.text, line: line.id }),
+    n.moment.create({ id, person: line.person?.id ?? null, name: line.person?.name ?? line.name, at: line.at, text: line.text, line: line.id, note: line.note }),
     n.line.create({ id: newBlockId() })
   ]);
   view.dispatch(caretInto(tr, at + 2).scrollIntoView());
@@ -344,17 +365,21 @@ export function setCaption(rt: EditorRuntime, block: string, media: string, cap:
   view.dispatch(view.state.tr.setNodeAttribute(ref.pos, key, cap === '' ? null : cap));
 }
 
-/** What every `live` block of a kind shows. Any browser in the call can write this: it only changes what's different. */
+/** A `live` block of the call this document is open in. One from an earlier call stays as it was when that ended. */
+const ofThisCall = (rt: EditorRuntime, node: PMNode) => node.type === n.live && rt.props.call !== undefined && node.attrs['call'] === rt.props.call.id;
+/** What every `live` block of a kind in this call shows. Any browser in the call can write this: it only changes what's different. */
 export function setLiveLines(rt: EditorRuntime, what: LiveWhat, lines: LiveLine[]): void {
   const view = editing(rt);
   if (!view) return;
   const tr = view.state.tr;
   const next = JSON.stringify(lines);
   for (const b of allBlocks(view.state.doc)) {
-    if (b.node.type === n.live && b.node.attrs['what'] === what && JSON.stringify(b.node.attrs['lines']) !== next) tr.setNodeAttribute(b.pos, 'lines', lines);
+    if (ofThisCall(rt, b.node) && b.node.attrs['what'] === what && JSON.stringify(b.node.attrs['lines']) !== next) tr.setNodeAttribute(b.pos, 'lines', lines);
   }
   if (tr.docChanged) view.dispatch(tr.setMeta('addToHistory', false));
 }
+/** Whether the document holds a `live` block of this call, which is what keeps the notes being written while nothing else shows them. */
+export const hasLive = (rt: EditorRuntime): boolean => (rt.view ? allBlocks(rt.view.state.doc).some((b) => ofThisCall(rt, b.node)) : false);
 
 /* -------- adding blocks from outside */
 const withFreshId = (node: PMNode): PMNode => (hasBlockId(node) ? node.type.create({ ...node.attrs, id: newBlockId(), gone: null }, node.content, node.marks) : node);
@@ -365,6 +390,10 @@ function insertSpan(state: EditorState, at: InsertAt): { from: number; to: numbe
   const start = doc.child(0).nodeSize;
   if (at === 'start') return { from: start, to: start };
   if (at === 'end') return { from: end, to: end };
+  if (at === 'tail') {
+    const last = allBlocks(doc).at(-1);
+    return last && isBlank(last.node) ? { from: last.pos, to: last.pos + last.node.nodeSize } : { from: end, to: end };
+  }
   if (at === 'all') return { from: start, to: end };
   if (at === 'caret') {
     const ref = selectedBlock(state);
@@ -484,6 +513,14 @@ export function commentOnBlock(rt: EditorRuntime, id: string): void {
   startComment(rt);
 }
 
+const lineOf = (text: string, kind?: 'todo' | undefined): BlockJSON => ({ type: 'line', attrs: kind ? { kind } : {}, content: [{ type: 'text', text }] });
+
+/** Held words, if they still say what they said. What someone changed in them isn't to be written over. */
+function sameWords(state: EditorState, words: HeldWords): { from: number; to: number } | null {
+  const range = wordsNow(state, words);
+  return range && state.doc.textBetween(range.from, range.to, ' ', ' ') === words.quote ? range : null;
+}
+
 export function askAboutSelection(rt: EditorRuntime): void {
   const view = rt.view;
   const onAsk = rt.props.onAsk;
@@ -492,18 +529,61 @@ export function askAboutSelection(rt: EditorRuntime): void {
   const block = selectedBlock(state)?.id;
   const words = holdWords(state);
   if (!block || state.selection.empty || !words) return;
+  const { from, to } = state.selection;
+  const text = state.doc.textBetween(from, to, '\n', leafWords);
+  const rect = selectionRect(view);
   rt.bar.set(null);
+  view.dispatch(decorChange(state.tr, { held: words.held }));
+
+  /** What's been written so far: the words, or the line the next one follows. */
+  let written: HeldRange | null = null;
+  let last: string | null = null;
+  const letGo = () => {
+    const live = rt.view;
+    if (live && holding(live.state, words.held)) live.dispatch(decorChange(live.state.tr, { held: null, asking: false }));
+  };
+  /** A line goes after the last one written, or under the block the words were in, or in that block's place if it's empty now. */
+  const addLine = (live: EditorView, line: BlockJSON) => {
+    const ref = findBlock(live.state.doc, block);
+    const at: InsertAt = last ? { after: last } : !ref ? 'end' : isBlank(ref.node) ? { replace: block } : { after: block };
+    last = insertBlocks(rt, [line], at, { appear: true }).at(-1) ?? last;
+  };
+  const writeWords = (live: EditorView, answer: string) => {
+    const so = written && rangeOf(live.state, written);
+    if (so) {
+      live.dispatch(live.state.tr.insertText(answer, so.to));
+      written = holdRange(live.state, so.from, so.to + answer.length);
+      return;
+    }
+    const range = sameWords(live.state, words);
+    if (!range) { addLine(live, lineOf(answer)); return; }
+    live.dispatch(live.state.tr.insertText(answer, range.from, range.to));
+    written = holdRange(live.state, range.from, range.from + answer.length);
+    flash(live, block);
+  };
+  const writeTodo = (live: EditorView, line: string) => {
+    const range = last ? null : sameWords(live.state, words);
+    if (range) live.dispatch(live.state.tr.delete(range.from, range.to));
+    addLine(live, lineOf(line, 'todo'));
+  };
+
   onAsk({
-    text: words.quote, block, rect: selectionRect(view),
-    replace: (blocks) => {
+    text, block, rect,
+    wait: () => {
       const live = editing(rt);
       if (!live) return;
-      const nodes = blocks.map((b) => withFreshId(blockFromJSON(b)));
-      const range = wordsNow(live.state, words);
-      /* The words have gone, so there's nothing to replace: the answer goes under the block they were in. */
-      if (range) live.dispatch(live.state.tr.replaceWith(range.from, range.to, nodes));
-      else insertBlocks(rt, blocks, findBlock(live.state.doc, block) ? { after: block } : 'end');
-    }
+      const range = rangeOf(live.state, words.held);
+      const tr = decorChange(live.state.tr, { asking: true });
+      live.dispatch(range ? tr.setSelection(TextSelection.create(tr.doc, range.to)) : tr);
+    },
+    write: (part) => {
+      const live = editing(rt);
+      if (!live) return;
+      letGo();
+      if (part.type === 'todo') writeTodo(live, part.text);
+      else writeWords(live, part.text);
+    },
+    done: letGo
   });
 }
 

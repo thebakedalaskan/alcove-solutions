@@ -37,6 +37,12 @@ export const ShareInputSchema = z.object({
   group: z.string().trim().min(1).max(40).optional()
 });
 
+/**
+ * Words people type for a note: on one line, whitespace collapsed, so nothing typed can pass for another line of a
+ * transcript or a list where a prompt reads it.
+ */
+const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
+
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notes'), on: z.boolean() }),
@@ -58,6 +64,8 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
   /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
   z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
+  /** Anyone in the call who gets the notes: adds a follow-up nobody said to the part of the call they're in, in their own words, for themselves. Shared and ticked like the rest, and it goes into the note. */
+  z.object({ type: z.literal('follow-up-add'), text: oneLine(300) }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /**
@@ -160,7 +168,8 @@ export const CallHandOffBodySchema = z.object({ to: CallIdentity });
  * Leaving a call. Anyone but whoever hosts just leaves. Whoever hosts ends it for everyone, unless `end` is false: then
  * they hand the call to whoever's next (refused when nobody can take it), so a page going away never ends a call.
  */
-export const CallLeaveBodySchema = z.object({ end: z.boolean().default(true) });
+/** `onPurpose`: someone chose to go, and isn't a page going away that may come back: what they started stops with them. */
+export const CallLeaveBodySchema = z.object({ end: z.boolean().default(true), onPurpose: z.boolean().default(false) });
 
 export const RecordingActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rename'), title: z.string().trim().min(1).max(160) }),
@@ -208,12 +217,6 @@ export type RevisitPatch = z.infer<typeof RevisitPatchSchema>;
 
 /** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
 export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
-/**
- * Words people type for a note: on one line, whitespace collapsed, so nothing typed can pass for another line of a
- * transcript or a list where a prompt reads it.
- */
-const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
-
 /** The words someone read when they agreed to them. If they've changed since, nothing they read is what they'd be agreeing to. */
 const SeenWords = z.object({ text: z.string().max(2000) });
 /**

@@ -102,6 +102,8 @@ export function caretsPlugin(rt: EditorRuntime, awareness: Awareness): Plugin {
     props: { decorations: (state) => key.getState(state) },
     view(view) {
       let sent: { anchor: Y.RelativePosition; head: Y.RelativePosition } | null = null;
+      /* A caret at the end of a line stays at the same place in Yjs as words go in before it, so typing says so itself: that's what brings a name back. */
+      let typed = 0;
 
       /* Tells everyone where this browser's caret is. */
       const publish = () => {
@@ -141,7 +143,11 @@ export function caretsPlugin(rt: EditorRuntime, awareness: Awareness): Plugin {
       view.dom.addEventListener('focusout', publish);
       draw(view);
       return {
-        update: () => { publish(); draw(view); },
+        update: (_, before) => {
+          publish();
+          if (view.state.doc !== before.doc && !syncOf(view.state)?.isChangeOrigin) awareness.setLocalStateField('typed', ++typed);
+          draw(view);
+        },
         destroy: () => {
           clearTimeout(quiet);
           cancelAnimationFrame(frame);

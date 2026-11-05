@@ -147,7 +147,8 @@ const withAlert = (n: NotificationPrefs, a: Alert, on: boolean): NotificationPre
   notesReady: a === 'notesReady' ? on : n.notesReady,
   sharedWithYou: a === 'sharedWithYou' ? on : n.sharedWithYou,
   notesRequested: a === 'notesRequested' ? on : n.notesRequested,
-  followUpDue: a === 'followUpDue' ? on : n.followUpDue
+  followUpDue: a === 'followUpDue' ? on : n.followUpDue,
+  tagged: a === 'tagged' ? on : n.tagged
 });
 
 /** Whether this browser shows Alcove's notifications, and the way to let it. The browser is asked only on a press. */
@@ -192,6 +193,7 @@ export function NotificationsPart({ prefs }: { prefs: Preferences }) {
       {alert('sharedWithYou', 'When someone shares notes with you')}
       {alert('notesRequested', 'When someone asks for notes', 'In calls you organize, while you’re in another tab or app.')}
       {alert('followUpDue', 'A follow-up is due', 'At 9:00 on the due day.')}
+      {alert('tagged', 'When someone tags you', 'In a document you can open, while you’re somewhere else.')}
     </SettingsPart>
   );
 }

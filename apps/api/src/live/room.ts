@@ -23,6 +23,8 @@ import { publish, type Hub, type HubEvent } from './hub';
 const rlog = log.child({ component: 'rooms' });
 /** The start of a notice carrying someone's presence, sealed. A document's notices start with its ID, which is longer. */
 const PRESENCE = 'here:';
+/** The start of a notice that someone was tagged: then how access knows them, which is a keyed hash, and the stream that's theirs looks. */
+export const TOLD = 'told:';
 /** How often streams work out who's here, however often people move: everyone hears a change within this. */
 const TELL_EVERY_MS = 200;
 
@@ -37,6 +39,8 @@ export interface RoomMember {
   offer(s: Snapshot): void;
   /** Who's here changed: `seenBy` says what this stream's reader may know of it. */
   heard(): void;
+  /** Someone tagged this stream's reader. */
+  told(): void;
   end(): void;
 }
 
@@ -113,7 +117,11 @@ export class Room {
   private listen(e: HubEvent): void {
     if (e.kind === 'closing') { for (const m of this.members) m.end(); return; }
     if (e.kind === 'notice' && e.notice.startsWith(PRESENCE)) { this.heardHere.push(e.notice.slice(PRESENCE.length)); void this.read(); return; }
+    if (e.kind === 'notice' && e.notice.startsWith(TOLD)) { this.tellTagged(unb64u(e.notice.slice(TOLD.length))); return; }
     if (e.kind === 'missed' || e.notice === TREE_NOTICE) void this.read();
+  }
+  private tellTagged(who: Uint8Array): void {
+    for (const m of this.members) if (m.principals.some((p) => Buffer.compare(p, who) === 0)) m.told();
   }
   join(m: RoomMember): void { this.members.add(m); }
   leave(m: RoomMember): void {
@@ -170,6 +178,9 @@ export class Room {
       const key = `${n.person.id}:${n.connection}`;
       if (n.gone) { this.here.delete(key); continue; }
       const { email, principals, gone: _, ...rest } = n;
+      // Whoever moved last comes last, so of someone's windows the one they're using can be told from one left open.
+      const was = this.here.get(key);
+      if (was && (was.document !== n.document || was.block !== n.block || was.typing !== n.typing)) this.here.delete(key);
       this.here.set(key, { ...rest, who: { email: email ?? undefined, principals: principals.map((p) => unb64u(p)) }, until });
     }
     this.expire();

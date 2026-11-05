@@ -75,17 +75,39 @@ export function documentText(doc: Y.Doc, kind: ContentKind): { title: string; bl
   }
 }
 
-/** A `todo` block: who it tags and when, for the call's follow-ups. */
+/** A `todo` block: what it says, who it tags and when, for the call's follow-ups. */
 export interface DocTodo { block: string; text: string; done: boolean; mentions: { id: string; name: string }[]; dates: string[] }
 const todosOf = (doc: Y.Doc): Y.XmlElement[] => blocksOf(doc).filter((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'todo');
 function todoOf(el: Y.XmlElement): DocTodo {
   const inline = elementsIn(el);
   const done: unknown = el.getAttribute('done');
   return {
-    block: textAttr(el, 'id'), text: blockWords(el), done: done === true,
+    block: textAttr(el, 'id'), text: todoWords(el), done: done === true,
     mentions: inline.filter((x) => x.nodeName === 'mention').map((x) => ({ id: textAttr(x, 'id'), name: textAttr(x, 'name') })),
     dates: inline.filter((x) => x.nodeName === 'dateChip').map((x) => textAttr(x, 'date'))
   };
+}
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** A date tag as it reads in a sentence: 6 Nov. */
+function dayWords(date: string): string {
+  const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(date) ?? [];
+  const name = MONTHS[Number(month) - 1];
+  return name && day ? `${Number(day)} ${name}` : date;
+}
+/**
+ * What a to-do says, read apart from its line, where who and when show beside it. Tags side by side at the end of the line
+ * are only labels, so they're left off. Anywhere else they're part of the sentence ("Send the brief to Priya by 6 Nov").
+ */
+function todoWords(line: Y.XmlElement): string {
+  const runs = runsOf(line);
+  let end = runs.length;
+  let tags = 0;
+  for (let run = runs[end - 1]; run && (!('text' in run) || run.text.trim() === ''); run = runs[end - 1]) {
+    if (!('text' in run)) tags += 1;
+    end -= 1;
+  }
+  const said = (rs: Run[]) => rs.map((r) => ('text' in r ? r.text : 'mention' in r ? r.mention.name : dayWords(r.date))).join('').replace(/\s+/g, ' ').trim();
+  return (tags > 1 ? said(runs.slice(0, end)) : '') || said(runs);
 }
 /** Every todo in a document, in order. One with a mention and a date joins the follow-ups of a call it was worked on in. */
 export function documentTodos(doc: Y.Doc, kind: ContentKind): DocTodo[] {
@@ -96,6 +118,15 @@ export function documentTodos(doc: Y.Doc, kind: ContentKind): DocTodo[] {
 }
 /** Whether a todo is one of a call's follow-ups: it says who and when. */
 export const isFollowUp = (t: Pick<DocTodo, 'mentions' | 'dates'>): boolean => t.mentions.length > 0 && t.dates.length > 0;
+/** How much of a document's follow-ups a call is given: so many, so long, with so many people and dates each. */
+export interface FollowUpLimits { max: number; chars: number; tags: number }
+const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+/** A document's follow-ups as a call shows them: the first `max`, each cut to size, so a document of thousands gives a page. */
+export function followUpsIn(doc: Y.Doc, kind: ContentKind, l: FollowUpLimits): DocTodo[] {
+  return documentTodos(doc, kind).filter(isFollowUp).slice(0, l.max).map((t) => ({
+    ...t, text: cut(t.text, l.chars), mentions: t.mentions.slice(0, l.tags).map((m) => ({ id: cut(m.id, l.chars), name: cut(m.name, l.chars) })), dates: t.dates.slice(0, l.tags).map((d) => cut(d, l.chars))
+  }));
+}
 
 /** Attributes as y-prosemirror writes them: of any type, though Yjs's types say strings. */
 const setAttr = (el: Y.XmlElement, name: string, value: unknown): void => { Reflect.apply(el.setAttribute, el, [name, value]); };
@@ -160,19 +191,26 @@ function lineOf(attrs: Record<string, unknown>, runs: Run[] = []): Y.XmlElement 
   return el;
 }
 const heading = (text: string) => lineOf({ kind: 'heading', level: 2 }, [{ text }]);
+/** Writes at the start of the text a block starts with, as anyone typing there does: one made beside it is merged away in the editor. */
+function writeAtStart(el: Y.XmlElement, text: string): void {
+  const first = el.get(0);
+  if (first instanceof Y.XmlText) first.insert(0, text);
+  else el.insert(0, [words(text)]);
+}
 
 /**
  * Fills in a new document as the next call's agenda: the Agenda template, holding what was left open. Its first line is the
- * one every document starts with, so it's kept and turned into the first heading.
+ * one every document starts with, so it's kept and turned into the first heading. One that's filled in already is left as
+ * it is, so trying again after a fill that landed and wasn't said to changes nothing.
  */
 export function writeAgenda(doc: Y.Doc, title: string, open: Run[][]): void {
   const fragment = doc.getXmlFragment(DOC_FRAGMENT);
   const [head, first] = blocksOf(doc);
-  if (head?.nodeName !== 'title' || !first) return;
-  head.insert(0, [words(title)]);
+  if (head?.nodeName !== 'title' || !first || readsAsAgenda(doc, 'document')) return;
+  writeAtStart(head, title);
   setAttr(first, 'kind', 'heading');
   setAttr(first, 'level', 2);
-  first.insert(0, [words(AGENDA_HEADING)]);
+  writeAtStart(first, AGENDA_HEADING);
   const carried = open.length ? open.map((runs) => lineOf({ kind: 'todo' }, runs)) : [lineOf({ kind: 'todo' })];
   fragment.insert(2, [...carried, heading('Today'), lineOf({ kind: 'numbered' }), heading('Notes'), lineOf({})]);
 }

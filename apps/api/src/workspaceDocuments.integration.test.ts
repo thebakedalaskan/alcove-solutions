@@ -4,7 +4,7 @@
  * dropped connections, restarts and compactions, and nothing for anyone who can't open it.
  */
 import {
-  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind,
+  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type DocStatus, type ItemKind,
   type KeptUpdate, type KeptUpdates, type WorkspaceHere, type WorkspaceLive, type WorkspaceRole
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
@@ -1817,7 +1817,8 @@ describe('reading a document on the server', () => {
       { id: 'fi', type: 'file', text: 'brief.pdf' }, { id: 'ga', type: 'gallery', text: 'A caption Another' }, { id: 'lk', type: 'paragraph', text: 'See ' }
     ]));
     expect(documentTodos(read, 'document')).toEqual([
-      { block: 'todo1', text: 'Send the brief to Priya Rao by 2026-11-06', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
+      // A follow-up's words read as a sentence: a tag inside one is part of it, and a date is a day.
+      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
       { block: 'todo2', text: 'Nobody’s yet', done: true, mentions: [], dates: [] }
     ]);
     // A retired block isn't on the page, and a todo in one isn't anyone's, unless an edit landed in it after: then it's a block.
@@ -2918,6 +2919,24 @@ describe('restoring', () => {
       expect(acknowledged.filter((w) => !seen.some((s) => s.includes(w)))).toEqual([]);
       fresh.close();
     }
+  });
+
+  it('leaves someone typing through one saving, not offline, and their words land on what was restored', async () => {
+    const { bob, id, doc } = await kept();
+    const b = await open(bob, id, doc);
+    const said: DocStatus['status'][] = [];
+    b.subscribe(() => { said.push(b.getSnapshot().status); });
+    const hold = (until: string) => h.pool.query(`UPDATE documents SET held_until = ${until} WHERE document_id = $1`, [doc]);
+    await hold(`now() + interval '1 minute'`);
+    line(b).insert(0, 'Typed through it. ');
+    // Long enough to be turned away more than once.
+    await until(() => said.includes('saving'), 'the words to be on their way');
+    await rest(1800);
+    expect(b.getSnapshot().status).toBe('saving');
+    await hold('NULL');
+    await saved(b);
+    expect(said).not.toContain('offline');
+    expect(words(await open(bob, id, doc))).toContain('Typed through it. ');
   });
 
   it('won’t make a document bigger than it can be, so typing is never refused for it', async () => {

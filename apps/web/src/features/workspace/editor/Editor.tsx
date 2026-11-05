@@ -18,12 +18,12 @@ import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
 import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, turnInto } from './actions';
+import { hasLive, insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
 import { cleanPastedHTML, cleanSerializer, handlePaste, refuseSlice, refuseText, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
-import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
+import { allBlocks, blockWords, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
 import { Menus, useStore } from './menus/Menus';
@@ -31,6 +31,7 @@ import { blockIds, fromSync } from './plugins/blockIds';
 import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
+import { readingPlugin } from './plugins/reading';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type FileDragState, type ThreadView } from './runtime';
@@ -116,6 +117,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     dropCursor({ class: 'ws-dropcaret', color: false, width: 2 }),
     blockIds,
     decorPlugin(rt),
+    readingPlugin(rt),
     watchPlugin(rt)
   ];
   const state = EditorState.create(fits ? { schema, doc: start.doc, plugins } : { schema, plugins });
@@ -202,6 +204,11 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
         if (block) focusAt(view, where === 'start' ? Selection.near(doc.resolve(block.pos), 1) : Selection.near(doc.resolve(block.pos + block.node.nodeSize), -1));
       }
     }),
+    resume: () => put((view) => {
+      view.focus();
+      const { selection } = view.state;
+      if (!selection.empty) view.dispatch(view.state.tr.setSelection(Selection.near(selection.$to, -1)));
+    }),
     focusBlock: (id, at = 'start') => put((view) => {
       const ref = findBlock(view.state.doc, id);
       if (ref) focusAt(view, Selection.near(view.state.doc.resolve(at === 'end' ? ref.pos + ref.node.nodeSize - 1 : ref.pos + 1), at === 'end' ? -1 : 1));
@@ -229,9 +236,12 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
       const before = blocks[blocks.findIndex((b) => b.id === id) - 1]?.id;
       return before ? { after: before } : 'start';
     },
+    blockWords: () => (rt.view ? blockWords(rt.view.state.doc) : []),
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
+    hasLive: () => hasLive(rt),
     openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
     openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
+    tag: (person) => tagAtEnd(rt, person),
     toggleMark: (mark) => write((view) => {
       const { from, to, empty } = view.state.selection;
       const type = schema.marks[mark];
@@ -312,8 +322,8 @@ export default function Editor(props: EditorProps) {
     return observeThreads(doc, update);
   }, [rt, doc]);
 
-  /* Who can edit decides what the page is, and names change under a tag. */
-  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint]);
+  /* Who can edit decides what the page is, and so does the section being presented. Names change under a tag. */
+  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint, props.section]);
   useEffect(() => { rt.names.set(rt.names.get() + 1); });
 
   /* Files from the desktop land between blocks, wherever the page is under the pointer. */

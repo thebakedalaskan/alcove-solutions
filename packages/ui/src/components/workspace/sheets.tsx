@@ -5,17 +5,19 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, Faces, type AvatarPerson } from '../people';
+import { Dots } from '../motion';
 import { Button, Kbd } from '../primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
 import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 
 /**
  * Someone's card, from their tile, their face or their name in a line. `where` is the document they're in, in words:
- * pass "A document you can’t open" or "Not in the workspace" when that's so. `onGo` is left out when you can't go there.
+ * pass "A document you can’t open" or "Not in the workspace" when that's so. `onGo` is left out when you can't go there,
+ * and `onTag` when you can't write in what's open.
  */
 export function WsPersonCard({ person, where, followed = false, onFollow, onStop, onGo, onTag }: {
   person: AvatarPerson; where: string; followed?: boolean | undefined;
-  onFollow: () => void; onStop: () => void; onGo?: (() => void) | undefined; onTag: () => void;
+  onFollow: () => void; onStop: () => void; onGo?: (() => void) | undefined; onTag?: (() => void) | undefined;
 }) {
   const first = firstName(person);
   return (
@@ -25,7 +27,7 @@ export function WsPersonCard({ person, where, followed = false, onFollow, onStop
         ? <Button size="sm" onClick={onStop}>Stop following</Button>
         : <Button variant="primary" size="sm" onClick={onFollow}><Icon name="navigate" size={15} />Follow {first}</Button>}
       {onGo && <button type="button" className="wm-r" onClick={onGo}><Icon name="locate" size={16} /><span className="t"><span className="l">Go to where {first} is</span></span></button>}
-      <button type="button" className="wm-r" onClick={onTag}><Icon name="at" size={16} /><span className="t"><span className="l">Tag {first} in this document</span></span></button>
+      {onTag && <button type="button" className="wm-r" onClick={onTag}><Icon name="at" size={16} /><span className="t"><span className="l">Tag {first} in this document</span></span></button>}
     </div>
   );
 }
@@ -45,44 +47,126 @@ export function WsMentionPrompt({ person, document, onEdit, onRead, onNotNow }: 
   );
 }
 
-/** A field and its send button, as a comment has them. Enter sends. */
-function CommentField({ label, placeholder, value, onChange, onSend, autoFocus = false }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; onSend: () => void; autoFocus?: boolean | undefined }) {
+/** One thing `@` offers in a comment. `words` is what goes in the text. */
+export interface WsTagChoice { key: string; label: string; person?: AvatarPerson | undefined; icon?: IconName | undefined; sub?: string | undefined; words: string }
+/** A headed part of that list. */
+export interface WsTagSection { title: string; choices: WsTagChoice[] }
+/** What `@` in a comment needs: what it offers for what's been typed after it, and what to do once something's picked. */
+export interface WsTagging { sections: (query: string) => WsTagSection[]; onPick: (choice: WsTagChoice) => void }
+
+/** The `@word` the caret is at the end of, as the editor finds it. */
+function tagAt(value: string, caret: number): { from: number; query: string } | null {
+  const hit = /(?:^|\s)@([^\s@]{0,18})$/.exec(value.slice(0, caret));
+  const query = hit?.[1];
+  return query === undefined ? null : { from: caret - query.length - 1, query };
+}
+
+/** A field and its send button, as a comment has them. Enter sends, and `@` opens a list above the line, in the same box. */
+function CommentField({ label, placeholder, value, onChange, onSend, tagging, autoFocus = false }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined; autoFocus?: boolean | undefined }) {
+  const field = useRef<HTMLInputElement>(null);
+  const [caret, setCaret] = useState(0);
+  const [index, setIndex] = useState(0);
+  const [closed, setClosed] = useState<number | null>(null);
+  const tag = tagging ? tagAt(value, caret) : null;
+  const shown = tag && tag.from !== closed ? tag : null;
+  const sections = shown && tagging ? tagging.sections(shown.query).filter((s) => s.choices.length > 0) : [];
+  const choices = sections.flatMap((s) => s.choices);
+  const open = shown !== null;
+  const take = (c: WsTagChoice | undefined) => {
+    if (!c || !shown) return;
+    /* Only a person keeps the @: a date is just words. */
+    const words = `${c.person ? '@' : ''}${c.words} `;
+    const at = shown.from + words.length;
+    onChange(`${value.slice(0, shown.from)}${words}${value.slice(caret)}`);
+    setCaret(at);
+    tagging?.onPick(c);
+    requestAnimationFrame(() => { field.current?.focus(); field.current?.setSelectionRange(at, at); });
+  };
+  const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (open && choices.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      setIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
+    } else if (open && choices.length > 0 && (e.key === 'Enter' || e.key === 'Tab')) {
+      e.preventDefault();
+      take(choices[index]);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      onSend();
+    }
+  };
+  const moved = (e: { currentTarget: HTMLInputElement }) => setCaret(e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+  /* Esc closes the list and leaves the box: the popover hears it first otherwise. */
+  const from = shown?.from ?? null;
+  useEffect(() => {
+    if (from === null) return;
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setClosed(from); } };
+    window.addEventListener('keydown', esc, true);
+    return () => window.removeEventListener('keydown', esc, true);
+  }, [from]);
   return <>
-    <input className="wm-in" type="text" placeholder={placeholder} aria-label={label} value={value} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSend(); } }} />
+    <input ref={field} className="wm-in" type="text" placeholder={placeholder} aria-label={label} aria-expanded={open} value={value} autoFocus={autoFocus}
+      onChange={(e) => { onChange(e.target.value); setIndex(0); moved(e); }} onSelect={moved} onKeyDown={keys} />
     <button type="button" className="ws-send" aria-label="Send" onClick={onSend}><Icon name="sendLine" size={15} /></button>
+    {open && (
+      <div className="wv-tags wm-list" role="listbox" aria-label="People and dates">
+        {choices.length === 0 && <p className="wm-x">Nobody called “{shown.query}”.</p>}
+        {sections.map((s) => [
+          <div key={s.title} className="wm-h">{s.title}</div>,
+          ...s.choices.map((c) => (
+            <button key={c.key} type="button" role="option" aria-selected={choices[index] === c} tabIndex={-1} className={cn('wm-r', choices[index] === c && 'is-sel', c.person && 'is-person')} onMouseDown={(e) => e.preventDefault()} onClick={() => take(c)}>
+              {c.person && <Avatar person={c.person} size={24} />}
+              {c.icon && <Icon name={c.icon} size={16} />}
+              <span className="t"><span className="l">{c.label}</span>{c.sub && <small>{c.sub}</small>}</span>
+            </button>
+          ))
+        ])}
+      </div>
+    )}
   </>;
 }
 
+/** A tag in a comment: the words as they were written, marked like a tag in a line. */
+export function WsTagWords({ children }: { children: ReactNode }) {
+  return <span className="wn-w">{children}</span>;
+}
+
 /** A new comment on selected words. `person` is who's writing it. */
-export function WsCommentCompose({ quote, person, value, onChange, onSend }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void }) {
+export function WsCommentCompose({ quote, person, value, onChange, onSend, tagging }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined }) {
   return (
     <div className="wv-cmt">
       <div className="q"><span className="ac-clamp-2">{quote}</span></div>
-      <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} autoFocus /></div>
+      <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} tagging={tagging} autoFocus /></div>
     </div>
   );
 }
 
 /** One message in a thread. `name` is their first name. */
-export interface WsComment { id: string; person: AvatarPerson; name: string; text: string }
+export interface WsComment { id: string; person: AvatarPerson; name: string; text: ReactNode }
 
-/** A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms. */
-export function WsCommentThread({ quote, messages, value, onChange, onSend, onResolve }: {
-  quote: string; messages: WsComment[]; value: string; onChange: (v: string) => void; onSend: () => void; onResolve: () => void;
+/**
+ * A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms.
+ * Someone who can only read gets the thread and nothing to press: leave out `onSend` and `onResolve`.
+ */
+export function WsCommentThread({ quote, messages, value = '', onChange, onSend, onResolve, tagging }: {
+  quote: string; messages: WsComment[]; value?: string | undefined; onChange?: ((v: string) => void) | undefined; onSend?: (() => void) | undefined; onResolve?: (() => void) | undefined; tagging?: WsTagging | undefined;
 }) {
   const move = useMove();
+  const said = useRef<HTMLDivElement>(null);
+  /* A long thread scrolls, and what was just said is what's showing. */
+  useEffect(() => { const box = said.current; if (box) box.scrollTop = box.scrollHeight; }, [messages.length]);
   return (
     <div className="wv-cmt">
-      <div className="wv-th"><span className="q1">{quote}</span><Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button></div>
-      <AnimatePresence initial={false}>
-        {messages.map((m) => (
-          <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
-            <Avatar person={m.person} size={24} /><div><b>{m.name}</b><p>{m.text}</p></div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-      <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} /></div>
+      <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>
+      <div ref={said} className="wv-ms">
+        <AnimatePresence initial={false}>
+          {messages.map((m) => (
+            <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
+              <Avatar person={m.person} size={24} /><div><b>{m.name}</b><p>{m.text}</p></div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+      {onSend && onChange && <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} tagging={tagging} autoFocus /></div>}
     </div>
   );
 }
@@ -181,17 +265,20 @@ export interface WsFindHit { id: string; name: string; sub: string; icon: IconNa
 
 /**
  * Find, ⌘K: the page dims as the box pops in, 140 ms. With nothing typed `hits` are what you opened last. Up and Down
- * move `selected` (an index), Enter opens it, Esc closes.
+ * move `selected` (an index), Enter opens it, Esc closes. `searching`: more may be on its way, so nothing found isn't an
+ * answer yet. `note` says why this may not be everything; `foot` sits under the list.
  */
-export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onSelected, onOpen }: {
+export function WsFind<H extends WsFindHit>({ open, onOpenChange, query, onQuery, hits, selected, onSelected, onOpen, searching = false, note, foot }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (q: string) => void;
-  hits: WsFindHit[]; selected: number; onSelected: (i: number) => void; onOpen: (hit: WsFindHit) => void;
+  hits: H[]; selected: number; onSelected: (i: number) => void; onOpen: (hit: H) => void;
+  searching?: boolean | undefined; note?: string | undefined; foot?: ReactNode;
 }) {
   const ids = useId();
   const list = useRef<HTMLDivElement>(null);
   const back = useRef<HTMLElement | null>(null);
   useEffect(() => { list.current?.querySelector('.is-sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     const n = hits.length;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -207,7 +294,11 @@ export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onS
       <RDialog.Portal>
         <RDialog.Overlay className="ws-scrim" />
         <RDialog.Content aria-describedby={undefined} className="ws-pop wv-find" onOpenAutoFocus={() => { back.current = focusedNow(); }}
-          onCloseAutoFocus={(e) => { if (canTakeFocus(back.current)) { e.preventDefault(); back.current.focus({ preventScroll: true }); } }}>
+          onCloseAutoFocus={(e) => {
+            // Landing on a line puts the caret there, and it's not to be taken away again.
+            if (focusedNow()) e.preventDefault();
+            else if (canTakeFocus(back.current)) { e.preventDefault(); back.current.focus({ preventScroll: true }); }
+          }}>
           <RDialog.Title className="sr-only">Find in this workspace</RDialog.Title>
           <div className="f">
             <Icon name="search" size={17} />
@@ -216,13 +307,49 @@ export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onS
             <Kbd>Esc</Kbd>
           </div>
           <div ref={list} id={`${ids}l`} className="wm-list" role="listbox" aria-label="What was found">
-            {!query && <div className="wm-h">Recent</div>}
+            {!query && hits.length > 0 && <div className="wm-h">Recent</div>}
+            {!query && hits.length === 0 && <p className="wm-x">Nothing to find yet. Documents show up here as people write them.</p>}
             {hits.map((h, i) => (
               <button key={h.id} id={`${ids}${i}`} type="button" role="option" aria-selected={i === selected} tabIndex={-1} className={cn('wm-r', i === selected && 'is-sel')} onClick={() => onOpen(h)} onPointerMove={() => { if (i !== selected) onSelected(i); }}>
                 <Icon name={h.icon} size={16} /><span className="t"><span className="l">{h.name}</span><small>{h.sub}</small></span>
               </button>
             ))}
-            {query && hits.length === 0 && <p className="wm-x">Nothing called “{query}”.</p>}
+            {query && searching && <p className="wm-x wv-more"><Dots /></p>}
+            {query && !searching && hits.length === 0 && <p className="wm-x">Nothing called “{query}”.</p>}
+            {note && <p className="wm-x">{note}</p>}
+          </div>
+          {foot}
+        </RDialog.Content>
+      </RDialog.Portal>
+    </RDialog.Root>
+  );
+}
+
+/** The way to the keyboard list, at the foot of Find. A phone has no keys to list. */
+export function WsKeysRow({ onOpen }: { onOpen: () => void }) {
+  return <div className="wv-keyrow"><button type="button" className="wm-r" onClick={onOpen}><Icon name="keyboard" size={16} /><span className="t"><span className="l">Keyboard</span></span><Kbd>?</Kbd></button></div>;
+}
+
+/** One column of the keyboard list. */
+export interface WsKeyGroup { name: string; keys: { label: string; key: string }[] }
+
+/** Every key there is, in columns, over the page like Find. `note`: what's worth knowing about them all. */
+export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean; onOpenChange: (open: boolean) => void; groups: WsKeyGroup[]; note?: string | undefined }) {
+  return (
+    <RDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RDialog.Portal>
+        <RDialog.Overlay className="ws-scrim" />
+        <RDialog.Content aria-describedby={undefined} className="ws-pop wv-keys">
+          <RDialog.Title className="sr-only">Keyboard</RDialog.Title>
+          <Kbd className="wv-keys-esc">Esc</Kbd>
+          <div className="ky">
+            {groups.map((g) => (
+              <div key={g.name} className="ky-g">
+                <h3>{g.name}</h3>
+                {g.keys.map((k) => <div key={k.label} className="ky-r"><span>{k.label}</span><kbd>{k.key}</kbd></div>)}
+              </div>
+            ))}
+            {note && <p className="ky-note">{note}</p>}
           </div>
         </RDialog.Content>
       </RDialog.Portal>
@@ -232,18 +359,26 @@ export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onS
 
 /**
  * Someone in the call asked to see the workspace, on the organizer's screen. Pass the person to show it: it drops in 8 px,
- * 420 ms, waits, and lifts away, 240 ms, when you pass null. `document`: what they can be let into.
+ * 420 ms, waits, and lifts away, 240 ms, when you pass null. `document`: what they can be let into, read only (`onLet`) or
+ * to edit (`onEdit`), the one open in front of you. With none open, `onChoose` opens the workspace to pick one.
  */
-export function WsKnock({ person, document, onLet, onNotNow }: { person: AvatarPerson | null; document: string; onLet: () => void; onNotNow: () => void }) {
+export function WsKnock({ person, document, onLet, onEdit, onChoose, onNotNow }: {
+  person: AvatarPerson | null; document: string | null; onLet: () => void; onEdit: () => void; onChoose: () => void; onNotNow: () => void;
+}) {
   const move = useMove();
   return (
     <AnimatePresence initial={false}>
       {person && (
         <motion.div className="wv-knock" role="status" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0, transition: move(3) }} exit={{ opacity: 0, y: -8, transition: move(2) }}>
           <Avatar person={person} size={34} />
-          <div><b>{firstName(person)} asked to see the workspace</b><p>Share just this document, or nothing.</p></div>
+          <div><b>{firstName(person)} asked to see the workspace</b><p>{document === null ? 'Open a document to share just that, or nothing.' : 'Share just this document, or nothing.'}</p></div>
           <div className="ac">
-            <Button variant="primary" size="sm" onClick={onLet}><span className="ac-clamp-1">Let {firstName(person)} read {document}</span></Button>
+            {document === null ? <Button variant="primary" size="sm" onClick={onChoose}>Open the workspace</Button> : (
+              <>
+                <Button variant="primary" size="sm" onClick={onLet}><span className="ac-clamp-1">Let {firstName(person)} read {document}</span></Button>
+                <Button size="sm" onClick={onEdit}><span className="ac-clamp-1">Let {firstName(person)} edit</span></Button>
+              </>
+            )}
             <Button variant="quiet" size="sm" onClick={onNotNow}>Not now</Button>
           </div>
         </motion.div>

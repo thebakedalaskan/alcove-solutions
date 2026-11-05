@@ -81,7 +81,11 @@ export const DocumentShareSchema = z.object({
   /** The workspace's own people, who have it unless it's restricted. */
   workspace: z.object({ name: z.string(), people: z.number() }),
   restricted: z.boolean(),
-  entries: z.array(ShareEntrySchema)
+  entries: z.array(ShareEntrySchema),
+  /** The address of everyone who can open it, whichever way they came to: anyone else can't, and is told nothing of it. */
+  canOpen: z.array(z.string()),
+  /** Asked from inside a call: the seats in it (`CallParticipant.seat`) it's shared with, for people with no address here. */
+  seats: z.array(z.string())
 });
 export type DocumentShare = z.infer<typeof DocumentShareSchema>;
 
@@ -101,16 +105,23 @@ export const ShareBodySchema = z.object({ to: z.array(ShareTargetSchema).min(1).
 export const RestrictBodySchema = z.object({ restricted: z.boolean() });
 /** What a new workspace, item or person comes back as. Only an ID: an answer kept for a retry holds nothing readable. */
 export const CreatedSchema = z.object({ id: IDSchema });
+/** A block in a document, from a browser. */
+const BlockIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+/** Someone tagged on a line of a document, by address, or by their seat in the call you're both in. */
+export const MentionBodySchema = z.object({ to: ShareTargetSchema, block: BlockIdSchema.nullable() });
+export type MentionBody = z.infer<typeof MentionBodySchema>;
 
 /* ---------- in this browser ---------- */
 
 /**
  * Where someone was, remembered in this browser, per account, by ID only: the workspace they last had open, the document
- * they last had open in each, which folders they left open, and whether they tucked the list away.
+ * they last had open in each and the ones before it, which folders they left open, and whether they tucked the list away.
  */
 export const WorkspacePlacesSchema = z.object({
   workspace: z.string().nullable(),
   documents: z.record(z.string(), z.string()),
+  /** What was opened in each workspace, the newest first, for Find before anything's typed. */
+  recent: z.record(z.string(), z.array(z.string())).default({}),
   folders: z.record(z.string(), z.array(z.string())),
   listOff: z.boolean()
 });
@@ -136,21 +147,40 @@ export const WorkspaceHereSchema = z.object({
 export type WorkspaceHere = z.infer<typeof WorkspaceHereSchema>;
 
 /** Where a browser says it is: the document open in it and the block its caret is in, or nothing open. */
-export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).nullable(), typing: z.boolean() });
+export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: BlockIdSchema.nullable(), typing: z.boolean() });
 export type WorkspaceWhere = z.infer<typeof WorkspaceWhereSchema>;
 /** Presence, from a browser: where this connection is now, or that it's gone. It says so again every few seconds, or it's taken for gone. */
 export const PresenceBodySchema = z.union([z.object({ connection: ItemIdSchema, gone: z.literal(true) }), WorkspaceWhereSchema.extend({ connection: ItemIdSchema })]);
 export type PresenceBody = z.infer<typeof PresenceBodySchema>;
 
 /**
+ * Someone tagged you. You only hear of it in a document you can open, so what it's called comes from your own tree, and
+ * it's yours to say you've seen (`seen`): until then it's kept for you, however long you're away.
+ */
+export const WorkspaceMentionSchema = z.object({
+  id: IDSchema,
+  document: IDSchema,
+  /** The line, to land on. */
+  block: z.string().nullable(),
+  /** Who tagged you, by name and face: never an address. */
+  by: PersonSchema,
+  at: ISODateSchema
+});
+export type WorkspaceMention = z.infer<typeof WorkspaceMentionSchema>;
+/** The same, wherever you are in the app: which workspace, and what the document's called. */
+export const MentionNoticeSchema = WorkspaceMentionSchema.extend({ workspaceId: IDSchema, name: z.string() });
+export type MentionNotice = z.infer<typeof MentionNoticeSchema>;
+
+/**
  * One line of a workspace's stream. `tree` comes first and then whenever it changes for you, whole. `presence`: everyone
- * here that you can know of, whole, whenever that changes. `access`: your role changed, just before the `tree` that shows
- * it. `ping`: it's still there. `closed`: you can't open this workspace any more, so it ends and stays ended. A stream that
- * just ends is to be opened again.
+ * here that you can know of, whole, whenever that changes. `mention`: someone tagged you, as it happens, and on opening,
+ * anything you haven't seen. `access`: your role changed, just before the `tree` that shows it. `ping`: it's still there.
+ * `closed`: you can't open this workspace any more, so it ends and stays ended. A stream that just ends is to be opened again.
  */
 export const WorkspaceLiveEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tree'), tree: WorkspaceTreeSchema }),
   z.object({ type: z.literal('presence'), here: z.array(WorkspaceHereSchema) }),
+  z.object({ type: z.literal('mention'), mention: WorkspaceMentionSchema }),
   z.object({ type: z.literal('access'), role: WorkspaceRoleSchema.nullable() }),
   z.object({ type: z.literal('ping') }),
   z.object({ type: z.literal('closed') })
@@ -163,11 +193,15 @@ export interface WorkspaceView {
   tree: WorkspaceTree | null;
   /** Everyone in the workspace now. */
   here: WorkspaceHere[];
+  /** Tags you've heard of here and haven't said you've seen, the oldest first. */
+  mentions: WorkspaceMention[];
 }
 /** A workspace, kept up to date. Read it with useLive(). */
 export interface WorkspaceLive extends LiveStore<WorkspaceView> {
   /** Says where this browser is. It's here with nothing open from the moment the stream opens, and for as long as it stays open. */
   present(where: WorkspaceWhere): void;
+  /** You've heard about this tag, so it isn't kept for you any more, on any device. Done once that's said, or couldn't be: the next stream says it again. */
+  seen(mention: string): Promise<void>;
   close(): void;
 }
 /**

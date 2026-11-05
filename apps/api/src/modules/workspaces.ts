@@ -13,22 +13,23 @@ import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { ConflictError, invalid, notFound } from '../errors';
+import { AppError, ConflictError, invalid, notFound } from '../errors';
 import { publish } from '../live/hub';
 import { announce, roomFor, type Room, type Snapshot } from '../live/room';
 import { LiveStream, type Line, type Step } from '../live/stream';
 import { log } from '../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../owners';
 import {
-  TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
+  TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
   workspaceFor, workspaceKey, type Credentials, type Maker, type Reader, type Standing, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './workspaceAccess';
 import { profile } from './account';
-import { nudgeCall } from './calls';
-import { noteUsed } from './callWorkspace';
+import { nudgeCall, seated } from './calls';
+import { noteOpened, noteUsed } from './callWorkspace';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from './portraits';
 import { copyContent, kindOf, startContent } from './workspaceDocuments';
+import { waitingFor } from './workspaceMentions';
 
 const wlog = log.child({ component: 'workspaces' });
 
@@ -298,7 +299,7 @@ export async function people(d: Deps, reader: Reader, workspaceId: string): Prom
   const found = await rows(d.pool, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1 ORDER BY created_at, member_id', [w.owner.ownerId]);
   return found.map((m) => {
     const who = openJson(workspaceKey(w.owner), memberHeader(w.owner, workspaceId, m.member_id), m.person_ciphertext, MemberPerson);
-    return { id: m.member_id, person: personOf(who.email, who.name), role: m.role, since: m.created_at.toISOString(), isMe: reader.principals.some((p) => Buffer.compare(p, m.email_index) === 0) };
+    return { id: m.member_id, person: { ...personOf(who.email, who.name), id: personKey(w.owner, m.email_index) }, role: m.role, since: m.created_at.toISOString(), isMe: reader.principals.some((p) => Buffer.compare(p, m.email_index) === 0) };
   });
 }
 export async function addPerson(d: Deps, reader: Reader, workspaceId: string, email: string, role: WorkspaceRole): Promise<{ id: string }> {
@@ -338,6 +339,7 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
     if (!m) throw noOne(w, memberId);
     if (m.role === 'admin' && (await admins(w, c)) <= 1) throw onlyAdmin(w);
     await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, memberId]);
+    await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
     // What they had by restricting something goes with them: coming back gives them only what they're given.
     const { email } = openJson(workspaceKey(w.owner), memberHeader(w.owner, workspaceId, memberId), m.person_ciphertext, MemberPerson);
     w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
@@ -391,13 +393,13 @@ export async function moveItem(d: Deps, reader: Reader, workspaceId: string, ite
 /**
  * A document the server makes beside another, in the caller's transaction, which holds the workspace's row: in the same
  * folder, just after it, for the same people. What the other is restricted to, this is restricted to, so nothing carried
- * over from it reaches anyone new; seats ended with their call. It starts from the seed: what it says is written after.
+ * over from it reaches anyone new; seats ended with their call. It starts from the seed: what it says is written after. `id`,
+ * when what's making it has settled on one already.
  */
-export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: string): Promise<string> {
+export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: string, id: string = id128()): Promise<string> {
   const from = w.state.items[like];
   if (!from) throw notFound('That document', { workspaceId: w.workspaceId, documentId: like });
   if (Object.keys(w.state.items).length >= MAX_ITEMS) throw new ConflictError('This workspace is full. Delete something from it first.', { context: { workspaceId: w.workspaceId } });
-  const id = id128();
   const at = new Date().toISOString();
   w.state = withItem(w.state, id, {
     kind: 'document', name, parent: from.parent, pos: positionIn(w.state, from.parent, like), by: from.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: from.restricted, restrictedBy: from.restrictedBy
@@ -520,16 +522,31 @@ export async function deleteItem(d: Deps, reader: Reader, workspaceId: string, i
 /* ---------- sharing ---------- */
 
 const ShareRow = z.object({ access_id: z.string(), kind: z.enum(['email', 'seat']), role: z.enum(['edit', 'read']), person_ciphertext: bytea, created_at: timestamp });
+/** With how access knows them, which for a seat is all there is to find them by. */
+const ShareRowIndexed = ShareRow.extend({ principal_index: bytea });
+/** The addresses of everyone in the workspace who can open this, by the rule that decides it, and everyone it's given to. */
+async function whoCanOpen(w: Workspace, documentId: string, item: StoredItem, entries: ShareEntry[]): Promise<string[]> {
+  const found = await rows(w.owner.pool, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId]);
+  const members = found.flatMap((m) => {
+    const { email } = openJson(workspaceKey(w.owner), memberHeader(w.owner, w.workspaceId, m.member_id), m.person_ciphertext, MemberPerson);
+    return roleOf({ email, principals: [m.email_index] }, { role: m.role, grants: new Map() }, documentId, item) ? [email] : [];
+  });
+  return [...new Set([...members, ...entries.flatMap((e) => (e.kind === 'email' ? [e.person.email] : []))])];
+}
 export async function shareList(d: Deps, reader: Reader, workspaceId: string, documentId: string): Promise<DocumentShare> {
   const w = await workspaceFor(d, reader, workspaceId);
   const { item: it } = requireSharing(reader, w, documentId);
-  const found = await rows(d.pool, ShareRow, 'SELECT access_id, kind, role, person_ciphertext, created_at FROM document_access WHERE owner_id = $1 AND document_id = $2 ORDER BY created_at, access_id', [w.owner.ownerId, documentId]);
+  const found = await rows(d.pool, ShareRowIndexed, 'SELECT access_id, kind, role, principal_index, person_ciphertext, created_at FROM document_access WHERE owner_id = $1 AND document_id = $2 ORDER BY created_at, access_id', [w.owner.ownerId, documentId]);
   const entries = found.map((r): ShareEntry => {
     const who = openSharedPerson(w.owner, workspaceId, documentId, r.access_id, r.person_ciphertext);
     const person: Person = who.email !== undefined ? personOf(who.email) : { id: r.access_id, name: who.name ?? '', email: '', portrait: portraitFor(r.access_id) };
     return { id: r.access_id, kind: r.kind, person, role: r.role, since: r.created_at.toISOString() };
   });
-  return { workspace: { name: w.state.name, people: w.people }, restricted: it.restricted, entries };
+  /* A seat's hash can't be read back, so it's the seats in this reader's own call that are looked for. */
+  const given = new Set(found.filter((r) => r.kind === 'seat').map((r) => b64u(r.principal_index)));
+  const inCall = reader.seat && given.size > 0 ? [...(await seated(reader.seat.viewer)).keys()] : [];
+  const callId = reader.seat?.callId ?? '';
+  return { workspace: { name: w.state.name, people: w.people }, restricted: it.restricted, entries, canOpen: await whoCanOpen(w, documentId, it, entries), seats: inCall.filter((s) => given.has(b64u(seatIndex(d, callId, s)))) };
 }
 export async function share(d: Deps, reader: Reader, workspaceId: string, documentId: string, to: ShareTarget[], role: DocumentRole): Promise<void> {
   const grants = await grantsFor(reader, to, role);
@@ -709,6 +726,7 @@ export async function forgetAccount(o: Owner, db: Db, email: string, callIds: st
     UNION SELECT owner_id FROM workspace_authors WHERE email_index = $1 AND $3
     UNION SELECT owner_id FROM document_access WHERE principal_index = $1 AND $3 ORDER BY owner_id`, [index, callIds, !elsewhere]);
   let deleted = 0;
+  if (!elsewhere) await exec(db, 'DELETE FROM workspace_mentions WHERE principal_index = $1', [index]);
   for (const { owner_id: ownerId } of found) {
     const w = await held(o, db, ownerId);
     if (!w) continue;
@@ -780,6 +798,7 @@ export async function moveAddress(d: Deps, db: Db, ownerId: string, from: Uint8A
   const found = await rows(db, OwnerRow, `SELECT owner_id FROM workspace_members WHERE email_index = $1
     UNION SELECT owner_id FROM workspace_authors WHERE email_index = $1
     UNION SELECT owner_id FROM document_access WHERE principal_index = $1 ORDER BY owner_id`, [from]);
+  await exec(db, 'UPDATE workspace_mentions SET principal_index = $2 WHERE principal_index = $1', [from, index]);
   for (const { owner_id: workspaceOwner } of found) {
     const w = await held(d, db, workspaceOwner);
     if (!w) continue;
@@ -823,6 +842,9 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   /** Who's here changed since it was last worked out for this reader, and a hash of what they were last told of it. */
   private moved = true;
   private shownHere = NOBODY_HERE;
+  /** Someone tagged this reader since it last looked, as anyone may have before it opened, and what it's told them of. */
+  private tagged = true;
+  private readonly toldOf = new Set<string>();
 
   constructor(d: Deps, room: Room, credentials: Credentials, who: Who, first: WorkspaceTree, standing: Standing, version: number, release: () => void, private readonly callId: string | null) {
     super(d, room, credentials, who, version, release, { workspaceId: room.workspaceId });
@@ -832,6 +854,23 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
     this.standing = standing;
   }
   override heard(): void { this.moved = true; this.poke(); }
+  override told(): void { this.tagged = true; this.poke(); }
+
+  /** What's waiting for this reader that this stream hasn't said. False when there's nothing. */
+  private async tell(line: Line<WorkspaceLiveEvent>): Promise<boolean> {
+    this.tagged = false;
+    const waiting = await waitingFor(this.d, this.who, this.room.workspaceId).catch((e: unknown) => {
+      // They've lost the workspace, which the next snapshot says.
+      if (e instanceof AppError && e.status < 500) return [];
+      throw e;
+    });
+    const fresh = waiting.filter((m) => !this.toldOf.has(m.id));
+    for (const mention of fresh) {
+      this.toldOf.add(mention.id);
+      await line({ type: 'mention', mention });
+    }
+    return fresh.length > 0;
+  }
 
   /** What this reader sees of a snapshot. False once they can't open the workspace any more. */
   private async show(s: Snapshot, line: Line<WorkspaceLiveEvent>): Promise<boolean> {
@@ -860,6 +899,7 @@ class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   protected async step(line: Line<WorkspaceLiveEvent>): Promise<Step> {
     const s = this.nextSnapshot();
     if (s !== undefined) return (await this.show(s, line)) ? 'wrote' : 'lost';
+    if (this.tagged && await this.tell(line)) return 'wrote';
     if (!this.moved) return 'idle';
     this.moved = false;
     const here = this.room.seenBy({ who: this.who, callId: this.callId, standing: this.standing });
@@ -883,8 +923,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
   const release = d.hub.admit('workspace', limitKey(reader), address);
   try {
     const known = await workspaceFor(d, reader, workspaceId);
-    // Someone who can work in it is using it: their next call starts here unless they say otherwise.
-    if (reader.account && (known.role === 'admin' || known.role === 'edit')) await noteUsed(reader.account.owner, workspaceId);
+    if (reader.account && (known.role === 'admin' || known.role === 'edit')) await noteOpened(reader.account.owner, workspaceId);
     const room = roomFor(d, workspaceId);
     const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), { role: known.role, grants: known.grants }, known.version, release, reader.seat?.callId ?? null);
     room.join(stream);

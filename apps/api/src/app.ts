@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -42,6 +42,7 @@ import * as rings from './modules/rings';
 import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
 import * as workspaceDocuments from './modules/workspaceDocuments';
+import * as mentions from './modules/workspaceMentions';
 import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
@@ -130,6 +131,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const speechLimiter = rateLimit(240, 60_000);
   const voiceLimiter = rateLimit(40, 60_000);
   const askLimiter = rateLimit(20, 60_000);
+  /** Asking about a selection, for every demo account together on this instance. */
+  const askDemoLimiter = rateLimit(60, 60_000);
   /** Changing what a note says: each change writes a whole new revision of it, so nobody can churn one, or its history. */
   const noteChangeLimiter = rateLimit(120, 60_000);
   /** Joining by link: public, so limited per client address. */
@@ -226,6 +229,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const presenceLimiter = rateLimit(600, 60_000);
   /** Reading every document someone can open, for searching: once when search opens. */
   const searchLimiter = rateLimit(12, 60_000);
+  /** Tagging people and saying you've heard, per person: a tag is typed, so this is far more than anyone writes. */
+  const mentionLimiter = rateLimit(240, 60_000);
   /** Saving someone's own notes on a document, per person: they save as they're typed. */
   const presenterLimiter = rateLimit(120, 60_000);
   /** Pieces of a file, per person: 4 MiB each, so about 40 MiB a second, more than any browser's upload. */
@@ -517,7 +522,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
-    if (a.type === 'follow-up') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
+    if (a.type === 'follow-up' || a.type === 'follow-up-add') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
     else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
@@ -668,7 +673,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json(await calls.translate(v, c.req.param('id'), language, lines));
   });
   /* Whoever hosts leaving ends the call for everyone, unless they hand it to someone; anyone else leaving is taken out of the call's group. */
-  app.post('/v1/live/calls/:id/leave', async (c) => c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), (await body(c, CallLeaveBodySchema)).end) }));
+  app.post('/v1/live/calls/:id/leave', async (c) => {
+    const { end, onPurpose } = await body(c, CallLeaveBodySchema);
+    return c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), end, onPurpose) });
+  });
   app.post('/v1/live/calls/:id/hand-off', async (c) => {
     const v = hostOnly(c);
     await calls.handOff(v, c.req.param('id'), (await body(c, CallHandOffBodySchema)).to);
@@ -708,6 +716,23 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json({ said: true });
   });
   /*
+   * Tags: someone told they were tagged, and saying you've heard. No receipts: a retry tells them twice at worst, and a
+   * receipt filed under someone in a workspace outlives whatever it was about.
+   */
+  app.use('/v1/workspaces/:id/documents/:doc/mentions', capped(1024));
+  app.post('/v1/workspaces/:id/documents/:doc/mentions', async (c) => {
+    const r = await readerOf(c);
+    mentionLimiter(access.limitKey(r), 'tagging people');
+    await mentions.mention(d, r, c.req.param('id'), c.req.param('doc'), await body(c, MentionBodySchema));
+    return c.json({ said: true });
+  });
+  app.delete('/v1/workspaces/:id/mentions/:mention', async (c) => {
+    const r = await readerOf(c);
+    mentionLimiter(access.limitKey(r), 'tagging people');
+    await mentions.seen(d, r, c.req.param('id'), c.req.param('mention'));
+    return c.json({ seen: true });
+  });
+  /*
    * A document or board: its stream down, its updates and carets up, and its versions. An update that arrives twice changes
    * nothing, and a receipt would hold a copy of it, so none of this keeps one.
    */
@@ -730,14 +755,6 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const length = Number(c.req.header('content-length') ?? MAX_DOC_UPDATE_BYTES);
     updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
     return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
-  });
-  /* Words that couldn't reach the document they were written in, as a new one's first state. */
-  app.post('/v1/workspaces/:id/documents/:doc/adopt', async (c) => {
-    const r = await readerOf(c);
-    treeLimiter(access.limitKey(r), 'workspace change');
-    const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
-    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
-    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
   app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
     const r = await readerOf(c);
@@ -778,6 +795,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/documents/:doc/ask', async (c) => {
     const r = await readerOf(c);
     askLimiter(access.limitKey(r), 'ask-selection');
+    // Demo accounts cost nothing to make, so a limit for each of them is no limit: they share one.
+    if (r.account?.sample) askDemoLimiter('demo accounts', 'ask-selection');
     return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
   });
   /* The words of everything a reader can open: for searching in the browser, one document a line. */
@@ -1126,6 +1145,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   };
   const ws = (c: Context<Env>) => c.req.param('id') ?? '';
   const itemOf = (c: Context<Env>) => c.req.param('item') ?? '';
+  app.get('/v1/mentions', async (c) => {
+    workspaceListLimiter(c.get('owner').ownerId, 'reading your tags');
+    return c.json(await mentions.notices(d, await access.accountReader(c.get('owner'))));
+  });
   app.get('/v1/workspaces', async (c) => {
     workspaceListLimiter(c.get('owner').ownerId, 'workspace list');
     return c.json(await workspaces.list(await access.accountReader(c.get('owner'))));
@@ -1144,11 +1167,21 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.patch('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.setRole(d, await member(c), ws(c), c.req.param('person'), (await body(c, WorkspaceRolePatchSchema)).role); return c.json({ changed: true }); });
   app.delete('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.removePerson(d, await member(c), ws(c), c.req.param('person')); return c.json({ removed: true }); });
   app.post('/v1/workspaces/:id/items', async (c) => c.json(await workspaces.createItem(d, await member(c), ws(c), await body(c, ItemInputSchema))));
+  /*
+   * Words that couldn't reach the document they were written in, as a new one's first state: the other half of making that new
+   * document, so it takes an account as making it does. A call's pass doesn't reach it.
+   */
+  app.post('/v1/workspaces/:id/documents/:doc/adopt', async (c) => {
+    const r = await member(c);
+    const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
+    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
+  });
   app.post('/v1/workspaces/:id/items/:item/move', async (c) => { await workspaces.moveItem(d, await member(c), ws(c), itemOf(c), await body(c, ItemPlaceSchema)); return c.json({ moved: true }); });
   app.post('/v1/workspaces/:id/items/:item/duplicate', async (c) => c.json(await workspaces.duplicateItem(d, await member(c), ws(c), itemOf(c))));
   app.post('/v1/workspaces/:id/items/:item/trash', async (c) => { await workspaces.trashItem(d, await member(c), ws(c), itemOf(c)); return c.json({ trashed: true }); });
   app.delete('/v1/workspaces/:id/items/:item', async (c) => { await workspaces.deleteItem(d, await member(c), ws(c), itemOf(c)); return c.json({ deleted: true }); });
-  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner')), ws(c), itemOf(c))));
+  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner'), c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c))));
   app.post('/v1/workspaces/:id/items/:item/share', async (c) => {
     const { to, role } = await body(c, ShareBodySchema);
     // A seat is someone in the sharer's own call, so sharing with one comes with their pass.

@@ -223,15 +223,19 @@ export function WsSpacePicker({ spaces, current, canChoose, organizer, heading =
   return <WsMenu label={heading} rows={rows} />;
 }
 
-/** Ask, on the bar over a selection. */
-export function WsAskMenu({ onShorter, onChecklist, onSaid }: { onShorter: () => void; onChecklist: () => void; onSaid: () => void }) {
-  return (
-    <WsMenu label="Ask Alcove" rows={[
-      { type: 'head', label: 'Ask Alcove' },
-      { icon: 'textLines', label: 'Make this shorter', onSelect: onShorter },
-      { icon: 'listChecks', label: 'Turn this into a checklist', onSelect: onChecklist },
-      { icon: 'ask', label: 'What was said about this?', onSelect: onSaid },
-      { type: 'text', icon: 'sealed', label: 'Written in confidential compute.' }
-    ]} />
-  );
+/** Ask, on the bar over a selection. What can't be done from here isn't offered: leave its handler out. */
+export function WsAskMenu({ onShorter, onChecklist, onSaid }: { onShorter: () => void; onChecklist: () => void; onSaid?: (() => void) | undefined }) {
+  const rows: WsMenuRow[] = [
+    { type: 'head', label: 'Ask Alcove' },
+    { icon: 'textLines', label: 'Make this shorter', onSelect: onShorter },
+    { icon: 'listChecks', label: 'Turn this into a checklist', onSelect: onChecklist }
+  ];
+  if (onSaid) rows.push({ icon: 'ask', label: 'What was said about this?', onSelect: onSaid });
+  rows.push({ type: 'text', icon: 'sealed', label: 'Written in confidential compute.' });
+  return <WsMenu label="Ask Alcove" rows={rows} />;
+}
+
+/** What was said about a selection, in the menu's place, with the words it's about. `children`: the answer as it arrives. */
+export function WsAskAnswer({ children }: { children: ReactNode }) {
+  return <div className="wv-said">{children}<p className="wm-x"><Icon name="sealed" size={13} />Written in confidential compute.</p></div>;
 }

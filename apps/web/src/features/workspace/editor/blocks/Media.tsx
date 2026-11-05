@@ -8,12 +8,13 @@ import { Avatar, Button, Icon, IconButton, cn } from '@alcove/ui';
 import type { Person } from '@alcove/api';
 import { firstName } from '@alcove/api';
 import type { Node as PMNode } from 'prosemirror-model';
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
 import type { EditorRuntime } from '../runtime';
 import { captionsOf, numberAttr, textAttr } from '../schema';
-import type { MediaHandlers, MediaState } from '../types';
+import type { MediaHandlers, MediaState, VideoPlay } from '../types';
+import { clockOf, liveWhen } from '../../live/dates';
 import { galleryItems, liveLines, type GalleryItem } from './attrs';
 
 export const RuntimeContext = createContext<EditorRuntime | null>(null);
@@ -301,9 +302,10 @@ function FileRow({ node }: { node: PMNode }) {
 
 /**
  * A video plays here, for whoever presses Play, from where a player reads it. A read that runs out gives way and the
- * player asks again from where it got to; a URL that's gone stale is asked for afresh, once a minute at most.
+ * player asks again from where it got to; a URL that's gone stale is asked for afresh, once a minute at most. While it plays
+ * for everyone in the call (`together`), what was playing here alone stops, and doesn't come back by itself after.
  */
-function usePlayer(file: string | null) {
+function usePlayer(file: string | null, together: boolean) {
   const media = useMediaHandlers();
   const [src, setSrc] = useState<string | null>(null);
   const [broken, setBroken] = useState(false);
@@ -318,7 +320,27 @@ function usePlayer(file: string | null) {
     if (Date.now() - asked.current < 60_000) { setBroken(true); return; }
     ask(e.currentTarget.currentTime);
   };
+  useEffect(() => { if (together) { setSrc(null); setBroken(false); } }, [together]);
   return { src, broken, play: () => ask(), onError };
+}
+
+/**
+ * The picture everyone in the call is watching, lent to this block while it's on the page, with where it's got to. It's
+ * given back before the page under it goes, so it's never out of the page for a moment, which would stop it.
+ */
+function Showing({ play, dur }: { play: VideoPlay; dur: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const show = play.show;
+  useLayoutEffect(() => { const el = box.current; return el ? show(el) : undefined; }, [show]);
+  const clock = useSyncExternalStore(play.clock.subscribe, play.clock.getSnapshot);
+  const total = clock.total || dur;
+  return (
+    <>
+      <div ref={box} className="wb-vlive" />
+      <div className="wb-vbar"><span className="wb-vfill" style={{ width: `${total > 0 ? Math.min(1, clock.seconds / total) * 100 : 0}%` }} /></div>
+      <span className="wb-vtime ac-time">{position(clock.seconds)} / {position(total)}</span>
+    </>
+  );
 }
 
 function VideoBlock({ node }: { node: PMNode }) {
@@ -333,17 +355,18 @@ function VideoBlock({ node }: { node: PMNode }) {
   const upload = uploadOf(media, node);
   const failed = failureOf(media, node, upload.stalled, title);
   const width = numberAttr(node, 'width'), height = numberAttr(node, 'height');
-  const play = media?.playing?.block === id ? media?.playing : null;
+  const play = file !== null && media?.playing?.media === file ? media.playing : null;
   const watch = media?.watch;
   useEffect(() => (file && watch ? watch(file) : undefined), [file, watch]);
   const gone = file !== null && media?.gone?.(file) === true;
   const ready = upload.percent === null && !failed && file !== null && !gone;
-  const player = usePlayer(file);
+  const player = usePlayer(file, play !== null);
   const learned = (e: SyntheticEvent<HTMLVideoElement>) => {
     const seconds = e.currentTarget.duration;
     if (id && dur <= 0 && Number.isFinite(seconds) && seconds > 0) media?.onDuration?.(id, Math.round(seconds));
   };
-  const everyone = media?.onPlay && id ? <Button variant="primary" size="sm" icon="play" onClick={() => media.onPlay?.(id)}>Play for everyone</Button> : null;
+  const onPlay = media?.onPlay;
+  const everyone = onPlay && id && file ? <Button variant="primary" size="sm" icon="play" onClick={() => onPlay({ block: id, media: file })}>Play for everyone</Button> : null;
   return (
     /* A film is always seen against the night, whatever the page's theme: what's on it wears the night's colours. */
     <div className="wb-vid dark" style={{ aspectRatio: shapeOf(width, height) }}>
@@ -361,12 +384,7 @@ function VideoBlock({ node }: { node: PMNode }) {
         </div>
       )}
       {player.broken && <span className="wb-gone"><Icon name="alert" size={18} /><span>This video can’t play in this browser.</span></span>}
-      {play && (
-        <>
-          <div className="wb-vbar"><span className="wb-vfill" style={{ width: `${play.total > 0 ? (play.seconds / play.total) * 100 : 0}%` }} /></div>
-          <span className="wb-vtime ac-time">{position(play.seconds)} / {position(play.total)}</span>
-        </>
-      )}
+      {play && <Showing play={play} dur={dur} />}
       {!player.src && <span className="wb-vt">{title}</span>}
       <Uploading percent={upload.percent} failed={failed !== null} />
       {failed && <Failed name={failed.name} block={id} retry={failed.retry} />}
@@ -389,7 +407,7 @@ function Live({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const decided = textAttr(node, 'what') !== 'followups';
   const lines = liveLines(node);
-  const inCall = rt.props.call !== undefined;
+  const inCall = rt.props.call !== undefined && textAttr(node, 'call') === rt.props.call.id;
   return (
     <div className="wb-live">
       <div className="wb-lh">
@@ -402,7 +420,7 @@ function Live({ node }: { node: PMNode }) {
         <div key={`${l.at}-${i}`} className="wb-lr">
           {(l.person || l.name) && <PersonFace id={l.person ?? ''} name={l.name ?? ''} size={18} />}
           <span className="tx">{l.text}</span>
-          <span className="ac-time">{l.due || l.at}</span>
+          <span className="ac-time">{liveWhen(l)}</span>
         </div>
       ))}
     </div>
@@ -413,15 +431,16 @@ function Moment({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const name = textAttr(node, 'name') ?? '';
   const at = textAttr(node, 'at') ?? '';
-  const hear = rt.props.call?.onHear;
+  const note = textAttr(node, 'note');
+  const line = textAttr(node, 'line');
   return (
     <div className="wb-mom">
       <PersonFace id={textAttr(node, 'person') ?? ''} name={name} size={26} />
       <div>
         <p>“{textAttr(node, 'text')}”</p>
         <span className="m">
-          <span>{firstName(name)} · {at}</span>
-          {hear && <button type="button" className="pl" onClick={() => hear({ line: textAttr(node, 'line'), at })}><Icon name="play" size={11} />Hear it</button>}
+          <span>{firstName(name)} · {clockOf(at)}</span>
+          {note && line && rt.props.hear?.({ note, line })}
         </span>
       </div>
     </div>

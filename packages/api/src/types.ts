@@ -79,7 +79,9 @@ export const NotificationPrefsSchema = z.object({
   notesReady: z.boolean(),
   sharedWithYou: z.boolean(),
   notesRequested: z.boolean(),
-  followUpDue: z.boolean()
+  followUpDue: z.boolean(),
+  /** Someone tagged you in a document. On for anyone who hasn't said. */
+  tagged: z.boolean().default(true)
 });
 export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
 
@@ -742,10 +744,11 @@ export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 
 /**
  * A document or board worked on in the call, for someone who can open it now: anything else isn't listed, so nobody learns
- * from a note what they couldn't open. `by`: who changed it during the call.
+ * from a note what they couldn't open. `by`: who changed it during the call, by the name they were in the call under, and
+ * `isMe` for the one reading the note.
  */
 export const NoteWorkedOnSchema = z.object({
-  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema }))
+  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema, isMe: z.boolean() }))
 });
 export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 
@@ -1178,7 +1181,9 @@ export const NotificationOpenSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('call'), code: CallCodeSchema }),
   z.object({ to: z.literal('note'), noteId: IDSchema }),
   z.object({ to: z.literal('notes') }),
-  z.object({ to: z.literal('home') })
+  z.object({ to: z.literal('home') }),
+  /** A line in a document, for someone tagged in it. */
+  z.object({ to: z.literal('document'), workspaceId: IDSchema, documentId: IDSchema, block: z.string().nullable() })
 ]);
 export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
 /**

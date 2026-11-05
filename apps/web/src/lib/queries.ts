@@ -1,11 +1,12 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { AlcoveApiError, errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
 import { forgetPlaces } from '~/features/workspace/places';
+import { forgetWords } from '~/features/workspace/words';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
@@ -39,7 +40,13 @@ export const qk = {
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
   workspaceMedia: (id: string) => ['workspaces', id, 'media'] as const,
-  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
+  mentions: ['workspaces', 'mentions'] as const,
+  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
+  documentVersions: (id: string, documentId: string) => ['workspaces', id, 'versions', documentId] as const,
+  documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const,
+  /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
+  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const,
+  workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -124,8 +131,18 @@ export const q = {
   documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** What you've been tagged in and haven't seen, anywhere. */
+  mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
-  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 }),
+  documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
+  /** What History lists, read afresh each time it opens. `pass`: a guest's. */
+  documentVersions: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersions(id, documentId), queryFn: () => api.workspaces.versions(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
+  /** A version never changes, so what's read stays good for as long as it's being looked at, and goes soon after. */
+  documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 }),
+  /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
+  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity }),
+  /** One document or folder as you see it: what it's called now, and what you can do with it. */
+  workspaceItem: (id: string, itemId: string) => queryOptions({ queryKey: qk.workspaceItem(id, itemId), queryFn: () => api.workspaces.items.get(id, itemId), retry: false }),
   /**
    * Every file you can reach in a workspace, the newest first, with the documents you reach each through: what the picker
    * offers to reuse, and how a file block knows its file was deleted for good. A guest reads it with their pass.
@@ -154,14 +171,16 @@ export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
-    onSuccess: (r) => { qc.clear(); qc.setQueryData(qk.session, r.session); }
+    onSuccess: (r) => { forgetWords(); qc.clear(); qc.setQueryData(qk.session, r.session); }
   });
 }
 /**
  * Signed out (or the account deleted) on this device: whatever it kept for the account goes too, the recordings
- * waiting to upload among it (features/record/offline.ts; anyone else's stay), and its notifications, those showing too.
+ * waiting to upload among it (features/record/offline.ts; anyone else's stay), its notifications, those showing too, and
+ * the words of its workspaces this tab held for Find.
  */
 async function forgetHere(qc: QueryClient) {
+  forgetWords();
   await forgetNotified();
   const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
   if (!owner) return;
@@ -561,6 +580,10 @@ export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
 }
+/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
+export function useFirstDocument() {
+  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
+}
 /**
  * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
  * to a call is read again after each, as it lists these documents. `pass`: a guest's.
@@ -580,6 +603,23 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
     restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as), onSuccess: library }),
     deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
   };
+}
+/** Tells someone they were tagged. `pass`: someone in a call. */
+export function useMention(workspaceId: string, pass?: string | undefined) {
+  return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
+}
+/** You've heard about a tag. */
+export function useMentionSeen() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+}
+/** Keeps your notes for presenting a document. Empty text deletes them. */
+export function useSavePresenterNotes(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => api.workspaces.presenterNotes.set(workspaceId, documentId, text, pass ? { pass } : undefined),
+    onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
+  });
 }
 /** Makes a new document of words that didn't reach the one they were written in (`DocSession.localCopy`). */
 export function useSaveCopy() {
@@ -604,15 +644,25 @@ export function useMediaChanges(workspaceId: string, pass?: string | undefined) 
 }
 
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
-export function useDocumentShare(workspaceId: string, documentId: string) {
+export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {
   const qc = useQueryClient();
   const reread = () => qc.invalidateQueries({ queryKey: qk.documentShare(workspaceId, documentId) });
   const s = api.workspaces.share;
   return {
-    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role), onSuccess: reread }),
+    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role, pass ? { pass } : undefined), onSuccess: reread }),
     remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry), onSuccess: reread }),
     restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted), onSuccess: reread })
   };
+}
+/** Putting a document back to a version, for everyone. What it said is kept as a version first, so the list has one more. */
+export function useRestoreVersion(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (version: string) => {
+      await api.workspaces.restoreVersion(workspaceId, documentId, version, pass ? { pass } : undefined);
+      return qc.fetchQuery({ ...q.documentVersions(workspaceId, documentId, pass), staleTime: 0 });
+    }
+  });
 }
 /** Who's in a workspace: adding someone, changing what they can do, and taking them out, or yourself. */
 export function useWorkspacePeople(workspaceId: string) {

@@ -179,6 +179,11 @@ export function WsReadOnlyBar({ show, organizer }: { show: boolean; organizer: s
   return <Bar show={show} className="wd-ro"><Icon name="eye" size={14} /><span>You can read this. Ask {organizer} to edit.</span></Bar>;
 }
 
+/** What's on the page is a version from History, and nothing can be changed here. `when`: "on Tue 3 Nov". */
+export function WsVersionBar({ when }: { when: string | null }) {
+  return <Bar show={when !== null} className="wd-ro"><Icon name="history" size={14} /><span>You’re reading this as it was {when}. Nothing changes unless you restore it.</span></Bar>;
+}
+
 /** What scrolls under the head and the bars. Scrolling stops following, so pass `onWheel`. */
 export const WsScroll = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function WsScroll({ className, ...rest }, ref) {
   return <div ref={ref} className={cn('wd-scroll', className)} {...rest} />;
@@ -258,6 +263,15 @@ export function WsUnavailable() {
     <EmptyState className="wd-none" title="This can’t be opened right now"
       art={<WsArch><path d="M26 40h14M26 58h14M28 40c0 5 5 6.5 5 9s-5 4-5 9M38 40c0 5-5 6.5-5 9s5 4 5 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></WsArch>}>
       It opens by itself as soon as it can. Anything you wrote is safe in this browser.
+    </EmptyState>
+  );
+}
+
+/** A version from History that didn't arrive. `why`: what went wrong, in Alcove's words. */
+export function WsVersionFailed({ why }: { why: string }) {
+  return (
+    <EmptyState className="wd-none" title="This version didn’t open" art={<WsArch><path d="M24 40h18M24 47h18M24 54h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></WsArch>}>
+      {why}
     </EmptyState>
   );
 }

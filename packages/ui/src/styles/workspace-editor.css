@@ -87,7 +87,7 @@
 @keyframes ws-blink { 50% { opacity: 0; } }
 
 /* inline pieces */
-.wn, .wdt, .wdl { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px 0 3px; border-radius: 7px; vertical-align: -4px; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; user-select: none; cursor: pointer; }
+.wn, .wdt, .wdl { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px 0 3px; border-radius: 7px; vertical-align: middle; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; user-select: none; cursor: pointer; }
 .wn b, .wdt b, .wdl b { font-weight: 600; }
 .wn { background: var(--horizon-soft); color: var(--horizon); }
 .wn .ac-avatar { --ring: transparent; }
@@ -104,6 +104,7 @@
 .wb-rc.is-tag em { opacity: 1; }
 .rs { background: color-mix(in srgb, var(--horizon) 22%, transparent); border-radius: 3px; }
 .fs { background: var(--sun-soft); border-radius: 2px; }
+.wb-asking { margin-left: 6px; color: var(--ink-3); }
 .wc { background: var(--hl); color: inherit; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--gold); cursor: pointer; transition: background-color var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
 .wc.is-new { animation: wc-in var(--duration-2) var(--ease-out); }
 .wc.is-resolved { background: transparent; box-shadow: none; cursor: inherit; }
@@ -157,6 +158,8 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 .wb-vt:empty { display: none; }
 .wb-vbar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: color-mix(in srgb, var(--stage-ink) 25%, transparent); }
 .wb-vfill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--sun-glow); transition: width 1s linear; }
+.wb-vlive { position: absolute; inset: 0; }
+.wb-vlive video { display: block; width: 100%; height: 100%; object-fit: contain; }
 .wb-vtime { position: absolute; right: 10px; bottom: 12px; padding: 4px 7px; border-radius: 7px; background: color-mix(in srgb, var(--stage) 60%, transparent); color: var(--stage-ink); }
 .wb-file { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 52px; margin: 6px 0; padding: 0 12px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
 .wb-file .i { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--sunk); color: var(--ink-2); }
@@ -202,13 +205,17 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 .wv-sel button:hover, .wv-sel button[aria-pressed="true"] { background: color-mix(in srgb, var(--ground) 16%, transparent); }
 .wv-sel .sp { width: 1px; height: 18px; margin: 0 3px; background: color-mix(in srgb, var(--ground) 24%, transparent); }
 
+/* A narrow page has no margin to count in, so a line with comments makes room for it. */
+@container (max-width: 640px) {
+  .wb:has(> .wb-th) { padding-right: 30px; }
+  .wb-th { left: auto; right: -14px; margin-left: 0; }
+}
 /* a phone has no pointer to hover with, and a menu is a sheet */
 @media (hover: none) { .wb-gut { display: none; } }
 @media (max-width: 640px) {
   .wb-gut { display: none; }
   .ws-float .ws-pop { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .wb-gal, .wb-gal.n3 { grid-template-columns: minmax(0, 1fr); }
-  .wb-th { left: auto; right: -14px; }
 }
 
 .ws-float .ws-pop { position: fixed; left: 0; top: 0; }

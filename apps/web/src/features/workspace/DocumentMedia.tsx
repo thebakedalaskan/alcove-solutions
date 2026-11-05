@@ -1,8 +1,9 @@
 /*
- * A document's photos, videos and files, as its page has them: what their blocks draw from, adding files by dropping,
- * pasting or choosing them, reusing what's already in the workspace, opening and playing them, and deleting one for good.
- * Pictures are read through the workspace's `Pictures`, uploads go through `uploads.ts`, and the list of what's in the
- * workspace comes from `media.list`.
+ * A document's photos, videos and files. `useMediaView` is what their blocks draw from wherever the document's shown: its page,
+ * a version of it in History, and a presentation of it in a call. The page also adds files by dropping, pasting or choosing
+ * them, reuses what's already in the workspace, and deletes one for good (`useDocumentMedia`). Pictures are read through the
+ * workspace's `Pictures`, uploads go through `uploads.ts`, the list of what's in the workspace comes from `media.list`, and
+ * Play for everyone from the call (`playing.ts`).
  */
 import { DocUploadsStateSchema, FILE_TYPE, errorCode, errorMessage, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { WsDeleteFileAsk, WsPopover, WsUploadPicker, wsToast, type WsPhoto, type WsStoredFile } from '@alcove/ui';
@@ -55,7 +56,8 @@ const toDOMRect = (r: Rect) => new DOMRect(r.left, r.top, r.width, r.height);
 const lineOf = (at: InsertAt): string | null => (typeof at === 'string' ? null : 'replace' in at ? at.replace : 'after' in at ? at.after : at.before);
 
 /** Counts changes from everything the media handlers read from, for the blocks to draw again. */
-function useChanges() {
+interface Changes { bump: () => void; subscribe: (listener: () => void) => () => void; getSnapshot: () => number }
+function useChanges(): Changes {
   return useMemo(() => {
     let n = 0;
     const listeners = new Set<() => void>();
@@ -83,45 +85,21 @@ function ReusePhotos({ pictures, photos, heading, onChoose, onPick }: {
   );
 }
 
-export interface DocumentMedia {
-  media: MediaHandlers;
-  onUpload: EditorProps['onUpload'];
-  onPick: EditorProps['onPick'];
-  onAttachMedia: EditorProps['onAttachMedia'];
-  /** The picker, the question Delete for good asks, and the field files are chosen with. */
-  popovers: ReactNode;
-  /** Attaches files to another document a block is on its way to, before it lands there. */
-  attachTo: (documentId: string, media: readonly string[]) => Promise<void>;
-}
+/** Play for everyone, and what's playing, from the call (`useVideoHandlers`): nothing outside one. */
+export type VideoHandlers = Pick<MediaHandlers, 'onPlay' | 'playing'>;
 
-export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, readOnly }: { session: DocSession; editor: EditorHandle | null; readOnly: boolean }): DocumentMedia {
+/**
+ * What a document's photos, videos and files draw from, for anything that shows the document without adding to it: pictures,
+ * whether a file's still there, where a player reads a video, and opening a file. With `video`, Play for everyone too.
+ */
+export function useMediaView(ws: Ws, documentId: string, video?: VideoHandlers | undefined): { media: MediaHandlers; bumps: Changes; list: WorkspaceMedia[] | undefined } {
   const { workspaceId, pass, pictures } = ws;
   const qc = useQueryClient();
   const listed = useQuery(q.workspaceMedia(workspaceId, pass));
-  const changes = useMediaChanges(workspaceId, pass);
   const bumps = useChanges();
-  const [picking, setPickingNow] = useState<Picking | null>(null);
-  /* The picker opens under what it's for: if that's too near the foot of the page, the page brings it up first. */
-  const setPicking = (next: Picking | null) => {
-    setPickingNow(next);
-    const rect = next ? blockRect(next.anchor) : null;
-    if (next?.anchor && rect && rect.bottom + PICKER_ROOM > innerHeight) now.current.editor?.scrollToBlock(next.anchor, { smooth: true });
-  };
-  const [deleting, setDeleting] = useState<MediaDeletion | null>(null);
-  const field = useRef<HTMLInputElement>(null);
-  const choosingFor = useRef<Picking | null>(null);
-
-  /* Everything handlers read that changes over time, for handlers that keep one identity. */
-  const now = useRef({ editor, readOnly, list: listed.data, listedAt: listed.dataUpdatedAt, say: ws.say, owner: ws.owner });
-  now.current = { editor, readOnly, list: listed.data, listedAt: listed.dataUpdatedAt, say: ws.say, owner: ws.owner };
-
+  const now = useRef({ list: listed.data, listedAt: listed.dataUpdatedAt, say: ws.say });
+  now.current = { list: listed.data, listedAt: listed.dataUpdatedAt, say: ws.say };
   useEffect(() => pictures.subscribe(bumps.bump), [pictures, bumps]);
-  useEffect(() => uploadsStore.subscribe(bumps.bump), [bumps]);
-  useEffect(() => {
-    const heard = () => bumps.bump();
-    session.awareness.on('change', heard);
-    return () => { session.awareness.off('change', heard); };
-  }, [session, bumps]);
   useEffect(() => { bumps.bump(); }, [listed.dataUpdatedAt, bumps]);
 
   /* When each file block's file was first seen here, so a list read before it can't say it's gone. */
@@ -129,16 +107,8 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const relisted = useRef(0);
   const relist = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (relist.current) clearTimeout(relist.current); }, []);
-  /* Blocks that say they're uploading, from when nobody here or anywhere else was heard sending them. */
-  const unclaimed = useRef(new Map<string, number>());
 
-  const attach = (media: string, to = documentId): Promise<void> => {
-    const done = changes.attach.mutateAsync({ documentId: to, media });
-    pictures.attachingTo(to, media, done);
-    return done;
-  };
-
-  const handlers = useMemo<MediaHandlers>(() => ({
+  const view = useMemo<MediaHandlers>(() => ({
     url: (media) => pictures.url(documentId, media),
     state: (media) => pictures.state(documentId, media),
     hold: (media) => pictures.hold(documentId, media),
@@ -162,6 +132,84 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
       const { list, listedAt } = now.current;
       return list !== undefined && seen !== undefined && listedAt > seen && !list.some((m) => m.id === media && m.documents.includes(documentId));
     },
+    stream: (media) => fileUrl(workspaceId, documentId, media, pass).catch((e: unknown) => {
+      if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
+      throw e;
+    }),
+    onOpenFile: ({ media }) => {
+      fileUrl(workspaceId, documentId, media, pass).then((url) => {
+        const type = now.current.list?.find((m) => m.id === media)?.type;
+        /* What's only ever a download downloads, and the page stays. Anything shown in place opens beside it. */
+        if (type === FILE_TYPE) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.rel = 'noopener';
+          document.body.append(a);
+          a.click();
+          a.remove();
+        } else window.open(url, '_blank', 'noopener');
+      }, (e: unknown) => {
+        if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
+        else now.current.say(wsToast.failed(errorMessage(e)));
+      });
+    }
+  }), [pictures, documentId, workspaceId, pass, bumps, qc]);
+  const onPlay = video?.onPlay, playing = video?.playing;
+  const media = useMemo<MediaHandlers>(() => (onPlay || playing ? { ...view, onPlay, playing } : view), [view, onPlay, playing]);
+  return { media, bumps, list: listed.data };
+}
+
+export interface DocumentMedia {
+  media: MediaHandlers;
+  onUpload: EditorProps['onUpload'];
+  onPick: EditorProps['onPick'];
+  onAttachMedia: EditorProps['onAttachMedia'];
+  /** The picker, the question Delete for good asks, and the field files are chosen with. */
+  popovers: ReactNode;
+  /** Attaches files to another document a block is on its way to, before it lands there. */
+  attachTo: (documentId: string, media: readonly string[]) => Promise<void>;
+}
+
+/** Everything a document's page does with its files. `video`: Play for everyone, in a call. */
+export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, readOnly, video }: {
+  session: DocSession; editor: EditorHandle | null; readOnly: boolean; video?: VideoHandlers | undefined;
+}): DocumentMedia {
+  const { workspaceId, pass, pictures } = ws;
+  const { media: view, bumps, list: listedNow } = useMediaView(ws, documentId, video);
+  const changes = useMediaChanges(workspaceId, pass);
+  const [picking, setPickingNow] = useState<Picking | null>(null);
+  /* The picker opens under what it's for: if that's too near the foot of the page, the page brings it up first. */
+  const setPicking = (next: Picking | null) => {
+    setPickingNow(next);
+    const rect = next ? blockRect(next.anchor) : null;
+    if (next?.anchor && rect && rect.bottom + PICKER_ROOM > innerHeight) now.current.editor?.scrollToBlock(next.anchor, { smooth: true });
+  };
+  const [deleting, setDeleting] = useState<MediaDeletion | null>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const choosingFor = useRef<Picking | null>(null);
+
+  /* Everything handlers read that changes over time, for handlers that keep one identity. */
+  const now = useRef({ editor, readOnly, say: ws.say, owner: ws.owner });
+  now.current = { editor, readOnly, say: ws.say, owner: ws.owner };
+
+  useEffect(() => uploadsStore.subscribe(bumps.bump), [bumps]);
+  useEffect(() => {
+    const heard = () => bumps.bump();
+    session.awareness.on('change', heard);
+    return () => { session.awareness.off('change', heard); };
+  }, [session, bumps]);
+
+  /* Blocks that say they're uploading, from when nobody here or anywhere else was heard sending them. */
+  const unclaimed = useRef(new Map<string, number>());
+
+  const attach = (media: string, to = documentId): Promise<void> => {
+    const done = changes.attach.mutateAsync({ documentId: to, media });
+    pictures.attachingTo(to, media, done);
+    return done;
+  };
+
+  const handlers = useMemo<MediaHandlers>(() => ({
+    ...view,
     preview: (block, index) => previewOf(block, index),
     stalled: (block) => {
       if (isSending(block)) { unclaimed.current.delete(block); return false; }
@@ -179,31 +227,10 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     },
     onRetry: (block) => retry(block),
     canRetry: (block) => canRetry(block),
-    stream: (media) => fileUrl(workspaceId, documentId, media, pass).catch((e: unknown) => {
-      if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
-      throw e;
-    }),
     onDuration: (block, seconds) => { if (!now.current.readOnly) now.current.editor?.updateBlock(block, { dur: seconds }); },
-    onOpenFile: ({ media }) => {
-      fileUrl(workspaceId, documentId, media, pass).then((url) => {
-        const type = now.current.list?.find((m) => m.id === media)?.type;
-        /* What's only ever a download downloads, and the page stays. Anything shown in place opens beside it. */
-        if (type === FILE_TYPE) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.rel = 'noopener';
-          document.body.append(a);
-          a.click();
-          a.remove();
-        } else window.open(url, '_blank', 'noopener');
-      }, (e: unknown) => {
-        if (errorCode(e) === 'not-found') pictures.goneFrom(documentId, media);
-        else now.current.say(wsToast.failed(errorMessage(e)));
-      });
-    },
     onChoose: (block, rect) => { if (!now.current.readOnly) setPicking({ kind: 'photo', at: { replace: block }, anchor: block, rect }); },
     onDeleteFiles: (files) => { if (!now.current.readOnly) setDeleting(files); }
-  }), [pictures, documentId, workspaceId, pass, session, bumps, qc]);
+  }), [view, session, bumps]);
 
   /**
    * Files from the desktop, the clipboard or the picker: their blocks hold the space at once, and they go. What the picker
@@ -267,7 +294,7 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     }
   };
 
-  const list = listed.data ?? [];
+  const list = listedNow ?? [];
   /* The newest few, in the order they came, so Add all keeps them as they were added. */
   const offered = (kind: MediaPick['kind']) => list.filter((m) => m.documents.length > 0 && (kind === 'photo' ? isPicture(m) : kind === 'video' ? isVideo(m) : !isPicture(m) && !isVideo(m))).slice(0, REUSE).reverse();
   const anchorOf = (p: { anchor: string | null; rect: Rect | null }) => () => blockRect(p.anchor) ?? (p.rect ? toDOMRect(p.rect) : new DOMRect(innerWidth / 2, innerHeight / 3, 1, 1));

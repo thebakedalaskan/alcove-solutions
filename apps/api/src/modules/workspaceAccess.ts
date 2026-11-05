@@ -89,7 +89,8 @@ export interface Who { email: string | undefined; principals: Uint8Array[] }
 export interface Seat { callId: string; seat: string; name: string; viewer: Viewer }
 /** Who's asking, for this request: the account with its keys, their seat, or both. */
 export interface Reader extends Who {
-  account: { owner: Owner; name: string } | undefined;
+  /** `sample`: an account anyone can make for nothing (`demo.ts`). */
+  account: { owner: Owner; name: string; sample: boolean } | undefined;
   seat: Seat | undefined;
 }
 
@@ -112,7 +113,7 @@ async function seatFrom(d: Deps, token: string | undefined, account: Owner | und
 async function readerWith(d: Deps, owner: Owner | undefined, seat: Seat | undefined): Promise<Reader> {
   const me = owner && await profile(owner);
   return {
-    account: owner && me ? { owner, name: me.name } : undefined, seat, email: me?.email,
+    account: owner && me ? { owner, name: me.name, sample: me.sample } : undefined, seat, email: me?.email,
     principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])]
   };
 }
@@ -159,8 +160,9 @@ export async function whoNamed(d: Deps, named: Pick<MediaToken, 'account' | 'sea
  * connection and for nobody anywhere else, so it can go on a caret that someone outside the workspace sees: an address
  * can't. The address is in `email`, for `Room.seenBy` to pass on or not.
  */
+export const personKey = (o: Owner, principal: Uint8Array): string => b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), principal)).slice(0, 22);
 export function personIn(o: Owner, r: Reader): Person {
-  const id = b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), r.principals[0] ?? new Uint8Array(0))).slice(0, 22);
+  const id = personKey(o, r.principals[0] ?? new Uint8Array(0));
   const name = r.account?.name ?? r.seat?.name ?? '';
   return r.email === undefined ? { id, name, email: '', portrait: portraitFor(id) } : { ...personOf(r.email, name), id };
 }
@@ -201,7 +203,7 @@ export function standingIn(h: Holders, who: Who): Standing {
 }
 
 /** What someone can do with one item, or undefined when it doesn't exist for them. */
-export function roleOf(who: Who, s: Standing, id: string, item: StoredItem): DocumentRole | undefined {
+export function roleOf(who: Who, s: Standing, id: string, item: Pick<StoredItem, 'kind' | 'by' | 'restricted' | 'restrictedBy'>): DocumentRole | undefined {
   const asMember = s.role === null ? undefined : s.role === 'read' ? 'read' : 'edit';
   if (item.kind === 'folder') return asMember;
   const email = who.email?.trim().toLowerCase();
@@ -286,16 +288,21 @@ export const editableBy = (d: Deps, who: Who, workspaceId: string, documentId: s
 export const placeableIn = (d: Deps, who: Who, workspaceId: string, documentId: string | null): Promise<Allowed> =>
   remembering(d, who, workspaceId, `read:${documentId ?? ''}`, (w) => (documentId === null ? '' : requireDocument(who, w, documentId, 'read').item.editedAt), d.pool);
 
-/** A workspace the server is working on for a call, not for anyone in it: its keys and tree. What's shown from it is for whoever opened it to decide. */
-export type HeldWorkspace = Pick<Workspace, 'owner' | 'workspaceId' | 'state'>;
+/** A workspace the server is working on for a call, not for anyone in it: its keys, its tree, and the version that's at. What's shown from it is for whoever opened it to decide. */
+export type HeldWorkspace = Pick<Workspace, 'owner' | 'workspaceId' | 'state' | 'version'>;
 /** Opens one for that, or nothing once it's gone. `lock`: as `workspaceFor`. These IDs come from a call, where only what its organizer could reach gets in. */
 export async function serverWorkspace(d: Deps, workspaceId: string, db: Db = d.pool, lock?: keyof typeof LOCKS): Promise<HeldWorkspace | undefined> {
   const row = await maybeOne(db, WorkspaceRow, `SELECT owner_id, version, state_ciphertext FROM workspaces WHERE workspace_id = $1${lock ? LOCKS[lock] : ''}`, [workspaceId]);
   const owner = row && await findOwner(d, row.owner_id, undefined, db);
-  return row && owner ? { owner, workspaceId, state: openState(owner, workspaceId, row.state_ciphertext) } : undefined;
+  return row && owner ? { owner, workspaceId, state: openState(owner, workspaceId, row.state_ciphertext), version: row.version } : undefined;
 }
 /** Who a workspace is, if it's still there, without opening anything of it. */
 export const workspaceOwner = async (db: Db, workspaceId: string): Promise<string | undefined> => (await maybeOne(db, z.object({ owner_id: z.string() }), 'SELECT owner_id FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.owner_id;
+/** The same, and how far it's moved on, which says whether what was read of it still holds. */
+export async function workspaceAt(db: Db, workspaceId: string): Promise<{ ownerId: string; version: number } | undefined> {
+  const row = await maybeOne(db, VersionRow, 'SELECT owner_id, version FROM workspaces WHERE workspace_id = $1', [workspaceId]);
+  return row && { ownerId: row.owner_id, version: row.version };
+}
 
 /** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
 export async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {
@@ -381,6 +388,8 @@ export function requireSharing(who: Who, w: Workspace, documentId: string): Open
 const MAX_SHARES = 500;
 /** One person to give a document to: by address, or in a seat of a call, which ends with the call. */
 export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kind: 'seat'; callId: string; seat: string; name: string; role: DocumentRole };
+/** How access knows them. */
+export const principalOf = (d: Deps, g: Grant): Uint8Array => (g.kind === 'email' ? emailIndex(d, g.email) : seatIndex(d, g.callId, g.seat));
 
 /**
  * Gives one document to many people in a single statement, in the caller's transaction, which holds the workspace's row
@@ -390,7 +399,7 @@ export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kin
 export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, documentId: string, grants: Grant[]): Promise<void> {
   const o = w.owner;
   const byIndex = new Map(grants.map((g) => {
-    const index = g.kind === 'email' ? emailIndex(o, g.email) : seatIndex(o, g.callId, g.seat);
+    const index = principalOf(o, g);
     return [Buffer.from(index).toString('hex'), { ...g, index, accessId: id128() }] as const;
   }));
   const rowsToAdd = [...byIndex.values()];
