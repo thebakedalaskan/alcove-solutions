@@ -206,9 +206,10 @@ and this way it runs through the same auth, origin check and tests as everything
 - **Who has a note** is its organizer and everyone with a `note_access` row for it. The note's manifest says how
   each of them got it (invited, or shared by whom, with which group, when), and each reader is told their own
   way as `received`. Every reader's list of notes also carries each share to a group (`groupShares`: who, the
-  group's name, the latest time), worked out from the same recipients. Someone who removed the note from theirs
-  has no row, so isn't listed, and a share to a group nobody still holds drops out; sharing with them again gives
-  it back.
+  group's name, the latest time), and the addresses of whoever got it afterwards (`sharedWith`), so a share is never
+  counted as having been on the call, both worked out from the same recipients. Someone who removed the note from
+  theirs has no row, so isn't listed, and a share to a group nobody still holds drops out; sharing with them again
+  gives it back.
 - **Deleting** is physical, whether it's a note, a meeting or a whole account: rows, receipts and objects
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
