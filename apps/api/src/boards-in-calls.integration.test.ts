@@ -5,6 +5,7 @@
  */
 import { AlcoveApiError, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
+import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from './crypto';
@@ -95,6 +96,10 @@ const stored = (s: DocSession) => until(() => s.getSnapshot().status === 'saved'
 const count = async (sql: string, params: unknown[] = []) => (await h.pool.query<{ n: number }>(sql, params)).rows[0]?.n ?? -1;
 const seats = (board: string) => count("SELECT count(*)::int AS n FROM document_access WHERE document_id = $1 AND kind = 'seat'", [board]);
 const entries = (board: string) => count('SELECT count(*)::int AS n FROM document_access WHERE document_id = $1', [board]);
+/** How many connections to the database are waiting for a lock now. */
+const waitingOnLocks = () => count("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+/** `p`, or a failure once `ms` have gone by. */
+const soon = <T,>(p: Promise<T>, what: string, ms = 5_000): Promise<T> => Promise.race([p, rest(ms).then((): never => { throw new Error(`${what} took more than ${ms} ms`); })]);
 /** Everything the call told this person, as text: what a name would be found in. */
 const said = (s: CallState) => JSON.stringify(s);
 /** An action as a browser sends it, whatever the client would make of it. */
@@ -644,6 +649,8 @@ describe('a saved board', () => {
     expect(await seats(board)).toBe(0);
     const back = await art.api.calls.join(c, { mic: false, cam: false });
     await inGroup(back);
+    // Joining doesn't wait for the workspace: the seat lands a moment later.
+    await until(async () => (await opened(back))?.role === 'edit', 'a seat for the organizer');
     expect(await opened(back)).toMatchObject({ documentId: board, role: 'edit', canClose: true });
     expect(await seats(board)).toBe(1);
   });
@@ -1288,6 +1295,53 @@ describe('breakout rooms', () => {
     host.closeRooms();
     await settle(host, (s) => s.breakouts.open === null);
     await until(async () => (await opened(t))?.role === 'edit', 'Theo to find it back in the main room');
+  });
+});
+
+describe('a busy workspace', () => {
+  it('holds up nothing in the call: boards wait for the workspace, and letting people in and hands don’t', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const board = await saved(art, id, 'Onboarding flow');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    const kim = await guest(host, c, 'Kim');
+    await host.openBoard({ documentId: board, letIn: true });
+    expect(await opened(kim.call)).toMatchObject({ role: 'edit' });
+    const base = await waitingOnLocks();
+    // Something holds the workspace's row, as a long change to it does, on a connection of its own.
+    const holder = new pg.Client({ connectionString: process.env['TEST_DATABASE_URL'] });
+    await holder.connect();
+    let jamie: Awaited<ReturnType<typeof guest>> | undefined;
+    let lee: Awaited<ReturnType<typeof guest>> | undefined;
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT 1 FROM workspaces WHERE workspace_id = $1 FOR NO KEY UPDATE', [id]);
+      // Two people are let in. Their seats on the board the call lets everyone into wait for the workspace; being let in doesn't.
+      jamie = await soon(guest(host, c, 'Jamie'), 'letting Jamie in', 10_000);
+      lee = await soon(guest(host, c, 'Lee'), 'letting Lee in', 10_000);
+      // A new board is made in the workspace, so it waits too.
+      let made = false;
+      const opening = host.openBoard({ template: 'blank' }).then(() => { made = true; });
+      void opening.catch(() => undefined);
+      await until(async () => (await waitingOnLocks()) >= base + 3, 'the seats and the new board to wait for the workspace');
+      // Hands go up meanwhile, and everyone reads the call: nothing about it waits.
+      const status = (r: Response) => r.status;
+      const crowd = [kim, jamie, lee];
+      expect(await soon(Promise.all(crowd.map((g, i) => action(g, g.call, { type: 'hand', up: i !== 1 }).then(status))), 'hands going up', 3000)).toEqual([200, 200, 200]);
+      expect(await soon(opened(jamie.call), 'reading the call', 3000)).toMatchObject({ role: null });
+      expect(made).toBe(false);
+      await holder.query('COMMIT');
+      await opening;
+    } finally {
+      await holder.end();
+    }
+    // Once it's free, the new board is open, and everyone let in meanwhile is seated on both.
+    const now = (await opened(host))?.documentId ?? '';
+    expect(now).not.toBe(board);
+    for (const g of [jamie, lee]) await until(async () => (await opened(g?.call ?? host))?.role === 'edit', 'a seat on the new board');
+    await until(async () => (await seats(board)) === 3, 'Kim, Jamie and Lee on the saved board');
+    expect(await seats(now)).toBe(3);
   });
 });
 

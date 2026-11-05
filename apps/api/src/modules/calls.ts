@@ -41,7 +41,7 @@ import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
 import * as series from './series';
 import * as transcripts from './transcripts';
-import { readerInCall, workspaceForCall, workspaceOwner, type CallRef } from './workspaceAccess';
+import { readerInCall, workspaceOwner, type CallRef } from './workspaceAccess';
 import { endSeat, endSeats } from './workspaces';
 import * as writer from './writer';
 import { log } from '../log';
@@ -619,8 +619,9 @@ async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous host connection already gone', { callId: j.callId, err: e }));
   await o.livekit.ensureRoom(j.roomName);
   // A new host starts a new group (everyone fetches the call and its log); someone asking only concerns the host's browser.
-  // A connection that hosts is in the call from the start, with no commit to let it in.
-  if (j.hosts) await syncBoardSeats({ organizer: o, callId: j.callId });
+  // A connection that hosts is in the call from the start, with no commit to let it in. Joining doesn't wait for a workspace:
+  // a seat lands a moment later, and the call reads itself again when it does.
+  if (j.hosts) void syncBoardSeats({ organizer: o, callId: j.callId });
   await nudge(o, j.roomName, j.callId, { call: j.hosts, log: true });
   clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation, back: Boolean(who.earlier) });
   return ticketFor(d, o, j.callId, { identity, role, name, person: j.person, hosts: j.hosts, owner: who.owner }, j.roomName);
@@ -1205,38 +1206,48 @@ function whereIs(v: Viewer, s: Stored): string {
 }
 
 /**
- * Someone opens or closes a board, under the call's row. Who's asking, and for a new board which workspace the call uses, are
- * settled before that's taken, as settling takes the row itself. What's refused whatever happens is refused first, so a guest,
- * or someone in a breakout room, settles nothing. It's asked again under the row.
+ * Someone opens or closes a board, in two steps (`boards.prepare`), as everything about the call's workspace is: what reads or
+ * changes a workspace, with nothing of the call held; then the call's row, held only to save what came of it, from the call as
+ * it is then. Seats given meanwhile to someone taken out are taken back once it's let go, and anyone let in meanwhile is seated.
  */
 async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Promise<CallState> {
   const o = v.organizer;
-  if (a.type === 'board-open') {
-    boards.requireStarter(v, a.type);
-    const { row, state } = await load(o, o.pool, callId);
-    boards.requireMainRoom(callId, whereIs(v, settle(state, row)), a.type);
-    if ('template' in a) await workspaceForCall(o, { organizer: o, callId });
-  }
+  if (a.type === 'board-open') boards.requireStarter(v, a.type);
   const reader = await readerInCall(v);
-  const { room, made } = await tx(o.pool, async (c) => {
-    const { row, state } = await load(o, c, callId, true);
-    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
-    const settled = settle(state, row);
-    const mine = settled.people.find((j) => j.identity === v.pass.identity);
-    const { manifest } = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-    const done = await boards.change({
-      v, reader, c, callId, meeting: manifest, s: settled, place: whereIs(v, settled), here: hereIn(o, callId, settled), known: knownIn(o, callId, settled), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }
-    }, a);
+  const ctx = { callId, action: a.type };
+  /** The call as it stands, read with `db`: the pool, or the transaction that holds its row. */
+  const read = async (db: Db, held: boolean) => {
+    const { row, state } = await load(o, db, callId, held);
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+    const s = settle(state, row);
+    const mine = s.people.find((j) => j.identity === v.pass.identity);
+    const { manifest } = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+    return {
+      row, state,
+      changing: { v, reader, callId, meeting: manifest, s, place: whereIs(v, s), here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' } }
+    };
+  };
+  const apply = await boards.prepare((await read(o.pool, false)).changing, a);
+  const { room, changed } = await tx(o.pool, async (c) => {
+    const { row, state, changing } = await read(c, true);
+    const done = apply(changing);
     await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, done.s)));
-    return { room: row.room_name, made: done.made };
+    return { room: row.room_name, changed: done };
   });
+  const { what, ...done } = changed.done;
+  clog.info(what, { ...done, callId });
+  // A seat given to someone taken out while it was given goes, as their removal took everything else.
+  for (const seat of changed.ended) await endSeat(o, callId, seat);
   // A board left as it started is still a board, so nothing about filling it is worth refusing the person who opened it.
+  const made = changed.made;
   if (made) await boards.fillBoard(o, made.w, made.documentId, made.template).catch((e: unknown) => clog.warn('board not filled from its template', { callId, documentId: made.documentId, err: e }));
+  // Anyone let in while it was being opened.
+  if (a.type === 'board-open') void syncBoardSeats({ organizer: o, callId });
   await nudge(o, room, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }
 
-/** What opening a saved board would mean, for the menu to ask first. */
+/** What opening a saved board would mean, for the menu to ask first. It holds nothing of the call. */
 export async function boardCheck(v: Viewer, callId: string, documentId: string): Promise<BoardCheck> {
   boards.requireStarter(v, 'board-check');
   const o = v.organizer;
@@ -1248,30 +1259,39 @@ export async function boardCheck(v: Viewer, callId: string, documentId: string):
 }
 
 /**
- * Keeps what the call lets people into in step with who's in it: called wherever someone's let in, and by upkeep, for anyone a
- * crash left without their seat. One board at a time, so nothing here holds two workspaces' locks and one that can't take
- * anyone more stops nothing else, and under the call's row, so it can't land after whoever it's for is taken out. Letting
- * someone in is done by then: this fails on its own, with a log line.
+ * Keeps what the call lets people into in step with who's in it: started wherever someone's let in, without waiting for it,
+ * and run by upkeep, for anyone a crash left without their seat. One board at a time, so nothing here holds two workspaces'
+ * locks and one that can't take anyone more stops nothing else. Each is two steps, as everything about the workspace is: the
+ * seats, in the workspace's own transaction, with nothing of the call held; then the call's row, held only to save who's been
+ * worked out. A seat given to someone taken out meanwhile is taken back, as is one given as the call ended. This fails on its
+ * own, with a log line: letting someone in is done by then.
  */
 export async function syncBoardSeats(call: CallRef): Promise<void> {
   const { organizer: o, callId } = call;
   try {
     const { row, state } = await load(o, o.pool, callId);
     if (row.state !== 'live') return;
+    const s = settle(state, row);
     let changed = false;
-    for (const e of boards.dueIn(state.board, hereIn(o, callId, state))) {
-      const seated = await tx(o.pool, async (c) => {
-        const held = await load(o, c, callId, true);
-        if (held.row.state !== 'live') return false;
-        const board = await boards.seatNewcomers(o, c, callId, e.documentId, held.state.board, hereIn(o, callId, held.state), knownIn(o, callId, held.state));
-        if (board !== held.state.board) await save(o, c, callId, { ...held.state, board });
-        return board !== held.state.board;
-      }).catch((err: unknown) => {
+    const ended = new Set<string>();
+    for (const e of boards.dueIn(s.board, hereIn(o, callId, s))) {
+      try {
+        const done = await boards.seatNewcomers(o, callId, e.documentId, s.board, hereIn(o, callId, s), knownIn(o, callId, s));
+        if (!done) continue;
+        const saved = await tx(o.pool, async (c) => {
+          const held = await load(o, c, callId, true);
+          if (held.row.state !== 'live') return { saved: false, ended: done.seats };
+          const board = boards.withSeen(held.state.board, done);
+          if (board && board !== held.state.board) await save(o, c, callId, { ...held.state, board });
+          return { saved: board !== undefined && board !== held.state.board, ended: boards.seatsToTakeBack(knownIn(o, callId, held.state), done) };
+        });
+        changed ||= saved.saved || done.seats.length > 0;
+        for (const seat of saved.ended) ended.add(seat);
+      } catch (err) {
         clog.warn('seats on a board not kept up', { callId, workspaceId: e.workspaceId, documentId: e.documentId, err });
-        return false;
-      });
-      changed ||= seated;
+      }
     }
+    for (const seat of ended) await endSeat(o, callId, seat);
     if (changed) await nudge(o, row.room_name, callId, { call: true, log: false });
   } catch (e) {
     clog.warn('seats on the call’s boards not kept up', { callId, err: e });
@@ -1742,8 +1762,8 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     return row.room_name;
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
-  // Before they hear they're in, so they find what's open for them.
-  if (b.added.length) await syncBoardSeats({ organizer: o, callId });
+  // Letting someone in doesn't wait for a workspace: a seat lands a moment later, and the call reads itself again when it does.
+  if (b.added.length) void syncBoardSeats({ organizer: o, callId });
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
   if (b.added.length && room) {
     // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.

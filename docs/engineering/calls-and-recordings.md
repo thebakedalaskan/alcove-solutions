@@ -1128,7 +1128,8 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   as it is. Someone taken out of the call stays
   on the invite if they were invited from the start. While they're out they aren't given what's opened, and what they had before
   they keep, as they keep the note. Back in the call, a board made from then on goes to their address, and one made while they
-  were out is a seat, for that call. A call can let everyone into 50 boards, the ones it made included.
+  were out is a seat, for that call. A call can let everyone into 50 boards, the ones it made included. That's asked before a
+  board is made, with nothing of the call held, so two made at once can take it one past.
 - **Filling one from its template** is `fillBoard`, which does nothing yet: it waits for `@alcove/board`. A new board starts
   empty whichever template is asked for, and the template is stored nowhere.
 - **A saved board** (`board-open` with `documentId` and `letIn`) is one brought to the call, or in the workspace it uses. Bringing
@@ -1139,8 +1140,9 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   the menu to ask first: the first names of everyone in the call who can't open it, and whether the asker may let them in.
 - **Letting people in.** `letIn: true` needs the right to share that board, the workspace's rule, so nobody gets past it through
   a call. It's a policy on the call, not a list. Everyone here who can't open it gets a seat at `edit`, and whoever can keeps
-  what they have. `syncBoardSeats(call)`, called wherever someone's let in, does the same for anyone who comes later, on
-  boards the call made too, whether they're open or not. Upkeep calls it as well, for anyone a crash left without their seat.
+  what they have. `syncBoardSeats(call)`, started wherever someone's let in, does the same for anyone who comes later, on
+  boards the call made too, whether they're open or not. Being let in doesn't wait for it: a seat lands a moment later, and the
+  call reads itself again when it does. Upkeep calls it as well, for anyone a crash left without their seat.
   Each board is done on its own, so one that can't take anyone more stops nothing else. Each remembers who it's been worked out
   for, so a seat taken back in Share stays taken back, through a reload and through anyone else being let in, until someone
   chooses `letIn` again. A new tab with no earlier pass is a new person with a new seat. For someone the call knows by address it's
@@ -1157,6 +1159,15 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   Nothing is deleted, seats stay until the call ends because people may open it again, and what the call lets people into stays.
 - **When it stops.** The call ending ends every seat, and what it kept of its boards goes. A change of workspace leaves what's
   open alone: a board says where it is, and only a new one goes to the new workspace.
+
+A board is two steps too, as everything about the call's workspace is (`prepare` in `callBoards.ts`). Making a board, giving
+its grants and seats, and checking who may bring one are done with nothing of the call held, in the workspace's own transaction.
+The call's row is then held only to save what came of it, from the call as it is then. Opening never needs asking again:
+a board made and a seat given stand whatever happened meanwhile, as they would have a moment earlier. A seat given meanwhile
+to someone taken out of the call is taken back once the row is let go, and anyone let in meanwhile is seated straight after.
+`syncBoardSeats` is the same: each board's seats in the workspace's own transaction, then the call's row to note who's been worked out, and only against the same
+decision, since a new `letIn` replaces it. Closing touches no workspace. So a busy workspace can make a board wait for it, and
+never a hand going up, nor anyone being let in.
 
 Each step counts towards the same 240 a minute as what goes on in the workspace.
 
