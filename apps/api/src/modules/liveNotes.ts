@@ -37,6 +37,11 @@ const LEASE_SECONDS = 150;
 const FOLLOW_UPS_KEPT = 60;
 /** How plainly a follow-up in someone's own notes must be one that's ticked for them to see it done: most of it, from a line in common. */
 const DONE_THERE = 2.75;
+/**
+ * What everyone reading the notes is told when a refresh fails, whatever went wrong. The causes are worded for someone
+ * who can press something, and here nobody has to, so why is in the log.
+ */
+const NOT_UPDATED = 'The notes couldn’t be updated just now. Alcove tries again on its own.';
 
 /** A point in the notes, as a catch-up gives it. */
 const Point = z.object({ text: z.string(), owner: z.string().optional(), due: z.string().optional(), evidence: z.array(EvidenceSchema) });
@@ -59,8 +64,8 @@ const Written = z.object({
   first: z.number(), last: z.number(), readers: z.array(z.string()).optional()
 });
 type Written = z.infer<typeof Written>;
-/** The record: the notes, null until they're written, and why the latest refresh didn't work. */
-const Stored = z.object({ notes: Written.nullable(), error: z.string().nullable() });
+/** The record: the notes, null until they're written, and whether the latest refresh didn't work. */
+const Stored = z.object({ notes: Written.nullable(), failed: z.boolean() });
 type Stored = z.infer<typeof Stored>;
 /** A line a row left out: when it was said, and who may read it, if not everyone there. */
 const Barred = z.object({ said: z.number(), readers: z.array(z.string()).optional() });
@@ -132,10 +137,10 @@ const mainLines = async (o: Owner, db: Db, callId: string, place: string): Promi
 const plain = ({ text, owner, due, evidence }: Point) => ({ text, ...(owner === undefined ? {} : { owner }), ...(due === undefined ? {} : { due }), evidence });
 const saidOf = (f: Pick<FollowUp, 'text' | 'owner' | 'evidence' | 'cited'>, heard = ''): SaidFollowUp => ({ text: f.text, owner: f.owner, at: f.evidence[0]?.said, lines: f.cited, heard });
 
-/** The notes as they're shown. `capturing`: refreshes can run here now, so why the last one failed is worth saying. */
+/** The notes as they're shown. `capturing`: refreshes can run here now, so that the last one failed is worth saying. */
 export function shownTo(found: Found, capturing: boolean): LiveNotes {
   const n = found.stored?.notes ?? null;
-  const out = { writing: found.writing, error: capturing ? found.stored?.error ?? null : null };
+  const out = { writing: found.writing, error: capturing && found.stored?.failed ? NOT_UPDATED : null };
   if (!n) return { ...out, notes: null };
   const done = (f: FollowUp) => f.tick !== null || found.ticked.some((t) => likeness(saidOf(t), saidOf(f)) >= DONE_THERE);
   const next = n.next.filter((f) => f.shown).map((f): LiveFollowUp => ({ ...plain(f), id: f.id, done: done(f) }));
@@ -249,7 +254,7 @@ export async function keep(o: Owner, callId: string, place: string, view: string
     const notes: Written = { ...run.notes, next: nextOf(was, run) };
     const lines: Lines = { said: run.lines.map((l) => l.said), barred: run.barred.map((l) => ({ said: l.said, ...(l.readers ? { readers: l.readers } : {}) })) };
     await exec(db, `UPDATE call_notes SET notes_ciphertext = $5, lines_ciphertext = $6, lease_until = NULL WHERE ${WHERE} AND view = $4`,
-      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes, error: null }), sealJson(key(o, callId), linesHeader(o, callId, place, view), toJson(lines))]);
+      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes, failed: false }), sealJson(key(o, callId), linesHeader(o, callId, place, view), toJson(lines))]);
     return true;
   });
 }
@@ -258,13 +263,13 @@ export async function keep(o: Owner, callId: string, place: string, view: string
  * A refresh didn't work: the notes stay as they were, everyone reading them is told why, and the next look after the
  * usual wait tries again, with the same lines or more.
  */
-export async function failed(o: Owner, callId: string, place: string, view: string, c: Claim, error: string): Promise<boolean> {
+export async function failed(o: Owner, callId: string, place: string, view: string, c: Claim): Promise<boolean> {
   return tx(o.pool, async (db) => {
     const r = await held(db, o, callId, place, view);
     if (!r || !stands(r, c)) return false;
     const s = opened(o, callId, place, view, r.notes_ciphertext);
     await exec(db, `UPDATE call_notes SET notes_ciphertext = $5, clips_seen = -1, lease_until = NULL WHERE ${WHERE} AND view = $4`,
-      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes: s?.notes ?? null, error })]);
+      [o.ownerId, callId, place, view, sealed(o, callId, place, view, { notes: s?.notes ?? null, failed: true })]);
     return true;
   });
 }

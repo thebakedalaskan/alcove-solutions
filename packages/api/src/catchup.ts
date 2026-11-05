@@ -115,7 +115,7 @@ export const LiveNotesSchema = z.object({
   notes: CatchUpSchema.extend({ next: z.array(LiveFollowUpSchema) }).nullable(),
   /** They're being refreshed now. */
   writing: z.boolean(),
-  /** Why the latest refresh of these notes didn't work; they stay as they were, and it's tried again. Null otherwise. */
+  /** Says the latest refresh of these notes didn't work; they stay as they were, and it's tried again. Null otherwise. */
   error: z.string().nullable()
 });
 export type LiveNotes = z.infer<typeof LiveNotesSchema>;

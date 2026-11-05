@@ -10,7 +10,7 @@ import type { Deps, Owner } from '../context';
 import type { LiveKitEvent } from '../livekit';
 import { b64u, id128, mac, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound, toAppError } from '../errors';
+import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
 import { me, profile } from './account';
 import * as catchup from './catchup';
@@ -1783,7 +1783,7 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     return true;
   } catch (e) {
     clog.warn('live notes not refreshed', { ...ctx, err: e });
-    if (await liveNotes.failed(o, callId, place, view, claim, toAppError(e).message)) await nudge(o, row.room_name, callId, { call: true, log: false });
+    if (await liveNotes.failed(o, callId, place, view, claim)) await nudge(o, row.room_name, callId, { call: true, log: false });
     return false;
   }
 }

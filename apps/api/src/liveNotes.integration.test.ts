@@ -91,6 +91,7 @@ async function notesOf(call: CallSession, pred: (n: NonNullable<LiveNotes['notes
 }
 /** As if `seconds` had passed since the call's notes were last looked at. */
 const later = (call: CallSession, seconds = 31) => h.pool.query(`UPDATE call_notes SET looked_at = now() - make_interval(secs => $2) WHERE call_id = $1`, [call.ticket.callId, seconds]);
+const NOT_UPDATED = 'The notes couldn’t be updated just now. Alcove tries again on its own.';
 const texts = (xs: { text: string }[]) => xs.map((x) => x.text);
 const followUp = (xs: LiveFollowUp[], text: string): LiveFollowUp => {
   const f = xs.find((x) => x.text === text);
@@ -230,7 +231,9 @@ describe('one set of live notes for the call', () => {
     h.near.failNext(1, 'prose');
     await later(kofi);
     const failed = await settle(host, (s) => s.liveNotes.error !== null);
-    expect(failed.liveNotes.error).toBe('The notes service sent back something unexpected.');
+    // Nobody can do anything about it here, so nobody's told to: why is in the log, for the request that tried.
+    expect(failed.liveNotes.error).toBe(NOT_UPDATED);
+    expect(h.logs.some((l) => l.includes('live notes not refreshed') && l.includes('The notes service sent back something unexpected.'))).toBe(true);
     expect(failed.liveNotes.notes).toEqual(seen);
     // Tried again once the half minute is up, with the same lines, and then it's all right again.
     await later(kofi);
@@ -251,7 +254,7 @@ describe('one set of live notes for the call', () => {
       h.near.failNext(1, how);
       await later(kofi);
       const failed = await settle(host, (s) => s.liveNotes.error !== null);
-      expect(failed.liveNotes.error).toBe('The catch-up came back in the wrong shape. Try again.');
+      expect(failed.liveNotes.error).toBe(NOT_UPDATED);
       expect(failed.liveNotes.notes).toEqual(seen);
       await later(kofi);
       expect((await notesOf(host, (n) => n.read.lines === 3)).summary).toBe('Catching up on 3 lines.');
@@ -504,10 +507,10 @@ describe('who reads what of them', () => {
 });
 
 describe('breakout rooms', () => {
-  async function roomsCall() {
+  async function roomsCall(also: string[] = []) {
     const org = await account();
     const [kofiEmail, lenaEmail] = [unique('kofi'), unique('lena')];
-    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail, lenaEmail] });
+    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail, lenaEmail, ...also] });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
     const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
@@ -515,7 +518,7 @@ describe('breakout rooms', () => {
     const lena = await (await account(lenaEmail)).api.calls.join(c, { mic: true, cam: false });
     await inGroup(lena);
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
-    return { org, host, kofi, lena, kofiEmail, lenaEmail };
+    return { org, host, kofi, lena, kofiEmail, lenaEmail, code: c };
   }
   const roomIds = async (host: CallSession) => (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
   const scribing = (call: CallSession, room: string) => settle(call, (x) => x.capture.room?.id === room && x.capture.room.scribe === call.ticket.identity);
@@ -650,6 +653,30 @@ describe('breakout rooms', () => {
     h.near.cite(TASK, null);
     const ended = await host.leave();
     expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: 'Book the hall by Friday', done: true })]);
+  });
+
+  it('won’t let anyone tick notes that read what they may not, whoever they are', async () => {
+    const late = unique('priya');
+    const { host, kofi, kofiEmail, lenaEmail, code: c } = await roomsCall([late]);
+    const TASK = 'Kofi will book the hall by Friday.';
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    const [design = ''] = await roomIds(host);
+    await inPlace(kofi, design);
+    await sayNow(host, TASK, 1000);
+    const stop = host.watchNotes();
+    const task = followUp((await notesOf(host)).next, TASK);
+    stop();
+
+    // Invited, and in the main room, but they came after that was said with the rooms open: those notes aren't theirs.
+    const priya = await (await account(late)).api.calls.join(c, { mic: true, cam: false });
+    await inPlace(priya, 'main');
+    await priya.refresh();
+    expect(priya.getSnapshot().liveNotes.notes).toBeNull();
+    expect(code(await priya.tickFollowUp(task.id, true).catch((e: unknown) => e))).toBe('not-found');
+    await host.refresh();
+    expect(followUp((await notesOf(host)).next, TASK).done).toBe(false);
+    await host.tickFollowUp(task.id, true);
+    await notesOf(host, (n) => n.next[0]?.done === true);
   });
 
   it('stops a paused room’s notes while the others go on', async () => {
@@ -841,12 +868,12 @@ describe('ticking a follow-up', () => {
 
   it('keeps its IDs in text without spaces', async () => {
     const { host } = await twoInCall();
-    const [LINE, OTHER] = ['田中さんが金曜日までに資料を法務に送ります。', '鈴木さんが来週までに見積もりを作ります。'];
+    const [LINE, OTHER] = ['田中さんは資料を法務に送ります。', '鈴木さんが来週までに見積もりを作ります。'];
     await say(host, LINE);
     const stop = host.watchNotes();
     const first = followUp((await notesOf(host)).next, LINE);
     await host.tickFollowUp(first.id, true);
-    const WORDED = '金曜日までに資料を法務に送る';
+    const WORDED = '資料を法務に送る';
     h.near.reword(LINE, WORDED);
     await say(host, OTHER, 3000);
     await later(host);

@@ -934,8 +934,8 @@ read, as catching up always has. The notes everyone gets are still written when 
 the notes worker: live notes only hand on what was ticked.
 
 - **The contract.** `CallState.liveNotes` (`LiveNotes`) comes with the call: `notes` (a `CatchUp` whose `next` are
-  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `writing`, and `error`, why the latest
-  refresh of them didn't work. `read.whileHere` says they were written from only part of what was said there.
+  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `writing`, and `error`, saying the
+  latest refresh of them didn't work. `read.whileHere` says they were written from only part of what was said there.
   `CallSession.watchNotes()` says this browser is showing them until the function it returns is called, and
   `CallSession.tickFollowUp(id, done)` ticks one.
 - **Where they're kept.** In `call_notes`, a row for each view of each part of the call (`main`, or a breakout room's
@@ -991,8 +991,9 @@ the notes worker: live notes only hand on what was ticked.
   rests on lines the notes no longer read, by every line it cites, and still goes to the note.
 - **While paused or off.** What was written stays readable, nothing is refreshed, and nothing reaches NEAR AI. In a
   breakout room the organizer has paused, the same, for that room alone. Ticking still works: it reaches no AI.
-- **When it fails.** The notes stay as they were, `error` says why (the error's own message, to whoever reads those notes,
-  only while notes are on) and the next look at least 30 seconds later tries again. A reply that isn't what was asked for
+- **When it fails.** The notes stay as they were, `error` says so (one line whatever went wrong, at the top of the panel, to
+  whoever reads those notes, only while notes are on: the causes are worded for someone who can press something, and here
+  nobody has to, so why is in the log line) and the next look at least 30 seconds later tries again. A reply that isn't what was asked for
   counts: without words in its summary and all four lists, it's a failed refresh, never blank notes.
 - **What it costs.** Nothing. As for catching up and asking, nobody's credits pay for a refresh, whoever is watching and
   whoever's call it is: only the notes written at the end charge the organizer ([The notes worker](#the-notes-worker)).
@@ -1606,8 +1607,8 @@ its own; a tick shared and nudging the room, kept through a refresh that rewords
 were being written; a ticked item the model stops listing kept, one nobody ticked hidden and given back its ID when it
 returns; a tick never moving to another follow-up with most of its words, another thing from the same sentence, another
 number or another person's; IDs kept in text without spaces; the newest 20 of a long call kept, and a ticked older one;
-refusals (made-up IDs, another call's, the same organizer's other call, someone asking to join, an ended call); what was
-ticked done in the note, reworded or not, and added when the notes don't list it, with who ticked it, through writing the
+refusals (made-up IDs, another call's, the same organizer's other call, someone asking to join, an ended call, and someone
+invited who came in with rooms open, to notes that read what was said before they came); what was ticked done in the note, reworded or not, and added when the notes don't list it, with who ticked it, through writing the
 notes again, and waiting for notes that couldn't be written; nothing else marked done when the notes leave out what was
 ticked; the moment deciding for notes in French, and only when it's the one candidate; text without spaces in the note;
 notes off and paused sending nothing to the notes model with what was written readable and ticks still counting; a note

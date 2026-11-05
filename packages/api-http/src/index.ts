@@ -589,7 +589,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   private lookAtNotes() {
     if (this.closed || this.notesLook) return;
     this.notesLook = this.t.watchNotes(this.state.callId).then((refreshed) => (refreshed ? this.fetchState() : undefined))
-      // Notes that don't refresh say why in the call. A look that doesn't arrive is only one look.
+      // Notes that don't refresh say so in the call. A look that doesn't arrive is only one look.
       .catch((e: unknown) => this.emit('debug', 'live notes not looked at', { code: errorCode(e) }))
       .finally(() => {
         this.notesLook = null;
