@@ -93,6 +93,8 @@ export interface FakeNear {
   failNext(n: number, how: Failure, only?: string | undefined): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number, only?: string | undefined): void;
+  /** The next request to the notes model waits for this before it's answered, as if something happened while the model wrote. */
+  holdNext(then: () => Promise<void>): void;
   /**
    * From now on the notes model writes the follow-up it hears in `line` as `text`, in catch-ups and in the notes, as a
    * model words a thing afresh each time; '' and it no longer lists it; null and it goes back to the words it hears.
@@ -303,6 +305,11 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
       answer: hits.length ? `From your notes: ${hits.map((x) => x.h.text).join(' ')}` : 'That isn’t in your notes.',
       cites: [...hits.map((x) => ({ note: x.note, at: x.h.at })), { note: notes.length + 1, at: 0 }]
     };
+  }
+  if (system.startsWith('You edit a passage')) {
+    // Says what it was given, so tests can see what went and came back.
+    const selection = /<selection>\n([\s\S]*)\n<\/selection>/.exec(user)?.[1] ?? '';
+    return user.includes('"items"') ? { items: selection.split(/\s*;\s*/) } : { text: `Shorter: ${selection}` };
   }
   if (system.startsWith('You help someone catch up')) {
     // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
@@ -517,6 +524,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let failingOnly: string | undefined;
   let slow = 0;
   let slowOnly: string | undefined;
+  let holding: (() => Promise<void>) | null = null;
   const memory: Memory = { reworded: new Map(), worded: new Map(), identified: new Map() };
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
@@ -613,6 +621,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       images.push({ bytes: img.length, marker: /^SCREEN:(\{.*\})\|/s.exec(comment)?.[1] ?? null, salt: comment.slice(comment.lastIndexOf('|') + 1) });
     }
     if (slow && (slowOnly === undefined || user.includes(slowOnly))) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
+    if (holding) { const then = holding; holding = null; await then(); }
     let content: string;
     let finish = 'stop';
     if (failing > 0 && (failingOnly === undefined || user.includes(failingOnly))) {
@@ -725,6 +734,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
+    holdNext(then) { holding = then; },
     reword(line, text) { if (text === null) memory.reworded.delete(line); else memory.reworded.set(line, text); },
     identify(line, as) { if (as === null) memory.identified.delete(line); else memory.identified.set(line, as); },
     close: () => new Promise<void>((r) => server.close(() => r()))
