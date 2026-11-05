@@ -7,7 +7,7 @@
  * dropped connection), and what they typed lands on what was restored.
  */
 import { DocCaretStateSchema, errorMessage, firstName, type DocSession, type DocVersionSummary, type NoteSummary, type Person, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDocBy, WsFade, WsHistory, WsPage, WsScroll, wsToast, type WsRestoreAsk, type WsVersion } from '@alcove/ui';
+import { WsDocBy, WsFade, WsHistory, WsPage, WsScroll, WsVersionFailed, wsToast, type WsRestoreAsk, type WsVersion } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { overlayOpen } from '~/lib/keys';
@@ -16,6 +16,7 @@ import { q, useRestoreVersion } from '~/lib/queries';
 import { daysFromToday, dayMonth, hm, shortDay } from '~/lib/time';
 import type { Ws } from './context';
 import { Editor } from './editor/lazy';
+import type { EditorHandle } from './editor/types';
 import type { OpenVersion } from './editor/version';
 import { nameOf } from './tree';
 
@@ -52,12 +53,12 @@ const whenFrom = (iso: string) => (daysFromToday(new Date(iso)) === 0 ? hm(iso) 
 const asOf = (iso: string) => `${daysFromToday(new Date(iso)) === 0 ? 'at' : 'on'} ${whenFrom(iso)}`;
 const columnDay = (iso: string) => (daysFromToday(new Date(iso)) === 0 ? 'Today' : dayMonth(new Date(iso)));
 
-/** The note of a call, if this person has one: the only one whose time covers what was kept in it. */
+/** The note of a call, if this person has one: the only one of a call whose time covers what was kept in it. */
 function noteOf(notes: readonly NoteSummary[], from: string, to: string): NoteSummary | undefined {
   const a = Date.parse(from), b = Date.parse(to);
   const covering = notes.filter((n) => {
     const start = Date.parse(n.startedAt);
-    return a >= start - CALL_SLACK_MS && b <= start + n.duration * 1000 + CALL_SLACK_MS;
+    return n.kind === 'call' && a >= start - CALL_SLACK_MS && b <= start + n.duration * 1000 + CALL_SLACK_MS;
   });
   return covering.length === 1 ? covering[0] : undefined;
 }
@@ -154,6 +155,10 @@ function Version({ ws, item, row }: { ws: Ws; item: WorkspaceItem; row: Row }) {
   /* Nothing to compare with is no reason not to show it. */
   const earlier = before.isError ? null : before.data?.update ?? (row.before === null ? null : undefined);
   const [open, setOpen] = useState<OpenVersion | null>(null);
+  const [editor, setEditor] = useState<EditorHandle | null>(null);
+  /* What changed may be a long way down, and it's what someone came to see. */
+  const firstChange = open ? [...open.changed][0] : undefined;
+  useEffect(() => { if (editor && firstChange) editor.scrollToBlock(firstChange); }, [editor, firstChange]);
   useEffect(() => {
     if (!update || earlier === undefined) return;
     let left = false;
@@ -166,14 +171,14 @@ function Version({ ws, item, row }: { ws: Ws; item: WorkspaceItem; row: Row }) {
     return () => { left = true; made?.close(); };
   }, [update, earlier]);
   const documentName = useCallback((id: string) => { const d = ws.tree.all.get(id); return d && d.trashedAt === null ? nameOf(d) : undefined; }, [ws.tree]);
-  if (shown.isError) return <WsCantOpen what="document" />;
+  if (shown.isError) return <WsVersionFailed why={errorMessage(shown.error)} />;
   return (
     <WsScroll>
       <WsFade id={row.id}>
         <WsPage>
           {open && (
             <Suspense>
-              <Editor doc={open.doc} awareness={open.awareness} readOnly titleHint={item.name} changed={open.changed} documentName={documentName}
+              <Editor ref={setEditor} doc={open.doc} awareness={open.awareness} readOnly titleHint={item.name} changed={open.changed} documentName={documentName}
                 byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={row.from ? `As it was ${asOf(row.from)}` : ''} /> : undefined} />
             </Suspense>
           )}

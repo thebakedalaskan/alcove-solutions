@@ -203,6 +203,15 @@ export function WsCantOpen({ what, action }: { what: 'document' | 'workspace'; a
   );
 }
 
+/** A version from History that didn't arrive. `why`: what went wrong, in Alcove's words. */
+export function WsVersionFailed({ why }: { why: string }) {
+  return (
+    <EmptyState className="wd-none" title="This version didn’t open" art={<WsArch><path d="M24 40h18M24 47h18M24 54h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></WsArch>}>
+      {why}
+    </EmptyState>
+  );
+}
+
 /** A workspace that hasn't opened, and no connection to open it with. It opens by itself. */
 export function WsOfflineEmpty() {
   return (

@@ -163,7 +163,7 @@ Read `docs/engineering/logging-and-errors.md`.
   `SwitchLine`, `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
-  `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsFullBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsVersionBar`, `WsScroll`, `WsPage`, `WsDocBy`,
+  `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsFullBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`,
   `WsTemplates`, `WsTail`, `WsTrash`, `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
   `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` above the head.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
