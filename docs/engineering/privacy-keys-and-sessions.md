@@ -412,8 +412,12 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   of its workspace is worked out here on every read, for each person, and nothing about who can open what is copied into it.
   Someone who can open nothing is told that it's private and nothing that names anything: not which workspace, not a document, a
   folder or anyone's whereabouts. That something's being presented, and by whom, is said to everyone in that part of the call,
-  and what it is only to those who can open it. A video playing isn't said to anyone who can't open its document. What
-  they try reads the same as for something that doesn't exist.
+  and what it is only to those who can open it. A video playing isn't said to anyone who can't open its document. A board
+  open in the call is said to everyone in that part of it, and by whom, with nothing that names it for anyone who can't open
+  it. What they try reads the same as for something that doesn't exist.
+- **A call adds and lets in only as far as the workspace says.** Anyone invited can make a board in the call's workspace, while
+  its organizer can edit there ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). Letting
+  people into a saved board needs the right to share it, asked again for everyone who comes later, and each seat ends with the call.
 - **In Trash**, something stays readable to whoever could open it, and anyone who can edit it can bring it back; nothing
   else can change it until then (`409 conflict`).
 - **Through a folder**, nobody reaches further than they could directly: sending a folder to Trash, or deleting it, takes

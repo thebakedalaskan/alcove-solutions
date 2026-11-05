@@ -1095,6 +1095,53 @@ tells the call straight away, because that's the only case that knows which call
 `workspaceAccess.ts`, are the same things for server code: the call's workspace, settled if it has none, and one document
 given to everyone in a call now, or in one part of it, as a seat each.
 
+## A board in a call
+
+A board is a workspace item of kind `board`: what's on it, who can open it and how it's deleted are the workspace's. What's the
+call's is which board is open, kept by part of the call in its sealed state (`board`: `main`, or a room's ID) as IDs and who
+opened it, and which boards it lets everyone into. What's done is `apps/api/src/modules/callBoards.ts`, what's kept is
+`callSpace.ts`, and who can open what is `workspaceAccess.ts`, on every read.
+
+- **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
+  called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
+  `role` and `seal` (`Sealed`, or `Sealed to this room`). Someone who can't open it gets `role`, `workspaceId`, `documentId` and
+  `name` null: that's "A board you can't open", and nothing names it. A board in Trash, or gone, has left the call for
+  everyone, and one brought back from Trash is open again. Someone waiting to be let in is told nothing. Late joiners and
+  reconnects read it from here like everyone else.
+- **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
+  them `403` in the same words whatever they asked for, logged at info, before anything is read or settled.
+- **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes.
+  Only the main room has boards so far: `board-open` and `boardCheck` from a breakout room are `409`, and a main board doesn't
+  show in one. The call's seats on it are for the whole call, so someone in a room finds it when they come back, and
+  `boardCheck` counts them.
+- **A new board** (`board-open` with `template`) goes in the workspace the call uses, settled first if it has none, and named
+  after the call. It's made by the server through what `items.create` does, because whoever opens it needn't be in the
+  workspace, and it's by them. A call adds to a workspace only while its organizer can edit there, as it only ever took one
+  they could: past that it's `409`, and the organizer can choose another. Those invited get `edit` by email, so it stays theirs
+  through the note, and anyone else here a seat. Someone on the invite because they were let in from the link, or rung, has a
+  seat instead, as taking them out takes them off the invite and a seat goes with them; whoever's still on it when the call
+  ends gets it by email then. A call can let everyone into 50 boards, the ones it made included.
+- **Filling one from its template** is `fillBoard`, which does nothing yet: it waits for `@alcove/board`. A new board starts
+  empty whichever template is asked for, and the template is stored nowhere.
+- **A saved board** (`board-open` with `documentId` and `letIn`) is one brought to the call, or in the workspace it uses. Bringing
+  one needs `edit` on it, and it opens from where it is, whichever workspace the call has moved to since. Anything else is the
+  same `404` in the same words, whatever it was: someone else's board, a document, or nothing at all. A workspace named
+  in the request isn't read. `GET /v1/live/calls/:id/boards/:document` (`boardCheck`) says what opening it would mean, for
+  the menu to ask first: the first names of everyone in the call who can't open it, and whether the asker may let them in.
+- **Letting people in.** `letIn: true` needs the right to share that board, the workspace's rule, so nobody gets past it through
+  a call. It's a policy on the call, not a list. Everyone here who can't open it gets a seat at `edit`, and whoever can keeps
+  what they have. `syncBoardSeats(call)`, called wherever someone's let in, does the same for anyone who comes later, on
+  boards the call made too, whether they're open or not. Each board remembers who it's been worked out for, so a seat taken
+  back in Share stays taken back, through a reload and through anyone else being let in, until someone chooses `letIn` again.
+  Whoever let people in is asked about again each time, so once they can't share it nobody new gets a seat in their name.
+  `letIn: false` changes nothing about anyone: whoever can't open it sees a board they can't open, as does anyone let in later.
+- **Closing** (`board-close`) is for whoever opened it, on any connection of theirs, or the organizer, and only closes it.
+  Nothing is deleted, seats stay until the call ends because people may open it again, and what the call lets people into stays.
+- **When it stops.** The call ending ends every seat, and what it kept of its boards goes. A change of workspace leaves what's
+  open alone: a board says where it is, and only a new one goes to the new workspace.
+
+Each step counts towards the same 240 a minute as what goes on in the workspace.
+
 ## The join page
 
 `apps/web/src/routes/join.$code.tsx` (with `apps/web/src/features/join/`) is the pre-join for everyone with the
