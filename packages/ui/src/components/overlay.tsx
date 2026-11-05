@@ -164,7 +164,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
         className={cn('ac-select', stage && 'is-stage', className)}>
         {icon && <Icon name={icon} size={15} />}
         <span className="v ac-clamp-1">{shown}</span>
-        <Icon name={stage ? 'down' : 'chevronsUpDown'} size={15} />
+        <Icon name="down" size={15} />
       </RPopover.Trigger>
       <RPopover.Portal>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
