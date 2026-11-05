@@ -17,6 +17,7 @@ import {
   type WsSave, type WsShareMatch, type WsShareRow, type WsSpaceChoice, type WsToastData, type WsVersion
 } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { TEMPLATES } from '~/features/workspace/editor/templates';
 import { did } from '../../../src/component';
 import { AIKO, ANA, ART, DIEGO, JONAS, KOFI, LENA, MAYA, PRIYA, SAM } from '../../../src/world/people';
 
@@ -547,7 +548,7 @@ export function ListOf({ ws, quiet = false, onFind, onFollow }: { ws: Workspace;
     ...ws.brought.flatMap((id) => { const it = ws.itemOf(id); return it ? [row(it, 'pins', 0)] : []; })
   ] : [];
   return (
-    <WsList listKey={ws.space} empty={ws.shown.length === 0 && ws.naming === null}
+    <WsList listKey={ws.space} empty={ws.shown.length === 0 && ws.naming === null ? 'yours' : false}
       head={<WsListHead name={ws.spaceName} picker={ws.picker} onFind={onFind ?? did('onFind')}
         create={ws.pop('new', <WsNewMenu onDocument={() => ws.newDocument(null)} onFolder={() => ws.newFolder(null)} onUpload={() => ws.open(null)} />)} />}>
       {pins}
@@ -601,7 +602,7 @@ export function TranscriptLive({ query: startQuery = '', lines = LINES, speaking
 /* ---------- a document ---------- */
 
 /** Share, for a document: the workspace, who it's shared with (each with what they can do), who the field finds, and a guest in the call. */
-export function ShareFor({ name, call, query: startQuery = '', restricted = false }: { name: string; call: boolean; query?: string | undefined; restricted?: boolean | undefined }) {
+export function ShareFor({ title, call, query: startQuery = '', restricted = false }: { title: string; call: boolean; query?: string | undefined; restricted?: boolean | undefined }) {
   const [query, setQuery] = useState(startQuery);
   const [added, setAdded] = useState<{ person: Person; role: 'Can edit' | 'Can read'; guest: boolean }[]>([{ person: LENA, role: 'Can read', guest: false }]);
   const [everyone, setEveryone] = useState(!restricted);
@@ -629,7 +630,7 @@ export function ShareFor({ name, call, query: startQuery = '', restricted = fals
     }))
   ];
   const guest = call && !has(GUEST) ? { person: GUEST, onRead: () => setAdded((now) => [...now, { person: GUEST, role: 'Can read', guest: true }]) } : null;
-  return <WsShareSheet name={name} query={query} onQuery={setQuery} onAdd={() => matches[0]?.onAdd()} matches={matches} rows={rows} guest={guest} />;
+  return <WsShareSheet title={title} query={query} onQuery={setQuery} onAdd={() => matches[0]?.onAdd()} matches={matches} rows={rows} guest={guest} />;
 }
 
 /** Someone's card from their face at the top of a document: they're in it, so there's nowhere to go. */
@@ -691,7 +692,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, zen = false, onZen, f
     <>
       <WsDoc>
         {strip ?? <WsDocHead crumbs={[ws.spaceName, ...ws.above(item.id).map((f) => f.name), name]} save={save} faces={faces} onToggleList={onToggleList}
-          share={ws.pop('share', <ShareFor name={name} call={ws.call} />)}
+          share={ws.pop('share', <ShareFor title={`Share ${name}`} call={ws.call} />)}
           present={ws.call ? ws.pop('present', <WsPresentPreview name={name} sections={item.id === 'plan' ? SECTIONS.length : 1} onStart={() => { ws.open(null); ws.setPresenting(true); }} />) : undefined}
           more={ws.pop('more', moving
             ? <WsMovePicker name={name} space={ws.spaceName} folders={foldersFor(ws, item.id)} onRoot={() => ws.moveTo(item.id, null)} onFolder={(f) => ws.moveTo(item.id, f)} />
@@ -705,7 +706,7 @@ export function DocOf({ ws, save = 'saved', quiet = false, zen = false, onZen, f
           <WsFade id={`${item.id}:${ws.history ?? ''}:${blank ? 'blank' : 'written'}`}>
             <WsPage>
               <PageText title={item.name} by={text?.by ?? ART} edited={text?.edited} lines={lines}
-                after={blank ? <WsTemplates onPick={(t) => ws.fillFrom(item.id, t)} /> : <WsTail onClick={did('onTail')} />} />
+                after={blank ? <WsTemplates templates={TEMPLATES} onPick={(t) => ws.fillFrom(item.id, t)} /> : <WsTail onClick={did('onTail')} />} />
             </WsPage>
           </WsFade>
         </WsScroll>
