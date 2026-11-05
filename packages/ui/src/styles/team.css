@@ -213,7 +213,8 @@
 
 /* ------------------------------------------------------------ a phone: you in the middle of a line that runs off both sides */
 @media (max-width: 860px) {
-  .tp { --hz: 288px; --u0: 86px; --u: 86px; }
+  /* The sea reaches under the tab bar, however short the page: the top bar and the room kept for the tab bar come off it. */
+  .tp { --hz: 288px; --u0: 86px; --u: 86px; min-height: calc(100dvh - 136px - env(safe-area-inset-bottom, 0px)); }
   .dusk.tp .hz { --hz-sun-x: calc(-1.72 * var(--u)); --hz-sun-r: 31px; }
   /* The line slides, so a sun behind it would be cut into slices: it stands in its empty arch instead and slides too. */
   .tp[data-line="long"] .hz-sun { display: none; }
