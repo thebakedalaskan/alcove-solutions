@@ -966,9 +966,19 @@ describe('breakout rooms, each with its own keys', () => {
     // Kofi's inbox, and the room's follow-up for Mia in hers.
     expect((await kofi.browser.api.notes.inbox()).decisions.map((x) => [x.text, x.noteId])).toContainEqual(['We agreed on blue buttons.', noteId]);
     expect((await mia.browser.api.notes.inbox()).followUps.map((x) => [x.text, x.noteId])).toContainEqual(['Draw the icons by Friday', noteId]);
-    // And they're settled like the call's, by anyone who has the notes.
+    // And they're settled like the call's, by anyone invited.
     const blue = d?.decisions[0]?.id ?? '';
-    expect((await kofi.browser.api.notes.updateDecision(noteId, blue, { state: 'confirmed' })).rooms[0]?.decisions[0]?.state).toBe('confirmed');
+    expect((await kofi.browser.api.notes.updateDecision(noteId, blue, { state: 'confirmed', seen: { text: 'We agreed on blue buttons.' } })).rooms[0]?.decisions[0]?.state).toBe('confirmed');
+    // What backs a room's entry comes from that room's lines, and someone with the notes adds to that room's section alone.
+    expect(d?.decisions[0]?.evidence).toMatchObject({ flags: [], moments: [{ kind: 'line', text: 'We agreed on blue buttons.', speaker: { person: { email: kofi.email } } }] });
+    const said = d?.transcript.find((l) => l.text === 'We agreed on blue buttons.')?.id ?? '';
+    const added = await ade.browser.api.notes.proposeDecision(noteId, { text: 'The buttons stay blue in dark mode.', room: d?.id, lines: [said] });
+    expect(added.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed'], ['The buttons stay blue in dark mode.', 'proposed']]);
+    expect(added.rooms[0]?.decisions[1]?.evidence.flags).toEqual([]);
+    expect(added.decisions.map((x) => x.text)).not.toContain('The buttons stay blue in dark mode.');
+    // Only that room's lines back what goes in it: not another room's, nor the main room's.
+    expect(code(await ade.browser.api.notes.proposeDecision(noteId, { text: 'From the other room.', room: sp?.id, lines: [said] }).catch((e: unknown) => e))).toBe('invalid');
+    expect(code(await ade.browser.api.notes.proposeDecision(noteId, { text: 'From a room, to the main room.', lines: [said] }).catch((e: unknown) => e))).toBe('invalid');
     // A room's line is corrected like the call's: its words by whoever said them (or the organizer), nobody else.
     const balance = (await org.api.credits.balance()).balance;
     const icons = d?.transcript.find((l) => l.text === 'Mia will draw the icons by Friday.')?.id ?? '';
@@ -988,7 +998,7 @@ describe('breakout rooms, each with its own keys', () => {
     expect(again.rooms[1]?.transcript.find((l) => l.id === bank)?.text).toBe('Ade will call the bank on Tuesday.');
     expect(again.writingAgain).toBe(false);
     // What was settled in the room stays as it was, and the room's notes model was told so; the rest is written again.
-    expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed']]);
+    expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed'], ['The buttons stay blue in dark mode.', 'proposed']]);
     expect(again.rooms[0]?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
     const rewritten = h.near.prompts.slice(sentAgain).find((x) => x.includes('the breakout room “Design”')) ?? '';
     expect(rewritten).toContain('Mia will draw the icons by Thursday.');
@@ -1080,7 +1090,11 @@ describe('breakout rooms, each with its own keys', () => {
     await org.api.notes.rewrite(noteId);
     await written(org.api, noteId);
     expect((await org.api.notes.get(noteId)).rooms[0]?.summary).toBe('Heard 3 lines. It ended on: After the move.');
-    expect(h.near.prompts.slice(asked).filter((x) => x.includes('the breakout room “Design”'))).toHaveLength(2);
+    // The second time it's asked for less, in case the first was cut off.
+    const retried = h.near.prompts.flatMap((x, i) => (i >= asked && x.includes('the breakout room “Design”') ? [h.near.instructions[i] ?? ''] : []));
+    expect(retried).toHaveLength(2);
+    expect(retried[0]).toMatch(/decisions: .*At most 12: /);
+    expect(retried[1]).toMatch(/decisions: .*At most 6: /);
   });
 });
 
@@ -1735,6 +1749,9 @@ describe('joining by link', () => {
     await host.transcribe(speech('Sam, how is support going?', 0, 8000), host.ticket.identity);
     expect(told().language).toBe('en');
     expect(told().prompt).not.toMatch(/colours|buttons|green/);
+    // Lines are kept to a tenth of a second and this clip is placed by the server's clock: give the last one time to be
+    // plainly before it.
+    await sleep(150);
     await kofi.transcribe(speech('Grey for the borders.', 0, 10_000), kofi.ticket.identity);
     expect(told().prompt).toContain('And green for links.');
     expect(told().prompt).not.toContain('support');

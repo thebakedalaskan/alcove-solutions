@@ -5,6 +5,7 @@ export * from './catchup';
 export * from './personal';
 export * from './client';
 export * from './format';
+export * from './grants';
 export * from './wire';
 export * from './marks';
 export * from './moves';

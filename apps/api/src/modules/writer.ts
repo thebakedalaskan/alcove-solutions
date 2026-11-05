@@ -32,7 +32,7 @@ import { verificationKey } from './transcripts';
 
 const wlog = log.child({ component: 'writer' });
 const ATTEMPTS = 3;
-/** Longer than the slowest draft (three minutes) and checking the model first; a worker that dies mid-job frees it after this. */
+/** Longer than the slowest draft (four minutes) and checking the model first; a worker that dies mid-job frees it after this. */
 const LEASE_SECONDS = 300;
 /** How long to wait before trying a job again, after its first and second failures. */
 const RETRY_SECONDS = [20, 90];
@@ -64,22 +64,26 @@ interface RoomsWritten { rooms: RoomWritten[]; evidence: InferenceEvidence[] }
 interface Wrote { notes?: Written | undefined; rooms: RoomsWritten; readAt: string }
 
 /**
- * The same item in other words: most of the shorter one's words are in the other, and they point at moments within a
- * minute of each other (or one points at none). People reword what they confirm, and the notes model words things
- * afresh each time.
+ * The same item in other words. People reword what they confirm, and the notes model words things afresh each time, so
+ * two entries are alike when they point at moments within a minute of each other and most of the shorter one's words
+ * are in the other. With no moment to go on, that isn't enough: a short proposal shares its words with too much. Then
+ * they must say nearly the same thing, in both directions, in at least three words that say something. Dropping a fresh
+ * entry for looking like a kept one loses what the call said, so when in doubt both stay.
  */
-const ALIKE = { share: 0.6, seconds: 60 };
-const wordsOf = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
+const ALIKE = { share: 0.6, seconds: 60, words: 2, unplaced: { share: 0.85, words: 3 } };
+const SMALL = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'do', 'for', 'from', 'has', 'have', 'i', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'our', 'should', 'so', 'that', 'the', 'their', 'them', 'they', 'this', 'to', 'us', 'was', 'we', 'were', 'will', 'with', 'you', 'your']);
+const wordsOf = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter((w) => w && !SMALL.has(w));
 function alike(a: Item, b: Item): boolean {
-  if (a.at !== undefined && b.at !== undefined && Math.abs(a.at - b.at) > ALIKE.seconds) return false;
+  const placed = a.at !== undefined && b.at !== undefined;
+  if (placed && Math.abs((a.at ?? 0) - (b.at ?? 0)) > ALIKE.seconds) return false;
   const [x, y] = [wordsOf(a.text), wordsOf(b.text)];
   const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  if (!short.length) return false;
+  if (short.length < (placed ? ALIKE.words : ALIKE.unplaced.words)) return false;
   const left = new Map<string, number>();
   for (const w of long) left.set(w, (left.get(w) ?? 0) + 1);
   let shared = 0;
   for (const w of short) { const n = left.get(w) ?? 0; if (n) { shared++; left.set(w, n - 1); } }
-  return shared >= ALIKE.share * short.length;
+  return placed ? shared >= ALIKE.share * short.length : shared >= ALIKE.unplaced.share * long.length;
 }
 /**
  * What the notes say when they're written again: whatever someone has already confirmed, answered, taken on or changed
@@ -108,7 +112,7 @@ async function writeRooms(o: Owner, m: NoteManifest, organizer: Person, style: N
       // Each request is a fresh lease on the job, so another worker doesn't take it while rooms are written.
       await renew();
       try {
-        return { id: r.id, notes: await draft(o.cfg, roomBriefOf(m, r, organizer), style) };
+        return { id: r.id, notes: await draft(o.cfg, roomBriefOf(m, r, organizer), tried > 1 ? { ...style, brief: true } : style) };
       } catch (e) {
         // Waiting for the notes model, or a note deleted meanwhile, is the whole job's; anything else is this room's alone.
         if (e instanceof UnverifiedError || e instanceof UnansweredError || e instanceof NotFoundError) throw e;
@@ -121,7 +125,7 @@ async function writeRooms(o: Owner, m: NoteManifest, organizer: Person, style: N
   return { rooms, evidence: rooms.flatMap((x) => ('notes' in x ? [x.notes.evidence] : [])) };
 }
 
-/** How many breakout rooms' notes are written at once: each is a request of up to three minutes. */
+/** How many breakout rooms' notes are written at once: each is a request of up to four minutes. */
 const ROOMS_AT_ONCE = 3;
 /** `fn` over `xs`, at most `cap` at a time, in their order. The first failure stops what hasn't started, and is thrown. */
 async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -144,10 +148,11 @@ async function inTurns<T, R>(xs: readonly T[], cap: number, fn: (x: T) => Promis
 /**
  * Writes the notes into the note, each breakout room's too (or finishes it without them, with its shared screens read
  * when they were), charges for them and closes the job, together. The charge is for the minutes recorded, not the
- * length of the call: time with notes off is free. Notes written again (the organizer asked, after correcting the
- * transcript) keep what people already confirmed or changed, in the call's notes and each room's, and aren't charged
- * again; when they can't be written, the notes stay as they were. `writtenAt` says when the notes read the transcript,
- * so a correction made since is offered for writing them again.
+ * length of the call: time with notes off is free. Whenever they're written, what people already added, confirmed or
+ * changed stays, in the call's notes and each room's, even if the first try never wrote anything; notes written again
+ * (the organizer asked, after correcting the transcript) aren't charged again, and when they can't be written, the notes
+ * stay as they were. `writtenAt` says when the notes read the transcript, so a correction made since is offered for
+ * writing them again.
  *
  * A call set not to keep its transcript loses it here, once notes are written from it, and not before. Each part of
  * the call goes with its own notes, the main room's and each breakout room's: the new revision has none of those, and
@@ -170,14 +175,13 @@ async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | un
         .sort((a, b) => a.at - b.at);
       if (!wrote) return { ...m, status: 'ready', chapters, ...(shown ? { screens: shown } : {}) };
       // Each room's section as it is now (a line corrected while the notes were written stays corrected), with its
-      // notes as just written: written again, what people settled in it stays, as in the call's. A room whose notes
-      // couldn't be written keeps what it had: none the first time, which the note says, and its transcript, to write
-      // them from. One that has its notes loses its transcript here, if the call was set to, as the call's does.
+      // notes as just written: what people settled in it stays, as in the call's. A room whose notes couldn't be
+      // written keeps what it had: none the first time, which the note says, and its transcript, to write them from.
+      // One that has its notes loses its transcript here, if the call was set to, as the call's does.
       const sections = m.rooms.map((r): RoomNote => {
         const w = wrote.rooms.rooms.find((x) => x.id === r.id);
         if (!w || !('notes' in w)) return r;
-        const items = first ? { decisions: w.notes.decisions, questions: w.notes.questions, actions: w.notes.actions } : keepSettled(r, w.notes);
-        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...items, transcript: m.keep.transcript ? r.transcript : [] };
+        return { ...r, summary: w.notes.summary, chapters: w.notes.chapters, ...keepSettled(r, w.notes), transcript: m.keep.transcript ? r.transcript : [] };
       });
       const evidence = [...(wrote.notes ? [wrote.notes.evidence] : []), ...wrote.rooms.evidence];
       const inference = evidence.reduce((all, e) => (all.some((x) => verificationKey(x) === verificationKey(e)) ? all : [...all, e]), m.inference);
@@ -185,8 +189,7 @@ async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | un
         return { ...m, status: 'ready', chapters, rooms: sections, inference, ...(any ? { writtenAt: wrote.readAt } : {}), ...(shown ? { screens: shown } : {}) };
       }
       const { evidence: _, ...written } = wrote.notes;
-      const again = first ? {} : keepSettled(m, written);
-      return { ...m, status: 'ready', ...written, ...again, chapters, rooms: sections, writtenAt: wrote.readAt, transcript: m.keep.transcript ? m.transcript : [], inference };
+      return { ...m, status: 'ready', ...written, ...keepSettled(m, written), chapters, rooms: sections, writtenAt: wrote.readAt, transcript: m.keep.transcript ? m.transcript : [], inference };
     });
     await exec(c, 'DELETE FROM content_jobs WHERE owner_id = $1 AND job_id = $2', [o.ownerId, jobId]);
     if (any && first) {
@@ -241,7 +244,8 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       // call's notes and each breakout room's.
       const organizer = await me(o);
       const { notesLanguage: language, summaryLength: length } = (await profile(o)).preferences;
-      const style: NotesStyle = { language, length };
+      // After an attempt that didn't work, which may have been cut off, ask for less rather than the same again.
+      const style: NotesStyle = { language, length, brief: job.tried > 0 };
       const renew = async () => {
         await exec(d.pool, 'UPDATE content_jobs SET lease_until = now() + make_interval(secs => $3) WHERE owner_id = $1 AND job_id = $2', [job.owner_id, job.job_id, LEASE_SECONDS]);
       };

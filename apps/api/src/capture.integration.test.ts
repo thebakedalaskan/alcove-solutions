@@ -359,7 +359,7 @@ describe('what a call captures', () => {
     // The notes model read where nothing was captured, and wrote nothing about it.
     const prompt = h.near.prompts.at(-1) ?? '';
     expect(prompt).toContain('[00:04] ');
-    expect(prompt).toContain('-- at 00:05 notes were paused for less than a minute: nothing said then was recorded --\n[00:06] ');
+    expect(prompt).toContain('-- at 00:05 notes were paused for less than a minute: nothing said then was recorded --\nL3 [00:06] ');
     expect(prompt).toContain('-- at 00:10 notes were off for less than a minute: nothing said then was recorded --');
     expect(note.summary).toBe('Heard 3 lines. It ended on: Back to pricing.');
   });
