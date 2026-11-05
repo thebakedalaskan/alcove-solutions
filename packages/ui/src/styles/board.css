@@ -8,6 +8,10 @@
 
 /* A registered colour, so the follow ring can fade in and out as it's set and cleared. */
 @property --fc { syntax: "<color>"; inherits: true; initial-value: transparent; }
+/* The camera writes these on the sheet on every frame. Left to inherit, each write would restyle everything on the board, so they don't: the dots take them on purpose. */
+@property --dot { syntax: "<length>"; inherits: false; initial-value: 24px; }
+@property --dx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --dy { syntax: "<length>"; inherits: false; initial-value: 0px; }
 
 /* ---------------------------------------------------------------- the board and its rail */
 /* The board sits on the stage like anything else that's shared. Its tools are the call's dock, turned on its side, just off the sheet. */
@@ -43,7 +47,7 @@
 .bd.is-new { animation: bd-open var(--bd-rise) var(--ease-in-out) both; }
 .bd.is-page { border-radius: 0; box-shadow: none; }
 .bd.is-mini { border-radius: 0; box-shadow: none; pointer-events: none; }
-.bd::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(circle at 1px 1px, var(--bd-dot) 1px, transparent 1.4px); background-size: var(--dot, 24px) var(--dot, 24px); background-position: var(--dx, 0) var(--dy, 0); -webkit-mask-image: linear-gradient(180deg, black 30%, transparent 94%); mask-image: linear-gradient(180deg, black 30%, transparent 94%); }
+.bd::before { --dot: inherit; --dx: inherit; --dy: inherit; content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(circle at 1px 1px, var(--bd-dot) 1px, transparent 1.4px); background-size: var(--dot, 24px) var(--dot, 24px); background-position: var(--dx, 0) var(--dy, 0); -webkit-mask-image: linear-gradient(180deg, black 30%, transparent 94%); mask-image: linear-gradient(180deg, black 30%, transparent 94%); }
 .bd.is-clean::before { display: none; }
 .bd.is-tool-note, .bd.is-tool-text, .bd.is-tool-shape, .bd.is-tool-line, .bd.is-tool-pen, .bd.is-tool-frame { cursor: crosshair; }
 .bd.is-pan, .bd.is-pan * { cursor: grabbing !important; }
@@ -145,7 +149,8 @@
 .bo-th p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
 
 /* ---------------------------------------------------------------- pointers */
-/* Everyone's pointer: their face and name, and a glow on whoever is talking. `--iz` undoes the camera's zoom, so a pointer stays one size. */
+/* Everyone's pointer: their face and name, and a glow on whoever is talking. `--iz` undoes the camera's zoom, so a pointer stays one size. It's written on their layer alone: changing a custom property restyles an element's children, and the world's children are everything on the board. */
+.bd-pts { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .bc { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; transform: translate(var(--bcx, 0), var(--bcy, 0)) scale(var(--iz, 1)); transform-origin: 0 0; transition: transform var(--bd-point) var(--ease-in-out); }
 .bc .ac-ptag { height: 24px; font-size: 12px; transition: box-shadow var(--duration-2) var(--ease-out); }
 .bc .ac-ptag .n { display: inline-flex; align-items: center; gap: 5px; }

@@ -31,11 +31,11 @@ const place = ({ x, y, w, h }: BoardBox): CSSProperties => ({ left: x, top: y, w
 
 /**
  * Moves the camera without drawing anything again: one transform on the world, the dots on the sheet keep up with it,
- * and `--iz` undoes the zoom for what stays one size, such as pointers.
+ * and `--iz` undoes the zoom for pointers, on the layer `BoardWorld` keeps for them last.
  */
 export function moveBoardCamera(sheet: HTMLElement, world: HTMLElement, { x, y, z }: BoardCamera): void {
   world.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
-  world.style.setProperty('--iz', String(Math.round(1000 / z) / 1000));
+  if (world.lastElementChild instanceof HTMLElement) world.lastElementChild.style.setProperty('--iz', String(Math.round(1000 / z) / 1000));
   sheet.style.setProperty('--dot', `${Math.max(12, Math.round(2400 * z) / 100)}px`);
   sheet.style.setProperty('--dx', `${x}px`);
   sheet.style.setProperty('--dy', `${y}px`);
@@ -78,9 +78,9 @@ export const BoardSheet = forwardRef<HTMLDivElement, BoardSheetProps>(function B
   );
 });
 
-/** The layer the camera moves. Frames, `BoardLines`, objects and pointers go inside it, in that order. */
-export const BoardWorld = forwardRef<HTMLDivElement, { className?: string | undefined; children?: ReactNode }>(function BoardWorld({ className, children }, ref) {
-  return <div ref={ref} className={cn('bd-w', className)}>{children}</div>;
+/** The layer the camera moves. Frames, `BoardLines` and objects go inside it, in that order, and each `BoardPointer` in `pointers`, over them. */
+export const BoardWorld = forwardRef<HTMLDivElement, { className?: string | undefined; pointers?: ReactNode; children?: ReactNode }>(function BoardWorld({ className, pointers, children }, ref) {
+  return <div ref={ref} className={cn('bd-w', className)}>{children}<div className="bd-pts">{pointers}</div></div>;
 });
 
 /** Every line and stroke on the board, in one drawing. */
