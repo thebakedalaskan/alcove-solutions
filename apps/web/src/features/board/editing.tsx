@@ -16,8 +16,6 @@ export const STICKY = 150;
 const NEXT_GAP = 20;
 /** How long after the last key someone has stopped typing into nothing. */
 const KEYS_STOP_MS = 1200;
-/** How soon after a press losing focus is that press's doing. A tap moves focus only after the finger has lifted. */
-const PRESS_MS = 500;
 
 interface TextChange {
   start: number;
@@ -202,10 +200,16 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
         board.nextSticky();
       }
     };
-    let pressed = -PRESS_MS;
-    // A press in the field itself can't be why focus left it.
-    const press = (e: PointerEvent): void => { if (e.target !== el) pressed = e.timeStamp; };
+    // A press moves focus in the same task as its mousedown, so that's what makes a blur the press's doing, however long the page took or
+    // whatever else follows. A press in the field itself can't be why focus left it.
+    let pressing = false;
+    const press = (e: MouseEvent): void => {
+      if (e.target === el) return;
+      pressing = true;
+      setTimeout(() => { pressing = false; });
+    };
     const blur = (e: FocusEvent): void => {
+      const pressed = pressing;
       // React puts focus back after moving a node, as a change of order does, so nothing's lost until that's over.
       queueMicrotask(() => {
         // The event says what's taking focus, whoever moved it. The page may not show it yet, and nothing having focus would read as focus lost.
@@ -214,7 +218,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
         if (to === el && document.hasFocus()) flush();
         // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
         if (to === el || board.getSnapshot().edit !== id) return;
-        if ((!to || to === document.body) && e.timeStamp - pressed >= PRESS_MS) board.fieldLost();
+        if ((!to || to === document.body) && !pressed) board.fieldLost();
         else board.finishEdit();
       });
     };
@@ -224,7 +228,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       el.focus({ preventScroll: true });
       if (document.activeElement !== el) board.fieldLost();
     };
-    addEventListener('pointerdown', press, true);
+    addEventListener('mousedown', press, true);
     addEventListener('focus', back);
     el.addEventListener('keydown', key);
     el.addEventListener('blur', blur);
@@ -234,7 +238,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
     return () => {
       board.flushTyping = null;
       stop();
-      removeEventListener('pointerdown', press, true);
+      removeEventListener('mousedown', press, true);
       removeEventListener('focus', back);
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
