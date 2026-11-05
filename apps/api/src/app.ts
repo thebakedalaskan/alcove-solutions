@@ -125,6 +125,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const speechLimiter = rateLimit(240, 60_000);
   const voiceLimiter = rateLimit(40, 60_000);
   const askLimiter = rateLimit(20, 60_000);
+  /** Asking about a selection, for every demo account together on this instance. */
+  const askDemoLimiter = rateLimit(60, 60_000);
   /** Changing what a note says: each change writes a whole new revision of it, so nobody can churn one, or its history. */
   const noteChangeLimiter = rateLimit(120, 60_000);
   /** Joining by link: public, so limited per client address. */
@@ -757,6 +759,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/documents/:doc/ask', async (c) => {
     const r = await readerOf(c);
     askLimiter(access.limitKey(r), 'ask-selection');
+    // Demo accounts cost nothing to make, so a limit for each of them is no limit: they share one.
+    if (r.account?.sample) askDemoLimiter('demo accounts', 'ask-selection');
     return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
   });
   /* The words of everything a reader can open: for searching in the browser, one document a line. */
