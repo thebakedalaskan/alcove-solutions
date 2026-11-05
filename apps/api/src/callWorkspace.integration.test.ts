@@ -1686,6 +1686,39 @@ describe('a live call comes first', () => {
   });
 });
 
+describe('what a call leaves in the record', () => {
+  const revisions = (ownerId: string, kind: string) => count('SELECT count(*)::int AS n FROM revisions r JOIN items i ON i.owner_id = r.owner_id AND i.item_id = r.item_id WHERE r.owner_id = $1 AND i.kind = $2', [ownerId, kind]);
+
+  it('writes nothing to a meeting for what changes nothing', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Plan');
+    const { host } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.bringDocument(plan, true);
+    const before = await revisions(art.ownerId, 'meeting');
+    for (let i = 0; i < 5; i++) await host.bringDocument(plan, true);
+    expect(await revisions(art.ownerId, 'meeting')).toBe(before);
+    await host.bringDocument(plan, false);
+    const after = await revisions(art.ownerId, 'meeting');
+    expect(after).toBe(before + 1);
+    for (let i = 0; i < 5; i++) await host.bringDocument(plan, false);
+    expect(await revisions(art.ownerId, 'meeting')).toBe(after);
+  });
+
+  it('writes to the account once for tabs going back and forth between two workspaces', async () => {
+    const art = await account();
+    const a = await workspace(art, 'A');
+    const b = await workspace(art, 'B');
+    const opened = async (id: string) => { const s = art.api.workspaces.live(id); await until(() => s.getSnapshot().status === 'live', 'the stream'); s.close(); };
+    await opened(a);
+    await opened(b);
+    const before = await revisions(art.ownerId, 'profile');
+    for (let i = 0; i < 5; i++) { await opened(a); await opened(b); }
+    expect(await revisions(art.ownerId, 'profile')).toBe(before);
+  });
+});
+
 describe('what the previous release stored', () => {
   it('still opens: a call, its meeting, a note and an account from before any of this', async () => {
     const art = await account();

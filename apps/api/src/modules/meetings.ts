@@ -316,7 +316,8 @@ export async function updateManifest(o: Owner, db: Db, id: string, fn: (m: Meeti
   await lockItem(o, db, id);
   const cur = await getItem(o, db, 'meeting', id, MeetingManifest, 'That meeting');
   const next = fn(cur.manifest);
-  await saveRevision(o, db, id, cur.revisionId, next);
+  // What changes nothing writes nothing: every save is a revision, and those are kept.
+  if (next !== cur.manifest) await saveRevision(o, db, id, cur.revisionId, next);
   return next;
 }
 /** Whether a change is one a call's calendar event shows. Google emails everyone about an update, so nothing else goes to it. */
