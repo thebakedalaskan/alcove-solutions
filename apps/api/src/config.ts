@@ -92,9 +92,9 @@ const EnvSchema = z.object({
   DOC_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
   /** How long a worker has for one job on a document, in ms. */
   DOC_WORK_MS: z.coerce.number().int().min(1).default(20_000),
-  /** How much memory the worker for big documents has, in MiB. A document at its ceiling of twice DOC_ITEMS_MAX, of the worst shape measured, peaks at about 510. */
+  /** How much memory the worker for big documents has, in MiB. A document at its ceilings, of the worst shapes measured, peaks at about 550. */
   DOC_HEAP_MB: z.coerce.number().int().min(16).default(640),
-  /** The most separate items a document's page can hold, which is what its memory follows: real blocks hold about 700 to 1,400 bytes an item, and a document opens and folds at twice this inside DOC_HEAP_MB. */
+  /** The most separate items a document's page can hold, which is what its memory follows: real blocks hold about 650 to 1,000 bytes an item once open, and a document opens and folds at its ceilings inside DOC_HEAP_MB. */
   DOC_ITEMS_MAX: z.coerce.number().int().min(1).default(MAX_DOC_ITEMS),
   /** How many jobs one person can have waiting for a worker: past this their browser is told to try again. */
   DOC_WAITING_PER_PERSON: z.coerce.number().int().min(1).default(32),
