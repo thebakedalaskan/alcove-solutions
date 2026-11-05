@@ -4,11 +4,11 @@
  * turned into plain HTML first (nested lists flattened, paragraphs in a cell joined), and the schema's rules read that.
  */
 import { MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES } from '@alcove/api';
-import { itemsOnPage, newBlockId } from '@alcove/api/retire';
+import { newBlockId } from '@alcove/api/retire';
 import { DOMSerializer, Fragment, Slice, type DOMOutputSpec, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
-import * as Y from 'yjs';
+import { MAX_DOC_ITEMS } from '../session';
 import { galleryItems, liveLines, mediaIn } from './blocks/attrs';
 import { dateLabel } from './blocks/dates';
 import { allBlocks, countLine, isBlank, selectedBlock } from './commands';
@@ -404,9 +404,10 @@ const BYTES_PER_BLOCK = 80;
 
 const TOO_MUCH = 'That’s too much to add to this document, so nothing was added. Try a smaller part of it.';
 
-/** Whether a document has room for this much, counted as the API counts it: what's on its page. The API has the last word. */
-function hasRoom(doc: Y.Doc, blocks: number, bytes: number): boolean {
-  return itemsOnPage(doc) + blocks * ITEMS_PER_BLOCK <= MAX_DOC_ITEMS && Y.encodeStateAsUpdate(doc).length + bytes <= MAX_DOC_BYTES;
+/** Whether a document's page has room for this much, by what the session can tell: the API has the last word. */
+function hasRoom(rt: EditorRuntime, blocks: number, bytes: number): boolean {
+  const now = rt.props.size();
+  return now.items + blocks * ITEMS_PER_BLOCK <= MAX_DOC_ITEMS && now.bytes + bytes <= MAX_DOC_BYTES;
 }
 
 function fits(rt: EditorRuntime, slice: Slice): boolean {
@@ -420,7 +421,7 @@ function fits(rt: EditorRuntime, slice: Slice): boolean {
     return true;
   });
   const bytes = words + blocks * BYTES_PER_BLOCK;
-  return blocks <= MAX_PASTE_BLOCKS && chars <= MAX_PASTE_CHARS && bytes <= MAX_PASTE_BYTES && hasRoom(rt.props.doc, blocks, bytes);
+  return blocks <= MAX_PASTE_BLOCKS && chars <= MAX_PASTE_CHARS && bytes <= MAX_PASTE_BYTES && hasRoom(rt, blocks, bytes);
 }
 
 /** What's been read from the clipboard and doesn't fit. It goes no further: nothing about it reaches the document. */
