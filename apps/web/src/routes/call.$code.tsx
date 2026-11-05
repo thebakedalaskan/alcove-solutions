@@ -181,6 +181,8 @@ function InCall({ session }: { session: CallSession }) {
   const spaceKey = JSON.stringify(told.workspace);
   const space = useMemo(() => told.workspace, [spaceKey]);
   const work = useWorkspacePanel(session, space, layout);
+  // What's been brought to this call, as the list will show it.
+  const broughtHere = space.documents.filter((d) => space.id === null || d.workspaceId === space.id).length;
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
   // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
   const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
@@ -954,7 +956,7 @@ function InCall({ session }: { session: CallSession }) {
   const setPeopleMode = (m: CallPeopleMode) => {
     if (roomsHold()) return;
     layout.arrange((p) => setPeople(p, m));
-    if (m !== 'tiles' && !roomy) toast('People stay on the stage until something is shared', { icon: 'eye' });
+    if (m !== 'tiles' && !roomy) toast('People stay on the stage until the workspace is open or something is shared', { icon: 'eye' });
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
@@ -1437,7 +1439,7 @@ function InCall({ session }: { session: CallSession }) {
             <DockSeparator />
             {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
             {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" className="d-mark" onClick={() => own.mark()} />}
-            <DockButton icon="folderOpen" label={!work.open && space.documents.length > 0 ? `Workspace, ${space.documents.length} in this call` : 'Workspace'} tip="Workspace · W" on={work.open} badge={work.open ? 0 : space.documents.length} onClick={work.act.toggle} />
+            <DockButton icon="folderOpen" label={!work.open && broughtHere > 0 ? `Workspace, ${broughtHere} in this call` : 'Workspace'} tip="Workspace · W" on={work.open} badge={work.open ? 0 : broughtHere} onClick={work.act.toggle} />
             <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
             <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
             <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
