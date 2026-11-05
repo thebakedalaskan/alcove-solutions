@@ -112,7 +112,7 @@ export function CallCard({ open, onClose, meeting, onGone }: { open: boolean; on
         {view === 'documents' && (
           <>
             {steps}
-            <Documents picked={m.documents.map((d) => d.id)} back={false} foot={(_, ids) => (
+            <Documents picked={m.documents.map((d) => d.id)} brought={m.documents} back={false} foot={(_, ids) => (
               <>{scopeBar}{fail}<BringFoot count={ids.length} busy={saving} onBring={() => {
                 const before = m.documents.map((d) => d.id);
                 if (ids.length === before.length && ids.every((id) => before.includes(id))) step('card');
@@ -156,9 +156,10 @@ function Summary({ m, back, me, onClose, onOpen, onCancelled }: { m: Meeting; ba
 
   /*
    * Undo makes a new call with the same details: a new link, and answers from nothing. The card has gone by then, and
-   * a mutation's own callbacks go with it, so what happened is said from the promise.
+   * a mutation's own callbacks go with it, so what happened is said from the promise. A new call brings only what you
+   * can open, which leaves out anything you've lost since.
    */
-  const scheduleAgain = () => restore.mutateAsync({ title: m.title, startsAt: m.startsAt, durationMinutes: minutes, guests: m.guests.map((g) => g.email), notes: m.notes, choices: m.choices, joinMuted: m.joinMuted, documents: m.documents.map((d) => d.id) }).then(
+  const scheduleAgain = () => restore.mutateAsync({ title: m.title, startsAt: m.startsAt, durationMinutes: minutes, guests: m.guests.map((g) => g.email), notes: m.notes, choices: m.choices, joinMuted: m.joinMuted, documents: m.documents.flatMap((d) => (d.name === null ? [] : [d.id])) }).then(
     (next) => { toast(restoredLine(next), { icon: 'cal', ms: 9000, action: { label: 'Copy link', onClick: () => copy(next.code) } }); },
     (e: unknown) => {
       clog.warn('scheduling a cancelled call again failed', { err: e, meetingId: m.id });
