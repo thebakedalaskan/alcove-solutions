@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -53,21 +53,22 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /**
  * Mutations that keep no stored receipt. Searching, asking, translating captions and reading who's busy only read. Audio
  * pieces and transcript clips are already idempotent by their place in the recording (and their
- * answers carry the live transcript, which shouldn't be copied into receipts). Changing a note's
- * decisions, open questions, follow-ups and transcript lines, sharing it, and having it written again
- * each set an explicit state, so a retry changes nothing; and their answer is the whole note, which a
- * receipt kept under someone it was given to would still hold after the organizer deleted it. Saying
- * whether you're coming to a call is the same: it sets one value, and what comes back is the organizer's
- * call. Someone's own notes, and what they add to the shared notes, keep none either: deleting them must
- * leave no copy of what they said for a day. Deleting the account deletes its receipts, so there is no
- * account left to keep one under. Answering a ring sets an explicit state too, and a receipt's clear
- * method and time would say an account was rung for a day after the ring had gone.
+ * answers carry the live transcript, which shouldn't be copied into receipts). Proposing a decision or
+ * follow-up, changing a note's decisions, open questions, follow-ups and transcript lines, sharing it,
+ * and having it written again each set an explicit state (the same words proposed again add nothing),
+ * so a retry changes nothing; and their answer is the whole note, which a receipt kept under someone
+ * it was given to would still hold after the organizer deleted it. Saying whether you're coming to a
+ * call is the same: it sets one value, and what comes back is the organizer's call. Someone's own
+ * notes, and what they add to the shared notes, keep none either: deleting them must leave no copy of
+ * what they said for a day. Deleting the account deletes its receipts, so there is no account left to
+ * keep one under. Answering a ring sets an explicit state too, and a receipt's clear method and time
+ * would say an account was rung for a day after the ring had gone.
  */
 const NO_RECEIPT = [
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
@@ -116,6 +117,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const speechLimiter = rateLimit(240, 60_000);
   const voiceLimiter = rateLimit(40, 60_000);
   const askLimiter = rateLimit(20, 60_000);
+  /** Changing what a note says: each change writes a whole new revision of it, so nobody can churn one, or its history. */
+  const noteChangeLimiter = rateLimit(120, 60_000);
   /** Joining by link: public, so limited per client address. */
   const callLimiter = rateLimit(120, 60_000);
   /** Picking one of the times a call offers: public too, and one person does it once. */
@@ -727,11 +730,14 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const jpeg = await notes.screenImage(c.get('owner'), c.req.param('id'), frameId);
     return new Response(jpeg.slice(), { headers: { 'content-type': 'image/jpeg', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'" } });
   });
-  /* Confirming what the notes say: anyone who has them can, and everyone sees who did. */
-  app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(c.get('owner'), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
-  app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(c.get('owner'), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
-  app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(c.get('owner'), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
-  app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(c.get('owner'), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
+  /* Confirming what the notes say, and adding to it: as far as the grants let them (packages/api/src/grants.ts), and everyone sees who did. */
+  const changing = (c: Context<Env>) => { const o = c.get('owner'); noteChangeLimiter(o.ownerId, 'note-change'); return o; };
+  app.post('/v1/notes/:id/decisions', async (c) => c.json(await notes.proposeDecision(changing(c), c.req.param('id'), await body(c, DecisionProposalSchema))));
+  app.post('/v1/notes/:id/actions', async (c) => c.json(await notes.proposeAction(changing(c), c.req.param('id'), await body(c, ActionProposalSchema))));
+  app.patch('/v1/notes/:id/decisions/:decisionId', async (c) => c.json(await notes.updateDecision(changing(c), c.req.param('id'), c.req.param('decisionId'), await body(c, DecisionPatchSchema))));
+  app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(changing(c), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
+  app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(changing(c), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
+  app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(changing(c), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
   app.post('/v1/notes/:id/rewrite', async (c) => {
     const o = c.get('owner');
     // Writing the notes again costs inference and isn't charged, so it shares the questions' allowance.

@@ -154,7 +154,7 @@ describe('keeping the transcript', () => {
     expect(await org.api.notes.list({ text: CANARY })).toEqual([]);
 
     // What people do with the notes from then on keeps going, and brings nothing back.
-    await org.api.notes.updateDecision(noteId, note.decisions[0]?.id ?? '', { state: 'confirmed' });
+    await org.api.notes.updateDecision(noteId, note.decisions[0]?.id ?? '', { state: 'confirmed', seen: { text: note.decisions[0]?.text ?? '' } });
     const later = await revisionsOf(org.session.ownerId, noteId);
     expect(later).toHaveLength(2);
     expect(later.some((r) => r.text.includes(CANARY))).toBe(false);
@@ -482,7 +482,7 @@ describe('a call with breakout rooms', () => {
     for (const table of ['transcript_clips', 'transcript_translations', 'content_jobs', 'operations']) expect(await count(`FROM ${table} WHERE owner_id = $1`, [ownerId]), table).toBe(0);
 
     // What people do with a room's notes from then on keeps going, and brings nothing back.
-    await kofi.browser.api.notes.updateDecision(noteId, note.rooms[0]?.decisions[0]?.id ?? '', { state: 'confirmed' });
+    await kofi.browser.api.notes.updateDecision(noteId, note.rooms[0]?.decisions[0]?.id ?? '', { state: 'confirmed', seen: { text: note.rooms[0]?.decisions[0]?.text ?? '' } });
     expect(await revisionsOf(ownerId, noteId)).toHaveLength(2);
     for (const canary of [CANARY, DESIGN_CANARY, SUPPORT_CANARY]) expect(await anyHolds(ownerId, noteId, canary), canary).toBe(false);
 

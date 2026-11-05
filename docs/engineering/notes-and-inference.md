@@ -16,8 +16,10 @@ note they have. The transcript says what it isn't sure of, words Whisper heard w
 heard on two microphones at once, and once the notes are written the organizer, and the people who spoke their
 own words, can correct it; the organizer can have the notes written again from it
 ([Correcting the transcript](#correcting-the-transcript)). Calls that follow on from each other form a series,
-and what earlier ones settled and left open carries into the next ([Series](#series)). What's kept, and for how
-long, is set when a call is scheduled ([What's kept, and for how long](#whats-kept-and-for-how-long)).
+and what earlier ones settled and left open carries into the next ([Series](#series)). What the notes say is only
+proposed until people say so, each entry shows what was said behind it, and a follow-up is nobody's until they take it on
+([Decisions and follow-ups](#decisions-and-follow-ups)). What's kept, and for how long, is set when a call is scheduled
+([What's kept, and for how long](#whats-kept-and-for-how-long)).
 
 `apps/api/src/inference.ts` and `apps/api/src/evidence.ts` are the only code that uses `NEAR_AI_API_KEY` or
 talks to NEAR AI, and `inference.ts` is the only one that sends it anything with content. Without a key the
@@ -162,7 +164,7 @@ The job has its own state:
 | `content_jobs.state` | Meaning |
 | --- | --- |
 | `queued` | Waiting. `lease_until` is empty for a new job, or the time a retry is due. |
-| `writing` | Claimed by a worker until `lease_until`, 180 seconds later. If the worker dies, the lease runs out and the job can be claimed again. |
+| `writing` | Claimed by a worker until `lease_until`, five minutes later. If the worker dies, the lease runs out and the job can be claimed again. |
 | `waiting` | The notes model's evidence didn't check out, or couldn't be checked, so nothing was sent. Checked again at `lease_until`, five minutes later, for as long as it takes. |
 
 `attempt` counts claims, up to 3; a claim whose evidence didn't check out doesn't count. The row is deleted
@@ -371,7 +373,7 @@ account.
   due jobs from any account, which covers restarts and retries that are due. Without `NEAR_AI_API_KEY`
   nothing is claimed.
 - **Claiming.** One statement picks the job with the oldest lease that is empty or past
-  (`FOR UPDATE SKIP LOCKED`), sets it to `writing`, leases it for 180 seconds and counts the attempt, so two
+  (`FOR UPDATE SKIP LOCKED`), sets it to `writing`, leases it for five minutes and counts the attempt, so two
   workers or two instances never write the same note.
 - **Keys.** The worker opens the account's keys through `KMASTER`, as a request does, and zeroes its copies
   when the job ends.
@@ -397,25 +399,29 @@ account.
 - **Writing again.** The same job, queued by the organizer ([Correcting the transcript](#correcting-the-transcript)),
   while the note stays `ready`. The summary, chapters, suggested questions and what the notes say each screen
   shows are written afresh (frames already read aren't read again); of the decisions, open questions and
-  follow-ups, whatever someone has confirmed, answered, taken on or otherwise changed stays as it is, and the new
+  follow-ups, whatever someone has added, confirmed, answered, taken on or otherwise changed stays as it is, and the new
   ones take the place of the ones nobody touched (`keepSettled` in `writer.ts`, which merges any part of the notes
   with its own decisions, questions and follow-ups the same way). The notes model is told what's settled
   ("Already settled (don't list these again)", each with where it stands, from `settledOf`), and a new item
   that's still a kept one in other words is dropped anyway: most of the shorter one's words (60%) in the other,
-  pointing at moments within a minute of each other or one pointing at none. That also catches what someone
-  settled while the notes were being written, which the model never saw. If they can't be written, the notes stay
-  as they were.
+  pointing at moments within a minute of each other. With no moment to go on, which is any proposal made from memory,
+  that isn't enough, since a short one shares its words with too much: they have to say nearly the same thing both ways
+  (85%), in at least three words, leaving out small ones like "the". Dropping a new item loses what the call said, so
+  when in doubt both stay. That also catches what someone settled while the notes were being written, which the model
+  never saw. If they can't be written, the notes stay as they were.
 - **Waiting for evidence.** When the notes model's evidence doesn't check out, or can't be checked (Intel,
   NVIDIA or NEAR AI unreachable, a platform out of date, anything in [What is checked](#what-is-checked)),
   nothing was sent. The job goes to `waiting` without using up the attempt, and is tried again five minutes
   later, for as long as it takes, so an outage or a TCB recovery doesn't lose notes. The same goes when the
-  notes model doesn't answer (`UnansweredError`: no answer within three minutes, unreachable, `429` or `5xx`):
+  notes model doesn't answer (`UnansweredError`: no answer within four minutes, unreachable, `429` or `5xx`):
   nothing about the note is wrong, so it waits rather than using its attempts up. A draft can take the model
-  well over a minute (about 24 tokens a second, up to 2,500 of them), so it gets three minutes, and the job's
-  lease five.
+  well over a minute (about 24 tokens a second at its slowest, up to 4,000 of them, which is 167 seconds), so it gets
+  four minutes, and the job's lease five.
 - **Retries.** A failed attempt (NEAR AI refusing the request, a reply that won't open, or one that isn't the
   expected JSON) puts the job back to `queued`, due 20 seconds later after the first failure and 90 seconds
-  after the second, with a timer that starts the worker again then. The third failure finishes the note `ready`
+  after the second, with a timer that starts the worker again then. An attempt after a failed one asks the model for
+  about half as much (`brief` in `NotesStyle`), since a reply cut off at `max_tokens` would only be cut off the same way
+  again, and a breakout room's does the same. The third failure finishes the note `ready`
   without notes: its transcript stays, whatever the call was set to keep, and so does any audio it kept, and
   nothing is charged. A job found with all three attempts used (its last worker died) is finished the same way.
 - **Charging.** 25 credits a minute recorded (the seconds of encrypted audio across every segment, as the note
@@ -572,6 +578,120 @@ prompt in `answerFromNotes` in `drafting.ts`).
   moment links to `/notes/<id>?at=<seconds>`; the note page parses `at` with `NoteMomentSchema` and opens
   its player there without playing. A cite at second 0 links to the note without a moment.
 
+## Decisions and follow-ups
+
+What the notes model writes is what it heard, and people decide what stands. Everything here lives in the note's sealed
+manifest, the call's own lists and each breakout room's, so it has no table of its own and goes with the note.
+
+- **A decision's states.** `proposed` until someone confirms it, `confirmed`, `rejected` (it wasn't decided; shown crossed
+  out and kept), or `superseded` (it was decided, and a later one replaced it). Every move is a `Change`: who (their
+  account, name, address and how they had the note then, `by.as`: `organizer`, `invited` or `shared`; `by.id` and `by.as`
+  are null on changes from before they were kept), when, what, and for wording, an owner or a date, what it was and what
+  it became. Each entry keeps 40: its first change, its latest of each kind, since who may do what and what the note says
+  are read from them (who proposed it, who confirmed it), and then its most recent. Saying something and taking it back
+  can't push those out. Every change is a new revision, and revisions stay until the note is deleted, but nothing reads
+  them back, so past 40 a change is out of the history people see. Because each change writes the whole note, changing
+  notes (decisions, questions, follow-ups and lines, adding or changing) is limited to 120 a minute for each account
+  (`503 unavailable`).
+- **Who may do what** is one rule, `packages/api/src/grants.ts`, which the server enforces (`403 forbidden`, naming
+  nobody) and the app reads to offer only what will work. Having the note is the check before any of it. Anyone with the
+  note adds to it, by proposing and disputing. Agreeing is for the people the call was theirs to be in, the organizer and
+  whoever was invited, and takes someone other than whoever wrote the words. Taking something away is for the organizer,
+  whose note it is, or the person concerned, the same shape corrections to the transcript have:
+
+  | Decision | Who |
+  | --- | --- |
+  | Propose one | Anyone with the note |
+  | Confirm a proposed one | The organizer, or anyone invited who didn't write its words: not whoever proposed it, and not whoever last reworded it, so agreeing takes two people (the organizer can confirm their own) |
+  | Say it wasn't decided (`rejected`) | The organizer, or whoever proposed it |
+  | Put a confirmed one back, or say it no longer holds | The organizer, or whoever confirmed it last |
+  | Reopen a rejected one | The organizer, or whoever rejected it |
+  | Confirm a rejected one | The organizer |
+  | Reword what someone proposed | The organizer, or whoever proposed it |
+  | Reword what the notes wrote, while it's proposed | The organizer, or anyone invited |
+  | Reword a confirmed one | The organizer, or whoever confirmed it last; it goes back to proposed |
+  | Say it wasn't decided without rejecting it (`dispute`) | Anyone with the note but the organizer, who rejects it. Not whoever proposed it while it's only proposed, who takes it back, and not whoever confirmed it, who does the same |
+
+  | Follow-up | Who |
+  | --- | --- |
+  | Add one | Anyone with the note; for someone else it's a suggestion, for yourself it's taken on |
+  | Take it on ("I'll do it") | Only the person it's for |
+  | "Not mine" (`owner: null`) | The person it's for: recorded as `declined`, and nobody has it |
+  | Say who it's for | The organizer or the person it's for; anyone while nobody has it (a name the notes couldn't tie to an account counts as nobody) |
+  | Reword, date or tick it | Anyone invited until it's taken on, and someone given the notes afterwards what they added themselves; then its owner or the organizer |
+
+  Someone given the notes afterwards can propose and dispute, and the history says so ("got these notes afterwards"), but
+  confirming closes a decision for everyone, so it isn't theirs to do for the people who were there. They can't cross out
+  what the call agreed either. A decision doesn't wait on them in their inbox, since there's nothing there they can do.
+
+  People are told apart by account (`by.id`), so someone whose address changes keeps what's theirs, and a change from
+  before that was kept goes by address. Two accounts are two people to Alcove: someone with a second address of their own
+  who was invited under both can propose under one and confirm under the other. Nothing can catch that, since nothing ties
+  the two together; both names show in the note's history for everyone who has it.
+- **Discussion stays apart from agreement.** Confirming is of exact words: rewording a confirmed decision puts it back to
+  `proposed` (`reworded`, then `reopened`), and it takes someone else to confirm the new words, so nobody writes something
+  and agrees to it alone. Only the organizer can do both in one change, standing behind their own words. A dispute doesn't
+  move the decision: it stays in `disputes` and flags it until whoever raised it takes it back (`dispute: false`) or the
+  organizer settles it, by rejecting it or by confirming it again (confirming clears only the confirmer's own dispute when
+  anyone else does). A disputed decision no longer waits on whoever disputed it, and one someone else confirms regardless
+  waits on the organizer, so a dispute can't disappear before they've seen it.
+- **Agreeing is to what was read.** Confirming a decision, taking a follow-up on and giving one to yourself say what was
+  read (`seen`: the words, and a follow-up's date). If it says something else by the time that arrives, nothing is saved
+  and it's `409 conflict`, so someone's yes is never recorded against words they didn't see; the app reads the note again
+  and shows what it says now. Agreeing without `seen` is `400 invalid`, unless the same change sets the words.
+- **A follow-up is a suggestion until it's acknowledged.** `owner` and `due` are the notes' word, or someone's, until
+  `takenOn`. The model's reply can't set it: only `text`, `owner`, `due` and where it came from are read, whatever else it
+  says. `takenOn` means the owner agreed to these words and this date, so the organizer changing either records `reopened`,
+  sets it back and returns it to the owner's inbox. Their own changes keep it. A name the notes couldn't tie to anyone can't
+  answer, and the note says so.
+- **What backs an entry.** Each decision, question and follow-up keeps `lines` (the transcript lines it comes from, at most
+  three) and `against` (lines where someone said otherwise, at most two), by line ID. The notes model reads the transcript
+  numbered and points at them; numbers it wasn't sent are dropped, as for a catch-up, and an entry it can't tie to a line
+  stays and says so, with no moment (`at`), which would be the model's word alone. `screen` keeps pointing at a shared
+  screen. Reading a note, the inbox or a series adds `evidence`
+  (`modules/backing.ts`), worked out from the note each time and never stored: `moments`, each line's words, speaker and
+  doubts as they are now and each screen's title and part, and `flags`:
+
+  | Flag | Means |
+  | --- | --- |
+  | `missing` | Nothing said or shown backs it |
+  | `conflict` | A line cuts against it, or someone disputes it |
+  | `unsure` | Every line behind it was hard to hear, or may be someone else's, and no screen plainly backs it |
+  | `corrected` | A line behind it changed after it was last settled (or, if nobody has, after the notes were written) |
+  | `reworded` | Its words changed after it was last settled, so what was said may not say what it says now |
+
+  Settling is someone reading it and saying where it stands: proposing it, confirming, rejecting or superseding it,
+  answering it, taking it on. Disputing, taking a dispute back and reopening aren't, so they clear neither flag. A
+  follow-up someone has taken on isn't flagged `reworded`, since it has their word for what it says now.
+
+  Entries written before this kept no lines: they point at the line said nearest their moment, within 20 seconds, as the
+  note always offered to play. Entries since keep a moment only with a line behind it, so it's only these that have one
+  and no lines. Evidence is a reader's: nothing derived is kept, so each person's comes from the notes they
+  have at that moment, through the check that gave them the note, and someone who lost it reads none of it. It's always
+  worked out from the note as that person may read it (`asRead`), so nobody reads through it a transcript that isn't theirs
+  to read.
+
+  A call set not to keep its transcript has no lines left to quote once its notes are written, and nobody but its organizer
+  reads them before that. An entry then shows nothing said, and that isn't `missing`: what it pointed at went on purpose.
+  `missing` stays on an entry that never pointed at anything, and `conflict` on one with lines against it, since the note
+  still knows that much. `unsure` and `corrected` need the lines themselves, so they can't show.
+- **Adding to the notes.** `POST /v1/notes/:id/decisions` and `…/actions` with the exact words, optionally the `lines` it
+  rests on (at most three, of that part of the note, or `400 invalid`) and a breakout room's section (`room`, or
+  `404 not-found`). Nothing asks a model, and the same words again add nothing, so a retry is safe and no receipt is kept.
+  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Added by people**
+  ([Adding to the shared notes](#adding-to-the-shared-notes)) are the only ways anything reaches the shared notes, and both
+  take someone sending exactly those words, so nothing someone keeps for themselves gets in by itself. A person's entry has
+  `proposed` as its first change, which is also what keeps it when the notes are written again.
+- **In the app.** The note says where each decision stands in words as well as colour, who said so, **What was said**
+  (the lines and screens, each opening the moment), anything to be careful of, and a history that's reachable by keyboard
+  and touch, with what the words were. Only what `grants.ts` allows is offered. A line of the transcript starts a
+  decision or a follow-up from what was said, once the notes are written. Home's **Waiting on you** shows the same, and
+  **I’ll do it** and **Not mine**, and for the organizer, a confirmed decision someone disputes, with **Keep it confirmed**.
+- **Written again.** All of this is what `keepSettled` keeps: anything with a change, so a proposal, a dispute and a "Not
+  mine" too, whenever notes are written, even the first time, when someone added to a note whose notes couldn't be
+  written. The notes model is told, and a fresh entry like a kept one is dropped, so a follow-up someone turned down isn't
+  offered to them again.
+
 ## Correcting the transcript
 
 Once a note is written (`ready`), its lines can be corrected (`PATCH /v1/notes/:id/lines/:lineId`, `LinePatch`
@@ -592,8 +712,8 @@ in `packages/api`, `correctLine` in `apps/api/src/modules/notes.ts`):
   nobody.
 - **Kept like every change.** Each correction is a new revision of the sealed manifest, with the line's
   `changes`: who (name and address), when, what (`reworded`, `reassigned` with the speakers' names before and
-  after, `confirmed`), and the words before. A line keeps 20: its first, whose words before are what was heard,
-  and the latest 19. Earlier revisions stay with the note until it's deleted, so a correction never erases what
+  after, `confirmed`), and the words before. A line keeps 20, as an entry keeps 40: its first, whose words before are
+  what was heard, its latest of each kind, and then its most recent. Earlier revisions stay with the note until it's deleted, so a correction never erases what
   was heard, unless the call was set not to keep the transcript, which goes with them ([What's kept](#whats-kept-and-for-how-long)). Asking the same again changes nothing and writes
   nothing; it keeps no operation receipt, as the answer is the whole note.
 - **Where it shows.** Everything that reads the transcript reads it corrected: the note, asking about it, and
@@ -903,9 +1023,10 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   deleted, removed from someone's notes or never given to them isn't in it. Being invited to one call opens
   nothing from the others.
 - **Settling things.** `PATCH /v1/notes/:id/questions/:id` with `{state?: "open" | "answered", text?}`
-  says an open question was answered, reopens it or rewords it; like decisions and follow-ups, anyone who
-  has the note can, and every change records who and when. A confirmed decision can be said to no longer
-  hold (`superseded`) when a later one replaces it; only a confirmed one (`409 conflict` otherwise). These
+  says an open question was answered, reopens it or rewords it; anyone who has the note can, and every change
+  records who and when. A confirmed decision can be said to no longer hold (`superseded`) when a later one
+  replaces it, by the organizer or whoever confirmed it; only a confirmed one (`409 conflict` otherwise). Who may
+  do what with decisions and follow-ups is in [Decisions and follow-ups](#decisions-and-follow-ups). These
   changes and sharing keep no operation receipt
   ([Privacy › Requests](privacy-keys-and-sessions.md#requests)).
 - **Asking across a series.** `POST /v1/series/:id/ask` with `{question, timeZone}` reads the asker's
@@ -938,7 +1059,8 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
 - **What the model is told.** The meeting's title; whether it was a video call or an in-person meeting
   recorded on one device; the organizer's name; the invited people by name, or by the part of their
   address before the @ when Alcove has no name for them (never full addresses); the length in minutes;
-  and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room), with a line such as
+  and the transcript as `[mm:ss] Name: words` lines (`[mm:ss] words` in a room; writing notes and answering during a
+  call number them, `L12 [mm:ss] Name: words`), with a line such as
   `-- at 12:30 notes were paused for 3 min: nothing said then was recorded --` where nothing was captured
   (`the host's browser was out of the call for 3 min` for an `offline` gap).
   Every prompt that reads a transcript tells the model never to say or guess what happened in one. A line whose
@@ -960,16 +1082,26 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   null, and the second it came up), `chapters` (two to six, each starting at a second read from the
   `[mm:ss]` marks), three `suggestedQuestions` and `screens` (for each shared screen in the transcript, a
   sentence or two on what it shows and what was said about it then), with `screen`, `part` and `sure` on any
-  decision, question, follow-up or chapter about something on a screen. In the language the call was held in,
+  decision, question, follow-up or chapter about something on a screen, and `lines` and `against` on each
+  decision, question and follow-up: the numbers of the lines it comes from, and of any that cut against it.
+  The prompt says what it writes is only proposed, and never to say someone agreed to what they didn't say. It also says
+  how many of each the notes keep (12 decisions, 12 questions, 20 follow-ups) and to describe up to 8 screens, the ones
+  people talked about most when there are more, so the model doesn't spend its tokens on entries that would be dropped: a
+  reply cut off at `max_tokens` isn't JSON, so it counts as a failed attempt, and the next one asks for about half (6, 6,
+  10 and 4), which keeps fewer entries. A screen that isn't described keeps its title and the words read from it. Measured
+  against the verified notes model on 4 November 2026, an 80-line call with 60 things to write down ran into a limit of
+  2,500 tokens and came back cut off; told the limits, it finished in about 2,500, with all 44 entries pointing at lines.
+  With 30 shared screens on top, asking for 12 descriptions ran out of 4,000 tokens in one run of three; asking for 8, none
+  of eight runs did, the longest at 3,581. How many it describes varies from run to run. In the language the call was held in,
   or the one chosen in settings (English, Spanish, French, German, Portuguese, Italian, Dutch, Japanese,
   Chinese, Korean, Hindi or Arabic); only the summary's length changes with the setting. The choices are the
   organizer's for a call and the recorder's for a room recording, read from their profile with keys opened for
   that job and wiped after it (the log says the language code and length, nothing else). Using only what the
   transcript says,
   never inventing names, numbers, dates or decisions. What comes back is stored as proposals: decisions
-  are `proposed`, questions `open` and follow-ups not `takenOn` until people say so
+  are `proposed`, questions `open` and follow-ups not `takenOn` until people say so, whatever the reply says
   (`PATCH /v1/notes/:id/decisions/:id`, `…/questions/:id` and `…/actions/:id`, each answering with the
-  note; see [Privacy › Who can read a note](privacy-keys-and-sessions.md#who-can-read-a-note)). Notes written
+  note; see [Decisions and follow-ups](#decisions-and-follow-ups)). Notes written
   again list what people already settled before the transcript, under "Already settled (don't list these again)":
   each decision, question and follow-up someone changed, with where it stands, one line each.
 - **A breakout room's notes.** As the call's, with the room's own people, length and lines, and a line saying
@@ -1053,7 +1185,7 @@ verified against. The measured OS images aren't configuration at all.
 | --- | --- | --- |
 | Verify a model | `GET /attestation/report`, as in [What is checked](#what-is-checked); then Intel's collateral and `POST {NVIDIA_NRAS_URL}/v3/attest/gpu` with the GPU evidence unchanged | 20 s, 15 s, 30 s |
 | Transcribe a clip | `POST {NEAR_AI_STT_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/audio/transcriptions`, multipart: `model`, `response_format=verbose_json`, `temperature=0`, once the call's language is known `language` (Whisper's code for it, such as `en`: NEAR AI refuses names) and `prompt` (names and the words before, at most 371 bytes), `file` (`clip.wav`, `audio/wav`), with the bearer key | 20 s |
-| Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 2,500, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 180 s |
+| Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 180 s |
 | Read a frame of a shared screen | The same, with the frame as an image part, `max_tokens` 1,200 | 60 s |
 | Answer a question (about a note, across notes, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
 | Catch up | The same, with `max_tokens` 1,500 | 60 s |
@@ -1174,6 +1306,17 @@ again from it without a second charge, keeping the confirmed decision, and a not
 written again. `in the call: hands, spotlight, breakout rooms and captions` covers translating
 captions (once per line and language, sealed to the verified notes model, cross-account, gone when the call
 ends) and breakout rooms ending up in the notes' chapters.
+`apps/api/src/decisions.integration.test.ts` covers decisions and follow-ups end to end: every grant and refusal, with
+who, when and how they had the note; someone given the notes afterwards; disputes and the organizer settling them; new
+words never keeping an old confirmation; proposals (their lines, a retry, refusals across notes and rooms, for strangers,
+guests with the link and anyone signed out, and notes still being written); a model reply saying things are confirmed and
+taken on, ignored;
+"I'll do it", "Not mine" and handing on; an acknowledged follow-up's words and date, and the owner asked again; what backs
+an entry and each flag, read for each person from the notes they have; the history of wording, status, owner and due
+date; the inbox; physical deletion; everything people settled surviving the notes being written again, and what someone
+added to notes that couldn't be written surviving their being written after all; and asking across notes telling a
+suggestion from a commitment. The fake notes model points at real lines, at lines that aren't there, and
+claims what only people can. `breakout rooms, each with its own keys` covers a room's entries resting on its own lines.
 `asking your notes` covers an answer from your own note and one from a call you were invited to, citing
 only those, sent once and sealed to the notes model's attested key as asking about one note is, with no
 receipt; no notes, notes still recording, still being written (with transcript lines, after the notes model
@@ -1304,7 +1447,8 @@ notes start (`NoteManifest.keep`), because it outlives the call and the notes wo
 | The recording (sealed audio pieces in the object store) | With its note, for playback: the transcript and notes point at moments in it | Deleted with the note. A call set not to keep it: uploaded while it runs, because its pieces place lines and gaps and count what's billed, and deleted in the transaction that ends the call |
 | The transcript in the note, the main room's and each breakout room's | Until the organizer deletes the note | Deleted with the note. A call set not to keep it: used to write the notes, and deleted with every earlier revision in the transaction that writes them first. Whatever part's notes can't be written keeps its lines, so the organizer can have them written, and nobody else who has the note reads them meanwhile |
 | Shared-screen frames (sealed images in the object store) and what was read on them | With the note, which shows them beside the lines said then, whichever way the call was set | Deleted with the note |
-| The note: notes, decisions and follow-ups with who changed them, corrections with what they were before | Until the organizer deletes it (for everyone); anyone else removing it removes only their own access | Deleted with every revision |
+| The note: notes, decisions and follow-ups with who changed them and the lines they rest on, what people added and disputed, corrections with what they were before | Until the organizer deletes it (for everyone); anyone else removing it removes only their own access | Deleted with every revision |
+| What backs an entry, as a reader sees it (`evidence`) | Never stored: worked out from the note for whoever reads it | |
 | Earlier revisions of a note | With the note: a correction or a change writes a new revision, and the old ones stay, so nothing is quietly rewritten | Deleted with the note, or with the transcript they hold, as above |
 | Questions, answers and catch-ups | Never stored, unless someone keeps an answer in their own notes | |
 | Someone's own notes: what they wrote, bookmarks, answers they kept | While they have the note, under their own keys, with no earlier versions. Bookmarks hold only pointers, so on a call set not to keep its transcript they stop reaching what was said once it's gone. An answer someone chose to keep stays, as anything they write down would | Deleted with the note, when they remove it from theirs, with their account, or at the end of the call if they were taken off the invite |
@@ -1328,6 +1472,15 @@ What goes with each choice:
 
 ## What's left
 
+- **Settling things during the call.** Catching up keeps decided, suggested, open and next apart, with the lines behind
+  each, for the person reading it alone and kept nowhere. Confirming and taking on start when the note is written: doing
+  it in the call would need a shared record with guests kept out of it, and guests never get the notes.
+- **Follow-ups nobody has.** Someone saying "Not mine" leaves a follow-up with nobody, and nothing in the organizer's inbox
+  says so yet: it shows on the note.
+- **Who left.** Someone who removes a note keeps their name on the follow-ups they took on; the organizer can give them
+  to someone else.
+- **How conflict is found.** A line against an entry is the notes model's word, and only for what it was sent. Two
+  decisions that contradict each other aren't compared.
 - **The model code isn't pinned.** The OS is: a model's VM must have booted a published dstack image,
   measured exactly. But the app compose that OS starts runs NEAR AI's compose manager
   (`nearaidev/compose-manager`, pinned by digest in the compose), which pulls and starts the model
@@ -1374,7 +1527,10 @@ What goes with each choice:
   and the notes take a correction only when the organizer has them written again.
 - **Written again, kept by words.** A new decision, question or follow-up that shares most of a settled one's
   words, near the same moment, is dropped as the same one, even when it says the opposite (a new "Drop the old
-  logo" beside a rejected "Keep the old logo"). Telling the notes model what's settled is the main guard.
+  logo" beside a rejected "Keep the old logo"). Telling the notes model what's settled is the main guard. With no moment
+  to go on it takes nearly the same words, so one thing said two ways can appear twice, the kept wording and the new one.
+- **A second account of your own.** The two-person rule tells people apart by account, so someone invited under two
+  addresses can propose under one and confirm under the other. Both show in the history.
 - **An attested notes participant.** What the notes are made from leaves the call through the browsers that hear
   it, the host's for the main room and each breakout room's scribe's for the room: they send what they hear to the
   API, everyone's speech as clips to transcribe and (the host's) the recording's pieces, over TLS but outside the

@@ -100,7 +100,7 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
     <div ref={box} id={id} className="set-confirm" role="group" aria-labelledby={title} onKeyDown={keys}>
       <b id={title}>Delete your account for good?</b>
       <ul>{goes.map((g) => <li key={g}>{g}</li>)}</ul>
-      <p>Notes other people gave you stay with them, without you. Those notes still have what you said in the call, and still say where you changed or shared them. This can’t be undone.</p>
+      <p>Notes other people gave you stay with them, without you. Those notes still have what you said in the call, and still show, under your name and address, what you proposed, changed, confirmed, disputed or shared in them. This can’t be undone.</p>
       <div role="status" className="set-step-status">{problem && <p className="set-refused"><Icon name="alert" size={18} />{problem.text}</p>}</div>
       <div className="btns">
         <Button ref={cancel} variant="secondary" size="sm" aria-disabled={pending || undefined} onClick={() => { if (!pending) onClose(); }}>{problem?.final ? 'Close' : 'Cancel'}</Button>

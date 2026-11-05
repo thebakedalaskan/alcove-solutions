@@ -90,7 +90,7 @@ describe('memory across a series', () => {
 
     // The open question is in the note, open until someone says it was answered.
     const note = await org.api.notes.get(one.noteId);
-    expect(note.questions).toEqual([{ id: expect.any(String), text: 'Can we afford a second designer?', at: 2, state: 'open', changes: [] }]);
+    expect(note.questions).toMatchObject([{ id: expect.any(String), text: 'Can we afford a second designer?', at: 2, state: 'open', changes: [] }]);
 
     // Scheduling the next one starts the series: the same title, people and notes, when the app says (a week on).
     const first = await org.api.meetings.get(one.meetingId);
@@ -116,8 +116,8 @@ describe('memory across a series', () => {
     // People settle things on the note, and the series shows it straight away.
     const decision = note.decisions[0]?.id ?? '';
     const action = note.actions[0]?.id ?? '';
-    await bea.api.notes.updateDecision(one.noteId, decision, { state: 'confirmed' });
-    await bea.api.notes.updateAction(one.noteId, action, { takeOn: true });
+    await bea.api.notes.updateDecision(one.noteId, decision, { state: 'confirmed', seen: { text: note.decisions[0]?.text ?? '' } });
+    await bea.api.notes.updateAction(one.noteId, action, { takeOn: true, seen: { text: note.actions[0]?.text ?? '', due: note.actions[0]?.due ?? null } });
     s = await org.api.series.get(seriesId);
     expect(s.decisions.map((d) => d.state)).toEqual(['confirmed']);
     expect(s.actions.map((a) => a.takenOn)).toEqual([true]);
