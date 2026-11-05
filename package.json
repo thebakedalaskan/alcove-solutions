@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "docker compose up -d --wait && turbo run dev --filter=@alcove/web --filter=@alcove/server",
+    "storybook": "pnpm --filter @alcove/storybook storybook",
     "build": "turbo run build",
     "typecheck": "node scripts/check-types.mjs && turbo run typecheck",
     "test": "node scripts/check-tests.mjs && docker compose up -d --wait && turbo run test",

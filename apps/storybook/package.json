@@ -1,0 +1,33 @@
+{
+  "name": "@alcove/storybook",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "storybook": "storybook dev --port 6006",
+    "build": "storybook build --output-dir dist --quiet",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@alcove/api": "workspace:*",
+    "@alcove/ui": "workspace:*",
+    "@tanstack/react-query": "^5.105.3",
+    "@tanstack/react-router": "^1.170.46",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.6.5",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "storybook": "10.6.5",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

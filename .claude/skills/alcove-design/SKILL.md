@@ -13,6 +13,8 @@ Everything you need is in `docs/design/`. Read it in this order before you desig
 3. `docs/design/canvas.md`: how to make a design canvas from the kit in `docs/design/canvas/`, with page boards and journey
    boards, how to check it, and how to publish as you go.
 4. `docs/design/building.md`: how a canvas becomes a page in the app.
+5. `apps/storybook/README.md`: Storybook, the record of what's built. Every foundation, component, page and journey, as the
+   app renders them, on made-up data (`pnpm storybook`).
 
 ## The short version
 
@@ -28,5 +30,8 @@ Everything you need is in `docs/design/`. Read it in this order before you desig
 - Show the journeys, not just the screens: one row per journey, numbered frames from the click to the result.
 - Check dark and light, at 390, 1024, 1440 and 1920 to 2000 wide, the first-day state, and every popover, before you show
   anything.
-- Start every canvas from `docs/design/canvas/`, never from blank. Keep it in step with the app.
+- Start every canvas from `docs/design/canvas/`, never from blank. The canvas is for what isn't built yet; to see a page as
+  it is now, open its stories in Storybook.
+- A change to a page or a component changes its Storybook stories in the same pull request: the page's scenarios and its
+  journeys. The canvas's boards don't have to follow.
 - Demo data uses made-up people only. Never write a real person's name, the user's included.

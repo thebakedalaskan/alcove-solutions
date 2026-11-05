@@ -10,6 +10,8 @@ anything, whether it's a page, a flow, a component or a design canvas.
 3. [Making a design canvas](canvas.md): how to design something new as a canvas on claude.ai. It covers the kit, page boards,
    journey boards, the traps, checking, and publishing as you go.
 4. [Building a design in the app](building.md): how a canvas becomes a page, without losing a feature or inventing data.
+5. [Storybook](../../apps/storybook/README.md): what's built, as the app renders it. Every foundation, component, page and
+   journey, in each of its states, light and dark, phone and wide.
 
 ## Where things are
 
@@ -20,9 +22,12 @@ anything, whether it's a page, a flow, a component or a design canvas.
 | Components | `packages/ui/src/components/`, with their styles in `packages/ui/src/styles/` |
 | The scene behind every page | `packages/ui/src/components/horizon.tsx` and `styles/horizon.css` |
 | What each page does, feature by feature | [docs/product/user-flows.md](../product/user-flows.md) |
-| The canonical canvas: Home, Notes, a note, a series, Team, Record and Settings as boards, with each page's journeys (a series has none yet) | [canvas/](canvas/) |
+| What's built: the foundations, every component, page and journey, on made-up data (`pnpm storybook`) | [apps/storybook](../../apps/storybook/README.md) |
+| The canvas every new design starts from: Home, Notes, a note, a series, Team, Record and Settings as boards, with each page's journeys (a series has none yet) | [canvas/](canvas/) |
 
 ## The one rule that holds it together
 
-The canvas and the app show the same thing. When a page changes in the app, its board in [canvas/](canvas/) changes in the
-same pull request. When a design is built, the boards are brought in line with what was built and copied into the repo.
+Storybook is the record of what's built, and it can't drift: it renders the app's own components and pages. When a page
+or a component changes, its stories change in the same pull request: the page's scenarios (add one for a state none of
+them reaches) and its journeys. The canvas is for new ideas: a design is explored there before it's built, and its boards
+don't have to follow the app afterwards. Storybook's demo world starts from the canvas's, so both tell the same story.

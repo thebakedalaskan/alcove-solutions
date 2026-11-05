@@ -871,7 +871,7 @@
   .ic-dockbar .ac-dock-chev { height: 38px; width: 18px; }
   .ic-dockbar .ac-dock-sep { margin: 0 2px; }
   .ic-dockbar .ac-dock-leave { padding: 0 12px; }
-  .ic-dockbar .ac-dock-leave .lt { display: none; }
+  .ic-dockbar .ac-dock-leave .lt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .ic-rs { display: none; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
   .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

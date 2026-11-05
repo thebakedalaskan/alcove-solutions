@@ -95,9 +95,9 @@ export const DockWords = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes
     return <button ref={ref} type={type} className={cn('ac-dock-words', className)} {...rest}><Icon name={icon} size={15} /><span>{children}</span></button>;
   });
 
-/** Leave: the last item in the dock and its only text button. Its word is its name, still, where a narrow dock hides it. */
+/** Leave: the last item in the dock and its only text button. Where a dock has no room for its word, the word is hidden only from sight, so it's still Leave's name. */
 export const DockLeave = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(function DockLeave({ className, children = 'Leave', type = 'button', ...rest }, ref) {
-  return <button ref={ref} type={type} className={cn('ac-dock-leave', className)} aria-label={typeof children === 'string' ? children : undefined} {...rest}><Icon name="signOut" size={18} /><span className="lt">{children}</span></button>;
+  return <button ref={ref} type={type} className={cn('ac-dock-leave', className)} {...rest}><Icon name="signOut" size={18} /><span className="lt">{children}</span></button>;
 });
 
 /** A live caption. Translated lines carry a language tag and keep the original underneath. */
