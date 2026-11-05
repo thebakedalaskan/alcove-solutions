@@ -4,7 +4,7 @@
  * dropped connections, restarts and compactions, and nothing for anyone who can't open it.
  */
 import {
-  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind,
+  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind,
   type KeptUpdate, type KeptUpdates, type WorkspaceHere, type WorkspaceLive, type WorkspaceRole
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
@@ -15,7 +15,7 @@ import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { encodeAwarenessUpdate, Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { blindIndex, stateKey } from './crypto';
+import { blindIndex, mac, stateKey } from './crypto';
 import { maintain } from './maintenance';
 import { openState, sealState, workspaceFor, type WorkspaceState } from './modules/workspaceAccess';
 import { documentText, documentTodos } from './modules/documentText';
@@ -23,7 +23,7 @@ import { sealUpdate } from './modules/documentWork';
 import { keepVersion, readDocument, writeDocument, type Held } from './modules/workspaceDocuments';
 import { personOf } from './modules/portraits';
 import { findOwner, masterKey } from './owners';
-import { startHarness, type Browser, type Harness } from './testing/harness';
+import { ORIGIN, startHarness, type Browser, type Harness } from './testing/harness';
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -267,7 +267,7 @@ describe('a document', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'document', 'Plan');
     const [a, t] = await Promise.all([open(ann, id, doc), open(theo, id, doc)]);
-    expect(a.getSnapshot()).toEqual({ status: 'saved', refused: null, role: 'edit', trashed: false, closed: null });
+    expect(a.getSnapshot()).toEqual({ status: 'saved', refused: null, role: 'edit', trashed: false, closed: null, unsent: false });
 
     line(a).insert(0, 'Hello');
     expect(a.getSnapshot().status).toBe('saving');
@@ -333,7 +333,8 @@ describe('a document', () => {
     expect((await up(new TextEncoder().encode('{"not":"an update"}'))).status).toBe(400);
     expect((await up(randomBytes(64))).status).toBe(400);
     expect((await post(ann, `${docPath(id, doc)}/updates`, {})).status).toBe(400);
-    expect((await up(new Uint8Array(MAX_DOC_UPDATE_BYTES + 1))).status).toBe(400);
+    // More than a document can hold is too much, which is what a browser hears, not that it's never to be.
+    expect((await up(new Uint8Array(MAX_DOC_UPDATE_BYTES + 1))).status).toBe(413);
     expect(await count('SELECT next_seq::int AS n FROM documents WHERE document_id = $1', [doc])).toBe(1);
     expect((await up(anUpdate('A real one'))).status).toBe(200);
 
@@ -1721,7 +1722,7 @@ describe('versions', () => {
     await until(() => body(fresh) === then && body(a) === then, 'the deleted words to come back');
   });
 
-  it('keeps a bounded number of versions, dropping the oldest', async () => {
+  it('keeps versions up to a budget of bytes, however many there are, dropping the oldest past it', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Doc');
@@ -1738,14 +1739,16 @@ describe('versions', () => {
     line(s).insert(0, 'w');
     await saved(s);
     const newest = await keepVersion(held, doc, { reason: 'call', callId: null });
-    expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1', [doc])).toBe(200);
-    expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1 AND version_id = $2', [doc, first])).toBe(0);
-    // However many bytes they come to, the newest stays.
+    // None goes for being one of many: the oldest may be the last to hold words deleted since.
+    expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1', [doc])).toBe(207);
+    expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1 AND version_id = $2', [doc, first])).toBe(1);
+    // Past the budget the oldest go, and however many bytes they come to, the newest stays.
     await h.pool.query("UPDATE document_versions SET bytes = 40 * 1024 * 1024 WHERE document_id = $1 AND version_id <> $2 AND version_id IN (SELECT version_id FROM document_versions WHERE document_id = $1 AND version_id <> $2 ORDER BY created_at DESC LIMIT 3)", [doc, newest]);
     line(s).insert(0, 'x');
     await saved(s);
     await keepVersion(held, doc, { reason: 'call', callId: null });
     expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1', [doc])).toBeLessThanOrEqual(3);
+    expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1 AND version_id = $2', [doc, first])).toBe(0);
   });
 });
 
@@ -2081,17 +2084,30 @@ describe('limits', () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Doc');
-    const s = await open(ann, id, doc);
-    line(s).insert(0, 'Small enough');
-    await saved(s);
-    await h.pool.query('UPDATE documents SET snapshot_bytes = $2 WHERE document_id = $1', [doc, 16 * 1024 * 1024]);
-    line(s).insert(0, 'One more word');
-    await until(() => s.getSnapshot().status === 'failed', 'the save to fail');
-    expect(s.getSnapshot().refused).toBe('too-large');
-    // Only taking words out: that's fine.
-    const fresh = await open(ann, id, doc);
-    line(fresh).delete(0, 5);
-    await saved(fresh);
+    const s0 = await open(ann, id, doc);
+    for (let i = 0; i < 6; i++) addBlock(s0, 'line', `b${i}`).insert(0, [new Y.XmlText(`Words of ${i}`)]);
+    await saved(s0);
+    s0.close();
+    await keepVersion(await heldBy(ann, id), doc, { reason: 'edits', callId: null });
+    const page = await count('SELECT (snapshot_items - snapshot_retired_items)::int AS n FROM documents WHERE document_id = $1', [doc]);
+    const second = await h.secondServer({ DOC_ITEMS_MAX: page + 2 });
+    try {
+      const api = createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch });
+      const s = await api.workspaces.document(id, doc);
+      await s.ready;
+      for (let i = 0; i < 2; i++) addBlock(s, 'line', `more${i}`).insert(0, [new Y.XmlText('One more block')]);
+      await until(() => s.getSnapshot().status === 'failed', 'the save to fail');
+      expect(s.getSnapshot()).toMatchObject({ refused: 'too-large', unsent: true });
+      // Only taking words out: that's fine.
+      const fresh = await api.workspaces.document(id, doc);
+      await fresh.ready;
+      line(fresh, 'b0').delete(0, 5);
+      await until(() => fresh.getSnapshot().status === 'saved', 'the delete to go', 5_000);
+      fresh.close();
+      s.close();
+    } finally {
+      await second.close();
+    }
   });
 
   it('counts updates and carets per person: past the limit it says to wait, and a browser just tries again', async () => {
@@ -2282,7 +2298,8 @@ describe('what a browser sends', () => {
     await saved(a);
     const whole = nesting(4040).deeper(5000);
     expect(whole.length).toBeLessThan(50_000);
-    expect((await sendUpdate(mal, id, doc, whole)).status).toBe(400);
+    // Too much, which is what taking it out would change.
+    expect((await sendUpdate(mal, id, doc, whole)).status).toBe(413);
     // Nothing was kept of it, so a 7-byte delete of it means nothing.
     expect((await sendUpdate(mal, id, doc, onlyDeletes([4040, 0, 1]))).status).toBe(400);
 
@@ -2412,7 +2429,7 @@ describe('what a browser sends', () => {
     const shape = conflicting(16_000);
     expect(shape.length).toBeLessThan(300_000);
     const t0 = performance.now();
-    expect((await sendUpdate(mal, id, doc, shape)).status).toBe(400);
+    expect((await sendUpdate(mal, id, doc, shape)).status).toBe(413);
     expect(await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc])).toBe(0);
     expect(await bystander(ann)).toBe(200);
     expect(performance.now() - t0).toBeLessThan(5000);
@@ -2560,8 +2577,9 @@ describe('a document that’s too much', () => {
     line(o).insert(0, 'Unaffected');
     await saved(o);
     const unmerged = (client: number, n: number) => block(client, 0, [item({ root: 'many' }), ...Array.from({ length: n - 1 }, (_, i) => item({ right: [client, i] }))]);
-    for (let i = 0; i < 3; i++) expect((await sendUpdate(ann, id, doc, unmerged(5000 + i, 150_000))).status).toBe(200);
-    const small = { DOC_HEAP_MB: 48 };
+    // As much as a page can hold, in pieces that never merge.
+    for (let i = 0; i < 3; i++) expect((await sendUpdate(ann, id, doc, unmerged(5000 + i, 49_000))).status).toBe(200);
+    const small = { DOC_HEAP_MB: 32 };
     const second = await h.secondServer(small);
     try {
       const api = createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch });
@@ -2778,24 +2796,19 @@ describe('a full document', () => {
     }
   });
 
-  it('has a ceiling all the same: attributes can’t be used to fill an instance, and deleting still works past it', async () => {
+  it('takes only what doesn’t add to a full page: a new attribute waits, one written over goes, and deleting always does', async () => {
     const { ann, id, doc, s, second } = await filled();
     try {
-      // Twice the limit, and a client of someone's own: past that, nothing but deletes.
-      const client = 8080;
-      const statuses: number[] = [];
-      for (let i = 0; i < 40; i++) statuses.push((await sendUpdate(ann, id, doc, block(client, i, [attribute({ parent: [1, 2], key: `k${i}`, value: 'x' })]), second.baseUrl)).status);
-      expect(statuses[0]).toBe(200);
-      expect(statuses).toContain(413);
-      expect(statuses.lastIndexOf(200)).toBeLessThan(statuses.indexOf(413));
-      expect((await sendUpdate(ann, id, doc, onlyDeletes([client, 0, 1]), second.baseUrl)).status).toBe(200);
-      // A big value is content, whatever it's written on.
-      const fresh = await h.secondServer({ DOC_ITEMS_MAX: 8 });
-      try {
-        expect((await sendUpdate(ann, id, doc, block(8081, 0, [attribute({ parent: [1, 2], key: 'big', value: 'x'.repeat(2000) })]), fresh.baseUrl)).status).toBe(413);
-      } finally {
-        await fresh.close();
-      }
+      // Something more on the page, however small.
+      expect((await sendUpdate(ann, id, doc, block(8080, 0, [attribute({ parent: [1, 2], key: 'k0', value: 'x' })]), second.baseUrl)).status).toBe(413);
+      // The same key written over replaces what's there, which adds nothing.
+      const el = s.doc.getXmlFragment('content').toArray().find((e) => e instanceof Y.XmlElement && e.getAttribute('id') === 'second');
+      if (!(el instanceof Y.XmlElement)) throw new Error('no block');
+      el.setAttribute('kind', 'quote');
+      await until(() => s.getSnapshot().status === 'saved', 'it to go');
+      line(s).delete(0, 5);
+      await until(() => s.getSnapshot().status === 'saved', 'the delete to go');
+      expect(s.getSnapshot().refused).toBeNull();
     } finally {
       s.close();
       await second.close();
@@ -2982,24 +2995,6 @@ describe('a big paste', () => {
     await saved(back);
     await says(b, 'Typed after it.');
     expect(store.kept).toEqual([]);
-  });
-
-  it('gives up on what can never go, says so, and doesn’t carry it into the next reload', async () => {
-    const { ann, mal, id, doc } = await together();
-    const store = keepStore();
-    // Something kept here that Alcove will never take: someone else's client, as after a mix-up in a browser's store.
-    expect((await sendUpdate(mal, id, doc, block(4242, 0, [item({ root: 'scratch' })]))).status).toBe(200);
-    await store.keep.add(block(4242, 0, [item({ root: 'scratch', text: 'Not mine' })]), Date.now());
-    const a = await ann.api.workspaces.document(id, doc, { keep: store.keep });
-    await a.ready;
-    await until(() => a.getSnapshot().refused === 'rejected', 'it to say so');
-    expect(a.getSnapshot().status).toBe('failed');
-    await until(() => store.kept.length === 0, 'it to let go');
-    a.close();
-    const back = await open(ann, id, doc, { keep: store.keep });
-    line(back).insert(0, 'Fine again');
-    await saved(back);
-    expect(back.getSnapshot().refused).toBeNull();
   });
 });
 
@@ -3199,5 +3194,987 @@ describe('streams, read closely', () => {
     line(b).insert(0, 'Typing straight in');
     await saved(b);
     expect(body(await open(ann, id, doc))).toContain('Typing straight in');
+  });
+});
+
+/* ---------- what a refusal must never do ---------- */
+
+/** Signs in through the stand-in Google, which is how an account comes to have a new address. */
+async function withGoogle(email: string, sub: string): Promise<Account> {
+  const b = h.browser();
+  h.google.next({ sub, email, name: 'Google Person' });
+  let url = new URL(`${h.baseUrl}/v1/auth/google`);
+  for (let hop = 0; hop < 10 && url.origin !== new URL(ORIGIN).origin; hop++) {
+    const res = url.origin === h.google.issuer ? await fetch(url, { redirect: 'manual' }) : await b.fetch(url, { redirect: 'manual' });
+    url = new URL(res.headers.get('location') ?? '', url);
+  }
+  const session = await b.api.auth.getSession();
+  if (!session) throw new Error('not signed in');
+  return { ...b, email: session.user.email, name: session.user.name, ownerId: session.ownerId };
+}
+const refusals = (doc: string) => h.logs.filter((l) => l.includes('update refused') && l.includes(doc));
+
+/** A document's first state made of plain paragraphs, as the app makes one of the words someone rescued. */
+function stateFromText(text: string): Uint8Array {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, DOC_SEED);
+  const page = doc.getXmlFragment('content');
+  doc.transact(() => {
+    for (const paragraph of text.split('\n')) {
+      const el = new Y.XmlElement('line');
+      el.setAttribute('id', newBlockId());
+      page.insert(page.length, [el]);
+      el.insert(0, [new Y.XmlText(paragraph)]);
+    }
+  });
+  return Y.encodeStateAsUpdate(doc);
+}
+
+describe('a refusal', () => {
+  /** Words in the first line, as a browser with this client would write them, on top of `on`. */
+  function written(client: number, text: string, on: Uint8Array[] = []): Uint8Array {
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, DOC_SEED);
+    for (const u of on) Y.applyUpdate(doc, u);
+    // Last, as Yjs moves a document off a client it hears someone else using.
+    doc.clientID = client;
+    const before = Y.encodeStateVector(doc);
+    const t = line({ doc });
+    t.insert(t.length, text);
+    return Y.encodeStateAsUpdate(doc, before);
+  }
+  /** A store holding something Alcove will never take: words carrying on from a client that's someone else's. */
+  async function strandedWords() {
+    const { ann, bob, mal, id, doc } = await together();
+    const mals = block(4242, 0, [item({ root: 'scratch', text: 'Mal’s' })]);
+    expect((await sendUpdate(mal, id, doc, mals)).status).toBe(200);
+    const store = keepStore();
+    const first = written(4242, 'Words only Ann has', [mals]);
+    await store.keep.add(first, Date.now());
+    return { ann, bob, id, doc, store, first };
+  }
+
+  it('never forgets what’s kept, says so, and keeps saying so after a reload', async () => {
+    const { ann, id, doc, store } = await strandedWords();
+    const a = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+    await a.ready;
+    await until(() => a.getSnapshot().refused === 'rejected', 'it to say so');
+    expect(a.getSnapshot()).toMatchObject({ status: 'failed', refused: 'rejected', unsent: true });
+    await rest(1500);
+    expect(store.kept).toHaveLength(1);
+    a.close();
+    await rest(100);
+    const again = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+    await again.ready;
+    await until(() => again.getSnapshot().refused === 'rejected', 'it to say so again');
+    expect(store.kept).toHaveLength(1);
+    expect(again.getSnapshot().status).toBe('failed');
+  });
+
+  it('lets what doesn’t depend on it through, and never reports saved while anything’s held back', async () => {
+    const { ann, bob, id, doc, store } = await strandedWords();
+    const a = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+    await a.ready;
+    const b = await open(bob, id, doc);
+    await until(() => a.getSnapshot().refused === 'rejected', 'it to say so');
+    addBlock(a, 'line', 'later').insert(0, [new Y.XmlText('Typed afterwards. ')]);
+    await says(b, 'Typed afterwards.');
+    await rest(300);
+    expect(a.getSnapshot()).toMatchObject({ status: 'failed', refused: 'rejected', unsent: true });
+    expect(store.kept.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('doesn’t drop what’s built on what was refused, in the tab or after a reload', async () => {
+    const { ann, id, doc, store, first } = await strandedWords();
+    await store.keep.add(written(5151, ' and more', [block(4242, 0, [item({ root: 'scratch', text: 'Mal’s' })]), first]), Date.now());
+    const a = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+    await a.ready;
+    await until(() => a.getSnapshot().refused === 'rejected', 'it to say so');
+    expect(store.kept).toHaveLength(2);
+    a.close();
+    await rest(100);
+    const again = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+    await again.ready;
+    await until(() => again.getSnapshot().status === 'failed', 'it to say so again');
+    expect(store.kept).toHaveLength(2);
+    expect(again.unsentCopy().text).toContain('Words only Ann has and more');
+  });
+
+  it('gets out even what has nowhere to go: words built on something that’s gone from this browser', async () => {
+    const { ann, id, doc } = await together();
+    const store = keepStore();
+    // What they were built on was let go of, as a store from before this could have done.
+    await store.keep.add(written(5151, 'Words on nothing', [written(4242, 'Something gone')]), Date.now());
+    const a = await open(ann, id, doc, { keep: store.keep });
+    await until(() => a.getSnapshot().refused === 'rejected', 'it to say so');
+    await rest(1200);
+    expect(store.kept).toHaveLength(1);
+    expect(a.getSnapshot()).toMatchObject({ status: 'failed', unsent: true });
+    const copy = a.unsentCopy();
+    expect(copy.text).toContain('Words on nothing');
+    const made = await ann.api.workspaces.saveCopy(id, { kind: 'document', name: 'Rescued', parent: null, state: stateFromText(copy.text) });
+    expect(body(await open(ann, id, made.id))).toContain('Words on nothing');
+  });
+
+  it('leaves a way to get the words out: their text, a copy to make a new document from, and a choice to let go', async () => {
+    const { ann, id, doc, store } = await strandedWords();
+    const a = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+    await a.ready;
+    await until(() => a.getSnapshot().refused === 'rejected', 'it to say so');
+    const copy = a.unsentCopy();
+    expect(copy.text).toContain('Words only Ann has');
+    const made = await ann.api.workspaces.saveCopy(id, { kind: 'document', name: 'What I had', parent: null, state: stateFromText(copy.text) });
+    const fresh = await open(ann, id, made.id);
+    expect(body(fresh)).toContain('Words only Ann has');
+    expect((await ann.api.workspaces.get(id)).items.some((i) => i.id === made.id && i.name === 'What I had')).toBe(true);
+    line(fresh).insert(0, 'Carrying on. ');
+    await saved(fresh);
+    expect(fresh.getSnapshot().refused).toBeNull();
+    // Only someone choosing to lets go of anything, and only of what a copy holds.
+    expect(store.kept).toHaveLength(1);
+    await a.discardUnsaved(copy.token);
+    expect(store.kept).toEqual([]);
+  });
+
+  it('gives back a line written offline in a document deleted before it came back, in the tab and after a reload', async () => {
+    const { ann, bob, id, doc } = await together();
+    const store = keepStore();
+    const link = network(bob);
+    const b = await open(link.browser, id, doc, { keep: store.keep });
+    line(b).insert(0, 'Online first.');
+    await saved(b);
+    link.drop();
+    line(b).insert(line(b).length, ' Written offline.');
+    await until(() => store.kept.length > 0, 'it to be kept');
+    await ann.api.workspaces.items.trash(id, doc);
+    await ann.api.workspaces.items.deleteForever(id, doc);
+    // In the tab, it's all on the page, with nowhere to go.
+    link.back();
+    await until(() => b.getSnapshot().closed !== null, 'it to end');
+    // Only what didn't go: what went is in the document already.
+    expect(b.unsentCopy().text).toBe('Written offline.');
+    b.close();
+    // After a reload nothing it was written on comes from Alcove, so Yjs has nowhere to put it at all.
+    const again = await bob.api.workspaces.document(id, doc, { keep: store.keep });
+    await until(() => again.getSnapshot().closed !== null, 'it to end again');
+    expect(again.getSnapshot().unsent).toBe(true);
+    expect(store.kept.length).toBeGreaterThan(0);
+    const copy = again.unsentCopy();
+    expect(copy.text).toContain('Written offline.');
+    const made = await bob.api.workspaces.saveCopy(id, { kind: 'document', name: 'From the train', parent: null, state: stateFromText(copy.text) });
+    const fresh = await open(bob, id, made.id);
+    expect(body(fresh)).toContain('Written offline.');
+    expect(title(fresh).toString()).toBe('From the train');
+    again.close();
+  });
+
+  it('rescues only someone’s own words that didn’t go: nobody else’s, nothing that went, and nothing they deleted', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    line(a).insert(0, 'Ann’s own words. ');
+    await saved(a);
+    const link = network(bob);
+    const b = await open(link.browser, id, doc);
+    await says(b, 'Ann’s own words.');
+    line(b).insert(line(b).length, 'Bob went. ');
+    await saved(b);
+    link.drop();
+    // Yjs makes one item of these and what went before them: the copy reads it by the clock.
+    line(b).insert(line(b).length, 'Bob on the train, ');
+    line(b).insert(line(b).length, 'then thought better of it');
+    const t = line(b);
+    t.delete(t.toString().indexOf('then thought'), 'then thought better of it'.length);
+    addBlock(b, 'line', 'second').insert(0, [new Y.XmlText('A second line.')]);
+    expect(b.unsentCopy().text).toBe('Bob on the train,\nA second line.');
+  });
+
+  it('lets someone who can only read now let go of what they wrote, so nothing says it couldn’t save', async () => {
+    const { ann, bob, id, doc } = await together();
+    const store = keepStore();
+    const link = network(bob);
+    const b = await open(link.browser, id, doc, { keep: store.keep });
+    link.drop();
+    line(b).insert(0, 'Written before Bob could only read. ');
+    await until(() => store.kept.length > 0, 'it to be kept');
+    const person = (await ann.api.workspaces.people(id)).find((p) => p.person.email === bob.email)?.id ?? '';
+    await ann.api.workspaces.setRole(id, person, 'read');
+    link.back();
+    await until(() => b.getSnapshot().refused === 'read-only', 'it to say so', 20_000);
+    expect(b.getSnapshot()).toMatchObject({ status: 'failed', unsent: true });
+    const copy = b.unsentCopy();
+    expect(copy.text).toBe('Written before Bob could only read.');
+    await b.discardUnsaved(copy.token);
+    expect(store.kept).toEqual([]);
+    const again = await open(bob, id, doc, { keep: store.keep });
+    expect(again.getSnapshot()).toMatchObject({ status: 'saved', refused: null, unsent: false, role: 'read' });
+    again.close();
+  });
+
+  it('won’t take a copy over a document someone has written to', async () => {
+    const { ann, id, doc } = await together();
+    await sendUpdate(ann, id, doc, anUpdate('Already here'));
+    expect((await ann.fetch(`${h.baseUrl}/v1${docPath(id, doc)}/adopt`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE }, body: bytesOf(DOC_SEED) })).status).toBe(409);
+    expect(body(await open(ann, id, doc))).toContain('Already here');
+  });
+
+  it('keeps what’s here if the document is deleted out from under it, until someone says otherwise', async () => {
+    const { ann, bob, id, doc } = await together();
+    const store = keepStore();
+    const link = network(bob);
+    const b = await open(link.browser, id, doc, { keep: store.keep });
+    link.drop();
+    line(b).insert(0, 'Written on the train. ');
+    await until(() => store.kept.length > 0, 'it to be kept');
+    await ann.api.workspaces.items.trash(id, doc);
+    await ann.api.workspaces.items.deleteForever(id, doc);
+    link.back();
+    await until(() => b.getSnapshot().closed !== null, 'it to end');
+    expect(store.kept.length).toBeGreaterThan(0);
+    expect(b.getSnapshot().unsent).toBe(true);
+    expect(b.unsentCopy().text).toContain('Written on the train.');
+  });
+
+  it('tells too much from never: caps are too-large, and only what can’t ever be is invalid', async () => {
+    const { ann, id, doc } = await together();
+    const second = await h.secondServer({ DOC_ITEMS_MAX: 100 });
+    try {
+      const many = block(6100, 0, [item({ root: 'many' }), ...Array.from({ length: 400 }, (_, i) => item({ right: [6100, i] }))]);
+      const refused = await sendUpdate(ann, id, doc, many, second.baseUrl);
+      expect(refused.status).toBe(413);
+      expect(await refused.json()).toMatchObject({ code: 'too-large' });
+      const shared = structsOf([{ client: 6200, clock: 0, structs: [item({ root: 'a' }), ...Array.from({ length: 1100 }, () => item({ origin: [6200, 0] }))] }]);
+      expect((await sendUpdate(ann, id, doc, shared)).status).toBe(413);
+      expect((await sendUpdate(ann, id, doc, block(6300, 0, [gc(0)]))).status).toBe(400);
+    } finally {
+      await second.close();
+    }
+  });
+});
+
+describe('a new address', () => {
+  /** Someone signed in with Google, in a workspace with Ann, and a document with a store of what's kept. */
+  async function movable() {
+    const old = unique('old');
+    const fresh = unique('fresh');
+    const sub = `sub-${seq++}`;
+    const moved = await withGoogle(old, sub);
+    const ann = await account();
+    const id = await workspace(ann, 'Ours', [[moved, 'edit']]);
+    const doc = await make(ann, id, 'document', 'Plan');
+    return { moved, ann, id, doc, fresh, sub, store: keepStore() };
+  }
+
+  it('leaves an open tab as it was', async () => {
+    const { moved, ann, id, doc, fresh, sub, store } = await movable();
+    const m = await open(moved, id, doc, { keep: store.keep });
+    const a = await open(ann, id, doc);
+    line(m).insert(0, 'Before the new address. ');
+    await saved(m);
+    await says(a, 'Before the new address.');
+    await withGoogle(fresh, sub);
+    line(m).insert(line(m).length, 'Typed in the laptop tab after the move. ');
+    await saved(m);
+    await says(a, 'Typed in the laptop tab');
+    expect(refusals(doc)).toEqual([]);
+    expect(store.kept).toEqual([]);
+  });
+
+  it('takes what was written offline before it, once back', async () => {
+    const { moved, ann, id, doc, fresh, sub, store } = await movable();
+    const link = network(moved);
+    const m = await open(link.browser, id, doc, { keep: store.keep });
+    line(m).insert(0, 'Online first. ');
+    await saved(m);
+    link.drop();
+    line(m).insert(line(m).length, 'Written on the train. ');
+    await rest(300);
+    await withGoogle(fresh, sub);
+    link.back();
+    await saved(m);
+    expect(body(await open(ann, id, doc))).toContain('Written on the train');
+    expect(refusals(doc)).toEqual([]);
+  });
+
+  it('takes what was kept through a reload after it', async () => {
+    const { moved, ann, id, doc, fresh, sub, store } = await movable();
+    const link = network(moved);
+    const m = await open(link.browser, id, doc, { keep: store.keep });
+    line(m).insert(0, 'Online first. ');
+    await saved(m);
+    link.drop();
+    line(m).insert(line(m).length, 'Written on the train. ');
+    await rest(300);
+    m.close();
+    const after = await withGoogle(fresh, sub);
+    const back = await after.api.workspaces.document(id, doc, { keep: store.keep });
+    await back.ready;
+    await saved(back);
+    expect(body(await open(ann, id, doc))).toContain('Written on the train');
+    expect(store.kept).toEqual([]);
+    expect(refusals(doc)).toEqual([]);
+  });
+
+  it('still knows a client that was written before clients went by account, and carries it forward', async () => {
+    const { moved, id, doc, fresh, sub } = await movable();
+    const client = 7700;
+    expect((await sendUpdate(moved, id, doc, block(client, 0, [item({ root: 'scratch' })]))).status).toBe(200);
+    // As a row from the release before this has it: a keyed hash of the address, and nothing else.
+    const ownerId = await ownerOf(id);
+    const owner = await findOwner(h.deps, ownerId, undefined);
+    if (!owner) throw new Error('no such workspace');
+    const asAddress = mac(stateKey(owner.root, ownerId, `document-clients:${doc}`), Buffer.concat([Buffer.from(`${client}:`), blindIndex(masterKey(h.deps), 'email', moved.email)]));
+    await h.pool.query('UPDATE document_clients SET people = $3 WHERE document_id = $1 AND client_id = $2', [doc, client, Buffer.from(asAddress)]);
+    expect((await sendUpdate(moved, id, doc, block(client, 1, [item({ root: 'scratch' })]))).status).toBe(200);
+    await withGoogle(fresh, sub);
+    expect((await sendUpdate(moved, id, doc, block(client, 2, [item({ root: 'scratch' })]))).status).toBe(200);
+  });
+});
+
+describe('what fits in a document', () => {
+  it('takes a paste of any size that fits, in one update', async () => {
+    const { ann, bob, id, doc } = await together();
+    const [a, b] = await Promise.all([open(ann, id, doc), open(bob, id, doc)]);
+    line(a).insert(0, 'x'.repeat(5_000_000));
+    await saved(a);
+    await until(() => words(b).length >= 5_000_000, 'Bob to hear it');
+    expect(a.getSnapshot().refused).toBeNull();
+  });
+
+  it('brings a big delete back with undo, whatever it comes to', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    const b = await open(bob, id, doc);
+    for (let i = 0; i < 2; i++) {
+      const el = addBlock(a, 'line', `long${i}`);
+      const t = new Y.XmlText();
+      a.doc.transact(() => { el.insert(0, [t]); t.insert(0, `Paragraph ${i} `.repeat(200_000)); });
+      await saved(a);
+    }
+    await until(() => words(b, 'long1').length > 2_000_000, 'Bob to hear it');
+    const undo = new Y.UndoManager(a.doc.getXmlFragment('content'), { captureTimeout: 0 });
+    a.doc.transact(() => { for (const blockId of ['long0', 'long1']) { const t = line(a, blockId); t.delete(0, t.length); } });
+    await saved(a);
+    await until(() => words(b, 'long1').length === 0, 'Bob to see it go');
+    undo.undo();
+    await saved(a);
+    await until(() => words(b, 'long1').length > 2_000_000, 'Bob to see it come back');
+    undo.destroy();
+    expect(a.getSnapshot().refused).toBeNull();
+  });
+
+  it('counts what’s on the page, so a full document that’s emptied can be filled again', async () => {
+    const { ann, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    for (let i = 0; i < 12; i++) addBlock(a, 'line', `b${i}`).insert(0, [new Y.XmlText(`Words of ${i}`)]);
+    await saved(a);
+    // Everything leaves the page, as blocks do: the elements stay, and so does what they cost.
+    const elements = a.doc.getXmlFragment('content').toArray().flatMap((e) => (e instanceof Y.XmlElement && e.nodeName === 'line' && e.getAttribute('id') !== 'first' ? [e] : []));
+    a.doc.transact(() => { for (const el of elements) retireBlock(el, newBlockId(), ''); });
+    await saved(a);
+    a.close();
+    await keepVersion(await heldBy(ann, id), doc, { reason: 'edits', callId: null });
+    const held = await count('SELECT snapshot_items::int AS n FROM documents WHERE document_id = $1', [doc]);
+    const second = await h.secondServer({ DOC_ITEMS_MAX: Math.ceil(held * 0.75) });
+    try {
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.document(id, doc);
+      await s.ready;
+      expect(shown(s)).not.toContain('Words of');
+      line(s).insert(0, 'A page with almost nothing on it has room. '.repeat(20));
+      await until(() => s.getSnapshot().status !== 'saving', 'it to be heard');
+      await until(() => s.getSnapshot().status === 'saved', 'it to go', 5_000);
+      s.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('won’t let a rebuilt update’s deletes pass off new content as a move', async () => {
+    const { ann, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    line(a).insert(0, 'x'.repeat(6000));
+    await saved(a);
+    line(a).delete(0, 6000);
+    await saved(a);
+    a.close();
+    await keepVersion(await heldBy(ann, id), doc, { reason: 'edits', callId: null });
+    const held = await count('SELECT snapshot_items::int AS n FROM documents WHERE document_id = $1', [doc]);
+    const second = await h.secondServer({ DOC_ITEMS_MAX: held + 3000 });
+    try {
+      // As a browser rebuilds what's stuck: the state from where Alcove has got to, which says all that's ever been deleted.
+      const src = new Y.Doc();
+      Y.applyUpdate(src, await readDocument(await heldBy(ann, id), doc, 'state', {}));
+      const known = Y.encodeStateVector(src);
+      const list = src.getArray<number>('more');
+      src.transact(() => { for (let i = 0; i < 5000; i++) list.insert(0, [i]); });
+      const res = await sendUpdate(ann, id, doc, Y.encodeStateAsUpdate(src, known), second.baseUrl);
+      expect(res.status).toBe(413);
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('lets a board that’s only been moved around carry on in a duplicate, with everything it says', async () => {
+    const { ann, id } = await together();
+    const board = await make(ann, id, 'board', 'Wall');
+    const a = await open(ann, id, board);
+    const objects = a.doc.getMap<Y.Map<unknown>>('objects');
+    a.doc.transact(() => {
+      for (let i = 0; i < 4; i++) {
+        const object = new Y.Map<unknown>();
+        object.set('x', 0);
+        const words = new Y.Text();
+        words.insert(0, `Sticky ${i}`);
+        object.set('text', words);
+        objects.set(`o${i}`, object);
+      }
+    });
+    await saved(a);
+    const second = await h.secondServer({ DOC_ITEMS_MAX: 30 });
+    try {
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.document(id, board);
+      await s.ready;
+      const moved = s.doc.getMap<Y.Map<unknown>>('objects');
+      // Each write stays for good, and nothing on the page grows: this ends at what it can hold, not at what's on it.
+      for (let round = 1; round <= 60 && s.getSnapshot().refused === null; round++) {
+        s.doc.transact(() => { for (const object of moved.values()) object.set('x', round); });
+        await until(() => s.getSnapshot().status !== 'saving', 'it to be heard');
+      }
+      expect(s.getSnapshot()).toMatchObject({ status: 'failed', refused: 'too-large', unsent: true });
+      // It opens, and a duplicate of it starts clean, with every object and what it says.
+      const { id: twin } = await createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.items.duplicate(id, board);
+      const fresh = await createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.document(id, twin);
+      await fresh.ready;
+      const object = fresh.doc.getMap<Y.Map<unknown>>('objects').get('o0');
+      expect(String(object?.get('text'))).toBe('Sticky 0');
+      expect(await count('SELECT items FROM document_updates WHERE document_id = $1', [twin])).toBeLessThan(30);
+      object?.set('x', 1000);
+      await until(() => fresh.getSnapshot().status === 'saved', 'it to go on from there', 5_000);
+      fresh.close();
+      s.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('keeps a copy to what it says, however often its keys were written', async () => {
+    const { ann, id } = await together();
+    const board = await make(ann, id, 'board', 'Wall');
+    const a = await open(ann, id, board);
+    const object = new Y.Map<unknown>();
+    a.doc.getMap<Y.Map<unknown>>('objects').set('o', object);
+    object.set('gone', true);
+    object.delete('gone');
+    for (let i = 0; i <= 200; i++) { object.set('x', i); object.set('y', i * 2); }
+    await saved(a);
+    const { id: twin } = await ann.api.workspaces.items.duplicate(id, board);
+    const b = await open(ann, id, twin);
+    expect(b.doc.getMap<Y.Map<unknown>>('objects').get('o')?.toJSON()).toEqual({ x: 200, y: 400 });
+    expect(await count('SELECT sum(items)::int AS n FROM document_updates WHERE document_id = $1', [twin])).toBeLessThan(20);
+    // And it's like any other: someone writing to it is heard, however it started.
+    b.doc.getMap<Y.Map<unknown>>('objects').get('o')?.set('x', 7);
+    await saved(b);
+    const c = await open(ann, id, twin);
+    expect(c.doc.getMap<Y.Map<unknown>>('objects').get('o')?.toJSON()).toEqual({ x: 7, y: 400 });
+  });
+
+  it('says what fits, for an editor to check a paste against', async () => {
+    expect(MAX_DOC_UPDATE_BYTES).toBe(MAX_DOC_BYTES);
+    expect(MAX_DOC_ITEMS).toBeGreaterThan(0);
+    const { ann, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    line(a).insert(0, 'Some words');
+    expect(a.size()).toMatchObject({ items: expect.any(Number), bytes: expect.any(Number) });
+    expect(a.size().items).toBeGreaterThan(3);
+  });
+});
+
+describe('after a refusal', () => {
+  it('doesn’t become someone new with every batch: typing in a full document, then making room, saves it all', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a0 = await open(ann, id, doc);
+    line(a0).insert(0, 'Words in a line');
+    for (let i = 0; i < 10; i++) addBlock(a0, 'line', `more${i}`).insert(0, [new Y.XmlText(`More ${i}`)]);
+    await saved(a0);
+    a0.close();
+    const second = await h.secondServer({ DOC_ITEMS_MAX: 36 });
+    try {
+      const store = keepStore();
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.document(id, doc, { keep: store.keep });
+      await s.ready;
+      const clients = new Set<number>();
+      for (let i = 0; i < 40; i++) {
+        line(s).insert(line(s).length, `w${i} `);
+        clients.add(s.doc.clientID);
+        await rest(170);
+      }
+      expect(s.getSnapshot()).toMatchObject({ status: 'failed', refused: 'too-large' });
+      expect(clients.size).toBeLessThanOrEqual(5);
+      // Making room needs no typing to stop.
+      const fragment = s.doc.getXmlFragment('content');
+      fragment.delete(3, fragment.length - 3);
+      await until(() => s.getSnapshot().status === 'saved', 'it all to go', 40_000);
+      expect(store.kept).toEqual([]);
+      expect(words(await open(bob, id, doc))).toContain('w39 ');
+      s.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('tries again when access comes back', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a0 = await open(ann, id, doc);
+    for (let i = 0; i < 10; i++) addBlock(a0, 'line', `more${i}`).insert(0, [new Y.XmlText(`More ${i}`)]);
+    await saved(a0);
+    const second = await h.secondServer({ DOC_ITEMS_MAX: 36 });
+    try {
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: bob.fetch }).workspaces.document(id, doc);
+      await s.ready;
+      s.doc.getText('notes').insert(0, 'Waiting for room');
+      await until(() => s.getSnapshot().refused === 'too-large', 'it to say so');
+      const person = (await ann.api.workspaces.people(id)).find((p) => p.person.email === bob.email)?.id ?? '';
+      await ann.api.workspaces.setRole(id, person, 'read');
+      await until(() => s.getSnapshot().role === 'read', 'Bob to only read');
+      // Something typed in the moment it took to hear, on nothing that's stuck: its try comes and goes while he can't write.
+      s.doc.getText('elsewhere').insert(0, 'One more. ');
+      await rest(1400);
+      // Room is made meanwhile, and he gets it back, with nothing more typed.
+      const fragment = a0.doc.getXmlFragment('content');
+      fragment.delete(2, fragment.length - 2);
+      await saved(a0);
+      await keepVersion(await heldBy(ann, id), doc, { reason: 'edits', callId: null });
+      await ann.api.workspaces.setRole(id, person, 'edit');
+      await until(() => s.getSnapshot().status === 'saved', 'it to go', 6_000);
+      await until(() => a0.doc.getText('notes').toString().includes('Waiting for room'), 'Ann to hear it');
+      s.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('takes what overlaps what the log has, with something built on a later part of it', async () => {
+    const { ann, id, doc } = await together();
+    const x = new Y.Doc();
+    Y.applyUpdate(x, DOC_SEED);
+    const updates: Uint8Array[] = [];
+    x.on('update', (u: Uint8Array) => updates.push(u));
+    line({ doc: x }).insert(0, 'abc ');
+    line({ doc: x }).insert(4, 'def ');
+    for (const u of updates) expect((await sendUpdate(ann, id, doc, u)).status).toBe(200);
+    const first = updates[1];
+    if (!first) throw new Error('no update');
+    const y = new Y.Doc();
+    Y.applyUpdate(y, Y.encodeStateAsUpdate(x));
+    const known = Y.encodeStateVector(y);
+    line({ doc: y }).insert(8, 'jkl ');
+    expect((await sendUpdate(ann, id, doc, Y.mergeUpdates([first, Y.encodeStateAsUpdate(y, known)]))).status).toBe(200);
+    expect(refusals(doc)).toEqual([]);
+    // What's past the block and not in the log is still refused.
+    expect((await sendUpdate(ann, id, doc, block(9100, 0, [item({ root: 'a' }), item({ origin: [9100, 40] })]))).status).toBe(400);
+  });
+
+  it('takes what one tab kept and another built on, from one store', async () => {
+    const { ann, bob, id, doc } = await together();
+    const store = keepStore();
+    const link = network(ann);
+    let blocking = false;
+    const blocked: typeof fetch = async (input, init) => {
+      if (blocking && String(input).endsWith('/updates')) return new Response(JSON.stringify({ code: 'unavailable', message: 'busy' }), { status: 503, headers: { 'content-type': 'application/json' } });
+      return ann.fetch(input, init);
+    };
+    const t1 = await open(link.browser, id, doc, { keep: store.keep });
+    const b = await open(bob, id, doc);
+    line(t1).insert(0, 'One. ');
+    await saved(t1);
+    link.drop();
+    line(t1).insert(line(t1).length, 'Kept in the first tab. ');
+    await rest(300);
+    blocking = true;
+    const t2 = await open(h.browser({ fetch: blocked }), id, doc, { keep: store.keep });
+    await rest(200);
+    link.back();
+    await saved(t1);
+    line(t1).insert(line(t1).length, 'More from the first tab. ');
+    await saved(t1);
+    await until(() => words(t2).includes('More from the first tab.'), 'the second tab to hear it');
+    const t = line(t2);
+    t.insert(t.length, 'Typed in the second tab, on top. ');
+    await rest(300);
+    blocking = false;
+    await until(() => t2.getSnapshot().status === 'saved', 'the second tab to save', 20_000);
+    await says(b, 'Typed in the second tab');
+    expect(refusals(doc)).toEqual([]);
+  });
+});
+
+describe('workers, shared fairly', () => {
+  const hostile = (updates: number, n = 900) => Array.from({ length: updates }, (_, i) => conflictingAfter(9000 + i * 2, n, i > 0 ? 9000 : null));
+  const timedOpen = async (who: Account, base: string, id: string, doc: string) => {
+    const t0 = performance.now();
+    const s = await createHttpApi({ baseUrl: base, fetch: who.fetch }).workspaces.document(id, doc);
+    await s.ready;
+    const ms = performance.now() - t0;
+    s.close();
+    return ms;
+  };
+
+  it('don’t let one person’s searches hold up someone else opening a document', async () => {
+    const mal = await account();
+    const ann = await account();
+    const spaceM = await workspace(mal, 'Mine');
+    for (let k = 0; k < 2; k++) {
+      const d = await make(mal, spaceM, 'document', `Slow ${k}`);
+      for (const u of hostile(3, 300)) expect((await sendUpdate(mal, spaceM, d, u)).status).toBe(200);
+    }
+    const spaceA = await workspace(ann, 'Ours');
+    const docA = await make(ann, spaceA, 'document', 'Plan');
+    const second = await h.secondServer({ DOC_WORKERS: 1 });
+    try {
+      await timedOpen(ann, second.baseUrl, spaceA, docA);
+      const t0 = performance.now();
+      const searches = Promise.all(Array.from({ length: 12 }, () => mal.fetch(`${second.baseUrl}/v1/workspaces/${spaceM}/search`).then((r) => r.text())));
+      await rest(150);
+      const waited = await timedOpen(ann, second.baseUrl, spaceA, docA);
+      await searches;
+      const all = performance.now() - t0;
+      // First in line behind one job of the 24, not behind one of each search's.
+      expect(waited).toBeLessThan(all / 5);
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('limit how much of one person’s work can wait', async () => {
+    const mal = await account();
+    const space = await workspace(mal, 'Mine');
+    const doc = await make(mal, space, 'document', 'Slow');
+    for (const u of hostile(5)) expect((await sendUpdate(mal, space, doc, u)).status).toBe(200);
+    const second = await h.secondServer({ DOC_WORKERS: 1, DOC_WAITING_PER_PERSON: 2 });
+    try {
+      const statuses = await Promise.all(Array.from({ length: 8 }, () => mal.fetch(`${second.baseUrl}/v1${docPath(space, doc)}/live?after=0`).then((r) => { void r.body?.cancel(); return r.status; })));
+      expect(statuses).toContain(503);
+      expect(statuses).toContain(200);
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('wait for a copy, and don’t leave one blank because they were busy', async () => {
+    const ann = await account();
+    const space = await workspace(ann, 'Ours');
+    const slow = await make(ann, space, 'document', 'Slow');
+    for (const u of hostile(5)) expect((await sendUpdate(ann, space, slow, u)).status).toBe(200);
+    const doc = await make(ann, space, 'document', 'Plan');
+    const a = await open(ann, space, doc);
+    line(a).insert(0, 'What the copy has to say');
+    await saved(a);
+    const second = await h.secondServer({ DOC_WORKERS: 1, DOC_WAITING_PER_PERSON: 1 });
+    try {
+      const busy = Array.from({ length: 3 }, () => ann.fetch(`${second.baseUrl}/v1${docPath(space, slow)}/live?after=0`).then((r) => { void r.body?.cancel(); }));
+      await rest(100);
+      const { id: twin } = await createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch }).workspaces.items.duplicate(space, doc);
+      await Promise.all(busy);
+      expect(body(await open(ann, space, twin))).toContain('What the copy has to say');
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('close a document that’s too slow to read for search, as for opening it, and skip it after', async () => {
+    const mal = await account();
+    const space = await workspace(mal, 'Mine');
+    const doc = await make(mal, space, 'document', 'Slow');
+    for (const u of hostile(12)) expect((await sendUpdate(mal, space, doc, u)).status).toBe(200);
+    const second = await h.secondServer({ DOC_WORK_MS: 200 });
+    try {
+      const search = async () => { const r = await mal.fetch(`${second.baseUrl}/v1/workspaces/${space}/search`); return r.text(); };
+      await search();
+      expect(await count('SELECT count(*)::int AS n FROM documents WHERE document_id = $1 AND closed_until > now()', [doc])).toBe(1);
+      const t0 = performance.now();
+      await search();
+      expect(performance.now() - t0).toBeLessThan(190);
+    } finally {
+      await h.pool.query('UPDATE documents SET closed_until = NULL WHERE document_id = $1', [doc]);
+      await second.close();
+    }
+  });
+});
+
+describe('streams nobody reads', () => {
+  it('count until what they hold has really gone, so they can’t take what the instance has', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    for (let i = 0; i < 3; i++) { line(a).insert(0, 'y'.repeat(3_000_000)); await saved(a); }
+    const others = await Promise.all(Array.from({ length: 5 }, () => account()));
+    for (const o of others) await ann.api.workspaces.addPerson(id, o.email, 'read');
+    const second = await h.secondServer({ DOC_SENDING_MB: 30 });
+    const stops: AbortController[] = [];
+    // Held on to: a response that's let go of cancels its stream, and that reader has gone.
+    const unread: Response[] = [];
+    const openUnread = async (who: Account) => {
+      const stop = new AbortController();
+      stops.push(stop);
+      const r = await who.fetch(`${second.baseUrl}/v1${docPath(id, doc)}/live?after=0`, { signal: stop.signal });
+      unread.push(r);
+      return r.status;
+    };
+    try {
+      // About 12 MB each on its way, of 30, and more than a socket takes: past that nobody else is taken on, whoever they are.
+      const statuses: number[] = [];
+      for (const o of others) statuses.push(await openUnread(o));
+      expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(3);
+      expect(statuses).toContain(503);
+      // One person can't have it all to themselves.
+      const stopping = stops.splice(0);
+      for (const s of stopping) s.abort();
+      await rest(500);
+      const mine: number[] = [];
+      for (let i = 0; i < 3; i++) mine.push(await openUnread(bob));
+      expect(mine.filter((s) => s === 200).length).toBeLessThanOrEqual(2);
+      for (const s of stops.splice(0)) s.abort();
+      expect(unread.length).toBe(8);
+      // And it all comes free again.
+      await until(async () => (await timedStatus(ann, `${second.baseUrl}/v1${docPath(id, doc)}/live?after=0`)) === 200, 'room again');
+    } finally {
+      for (const s of stops) s.abort();
+      await second.close();
+    }
+  });
+  const timedStatus = async (who: Account, url: string) => { const stop = new AbortController(); const r = await who.fetch(url, { signal: stop.signal }); const { status } = r; stop.abort(); return status; };
+});
+
+/* ---------- at the limit: one rule, and nothing refused ever lets go of anything ---------- */
+
+/** A block's element and its copy, as the editor's moveBlock writes a move: the copy goes in, the original is retired. */
+function moveAsEditor(s: { doc: Y.Doc }, blockId: string, toIndex: number) {
+  const fragment = s.doc.getXmlFragment('content');
+  const el = fragment.toArray().find((x) => x instanceof Y.XmlElement && x.getAttribute('id') === blockId);
+  if (!(el instanceof Y.XmlElement)) throw new Error('no block');
+  const copy = new Y.XmlElement(el.nodeName);
+  for (const [k, v] of Object.entries<unknown>(el.getAttributes())) if (k !== 'gone') setAttr(copy, k, v);
+  const text = new Y.XmlText();
+  text.applyDelta(el.toArray().flatMap((c) => (c instanceof Y.XmlText ? c.toDelta() : [])));
+  copy.insert(0, [text]);
+  s.doc.transact(() => {
+    fragment.insert(toIndex, [copy]);
+    retireBlock(el, newBlockId(), blockId);
+  });
+}
+/** What a store keeps, as words. */
+const keptWords = (kept: KeptUpdate[]) => kept.flatMap((k) => Y.decodeUpdate(k.update).structs.map((x) => (x instanceof Y.Item && x.content instanceof Y.ContentString ? x.content.str : ''))).join('');
+
+describe('at the limit', () => {
+  /** A document with a dozen lines in it, and a second server whose limit leaves `room` items to spare on its page. */
+  async function full(room: number) {
+    const { ann, bob, id, doc } = await together();
+    const a0 = await open(ann, id, doc);
+    line(a0).insert(0, 'Words in a line');
+    for (let i = 0; i < 12; i++) addBlock(a0, 'line', `more${i}`).insert(0, [new Y.XmlText(`Line number ${i} with words in it`)]);
+    await saved(a0);
+    const second = await h.secondServer({ DOC_ITEMS_MAX: a0.size().items + room });
+    const there = async (who: Account, opts: DocSessionOptions = {}) => {
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: who.fetch }).workspaces.document(id, doc, opts);
+      await s.ready;
+      return s;
+    };
+    return { ann, bob, id, doc, a0, second, there };
+  }
+  /**
+   * Writing that fills a page: a new line each time, of `chars` characters, until well past what a refused session moves on
+   * from. Typing on at the end of one line doesn't: Yjs merges it into what's there, so it adds bytes and no items.
+   */
+  const typeStuck = async (s: DocSession, times = 30, chars = 100) => {
+    for (let i = 0; i < times; i++) { addBlock(s, 'line', `typed${i}`).insert(0, [new Y.XmlText(`${'abcdefghij'.repeat(chars / 10)}${String(i).padStart(3, '0')}`)]); await rest(170); }
+  };
+
+  it('takes a move whole however full the page is, as it adds nothing to it', async () => {
+    const { ann, bob, id, doc, second, there } = await full(1);
+    try {
+      const b = await there(bob);
+      moveAsEditor(b, 'more3', 1);
+      await until(() => b.getSnapshot().status === 'saved', 'the move to go', 10_000);
+      const fresh = await open(ann, id, doc);
+      expect(shown(fresh).indexOf('Line number 3')).toBeLessThan(shown(fresh).indexOf('Words in a line'));
+      expect(shown(fresh).match(/Line number 3 with/g)).toHaveLength(1);
+      b.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('never sends what a stuck change deletes apart from what it adds: moving someone’s paragraph while stuck empties it for nobody', async () => {
+    const { ann, bob, id, doc, a0, second, there } = await full(2);
+    try {
+      line(a0, 'more3').insert(0, 'ANN WROTE THIS JUST NOW. ');
+      await saved(a0);
+      const store = keepStore();
+      const b = await there(bob, { keep: store.keep });
+      await typeStuck(b);
+      await until(() => b.getSnapshot().refused === 'too-large', 'it to be full');
+      moveAsEditor(b, 'more3', 1);
+      await rest(6000);
+      expect(words(await open(ann, id, doc), 'more3')).toContain('ANN WROTE THIS JUST NOW.');
+      await b.discardUnsaved(b.unsentCopy().token);
+      expect(words(await open(ann, id, doc), 'more3')).toContain('ANN WROTE THIS JUST NOW.');
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('credits what an update retires: a new line and three taken off the page, in one change, go into a full one', async () => {
+    const { bob, id, doc, second, there } = await full(0);
+    try {
+      const s = await there(bob);
+      const fragment = s.doc.getXmlFragment('content');
+      s.doc.transact(() => {
+        for (const el of fragment.toArray()) if (el instanceof Y.XmlElement && /^more[0-2]$/.test(String(el.getAttribute('id') ?? ''))) retireBlock(el, newBlockId(), '');
+        addBlock(s, 'line', 'joined').insert(0, [new Y.XmlText(`${'Three lines made into one. '.repeat(8)}`)]);
+      });
+      await until(() => s.getSnapshot().status === 'saved', 'it to go', 10_000);
+      expect(words(await open(bob, id, doc), 'joined')).toContain('Three lines made into one.');
+      s.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('lets go of only what a copy holds: what’s typed after it stays kept, and comes back to be saved', async () => {
+    const { ann, id, doc, second, there } = await full(1);
+    try {
+      const store = keepStore();
+      const s = await there(ann, { keep: store.keep });
+      for (let i = 0; i < 8; i++) { addBlock(s, 'line', `stuck${i}`).insert(0, [new Y.XmlText(`stuck${i}`)]); await rest(170); }
+      await until(() => s.getSnapshot().refused === 'too-large', 'it to be refused');
+      const copy = s.unsentCopy();
+      addBlock(s, 'line', 'after').insert(0, [new Y.XmlText('Typed while the copy was saving.')]);
+      const made = await ann.api.workspaces.saveCopy(id, { kind: 'document', name: 'Plan copy', parent: null, state: stateFromText(copy.text) });
+      expect(body(await open(ann, id, made.id))).toContain('stuck7');
+      await s.discardUnsaved(copy.token);
+      expect(keptWords(store.kept)).toContain('Typed while the copy was saving.');
+      expect(keptWords(store.kept)).not.toContain('stuck7');
+      // It was written on what was let go of, so it can't go to this document; opened again, it's here to save all the same.
+      const back = await ann.api.workspaces.document(id, doc, { keep: store.keep });
+      await back.ready;
+      await until(() => back.unsentCopy().text.includes('Typed while the copy was saving.'), 'it to be here to save');
+      back.close();
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('takes a retry of what it already has as nothing, so a lost reply near the limit leaves nothing stuck', async () => {
+    const { ann, id, doc, second } = await full(7);
+    try {
+      let loseNext = false;
+      const lossy: typeof fetch = async (input, init) => {
+        const res = await ann.fetch(input, init);
+        if (loseNext && String(input).endsWith('/updates')) { loseNext = false; await res.text(); throw new TypeError('The connection dropped before the reply.'); }
+        return res;
+      };
+      const store = keepStore();
+      const s = await createHttpApi({ baseUrl: second.baseUrl, fetch: lossy }).workspaces.document(id, doc, { keep: store.keep });
+      await s.ready;
+      const rows = await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc]);
+      loseNext = true;
+      s.doc.transact(() => {
+        for (let i = 0; i < 4; i++) line(s, `more${i}`).insert(0, `Edit ${i} `);
+        line(s, 'more5').delete(0, 5);
+      });
+      await until(() => s.getSnapshot().status === 'saved', 'the retry to be taken', 15_000);
+      expect(store.kept).toEqual([]);
+      expect(await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc])).toBe(rows + 1);
+      s.close();
+    } finally {
+      await second.close();
+    }
+  });
+});
+
+describe('what it has already', () => {
+  it('keeps no row and no version for deletes it has had, however often they come', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    line(a).insert(0, 'Words only in the first version. ');
+    await saved(a);
+    await keepVersion(await heldBy(ann, id), doc, { reason: 'edits', callId: null });
+    line(a).delete(0, line(a).length);
+    await saved(a);
+    await keepVersion(await heldBy(ann, id), doc, { reason: 'edits', callId: null });
+    const versions = await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1', [doc]);
+    const rows = await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc]);
+    // What a tab rebuilt to say everything ever deleted, sent again and again, as an hour goes by each time.
+    const everything = Y.encodeStateAsUpdate(a.doc, Y.encodeStateVector(a.doc));
+    for (let i = 0; i < 5; i++) {
+      await h.pool.query("UPDATE documents SET version_at = now() - interval '1 hour' WHERE document_id = $1", [doc]);
+      expect((await sendUpdate(bob, id, doc, everything)).status).toBe(200);
+    }
+    expect(await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc])).toBeLessThanOrEqual(rows + 1);
+    expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1', [doc])).toBe(versions);
+  });
+
+  it('writes nothing while a kept update has nowhere to go, and says so', async () => {
+    const { ann, id, doc } = await together();
+    const store = keepStore();
+    const link = network(ann);
+    const a = await open(link.browser, id, doc, { keep: store.keep });
+    line(a).insert(0, 'Before. ');
+    await saved(a);
+    link.drop();
+    for (const words of ['First offline. ', 'Second offline. ', 'Third offline. ']) { line(a).insert(line(a).length, words); await rest(250); }
+    a.close();
+    // The store lost one, so the one after it has nothing to go on.
+    store.kept.splice(1, 1);
+    const back = await open(ann, id, doc, { keep: store.keep });
+    await until(() => back.getSnapshot().refused === 'rejected', 'it to say so');
+    const rows = await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc]);
+    await rest(16_000);
+    expect(await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc])).toBe(rows);
+    expect(back.unsentCopy().text).toContain('Third offline.');
+    expect(store.kept.length).toBeGreaterThan(0);
+    back.close();
+  });
+
+  it('carries a client the previous release knew only by address through a new address', async () => {
+    const sub = `sub-${seq++}`;
+    const moved = await withGoogle(unique('old'), sub);
+    const ann = await account();
+    const id = await workspace(ann, 'Ours', [[moved, 'edit']]);
+    const doc = await make(ann, id, 'document', 'Plan');
+    const m = await open(moved, id, doc);
+    line(m).insert(0, 'Written before the deploy. ');
+    await saved(m);
+    // As the previous release wrote it: the address's tag, and no account's.
+    await h.pool.query('UPDATE document_clients SET people = substring(people from 1 for 32) WHERE document_id = $1 AND client_id = $2', [doc, m.doc.clientID]);
+    await withGoogle(unique('fresh'), sub);
+    line(m).insert(line(m).length, 'Written after the new address. ');
+    await saved(m);
+    expect(words(await open(ann, id, doc))).toContain('Written after the new address.');
+    expect(refusals(doc)).toEqual([]);
+  });
+
+  it('answers a copy bigger than a document can be with too-large', async () => {
+    const { ann, id } = await together();
+    const made = await make(ann, id, 'document', 'Too big');
+    const res = await ann.fetch(`${h.baseUrl}/v1${docPath(id, made)}/adopt`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE }, body: new Uint8Array(MAX_DOC_BYTES + 1) });
+    expect(res.status).toBe(413);
+  });
+});
+
+describe('lines nobody reads', () => {
+  it('count against what can be on its way, and a stream there’s no room for is let go of, to open again from where it got to', async () => {
+    const mal = await account();
+    const id = await workspace(mal, 'Mine');
+    const docs = [await make(mal, id, 'document', 'One'), await make(mal, id, 'document', 'Two')];
+    const stops: AbortController[] = [];
+    try {
+      // Two streams that are never read, held on to: a response that's let go of cancels its stream.
+      const unread = await Promise.all(docs.map((d) => { const stop = new AbortController(); stops.push(stop); return mal.fetch(`${h.baseUrl}/v1${docPath(id, d)}/live?after=0`, { signal: stop.signal }); }));
+      // Twelve megabytes to each, more than a connection holds: the first is theirs to have, the second is past their share, and its stream goes.
+      for (const d of docs) expect((await sendUpdate(mal, id, d, anUpdate('w'.repeat(12 * 1024 * 1024)))).status).toBe(200);
+      await until(() => h.logs.some((l) => l.includes('stream let go: too much on its way')), 'a stream to be let go of');
+      expect(unread.map((r) => r.status)).toEqual([200, 200]);
+    } finally {
+      for (const s of stops) s.abort();
+    }
   });
 });

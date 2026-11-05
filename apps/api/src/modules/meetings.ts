@@ -22,6 +22,7 @@ import { indexCode } from './codes';
 import { documentsFor, validDocuments } from './documents';
 import { personOf } from './portraits';
 import { cancelInSeries, changeInSeries, leadsTo, repeatsOf, schedule } from './repeats';
+import { accountReader, requireRole, workspaceFor } from './workspaceAccess';
 
 const mlog = log.child({ component: 'meetings' });
 
@@ -54,6 +55,10 @@ export const MeetingManifest = z.object({
   joinMuted: z.boolean().default(false),
   /** The documents brought to the call, by ID. */
   documents: z.array(z.string()).default([]),
+  /** The workspace the call uses (modules/callWorkspace.ts). Null until one's chosen, or someone opens Workspace. It carries to the next call in a series. */
+  workspaceId: z.string().nullable().default(null),
+  /** The agenda this call has, for the next call in its series to carry on from. Only where it is: what it says stays in the document. */
+  agenda: z.object({ workspaceId: z.string(), documentId: z.string() }).nullable().default(null),
   /** Times offered to a guest, until someone with the link picks one: no calendar event until then. */
   offer: z.object({ times: z.array(z.string()) }).optional(),
   /** The link code of the series this call repeats in: it leads to whichever of its calls is on now or next. */
@@ -94,17 +99,17 @@ const reading = async (owner: Owner, viewer: Owner, meetings: Loaded<MeetingMani
 
 /** A call as anyone on it sees it. What's only for its organizer, and who's on it, go on top of this. */
 function onCall(m: Loaded<MeetingManifest>, r: Reading) {
-  const { guests, duration, noteId: _note, calendarEvent: _event, seriesId, seriesCode, offer, documents, recurringEventId: _recurring, addedFromLink: _added, placing: _placing, ...rest } = m.manifest;
+  const { guests, duration, noteId: _note, calendarEvent: _event, seriesId, seriesCode, offer, documents, recurringEventId: _recurring, addedFromLink: _added, placing: _placing, workspaceId: _workspace, agenda: _agenda, ...rest } = m.manifest;
   const repeat = seriesId && seriesCode ? r.repeats.get(seriesId) : undefined;
   return {
-    id: m.itemId, ...rest, organizer: r.organizer, guestCount: guests.length, documents: documentsFor(documents, r.viewer), rsvps: countsOf(r.access.get(m.itemId), guests.length),
+    id: m.itemId, ...rest, organizer: r.organizer, guestCount: guests.length, documents: documentsFor(documents, r.viewer), workspaceId: null, rsvps: countsOf(r.access.get(m.itemId), guests.length),
     ...(duration !== undefined ? { duration } : {}), ...(seriesId ? { seriesId } : {}), ...(offer ? { offer } : {}), ...(repeat ? { repeat } : {})
   };
 }
 function asOrganizer(m: Loaded<MeetingManifest>, r: Reading): Meeting {
-  const { guests, noteId, calendarEvent, seriesCode } = m.manifest;
+  const { guests, noteId, calendarEvent, seriesCode, workspaceId } = m.manifest;
   return {
-    ...onCall(m, r), isOrganizer: true, guests: guests.map((e) => personOf(e)), rsvp: null,
+    ...onCall(m, r), isOrganizer: true, guests: guests.map((e) => personOf(e)), rsvp: null, workspaceId,
     ...(noteId !== undefined ? { noteId } : {}), ...(calendarEvent?.url ? { calendarUrl: calendarEvent.url } : {}), ...(seriesCode ? { seriesCode } : {})
   };
 }
@@ -234,15 +239,21 @@ async function store(o: Owner, db: Db, manifest: MeetingManifest): Promise<strin
   return itemId;
 }
 
+/** A call only takes a workspace its organizer can edit in. One they can't reach reads the same as one that isn't there. */
+async function requireWorkspace(o: Owner, workspaceId: string | null | undefined): Promise<void> {
+  if (workspaceId) requireRole(await workspaceFor(o, await accountReader(o), workspaceId), 'edit');
+}
+
 export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
   if (input.offer && input.repeat) throw new ValidationError('A call that repeats can’t offer times.', { context: { times: input.offer.length } });
   const organizer = await me(o);
   validDocuments(input.documents ?? [], await profile(o));
+  await requireWorkspace(o, input.workspaceId);
   const offered = input.offer ? offeredTimes(input.offer) : undefined;
   const manifest: MeetingManifest = {
     title: input.title.trim() || 'Untitled call', ...validTimes(offered?.[0] ?? input.startsAt, input.durationMinutes),
     guests: cleanGuests(input.guests, organizer.email), notes: input.notes, code: makeCode(), status: 'scheduled',
-    instant: false, choices: input.choices ?? DEFAULT_NOTES_CHOICES, joinMuted: input.joinMuted ?? false, documents: input.documents ?? [], ...(offered ? { offer: { times: offered } } : {})
+    instant: false, choices: input.choices ?? DEFAULT_NOTES_CHOICES, joinMuted: input.joinMuted ?? false, documents: input.documents ?? [], workspaceId: input.workspaceId ?? null, agenda: null, ...(offered ? { offer: { times: offered } } : {})
   };
   if (input.repeat) return own(o, await schedule(o, manifest, input.repeat));
   const itemId = await tx(o.pool, (c) => store(o, c, manifest));
@@ -305,7 +316,8 @@ export async function updateManifest(o: Owner, db: Db, id: string, fn: (m: Meeti
   await lockItem(o, db, id);
   const cur = await getItem(o, db, 'meeting', id, MeetingManifest, 'That meeting');
   const next = fn(cur.manifest);
-  await saveRevision(o, db, id, cur.revisionId, next);
+  // What changes nothing writes nothing: every save is a revision, and those are kept.
+  if (next !== cur.manifest) await saveRevision(o, db, id, cur.revisionId, next);
   return next;
 }
 /** Whether a change is one a call's calendar event shows. Google emails everyone about an update, so nothing else goes to it. */
@@ -321,7 +333,7 @@ export function withChange(m: MeetingManifest, patch: Patch<MeetingInput>, organ
   const times = patch.startsAt !== undefined || patch.durationMinutes !== undefined ? validTimes(patch.startsAt ?? m.startsAt, patch.durationMinutes ?? minutesOf(m)) : {};
   return {
     ...m, ...times, title: patch.title?.trim() || m.title, notes: patch.notes ?? m.notes, guests: patch.guests ? cleanGuests(patch.guests, organizerEmail) : m.guests,
-    choices: patch.choices ?? m.choices, joinMuted: patch.joinMuted ?? m.joinMuted, documents: patch.documents ?? m.documents
+    choices: patch.choices ?? m.choices, joinMuted: patch.joinMuted ?? m.joinMuted, documents: patch.documents ?? m.documents, workspaceId: patch.workspaceId === undefined ? m.workspaceId : patch.workspaceId
   };
 }
 
@@ -344,6 +356,7 @@ export async function changeCall(o: Owner, id: string, patch: Patch<MeetingInput
 export async function update(o: Owner, id: string, patch: Patch<MeetingInput>, scope?: ChangeScope | undefined): Promise<Meeting> {
   if (patch.offer !== undefined) throw new ValidationError('The times a call offers can’t be changed. Cancel it and offer others.', { context: { meetingId: id } });
   validDocuments(patch.documents ?? [], await profile(o));
+  await requireWorkspace(o, patch.workspaceId);
   const { manifest } = await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting');
   if (manifest.seriesCode || patch.repeat || scope === 'following') {
     await changeInSeries(o, id, manifest, patch, scope);
@@ -417,11 +430,12 @@ export async function adopt(o: Owner, eventId: string, notes?: NotesSetting | un
     const again = mine.find((m) => m.manifest.calendarEvent?.id === eventId);
     if (again) return { itemId: again.itemId, manifest: again.manifest, created: false };
     const recurring = e.recurringEventId;
-    const series = recurring ? { seriesId: mine.find((m) => m.manifest.recurringEventId === recurring)?.manifest.seriesId ?? id128(), recurringEventId: recurring } : {};
+    const before = recurring ? mine.filter((m) => m.manifest.recurringEventId === recurring).sort((a, b) => b.manifest.startsAt.localeCompare(a.manifest.startsAt))[0] : undefined;
+    const series = recurring ? { seriesId: before?.manifest.seriesId ?? id128(), recurringEventId: recurring } : {};
     const manifest: MeetingManifest = {
       title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, guests: cleanGuests(e.guests, organizer.email),
       notes: setting, code: makeCode(), status: 'scheduled', calendarEvent: { id: eventId, ...(e.url ? { url: e.url } : {}), adopted: true }, ...series,
-      instant: false, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: []
+      instant: false, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: [], workspaceId: before?.manifest.workspaceId ?? null, agenda: null
     };
     return { itemId: await store(o, c, manifest), manifest, created: true };
   });
@@ -454,7 +468,7 @@ export async function startNow(o: Owner, input: InstantCallInput): Promise<{ cod
   const manifest: MeetingManifest = {
     title: input.title?.trim() || `${firstName(organizer.name)}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(),
     guests: cleanGuests(input.guests ?? [], organizer.email), notes, code: makeCode(), status: 'scheduled',
-    instant: true, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: []
+    instant: true, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: [], workspaceId: null, agenda: null
   };
   const { itemId, swept } = await tx(o.pool, async (c) => ({ swept: await sweepUnjoined(o, c), itemId: await store(o, c, manifest) }));
   mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes, swept });
@@ -485,7 +499,7 @@ export async function scheduleNext(o: Owner, id: string, startsAt: string): Prom
     if (!from.seriesId) await saveRevision(o, c, id, cur.revisionId, { ...from, seriesId });
     const manifest: MeetingManifest = {
       title: from.title, ...times, guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId, instant: false, choices: from.choices, joinMuted: from.joinMuted, documents: from.documents,
-      ...(from.seriesCode ? { seriesCode: from.seriesCode } : {})
+      workspaceId: from.workspaceId, agenda: null, ...(from.seriesCode ? { seriesCode: from.seriesCode } : {})
     };
     return { itemId: await store(o, c, manifest), manifest, started: !from.seriesId };
   });

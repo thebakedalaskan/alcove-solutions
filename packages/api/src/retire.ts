@@ -14,6 +14,7 @@
  * of its own, `@alcove/api/retire`, because importing the contract mustn't load Yjs.
  */
 import * as Y from 'yjs';
+import { DOC_FRAGMENT } from './workspaceDocuments';
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -108,6 +109,54 @@ export function isGone(element: Y.XmlElement): boolean {
   const gone: unknown = element.getAttribute('gone');
   return typeof gone === 'string' && holdsNothing(element);
 }
+
+type Weigher = (item: Y.Item) => number;
+/** How much something weighs, with what's in it, leaving out what's deleted. Walked with a list: nothing says how deep it goes. */
+function liveWeight(top: Y.Item, weigh: Weigher): number {
+  let total = 0;
+  const waiting = [top];
+  for (let item = waiting.pop(); item; item = waiting.pop()) {
+    if (item.deleted) continue;
+    total += weigh(item);
+    if (!(item.content instanceof Y.ContentType)) continue;
+    const { type } = item.content;
+    for (let child = type._start; child; child = child.right) waiting.push(child);
+    waiting.push(...type._map.values());
+  }
+  return total;
+}
+/** The weight of everything on a page: all that a document holds but what's deleted and what's in a retired block. */
+function pageWeight(doc: Y.Doc, weigh: Weigher): number {
+  let total = 0;
+  for (const structs of doc.store.clients.values()) for (const struct of structs) if (struct instanceof Y.Item && !struct.deleted) total += weigh(struct);
+  for (let item = doc.share.get(DOC_FRAGMENT)?._start ?? null; item; item = item.right) {
+    if (item.deleted || !(item.content instanceof Y.ContentType)) continue;
+    const { type } = item.content;
+    if (type instanceof Y.XmlElement && isGone(type)) total -= liveWeight(item, weigh);
+  }
+  return total;
+}
+const jsonLength = (v: unknown): number => JSON.stringify(v ?? null).length;
+/** About how many bytes what an item says comes to: words, values and files, and nothing for structure. */
+function contentBytes(item: Y.Item): number {
+  const { content } = item;
+  if (content instanceof Y.ContentString) return content.str.length;
+  if (content instanceof Y.ContentAny) return content.arr.reduce<number>((n, v) => n + jsonLength(v), 0);
+  if (content instanceof Y.ContentJSON) return content.arr.reduce<number>((n, v) => n + jsonLength(v), 0);
+  if (content instanceof Y.ContentBinary) return content.content.length;
+  if (content instanceof Y.ContentEmbed) return jsonLength(content.embed);
+  if (content instanceof Y.ContentFormat) return content.key.length + jsonLength(content.value);
+  return 0;
+}
+
+/**
+ * How many items a document's page comes to: everything it holds but what's deleted and what's in a retired block. That's
+ * what its limit is on, so a page someone emptied has room again, whatever it cost to empty it, and however much of that
+ * Yjs has to keep. For a board, it's everything that hasn't been deleted.
+ */
+export const itemsOnPage = (doc: Y.Doc): number => pageWeight(doc, () => 1);
+/** About how many bytes what's on the page says, counted the same way: a move or a join leaves it as it was. */
+export const bytesOnPage = (doc: Y.Doc): number => pageWeight(doc, contentBytes);
 
 /** What holds text directly. */
 const LINES: ReadonlySet<string> = new Set(['line', 'code', 'toggleSummary', 'toggleBody']);

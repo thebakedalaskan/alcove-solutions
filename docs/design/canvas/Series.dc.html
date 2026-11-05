@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A series</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-note.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh nd nd-series" data-mode="{{mode}}" style="{{rootCss}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="pg-in">
+<header class="nd-head">
+<div class="nd-top">
+<h1 class="nd-title"><button type="button" class="nd-back">Notes<i aria-hidden="true">/</i></button><span class="nd-name clamp1">{{S.title}}</span></h1>
+<div class="top-end nd-find">
+<button type="button" class="find" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</div>
+<div class="nd-meta"><span class="nd-when">Next call {{S.next}}</span><span>{{S.count}}</span><span class="nd-how"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.repeat}}"></path></svg>Your series</span></div>
+</header>
+
+<section class="nd-hz is-silent" aria-label="The calls in this series">
+<div class="nd-hz-in" style="{{hzStyle}}">
+<div class="nd-track">
+<i class="nd-rail"></i><i class="nd-lit"></i>
+<sc-for list="{{calls}}" as="c"><button type="button" class="nd-ch{{c.cls}}" style="{{c.style}}" aria-label="The call on {{c.day}}"><span class="clamp1">{{c.day}}</span><span class="nd-tip nd-tip-ch"><b>{{c.day}}</b><span>{{c.gist}}</span></span></button></sc-for>
+<i class="nd-sun"></i>
+<span class="nd-m is-follow is-open is-r" style="--x: 100%"><i></i><span class="nd-tip"><b>Next call</b><small class="tn">{{S.next}}</small></span></span>
+</div>
+</div>
+</section>
+
+<div class="nd-cols">
+<div class="nd-main">
+<div class="nd-read">
+<sc-for list="{{parts}}" as="p">
+<section class="nd-s{{p.cls}}">
+<h2>{{p.title}}<sc-if value="{{p.hasCount}}"><span class="n">{{p.count}}</span></sc-if></h2>
+<sc-for list="{{p.rows}}" as="x">
+<sc-if value="{{x.isGroup}}"><p class="grp">{{x.text}}</p></sc-if>
+<sc-if value="{{x.isRow}}">
+<article class="nd-r nd-cr{{x.cls}}">
+<sc-if value="{{x.isCheck}}"><button type="button" class="ck" role="checkbox" aria-checked="false" aria-label="Done: {{x.text}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button></sc-if>
+<sc-if value="{{x.hasIcon}}"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{x.icon}}"></path></svg></span></sc-if>
+<div class="nd-rb">
+<p class="nd-rt">{{x.text}}</p>
+<p class="nd-rs"><b>{{x.from}}</b>{{x.status}}</p>
+<sc-if value="{{x.hasLater}}"><p class="nd-rs nd-later"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.repeat}}"></path></svg>{{x.later}}</p></sc-if>
+</div>
+<button type="button" class="ft-m" aria-label="Open the notes at {{x.at}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{x.at}}</button>
+<div class="nd-ra">
+<sc-if value="{{x.hasYes}}"><button type="button" class="ft-yes">{{x.yes}}</button></sc-if>
+<sc-if value="{{x.hasNo}}"><button type="button" class="nd-ic is-sm" aria-label="It wasn’t decided" title="It wasn’t decided"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></sc-if>
+<sc-if value="{{x.hasTake}}"><button type="button" class="nd-take">I’ll do it</button></sc-if>
+</div>
+</article>
+</sc-if>
+</sc-for>
+</section>
+</sc-for>
+</div>
+<div class="nd-askdock">
+<div class="nd-ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.ask}}"></path></svg><input type="text" placeholder="Ask about these calls" aria-label="Ask about these calls, for you alone"><span class="nd-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you</span><button type="button" class="b b-tint b-sm nd-ask-go" aria-label="Ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.up}}"></path></svg></button></div>
+</div>
+</div>
+<aside class="nd-side" aria-label="About this series">
+<section class="pn nd-call" aria-label="Next call">
+<div class="pn-h"><h2>Next call</h2></div>
+<p class="nd-call-w"><b>{{S.nextDay}}</b><span>{{S.nextTime}}</span></p>
+<div class="nd-call-a"><button type="button" class="b b-press b-sm"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Join</button><button type="button" class="nd-ic" aria-label="Change this call" title="Change this call"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pen}}"></path></svg></button></div>
+</section>
+<section class="nd-b">
+<h2>Calls</h2>
+<sc-for list="{{list}}" as="c"><button type="button" class="nd-c is-call"><span class="nd-c-d tn">{{c.day}}</span><span class="nd-c-t clamp1">{{c.gist}}</span><span class="nd-c-d tn">{{c.length}}</span></button></sc-for>
+<p class="nd-open"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Everyone invited sees only the calls they have notes from. Nothing here is kept.</p>
+</section>
+</aside>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","first"],"default":"today"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, v = AH.page(this, 'note'), I = v.I, S = AH.NOTE_SERIES, assign = AH.assign;
+    var n = S.calls.length, lit = (n - 1) / n, x = function (i) { return i / n; };
+    var calls = S.calls.map(function (c, i) {
+      var r = (i === n - 1 ? (1 - x(i)) : x(1)) * 100;
+      return { day: c.day, gist: c.gist, cls: i === n - 1 ? ' is-on' : '', style: '--x: ' + (x(i) * 100).toFixed(3) + '%; --room: ' + r.toFixed(2) + '%' };
+    });
+    var row = function (r) {
+      var kind = r.kind;
+      return assign({}, r, { isGroup: false, isRow: true, cls: kind === 'decide' ? ' is-decide' + (r.set ? ' is-set' : '') : kind === 'follow' ? ' is-follow' : ' is-ask', hasIcon: kind !== 'follow', isCheck: kind === 'follow', icon: kind === 'decide' ? I.decide : I.question, hasLater: !!r.later, hasYes: !!r.yes, hasNo: !!r.no, hasTake: !!r.take });
+    };
+    var group = function (t) { return { isGroup: true, isRow: false, text: t }; };
+    var parts = S.parts.map(function (p) {
+      return { cls: p.kind === 'decide' ? ' is-decide' : p.kind === 'follow' ? ' is-follow' : '', title: p.title, count: p.count || '', hasCount: !!p.count, rows: p.rows.map(function (r) { return typeof r === 'string' ? group(r) : row(r); }) };
+    });
+    var SKY = [[14, 0.7], [37, 0.62], [63, 0.72], [88, 0.64]];
+    var scene = assign({}, v.scene, { stars: (v.scene.stars || []).map(function (s, i) { var at = SKY[i % SKY.length]; return { style: s.style.replace(/left: [\d.]+%; top: [\d.]+%/, 'left: ' + at[0] + '%; top: calc(var(--hz) * ' + at[1] + ')') }; }) });
+    return { mode: v.mode, I: I, nav: v.nav, side: v.side, scene: scene, rootCss: v.shellStyle + '; ' + v.scene.vars, S: S, calls: calls, hzStyle: '--p: ' + (lit * 100).toFixed(3) + '%', parts: parts, list: S.calls.slice().reverse() };
+  }
+}
+</script>
+</body>
+</html>

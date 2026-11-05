@@ -12,7 +12,7 @@ import { DOC_FRAGMENT, DocTextBlockSchema } from '@alcove/api';
 import { TEMPLATES, fillTemplate, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { documentText, documentTodos, type ContentKind } from './documentText';
+import { documentText, documentTodos, followUpsIn, holdsVideo, openTodos, readsAsAgenda, tickFollowUp, writeAgenda, type ContentKind, type Run } from './documentText';
 
 /** Something a worker can do to a document. `call` is `run` for arguments that came through a message. */
 export interface DocOp<A, R> { args: z.ZodType<A>; result: z.ZodType<R>; call(doc: Y.Doc, args: unknown): unknown }
@@ -24,7 +24,9 @@ export type OpTable<T> = { [K in keyof T]: DocOp<ArgsOf<T[K]>, ResultOf<T[K]>> }
 
 const Kind: z.ZodType<ContentKind> = z.enum(['document', 'board']);
 const OfKind = z.object({ kind: Kind });
-const Todo = z.object({ block: z.string(), text: z.string(), done: z.boolean(), mentions: z.array(z.object({ id: z.string(), name: z.string() })), dates: z.array(z.string()) });
+const Person = z.object({ id: z.string(), name: z.string() });
+const Todo = z.object({ block: z.string(), text: z.string(), done: z.boolean(), mentions: z.array(Person), dates: z.array(z.string()) });
+const Runs: z.ZodType<Run[][]> = z.array(z.array(z.union([z.object({ text: z.string() }), z.object({ mention: Person }), z.object({ date: z.string() })])));
 
 /** What reading a document can ask of it. */
 export const docReads = {
@@ -32,6 +34,14 @@ export const docReads = {
   text: docOp(OfKind, z.object({ title: z.string(), blocks: z.array(DocTextBlockSchema) }), (doc, a) => documentText(doc, a.kind)),
   /** Every todo in it, in order. */
   todos: docOp(OfKind, z.array(Todo), (doc, a) => documentTodos(doc, a.kind)),
+  /** Its follow-ups as a call shows them, worked out here so nothing past the limits comes back. */
+  followUps: docOp(z.object({ kind: Kind, max: z.number().int().min(0), chars: z.number().int().min(1), tags: z.number().int().min(0) }), z.array(Todo), (doc, a) => followUpsIn(doc, a.kind, a)),
+  /** Whether it holds this video. */
+  holdsVideo: docOp(z.object({ kind: Kind, media: z.string() }), z.boolean(), (doc, a) => holdsVideo(doc, a.kind, a.media)),
+  /** What's left to do in it, for the next agenda to carry. */
+  openTodos: docOp(OfKind, Runs, (doc, a) => openTodos(doc, a.kind)),
+  /** Whether it's an agenda, going by what it says. */
+  readsAsAgenda: docOp(OfKind, z.boolean(), (doc, a) => readsAsAgenda(doc, a.kind)),
   /** Everything, as one update. */
   state: docOp(z.object({}), z.custom<Uint8Array>((v) => v instanceof Uint8Array), (doc) => Y.encodeStateAsUpdate(doc))
 };
@@ -66,16 +76,20 @@ const TEMPLATE_CLIENT = 2;
  * the log already has: it works that one out again, and it finds the first. A document isn't a board, and gets nothing.
  * Whether this put the template there: blank puts nothing.
  */
-function boardTemplate(doc: Y.Doc, template: TemplateName): boolean {
+function boardTemplate(doc: Y.Doc, template: TemplateName, seed: string): boolean {
   if (doc.share.has(DOC_FRAGMENT) || Y.getState(doc.store, TEMPLATE_CLIENT) > 0) return false;
   doc.clientID = TEMPLATE_CLIENT;
-  fillTemplate(doc, template, null);
+  fillTemplate(doc, template, null, seed);
   return Y.getState(doc.store, TEMPLATE_CLIENT) > 0;
 }
 
 /** What the server can write to a document. */
 export const docEdits = {
   retitle: docOp(z.object({ name: z.string() }), z.void(), (doc, a) => { retitle(doc, a.name); }),
+  /** Ticks a follow-up, or takes the tick back. False when there's no such follow-up. */
+  tickFollowUp: docOp(z.object({ kind: Kind, block: z.string(), done: z.boolean() }), z.boolean(), (doc, a) => tickFollowUp(doc, a.kind, a.block, a.done)),
+  /** Fills in a new document as the next call's agenda. */
+  writeAgenda: docOp(z.object({ title: z.string(), open: Runs }), z.void(), (doc, a) => { writeAgenda(doc, a.title, a.open); }),
   /** A board's template, from the server, so everyone gets the same frames and nobody's undo can take them away. */
-  boardTemplate: docOp(z.object({ template: z.enum(TEMPLATES) }), z.boolean(), (doc, a) => boardTemplate(doc, a.template))
+  boardTemplate: docOp(z.object({ template: z.enum(TEMPLATES), seed: z.string() }), z.boolean(), (doc, a) => boardTemplate(doc, a.template, a.seed))
 };

@@ -1,7 +1,7 @@
 # The in-call workspace: design
 
 The approved design is the Design canvas <https://claude.ai/artifact/Gvy2XmrrPebzqdiufjgMyt> (version 5): 21 journeys,
-a working prototype, a control map and reference boards. Ben's instruction: build all of it, end to end, and make it
+a working prototype, a control map and reference boards. The instruction: build all of it, end to end, and make it
 look like the canvas. GitHub issue #81 holds the acceptance criteria. This page records the engineering decisions the
 canvas can't show. Where it's silent on how something looks or moves, the canvas decides.
 
@@ -52,7 +52,7 @@ New tables, in new migrations (renumber after main's latest). Each row is scoped
 | `document_versions` | `owner_id`, `document_id`, `version_id`, `created_at` | `info_ciphertext`, `state_ciphertext` |
 | `workspace_media` | `owner_id`, `media_id`, `state` (`uploading`/`ready`), `bytes`, `pieces`, `created_at` | `info_ciphertext` (name, type, size, dimensions) |
 | `workspace_media_pieces` | `owner_id`, `media_id`, `seq`, `object_id`, `sha256`, `length` | (the object) |
-| `presenter_notes` | account `owner_id`, `document_id` | `body_ciphertext` |
+| `presenter_notes` | account `owner_id`, the document's `workspace_owner_id`, `document_id` | `body_ciphertext` |
 
 Keys and records, by the pattern in `docs/engineering/privacy-keys-and-sessions.md`: state keys
 `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")` with scopes `workspace`, `document:<id>` and `media:<id>`.

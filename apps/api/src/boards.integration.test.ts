@@ -625,7 +625,7 @@ describe('who can do what', () => {
     await until(() => t.s.getSnapshot().status === 'failed', 'the save to fail');
     expect(t.s.getSnapshot().refused).toBe('trashed');
     expect((await send(ann, id, board, aSticky('No'))).status).toBe(409);
-    expect(await code(writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'retro' }))).toBe('conflict');
+    expect(await code(writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'retro', seed: board }))).toBe('conflict');
     // Opening it now still reads it, as it was.
     const late = await open(theo, id, board);
     expect(late.s.getSnapshot()).toMatchObject({ trashed: true, role: 'edit' });
@@ -684,7 +684,7 @@ describe('who can do what', () => {
     // Server code holding Sam's own workspace can't reach Ann's board through it.
     const samsOwn = await workspace(sam, 'Sam’s');
     const samHeld = await heldBy(sam, samsOwn);
-    expect(await code(writeDocument(samHeld, board, 'boardTemplate', { template: 'retro' }))).toBe('not-found');
+    expect(await code(writeDocument(samHeld, board, 'boardTemplate', { template: 'retro', seed: board }))).toBe('not-found');
     expect(await code(readDocument(samHeld, board, 'text', { kind: 'board' }))).toBe('not-found');
     expect(await code((async () => keepVersion(samHeld, board, { reason: 'call', callId: null }))())).toBe('not-found');
 
@@ -701,7 +701,7 @@ describe('who can do what', () => {
     expect((await post(ann, `${docPath(id, boardThere)}/awareness`, { update: 'AA' })).status).toBe(404);
     expect((await ann.fetch(`${h.baseUrl}/v1${docPath(id, boardThere)}/live`)).status).toBe(404);
     const held = await heldBy(ann, id);
-    expect(await code(writeDocument(held, boardThere, 'boardTemplate', { template: 'retro' }))).toBe('not-found');
+    expect(await code(writeDocument(held, boardThere, 'boardTemplate', { template: 'retro', seed: boardThere }))).toBe('not-found');
     expect(await code(readDocument(held, boardThere, 'state', {}))).toBe('not-found');
 
     // Nothing changed on either board, and nothing of either reached a log.
@@ -726,10 +726,10 @@ describe('a template', () => {
     const rows = async () => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
 
     // Five at once, then twice more, and once for another template: one template, in one update.
-    const asks = await Promise.all(Array.from({ length: 5 }, () => writeDocument(held, board, 'boardTemplate', { template: 'retro' })));
+    const asks = await Promise.all(Array.from({ length: 5 }, () => writeDocument(held, board, 'boardTemplate', { template: 'retro', seed: board })));
     expect(asks.filter((x) => x.result)).toHaveLength(1);
     expect(await rows()).toBe(1);
-    for (const template of ['retro', 'retro', 'flow'] as const) expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template })).result).toBe(false);
+    for (const template of ['retro', 'retro', 'flow'] as const) expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template, seed: board })).result).toBe(false);
     expect(await rows()).toBe(1);
     // It reaches everyone who has the board open, as anyone's edit does.
     await agree([a, t], 'the template to reach both');
@@ -744,7 +744,7 @@ describe('a template', () => {
     await saved(t);
     await agree([a, t], 'the sticky to reach Ann');
     expect(view(a).byId.get(note)?.f).toBe(view(a).frames[0]?.id);
-    expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'ideas' })).result).toBe(false);
+    expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'ideas', seed: board })).result).toBe(false);
     await rest(150);
     expect(view(a).frames).toHaveLength(3);
     const settled = shown(a);
@@ -764,7 +764,7 @@ describe('a template', () => {
     // Someone quick puts something on it before the template lands: it fills all the same, clear of it.
     const quick = sticky(a, 'Here first', 0, 0);
     await saved(a);
-    expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'what-why-next' })).result).toBe(true);
+    expect((await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'what-why-next', seed: board })).result).toBe(true);
     await until(() => view(a).frames.length === 3, 'the template to arrive');
     const first = boxOf(a, quick);
     for (const f of view(a).frames) expect(f.x).toBeGreaterThanOrEqual(first.x + first.w);
@@ -772,19 +772,19 @@ describe('a template', () => {
 
     // A copy is filled already: asking it again changes nothing.
     const copy = (await ann.api.workspaces.items.duplicate(id, board)).id;
-    expect((await writeDocument(await heldBy(ann, id), copy, 'boardTemplate', { template: 'retro' })).result).toBe(false);
+    expect((await writeDocument(await heldBy(ann, id), copy, 'boardTemplate', { template: 'retro', seed: copy })).result).toBe(false);
     const c = await open(ann, id, copy);
     expect(shown(c)).toBe(shown(a));
 
     // Blank puts nothing on a board and writes nothing.
     const blank = await make(ann, id, 'Blank');
-    expect((await writeDocument(await heldBy(ann, id), blank, 'boardTemplate', { template: 'blank' })).result).toBe(false);
+    expect((await writeDocument(await heldBy(ann, id), blank, 'boardTemplate', { template: 'blank', seed: blank })).result).toBe(false);
     expect(await count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [blank])).toBe(0);
     expect(view(await open(ann, id, blank)).objects).toEqual([]);
 
     // A document isn't a board: a template gives it nothing.
     const doc = await make(ann, id, 'A document', 'document');
-    expect((await writeDocument(await heldBy(ann, id), doc, 'boardTemplate', { template: 'retro' })).result).toBe(false);
+    expect((await writeDocument(await heldBy(ann, id), doc, 'boardTemplate', { template: 'retro', seed: doc })).result).toBe(false);
     expect(await count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [doc])).toBe(0);
   });
 });
@@ -1023,7 +1023,7 @@ describe('what’s kept', () => {
       const theo = await account(unique('canary-board-editor'));
       const id = await workspace(ann, 'CANARY-BOARD-SPACE', [[theo, 'edit']]);
       const board = await make(ann, id, 'CANARY-BOARD-NAME');
-      await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'retro' });
+      await writeDocument(await heldBy(ann, id), board, 'boardTemplate', { template: 'retro', seed: board });
       const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
       add(a, { k: 'frame', x: 0, y: 1000, w: 600, h: 500, c: '', role: '', hint: 'CANARY-BOARD-HINT', sub: 'CANARY-BOARD-WHO', title: 'CANARY-BOARD-FRAME' });
       const note = sticky(a, 'CANARY-BOARD-STICKY the launch slips', 40, 1080);

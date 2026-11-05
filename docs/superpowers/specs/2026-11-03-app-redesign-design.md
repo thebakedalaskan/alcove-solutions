@@ -1,7 +1,7 @@
 # The redesigned app
 
 [Plan](../plans/2026-11-03-app-redesign.md) · Visual design: the "Alcove app redesign" canvas (claude.ai artifact
-`PjpX3aXPs2dVT9YEWEfcod`, private to Ben). Every screen and empty state on the canvas is the visual spec; this page
+`PjpX3aXPs2dVT9YEWEfcod`, private to its owner). Every screen and empty state on the canvas is the visual spec; this page
 records the decisions behind it and what the backend has to provide.
 
 ## Why
@@ -72,7 +72,7 @@ Each is its own PR, merged and deployed before the next starts.
 - **Devices** (microphone, speaker, camera, noise reduction) are this browser's choices, the ones pre-join already
   remembers. The camera is a list only: you see yourself on the join screen, never before.
 
-## Needs Ben before it can ship
+## Needs a decision before it can ship
 
 These are on the canvas but depend on something outside the repo. They aren't drawn until they work.
 

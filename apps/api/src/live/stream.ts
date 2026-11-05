@@ -17,6 +17,30 @@ import type { Room, RoomMember, Snapshot } from './room';
 const slog = log.child({ component: 'live' });
 const sameness = (who: Who): string => who.principals.map(b64u).join();
 
+/** How much goes to a browser at a time. */
+const PIECE_BYTES = 64 * 1024;
+/** The slowest a browser can take something big, in bytes a millisecond: 128 KiB a second. Slower than that, it's let go of, and opens again from where it got to. */
+const SLOWEST = 128 * 1024 / 1000;
+/**
+ * Writes to a browser, a piece at a time. A write is over when the connection has it, not the browser, so all of it at once
+ * would be in the connection's hands for as long as nobody reads. In pieces, each goes when the last has left, so what isn't
+ * read stays with whoever's counting it. False if a piece isn't taken within `lateMs`, if the whole of it isn't taken at a
+ * pace a browser can keep, or the reader's gone. What's big as text is base64, so a piece can end anywhere.
+ */
+export async function inPieces(out: StreamingApi, what: string | Uint8Array, lateMs: number): Promise<boolean> {
+  const by = Date.now() + lateMs + what.length / SLOWEST;
+  for (let at = 0; at === 0 || at < what.length; at += PIECE_BYTES) {
+    if (out.aborted || Date.now() > by) return false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), lateMs); });
+    const piece = typeof what === 'string' ? what.slice(at, at + PIECE_BYTES) : what.subarray(at, at + PIECE_BYTES);
+    const wrote = await Promise.race([out.write(piece), late]);
+    clearTimeout(timer);
+    if (wrote === 'late') return false;
+  }
+  return true;
+}
+
 /** What one step of a stream did: nothing to do, a line written, or its reader lost it. */
 export type Step = 'idle' | 'wrote' | 'lost';
 /** Writes a line. `raw`: what's already been made into one, or part of one, for what's the same for everyone or too big to make twice. */
@@ -76,11 +100,7 @@ export abstract class LiveStream<L> implements RoomMember {
    * just as its stream opened is never read from at all, and would otherwise hold this stream for good.
    */
   private async write(out: StreamingApi, text: string | Uint8Array): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), this.d.cfg.LIVE_PING_MS); });
-    const wrote = await Promise.race([out.write(text), late]);
-    clearTimeout(timer);
-    if (wrote !== 'late') return;
+    if (await inPieces(out, text, this.d.cfg.LIVE_PING_MS)) return;
     this.end();
     out.abort();
   }

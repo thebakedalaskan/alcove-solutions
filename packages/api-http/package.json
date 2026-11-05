@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@alcove/api": "workspace:*",
+    "lib0": "^0.2.119",
     "ts-mls": "1.6.4",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.33",

@@ -50,6 +50,8 @@ const ICONS = {
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);
 
 export type IconName = keyof typeof ICONS;
+/** Every icon's name, in the map's order: for showing them all. */
+export const ICON_NAMES: readonly IconName[] = Object.keys(ICONS).filter((k): k is IconName => k in ICONS);
 
 export function Icon({ name, size = 18, className, ...rest }: { name: IconName; size?: number } & Omit<LucideProps, 'name' | 'size' | 'ref'>) {
   const Glyph = ICONS[name];
