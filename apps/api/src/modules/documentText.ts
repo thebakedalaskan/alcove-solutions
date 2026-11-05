@@ -160,6 +160,12 @@ function lineOf(attrs: Record<string, unknown>, runs: Run[] = []): Y.XmlElement 
   return el;
 }
 const heading = (text: string) => lineOf({ kind: 'heading', level: 2 }, [{ text }]);
+/** Writes at the start of the text a block starts with, as anyone typing there does: one made beside it is merged away in the editor. */
+function writeAtStart(el: Y.XmlElement, text: string): void {
+  const first = el.get(0);
+  if (first instanceof Y.XmlText) first.insert(0, text);
+  else el.insert(0, [words(text)]);
+}
 
 /**
  * Fills in a new document as the next call's agenda: the Agenda template, holding what was left open. Its first line is the
@@ -169,10 +175,10 @@ export function writeAgenda(doc: Y.Doc, title: string, open: Run[][]): void {
   const fragment = doc.getXmlFragment(DOC_FRAGMENT);
   const [head, first] = blocksOf(doc);
   if (head?.nodeName !== 'title' || !first) return;
-  head.insert(0, [words(title)]);
+  writeAtStart(head, title);
   setAttr(first, 'kind', 'heading');
   setAttr(first, 'level', 2);
-  first.insert(0, [words(AGENDA_HEADING)]);
+  writeAtStart(first, AGENDA_HEADING);
   const carried = open.length ? open.map((runs) => lineOf({ kind: 'todo' }, runs)) : [lineOf({ kind: 'todo' })];
   fragment.insert(2, [...carried, heading('Today'), lineOf({ kind: 'numbered' }), heading('Notes'), lineOf({})]);
 }

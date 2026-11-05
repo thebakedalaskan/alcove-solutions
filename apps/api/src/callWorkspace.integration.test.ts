@@ -1494,6 +1494,10 @@ describe('the next call’s agenda', () => {
     expect(new Set(lines.map((el) => el.getAttribute('id'))).size).toBe(lines.length);
     expect(lines.map((el) => el.getAttribute('kind') ?? null)).toEqual(['heading', 'todo', 'todo', 'heading', 'numbered', 'heading', null]);
     expect(lines[0]?.getAttribute('level')).toBe(2);
+    // The title and the first line are written in the texts every document starts with: a text made beside one is merged
+    // away in the editor, with whatever someone was typing in it.
+    const texts = (el: Y.XmlElement | Y.XmlText | Y.XmlHook | undefined) => (el instanceof Y.XmlElement ? el.toArray().filter((x) => x instanceof Y.XmlText).length : -1);
+    expect([texts(fragment[0]), texts(lines[0])]).toEqual([1, 1]);
     // Opening it again makes no other, and neither does the call starting again.
     await host.openWorkspace();
     expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
