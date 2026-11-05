@@ -49,9 +49,6 @@ export type ScreenRefShown = (screen: ScreenRef) => ReactNode;
 
 const STATE_WORD: Record<Decision['state'], string> = { proposed: 'Proposed', confirmed: 'Confirmed', rejected: 'Not decided', superseded: 'No longer holds' };
 
-/** Who someone is to a decision's history: named, and said to have got the notes afterwards when they did. */
-const standing = (d: Decision, c: Decision['changes'][number], me: string | undefined) => `${byName(c.by, me)}${c.by.as === 'shared' && d.state === 'confirmed' ? ', who got the notes afterwards' : ''}`;
-
 /** Whoever last reworded a decision that's still proposed: these are their words now, whoever proposed it. */
 const wordsBy = (d: Decision) => (d.state === 'proposed' ? d.changes.findLast((c) => c.what === 'reworded')?.by : undefined);
 
@@ -69,7 +66,7 @@ const lastMove = (d: Decision) => d.changes.findLast((c) => c.what !== 'reworded
 /** Beside the word for where a decision stands: who put it there, so the row doesn't say the state twice. */
 function decisionBy(d: Decision, me: string | undefined, reader: NoteReader | undefined): string {
   const last = lastMove(d);
-  if (d.state === 'confirmed' && last) return `By ${standing(d, last, me)}`;
+  if (d.state === 'confirmed' && last) return `By ${byName(last.by, me)}`;
   if ((d.state === 'rejected' || d.state === 'superseded') && last) return `${capital(byName(last.by, me))} said so`;
   const words = wordsBy(d);
   // Whoever wrote these words isn't offered Confirm, so the row says why.
@@ -83,7 +80,7 @@ function decisionBy(d: Decision, me: string | undefined, reader: NoteReader | un
 /** Where a decision stands, in a sentence: confirmed by whom, said not to be decided or to no longer hold, or nobody has confirmed it yet. */
 export function decisionLine(d: Decision, me: string | undefined): string {
   const last = lastMove(d);
-  if (d.state === 'confirmed' && last) return `Confirmed by ${standing(d, last, me)}`;
+  if (d.state === 'confirmed' && last) return `Confirmed by ${byName(last.by, me)}`;
   if (d.state === 'rejected' && last) return `${capital(byName(last.by, me))} said this wasn’t decided`;
   if (d.state === 'superseded' && last) return `${capital(byName(last.by, me))} said this no longer holds`;
   if (last?.what === 'reopened') return `${capital(byName(last.by, me))} reopened this. Nobody has confirmed it since`;

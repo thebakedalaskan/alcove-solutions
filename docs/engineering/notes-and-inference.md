@@ -599,7 +599,7 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
   | Say who it's for | The organizer or the person it's for; anyone while nobody has it (a name the notes couldn't tie to an account counts as nobody) |
   | Reword, date or tick it | Anyone invited until it's taken on, and someone given the notes afterwards what they added themselves; then its owner or the organizer |
 
-  Someone given the notes afterwards can propose and dispute, and the note says so ("who got the notes afterwards"), but
+  Someone given the notes afterwards can propose and dispute, and the history says so ("got these notes afterwards"), but
   confirming closes a decision for everyone, so it isn't theirs to do for the people who were there. They can't cross out
   what the call agreed either. A decision doesn't wait on them in their inbox, since there's nothing there they can do.
 
