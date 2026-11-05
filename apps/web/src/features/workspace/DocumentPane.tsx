@@ -248,7 +248,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   const copyTo: CopyTo | undefined = ws.canChange && ws.owner !== null && status.closed !== 'session' ? {
     workspaceId: ws.workspaceId, name: () => nameOf(item), parent: folder && folder.trashedAt === null ? folder.id : null, go: (id) => ws.go({ kind: 'document', id })
   } : undefined;
-  const rescue = stuck ? <Rescue session={session} say={ws.say} copyTo={copyTo} onLetGo={reopen} /> : null;
+  const rescue = stuck ? <Rescue session={session} say={ws.say} copyTo={copyTo} gone={gone} onLetGo={reopen} /> : null;
 
   /* A document that can't be opened right now opens again by itself, a little later each time. */
   const tries = useRef(0);
