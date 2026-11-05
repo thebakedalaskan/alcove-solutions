@@ -1,11 +1,12 @@
 /*
  * What keys and menus do to blocks. Everything works on one top-level block at a time, found by position or ID: the flat
- * document means a block's neighbours are simply the ones beside it, leaving out what isn't on the page (see retire.ts).
+ * document means a block's neighbours are simply the ones beside it, leaving out what isn't on the page (see `@alcove/api/retire`).
  */
 import { newBlockId } from '@alcove/api/retire';
 import { Fragment, type Attrs, type Node as PMNode, type NodeType, type ResolvedPos } from 'prosemirror-model';
 import { NodeSelection, Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
-import { addRowAfter, CellSelection, goToNextCell, isInTable, selectedRect, TableMap } from 'prosemirror-tables';
+import type { EditorView } from 'prosemirror-view';
+import { addRowAfter, CellSelection, fixTables, goToNextCell, isInTable, selectedRect, TableMap } from 'prosemirror-tables';
 import { blockIdOf, headingLevel, indentAttr, isGone, isListLine, isPlainLine, lineKind, MAX_INDENT, schema, textAttr } from './schema';
 import type { BlockKind } from './types';
 
@@ -182,12 +183,21 @@ function exitTitle(state: EditorState, dispatch: ((tr: Transaction) => void) | u
   return true;
 }
 
+/** A table two people left uneven can't be counted in rows and columns, so whoever next changes its shape evens it out first. Returns the state to go on from. */
+export function evenTables(state: EditorState, dispatch: (tr: Transaction) => void, view: EditorView | undefined): EditorState {
+  const tr = fixTables(state);
+  if (!tr) return state;
+  dispatch(tr);
+  return view?.state ?? state.apply(tr);
+}
+
 /** Tab through a table's cells; past the last, a new row. */
 function nextCell(dir: 1 | -1): Command {
-  return (state, dispatch, view) => {
-    if (goToNextCell(dir)(state, dispatch, view)) return true;
+  return (before, dispatch, view) => {
+    if (goToNextCell(dir)(before, dispatch, view)) return true;
     if (dir < 0) return true;
-    if (!dispatch) return addRowAfter(state);
+    if (!dispatch) return addRowAfter(before);
+    const state = evenTables(before, dispatch, view);
     const rect = selectedRect(state);
     return addRowAfter(state, (tr) => {
       const table = tr.doc.nodeAt(rect.tableStart - 1);
