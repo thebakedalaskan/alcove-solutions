@@ -117,6 +117,9 @@ importers:
       '@alcove/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@alcove/board':
+        specifier: workspace:*
+        version: link:../../packages/board
       '@alcove/ui':
         specifier: workspace:*
         version: link:../../packages/ui

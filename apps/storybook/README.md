@@ -24,6 +24,7 @@ src/api/trouble.ts        a part of Alcove that fails, can't be reached or keeps
 src/api/kept.ts           recordings kept on this device that haven't uploaded, through the app's own way of keeping them
 src/api/move.ts           a call being moved to this device, as /move sees it
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
+src/world/boards.ts       the boards in it, written into in-memory Y.Docs by the board package's own writes
 src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
 src/media/screens.ts      what other people share, drawn
 src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
@@ -31,10 +32,12 @@ src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
 src/component.tsx         what component stories share: `onStage`, `PopSurface`, `ModalFrame`, `Box`, `Row`, `did()`
 src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `press()`
+src/board.tsx             what board stories share: `BoardScene`, the real surface on a board, and `whereItShows`
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
 stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, leaving
+stories/board/            the board: its surface in each place it shows, its states, and who else is on it
 stories/journeys/         one file per section of docs/product/user-flows.md
 ```
 
@@ -75,7 +78,7 @@ the builders in `src/world/build.ts`, and checked against the contract's schemas
 `stories/components/<group>/<Component>.stories.tsx`, one per component, a story per state, titled
 `Components/<Group>/<Component>`. The groups run from the basics to whole surfaces: icons and marks, actions, forms,
 feedback, overlays, layout, motion, the evening, people, starting a call, ringing and waiting, in a call, notes and
-transcript, record, settings, and the workspace. Put a new component in the group a person would look for it in, and
+transcript, record, settings, the workspace and the board. Put a new component in the group a person would look for it in, and
 add a new group to `storySort` in `.storybook/preview.tsx` only when none fits. The preview gives it what the app's
 root would (theme, tooltips, toasts). People come from the world, never made up on the spot:
 
@@ -97,7 +100,9 @@ Give every prop worth playing with an arg, so it has a control (react-docgen is 
 that changes when pressed (`checked`, `open`, `value`) is kept with `useArgs` from `storybook/preview-api`, so pressing
 it moves the control too. What only exists at night (the call stage, Record) spreads `...onStage` into its meta and
 stands on the stage in both themes; what only shows inside a popover or the call modal can stand on a `PopSurface` or in
-a `ModalFrame`. The workspace kit is grouped by surface, in `stories/components/workspace/`.
+a `ModalFrame`. The workspace kit is grouped by surface, in `stories/components/workspace/`. The board kit draws on a
+piece of board, `KitSheet` in `stories/components/board/parts.tsx`, with pieces of the canvas's launch retro to stand on,
+and puts what sits over the sheet (a selection, its bar, the dots) where the surface would, with the surface's own helpers.
 
 ## Add a page story
 
@@ -176,6 +181,27 @@ person) plays up to the hand-off, and the stand-in plays the other side: a scena
 journey's `beforeEach`, `before()` for what its world needs, `outage()` for what goes wrong (a part that doesn't load, the
 server saying no) and `keepMail` for a `mailto:` link, which goes as far as handing the message to the mail app. A journey
 through a call uses the call's own: `atTheDoor()`, `rung()` and `inCall()` from `src/call.ts`.
+
+## Add a board story
+
+`stories/board/<Part>.stories.tsx`. A board is a plain Y.Doc and an awareness, so it needs no stand-in: `BoardScene` (in
+`src/board.tsx`) puts the real `BoardSurface` on a board from `src/world/boards.ts`, made fresh for each story, and the
+story's `others` are other browsers on its awareness, relayed as a provider would relay them, with their pointers, views
+and typing. The decorator `whereItShows` stands it where its mode is shown: in the call's space on the night stage, on
+its own page with day round it, or as a tile.
+
+```tsx
+const meta = { title: 'Board/Surface', component: BoardScene, decorators: [whereItShows], parameters: { layout: 'fullscreen' },
+  args: { board: () => launchRetro(), mode: 'call', others: AROUND, talking: ['priya'] } } satisfies Meta<typeof BoardScene>;
+export default meta;
+
+export const InTheCall: BoardStory = { name: 'In the call' };
+export const OnItsPage: BoardStory = { name: 'On its page', args: { mode: 'page' } };
+```
+
+A board in the world is written with the board package's own writes (`fillTemplate`, `addObject`, `applyThemes`), with
+the design canvas's positions, colours and words. What's round the board in the app (the bar's menus, Start a call here)
+says it was pressed in the Actions panel, and what the call puts over the sheet (a pill, a menu) goes in `children`.
 
 ## Add a call story
 
