@@ -142,7 +142,7 @@ function Tile({ item, outcome, busy, me, reader, run }: { item: Item; outcome: O
     <li ref={tile} tabIndex={-1} className={cn('hm-tile', decision && 'is-decide', outcome && 'is-answered')} aria-busy={busy || undefined}>
       <div className="hm-tile-h">
         <span className="hm-tile-i"><Icon name={decision ? 'badgeCheck' : 'userCheck'} size={16} /></span>
-        <span className="hm-tile-k ac-clamp-1">{settling ? 'Settle a decision' : decision ? 'Decision' : followUpLabel(item.a)}</span>
+        <span className="hm-tile-k ac-clamp-1">{settling ? 'Disputed' : decision ? 'Decision' : followUpLabel(item.a)}</span>
         <Moment noteId={noteId} noteTitle={noteTitle} at={at} />
       </div>
       <p className="hm-tile-t" title={text}>{text}</p>

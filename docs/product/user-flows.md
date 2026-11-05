@@ -109,7 +109,7 @@ it's a still picture.
 - The tiles, newest first, the first six and then **Show more**. A **Decision** (rose) proposed in any note you organized or
   were invited to that nobody has confirmed, by the notes or by someone else, saying whose words it's in: **Confirm**, or **×**
   for it wasn't decided, each with **Undo**. On someone else's note, **×** says so for everyone and the organizer settles it,
-  and it stops waiting on you. On your own notes, **Settle a decision** is one someone confirmed that someone else says wasn't
+  and it stops waiting on you. On your own notes, **Disputed** is one someone confirmed that someone else says wasn't
   decided: **Keep it confirmed**, or **×**. A **Follow-up** (blue) the notes suggest is yours, that someone gave you or suggested
   (the tile says **From** them), or that changed since you took it on (**Changed by** them), with the date it's suggested for:
   **I’ll do it**, which puts it in your follow-ups, or **×**, which leaves it with nobody (then **It’s mine** gives it back to
