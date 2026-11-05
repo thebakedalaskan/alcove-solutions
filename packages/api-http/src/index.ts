@@ -345,7 +345,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
       },
       share: {
-        list: (id, documentId) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`),
+        list: (id, documentId, w) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`, undefined, withPass(w)),
         set: async (id, documentId, to, role, w) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/share`, { to, role }, withPass(w)); },
         remove: async (id, documentId, entryId) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`); },
         restrict: async (id, documentId, restricted) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }); }

@@ -282,7 +282,11 @@ describe('a tag', () => {
     await org.api.workspaces.mention(id, doc, { to: { seat }, block: 'l1' }, pass);
     expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE document_id = $1', [doc])).toBe(0);
 
+    expect((await org.api.workspaces.share.list(id, doc, pass)).seats).toEqual([]);
     await org.api.workspaces.share.set(id, doc, [{ seat }], 'read', pass);
+    // Who has it, from inside the call, for someone with no address to go by. From outside it, a seat means nothing.
+    expect((await org.api.workspaces.share.list(id, doc, pass)).seats).toEqual([seat]);
+    expect((await org.api.workspaces.share.list(id, doc)).seats).toEqual([]);
     const g = b.api.workspaces.live(id, { pass: guest.ticket.pass });
     await opened(g, 'the guest’s stream');
     await org.api.workspaces.mention(id, doc, { to: { seat }, block: 'l1' }, pass);
@@ -294,6 +298,23 @@ describe('a tag', () => {
     expect(await code(org.api.workspaces.mention(id, doc, { to: { seat }, block: null }))).toBe('invalid');
     expect(await code(org.api.workspaces.mention(id, doc, { to: { seat: 'nobody' }, block: null }, pass))).toBe('not-found');
     g.close();
+  });
+
+  it('reaches someone signed in, by their seat, through what their address gives them, and after the call', async () => {
+    const org = await account();
+    const theo = await account();
+    const id = await workspace(org, 'Ours', [[theo, 'edit']]);
+    const doc = await make(org, id, 'Doc');
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [theo.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await until(() => host.crypto.getSnapshot().status === 'in', 'the host in the call’s group');
+    const inCall = await theo.api.calls.join(c, { mic: false, cam: false });
+    const settle = async (pred: (s: CallState) => boolean) => { for (let i = 0; i < 200 && !pred(host.getSnapshot()); i++) { await host.refresh(); await rest(30); } return host.getSnapshot(); };
+    const seat = (await settle((s) => s.participants.some((p) => p.id === inCall.ticket.identity))).participants.find((p) => p.id === inCall.ticket.identity)?.seat ?? '';
+
+    await org.api.workspaces.mention(id, doc, { to: { seat }, block: 'b1' }, { pass: host.ticket.pass });
+    const waiting = await theo.api.workspaces.mentions();
+    expect(waiting.map((m) => m.document)).toEqual([doc]);
   });
 
   it('leaves nothing readable behind it', async () => {

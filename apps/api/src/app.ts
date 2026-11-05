@@ -1081,7 +1081,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/items/:item/duplicate', async (c) => c.json(await workspaces.duplicateItem(d, await member(c), ws(c), itemOf(c))));
   app.post('/v1/workspaces/:id/items/:item/trash', async (c) => { await workspaces.trashItem(d, await member(c), ws(c), itemOf(c)); return c.json({ trashed: true }); });
   app.delete('/v1/workspaces/:id/items/:item', async (c) => { await workspaces.deleteItem(d, await member(c), ws(c), itemOf(c)); return c.json({ deleted: true }); });
-  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner')), ws(c), itemOf(c))));
+  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner'), c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c))));
   app.post('/v1/workspaces/:id/items/:item/share', async (c) => {
     const { to, role } = await body(c, ShareBodySchema);
     // A seat is someone in the sharer's own call, so sharing with one comes with their pass.

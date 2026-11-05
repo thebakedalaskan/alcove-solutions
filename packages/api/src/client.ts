@@ -265,7 +265,7 @@ export interface AlcoveApi {
     };
     share: {
       /** Who has a document: for people in the workspace who can edit it, like everything else here. */
-      list(id: ID, documentId: ID): Promise<DocumentShare>;
+      list(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocumentShare>;
       /**
        * Opens a document for everyone in `to`, all of them or none, or changes what they can do with it. Sharing with a
        * seat takes the pass of the call it's in, and ends with the call.

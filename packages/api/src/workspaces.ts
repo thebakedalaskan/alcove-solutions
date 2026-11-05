@@ -83,7 +83,9 @@ export const DocumentShareSchema = z.object({
   restricted: z.boolean(),
   entries: z.array(ShareEntrySchema),
   /** The address of everyone who can open it, whichever way they came to: anyone else can't, and is told nothing of it. */
-  canOpen: z.array(z.string())
+  canOpen: z.array(z.string()),
+  /** Asked from inside a call: the seats in it (`CallParticipant.seat`) it's shared with, for people with no address here. */
+  seats: z.array(z.string())
 });
 export type DocumentShare = z.infer<typeof DocumentShareSchema>;
 

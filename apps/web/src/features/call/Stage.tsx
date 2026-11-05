@@ -41,6 +41,7 @@ import { MAX_FEATURED, arrange, fitGrid, isShareKey, isWaitKey, placeFrame, resl
 import { TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
+import type { CallTogether } from '~/features/workspace/context';
 import type { VolumeActions } from './volume';
 import { volumeTag } from './VolumeControl';
 
@@ -56,6 +57,9 @@ export interface StageParticipant {
   /** In the call, but not yet in this browser's encrypted group, so none of their media plays here yet. */
   connecting: boolean;
 }
+/** What a tile shows of the workspace, by connection: Follow, Following, who's writing, and who was just tagged. */
+export interface StageTogether extends CallTogether { lit: string | null; onFollow: (connection: string) => void }
+
 /** Something shared: whose it is (their participant ID), its feed, and what it's called. */
 export interface StageShare {
   id: string;
@@ -193,9 +197,11 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
 }
 export type StagePlan = ReturnType<typeof useStagePlan>;
 
-export function Stage({ staged, frame, live: sizing, phone, people, waiting, shares, marks, me, whoIs, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped, onPeopleMode, onPickUp, onGrowShare, onMorePeople }: {
+export function Stage({ staged, frame, live: sizing, phone, people, waiting, shares, marks, me, whoIs, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped, onPeopleMode, onPickUp, onGrowShare, onMorePeople }: {
   /** What it shows (`useStagePlan`). */
   staged: StagePlan;
+  /** People working together in the workspace, by connection. */
+  together: StageTogether;
   /** Where the panels put it. */
   frame: StageFrame;
   /** A line is being dragged: everything follows it at once. */
@@ -638,6 +644,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
         const growing = size?.id === p.seat;
         const pin = pinned.has(p.id);
         const spot = spotlight === p.id;
+        const following = together.following === p.id;
         const mode = L.modes.get(p.id);
         const here = dragging ? { left: drag.x, top: drag.y, width: r[2], height: r[3] } : growing ? { left: r[0], top: r[1], width: size.w, height: size.h } : box(r);
         const opens = opening.current.get(p.id);
@@ -650,11 +657,12 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
             onClick={mode ? (e) => { if (e.target instanceof Node && e.currentTarget.contains(e.target)) setMenu(p.id); } : undefined}
             initial={opens ? { ...box(opens.from), opacity: 1, scale: 1 } : { ...here, opacity: 0, scale: 0.97 }} animate={{ ...here, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
             transition={instant || dragging || growing ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>
-            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot')}
+            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot', following && 'is-followed', together.lit === p.id && 'is-lit')}
               chrome={(
                 <>
                   {!corner && (
                     <div className="ic-tstate">
+                      {together.writing.includes(p.id) && <span className="ic-tpen" aria-label="Writing"><Icon name="pen" size={12} /></span>}
                       {spot && (
                         <span className="ic-tch is-spot"><Icon name="spotlight" size={13} /><span className="tl">Spotlight · everyone</span>
                           {organizer && <button type="button" className="tx" aria-label="Stop spotlight for everyone" onClick={() => onSpotlight(null)}><Icon name="x" size={12} /></button>}
@@ -671,6 +679,10 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
                         </span>
                       )}
                     </div>
+                  )}
+                  {following && !mode && <span className="ic-ton"><Icon name="navigate" size={12} />Following</span>}
+                  {!following && !mode && !corner && together.followable.includes(p.id) && (
+                    <button type="button" className="ic-tfl" aria-label={`Follow ${callName(p.person)}`} onClick={() => together.onFollow(p.id)}><Icon name="navigate" size={13} /><span>Follow</span></button>
                   )}
                   <TileMenu who={p.person} me={p.isMe} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} organizer={organizer} menu={menuFor(p, corner)} />
                   {sizable && restGroup.includes(p.id) && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p)}><Icon name="resize" size={14} /></span>}

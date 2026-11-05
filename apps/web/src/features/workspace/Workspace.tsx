@@ -180,6 +180,26 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
   }, [view.tree, at.kind, phone, owner, workspaceId, tree, onGo]);
 
+  /* The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. */
+  const closed = call?.closed ?? false;
+  const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
+  const writing = others.flatMap((o) => (o.typing && o.callIdentity !== null ? [o.callIdentity] : [])).join(' ');
+  const followingIn = following ? others.find((o) => o.person.id === following.person.id)?.callIdentity ?? null : null;
+  const tellTiles = call?.onTogether;
+  useEffect(() => {
+    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [] });
+  }, [tellTiles, followable, followingIn, writing]);
+  const othersNow = useRef(others);
+  othersNow.current = others;
+  const togetherRef = call?.together;
+  useEffect(() => {
+    if (!togetherRef) return;
+    togetherRef.current = { follow: (connection) => { const o = othersNow.current.find((x) => x.callIdentity === connection); if (o) follow(o.person.id); } };
+    return () => { togetherRef.current = null; };
+  }, [togetherRef, follow]);
+  /* Put away, there's nothing to go with. */
+  useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
+
   /* Everyone can see you're in a document from the moment it's open. The editor says which line. */
   useEffect(() => { store.present({ document: documentId, block: null, typing: false }); }, [store, documentId]);
 

@@ -11,6 +11,7 @@ import type { Deps, Owner } from '../context';
 import { b64u, id128, openJson, sealJson, toJson, type RecordHeader } from '../crypto';
 import { bytea, exec, rows, timestamp, tx, type Db } from '../db';
 import { AppError } from '../errors';
+import { addressIn } from './calls';
 import { publish } from '../live/hub';
 import { TOLD } from '../live/room';
 import { log } from '../log';
@@ -38,8 +39,11 @@ const samePerson = (a: Who, b: Who): boolean => a.principals.some((p) => b.princ
 export async function mention(d: Deps, reader: Reader, workspaceId: string, documentId: string, tag: MentionBody): Promise<void> {
   const [target] = await grantsFor(reader, [tag.to], 'read');
   if (!target) return;
-  const principal = principalOf(d, target);
-  const who: Who = { email: target.kind === 'email' ? target.email : undefined, principals: [principal] };
+  /* Someone in a seat may be signed in too, and have what their address gives them: it's where they'll hear of it after the call. */
+  const email = target.kind === 'email' ? target.email : reader.seat && await addressIn(reader.seat.viewer, target.seat);
+  const seat = principalOf(d, target);
+  const principal = email ? principalOf(d, { kind: 'email', email, role: 'read' }) : seat;
+  const who: Who = { email, principals: [...new Set([principal, seat])] };
   await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, reader, workspaceId, c, 'hold');
     const { item } = requireDocument(reader, w, documentId, 'edit');

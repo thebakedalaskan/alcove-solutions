@@ -958,6 +958,11 @@ function InCall({ session }: { session: CallSession }) {
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
+  /* `@` in the workspace: who's here and who's invited. The call changes all the time and these rarely do, and the workspace draws a lot. */
+  const spacePeopleKey = JSON.stringify(told.participants.map((p) => [p.id, p.seat, p.person, p.isMe]));
+  const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
+  const spaceInvitedKey = JSON.stringify(invited);
+  const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
   const zenOffered = !phone && !stageRooms;
   const zenOn = zenOffered && work.zen;
   const latestZen = useRef(zenOn);
@@ -1379,12 +1384,13 @@ function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted ? () => (
-            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} open={work.open} zen={zenOffered ? zenOn : null}
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} open={work.open} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
               listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={resizing} phone={phone} people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
+                together={{ ...work.together, lit: work.lit, onFollow: work.act.follow }}
                 bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onShareStarted={shareStarted} onShareStopped={shareStopped} onPeopleMode={setPeopleMode} onPickUp={(leaf) => hostHandle.current?.pickUp(leaf)}
                 onGrowShare={facts.ws || facts.board ? (seat) => layout.arrange((p) => growShare(p, seat)) : null} onMorePeople={() => openPanel('people')} />

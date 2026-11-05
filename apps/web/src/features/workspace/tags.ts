@@ -3,7 +3,7 @@
  * the document is told. Whoever can't is asked about once, right where you are, and only you can share anything: a tag never
  * does. The list says who can't open this before you pick, from what Share knows, and the decision reads it again.
  */
-import { errorMessage, firstName, type Person, type ShareTarget, type WorkspaceItem } from '@alcove/api';
+import { errorMessage, firstName, type DocumentShare, type Person, type ShareTarget, type WorkspaceItem } from '@alcove/api';
 import { wsToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -44,6 +44,9 @@ function outsiderId(email: string): string {
 /** Someone as a tag shows them: never by their address, which a tag would carry to everyone who reads it. */
 const named = (p: Person): Person => (p.name === p.email ? { ...p, name: callName(p) } : p);
 
+/** What a tag calls someone in a call who has no address here. */
+const seatPerson = (p: Person, seat: string): Person => ({ ...p, id: outsiderId(seat) });
+
 /** Someone asked about before anything's shared: who, the line, and where to ask. */
 export interface TagAsk { person: Person; block: string; rect: () => DOMRect }
 
@@ -54,8 +57,8 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
   const qc = useQueryClient();
   const people = useQuery({ ...q.workspacePeople(workspaceId), enabled: member }).data;
   const team = useQuery({ ...q.team(), enabled: member }).data;
-  const share = useQuery({ ...q.documentShare(workspaceId, item.id), enabled: canShare }).data;
-  const changes = useDocumentShare(workspaceId, item.id);
+  const share = useQuery({ ...q.documentShare(workspaceId, item.id, pass), enabled: canShare }).data;
+  const changes = useDocumentShare(workspaceId, item.id, pass);
   const mention = useMention(workspaceId, pass);
   const [asking, setAsking] = useState<readonly TagAsk[]>([]);
   /** Asked once: someone you've said Not now about isn't asked about again in this document. */
@@ -67,11 +70,24 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
     const inHere = new Set(members.map((p) => p.email));
     return (team?.members ?? []).filter((m) => !inHere.has(m.person.email)).map((m) => named({ ...m.person, id: outsiderId(m.person.email) }));
   }, [team, members]);
+  /* Everyone in the call, as this workspace knows them: by what they're called here if they're in it, and by their seat if not. */
+  const inCall = useMemo(() => (ws.call?.people ?? []).filter((p) => !p.isMe).map((p) => {
+    const here = ws.here.find((h) => h.callIdentity === p.id)?.person;
+    const member = p.person.email ? members.find((m) => m.email === p.person.email) : undefined;
+    const person = member ?? (here && { ...here, email: p.person.email }) ?? (p.person.email ? { ...p.person, id: outsiderId(p.person.email) } : seatPerson(p.person, p.seat));
+    return { connection: p.id, seat: p.seat, person: named(person) };
+  }), [ws.call?.people, ws.here, members]);
+  const invited = useMemo(() => (ws.call?.invited ?? []).map((p) => members.find((m) => m.email === p.email) ?? named({ ...p, id: outsiderId(p.email) })), [ws.call?.invited, members]);
   /** Everyone a tag here may show a face for. */
-  const faces = useMemo(() => [...members, ...company], [members, company]);
+  const faces = useMemo(() => [...members, ...company, ...invited, ...inCall.map((c) => c.person)], [members, company, invited, inCall]);
   const myEmail = ws.me?.email;
+  const seatOf = useCallback((p: Person) => inCall.find((c) => c.person.id === p.id)?.seat, [inCall]);
 
-  const canOpen = useCallback((p: Person) => share === undefined || share.canOpen.includes(p.email), [share]);
+  const opensFor = useCallback((s: DocumentShare, p: Person) => {
+    const seat = seatOf(p);
+    return p.email ? s.canOpen.includes(p.email) : seat !== undefined && s.seats.includes(seat);
+  }, [seatOf]);
+  const canOpen = useCallback((p: Person) => share === undefined || opensFor(share, p), [share, opensFor]);
 
   const sections = useCallback((query: string, { docsOnly }: { docsOnly: boolean }): MentionSection[] => {
     const words = query.toLowerCase();
@@ -80,38 +96,47 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
     if (docsOnly) return [{ title: 'Documents', items: documents }];
     const shown = new Set<string>(myEmail ? [myEmail] : []);
     const pick = (list: readonly Person[]): MentionItem[] => list.filter((p) => {
-      if (shown.has(p.email) || !has(p.name)) return false;
-      shown.add(p.email);
+      const key = p.email || p.id;
+      if (shown.has(key) || !has(p.name)) return false;
+      shown.add(key);
       return true;
     }).slice(0, 8).map((person) => ({ kind: 'person', person, sub: canOpen(person) ? undefined : 'Can’t open this yet' }));
     const out: MentionSection[] = [
+      { title: 'In this call', items: pick(inCall.map((c) => c.person)) },
+      { title: 'Invited', items: pick(invited) },
       { title: ws.spaceName, items: pick(members) },
       { title: team?.name ?? 'Your company', items: pick(company) },
       { title: 'Documents', items: documents },
       { title: 'Dates', items: dateChoices(now).filter((d) => has(d.label)).map((d) => ({ kind: 'date', ...d })) }
     ];
     return out;
-  }, [ws.tree, ws.spaceName, item.id, members, company, team?.name, myEmail, canOpen, now]);
+  }, [ws.tree, ws.spaceName, item.id, inCall, invited, members, company, team?.name, myEmail, canOpen, now]);
 
   /** Who to tell, by what the API knows them by. */
-  const targetOf = useCallback((p: Person): ShareTarget | null => (p.email ? { email: p.email } : null), []);
+  const targetOf = useCallback((p: Person): ShareTarget | null => {
+    const seat = seatOf(p);
+    return p.email ? { email: p.email } : seat ? { seat } : null;
+  }, [seatOf]);
 
+  const onLit = ws.call?.onTagged;
   const tell = useCallback((p: Person, block: string) => {
     const to = targetOf(p);
     if (to) mention.mutate({ document: item.id, to, block }, { onError: (e) => { tlog.warn('someone tagged wasn’t told', { err: e }); } });
-  }, [targetOf, mention, item.id]);
+    const inThisCall = inCall.find((c) => c.person.id === p.id);
+    if (inThisCall) onLit?.(inThisCall.connection);
+  }, [targetOf, mention, item.id, inCall, onLit]);
 
   /** Someone was just tagged: tell them, or ask, once, right where you are. */
   const tagged = useCallback(async (person: Person, block: string, rect: () => DOMRect) => {
     const to = targetOf(person);
     if (!to || !canShare) { tell(person, block); return; }
     /* What decides is what's true now, not what the list last read. */
-    const now = await qc.fetchQuery({ ...q.documentShare(workspaceId, item.id), staleTime: 0 }).catch((e: unknown) => { tlog.warn('who can open this wasn’t read', { err: e }); return null; });
-    if (!now || now.canOpen.includes(person.email)) { tell(person, block); return; }
-    if (asked.current.has(person.email)) return;
-    asked.current.add(person.email);
+    const now = await qc.fetchQuery({ ...q.documentShare(workspaceId, item.id, pass), staleTime: 0 }).catch((e: unknown) => { tlog.warn('who can open this wasn’t read', { err: e }); return null; });
+    if (!now || opensFor(now, person)) { tell(person, block); return; }
+    if (asked.current.has(person.id)) return;
+    asked.current.add(person.id);
     setAsking((was) => [...was, { person, block, rect }]);
-  }, [targetOf, canShare, tell, qc, workspaceId, item.id]);
+  }, [targetOf, canShare, tell, qc, workspaceId, item.id, pass, opensFor]);
 
   const next = useCallback(() => setAsking((was) => was.slice(1)), []);
   const ask = asking[0] ?? null;

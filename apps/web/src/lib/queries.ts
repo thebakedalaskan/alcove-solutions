@@ -127,7 +127,7 @@ export const q = {
   /** What you've been tagged in and haven't seen, anywhere. */
   mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
-  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
+  documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 })
 };
 
 /**
@@ -553,12 +553,12 @@ export function useMention(workspaceId: string, pass?: string | undefined) {
   return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
 }
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
-export function useDocumentShare(workspaceId: string, documentId: string) {
+export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {
   const qc = useQueryClient();
   const reread = () => qc.invalidateQueries({ queryKey: qk.documentShare(workspaceId, documentId) });
   const s = api.workspaces.share;
   return {
-    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role), onSuccess: reread }),
+    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role, pass ? { pass } : undefined), onSuccess: reread }),
     remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry), onSuccess: reread }),
     restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted), onSuccess: reread })
   };

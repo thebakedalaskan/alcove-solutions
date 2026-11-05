@@ -15,6 +15,13 @@ export type WorkspaceArea = 'pins' | 'tree';
  */
 export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined; area?: WorkspaceArea | undefined } | { kind: 'trash' };
 
+/** Someone in the call: `id` is their connection, the same as `callIdentity` among who's here, and `seat` is what's shared with. */
+export interface CallPerson { id: string; seat: string; person: Person; isMe: boolean }
+/** What the tiles show of people working together, by connection. `followable`: they're in the workspace, so Follow is on offer. */
+export interface CallTogether { followable: readonly string[]; following: string | null; writing: readonly string[] }
+/** What the call can ask of the workspace. */
+export interface WorkspaceTogether { follow: (connection: string) => void }
+
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
   /** The first rows under This call: the live pages. */
@@ -35,6 +42,15 @@ export interface WorkspaceCall {
   say: (toast: WsToastData) => void;
   /** Closed, and kept as it was for next time: its keys sleep. */
   closed: boolean;
+  /** Who's in the call, and who's invited, if you can know: first in `@`. */
+  people: readonly CallPerson[];
+  invited: readonly Person[];
+  /** Tells the tiles what to show. */
+  onTogether: (together: CallTogether) => void;
+  /** Someone in the call was just tagged: their tile lights up. */
+  onTagged: (connection: string) => void;
+  /** Where the call reaches the workspace, for Follow on a tile. */
+  together: RefObject<WorkspaceTogether | null>;
 }
 
 export interface WorkspaceProps {
