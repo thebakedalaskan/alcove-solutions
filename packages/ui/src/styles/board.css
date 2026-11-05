@@ -179,6 +179,8 @@
 /* ---------------------------------------------------------------- selection */
 /* Selection, handles and connection points: drawn in screen pixels, so they never scale with the board */
 .bs { position: absolute; z-index: 8; pointer-events: none; border-radius: 8px; box-shadow: 0 0 0 1.5px var(--horizon); }
+/* It's drawn where a glide will end, so it takes the glide's own way there and stays round what it's selecting. */
+.bd.is-glide .bs { transition: left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out), width var(--duration-3) var(--ease-in-out), height var(--duration-3) var(--ease-in-out); }
 .bs i { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--horizon); pointer-events: auto; }
 .bs i:nth-child(1) { left: -5px; top: -5px; cursor: nwse-resize; }
 .bs i:nth-child(2) { right: -5px; top: -5px; cursor: nesw-resize; }
