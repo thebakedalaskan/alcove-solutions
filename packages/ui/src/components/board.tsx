@@ -68,7 +68,7 @@ export interface BoardSheetProps extends HTMLAttributes<HTMLDivElement> {
 
 /** The sheet. Pass it the pointer and key handlers; everything over the board goes inside, after `BoardWorld`. */
 export const BoardSheet = forwardRef<HTMLDivElement, BoardSheetProps>(function BoardSheet(
-  { tool = 'select', clean = false, fresh = false, page = false, mini = false, glide = false, pan = false, follow, night = false, className, style, tabIndex = 0, children, ...rest }, ref
+  { tool = 'select', clean = false, fresh = false, page = false, mini = false, glide = false, pan = false, follow, night = false, className, style, tabIndex = mini ? -1 : 0, children, ...rest }, ref
 ) {
   return (
     <div ref={ref} tabIndex={tabIndex} style={follow ? { '--fc': follow, ...style } : style}
@@ -277,19 +277,19 @@ export function BoardFlyout(props: BoardFlyoutProps) {
     <div className={cls}>
       <div className="row">
         {props.kind === 'note' && BOARD_COLOURS.map((c) => (
-          <button key={c} type="button" className={cn('sw', `c-${c}`)} aria-label={`${colourName(c)} sticky`} aria-pressed={props.colour === c} onClick={() => props.onColour(c)}><i className="swatch" /></button>
+          <button key={c} type="button" className={cn('sw', `c-${c}`)} aria-label={`${colourName(c)} sticky`} title={`${colourName(c)} sticky`} aria-pressed={props.colour === c} onClick={() => props.onColour(c)}><i className="swatch" /></button>
         ))}
         {props.kind === 'shape' && (
           <>
-            {SHAPES.map((s) => <IconButton key={s.id} className="bt" icon={s.icon} size={19} label={s.label} title={undefined} aria-pressed={props.shape === s.id} onClick={() => props.onShape(s.id)} />)}
+            {SHAPES.map((s) => <IconButton key={s.id} className="bt" icon={s.icon} size={19} label={s.label} aria-pressed={props.shape === s.id} onClick={() => props.onShape(s.id)} />)}
             {/* Lucide has no pill, so this one is drawn. */}
-            <button type="button" className="ac-icon-btn bt" aria-label="Pill" aria-pressed={props.shape === 'pill'} onClick={() => props.onShape('pill')}>
+            <button type="button" className="ac-icon-btn bt" aria-label="Pill" title="Pill" aria-pressed={props.shape === 'pill'} onClick={() => props.onShape('pill')}>
               <svg className="ac-i" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="5" /></svg>
             </button>
           </>
         )}
-        {props.kind === 'line' && LINES.map((l) => <IconButton key={l.id} className="bt" icon={l.icon} size={19} label={l.label} title={undefined} aria-pressed={props.line === l.id} onClick={() => props.onLine(l.id)} />)}
-        {props.kind === 'pen' && PENS.map((p) => <IconButton key={p.id} className="bt" icon={p.icon} size={19} label={p.label} title={undefined} aria-pressed={props.pen === p.id} onClick={() => props.onPen(p.id)} />)}
+        {props.kind === 'line' && LINES.map((l) => <IconButton key={l.id} className="bt" icon={l.icon} size={19} label={l.label} aria-pressed={props.line === l.id} onClick={() => props.onLine(l.id)} />)}
+        {props.kind === 'pen' && PENS.map((p) => <IconButton key={p.id} className="bt" icon={p.icon} size={19} label={p.label} aria-pressed={props.pen === p.id} onClick={() => props.onPen(p.id)} />)}
       </div>
     </div>
   );
@@ -336,7 +336,7 @@ export function BoardSelectionBar({ x, y, count = 1, colour, textSize = false, p
       </div>
       {picking && (
         <div className="bx-sw" style={{ left: x, top: y + 48, translate: '-50% 0' }}>
-          {BOARD_COLOURS.map((c) => <button key={c} type="button" className={`c-${c}`} aria-label={colourName(c)} aria-pressed={colour === c} onClick={() => onPick(c)}><i className="swatch" /></button>)}
+          {BOARD_COLOURS.map((c) => <button key={c} type="button" className={`c-${c}`} aria-label={colourName(c)} title={colourName(c)} aria-pressed={colour === c} onClick={() => onPick(c)}><i className="swatch" /></button>)}
         </div>
       )}
     </>
@@ -391,8 +391,8 @@ function objectAttrs(o: ObjectProps, kind: string, ...more: (string | false | un
   };
 }
 
-/** Where typing goes: over an object, in that object's type. */
-export const BoardEdit = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function BoardEdit({ className, 'aria-label': label = 'Edit this sticky', ...rest }, ref) {
+/** Where typing goes: over an object, in that object's type. `label` says what's being edited, as in "Edit this sticky". */
+export const BoardEdit = forwardRef<HTMLTextAreaElement, Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'aria-label'> & { label: string }>(function BoardEdit({ className, label, ...rest }, ref) {
   return <textarea ref={ref} className={cn('bo-edit', className)} aria-label={label} {...rest} />;
 });
 
@@ -459,7 +459,7 @@ export const BoardShape = memo(function BoardShape({ path, colour, text = '', ..
 });
 
 /** A picture. `shot`: a moment of someone's screen, framed, with `caption` under it. With no `src` yet it's an empty ground. */
-export const BoardPicture = memo(function BoardPicture({ src, shot = false, caption = '', ...o }: ObjectProps & { src?: string | undefined; shot?: boolean | undefined; caption?: string | undefined }) {
+export const BoardPicture = memo(function BoardPicture({ src, shot = false, caption = '', ...o }: Omit<ObjectProps, 'editor'> & { src?: string | undefined; shot?: boolean | undefined; caption?: string | undefined }) {
   const picture = src && <img src={src} alt={caption} draggable={false} />;
   if (!shot) return <div {...objectAttrs(o, 'k-img')}>{picture}</div>;
   return <div {...objectAttrs(o, 'k-shot')}><span className="bo-shot">{picture}</span><p className="bo-t">{caption}</p></div>;
@@ -517,7 +517,7 @@ const addAllLabel = (n: number): string => (n === 2 ? 'Add both' : n === 3 ? 'Ad
 export function BoardTray({ ideas, onClose, onAdd, onAddAll, className }: { ideas: BoardIdea[]; onClose: () => void; onAdd: (id: string) => void; onAddAll: () => void; className?: string | undefined }) {
   return (
     <div className={cn('bd-tray', className)} role="dialog" aria-label="Ideas from the call">
-      <div className="hd"><Icon name="waveform" size={16} />From the call<span className="sp"><Icon name="sealed" size={13} />Written in confidential compute</span><IconButton className="bt" icon="x" size={16} label="Close" title={undefined} onClick={onClose} /></div>
+      <div className="hd"><Icon name="waveform" size={16} />From the call<span className="sp"><Icon name="sealed" size={13} />Written in confidential compute</span><IconButton className="bt" icon="x" size={16} label="Close" onClick={onClose} /></div>
       {ideas.map((l) => (
         <div key={l.id} className="ln">
           <Avatar person={l.person} size={24} />
@@ -614,6 +614,9 @@ export interface BoardMenuRecent {
   thumb?: ReactNode;
 }
 
+/** The team's recent boards, and the workspace they're from. */
+export interface BoardMenuRecents { workspace: string; boards: BoardMenuRecent[] }
+
 /** Some people here can't open the saved board: the opener decides before anything opens. */
 export interface BoardMenuAccess {
   names: string[];
@@ -629,11 +632,9 @@ const namesList = (names: string[]): string => (names.length < 2 ? names.join(''
  * The Board button's menu, rising from `anchor` (the dock's button): a new board from a template, the team's recent boards
  * and, in place of those, the access step. `inRoom` says it's only for this room, and leaves the saved boards out.
  */
-export function BoardMenu({ open, onOpenChange, anchor, inRoom = false, workspace, recents = [], access, onTemplate, onRecent, className }: {
+export function BoardMenu({ open, onOpenChange, anchor, inRoom = false, recents, access, onTemplate, onRecent, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; inRoom?: boolean | undefined;
-  /** The name of the workspace `recents` are from. */
-  workspace?: string | undefined;
-  recents?: BoardMenuRecent[] | undefined;
+  recents?: BoardMenuRecents | undefined;
   access?: BoardMenuAccess | undefined;
   onTemplate: (template: BoardTemplate) => void; onRecent?: ((id: string) => void) | undefined; className?: string | undefined;
 }) {
@@ -643,10 +644,10 @@ export function BoardMenu({ open, onOpenChange, anchor, inRoom = false, workspac
       <div className="bl-tpl">
         {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" onClick={() => onTemplate(t.id)}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
       </div>
-      {!access && !inRoom && recents.length > 0 && (
+      {!access && !inRoom && recents && recents.boards.length > 0 && (
         <>
-          <div className="bl-sub">From {workspace}</div>
-          {recents.map((r) => <button key={r.id} type="button" className="bl-r" onClick={() => onRecent?.(r.id)}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
+          <div className="bl-sub">From {recents.workspace}</div>
+          {recents.boards.map((r) => <button key={r.id} type="button" className="bl-r" onClick={() => onRecent?.(r.id)}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
         </>
       )}
       {access && (

@@ -160,7 +160,8 @@
 
 /*
  * The board: a dawn sheet on the night stage. Light values on :root and .light, dark on .dark, like everything above.
- * `note-*` are the sticky colours and what's written on them. Lines and ink are `line-*`. `bf-*` are frames.
+ * `note-*` are the sticky colours and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the
+ * `line` tokens for edges above. `bf-*` are frames.
  */
 :root, .light {
   --bd-ground: #F6F3FB;
