@@ -715,9 +715,9 @@ class HttpCall extends Live<CallState> implements CallSession {
     const quick = Math.min(this.timing.pollMs, WAIT_FIRST_MS * 2 ** (this.waits - 1)) * (0.8 + Math.random() * 0.4);
     this.timer = setTimeout(() => {
       void this.sync();
-      // Losing a document says nothing to the call, so while something's presented or playing, the call is read as well.
+      // Losing a document says nothing to the call, so while something's presented, playing or open as a board, the call is read as well.
       const { present, play } = this.state.workspace;
-      if (present || play) this.fetchState().catch((e: unknown) => this.emit('debug', 'call not read', { code: errorCode(e) }));
+      if (present || play || this.state.board.open) this.fetchState().catch((e: unknown) => this.emit('debug', 'call not read', { code: errorCode(e) }));
     }, st === 'in' ? this.timing.pollMs * 4 : st === 'waiting' ? quick : this.timing.pollMs);
     unref(this.timer);
   }
