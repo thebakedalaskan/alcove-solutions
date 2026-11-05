@@ -1,8 +1,9 @@
 /*
  * What backs an entry in the notes (docs: Notes and inference › Decisions and follow-ups). An entry keeps which lines it
  * rests on, and that's all it keeps: the words, who said them and what's in doubt about them are read from the note each
- * time someone reads it, under the check that gave them the note. So a line corrected since shows as corrected, a reader
- * who lost the note gets nothing, and nothing derived is stored for anyone.
+ * time someone reads it, as that person may read it (notes.asRead), under the check that gave them the note. So a line
+ * corrected since shows as corrected, a reader who lost the note gets nothing, nobody reads here a transcript that isn't
+ * theirs to read, and nothing derived is stored for anyone.
  */
 import type { Change, Decision, NoteAction, NoteDecision, NoteEvidence, NoteEvidenceFlag, NoteEvidenceMoment, NoteQuestion, NoteRoom, ScreenMoment, TranscriptLine } from '@alcove/api';
 import type { NoteManifest } from './notes';
@@ -46,8 +47,12 @@ function evidenceOf(e: Entry, part: TranscriptLine[], lines: Map<string, Transcr
   if (shown && ref) moments.push({ kind: 'screen', id: shown.id, at: shown.at, title: shown.title, ...(ref.region === undefined ? {} : { region: ref.region }), ...(label ? { part: label } : {}), sure: ref.sure });
 
   const flags: NoteEvidenceFlag[] = [];
-  if (!behind.length && !shown) flags.push('missing');
-  if (against.length || e.disputes?.length) flags.push('conflict');
+  // With no transcript to read (a call set not to keep it), whatever an entry pointed at is out of reach, which isn't the
+  // same as nothing having backed it: only one that never pointed at anything can be said to have had nothing.
+  const pointedAtNothing = !e.lines.length && e.at === undefined;
+  if (!behind.length && !shown && (part.length > 0 || pointedAtNothing)) flags.push('missing');
+  // Someone said otherwise whether or not the line that says so can still be read.
+  if (e.against.length || e.disputes?.length) flags.push('conflict');
   if (behind.length && behind.every((l) => l.unsure) && !ref?.sure) flags.push('unsure');
   if (behind.some((l) => changedSince(l, since))) flags.push('corrected');
   // Something taken on has its owner's word for what it says now: they reworded it, or they'd have to take it on again.
@@ -55,7 +60,7 @@ function evidenceOf(e: Entry, part: TranscriptLine[], lines: Map<string, Transcr
   return { moments, flags };
 }
 
-/** A note's decisions, open questions and follow-ups for someone reading it now, the call's and each room's, each with what backs it. */
+/** A note's decisions, open questions and follow-ups, the call's and each room's, each with what backs it. `m` is the note as this reader may read it (notes.asRead). */
 export function entriesOf(m: NoteManifest): { decisions: NoteDecision[]; questions: NoteQuestion[]; actions: NoteAction[]; rooms: NoteRoom[] } {
   const main = m.transcript ?? [];
   const lines = new Map([...main, ...m.rooms.flatMap((r) => r.transcript)].map((l) => [l.id, l]));

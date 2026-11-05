@@ -667,9 +667,14 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
   Entries written before this kept no lines: they point at the line said nearest their moment, within 20 seconds, as the
   note always offered to play. Entries since keep a moment only with a line behind it, so it's only these that have one
   and no lines. Evidence is a reader's: nothing derived is kept, so each person's comes from the notes they
-  have at that moment, through the check that gave them the note, and someone who lost it reads none of it. Everyone with a
-  note reads all of it today, so the check is on the note. A kind of moment some readers can't see would be filtered in
-  `evidenceOf`.
+  have at that moment, through the check that gave them the note, and someone who lost it reads none of it. It's always
+  worked out from the note as that person may read it (`asRead`), so nobody reads through it a transcript that isn't theirs
+  to read.
+
+  A call set not to keep its transcript has no lines left to quote once its notes are written, and nobody but its organizer
+  reads them before that. An entry then shows nothing said, and that isn't `missing`: what it pointed at went on purpose.
+  `missing` stays on an entry that never pointed at anything, and `conflict` on one with lines against it, since the note
+  still knows that much. `unsure` and `corrected` need the lines themselves, so they can't show.
 - **Adding to the notes.** `POST /v1/notes/:id/decisions` and `…/actions` with the exact words, optionally the `lines` it
   rests on (at most three, of that part of the note, or `400 invalid`) and a breakout room's section (`room`, or
   `404 not-found`). Nothing asks a model, and the same words again add nothing, so a retry is safe and no receipt is kept.

@@ -5,7 +5,7 @@
  * so; every entry shows what backs it for whoever reads it now; and what people settled survives the notes being
  * written again.
  */
-import { AlcoveApiError, type ActionPatch, type AlcoveApi, type DecisionPatch, type Note, type NoteEvidenceMoment, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type ActionPatch, type AlcoveApi, type DecisionPatch, type Note, type NoteEvidenceMoment, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from './testing/fake-near';
 import { startHarness, type Harness } from './testing/harness';
@@ -39,6 +39,13 @@ async function held(org: Account, words: string, guests: string[] = []): Promise
   const noteId = (await call.leave())?.pendingNoteId ?? '';
   await written(org.api, noteId);
   return noteId;
+}
+/** Schedules a call set not to keep its transcript, and joins it as its organizer. */
+async function notKept(org: Account, guests: string[]) {
+  const meeting = await org.api.meetings.create({
+    title: 'Supplier review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests, notes: 'on', choices: { ...DEFAULT_NOTES_CHOICES, keepTranscript: false }
+  });
+  return { meeting, call: await org.api.calls.join(meeting.code, { mic: true, cam: false }) };
 }
 async function written(api: AlcoveApi, noteId: string): Promise<void> {
   for await (const p of api.notes.progress(noteId)) if (p.ready) return;
@@ -460,6 +467,28 @@ describe('what backs an entry', () => {
     expect(await flags()).toEqual([]);
   });
 
+  it('doesn’t say nothing backs an entry because the call wasn’t set to keep what did', async () => {
+    const org = await account(at('organizer'));
+    const { call } = await notKept(org, []);
+    await call.transcribe(speech('We agreed to drop the beta. // No, the beta stays until March. // We decided to ship on Monday. // Is this unbacked?'), call.ticket.identity);
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const note = await org.api.notes.get(noteId);
+    const entry = (starts: string) => note.decisions.find((d) => d.text.startsWith(starts));
+    expect(note.transcript).toEqual([]);
+
+    // These rested on lines that went on purpose, so there's nothing to quote, and that's not the same as nothing behind them.
+    expect(entry('We decided')).toMatchObject({ evidence: { moments: [], flags: [] } });
+    expect(entry('We decided')?.lines).toHaveLength(1);
+    // What someone said against one is still known, though not what they said.
+    expect(entry('We agreed')).toMatchObject({ evidence: { moments: [], flags: ['conflict'] } });
+    // And what the model wrote with nothing behind it still says so, with or without a transcript.
+    expect(entry('Everyone agreed')).toMatchObject({ lines: [], evidence: { moments: [], flags: ['missing'] } });
+    // As does what someone proposed from memory.
+    const mine = await org.api.notes.proposeDecision(noteId, { text: 'Nobody said this.' });
+    expect(mine.decisions.find((d) => d.text === 'Nobody said this.')?.evidence.flags).toEqual(['missing']);
+  });
+
   it('is read for each person, from the notes they have now', async () => {
     const org = await account(at('organizer'));
     const [kofiEmail, priyaEmail] = [at('kofi'), at('priya')];
@@ -740,6 +769,36 @@ describe('notes that couldn’t be written', () => {
     };
     return { job, failedOnce, retryNow };
   };
+
+  it('never shows anyone a line of a transcript that isn’t theirs to read, whichever way they come at it', async () => {
+    const org = await account(at('organizer'));
+    const kofiEmail = at('kofi');
+    const kofi = await account(kofiEmail);
+    const { job, failedOnce, retryNow } = jobOf(org);
+    // A call set not to keep its transcript, whose notes couldn't be written: it stays, for its organizer to have them written.
+    const { meeting, call } = await notKept(org, [kofiEmail]);
+    h.near.failNext(3, 'prose');
+    await call.transcribe(speech('CANARY-KEPTBACK we ship on Monday.'), call.ticket.identity);
+    const noteId = (await call.leave())?.pendingNoteId ?? '';
+    await failedOnce();
+    await retryNow();
+    await retryNow();
+    expect(await job()).toBeUndefined();
+
+    // The organizer can rest a proposal on a line, and reads what's behind it.
+    const line = (await org.api.notes.get(noteId)).transcript?.[0]?.id ?? '';
+    const proposed = await org.api.notes.proposeDecision(noteId, { text: 'Monday it is.', lines: [line] });
+    expect(said(proposed.decisions[0]?.evidence.moments ?? [])).toEqual([['CANARY-KEPTBACK we ship on Monday.', false]]);
+
+    // It's Kofi's to confirm, but what backs it isn't his to read: not on the note, in what waits on him, or across the series.
+    const startsAt = new Date(new Date(meeting.startsAt).getTime() + 7 * 86_400_000).toISOString();
+    const seriesId = (await org.api.meetings.scheduleNext(meeting.id, startsAt)).seriesId ?? '';
+    const [read, waiting, series] = [await kofi.api.notes.get(noteId), await kofi.api.notes.inbox(), await kofi.api.series.get(seriesId)];
+    expect(read.decisions).toMatchObject([{ text: 'Monday it is.', evidence: { moments: [], flags: [] } }]);
+    expect(waiting.decisions).toMatchObject([{ text: 'Monday it is.', evidence: { moments: [], flags: [] } }]);
+    expect(series.decisions).toMatchObject([{ text: 'Monday it is.', evidence: { moments: [], flags: [] } }]);
+    for (const reply of [read, waiting, series]) expect(JSON.stringify(reply)).not.toContain('CANARY-KEPTBACK');
+  });
 
   it('asks for less after a reply that was cut off, so a call with a lot in it still gets its notes', async () => {
     const org = await account(at('organizer'));
