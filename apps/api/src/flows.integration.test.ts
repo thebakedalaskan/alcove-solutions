@@ -2481,12 +2481,16 @@ describe('deleting an account', () => {
     const sharedWith = await noteFrom(ann);
     await ann.api.notes.share(sharedWith, { emails: [lena.email] });
     await b.api.notes.share(sharedWith, { emails: [kofi.session.user.email] });
+    // Her own notes, on Ann's note and on hers, and something she added from them to her note's shared notes.
+    await b.api.notes.personal(invitedTo).add({ kind: 'note', text: 'On Ann’s note.' });
+    const own = (await b.api.notes.personal(callNote).add({ kind: 'note', text: 'For everyone with it.' })).entries[0]?.id ?? '';
+    await b.api.notes.addToShared(callNote, own, { text: 'For everyone with it.', seal: (await b.api.notes.previewAddition(callNote, own)).seal });
 
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
-      'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'note_additions', 'object_gc', 'operations', 'owners',
+      'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
     const before = await counts();
@@ -2796,9 +2800,16 @@ describe('privacy at rest', () => {
     expect(moveRows).not.toBe('');
     move.close();
     const live = `${liveClips} ${translations} ${callRows} ${moveRows}`;
+    // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
+    await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
+    await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
     const ended = await call.leave();
     await written(c.api, ended?.pendingNoteId ?? '');
     expect((await c.api.notes.get(ended?.pendingNoteId ?? '')).rooms.map((r) => r.transcript.map((l) => l.text))).toEqual([['CANARY-ROOMTALK the merger moves to Monday.'], []]);
+    const own = (await c.api.notes.personal(ended?.pendingNoteId ?? '').add({ kind: 'answer', question: 'CANARY-OWN-ASKED who signs?', answer: 'CANARY-OWN-ANSWER Priya signs.', points: [] })).entries[0];
+    const addition = await c.api.notes.previewAddition(ended?.pendingNoteId ?? '', own?.id ?? '');
+    expect(addition.text).toBe('CANARY-OWN-WORDS for nobody else');
+    await c.api.notes.addToShared(ended?.pendingNoteId ?? '', own?.id ?? '', { text: 'CANARY-ADDED to the notes', seal: addition.seal });
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
     await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
@@ -2853,7 +2864,9 @@ describe('privacy at rest', () => {
       SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL SELECT row_to_json(x)::text FROM content_jobs x UNION ALL
       SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM note_access x UNION ALL
       SELECT row_to_json(x)::text FROM transcript_clips x UNION ALL SELECT row_to_json(x)::text FROM transcript_translations x UNION ALL
-      SELECT row_to_json(x)::text FROM screen_frames x) q`);
+      SELECT row_to_json(x)::text FROM screen_frames x UNION ALL SELECT row_to_json(x)::text FROM personal_notes x UNION ALL
+      SELECT row_to_json(x)::text FROM note_additions x) q`);
+    expect(String(dump.rows[0]?.all ?? '')).toContain('body_ciphertext');
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
@@ -2862,7 +2875,8 @@ describe('privacy at rest', () => {
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
-      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event'
+      'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
+      'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
 

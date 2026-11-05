@@ -29,6 +29,8 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `recording_pieces` | owner, recording, segment, seq, where the piece starts in its segment (`at_ms`), object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
+| `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
+| `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
@@ -37,7 +39,7 @@ The migration runner adds `schema_migrations`, which records each applied file b
 Constraints: checked domains `alcove_id128` (22 characters) and `alcove_owner_id` (43 characters), composite
 owner-scoped foreign keys, and deferred item-head and parent-revision constraints. Deleting an owner cascades to
 everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, its
-transcript clips and its `note_access` rows. The `note_access` rows that give an account other people's notes
+transcript clips, its `note_access` rows, everyone's `personal_notes` on it and its `note_additions`. The `note_access` rows that give an account other people's notes
 belong to those notes' organizers, so deleting the account deletes them by its email index, unless another
 account still signs in with that address. `object_gc` keeps a plain owner ID with no foreign key, so a failed
 object delete is still retried after its account is gone.
@@ -83,6 +85,10 @@ decision never erases what was there before.
   recurring event, the recurring event's ID.
 - **Series** aren't stored: a series is read on each request from the meetings that share its ID and the
   notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)).
+- **Someone's own notes** are a sealed record for each person and note, written whole under an advisory lock on the
+  two, so one person's changes take turns without waiting on any row. They hold pointers, never what's pointed at, and
+  what's in them is read for that person each time
+  ([Notes and inference › Your own notes](notes-and-inference.md#your-own-notes)).
 - **Finding people.** Sign-in looks up `identities` by subject index; people search and the team directory
   check `identities.email_index`; shared notes are found through `note_access.email_index`
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).
@@ -110,7 +116,11 @@ One fixed behaviour, with no settings ([Notes and inference › What's kept, and
   objects), **the note and every revision of it** (transcript, notes, corrections and who made them) are kept
   until the organizer deletes the note. Then everything goes in
   one transaction, and the objects after it (failed deletes retried from `object_gc`).
-- **Questions, answers and catch-ups** are never stored.
+- **Questions, answers and catch-ups** are never stored, unless someone keeps an answer in their own notes.
+- **Someone's own notes** (`personal_notes`) last while they have the note: they go with the note, when they remove it
+  from theirs, with their account, and at the end of the call if they were taken off the invite.
+- **What's added to the shared notes** (`note_additions`) lasts until it's taken back, the note goes or its author's
+  account is deleted. It stays when its author removes the note.
 
 ## Operations
 

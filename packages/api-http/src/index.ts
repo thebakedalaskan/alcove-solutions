@@ -5,10 +5,10 @@
  */
 import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
-  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
+  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonalNotesSchema, PersonSuggestionSchema, PreferencesSchema, PromotionPreviewSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
-  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording,
+  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type PersonalApi, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
 } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
@@ -120,6 +120,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
    */
   const ago = (c: TranscriptClip) => String(Math.max(0, Math.round(c.heardAt === undefined ? 0 : performance.now() - c.heardAt)));
 
+  /** Your own notes on a call, at `path`: by the note, or from inside the call with its pass. */
+  const personal = (path: string, extra: Record<string, string> = {}): PersonalApi => ({
+    get: () => req(PersonalNotesSchema, 'GET', path, undefined, extra),
+    add: (input) => req(PersonalNotesSchema, 'POST', path, input, extra),
+    edit: (entryId, text) => req(PersonalNotesSchema, 'PATCH', `${path}/${encodeURIComponent(entryId)}`, { text }, extra),
+    remove: (entryId) => req(PersonalNotesSchema, 'DELETE', `${path}/${encodeURIComponent(entryId)}`, undefined, extra)
+  });
   /** How often a move to another device is checked on while it's open, in ms. */
   const movePollMs = Math.min(1000, o.callPollMs ?? 1000);
   /** The new device's side of a move: everything by its claim, in the body. */
@@ -148,6 +155,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
       moment: (id, lineId) => req(CallMomentSchema, 'GET', `${live(id)}/transcript/${encodeURIComponent(lineId)}`, undefined, p),
+      personal: (id) => personal(`${live(id)}/personal`, p),
       translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
       leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, { end: o.end }, p, o.keepalive ?? false)).ended,
       handOff: async (id, to) => { await req(z.object({ left: z.literal(true) }), 'POST', `${live(id)}/hand-off`, { to }, p); },
@@ -249,6 +257,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         yield* parts;
       },
       share: (id, to) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails: to.emails, ...(to.group !== undefined ? { group: to.group } : {}) }),
+      personal: (id) => personal(`/notes/${encodeURIComponent(id)}/personal`),
+      previewAddition: (id, entryId) => req(PromotionPreviewSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/preview`),
+      addToShared: (id, entryId, body) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/add`, body),
+      takeBack: (id, additionId) => req(NoteSchema, 'DELETE', `/notes/${encodeURIComponent(id)}/additions/${encodeURIComponent(additionId)}`),
       delete: async (id) => { await req(z.unknown(), 'DELETE', `/notes/${encodeURIComponent(id)}`); }
     },
     series: {
@@ -286,6 +298,7 @@ interface CallTransport {
   askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
   catchUpWindow(id: string): Promise<CatchUpWindow>;
   moment(id: string, lineId: string): Promise<CallMoment>;
+  personal(id: string): PersonalApi;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** `end`: whoever hosts ends the call for everyone; otherwise this connection just leaves (refused for whoever hosts). */
   leave(id: string, o: { end: boolean; keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
@@ -428,12 +441,14 @@ class HttpCall extends Live<CallState> implements CallSession {
    * and commits for every part of the call's group in this generation (CallMls.committer). Anyone else is in one group.
    */
   private hosting: boolean;
+  readonly personal: PersonalApi;
 
   constructor(initial: CallState, readonly ticket: CallTicket, private readonly mls: MlsKeys, private readonly timing: CallTiming, private readonly t: CallTransport,
     private readonly emit: (level: ClientEvent['level'], msg: string, context: ClientEvent['context']) => void) {
     super(initial, (s) => s.phase === 'in-call');
     this.generation = initial.generation;
     this.hosting = initial.isHost;
+    this.personal = t.personal(initial.callId);
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }

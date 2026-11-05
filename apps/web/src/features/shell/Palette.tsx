@@ -6,7 +6,7 @@
  * pin. It's the only thing open while it's open. Escape closes it, and focus goes back where it was.
  */
 import { MAX_PINS, errorMessage, firstName, type AnswerPart, type NoteSummary } from '@alcove/api';
-import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Sheet, cn, coverFor, useToast } from '@alcove/ui';
+import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, cn, coverFor, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -91,8 +91,8 @@ function Find({ ask, onClose }: { ask: string | undefined; onClose: () => void }
 
   return (
     <>
-      <ComposerLine icon="search" className="pal-line" action={<Kbd className="pal-esc">esc</Kbd>}>
-        <input className="text" value={text} placeholder="Search your notes, or ask a question" aria-label="Search or ask your notes"
+      <ComposerLine icon="search" className="pal-line" action={<><Scope>Only you</Scope><Kbd className="pal-esc">esc</Kbd></>}>
+        <input className="text" value={text} placeholder="Search your notes, or ask a question" aria-label="Search or ask your notes, for you alone"
           role="combobox" aria-expanded={listed} aria-controls={listed ? list : undefined} aria-autocomplete="list"
           aria-activedescendant={listed && at >= 0 ? `${list}-${at}` : undefined} autoComplete="off" spellCheck={false} enterKeyHint="search"
           onChange={(e) => { setText(e.target.value); setActive(-1); if (answer) reset(); }} onKeyDown={keys} />
