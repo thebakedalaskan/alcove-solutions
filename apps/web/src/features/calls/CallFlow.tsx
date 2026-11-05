@@ -28,7 +28,7 @@ const STEPS = ['Who', 'When', 'Details'] as const;
 const STEP_OF: Record<View, number> = { choice: -1, who: 0, when: 1, details: 2, documents: 2 };
 
 /** What's open: starting a call, with anyone already picked, or one call's card. `n` starts each opening over. */
-type Opened = { n: number; kind: 'start'; people: Person[]; name?: string | undefined } | { n: number; kind: 'card'; meeting: Meeting; onGone?: (() => void) | undefined };
+type Opened = { n: number; kind: 'start'; people: Person[]; name?: string | undefined; later: boolean } | { n: number; kind: 'card'; meeting: Meeting; onGone?: (() => void) | undefined };
 
 /** The call modal's state, for the shell to keep and share. */
 export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open: boolean; close: () => void } {
@@ -39,7 +39,7 @@ export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open
   useQuery(q.team());
   useQuery(q.prefs());
   const flow = useMemo<CallFlow>(() => ({
-    start: (o: StartOptions = {}) => { n.current += 1; setOpened({ n: n.current, kind: 'start', people: o.people ?? [], name: o.name }); setOpen(true); },
+    start: (o: StartOptions = {}) => { n.current += 1; setOpened({ n: n.current, kind: 'start', people: o.people ?? [], name: o.name, later: o.later === true }); setOpen(true); },
     open: (meeting, o = {}) => { n.current += 1; setOpened({ n: n.current, kind: 'card', meeting, onGone: o.onGone }); setOpen(true); }
   }), []);
   return { flow, opened, open, close: useCallback(() => setOpen(false), []) };
@@ -49,11 +49,11 @@ export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open
 export function CallFlowHost({ opened, open, close }: { opened: Opened | null; open: boolean; close: () => void }) {
   if (!opened) return null;
   return opened.kind === 'start'
-    ? <StartFlow key={opened.n} open={open} onClose={close} people={opened.people} name={opened.name} />
+    ? <StartFlow key={opened.n} open={open} onClose={close} people={opened.people} name={opened.name} later={opened.later} />
     : <CallCard key={opened.n} open={open} onClose={close} meeting={opened.meeting} onGone={opened.onGone} />;
 }
 
-function StartFlow({ open, onClose, people, name }: { open: boolean; onClose: () => void; people: Person[]; name: string | undefined }) {
+function StartFlow({ open, onClose, people, name, later }: { open: boolean; onClose: () => void; people: Person[]; name: string | undefined; later: boolean }) {
   const session = useQuery(q.session()).data;
   const team = useQuery(q.team()).data;
   const prefs = useQuery(q.prefs()).data;
@@ -62,7 +62,7 @@ function StartFlow({ open, onClose, people, name }: { open: boolean; onClose: ()
   useQuery(q.people(''));
   const toast = useToast();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
-  const [view, setView] = useState<View>('choice');
+  const [view, setView] = useState<View>(later ? 'who' : 'choice');
   const [back, setBack] = useState(false);
   const [wide, setWide] = useState(false);
   const [from, setFrom] = useState<View | null>(null);
@@ -166,7 +166,7 @@ function Choice({ people, name, team, onClose, onLater, toast }: { people: Perso
  * Says what scheduling did, and only what it did. Google sends invitations; a sample calendar stands in for that;
  * with nothing connected nobody has heard, so the toast says so and offers the link. The row on Home rises either way.
  */
-function useScheduled() {
+export function useScheduled() {
   const toast = useToast();
   const copy = useCopyLink();
   const cancel = useCancelCall();

@@ -1,5 +1,5 @@
 /*
- * The example note on Home before you have notes of your own: the call from the welcome screen,
+ * The example note, before you have notes of your own: the call from the welcome screen,
  * written out in full. It isn't stored anywhere; asking about it answers from what's on the page.
  */
 import type { AnswerPart, Note, Person } from '@alcove/api';

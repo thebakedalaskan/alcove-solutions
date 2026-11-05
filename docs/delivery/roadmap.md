@@ -4,14 +4,14 @@
 
 ## Done
 
-- Monorepo, design system, web app: sign-in, Home with the day's calls, starting and scheduling calls, pre-join,
+- Monorepo, design system, web app: sign-in, Home for starting calls and what's yours, scheduling calls, pre-join,
   the full-screen call, notes, the room recorder and account.
 - API with encrypted vault, account keys wrapped under `KMASTER` and opened per request, sessions in Postgres,
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and credits display.
-- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: the next meeting
-  and the rest of today's on Home, scheduled calls on the organizer's calendar with Google's invitations,
+- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: meetings with other
+  people in Home's Coming up, scheduled calls on the organizer's calendar with Google's invitations,
   changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
   the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and
@@ -23,7 +23,7 @@
   their own endpoints; notes wait through a verification outage; each note shows which verified models wrote
   it and what was checked ([Verified private inference](../engineering/notes-and-inference.md#verified-private-inference)).
 - Memory across a series: calls scheduled to repeat, the occurrences of a recurring Google event held in Alcove,
-  and calls scheduled as the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
+  and calls scheduled as the next one, carry confirmed decisions, open questions and follow-ups into the next call, on a call's card and a
   series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
   calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
 - What a call captures, for everyone: recording, transcript, AI notes and shared screens, each on, paused or

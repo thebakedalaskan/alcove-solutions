@@ -237,39 +237,6 @@ a.ac-note-tile:active { transform: none; }
 .ac-person-card > .acts .ac-icon-btn { width: 34px; height: 34px; background: var(--sunk); }
 .ac-person-card > .acts .ac-icon-btn:hover { background: var(--line); color: var(--ink); }
 
-/* ---- Timeline: times, a line of dots, and the calls; TimelineNow crosses it in sun ---- */
-.ac-tl { position: relative; display: grid; margin: 8px 0 4px; padding: 0; list-style: none; }
-.ac-tl::before { content: ""; position: absolute; left: 66px; top: 16px; bottom: 16px; width: 2px; border-radius: 1px; background: var(--line); }
-.ac-tl-item { position: relative; display: grid; grid-template-columns: 52px 30px minmax(0, 1fr); align-items: start; padding: 9px 0; }
-.ac-tl-item .time { padding-top: 10px; font: 500 13px/1.2 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink); }
-.ac-tl-item .time small { display: block; margin-top: 4px; font: 400 11.5px/1 var(--font-sans); color: var(--ink-3); }
-.ac-tl-item .dot { position: relative; z-index: 1; justify-self: center; width: 10px; height: 10px; margin-top: 13px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--line-control); }
-.ac-tl-item.is-past .dot { background: var(--line-control); box-shadow: none; }
-.ac-tl-item.is-next .dot { background: var(--sun); box-shadow: 0 0 0 4px var(--sun-soft); }
-.ac-tl-item .body { min-width: 0; display: grid; gap: 7px; padding: 9px 12px 10px; border-radius: var(--radius-md); color: var(--ink); text-decoration: none; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
-.ac-tl-item button.body { width: 100%; text-align: left; cursor: pointer; }
-.ac-tl-item :is(a, button).body:hover { background: var(--sunk); }
-.ac-tl-item :is(a, button).body:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
-.ac-tl-item.is-next .body { background: var(--sun-soft); }
-.ac-tl-item.is-next :is(a, button).body:hover { background: var(--sun-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sun) 40%, transparent); }
-.ac-tl-item .body > b { font: 600 14.5px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-tl-item.is-past .body > b { color: var(--ink-2); }
-.ac-tl-item .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
-.ac-tl-item .meta > .m { display: contents; }
-/* A row's menu button sits at its top right: shown when the row is pointed at or focused, or its menu is open; always on touch. */
-.ac-tl-item.has-acts .body { padding-right: 40px; }
-.ac-tl-item > .acts { position: absolute; top: 12px; right: 4px; }
-.ac-tl-item > .acts .ac-icon-btn { width: 30px; height: 30px; color: var(--ink-3); }
-.ac-tl-item > .acts .ac-icon-btn:hover, .ac-tl-item > .acts .ac-icon-btn[aria-expanded="true"] { color: var(--ink); }
-.ac-tl-item.is-next > .acts .ac-icon-btn:hover, .ac-tl-item.is-next > .acts .ac-icon-btn[aria-expanded="true"] { background: color-mix(in srgb, var(--sun) 14%, transparent); }
-@media (hover: hover) {
-  .ac-tl-item > .acts { opacity: 0; transition: opacity var(--duration-1); }
-  .ac-tl-item:hover > .acts, .ac-tl-item:focus-within > .acts, .ac-tl-item > .acts:has([aria-expanded="true"]) { opacity: 1; }
-}
-.ac-tl-now { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; height: 22px; }
-.ac-tl-now .time { font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--sun-text); }
-.ac-tl-now i { position: relative; height: 2px; margin-left: 10px; border-radius: 1px; background: var(--sun); }
-.ac-tl-now i::before { content: ""; position: absolute; left: 0; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--sun); }
 
 /* ---- SettingsCard, SettingRow: a control that can't sit beside its words wraps under them ---- */
 .ac-set-card { padding: 24px 28px 10px; scroll-margin-top: 24px; }

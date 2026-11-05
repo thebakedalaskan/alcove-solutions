@@ -1,7 +1,7 @@
 /*
  * What carries over in a series, item by item: a decision, an open question or a follow-up, each
  * with the call it came from (a link to its notes) and the moment it was said (a link into them).
- * Home shows them as they are; the series page adds what people can change.
+ * The series page shows them with what people can change.
  */
 import { errorMessage, type CarriedAction, type CarriedDecision, type CarriedQuestion, type SeriesNote } from '@alcove/api';
 import { Avatar, Button, Chip, Icon, cn, useToast } from '@alcove/ui';

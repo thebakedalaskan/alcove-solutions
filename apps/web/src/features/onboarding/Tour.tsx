@@ -11,6 +11,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { q } from '~/lib/queries';
 import { minutesUntil, untilLabel } from '~/lib/time';
+import { aheadOf, joinable, type Ahead } from '~/features/home/day';
 import { ArtCall, ArtNotes, ArtRoom, ArtSchedule, ArtSeal, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
 
@@ -24,7 +25,7 @@ const hook = (name: string) => (): HTMLElement | null => {
 type Draft = Omit<TourSlide, 'next'> & { called: string };
 
 /** The slides for Home as it is right now, in order. */
-function slidesFor(o: { next: Meeting | undefined; firstDay: boolean; calendar: boolean }): TourSlide[] {
+function slidesFor(o: { next: Meeting | undefined; join: Ahead | undefined; firstDay: boolean; calendar: boolean }): TourSlide[] {
   // Keyboard shortcuts are only worth mentioning where there's a keyboard.
   const keys = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const drafts: Draft[] = [];
@@ -33,15 +34,15 @@ function slidesFor(o: { next: Meeting | undefined; firstDay: boolean; calendar: 
     id: 'schedule', called: 'notes', title: 'Start or schedule a call', art: <ArtSchedule />, prefer: ['right', 'below'], target: hook('new-call'),
     text: `Press Start a call${keys ? ', or N,' : ''} to go now, or schedule it for later: who, when, then the details. Alcove suggests the times${o.calendar ? ' and puts it on your calendar' : ''}.`
   });
-  const notesOn = hook('notes');
-  add(notesOn()
-    ? { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['below', 'above', 'left', 'right'], target: notesOn, text: 'Notes are set when you schedule. Everyone in the call can see they’re on, and only the people invited get them.' }
-    : { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['left', 'below', 'above'], target: hook('notes-example'), text: 'Your notes will look like this example: a summary, decisions and follow-ups. Only the people invited get them.' });
-  if (o.next) {
-    const mins = minutesUntil(o.next.startsAt);
+  const example = hook('notes-example');
+  add(example()
+    ? { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['left', 'below', 'above'], target: example, text: 'See what your notes will look like: a summary, decisions and follow-ups. Only the people invited get them.' }
+    : { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'above', 'below'], target: hook('notes'), text: 'Notes are set when you schedule. Everyone in the call can see they’re on, and only the people invited get them.' });
+  if (o.join) {
+    const mins = minutesUntil(o.join.startsAt);
     add({
       id: 'join', called: 'how to join', title: 'Join a call', art: <ArtCall />, prefer: ['below', 'above', 'right'], target: hook('join'),
-      text: `${o.next.title} ${mins <= 0 ? 'is happening now' : `starts ${untilLabel(mins)}`}. Join from here${keys ? ' or press J' : ''}. Captions and translation are in the call.`
+      text: `${o.join.title} ${mins <= 0 ? 'is happening now' : `starts ${untilLabel(mins)}`}. Join from here${keys ? ' or press J' : ''}. Captions and translation are in the call.`
     });
   }
   add({ id: 'room', called: 'the room', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'below'], target: hook('room'), text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.' });
@@ -75,7 +76,8 @@ export function TourHost() {
     const t = setTimeout(() => {
       const now = Date.now();
       const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now && !m.offer).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
-      const s = slidesFor({ next, firstDay: (notes ?? []).length === 0, calendar: calendar?.source === 'google' && !calendar.needsAccess });
+      const join = joinable(aheadOf(upcoming ?? [], [], now), session.user.email, now);
+      const s = slidesFor({ next, join, firstDay: (notes ?? []).length === 0, calendar: calendar?.source === 'google' && !calendar.needsAccess });
       arrival.tourTaken();
       if (s.length) setSlides(s);
     }, tour.auto ? 350 : 250);

@@ -1,6 +1,6 @@
 /*
  * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines,
- * note tiles, person cards, the day's timeline, settings, theme previews, the mic level, and what a
+ * note tiles, person cards, settings, theme previews, the mic level, and what a
  * transcript isn't sure of.
  */
 import { Slot } from 'radix-ui';
@@ -125,7 +125,7 @@ function LinkOrDiv({ link, className, children, ...aria }: {
 }
 
 /**
- * A note as a tile, for Home's recent notes: its cover, title and `meta` (when, how long), the start of
+ * A note as a tile, for Record's recordings: its cover, title and `meta` (when, how long), the start of
  * the summary, then who has it and a count or state at the `end`. `faces` draws the people; `who` says it
  * in words, beside them or instead ("Only you"). Pass the router's Link as `link` and the tile opens the note.
  */
@@ -180,46 +180,6 @@ export function PersonCard({ person, name, title, last, tag, actions, className 
       {actions !== undefined && <div className="acts">{actions}</div>}
     </div>
   );
-}
-
-/* ---------- The day's timeline ---------- */
-
-/** The day on a line: TimelineItems in order, and TimelineNow where the time is now. */
-export function Timeline({ label, children, className }: { label?: string | undefined; children: ReactNode; className?: string | undefined }) {
-  return <ol className={cn('ac-tl', className)} aria-label={label}>{children}</ol>;
-}
-
-/**
- * One call on the timeline: the time (`when`, with its end or length under it), a dot on the line, and the
- * title with who's coming (`people`) and the rest of its line (`meta`: "In 12 min", a chip). `past` dims it;
- * `next` lights it with the sun. Pass the router's Link as `link` and it opens what it links to (its notes),
- * or a button (empty, with its onClick) and it opens that, such as the call's card.
- * `actions` is a small menu button for the row (what can be done with a meeting on your calendar), at its top
- * right; it shows when the row is pointed at or focused, and always on touch screens. A row has a link or actions, not both.
- */
-export function TimelineItem({ when, whenNote, title, people, meta, state, link, actions, className }: {
-  when: ReactNode; whenNote?: ReactNode; title: ReactNode; people?: AvatarPerson[] | undefined; meta?: ReactNode;
-  state?: 'past' | 'next' | undefined; link?: ReactElement | undefined; actions?: ReactNode; className?: string | undefined;
-}) {
-  const faces = people && people.length > 0 ? people : undefined;
-  const id = useId();
-  const named = link ? { 'aria-labelledby': `${id}t`, 'aria-describedby': meta !== undefined ? `${id}w ${id}m` : `${id}w` } : {};
-  return (
-    <li className={cn('ac-tl-item', state && `is-${state}`, actions !== undefined && 'has-acts', className)}>
-      <span className="time" id={`${id}w`}>{when}{whenNote !== undefined && <small>{' '}{whenNote}</small>}</span>
-      <span className="dot" aria-hidden="true" />
-      <LinkOrDiv link={link} className="body" {...named}>
-        <b id={`${id}t`}>{title}</b>
-        {(faces || meta !== undefined) && <span className="meta">{faces && <Faces people={faces} size={20} max={3} />}{meta !== undefined && <span id={`${id}m`} className="m">{meta}</span>}</span>}
-      </LinkOrDiv>
-      {actions !== undefined && <span className="acts">{actions}</span>}
-    </li>
-  );
-}
-
-/** The line across the timeline at the time it is now, between the calls before and after. */
-export function TimelineNow({ time, className }: { time: ReactNode; className?: string | undefined }) {
-  return <li className={cn('ac-tl-now', className)}><span className="time"><span className="sr-only">Now, </span>{time}</span><i aria-hidden="true" /></li>;
 }
 
 /* ---------- Minutes ---------- */

@@ -83,7 +83,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
           <IconButton ref={hideRef} icon="panel" label="Hide the side panel" onClick={onHide} />
         </div>
         <Offline className="sb-offline" />
-        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" data-tour="new-call">
+        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'sb-new', path === '/home' && 'is-tint')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" data-tour="new-call">
           <Icon name="video" size={18} /><span>Start a call</span><Kbd>N</Kbd>
         </button>
         <SidebarNav>
@@ -119,7 +119,7 @@ function nextToday(calls: Meeting[], events: CalendarEvent[], me: string | undef
 }
 
 /**
- * Up next, with Join. Home has its own, and offline there's nothing to join. With nothing left today it
+ * Up next, with Join. Home offers a call by itself, and offline there's nothing to join. With nothing left today it
  * says where the next call will show, except on the first day, before any notes, when it keeps quiet.
  */
 function UpNext() {
