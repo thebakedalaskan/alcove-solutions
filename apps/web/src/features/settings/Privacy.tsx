@@ -4,13 +4,13 @@
  * goes. The shared demo account can't be deleted; the step then says so, in the server's words.
  */
 import { errorCode, errorMessage } from '@alcove/api';
-import { Button, Icon, SealedBadge, SettingRow, SettingsCard, Spinner, useToast } from '@alcove/ui';
+import { Button, Icon, Notice, SealedBadge, SettingRow, SettingsCard, Spinner, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { forgetView } from '~/features/call/view';
 import { forgetTour } from '~/features/onboarding/store';
-import { q, trustLine, useDeleteAccount } from '~/lib/queries';
+import { q, topUpOpen, trustLine, useDeleteAccount } from '~/lib/queries';
 import { hm, hoursAndMinutes } from '~/lib/time';
 import { plural } from '~/lib/words';
 
@@ -50,6 +50,9 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
   const prefs = useQuery(q.prefs()).data;
   const credits = useQuery(q.balance()).data;
   const calendar = useQuery(q.calendar()).data;
+  // A server that can't take payments has no top-ups to ask about.
+  const payments = useQuery(q.topUpRoutes()).isSuccess;
+  const paying = useQuery({ ...q.topUps(), enabled: payments }).data?.some(topUpOpen) ?? false;
   const navigate = useNavigate();
   const toast = useToast();
   const del = useDeleteAccount(() => {
@@ -99,6 +102,7 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
     <div ref={box} id={id} className="set-confirm" role="group" aria-labelledby={title} onKeyDown={keys}>
       <b id={title}>Delete your account for good?</b>
       <ul>{goes.map((g) => <li key={g}>{g}</li>)}</ul>
+      {paying && <Notice tone="caution">You have a payment on its way. If it arrives after you delete your account, it can’t be added to anything.</Notice>}
       <p>Notes other people gave you stay with them, without you. This can’t be undone.</p>
       <div role="status" className="set-step-status">{problem && <p className="set-refused"><Icon name="alert" size={18} />{problem.text}</p>}</div>
       <div className="btns">

@@ -1,9 +1,10 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { forwardRef, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { ProviderMark } from './brand';
 import { Icon, type IconName } from './icon';
 import { CheckDraw, EASE } from './motion';
+import { Tooltip } from './overlay';
 
 /* ---------- Button ---------- */
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet';
@@ -143,7 +144,30 @@ export function RequestRef({ id, className }: { id: string; className?: string |
   );
 }
 
-export const Kbd = ({ children, className }: { children: ReactNode; className?: string }) => <kbd className={cn('ac-kbd', className)}>{children}</kbd>;
+/**
+ * A long value to copy exactly, such as an address to pay to: shown whole in mono over up to two lines, with a copy
+ * button beside it. `label` says what the value is ("Address"), for screen readers.
+ */
+export function CopyField({ value, label, className }: { value: string; label: string; className?: string | undefined }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+  const tip = copied ? 'Copied' : 'Copy';
+  return (
+    <div className={cn('ac-copy-field', className)} role="group" aria-label={label}>
+      <code className="ac-clamp-2">{value}</code>
+      <Tooltip label={tip}>
+        <IconButton icon={copied ? 'check' : 'copy'} label={tip} title={undefined}
+          onClick={() => { void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => undefined); }} />
+      </Tooltip>
+    </div>
+  );
+}
+
+export const Kbd =({ children, className }: { children: ReactNode; className?: string }) => <kbd className={cn('ac-kbd', className)}>{children}</kbd>;
 
 /** A moment in a recording you can jump to. */
 /** A moment as a chip: a position in a recording (4:05) by default, or the caller's label, such as a time of day, with what pressing it does. */

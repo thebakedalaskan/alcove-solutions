@@ -153,7 +153,7 @@ Read `docs/engineering/logging-and-errors.md`.
   (the badge that opens what was checked), `Notice`, `Toast`,
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
   `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Timeline` with
-  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
+  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `CopyField` (a long value to copy exactly, such as an address), `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
   `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds

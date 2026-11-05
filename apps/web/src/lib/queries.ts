@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type TopUp } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
@@ -25,6 +25,9 @@ export const qk = {
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
   balance: ['credits'] as const,
+  topUpRoutes: ['top-ups', 'routes'] as const,
+  topUps: ['top-ups', 'list'] as const,
+  topUp: (id: string) => ['top-ups', 'one', id] as const,
   trust: ['trust'] as const
 };
 
@@ -44,6 +47,9 @@ export function trustLine(t: Trust | undefined): string {
   if (t?.tee !== 'dstack') return 'Confidential compute';
   return t.bound ? 'Confidential compute · verified' : 'Confidential compute · not verified';
 }
+
+/** Whether money can still arrive for a top-up: it's waiting, arriving or short. */
+export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state === 'arriving' || t.state === 'short';
 
 export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
@@ -81,6 +87,27 @@ export const q = {
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
+  /**
+   * The ways to pay for credits. A server that can't take payments answers unavailable: nothing says so, the way to
+   * add credits just isn't there, and it isn't asked again for a while.
+   */
+  topUpRoutes: () => queryOptions({ queryKey: qk.topUpRoutes, queryFn: () => api.credits.routes(), staleTime: 10 * 60_000, retry: false }),
+  /** Top-ups still open, and the last few finished. */
+  topUps: () => queryOptions({ queryKey: qk.topUps, queryFn: () => api.credits.topUps() }),
+  /**
+   * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
+   * and the balance too when credits were added.
+   */
+  topUp: (id: string) => queryOptions({
+    queryKey: qk.topUp(id),
+    queryFn: async ({ client }) => {
+      const t = await api.credits.topUp(id);
+      if (!topUpOpen(t)) void client.invalidateQueries({ queryKey: qk.topUps });
+      if (t.state === 'credited') void client.invalidateQueries({ queryKey: qk.balance });
+      return t;
+    },
+    refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
+  }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
   trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 })
 };
@@ -202,6 +229,17 @@ export function useGroups() {
 export function useInviteTeam() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (emails: string[]) => api.people.inviteToTeam(emails), onSuccess: (t) => qc.setQueryData(qk.team, t) });
+}
+
+/* ---------- credits ---------- */
+
+/** Opens a top-up on a route: the address to pay to. It joins the open ones on Plan and credits. */
+export function useStartTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (routeId: string) => api.credits.startTopUp(routeId),
+    onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
+  });
 }
 
 /* ---------- calls ---------- */

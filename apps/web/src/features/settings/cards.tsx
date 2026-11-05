@@ -10,14 +10,15 @@ import {
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { uploads } from '~/features/record/uploads';
 import { askToNotify, useNotifyPermission, type NotifyPermission } from '~/features/shell/notify';
 import { useLive } from '~/lib/live';
-import { calendarConnectUrl, q, useDisconnectCalendar } from '~/lib/queries';
+import { calendarConnectUrl, q, topUpOpen, useDisconnectCalendar } from '~/lib/queries';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
 import { plural, sizeLabel } from '~/lib/words';
 import { Named, useSave } from './save';
+import { AddCreditsSheet, routeName, topUpLine } from './topup';
 
 export const PROVIDER: Record<SignInProvider, string> = { google: 'Google', microsoft: 'Microsoft', sso: 'single sign-on' };
 /** Where people change the name and photo Alcove takes from their sign-in. */
@@ -228,12 +229,37 @@ export function AppearanceCard() {
   );
 }
 
+/**
+ * Minutes left, and adding credits when the server takes payments. Top-ups still on their way are listed under the
+ * balance, each opening the sheet on it, so closing the sheet loses none.
+ */
 export function PlanCard({ credits }: { credits: CreditBalance }) {
+  const routes = useQuery(q.topUpRoutes());
+  const open = useQuery({ ...q.topUps(), enabled: routes.isSuccess }).data?.filter(topUpOpen) ?? [];
+  const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <MinutesCard id="plan" title="Plan and credits" className="ac-set-card" left={hoursAndMinutes(credits.balance / credits.perMinute)}
       share={credits.balance / Math.max(1, credits.granted)}
       used={credits.usedThisMonth > 0 ? `${hoursAndMinutes(credits.usedThisMonth / credits.perMinute)} used this month` : 'None used this month yet'}>
+      {open.length > 0 && (
+        <ul className="set-topups" aria-label="Payments on their way">
+          {open.map((t) => (
+            <li key={t.id}>
+              <button type="button" className="set-conn" onClick={() => setSheet({ open: true, topUpId: t.id })}>
+                <span className="mark"><Icon name="coins" size={20} /></span>
+                <span className="txt"><b>{routeName(t.route)}</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
+                <Icon name="chevron" size={18} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {routes.isSuccess && (
+        <SettingRow label="Add credits" help="Pay with a stablecoin from any wallet or exchange."
+          control={<Button variant="primary" size="sm" icon="plus" onClick={() => setSheet({ open: true, topUpId: null })}>Add credits</Button>} />
+      )}
       <SettingRow label="Calls without notes" help="Never use minutes." control={fact('check', 'Free')} />
+      {routes.isSuccess && <AddCreditsSheet open={sheet.open} topUpId={sheet.topUpId} onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))} />}
     </MinutesCard>
   );
 }
