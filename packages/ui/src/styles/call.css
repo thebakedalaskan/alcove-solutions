@@ -813,7 +813,7 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 }
 @media (max-width: 560px) {
   .ic-call { padding: 0 8px; }
-  .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:first-of-type { display: none; }
+  .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:not(.ac-dock-sep ~ .ac-dock-sep) { display: none; }
   .ic-menu .only-narrow { display: flex; }
   .ic-catch, .ic-reset { display: none; }
   .ic-dockbar .ac-dock-chev { display: none; }

@@ -29,6 +29,8 @@ function scenarioOf(ctx: StoryContext): ScenarioName {
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+/** A date, whichever `Date` made it: `on()` makes the browser's own, and `Date` here is the demo clock's by now. */
+const isDate = (v: unknown): v is Date => Object.prototype.toString.call(v) === '[object Date]';
 /** What the story changes about how its page opens (`parameters.opening`), on top of its scenario. */
 function openingOf(ctx: StoryContext): Partial<Opening> {
   const o: unknown = ctx.parameters['opening'];
@@ -41,7 +43,7 @@ function openingOf(ctx: StoryContext): Partial<Opening> {
     ...(offlineIn(ctx) ? { online: false } : {})
   };
   return {
-    ...(o['now'] instanceof Date ? { now: o['now'] } : {}),
+    ...(isDate(o['now']) ? { now: o['now'] } : {}),
     ...(typeof o['signedInHere'] === 'boolean' ? { signedInHere: o['signedInHere'] } : {}),
     ...(typeof o['tourSeen'] === 'boolean' ? { tourSeen: o['tourSeen'] } : {}),
     ...(typeof o['latency'] === 'number' ? { latency: o['latency'] } : {}),
@@ -127,7 +129,7 @@ const preview: Preview = {
         wide: { name: 'Wide', styles: { width: '1920px', height: '1080px' }, type: 'desktop' }
       }
     },
-    options: { storySort: { order: ['Foundations', ['Colour', 'Type', 'Icons', 'Scales', 'The evening'], 'Components', 'Pages', 'Calls', 'Journeys'] } }
+    options: { storySort: { order: ['Foundations', ['Colour', 'Type', 'Icons', 'Scales', 'The evening'], 'Components', ['Icons and marks', 'Actions', 'Forms', 'Feedback', 'Overlays', 'Layout', 'Motion', 'The evening', 'People', 'Starting a call', 'Ringing and waiting', 'In a call', 'Notes and transcript', 'Record', 'Settings', 'Workspace'], 'Pages', 'Calls', 'Journeys'] } }
   }
 };
 

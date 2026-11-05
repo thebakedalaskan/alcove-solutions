@@ -3,11 +3,10 @@
  * Every choice changes only your view, except the organizer's spotlight, which says Everyone.
  */
 import type { Person, SelfView } from '@alcove/api';
-import { Avatar, Icon, Kbd, Popover, Scope, cn, type IconName } from '@alcove/ui';
+import { Avatar, Icon, Kbd, Popover, Scope, VolumeControl, cn, type IconName } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { callName } from '~/lib/people';
 import { LOOK_KEYS } from './shareLook';
-import { VolumeControl } from './VolumeControl';
 
 /** What a person's menu offers. A choice left out isn't offered on this tile. */
 export interface PersonMenu {

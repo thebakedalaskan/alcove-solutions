@@ -1,9 +1,10 @@
 /*
- * The app's own stylesheet (Tailwind, then @alcove/ui's tokens, fonts and component styles), with the app's source
- * scanned for class names too: Storybook runs from apps/storybook, so Tailwind wouldn't look there by itself.
+ * The app's own stylesheet (Tailwind, then @alcove/ui's tokens, fonts and component styles), with the app's source and
+ * the stories scanned for class names too: Storybook runs from apps/storybook, so Tailwind wouldn't look there by itself.
  */
 @import "../../web/src/styles/app.css";
 @source "../../web/src";
+@source "../stories";
 
 /* Storybook's own frames around a foundations story: the page's ground in its theme, never Storybook's white. */
 html, body { background: var(--ground); }

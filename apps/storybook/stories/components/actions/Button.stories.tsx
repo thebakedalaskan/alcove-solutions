@@ -4,10 +4,10 @@
  */
 import { Button, ICON_NAMES, buttonClass } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Row, did } from '../../src/component';
+import { Row, did } from '../../../src/component';
 
 const meta = {
-  title: 'Components/Button',
+  title: 'Components/Actions/Button',
   component: Button,
   parameters: { layout: 'centered' },
   args: { children: 'Start a call', variant: 'secondary', size: 'md', loading: false, disabled: false, onClick: did('onClick') },
@@ -30,8 +30,8 @@ export const Quiet: Story = { args: { variant: 'quiet', children: 'Not now' } };
 export const Loading: Story = { args: { variant: 'primary', icon: 'video', loading: true, children: 'Starting…' } };
 export const Disabled: Story = { args: { variant: 'primary', disabled: true, children: 'Invite' } };
 /** A keyboard hint after the label. */
-export const WithShortcut: Story = { args: { kb: 'N' } };
-export const IconAfter: Story = { args: { variant: 'quiet', children: 'Show fewer', iconRight: 'up' } };
+export const WithShortcut: Story = { name: 'With a shortcut', args: { kb: 'N' } };
+export const IconAfter: Story = { name: 'Icon after', args: { variant: 'quiet', children: 'Show fewer', iconRight: 'up' } };
 /** Every size, from the 30px `xs` of a toolbar to the 52px `lg` of a hero. */
 export const Sizes: Story = {
   render: (args) => (
@@ -45,5 +45,6 @@ export const Sizes: Story = {
 };
 /** A link that looks like a button, with `buttonClass()`. */
 export const AsALink: Story = {
+  name: 'As a link',
   render: (args) => <a href="#notes" className={buttonClass({ variant: args.variant, size: args.size })}>Open notes</a>
 };

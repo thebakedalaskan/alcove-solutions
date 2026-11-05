@@ -3,12 +3,12 @@
  * crosses it out where it is until you leave Home; ticking it again puts it back.
  */
 import { errorCode, errorMessage, type OpenAction } from '@alcove/api';
-import { Check, cn, useToast } from '@alcove/ui';
+import { Check, ShowMore, cn, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useUpdateAction } from '~/lib/queries';
 import { dueFrom, dueLabel, dueOf, groupOf, type Due, type DueGroup } from './day';
-import { Moment, More } from './parts';
+import { Moment } from './parts';
 
 const FIRST = 6;
 const RANK: Record<DueGroup, number> = { overdue: 0, week: 1, later: 2, none: 3 };
@@ -78,7 +78,7 @@ export function FollowUps({ open: openActions, now, onAnswer }: { open: OpenActi
           );
         })}
       </ul>
-      {todos.length > FIRST + 1 && <More all={all} more={todos.length - FIRST} onToggle={() => setAll((a) => !a)} />}
+      {todos.length > FIRST + 1 && <ShowMore all={all} more={todos.length - FIRST} onToggle={() => setAll((a) => !a)} />}
     </>
   );
 }

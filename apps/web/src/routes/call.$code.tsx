@@ -3,7 +3,8 @@ import {
   type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useToast,
+  volumeTag
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -47,7 +48,6 @@ import type { Feed } from '~/features/call/Video';
 import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
-import { volumeTag } from '~/features/call/VolumeControl';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';

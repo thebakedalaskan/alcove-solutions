@@ -4,11 +4,25 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocumentLibrary, IncomingRing, Meeting, Note, PersonalEntry, Preferences, Session, Team, WorkspaceTree
+  Calendar, CreditBalance, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, Team, WorkspaceTree
 } from '@alcove/api';
+import type { Troubles } from '../api/trouble';
 import type { BrowserSetup } from '../browser';
 import { ART, ME_ID } from './people';
 import { iso } from './clock';
+
+/** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
+export interface MoveSpec {
+  /** 22 letters, digits, `-` or `_`, as a claim is. */
+  claim: string;
+  title: string;
+  organizerName: string;
+  you: MoveIn['you'];
+  /** The microphone and camera as they were on the other device. */
+  media: MoveMedia;
+  /** How long it has left before it runs out, in seconds: none, and it ran out already. */
+  seconds?: number | undefined;
+}
 
 export interface World {
   /** Who's signed in, or nobody. */
@@ -31,6 +45,10 @@ export interface World {
   rings: IncomingRing[];
   /** A note being written: how long until it's done, and what it says then. */
   writing: { id: string; seconds: number; written: () => Note } | null;
+  /** What goes wrong when the app asks for something: a part of Alcove that fails, can't be reached, or keeps it waiting. */
+  trouble?: Troubles | undefined;
+  /** A call being moved to this device, which this browser holds the claim to (/move). */
+  move?: MoveSpec | undefined;
 }
 
 /** How a story's page opens: when on the demo day, what the browser is like, and what it remembers. */
