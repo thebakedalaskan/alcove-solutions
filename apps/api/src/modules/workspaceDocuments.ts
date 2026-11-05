@@ -224,13 +224,14 @@ async function writeVersion(c: Db, p: Place, documentId: string, versionId: stri
  */
 async function fold(p: Place, documentId: string, through: number, keep?: Keep): Promise<{ raced: boolean; versionId: string | null }> {
   const row = await documentRow(p, documentId);
+  if (row.closed) return { raced: false, versionId: null };
   const l = await sealedLog(p, documentId, through);
   const from = l.base?.throughSeq ?? null;
   const reach = Math.max(through, from ?? 0);
   if (!keep && from !== null && reach === from) return { raced: false, versionId: null };
   const versionId = keep ? id128() : null;
   const covered = l.rows.filter((r) => r.seq > (from ?? 0));
-  const made = await p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(row));
+  const made = await working(p, documentId, row, () => p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(row)));
   report(p, documentId, made.found);
   const wrote = await tx(p.owner.pool, async (c) => {
     await lockDocument(c, p, documentId);
@@ -374,7 +375,7 @@ const edits: OpTable<Edits> = docEdits;
 export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>): Promise<ResultOf<Reads[N]>> {
   requireContent(w, documentId);
   const row = await documentRow(w, documentId);
-  const done = await w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row)));
   report(w, documentId, done.found);
   return reads[op].result.parse(done.value);
 }
@@ -391,7 +392,7 @@ export async function writeDocument<N extends keyof Edits>(
   requireContent(w, documentId);
   if (trashOf(w.state, documentId)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, documentId } });
   const row = await documentRow(w, documentId);
-  const done = await w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row)));
   report(w, documentId, done.found);
   const result = edits[op].result.parse(done.value);
   const { update, seen } = done;
@@ -1022,6 +1023,19 @@ async function syncFrom(p: Place, documentId: string, row: DocRow, after: number
   return { seq: made.seq, ascii: made.ascii };
 }
 
+/**
+ * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much closes,
+ * so a poll asking again can't keep a worker on it, however many people are polling.
+ */
+async function working<T>(p: Place, documentId: string, row: DocRow, job: () => Promise<T>): Promise<T> {
+  if (row.closed) throw new UnavailableError('This document can’t be opened right now.', { context: { workspaceId: p.workspaceId, documentId } });
+  try {
+    return await job();
+  } catch (e) {
+    if (e instanceof DocFailure) await closeFor(p, documentId, e);
+    throw e;
+  }
+}
 /** A document that took more than a worker has stays closed for a while, on every instance and after a restart, so nobody's tab trying again costs anyone anything. */
 async function closeFor(p: Place, documentId: string, e: DocFailure): Promise<void> {
   dlog.warn('document unavailable', { workspaceId: p.workspaceId, documentId, reason: e.reason, err: e });
