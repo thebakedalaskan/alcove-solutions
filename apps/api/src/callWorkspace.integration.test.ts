@@ -537,7 +537,8 @@ describe('someone who can’t open it', () => {
     await host.bringDocument(plan, true);
     const jamie = await guest(host, c);
     const pass = { pass: jamie.call.ticket.pass };
-    // Someone's in the workspace, doing things.
+    // Someone's in the workspace, doing things: working on the plan in this call, and presenting it.
+    (await type(priya, p, id, plan, ' and more')).close();
     await p.startPresenting('document', plan, 2);
     await host.startPlaying(film, media, 5000);
     const here = priya.api.workspaces.live(id, { pass: p.ticket.pass });
@@ -561,7 +562,10 @@ describe('someone who can’t open it', () => {
     expect(await refusal(jamie.call.startPlaying(film, media))).toEqual(await refusal(jamie.call.startPlaying(nothing, media)));
     expect(await refusal(jamie.call.pausePlaying(0))).toEqual(await refusal(jamie.call.pausePlaying(1)));
     expect(await code(jamie.call.pausePlaying(0))).toBe('conflict');
-    expect(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId: id, documentId: plan, block: 'first', done: true }))).toEqual(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId: nothing, documentId: nothing, block: 'first', done: true })));
+    // A document worked on in this call, one that wasn't, and one that never was.
+    for (const [workspaceId, documentId] of [[id, plan], [id, film], [id, nothing]] as const) {
+      expect(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId, documentId, block: 'first', done: true }))).toEqual(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId: nothing, documentId: nothing, block: 'first', done: true })));
+    }
     expect(await code(jamie.api.workspaces.presenterNotes.get(id, plan, pass))).toBe('not-found');
     expect(await code(collect(jamie.api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' }, pass)))).toBe('not-found');
     const stream = jamie.api.workspaces.live(id, pass);
@@ -592,6 +596,59 @@ describe('someone who can’t open it', () => {
     await host.bringDocument(plan, true);
     await priya.api.workspaces.share.restrict(id, plan, true);
     expect((await space(host)).documents).toEqual([]);
+  });
+
+  it('can’t tell from what they try what’s playing or what was worked on, with something of their own open', async () => {
+    const art = await account();
+    const priya = await account();
+    const id = await workspace(art, 'Product', [[priya, 'edit']]);
+    const film = await doc(art, id, 'Film');
+    const theirs = await doc(art, id, 'For the guest');
+    const secret = await doc(art, id, 'Restricted');
+    await art.api.workspaces.share.restrict(id, secret, true);
+    const media = madeUp();
+    const own = madeUp();
+    for (const [d, block, m] of [[film, 'v1', media], [theirs, 'v2', own]] as const) {
+      const s = await open(art, id, d);
+      addVideo(s, block, m);
+      await saved(s);
+      s.close();
+    }
+    const { host, code: c } = await callBy(art, { guests: [priya.email] });
+    await host.setWorkspace(id);
+    const p = await invited(host, c, priya);
+    const jamie = await guest(host, c);
+    await jamie.call.askForWorkspace(true);
+    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
+    await host.grantWorkspaceAsk(ask?.id ?? '', theirs, 'read');
+    await settle(jamie.call, (x) => x.workspace.canOpen);
+    const nothing = madeUp();
+
+    // A video they can't open is playing, and they aren't told: starting their own reads as one that isn't there would.
+    await host.startPlaying(film, media);
+    expect((await read(jamie.call)).workspace.play).toBeNull();
+    expect(await refusal(jamie.call.startPlaying(theirs, own))).toEqual(await refusal(jamie.call.startPlaying(nothing, own)));
+    expect(await refusal(jamie.call.startPlaying(film, media))).toEqual(await refusal(jamie.call.startPlaying(nothing, own)));
+    await host.stopPlaying();
+    expect(await code(jamie.call.startPlaying(theirs, own))).toBe('allowed');
+    await jamie.call.stopPlaying();
+
+    // Ticking in a document worked on in this call reads as ticking in one that never was: for a guest with a document of
+    // their own, and for someone in the workspace a document is restricted away from.
+    (await type(art, host, id, film, ' words')).close();
+    (await type(art, host, id, secret, ' words')).close();
+    const tick = (who: CallSession, workspaceId: string, documentId: string) => refusal(who.tickDocumentFollowUp({ workspaceId, documentId, block: 'first', done: true }));
+    for (const [workspaceId, documentId] of [[id, film], [id, secret], [id, nothing]] as const) expect(await tick(jamie.call, workspaceId, documentId)).toEqual(await tick(jamie.call, nothing, nothing));
+    expect(await tick(p, id, secret)).toEqual(await tick(p, id, nothing));
+    expect(await tick(p, id, secret)).toEqual(await tick(p, nothing, nothing));
+    // Taking off what was brought from where they can't reach reads as taking off what never was.
+    const elsewhere = await workspace(art, 'Elsewhere');
+    const old = await doc(art, elsewhere, 'From before');
+    await host.setWorkspace(elsewhere);
+    await host.bringDocument(old, true);
+    await host.setWorkspace(id);
+    expect(await refusal(jamie.call.bringDocument(old, false))).toEqual(await refusal(jamie.call.bringDocument(nothing, false)));
+    await host.leave();
   });
 });
 

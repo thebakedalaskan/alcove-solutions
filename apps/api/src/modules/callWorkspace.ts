@@ -263,13 +263,25 @@ export const isSpaceAction = (a: CallAction): a is SpaceAction => SPACE_ACTIONS.
 const ANYONES: ReadonlySet<CallAction['type']> = new Set(['workspace-open', 'workspace-bring', 'workspace-ask', 'present-start', 'present-move', 'present-stop', 'play-start', 'play-pause', 'play-resume', 'play-seek', 'play-stop']);
 export const anyonesAction = (a: CallAction): boolean => ANYONES.has(a.type);
 
+const noDocument = (documentId: string) => notFound('That document', { documentId });
+/** What someone can't reach reads as what was never there: one refusal for both, in the same words, whatever made it so. */
+async function reached<T>(documentId: string, f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    if (e instanceof NotFoundError) throw noDocument(documentId);
+    throw e;
+  }
+}
+
 /** A video to play has to be in its document, in the call's workspace, for someone who can open it. Reads the document, so it's asked with nothing held. */
 export async function mayPlay(o: Owner, reader: Reader, workspaceId: string | null, documentId: string, mediaId: string): Promise<void> {
-  const shut = notFound('That document', { documentId });
-  if (!workspaceId) throw shut;
-  const w = await workspaceFor(o, reader, workspaceId);
-  const { item } = requireDocument(reader, w, documentId, 'read');
-  if (!await readDocument(w, documentId, 'holdsVideo', { kind: kindOf(item), media: mediaId })) throw shut;
+  if (!workspaceId) throw noDocument(documentId);
+  await reached(documentId, async () => {
+    const w = await workspaceFor(o, reader, workspaceId);
+    const { item } = requireDocument(reader, w, documentId, 'read');
+    if (!await readDocument(w, documentId, 'holdsVideo', { kind: kindOf(item), media: mediaId })) throw noDocument(documentId);
+  });
 }
 
 /** What's needed to change what a call keeps, in its transaction, which holds its row. */
@@ -286,7 +298,6 @@ export interface Changing<S extends Spaced> {
 export interface Changed<S> { s: S; moved?: { from: string | null; to: string } | undefined }
 
 const withSpace = <S extends Spaced>(s: S, workspace: CallSpace): S => ({ ...s, workspace });
-const noDocument = (documentId: string) => notFound('That document', { documentId });
 const notYours = (callId: string, what: string) => new ForbiddenError('Only whoever started this, or the organizer, can do that.', { context: { callId, what } });
 /** Whether someone can open a document in a workspace. */
 async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string, db: Db): Promise<boolean> {
@@ -325,7 +336,7 @@ export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): 
       // What's brought comes from the workspace in use; what's taken off can have been brought from one the call used before.
       const from = a.brought ? inUse : x.meeting.manifest.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? inUse;
       if (!from) throw noDocument(a.documentId);
-      requireDocument(reader, await workspaceFor(o, reader, from, c), a.documentId, 'read');
+      await reached(a.documentId, async () => requireDocument(reader, await workspaceFor(o, reader, from, c), a.documentId, 'read'));
       const id = broughtId(from, a.documentId);
       await updateManifest(o, c, x.meeting.itemId, (m) => {
         if (a.brought === m.documents.includes(id)) return m;
@@ -379,7 +390,11 @@ export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): 
     case 'play-start': {
       if (!inUse) throw noDocument(a.documentId);
       const there = w.play.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId, c)) throw new ConflictError('Someone else is playing something here.', { context: { callId } });
+      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId, c)) {
+        // Someone who can't open what's playing isn't told it is: what they try reads as their own video not being there.
+        if (!await opens(o, reader, there.workspaceId, there.documentId, c)) throw noDocument(a.documentId);
+        throw new ConflictError('Someone else is playing something here.', { context: { callId } });
+      }
       const next: Playing = { place, workspaceId: inUse, documentId: a.documentId, mediaId: a.mediaId, by: controllerOf(v, reader), playing: true, positionMs: a.positionMs, atMs: now };
       return { s: withSpace(s, { ...w, play: [...w.play.filter((p) => p.place !== place), next] }) };
     }
@@ -450,20 +465,26 @@ export async function followUps(d: Deps, reader: Reader, notes: LiveNotes, statu
 /**
  * A follow-up ticked from the call, or the tick taken back: the to-do's own `done`, as the editor sets it, so a tick here and
  * a tick in the document are the same. Only in a document worked on in this call. Whoever can't open it, or has lost it by
- * the time it's written, finds nothing there.
+ * the time it's written, finds nothing there: the same refusal as for a follow-up that never was, so it says nothing of what
+ * was worked on in this call.
  */
 export async function tick(d: Deps, reader: Reader, callId: string, worked: WorkedDocument[], t: DocFollowUpTick): Promise<{ entry: Omit<WorkedDocument, 'by'>; by: WorkedBy }> {
   const shut = () => notFound('That follow-up', { callId });
   const found = worked.find((x) => x.workspaceId === t.workspaceId && x.documentId === t.documentId);
   if (!found) throw shut();
-  const w = await workspaceFor(d, reader, t.workspaceId);
-  const { item } = requireDocument(reader, w, t.documentId, 'edit');
-  const by = editorOf(w.owner, reader);
-  const { result: ticked } = await writeDocument(w, t.documentId, 'tickFollowUp', { kind: kindOf(item), block: t.block, done: t.done }, {
-    by, callId, holding: async (c) => { requireDocument(reader, await workspaceFor(d, reader, t.workspaceId, c, 'hold'), t.documentId, 'edit'); }
-  });
-  if (!ticked) throw shut();
-  return { entry: found, by };
+  try {
+    const w = await workspaceFor(d, reader, t.workspaceId);
+    const { item } = requireDocument(reader, w, t.documentId, 'edit');
+    const by = editorOf(w.owner, reader);
+    const { result: ticked } = await writeDocument(w, t.documentId, 'tickFollowUp', { kind: kindOf(item), block: t.block, done: t.done }, {
+      by, callId, holding: async (c) => { requireDocument(reader, await workspaceFor(d, reader, t.workspaceId, c, 'hold'), t.documentId, 'edit'); }
+    });
+    if (!ticked) throw shut();
+    return { entry: found, by };
+  } catch (e) {
+    if (e instanceof NotFoundError) throw shut();
+    throw e;
+  }
 }
 
 /* ---------- when a call ends ---------- */

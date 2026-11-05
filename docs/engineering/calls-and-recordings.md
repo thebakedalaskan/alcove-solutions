@@ -1017,7 +1017,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. `POST` to the
   same path ticks a to-do with `writeDocument`, as a server-made update that sets the block's own `done`, as the editor does,
   so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
-  counts as working on it. Access is checked again under the workspace's row in the transaction that writes it.
+  counts as working on it. Access is checked again under the workspace's row in the transaction that writes it. Someone who
+  can't open the document gets the same `404` as for a follow-up that never was, whether or not it was worked on in this call.
 - **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
   person on each document goes into the call's sealed state (`worked`), under the call's row and once only: that first
   update waits on it, and everything typed after doesn't. A failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
@@ -1035,7 +1036,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   server's clock, so `playPosition` lands a late joiner at the same moment whatever their own clock says. `play-start` needs the
   document open and the video to be a block in it, which is read from the document with nothing held; only IDs are kept, and
   nothing about the video changes. Paused, seeked, resumed and stopped by whoever started it or the organizer. Only someone
-  who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing.
+  who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing, or, if they start
+  a video of their own over it, as that video not being there (`404`, the same as for one that isn't).
 - **What stops them.** Both belong to the part of the call they started in, and show only to the people there.
   - Someone reloading hides what they started until they're back: it isn't stopped, and they find it as it was.
   - Their part of the call closing, their being removed, their moving to another part, or their leaving on purpose stops it
