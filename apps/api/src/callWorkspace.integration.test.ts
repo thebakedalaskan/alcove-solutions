@@ -1707,6 +1707,52 @@ describe('a live call comes first', () => {
     await until(async () => (await art.api.workspaces.versions(id, plan)).some((v) => v.reason === 'call'), 'the version');
   });
 
+  it('spends no worker on a document that’s closed, and closes one that proves too much', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Handbook');
+    const media = madeUp();
+    const { host } = await callBy(art);
+    await host.setWorkspace(id);
+    const s = await open(art, id, plan, { pass: host.ticket.pass });
+    addTodo(s, 't1', 'Book it ', { who: { id: 'x', name: 'Someone' }, when: '2026-11-06' });
+    addVideo(s, 'v1', media);
+    await saved(s);
+    s.close();
+    const closedFor = async () => (await h.pool.query<{ closed_until: Date | null }>('SELECT closed_until FROM documents WHERE document_id = $1', [plan])).rows[0]?.closed_until ?? null;
+    const followUps = async (base = h.baseUrl) => (await art.fetch(`${base}/v1/live/calls/${host.ticket.callId}/follow-ups`, { headers: { 'x-alcove-call': host.ticket.pass } })).text();
+
+    // Closed: nothing a call does costs a worker, and the call goes on around it.
+    await h.pool.query("UPDATE documents SET closed_until = now() + interval '5 minutes' WHERE document_id = $1", [plan]);
+    const pool = h.deps.docs;
+    const run = pool.run;
+    const real = pool.run.bind(pool);
+    const jobs: string[] = [];
+    pool.run = (task, input, o) => { jobs.push(task); return real(task, input, o); };
+    try {
+      expect(await followUps()).not.toContain('Book it');
+      expect(await refusal(host.startPlaying(plan, media))).toMatchObject({ code: 'unavailable' });
+      expect(await refusal(host.tickDocumentFollowUp({ workspaceId: id, documentId: plan, block: 't1', done: true }))).toMatchObject({ code: 'unavailable' });
+      expect(jobs).toEqual([]);
+    } finally {
+      pool.run = run;
+    }
+
+    // One job that proves too much closes it, on any instance, so the next poll costs nothing.
+    await h.pool.query('UPDATE documents SET closed_until = NULL WHERE document_id = $1', [plan]);
+    const second = await h.secondServer({ DOC_WORK_MS: 1 });
+    try {
+      await followUps(second.baseUrl);
+      await until(async () => (await closedFor()) !== null, 'the document to close');
+      const gaveUp = () => h.logs.filter((l) => l.includes('document unavailable')).length;
+      const before = gaveUp();
+      for (let i = 0; i < 3; i++) await followUps(second.baseUrl);
+      expect(gaveUp()).toBe(before);
+    } finally {
+      await second.close();
+    }
+  });
+
   it('says so when what comes after a call fails, and the call has ended all the same', async () => {
     const art = await account();
     const id = await workspace(art, 'Product');

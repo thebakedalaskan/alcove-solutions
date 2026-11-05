@@ -192,7 +192,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 - **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
-  stream says `closed`, `unavailable`, as its only line. Its versions still read, and restoring one replaces what won't open
+  stream says `closed`, `unavailable`, as its only line. The same goes for what the server does itself: `readDocument`,
+  `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much closes it, so a
+  poll can't keep a worker on one however many people are polling. Its versions still read, and restoring one replaces what won't open
   and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
   document that may only be slow.
 
