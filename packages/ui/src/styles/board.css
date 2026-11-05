@@ -71,7 +71,8 @@
 .bf.is-land { animation: bf-land var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
 .bf.is-dim { opacity: .35; }
 .bf.is-theme { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); border-radius: 18px; }
-.bf-h { position: absolute; left: 8px; bottom: 100%; max-width: calc(100% - 16px); margin-bottom: 8px; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; font: 450 25px/1.1 var(--font-display); letter-spacing: -.016em; font-variation-settings: 'opsz' 26; color: var(--ink); }
+/* A title can run a little past its frame, as "What happened" does in a room, and still stop short of the next one. */
+.bf-h { position: absolute; left: 8px; bottom: 100%; max-width: calc(100% + 12px); margin-bottom: 8px; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; font: 450 25px/1.1 var(--font-display); letter-spacing: -.016em; font-variation-settings: 'opsz' 26; color: var(--ink); }
 .bf-h .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bf-h .sub { flex: none; font: 500 14px/1 var(--font-mono); letter-spacing: 0; color: var(--ink-3); }
 .bf-hint { position: absolute; left: 0; right: 0; top: 50%; translate: 0 -50%; margin: 0; padding: 0 44px; text-align: center; font: 400 17px/1.4 var(--font-sans); color: var(--ink-3); }
