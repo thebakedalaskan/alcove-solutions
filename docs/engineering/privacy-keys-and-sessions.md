@@ -415,7 +415,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   only what they could send or delete by itself. Anything they can only read, or can't see, moves out.
 - **A new address.** Access follows the address, so when a sign-in brings an account a new one, everything under the old
   hash moves to the new one in that transaction, keeping the stronger role where the new address already had something.
-  While another account still signs in with the old address, what's under it stays that account's.
+  While another account still signs in with the old address, what's under it stays that account's. What they've written in a
+  document stays theirs too: a Yjs client is tagged by their account as well as their address, so open tabs and words kept
+  offline carry on without anything having to move.
 - **Working on a document** takes `edit`, and that's settled before anything of an update is read: an update from someone who can only read is `403 forbidden`, and one to something in
   Trash `409 conflict`, each under the workspace's lock, so nothing lands after someone is taken out. Saying where you are in
   a document takes only being able to open it. Versions are for anyone who can open it, and restoring one for anyone who can edit it.
@@ -480,8 +482,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV or a shared-screen frame over
   1 MiB is refused from its `content-length` (`400 invalid`) before the body is read; a frame must also be a
-  JPEG between 64 and 4096 pixels a side. A document update is at most 4 MiB and a caret 4 KiB, and a document stops taking
-  new content at 16 MiB or 500,000 items, and anything but deletes at twice that.
+  JPEG between 64 and 4096 pixels a side. A document update is at most what a document can hold, 16 MiB, and a caret 4 KiB.
+  A document stops taking new content at 16 MiB or 150,000 items on its page, and anything but deletes at twice that or at
+  900,000 structs in all. Too much is `413 too-large`, and what no honest client sends `400 invalid`: neither lets go of
+  anything a browser holds.
 - **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies, as adding
   someone to a workspace and sharing a document do their addresses; after that they're a `member_id` or an `access_id`.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
