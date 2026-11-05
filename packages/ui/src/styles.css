@@ -34,6 +34,7 @@
 @import "./styles/settings.css";
 @import "./styles/flow.css";
 @import "./styles/workspace.css";
+@import "./styles/workspace-editor.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
