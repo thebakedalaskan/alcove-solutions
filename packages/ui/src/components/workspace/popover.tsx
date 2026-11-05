@@ -21,6 +21,13 @@ export interface WsPop {
 
 const rectOf = (at: WsPoint | (() => DOMRect)): DOMRect => typeof at === 'function' ? at() : new DOMRect(at.x, at.y, 1, 1);
 
+/** The room a popover keeps from the window's edges: more at the foot while the app's tab bar is there, so it never sits on it. */
+function edges(): { top: number; right: number; bottom: number; left: number } {
+  const bar = typeof document === 'undefined' ? null : document.querySelector('.tabbar');
+  const foot = bar && getComputedStyle(bar).display !== 'none' ? Math.round(bar.getBoundingClientRect().height) + 8 : 8;
+  return { top: 8, right: 8, bottom: foot, left: 8 };
+}
+
 /**
  * What every menu and sheet in the workspace sits on, against what opened it (`anchor`, which it toggles) or against a
  * place (`at`: a point, or a function that says where a caret or a word is now). It flips to stay on screen, pops in
@@ -43,7 +50,7 @@ export function WsPopover({ open, onOpenChange, anchor, at, label, side = 'botto
       {anchor && <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>}
       {place && <RPopover.Anchor virtualRef={place} />}
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={8} aria-label={label}
+        <RPopover.Content side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={open ? edges() : 8} aria-label={label}
           className={cn('ws-pop', className)} onInteractOutside={() => { away.current = true; }}
           onOpenAutoFocus={(e) => {
             back.current = focusedNow();

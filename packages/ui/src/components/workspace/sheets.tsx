@@ -252,23 +252,58 @@ export function WsKnock({ person, document, onLet, onNotNow }: { person: AvatarP
   );
 }
 
-/** A photo already in the workspace. */
-export interface WsPhoto { id: string; src: string; label: string }
+/** A photo already in the workspace. `src` is left out while it's on its way. */
+export interface WsPhoto { id: string; src?: string | undefined; label: string }
+
+/** A video or a file already in the workspace: its name, and how big it is. */
+export interface WsStoredFile { id: string; name: string; sub: string; icon: IconName }
+
+const howMany = (n: number) => (n === 2 ? 'two' : n === 3 ? 'three' : String(n));
 
 /**
- * Photos, from the `/` menu: choose from the computer, or reuse what's in the workspace. `heading` names where `photos`
- * are from, such as a folder. `onAll` adds them all.
+ * Photos, Video or File, from the `/` menu: choose from the computer, or reuse what's in the workspace. `heading` names where
+ * `photos` or `files` are from, such as a folder. `onAll` adds all the photos.
  */
-export function WsUploadPicker({ heading, photos = [], onChoose, onPhoto, onAll }: { heading?: ReactNode; photos?: WsPhoto[] | undefined; onChoose: () => void; onPhoto?: ((id: string) => void) | undefined; onAll?: (() => void) | undefined }) {
+export function WsUploadPicker({ heading, photos = [], files = [], onChoose, onPhoto, onFile, onAll }: {
+  heading?: ReactNode; photos?: WsPhoto[] | undefined; files?: WsStoredFile[] | undefined;
+  onChoose: () => void; onPhoto?: ((id: string) => void) | undefined; onFile?: ((id: string) => void) | undefined; onAll?: (() => void) | undefined;
+}) {
   return (
     <div className="wm is-upload">
       <div className="wu">
         <Button size="sm" onClick={onChoose}><Icon name="cloudUpload" size={16} />Choose from this computer</Button>
         {photos.length > 0 && <>
           <span className="ac-eyebrow">{heading}</span>
-          <div className="wu-g">{photos.map((p) => <button key={p.id} type="button" className="wu-p" aria-label={p.label} onClick={() => onPhoto?.(p.id)}><img src={p.src} alt="" /></button>)}</div>
-          {onAll && photos.length > 1 && <Button variant="quiet" size="xs" onClick={onAll}>Add all {photos.length === 2 ? 'two' : photos.length === 3 ? 'three' : photos.length}</Button>}
+          <div className="wu-g">{photos.map((p) => <button key={p.id} type="button" className="wu-p" aria-label={p.label} onClick={() => onPhoto?.(p.id)}>{p.src ? <img src={p.src} alt="" /> : <span className="wu-w" />}</button>)}</div>
+          {onAll && photos.length > 1 && <Button variant="quiet" size="xs" onClick={onAll}>Add all {howMany(photos.length)}</Button>}
         </>}
+        {files.length > 0 && <>
+          <span className="ac-eyebrow">{heading}</span>
+          <div className="wu-f">
+            {files.map((f) => (
+              <button key={f.id} type="button" className="wm-r" onClick={() => onFile?.(f.id)}>
+                <Icon name={f.icon} size={16} /><span className="t"><span className="l">{f.name}</span><small>{f.sub}</small></span>
+              </button>
+            ))}
+          </div>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What Delete for good asks, from a photo, video or file block's menu. Delete takes a block out of a document and leaves
+ * its file in the workspace; this deletes the file, from every document that has it, so it asks.
+ */
+export function WsDeleteFileAsk({ name, onDelete, onKeep }: { name: string; onDelete: () => void; onKeep: () => void }) {
+  return (
+    <div className="wv-switch">
+      <b>Delete {name} for good?</b>
+      <p>It goes from every document that has it, for everyone, and older versions show it as deleted. Nobody can bring it back.</p>
+      <div className="ac">
+        <Button variant="primary" size="sm" onClick={onDelete}>Delete forever</Button>
+        <Button variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
       </div>
     </div>
   );

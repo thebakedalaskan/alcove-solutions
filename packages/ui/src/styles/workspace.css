@@ -159,6 +159,10 @@
 .wu-p { display: block; border-radius: 8px; overflow: hidden; }
 .wu-p img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
 .wu-p:hover { outline: 2px solid var(--horizon); outline-offset: 1px; }
+/* A photo on its way, holding its place; the videos and files already in the workspace, as rows. */
+.wu-w { display: block; aspect-ratio: 3 / 2; background: var(--sunk); }
+.wu-f { display: grid; gap: 1px; margin: 0 -4px; }
+.wu-f .wm-r small { font-variant-numeric: tabular-nums; }
 .wm.is-upload { width: 268px; }
 .wm.is-role { width: max-content; min-width: 216px; max-width: 300px; }
 .wv-person { width: 264px; display: grid; gap: 8px; padding: 12px; }
