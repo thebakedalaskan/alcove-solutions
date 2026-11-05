@@ -34,6 +34,8 @@ export const wsToast = {
   addedTo: (document: string, onGo: () => void) => say('check', `Added to ${document}`, { label: 'Go there', onClick: onGo }),
   restoredVersion: (when: string, onUndo: () => void) => say('history', `Restored the version from ${when}`, { label: 'Undo', onClick: onUndo }),
   restored: () => say('history', 'Restored. Everyone sees it again.'),
+  deleted: (name: string) => say('trash', `${name} deleted for good`),
+  failed: (text: string) => say('alert', text),
   stoppedPresenting: () => say('presentation', 'You stopped presenting. Everyone’s back where they were.'),
   switched: (name: string, onBack: () => void) => say('swap', `This call now uses ${name}. Nobody was disconnected.`, { label: 'Back', onClick: onBack }),
   newSpace: (name: string) => say('folders', `New workspace, ${name}. This call uses it now.`),
