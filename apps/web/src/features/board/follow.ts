@@ -7,7 +7,7 @@
  * It starts with the board's glide. After that a person's view arrives ten times a second, and a glide starting again each
  * time would stutter and trail, so the camera eases towards the latest one a frame at a time, and stops when it gets there.
  */
-import { BOARD_VIEW_WIDTH } from '@alcove/board';
+import { BOARD_VIEW_WIDTH, type BoardPresence } from '@alcove/board';
 import { overlayOpen, typing } from '~/lib/keys';
 import type { BoardPlace } from './camera';
 import type { Board } from './useBoard';
@@ -24,20 +24,35 @@ const NEAR_ZOOM = 0.0005;
 
 const BACK = 'Back to your own view.';
 
+/**
+ * Someone's view, whatever the size of their sheet: the point in the middle, and how wide a stretch of the board it shows.
+ * It has no zoom, so it can't reach the camera until `viewHere` has fitted it to this sheet.
+ */
+export interface SharedView {
+  x: number;
+  y: number;
+  wide: number;
+}
+
+type PublishedView = NonNullable<BoardPresence['view']>;
+
 /** What following needs to know about the people on the board. */
 export interface FollowedPeople {
   /** Where someone is looking, if they're on the board. Their most recent browser, if they have two. */
-  viewOf(id: string): BoardPlace | null;
+  viewOf(id: string): SharedView | null;
   nameOf(id: string): string | undefined;
 }
 
-/** This view as others read it, from a sheet `width` wide. See `BOARD_VIEW_WIDTH`. */
-export const sharedView = ({ x, y, z }: BoardPlace, width: number): BoardPlace => ({ x, y, z: z * BOARD_VIEW_WIDTH / width });
+/** This view as it's published, from a sheet `width` wide. See `BOARD_VIEW_WIDTH`. */
+export const publishedView = ({ x, y, z }: BoardPlace, width: number): PublishedView => ({ x, y, z: z * BOARD_VIEW_WIDTH / width });
+
+/** A view as it arrives. */
+export const sharedView = ({ x, y, z }: PublishedView): SharedView => ({ x, y, wide: BOARD_VIEW_WIDTH / z });
 
 /** Someone's view on this sheet, `width` wide: the same middle, at the zoom that shows the same width of the board. What the height shows depends on the sheet. */
-export const viewHere = ({ x, y, z }: BoardPlace, width: number): BoardPlace => ({ x, y, z: z * width / BOARD_VIEW_WIDTH });
+export const viewHere = ({ x, y, wide }: SharedView, width: number): BoardPlace => ({ x, y, z: width / wide });
 
-const sameView = (a: BoardPlace | null, b: BoardPlace | null): boolean => a?.x === b?.x && a?.y === b?.y && a?.z === b?.z;
+const sameView = (a: SharedView | null, b: SharedView | null): boolean => a?.x === b?.x && a?.y === b?.y && a?.wide === b?.wide;
 
 /** Part of the way from `a` to `b`. Zoom goes by ratio, which is how a change of zoom looks. */
 const between = (a: BoardPlace, b: BoardPlace, k: number): BoardPlace => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, z: a.z * (b.z / a.z) ** k });
@@ -54,8 +69,10 @@ export class BoardFollowing {
   private who: string | null = null;
   /** What to say on the way back, if it isn't the usual. */
   private parting: string | null = null;
+  /** Their name from when this started, because they can go from `people` as they leave. */
+  private name: string | undefined;
   /** Their last view, to tell a new one from someone else's update. */
-  private seen: BoardPlace | null = null;
+  private seen: SharedView | null = null;
   /** Where the camera is heading, on this sheet, while it's on its way. */
   private goal: BoardPlace | null = null;
   /** The point between the camera and `goal` that the camera eases towards. */
@@ -93,7 +110,9 @@ export class BoardFollowing {
 
   /** Goes once to where someone is, with the glide. It isn't following, so there's nothing to come back from afterwards. */
   goTo(id: string): void {
-    const { board } = this, view = this.people.viewOf(id);
+    const { board } = this;
+    if (board.look.mini) return;
+    const view = this.people.viewOf(id);
     if (!view) {
       this.say(this.notHere(id));
       return;
@@ -109,7 +128,7 @@ export class BoardFollowing {
     if (!who) return;
     const view = this.people.viewOf(who);
     if (!view) {
-      this.parting = `${this.people.nameOf(who) ?? 'They'} left the board. ${BACK}`;
+      this.parting = `${this.name ?? 'They'} left the board. ${BACK}`;
       this.board.stopFollow();
     } else if (!sameView(view, this.seen)) {
       this.seen = view;
@@ -147,6 +166,7 @@ export class BoardFollowing {
     }
     const { board } = this;
     this.halt();
+    this.name = this.people.nameOf(next);
     // Going from one person straight to another, where you were is still where you were.
     board.home ??= board.camera.place();
     this.seen = view;
@@ -171,7 +191,7 @@ export class BoardFollowing {
     this.seen = null;
   }
 
-  private head(view: BoardPlace): void {
+  private head(view: SharedView): void {
     const { camera } = this.board;
     const here = viewHere(view, camera.width);
     // What this sheet can reach, which is as near as the camera will ever get.

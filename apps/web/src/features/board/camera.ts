@@ -22,7 +22,7 @@ export interface SheetPoint {
   y: number;
 }
 
-/** Someone's view of a board, whatever the size of their sheet: the point in its middle, and their zoom. */
+/** A view on this sheet: the point in its middle, and the zoom. Someone else's is a `SharedView` until `viewHere` fits it to this sheet. */
 export interface BoardPlace {
   x: number;
   y: number;
@@ -99,7 +99,7 @@ export class BoardCameraStore implements LiveStore<Camera> {
     return { x: this.width / 2 - x * zoom, y: this.height / 2 - y * zoom, z: zoom };
   }
 
-  /** The point in the middle of the sheet and the zoom: this view, in a form another sheet can use. */
+  /** The point in the middle of the sheet and the zoom: this view, in a form that still holds if the sheet changes size. */
   place(): BoardPlace {
     const { x, y, z } = this.cam;
     return { x: (this.width / 2 - x) / z, y: (this.height / 2 - y) / z, z };

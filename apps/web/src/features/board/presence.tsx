@@ -12,11 +12,14 @@ import { BOARD_REACH, BoardPresenceSchema, NO_PRESENCE, type BoardPresence } fro
 import { BoardPill, BoardPointer, moveBoardPointer, useToast } from '@alcove/ui';
 import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type RefObject } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
+import { log as rootLog } from '~/lib/log';
 import type { BoardPerson } from './BoardSurface';
-import type { BoardPlace, SheetPoint } from './camera';
-import { BoardFollowing, sharedView } from './follow';
+import type { SheetPoint } from './camera';
+import { BoardFollowing, publishedView, sharedView, type SharedView } from './follow';
 import { sameIds } from './selection';
 import { useBoardState, type Board } from './useBoard';
+
+const log = rootLog.child({ component: 'board-presence' });
 
 /** The least time between two things this browser says. */
 const PUBLISH_MS = 100;
@@ -67,6 +70,9 @@ const sameEditing = (a: ReadonlyMap<string, string>, b: ReadonlyMap<string, stri
 
 const onTheBoard = (p: { x: number; y: number } | null): boolean => !p || (Math.abs(p.x) <= BOARD_REACH && Math.abs(p.y) <= BOARD_REACH);
 
+/** A browser that has said nothing about itself yet, as every one starts. That's no reason to look into it. */
+const saidNothing = (state: unknown): boolean => typeof state === 'object' && state !== null && !('at' in state);
+
 export class BoardPresenceStore {
   readonly following: BoardFollowing;
 
@@ -74,6 +80,8 @@ export class BoardPresenceStore {
   private readonly awareness: Awareness;
   private readonly peers = new Map<number, Peer>();
   private readonly pointerEls = new Map<number, HTMLElement>();
+  /** Browsers whose state was refused, so that each goes in the log once. */
+  private readonly refused = new Set<number>();
   private readonly listeners = new Set<() => void>();
   private people: readonly BoardPerson[] = [];
   private clients: ReadonlyMap<number, BoardPerson> = new Map();
@@ -137,6 +145,7 @@ export class BoardPresenceStore {
       this.pointer = null;
       this.typing = false;
       this.peers.clear();
+      this.refused.clear();
       this.refresh();
       const local = awareness.getLocalState();
       if (local) awareness.setLocalState({ ...local, ...NO_PRESENCE });
@@ -152,12 +161,13 @@ export class BoardPresenceStore {
     this.following.heard();
   }
 
-  viewOf(id: string): BoardPlace | null {
+  viewOf(id: string): SharedView | null {
     let latest: Peer | null = null;
     for (const [client, peer] of this.peers) {
       if (peer.state.view && this.clients.get(client)?.id === id && (!latest || peer.heard > latest.heard)) latest = peer;
     }
-    return latest?.state.view ?? null;
+    const view = latest?.state.view;
+    return view ? sharedView(view) : null;
   }
 
   nameOf(id: string): string | undefined {
@@ -218,7 +228,7 @@ export class BoardPresenceStore {
     const { pointer, board: { camera } } = this;
     const { sel, edit } = this.board.getSnapshot();
     const { x, y, z } = camera.getSnapshot();
-    const view = camera.width ? sharedView(camera.place(), camera.width) : null;
+    const view = camera.width ? publishedView(camera.place(), camera.width) : null;
     return {
       at: pointer && { x: tidy((pointer.sx - x) / z), y: tidy((pointer.sy - y) / z) },
       view: view && { x: tidy(view.x), y: tidy(view.y), z: Number(view.z.toPrecision(4)) },
@@ -244,6 +254,10 @@ export class BoardPresenceStore {
     const parsed = BoardPresenceSchema.safeParse(said);
     if (!parsed.success || !onTheBoard(parsed.data.at) || !onTheBoard(parsed.data.view)) {
       this.peers.delete(client);
+      if (!saidNothing(said) && !this.refused.has(client)) {
+        this.refused.add(client);
+        log.info('board presence refused', { client });
+      }
       return;
     }
     const state = parsed.data, was = this.peers.get(client), heard = performance.now();
