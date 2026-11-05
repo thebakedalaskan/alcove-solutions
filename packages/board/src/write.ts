@@ -8,7 +8,7 @@
  */
 import * as Y from 'yjs';
 import { bounds, centre, contains, frameAt, holds } from './geometry';
-import { mapOf, readBoard, rootMap, same } from './read';
+import { listOf, mapOf, readBoard, recordOf, rootMap, same } from './read';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardObjectSchema, LineEndSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
   type BoardObject, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type PlacedObject, type ShapeKind, type StickyColour
@@ -41,9 +41,6 @@ export interface ObjectPatch {
 }
 
 export type TableAxis = 'rows' | 'cols';
-/** What became of an undo or redo: whether anything changed, or what went wrong, for the caller to log. */
-export type StepResult = { ok: true; changed: boolean } | { ok: false; error: unknown };
-type UndoStep = Y.UndoManager['undoStack'][number];
 
 const PATCHABLE = new Set(['at', 'c', 'size', 's', 'role', 'hint', 'sub', 'style', 'from', 'to', 'tool', 'media', 'item', 'caption', 'parent']);
 const WORDS = new Set(['t', 'title', 'hint', 'sub', 'caption']);
@@ -72,31 +69,37 @@ function admit(fields: Record<string, unknown>): BoardObject | null {
   return parsed.success ? parsed.data : null;
 }
 
-function put(objects: Y.Map<unknown>, o: BoardObject): void {
+function arrayOf(value: unknown): Y.Array<unknown> {
+  const list = new Y.Array<unknown>();
+  list.push(listOf(value));
+  return list;
+}
+
+/**
+ * Writes an object from plain values, under its id. It's the one place an object's Y.Map is made: everything that adds one
+ * comes through here, and so does undo bringing one back, so the two can't drift apart. A cell is only written if it has
+ * words, as cells are made on their first write.
+ */
+export function put(objects: Y.Map<unknown>, id: string, fields: Record<string, unknown>): void {
   const m = new Y.Map<unknown>();
-  for (const [key, value] of Object.entries<unknown>(o)) {
+  for (const [key, value] of Object.entries(fields)) {
     if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells') continue;
     m.set(key, (key === 't' || key === 'title') && typeof value === 'string' ? new Y.Text(value) : value);
   }
-  if (o.k === 'table') {
+  if (fields['k'] === 'table') {
     const cells = new Y.Map<Y.Text>();
-    for (const row of o.rows) {
-      for (const col of o.cols) {
-        const text = o.cells[cellKey(row.id, col.id)];
-        if (text) cells.set(cellKey(row.id, col.id), new Y.Text(text));
-      }
-    }
-    m.set('rows', Y.Array.from(o.rows));
-    m.set('cols', Y.Array.from(o.cols));
+    for (const [key, text] of Object.entries(recordOf(fields['cells']))) if (typeof text === 'string' && text) cells.set(key, new Y.Text(text));
+    m.set('rows', arrayOf(fields['rows']));
+    m.set('cols', arrayOf(fields['cols']));
     m.set('cells', cells);
   }
-  objects.set(o.id, m);
+  objects.set(id, m);
 }
 
 /** Clamps, checks and writes one object. For the writers that work out its id, `at` and `f` themselves. */
 export function insert(objects: Y.Map<unknown>, fields: Record<string, unknown>): BoardObject | null {
   const object = admit(fields);
-  if (object) put(objects, object);
+  if (object) put(objects, object.id, object);
   return object;
 }
 
@@ -448,18 +451,19 @@ export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: re
 
 const replyOf = (text: string): { id: string; text: string; at: number } => ({ id: newId(), text: cut(text), at: Date.now() });
 
+/** Writes a thread from plain values, under its id. Like `put`, it's what adds one and what brings one back. */
+export function putThread(comments: Y.Map<unknown>, id: string, fields: Record<string, unknown>): void {
+  const thread = new Y.Map<unknown>();
+  thread.set('on', fields['on']);
+  thread.set('replies', arrayOf(fields['replies']));
+  comments.set(id, thread);
+}
+
 /** Starts a comment thread pinned to an object, and returns its id. */
 export function addThread(doc: Y.Doc, on: string, text: string, origin: unknown): string {
   const id = newId();
   const comments = rootMap(doc, BOARD_COMMENTS);
-  if (comments) {
-    doc.transact(() => {
-      const thread = new Y.Map<unknown>();
-      thread.set('on', on);
-      thread.set('replies', Y.Array.from([replyOf(text)]));
-      comments.set(id, thread);
-    }, origin);
-  }
+  if (comments) doc.transact(() => putThread(comments, id, { on, replies: [replyOf(text)] }), origin);
   return id;
 }
 
@@ -475,7 +479,8 @@ function tableOf(objects: Y.Map<unknown>, id: string): { rows: Y.Array<unknown>;
   return m?.get('k') === 'table' && rows instanceof Y.Array && cols instanceof Y.Array && cells ? { rows, cols, cells } : null;
 }
 
-const inLine = (key: string, axis: TableAxis, line: string): boolean => (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`));
+/** Whether a cell's key is in this row or column. */
+export const inLine = (key: string, axis: TableAxis, line: string): boolean => (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`));
 
 function lineIds(lines: Y.Array<unknown>): (string | null)[] {
   return lines.toArray().map((line) => {
@@ -535,164 +540,4 @@ export function tableCell(doc: Y.Doc, id: string, row: string, col: string, orig
     table.cells.set(key, made);
     return made;
   });
-}
-
-const holderOf = (item: Y.Item): Y.Item | null => (item.parent instanceof Y.AbstractType ? item.parent._item : null);
-const typeIn = (item: Y.Item): unknown => (item.content instanceof Y.ContentType ? item.content.type : null);
-
-/** The object or thread an item belongs to, then the way down to the item. */
-function pathTo(item: Y.Item): Y.Item[] {
-  const path = [item];
-  for (let up = holderOf(item); up; up = holderOf(up)) path.unshift(up);
-  return path;
-}
-
-/**
- * Whether another browser ever changed anything in an item, however deep. That counts what has since been replaced: someone
- * who moved a sticky at the same moment as you, and lost the merge, still moved it, and keeping too much is harmless. So it
- * walks every value a key has held. A loop: a peer can nest as deep as it likes.
- */
-function othersIn(item: Y.Item, me: number): boolean {
-  const waiting = [item];
-  for (let next = waiting.pop(); next; next = waiting.pop()) {
-    if (next.id.client !== me) return true;
-    if (next.content instanceof Y.ContentType) {
-      const { type } = next.content;
-      for (const latest of type._map.values()) for (let value: Y.Item | null = latest; value; value = value.left) waiting.push(value);
-      for (let child = type._start; child; child = child.right) waiting.push(child);
-    }
-  }
-  return false;
-}
-
-/** Whether a row or column about to go has someone else's words in its cells. Undoing a resize leaves the line, so that's fine. */
-function lineHoldsOthers(entry: Y.Item, lines: Y.Array<unknown>, axis: TableAxis, cells: Y.Map<unknown>, me: number): boolean {
-  const ids = lineIds(lines);
-  return entry.content.getContent().some((value: unknown) => {
-    const line = TableLineSchema.safeParse(value);
-    if (!line.success || ids.filter((id) => id === line.data.id).length > 1) return false;
-    return [...cells.keys()].some((key) => {
-      const cell = cells.get(key);
-      return inLine(key, axis, line.data.id) && cell instanceof Y.Text && cell._item !== null && othersIn(cell._item, me);
-    });
-  });
-}
-
-/**
- * Whether undo has to leave an item alone, so that it never costs anyone their work or leaves an object that won't read.
- *
- * A field's value only goes when another replaces it, or with its object. Yjs refuses to bring back an old value if someone
- * else changed the field, but deletes yours anyway. If two people set a field at once and yours won, that leaves the field
- * empty, and the object gone for everyone. A value that was replaced has already gone, so refusing it costs nothing.
- *
- * Nothing goes with an object that has someone else's work in it. Yjs asks after popping the step, so the step isn't there
- * to look at, but an object is only going if this undo added it, in one of `steps`, and that step has left the stack. Your
- * own edits inside something shared still undo: only its removal is refused, and whole.
- */
-function undoKeeps(undo: Y.UndoManager, steps: readonly UndoStep[], item: Y.Item): boolean {
-  const me = undo.doc.clientID;
-  const [top = item, field, entry] = pathTo(item);
-  if (item === field) return true;
-  const addedIn = (list: readonly UndoStep[]): boolean => list.some((step) => Y.isDeleted(step.insertions, top.id));
-  if (addedIn(steps) && !addedIn(undo.undoing ? undo.undoStack : undo.redoStack) && othersIn(top, me)) return true;
-  const table = mapOf(typeIn(top));
-  if (!field || item !== entry || table?.get('k') !== 'table') return false;
-  if (field.parentSub === 'cells') return othersIn(item, me);
-  const lines = typeIn(field), cells = mapOf(table.get('cells')), axis = field.parentSub;
-  return (axis === 'rows' || axis === 'cols') && lines instanceof Y.Array && cells !== null && lineHoldsOthers(item, lines, axis, cells, me);
-}
-
-/**
- * Undo for one browser: both roots, with only its origin tracked, which is exactly "undo only ever takes back your
- * own changes", and a filter so that taking back an add can't take what someone else put inside it. Changes within half
- * a second of each other are one step, so a drag or a burst of typing undoes together. Call `stopCapturing` between
- * gestures that shouldn't, and take steps with `undoStep` and `redoStep`, not its own `undo` and `redo`.
- */
-export function makeUndo(doc: Y.Doc, origin: unknown): Y.UndoManager {
-  const roots = [rootMap(doc, BOARD_OBJECTS), rootMap(doc, BOARD_COMMENTS)].flatMap((root) => (root ? [root] : []));
-  const steps: UndoStep[] = [];
-  const undo: Y.UndoManager = new Y.UndoManager(roots, { doc, trackedOrigins: new Set([origin]), deleteFilter: (item) => !undoKeeps(undo, steps, item) });
-  undo.on('stack-item-added', ({ stackItem }) => {
-    steps.push(stackItem);
-  });
-  return undo;
-}
-
-/** Where something is now: the last copy undo restored it as, if it has been restored. */
-function lastCopy(item: Y.Item, doc: Y.Doc): Y.Item | Y.GC {
-  let at: Y.Item | Y.GC = item;
-  while (at instanceof Y.Item && at.redone) at = Y.getItem(doc.store, at.redone);
-  return at;
-}
-
-/** Whether someone else had the last word where a map value would come back: in a field, or a table's cell. */
-function overtaken(item: Y.Item, doc: Y.Doc): boolean {
-  const holder = holderOf(item), copy = holder ? lastCopy(holder, doc) : null;
-  const type = copy instanceof Y.Item && copy.content instanceof Y.ContentType ? copy.content.type : null;
-  const now = type && item.parentSub !== null ? type._map.get(item.parentSub) : undefined;
-  return now !== undefined && now.id.client !== doc.clientID;
-}
-
-/**
- * Readies a step as it comes off the stack, by looking at the object each thing it would bring back sits in.
- *
- * If it restores an object, it ignores other people's changes. Yjs skips a field someone else changed, which is right for a
- * live object: undoing a recolour mustn't overwrite someone's later one. But for an object being restored it leaves a shell
- * that doesn't parse, gone for everyone. It fits deleting winning, and a step that also touched something live keeps
- * that care by leaving out any field of it someone has since changed.
- *
- * If an object's last copy has been collected, nothing of it can come back, and Yjs throws if it tries. That happens when
- * someone deletes a restored object, because Yjs stops keeping a copy once it clears a step that deleted something in it.
- *
- * Yjs never redoes what's in a step's `insertions`, so that's where both kinds go.
- */
-function ready(undo: Y.UndoManager, step: UndoStep): void {
-  const leftOut = Y.createDeleteSet();
-  const leaveOut = ({ id: { client, clock }, length: len }: Y.Item): void => {
-    leftOut.clients.set(client, [...(leftOut.clients.get(client) ?? []), { clock, len }]);
-  };
-  let restores = false;
-  undo.doc.transact((transaction) => {
-    Y.iterateDeletedStructs(transaction, step.deletions, (struct) => {
-      if (!(struct instanceof Y.Item)) return;
-      const copy = lastCopy(pathTo(struct)[0] ?? struct, undo.doc);
-      if (!(copy instanceof Y.Item) || !(copy.content instanceof Y.ContentType)) leaveOut(struct);
-      else if (copy.deleted) restores = true;
-      else if (overtaken(struct, undo.doc)) leaveOut(struct);
-    });
-  });
-  step.insertions = Y.mergeDeleteSets([step.insertions, leftOut]);
-  undo.ignoreRemoteMapChanges = restores;
-}
-
-/**
- * Takes one step. Yjs moves on from a step that changes nothing, so each is readied as it comes off, with the stack left
- * whole, because Yjs reads it to judge conflicts. `ready` leaves out what's known to make Yjs throw, but if it throws anyway
- * the step is gone and the doc is fine, so that's a result for the caller to log: there's no logger here.
- */
-function takeStep(undo: Y.UndoManager, stack: UndoStep[], take: () => UndoStep | null): StepResult {
-  const setting = undo.ignoreRemoteMapChanges;
-  stack.pop = () => {
-    const step: UndoStep | undefined = Array.prototype.pop.call(stack);
-    if (step) ready(undo, step);
-    return step;
-  };
-  try {
-    return { ok: true, changed: take() !== null };
-  } catch (error) {
-    return { ok: false, error };
-  } finally {
-    undo.ignoreRemoteMapChanges = setting;
-    Reflect.deleteProperty(stack, 'pop');
-  }
-}
-
-/** Takes back this browser's last step, whole if it restores an object. Use this, not the manager's own `undo`. */
-export function undoStep(undo: Y.UndoManager): StepResult {
-  return takeStep(undo, undo.undoStack, () => undo.undo());
-}
-
-/** Puts back the last step undone, whole if it restores an object. Use this, not the manager's own `redo`. */
-export function redoStep(undo: Y.UndoManager): StepResult {
-  return takeStep(undo, undo.redoStack, () => undo.redo());
 }

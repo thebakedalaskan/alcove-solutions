@@ -4,7 +4,7 @@
  * one sticky. It always shows the Y.Text, never the view, because the view cuts text past the limit and this is where
  * someone can see and fix all of it. Keys stop here: letters are letters, and nothing on the call or the board hears them.
  */
-import { BOARD_LIMITS, objectText, type BoardView, type PlacedObject } from '@alcove/board';
+import { BOARD_LIMITS, difference, objectText, observeBoard, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
 import { BoardEdit } from '@alcove/ui';
 import { useLayoutEffect, useRef } from 'react';
 import type * as Y from 'yjs';
@@ -17,34 +17,8 @@ const NEXT_GAP = 20;
 /** How long after the last key someone has stopped typing into nothing. */
 const KEYS_STOP_MS = 1200;
 
-interface TextChange {
-  start: number;
-  remove: number;
-  insert: string;
-}
-
 /** What Y.Text says changed. */
 type TextDelta = readonly { retain?: number | undefined; insert?: unknown; delete?: number | undefined }[];
-
-const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
-const isLowSurrogate = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff;
-
-/**
- * The smallest change that turns `was` into `now`. The caret says where it ended, which settles what a prefix and suffix
- * alone can't, such as which of three a's was just typed. It never stops inside a surrogate pair: Yjs would have to replace
- * the half it was left with, and an emoji would turn into a box for everyone.
- */
-export function difference(was: string, now: string, caret: number): TextChange {
-  const tailRoom = Math.min(was.length, Math.max(0, now.length - caret));
-  let tail = 0;
-  while (tail < tailRoom && was.charCodeAt(was.length - 1 - tail) === now.charCodeAt(now.length - 1 - tail)) tail += 1;
-  const headRoom = Math.min(was.length, now.length) - tail;
-  let head = 0;
-  while (head < headRoom && was.charCodeAt(head) === now.charCodeAt(head)) head += 1;
-  if (head > 0 && isHighSurrogate(was.charCodeAt(head - 1))) head -= 1;
-  if (tail > 0 && isLowSurrogate(was.charCodeAt(was.length - tail))) tail -= 1;
-  return { start: head, remove: was.length - head - tail, insert: now.slice(head, now.length - tail) };
-}
 
 /** Where a place in the text has got to after a change someone else made. Text they add right at the caret goes after it, so two people typing at one spot don't shuffle together. */
 function carriedBy(place: number, delta: TextDelta): number {
@@ -183,10 +157,20 @@ export function holdKeys(then: () => void): void {
 export function BoardTyping({ board, id, label }: { board: Board; id: string; label: string }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current, text = objectText(board.doc, id);
+    const el = ref.current;
+    let text = objectText(board.doc, id);
     if (!el || !text) return undefined;
-    const { flush, stop } = bindText(el, text, board.origin);
-    board.flushTyping = flush;
+    let binding = bindText(el, text, board.origin);
+    // Undo makes a deleted object again with a new Y.Text. Someone can be typing in it, and a reconnect can bring the delete and the undo at once, so nothing closes this field: without following, what they type next would go nowhere.
+    const follow = (): void => {
+      const now = objectText(board.doc, id);
+      if (!now || now === text) return;
+      binding.stop();
+      text = now;
+      binding = bindText(el, now, board.origin);
+    };
+    const stopFollowing = observeBoard(board.doc, follow);
+    board.flushTyping = () => binding.flush();
     const key = (e: KeyboardEvent): void => {
       // ⌘ and Ctrl shortcuts aren't typing, so they're the app's as usual. Anything else goes no further than this field.
       if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
@@ -215,7 +199,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
         // The event says what's taking focus, whoever moved it. The page may not show it yet, and nothing having focus would read as focus lost.
         const to = e.relatedTarget instanceof Element ? e.relatedTarget : document.activeElement;
         // Back with the page in front, a word being composed is over: Chrome ends it when a node moves, and doesn't say so.
-        if (to === el && document.hasFocus()) flush();
+        if (to === el && document.hasFocus()) binding.flush();
         // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
         if (to === el || board.getSnapshot().edit !== id) return;
         if ((!to || to === document.body) && !pressed) board.fieldLost();
@@ -237,7 +221,8 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
     el.scrollTop = el.scrollHeight;
     return () => {
       board.flushTyping = null;
-      stop();
+      stopFollowing();
+      binding.stop();
       removeEventListener('mousedown', press, true);
       removeEventListener('focus', back);
       el.removeEventListener('keydown', key);
