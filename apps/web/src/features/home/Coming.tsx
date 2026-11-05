@@ -4,14 +4,14 @@
  * you check, not where you start. Time blocked out on a calendar with nobody else on it isn't a call, so it isn't listed.
  */
 import type { CalendarEvent } from '@alcove/api';
-import { EmptyState, Icon, IconButton, Popover, cn } from '@alcove/ui';
+import { EmptyState, Icon, IconButton, Popover, ShowMore, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef, useState } from 'react';
 import { waitingLine } from '~/features/calls/words';
 import { freshCalls, useCallFlow } from '~/features/shell/context';
 import { daysFromToday, hm, shortDay, weekday } from '~/lib/time';
 import { isOffered, peopleOn, seriesIdOf, started, whoOn, type Ahead } from './day';
-import { More, useMoveToAlcove } from './parts';
+import { useMoveToAlcove } from './parts';
 
 const FIRST = 5;
 
@@ -49,7 +49,7 @@ export function Coming({ ahead, me, now }: { ahead: readonly Ahead[]; me: string
       {rows.length ? (
         <>
           <ul className="hm-rows">{shown.map((a) => <Row key={a.id} a={a} me={me} now={now} onGone={gone} />)}</ul>
-          {rows.length > FIRST + 1 && <More all={all} more={rows.length - FIRST} onToggle={() => setAll((x) => !x)} />}
+          {rows.length > FIRST + 1 && <ShowMore all={all} more={rows.length - FIRST} onToggle={() => setAll((x) => !x)} />}
         </>
       ) : <EmptyState title="Nothing coming up" art={null} className="hm-none">The calls you schedule show up here.</EmptyState>}
     </section>

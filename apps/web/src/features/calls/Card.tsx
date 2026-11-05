@@ -4,7 +4,7 @@
  * series a change asks whether it's for this call or this and later calls. Cancelling asks once, in place.
  */
 import { errorMessage, type Calendar, type ChangeScope, type Meeting, type MeetingInput, type NotesChoices, type NotesSetting, type Patch, type Rsvp } from '@alcove/api';
-import { Avatar, Button, EmptyState, Faces, FlowBody, FlowFoot, FlowRow, FlowSteps, FlowView, IconButton, Modal, TimeCard, TimeCardWaiting, buttonClass, cn, useSmoothHeight, useToast } from '@alcove/ui';
+import { Avatar, Button, EmptyState, Faces, FlowBody, FlowFoot, FlowRow, FlowSteps, FlowView, IconButton, Modal, NotesSwitches, ScopeBar, TimeCard, TimeCardWaiting, buttonClass, cn, useSmoothHeight, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -17,7 +17,7 @@ import { useTimes } from './availability';
 import { localWeekday } from './times';
 import { BroughtRow, BringFoot, Documents, docNames } from './Documents';
 import { NOT_REPEATING, guestsOf, repeatInput, tokensFor, type Guests, type Repeating } from './draft';
-import { Failed, NotesSwitches, ScopeBar, useFloodToCall } from './parts';
+import { Failed, useFloodToCall } from './parts';
 import { Who } from './Who';
 import { Length, RepeatRow, Week } from './When';
 import { answersLine, cancelNote, cancelledLine, dayWord, freeLine, notesWord, repeatLineHere, restoredLine, shortTime, timeLine, waitingLine, whenLine } from './words';

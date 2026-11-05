@@ -3,7 +3,9 @@
  * card that sits among the transcript lines said while it was up. Frames are pictures of someone's screen, so they
  * keep their own colours; everything around them uses the tokens.
  */
-.ac-shot { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-sm); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.ac-shot { position: relative; display: block; width: 100%; overflow: hidden; border-radius: var(--radius-sm); background: var(--sunk); }
+/* Its edge sits over the picture, so a white slide on a white card still has one. */
+.ac-shot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; }
 .ac-shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .ac-shot-part { position: absolute; border-radius: 4px; box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--horizon) 55%, transparent); }
 /* The part meant, outlined, with the rest of the frame dimmed (night in both themes, so it always darkens). */

@@ -6,15 +6,14 @@
  * you share with it.
  */
 import { MAX_GROUPS, MAX_GROUP_NAME, MAX_GROUP_PEOPLE, NEW_GROUP, errorMessage, type Group, type NoteSummary, type Person, type PersonSuggestion } from '@alcove/api';
-import { Avatar, Button, GhostArch, Icon, IconButton, Notice, Popover, useToast } from '@alcove/ui';
+import { Avatar, Button, GhostArch, Icon, IconButton, Notice, PickList, Popover, useToast, type PickRow } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type Ref } from 'react';
 import { useCallFlow } from '~/features/shell/context';
-import { byEmail, callName, fold, isEmail, listNames, sameEmail } from '~/lib/people';
+import { byEmail, callName, fold, isEmail, listNames, sameEmail, typedIn } from '~/lib/people';
 import { q, useGroups } from '~/lib/queries';
 import { groupCalls, groupLine, listed, type Shown } from './data';
 import { useOpen, usePop } from './open';
-import { PickList, typedIn, type PickRow } from './PickList';
 
 /** Groups listed before "Show all". */
 const SHOWN = 8;
@@ -402,7 +401,7 @@ function AddList({ skip, shown, onDone }: { skip: string[]; shown: (p: Person) =
     return s ? [...now, s] : now;
   });
   return (
-    <PickList label="Name or email" query={query} onQuery={setQuery} rows={rows} ticks
+    <PickList label="Name or email" query={query} onQuery={setQuery} address={whole ? typed : undefined} rows={rows} ticks
       none={whole && inAlready({ email: typed }) ? 'They’re in this group already.' : typed ? 'Type their full email address.' : 'Nobody else to add.'}
       onPress={toggle} onFinish={done}
       foot={<>

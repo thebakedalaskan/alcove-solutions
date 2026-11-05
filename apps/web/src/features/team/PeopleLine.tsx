@@ -5,7 +5,7 @@
  * in place of Ring. Past thirteen people the line recedes, and the list of everyone finds whoever's too far away to read.
  */
 import { errorMessage, type NoteSummary, type Person, type Team } from '@alcove/api';
-import { Avatar, Button, GhostArch, Icon, IconButton, Popover, PopoverClose, buttonClass, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFloodToCall } from '~/features/calls/parts';
@@ -18,7 +18,6 @@ import { addressOnly, callLine, listed, notesWith, type Meets } from './data';
 import type { Arch, Line, Sun } from './line';
 import { personPop, useOpen, usePop } from './open';
 import { InviteLink } from './People';
-import { PickList, type PickRow } from './PickList';
 
 /** What people's popovers read. */
 export interface Between { notes: NoteSummary[]; meets: (email: string) => Meets; now: Date; inGroups: number }

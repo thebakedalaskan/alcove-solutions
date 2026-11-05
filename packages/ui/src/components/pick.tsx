@@ -2,24 +2,33 @@
  * People to find and press, inside a popover: a line to type in, then rows with their arches. With `ticks` it picks
  * several and the popover's foot finishes; without, pressing someone is the whole thing. ↑ and ↓ move through the rows
  * and Enter presses one, so hands stay on the line. Enter ticks whoever's found and clears the line, and Enter again
- * finishes. A comma, a space or Tab after a whole address ticks it too.
+ * finishes. A comma, a semicolon, a space or Tab after a whole address ticks it too. It takes plain rows and handlers:
+ * who's found, and what counts as an address, are the caller's. Team's look (styles/team.css, `tp-`), where it began.
  */
 import type { Person } from '@alcove/api';
-import { Avatar, GhostArch, Icon, cn } from '@alcove/ui';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { isEmail, sameEmail } from '~/lib/people';
+import { cn } from '../cn';
+import { Icon } from './icon';
+import { Avatar, GhostArch } from './people';
 
 export interface PickRow {
-  key: string; name: string; sub?: string | undefined; person: Person; ghost?: boolean | undefined; on?: boolean | undefined;
+  key: string; name: string; sub?: string | undefined; person: Person;
+  /** Not on Alcove yet: an empty arch in place of their face. */
+  ghost?: boolean | undefined;
+  /** Ticked. */
+  on?: boolean | undefined;
   /** Ticked because the whole address is on the line: pressing it is what makes that stick. */
   typed?: boolean | undefined;
 }
 
-/** What's on the line, to match against: a comma or semicolon pasted after an address isn't part of it. */
-export const typedIn = (query: string) => query.trim().replace(/[,;\s]+$/, '').toLowerCase();
+/** What finishes an address on the line, as it does in a mail app. */
+const SEPARATORS = new Set([',', ';', ' ', 'Tab']);
 
-export function PickList({ label, placeholder = 'Name or email', query, onQuery, rows, none, ticks = false, tall = false, onPress, onFinish, foot }: {
-  label: string; placeholder?: string | undefined; query: string; onQuery: (q: string) => void; rows: PickRow[];
+export function PickList({ label, placeholder = 'Name or email', query, onQuery, address, rows, none, ticks = false, tall = false, onPress, onFinish, foot }: {
+  label: string; placeholder?: string | undefined; query: string; onQuery: (q: string) => void;
+  /** The whole address on the line, in lower case, when what's typed is one: a separator after it ticks its row. */
+  address?: string | undefined;
+  rows: PickRow[];
   /** What the list says with nobody in it. */
   none: ReactNode;
   ticks?: boolean | undefined; tall?: boolean | undefined;
@@ -56,11 +65,10 @@ export function PickList({ label, placeholder = 'Name or email', query, onQuery,
     else if (onFinish && rows.some((r) => r.on)) onFinish();
     else if (row) press(row);
   };
-  /* An address is finished by what comes after it, as it is in a mail app. */
+  /* An address is finished by what comes after it. Tab after an address nobody has goes on to the next control. */
   const separate = (key: string, stop: () => void) => {
-    const typed = typedIn(query);
-    if (!ticks || !isEmail(typed) || ![',', ';', ' ', 'Tab'].includes(key)) return;
-    const row = rows.find((r) => sameEmail(r.person, { email: typed }));
+    if (!ticks || !address || !SEPARATORS.has(key)) return;
+    const row = rows.find((r) => r.person.email.toLowerCase() === address);
     if (row || key !== 'Tab') stop();
     if (row) tick(row);
   };
