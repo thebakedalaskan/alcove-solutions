@@ -547,15 +547,18 @@ function pathTo(item: Y.Item): Y.Item[] {
   return path;
 }
 
-/** Whether anything live in an item, however deep, was written by another browser. A loop: a peer can nest as deep as it likes. */
+/**
+ * Whether another browser ever changed anything in an item, however deep. That counts what has since been replaced: someone
+ * who moved a sticky at the same moment as you, and lost the merge, still moved it, and keeping too much is harmless. So it
+ * walks every value a key has held. A loop: a peer can nest as deep as it likes.
+ */
 function othersIn(item: Y.Item, me: number): boolean {
   const waiting = [item];
   for (let next = waiting.pop(); next; next = waiting.pop()) {
-    if (next.deleted) continue;
     if (next.id.client !== me) return true;
     if (next.content instanceof Y.ContentType) {
       const { type } = next.content;
-      waiting.push(...type._map.values());
+      for (const latest of type._map.values()) for (let value: Y.Item | null = latest; value; value = value.left) waiting.push(value);
       for (let child = type._start; child; child = child.right) waiting.push(child);
     }
   }
@@ -641,7 +644,7 @@ function overtaken(item: Y.Item, doc: Y.Doc): boolean {
  * that care by leaving out any field of it someone has since changed.
  *
  * If an object's last copy has been collected, nothing of it can come back, and Yjs throws if it tries. That happens when
- * someone deletes a restored object, because Yjs only keeps a copy while a step still deleted something in it.
+ * someone deletes a restored object, because Yjs stops keeping a copy once it clears a step that deleted something in it.
  *
  * Yjs never redoes what's in a step's `insertions`, so that's where both kinds go.
  */
