@@ -77,7 +77,8 @@ export function usePresenting({ session, present, participants, open, inSight, s
   const inSightNow = useRef(inSight);
   inSightNow.current = inSight;
   useEffect(() => {
-    if (!present || present.id !== null || key === toldOf.current) return;
+    if (!present) { toldOf.current = null; return; }
+    if (present.id !== null || key === toldOf.current) return;
     toldOf.current = key;
     if (!inSightNow.current) say(wsToast.presentingPrivate(firstName(present.by.name)));
   }, [present, key, say]);
