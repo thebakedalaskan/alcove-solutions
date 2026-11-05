@@ -180,9 +180,10 @@ at least edit in the target), bring a document, ask for access, grant it, and dr
   give-way order), `solve`, the people modes. It replaces the side panel's fixed place. Tiles stay in one absolutely
   placed layer so video never remounts when a panel moves. The arrangement is kept per account in this browser with a
   zod schema, as `view.ts` keeps its prefs.
-- **Notes, Follow-ups, Transcript.** Built on what the call already has (`CallState.transcript`, catch-up, `liveNotes.ts`).
-  Live notes become shared: the server keeps the call's latest catch-up sealed and refreshes it at most every 30 s, so
-  everyone sees the same list, ticking is shared, and inference runs once instead of once per viewer.
+- **Notes, Follow-ups, Transcript.** Built on what the call already has (`CallState.transcript`, catch-up, `CallState.liveNotes`).
+  Live notes are shared: the server keeps the call's latest catch-up sealed and refreshes it at most every 30 s, so
+  everyone sees the same list, ticking is shared, and inference runs once instead of once per viewer
+  ([Notes and inference › Live notes](../../engineering/notes-and-inference.md#live-notes)).
 - **Follow-ups from documents.** A `todo` line with a mention and a date joins the call's follow-ups. The server reads them
   from the Yjs state of the documents worked on in the call, filtered to what each reader can open. Ticking one sets
   the block's `done` with a server-made Yjs update.

@@ -54,6 +54,8 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hand'), up: z.boolean() }),
   /** Anyone in the call: whether others may point at and mark what they share. On until they turn it off. */
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
+  /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
+  z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /**
@@ -104,6 +106,8 @@ export const CallJoinBodySchema = z.object({
   /** The pass from this browser's last connection to the call, if it had one: someone let in before is let in again without asking. */
   previous: z.string().max(2000).optional()
 });
+/** What watching the live notes did: true when this look refreshed them, so a browser reads the call again straight away. */
+export const NotesWatchedSchema = z.object({ refreshed: z.boolean() });
 /** The host's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
 export const CallCommitBodySchema = z.object({
   generation: z.number().int().nonnegative(),

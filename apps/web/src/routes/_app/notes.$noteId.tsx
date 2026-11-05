@@ -266,6 +266,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
   const stillOpen = note.questions.filter((x) => x.state === 'open').length;
   const part = (i: number) => ({ className: going ? 'going' : undefined, style: { '--d': i } });
+  // The call is still writing to these notes, so they stay until it ends.
+  const inCall = note.kind === 'call' && note.status === 'recording';
 
   return (
     <>
@@ -280,8 +282,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
               <Icon name="copy" size={18} /><span><b>Copy as text</b>{!ready && <small>Once the notes are written.</small>}</span>
             </button>
             <div className="ac-pop-sep" />
-            <button type="button" className="ac-pop-item is-caution" onClick={() => { setMore(false); setConfirm(true); }}>
-              <Icon name="trash" size={18} /><span>{mine ? <><b>Delete notes</b><small>For everyone. Can’t be undone.</small></> : <><b>Remove from your notes</b><small>Everyone else keeps them.</small></>}</span>
+            <button type="button" className="ac-pop-item is-caution" disabled={inCall} onClick={() => { setMore(false); setConfirm(true); }}>
+              <Icon name="trash" size={18} /><span>{mine ? <><b>Delete notes</b><small>{inCall ? 'Once the call ends.' : 'For everyone. Can’t be undone.'}</small></> : <><b>Remove from your notes</b><small>Everyone else keeps them.</small></>}</span>
             </button>
           </Popover>
         </div>
