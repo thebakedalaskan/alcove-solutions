@@ -322,7 +322,7 @@ function notesReply(system: string, user: string, images: Buffer[], reworded: Re
       questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
-        if (!m) return /ます。$/.test(h.text) ? [{ text: reworded.get(h.text) ?? h.text, owner: null, due: null, at: h.at, ...onScreen(h) }] : [];
+        if (!m) return /ます。$/.test(h.text) ? [{ text: reworded.get(h.text) ?? h.text, owner: null, due: null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }] : [];
         const rest = m[2] ?? '';
         return [{ text: reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }];
       }),

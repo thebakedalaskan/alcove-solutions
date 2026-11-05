@@ -12,24 +12,9 @@ export interface Said { text: string; at?: number | undefined }
 /** What's compared of a follow-up besides: who it's for, by name, the transcript lines it comes from, by ID, and what those lines say. */
 export interface SaidFollowUp extends Said { owner?: string | undefined; lines: readonly string[]; heard: string }
 
-/**
- * The same item in other words, for notes written again: most of the shorter one's words are in the other, and they
- * point at moments within a minute of each other (or one points at none).
- */
-const ALIKE = { share: 0.6, seconds: 60 };
-const wordsOf = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(' ').filter(Boolean);
-const near = (a: Said, b: Said) => a.at === undefined || b.at === undefined || Math.abs(a.at - b.at) <= ALIKE.seconds;
-export function alike(a: Said, b: Said): boolean {
-  if (!near(a, b)) return false;
-  const [x, y] = [wordsOf(a.text), wordsOf(b.text)];
-  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  if (!short.length) return false;
-  const left = new Map<string, number>();
-  for (const w of long) left.set(w, (left.get(w) ?? 0) + 1);
-  let shared = 0;
-  for (const w of short) { const n = left.get(w) ?? 0; if (n) { shared++; left.set(w, n - 1); } }
-  return shared >= ALIKE.share * short.length;
-}
+/** How far apart two follow-ups with no line in common can have come up and still be one, in seconds: a moment missing says nothing against them. */
+const NEAR_SECONDS = 60;
+const near = (a: Said, b: Said) => a.at === undefined || b.at === undefined || Math.abs(a.at - b.at) <= NEAR_SECONDS;
 
 /** Runs of scripts written without spaces between words: there are no words to split them into, so they're compared by pairs of characters. */
 const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]+/gu;

@@ -17,7 +17,7 @@
  * - When the call ends, what was ticked goes into the note (`ticked` in its manifest), and the rows go. When the notes
  *   are written, each tick finds the follow-up it is there (`doneInNotes`), or becomes one.
  */
-import { CatchUpReadSchema, EvidenceSchema, MAIN_PLACE, type ActionItem, type CatchUpRead, type LiveFollowUp, type LiveNotes, type TranscriptLine } from '@alcove/api';
+import { CatchUpReadSchema, ChangerSchema, EvidenceSchema, MAIN_PLACE, type ActionItem, type CatchUpRead, type LiveFollowUp, type LiveNotes, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { b64u, id128, openJson, sealJson, sha, stateKey, toJson, utf8 } from '../crypto';
@@ -46,8 +46,8 @@ const NOT_UPDATED = 'The notes couldn’t be updated just now. Alcove tries agai
 /** A point in the notes, as a catch-up gives it. */
 const Point = z.object({ text: z.string(), owner: z.string().optional(), due: z.string().optional(), evidence: z.array(EvidenceSchema) });
 type Point = z.infer<typeof Point>;
-/** Who ticked a follow-up and when, as a note's changes say it. */
-const Tick = z.object({ by: z.object({ name: z.string(), email: z.string() }), at: z.string() });
+/** Who ticked a follow-up and when, as a note's changes say it. A call's pass has no account behind it for someone invited, so theirs goes by address, as `isBy` allows. */
+const Tick = z.object({ by: ChangerSchema, at: z.string() });
 type Tick = z.infer<typeof Tick>;
 /**
  * `cited`: every line it comes from, by ID (`evidence` shows the first three). `tick`: null until someone ticks it.
@@ -349,7 +349,7 @@ export function doneInNotes(actions: ActionItem[], ticks: Ticked[], lines: Trans
   const written = actions.map((a) => { const t = doneBy.get(a); return t && !a.done ? { ...a, done: true, changes: [...a.changes, change(t)] } : a; });
   const added = ticks.filter((t) => !pairs.has(t)).map((t): ActionItem => {
     const at = behind(t)[0]?.at;
-    return { id: id128(), text: t.text, ...(t.owner ? { owner: { name: t.owner } } : {}), takenOn: false, ...(t.due ? { due: t.due } : {}), ...(at === undefined ? {} : { at }), done: true, changes: [change(t)] };
+    return { id: id128(), text: t.text, ...(t.owner ? { owner: { name: t.owner } } : {}), takenOn: false, ...(t.due ? { due: t.due } : {}), ...(at === undefined ? {} : { at }), lines: behind(t).map((l) => l.id), against: [], done: true, changes: [change(t)] };
   });
   return added.length ? [...written, ...added].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY)) : written;
 }

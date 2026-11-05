@@ -1027,8 +1027,10 @@ both show, that one still ticked.
 
 `{type: "follow-up", id, done}` (60 a minute per person) ticks a follow-up, or takes the tick back, for everyone reading
 those notes, and nudges the room like any change to the call. It's for anyone in the call who gets the notes, the
-organizer and everyone on the invite, as anyone who has a note can tick its follow-ups: a guest with the link gets
-`403 forbidden`. Only the notes everyone shares can be ticked, by someone who may read all of them, in the part of the
+organizer and everyone on the invite, as `mayChangeAction` has it for a follow-up nobody has taken on, which nothing is
+until the notes are written: a guest with the link gets `403 forbidden`. Who ticked it goes into the note's changes with
+how they had the note (`as`), and for the organizer their account: a call's pass has none behind it for someone invited,
+who's known by address. Only the notes everyone shares can be ticked, by someone who may read all of them, in the part of the
 call they're in: an ID from another room or call, from notes for a narrower view, or a made-up one is `404 not-found`. It
 holds the call's row, so it comes before the call ends or is refused (`409 conflict`). A tick is kept under the notes' row
 with who made it and when, and a refresh saves around it, so one made while the notes were being written isn't lost.

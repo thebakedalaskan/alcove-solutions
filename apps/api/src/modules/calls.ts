@@ -1,7 +1,7 @@
 import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
   type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
-  type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type LiveNotes, type Person,
+  type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person,
   type RingReply, type ScreenFrameReceipt, type SeriesAnswerPart, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
@@ -1800,7 +1800,7 @@ async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<Ca
   const invited = invitedIn(meeting);
   if (!mine || onlyHere(v, s, mine, row.started_at, invited) !== null) throw new ForbiddenError('The notes go to the people invited, so only they can tick follow-ups.', { context: { callId: row.call_id, role: v.pass.role, what: a.type } });
   const organizer = mine.role === 'host' ? await me(o) : undefined;
-  const by = { name: organizer?.name ?? mine.name, email: organizer?.email ?? mine.email ?? '' };
+  const by: Changer = { id: organizer ? o.ownerId : null, name: organizer?.name ?? mine.name, email: organizer?.email ?? mine.email ?? '', as: organizer ? 'organizer' : 'invited' };
   await liveNotes.tick(o, c, row.call_id, placeOf(s, mine), a.id, a.done, by, readerFor(v, s, mine, row.started_at, invited));
 }
 

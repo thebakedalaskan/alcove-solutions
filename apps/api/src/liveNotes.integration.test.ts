@@ -981,7 +981,7 @@ describe('into the note', () => {
     await kofi.tickFollowUp(followUp(seen.next, PLANTS).id, true);
     await host.tickFollowUp(followUp(seen.next, ROOM).id, true);
     await host.tickFollowUp(followUp(seen.next, ROOM).id, false);
-    await kofi.tickFollowUp(followUp(seen.next, LATER).id, true);
+    await host.tickFollowUp(followUp(seen.next, LATER).id, true);
 
     // The notes word the deck afresh, as a model does, and leave out the plants altogether. Only the moment and a few
     // words tie the deck to what was ticked. The plan is written as the fake hears it: a few of the same words.
@@ -994,12 +994,14 @@ describe('into the note', () => {
     h.near.reword(PLANTS, null);
 
     expect(note.actions.map((a) => [a.text, a.done])).toEqual([[WORDED, true], ['Book the room by Monday', false], [PLANTS, true], ['Update the plan by Thursday', true]]);
+    expect(note.actions.find((a) => a.text === 'Update the plan by Thursday')?.changes).toEqual([{ by: { id: org.session.ownerId, name: expect.any(String), email: expect.any(String), as: 'organizer' }, at: expect.any(String), what: 'done' }]);
     const deck = note.actions.find((a) => a.text === WORDED);
-    expect(deck?.changes).toEqual([{ by: { name: expect.any(String), email }, at: expect.any(String), what: 'done' }]);
+    expect(deck?.changes).toEqual([{ by: { id: null, name: expect.any(String), email, as: 'invited' }, at: expect.any(String), what: 'done' }]);
     // The notes never listed the plants: ticked, it's in the note all the same, as it was said, done, with its moment.
     const plants = note.actions.find((a) => a.text === PLANTS);
     expect(plants).toMatchObject({ done: true, due: 'Tuesday', owner: { name: 'Kofi' }, takenOn: false, changes: [{ what: 'done' }] });
     expect(plants?.at).toBe(note.transcript?.find((l) => l.text === PLANTS)?.at);
+    expect(plants?.evidence).toMatchObject({ flags: [], moments: [{ kind: 'line', text: PLANTS }] });
     // Everyone who has the note reads it so, and it isn't among what's open.
     expect((await invited.api.notes.get(note.id)).actions.map((a) => a.done)).toEqual(note.actions.map((a) => a.done));
     expect((await org.api.notes.list()).find((n) => n.id === note.id)).toMatchObject({ openActions: 1, totalActions: 4 });
