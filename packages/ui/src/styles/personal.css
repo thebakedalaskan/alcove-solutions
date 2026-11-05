@@ -1,5 +1,5 @@
-/* Your own notes (apps/web/src/features/personal): in the call's panel, which follows the app's theme, and beside a note
-   (own-); and what people added to the shared notes from theirs (add-). */
+/* Your own notes (apps/web/src/features/personal): in the call's panel, at night like the rest of the call, and beside a
+   note (own-); and what people added to the shared notes from theirs (add-). */
 
 /* The head of the panel's view: who it's for, and marking a moment. */
 .own-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--line); }
@@ -21,7 +21,7 @@
 .own-away { margin: 0; display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 .own-away .ac-i { flex: none; margin-top: 2px; }
 .own-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 22px; font-size: 12px; color: var(--ink-3); }
-.own-m .ac-time { font: 500 11.5px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.own-m .ac-time { font-size: 11.5px; line-height: 1; color: var(--ink-3); }
 .own-room { display: inline-flex; align-items: center; gap: 4px; }
 .own-shared { display: inline-flex; align-items: center; gap: 4px; color: var(--horizon); font-weight: 500; }
 /* What you can do to one: on hover or focus, always on touch screens. */
@@ -98,7 +98,7 @@
 .add-row:first-child { border-top: 0; padding-top: 4px; }
 .add-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13.5px; color: var(--ink-2); }
 .add-h b { font-weight: 600; color: var(--ink); }
-.add-h .ac-time { font: 500 12px/1 var(--font-mono); color: var(--ink-3); }
+.add-h .ac-time { font-size: 12px; line-height: 1; color: var(--ink-3); }
 .add-b { display: grid; gap: 6px; min-width: 0; }
 .add-b p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
 .add-m { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
