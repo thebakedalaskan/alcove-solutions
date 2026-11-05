@@ -509,7 +509,8 @@ the server today, and its screens are being built.
 7. **After the call**, the note says what was worked on and by whom, for each person only what they can open, and each
    document keeps a version of how the call left it. **The next call in a series** finds a new agenda beside the last one,
    holding only what was left open.
-8. **⌘K** finds anything in the workspace from anywhere in the call, and opens the workspace first if it's closed.
+8. **⌘K** finds anything in the workspace from anywhere in the call. It opens the workspace first if it's closed, and brings it
+   to the front if it's taking turns with a share, so the line it lands on is one you can see.
 9. **Ask** on what's selected (flow 12) answers **What was said about this?** from this call: everything said in it that you
    may read.
 10. **History** files what was worked on under the call: **During this call** while it's on, and after it under the call's name
