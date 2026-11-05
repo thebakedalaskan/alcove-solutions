@@ -769,7 +769,7 @@ block's **Move to…**, or dragging it onto a document in the list, sends it the
 **From the keyboard.** The list is one stop for Tab: **↑** and **↓** move through it, **←** and **→** close and open a
 folder, **Enter** opens a row and Tab reaches its buttons. **F2** renames, **Delete** moves to Trash, **⌥↑** and **⌥↓** move
 a row among its neighbours, and the menu key opens its menu. **⌘\** hides or shows the list. While the caret is in a
-document, **N** and **⇧N** type letters, and **Esc** leaves it for its row in the list.
+document, **N** and **⇧N** type letters; **Esc** goes to the block's handles, and again to the document's row in the list.
 
 **Trash.** A quiet row at the foot of the list, with how much is in it. It lists what was moved there, by whom, when and
 how long it has left: things stay for 30 days. **Restore** puts something back in its folder, or at the top if the folder
