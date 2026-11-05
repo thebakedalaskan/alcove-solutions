@@ -12,7 +12,7 @@ import { marked } from '~/features/notes/highlight';
 import { noteAsText, peopleLine, roleLine } from '~/features/notes/meta';
 import { decisionLine, notDecided } from '~/features/notes/parts';
 import { PinNote, ShareNote } from '~/features/notes/share';
-import { SeriesChip } from '~/features/series/cards';
+import { weeklyLabel } from '~/features/series/cards';
 import { sameEmail, spokenName } from '~/lib/people';
 import { q, useDeleteNote, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, shortDay } from '~/lib/time';
@@ -72,7 +72,7 @@ export function Preview({ s, me, terms, said, onDropped }: { s: NoteSummary; me:
         </div>
         <div className="nt-pv-m">
           <span>{noteDay(s.startedAt)} at {hm(s.startedAt)}, {minutes(s.duration)}</span>
-          {note?.seriesId && <SeriesChip seriesId={note.seriesId} />}
+          {note?.seriesId && <InSeries id={note.seriesId} />}
           <WhoHas s={s} note={note} me={me} />
         </div>
         <Moments s={s} me={me} terms={terms} said={said} />
@@ -87,6 +87,12 @@ export function Preview({ s, me, terms, said, onDropped }: { s: NoteSummary; me:
       </div>
     </aside>
   );
+}
+
+/** The series a note's call is in: "Every Tuesday" when it's as regular as that. */
+function InSeries({ id }: { id: string }) {
+  const s = useQuery(q.series(id)).data;
+  return <span>{(s && weeklyLabel(s)) ?? 'In a series'}</span>;
 }
 
 /** Who has the notes, you first; pressed, each of them and how they got them. Only you have your own until you share them. */
