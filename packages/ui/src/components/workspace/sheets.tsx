@@ -54,11 +54,11 @@ function CommentField({ label, placeholder, value, onChange, onSend, autoFocus =
   </>;
 }
 
-/** A new comment on selected words. `person` is who's writing it. */
+/** A new comment on selected words, or on something on a board. `person` is who's writing it. An empty `quote` shows nothing above the field. */
 export function WsCommentCompose({ quote, person, value, onChange, onSend }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void }) {
   return (
     <div className="wv-cmt">
-      <div className="q"><span className="ac-clamp-2">{quote}</span></div>
+      {quote && <div className="q"><span className="ac-clamp-2">{quote}</span></div>}
       <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} autoFocus /></div>
     </div>
   );
@@ -67,14 +67,17 @@ export function WsCommentCompose({ quote, person, value, onChange, onSend }: { q
 /** One message in a thread. `name` is their first name. */
 export interface WsComment { id: string; person: AvatarPerson; name: string; text: string }
 
-/** A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms. */
+/**
+ * A thread on some words, or on something on a board: what they are, Resolve, what's been said and the reply field. A reply
+ * rises 8 px, 240 ms. Someone who can only read it has neither `onSend` nor `onResolve`, and sees what's been said.
+ */
 export function WsCommentThread({ quote, messages, value, onChange, onSend, onResolve }: {
-  quote: string; messages: WsComment[]; value: string; onChange: (v: string) => void; onSend: () => void; onResolve: () => void;
+  quote: string; messages: WsComment[]; value: string; onChange: (v: string) => void; onSend?: (() => void) | undefined; onResolve?: (() => void) | undefined;
 }) {
   const move = useMove();
   return (
     <div className="wv-cmt">
-      <div className="wv-th"><span className="q1">{quote}</span><Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button></div>
+      {(quote || onResolve) && <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>}
       <AnimatePresence initial={false}>
         {messages.map((m) => (
           <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
@@ -82,7 +85,7 @@ export function WsCommentThread({ quote, messages, value, onChange, onSend, onRe
           </motion.div>
         ))}
       </AnimatePresence>
-      <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} /></div>
+      {onSend && <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} /></div>}
     </div>
   );
 }

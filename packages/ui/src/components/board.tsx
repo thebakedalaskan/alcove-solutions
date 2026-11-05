@@ -151,6 +151,10 @@ export interface BoardBarProps {
   /** What the seal says: Sealed, Sealed to this room, Reconnecting, Not saved, View only. Empty hides it. */
   seal?: string | undefined;
   sealIcon?: IconName | undefined;
+  /** What the seal says on hover, which is what's true of it now. */
+  sealTitle?: string | undefined;
+  /** What comes last: on a board's own page, who else is here and Start a call here (`BoardPageActions`). */
+  tail?: ReactNode;
   /** The camera's zoom, shown as a percentage. */
   zoom: number;
   canUndo?: boolean | undefined;
@@ -193,13 +197,13 @@ function NameField({ naming }: { naming: BoardNaming }) {
 }
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
-export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', zoom, canUndo = false, canRedo = false, editable = true, acts = true, mapOn = false, faded = false,
+export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, mapOn = false, faded = false,
   onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
       {naming ? <NameField naming={naming} />
         : <button type="button" className="nm" title="Rename, move or copy this board" aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
-      {seal && <button type="button" className="sv" title="Sealed. Alcove can’t read this board." onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
+      {seal && <button type="button" className="sv" title={sealTitle} onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
       <span className="sp" />
       {editable && (
         <>
@@ -221,6 +225,7 @@ export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', z
           <IconButton className="bt" icon="more" size={17} label="More" onClick={onMore} />
         </>
       )}
+      {tail}
     </div>
   );
 }
@@ -581,15 +586,20 @@ export const BoardPointer = memo(forwardRef<HTMLDivElement, {
   );
 }));
 
-/** A comment pinned to something, with their face on the pin, in board units. `open` shows what they said beside it. */
-export const BoardComment = memo(function BoardComment({ id, x, y, person, name, text, open = false, onOpen }: {
-  id: string; x: number; y: number; person: AvatarPerson; name: string; text: string; open?: boolean | undefined; onOpen?: ((id: string) => void) | undefined;
+/**
+ * A comment pinned to something, with their face on the pin. `x` and `y`, in board units, are where its point goes: the
+ * top right corner of what it's on. In `BoardWorld`'s `pointers`, it stays one size however near the camera is, as a pointer
+ * does. `open` shows what they said beside it; `count` how many have replied since. `data-thread` names it, to anchor a sheet to.
+ */
+export const BoardComment = memo(function BoardComment({ id, x, y, person, name, text, count = 0, open = false, onOpen }: {
+  id: string; x: number; y: number; person: AvatarPerson; name: string; text: string; count?: number | undefined; open?: boolean | undefined; onOpen?: ((id: string) => void) | undefined;
 }) {
   return (
-    <>
-      <button type="button" className="bo-pin" style={{ left: x, top: y }} aria-label={`Comment from ${name}`} aria-expanded={open} onClick={() => onOpen?.(id)}><Avatar person={person} size={22} /></button>
-      {open && <div className="bo-th" style={{ left: x + 30, top: y + 8 }}><b>{name}</b><p>{text}</p></div>}
-    </>
+    <span className="bo-at" style={{ left: x, top: y }}>
+      <button type="button" className="bo-pin" data-thread={id} aria-label={count > 0 ? `Comment from ${name}, and ${count === 1 ? '1 reply' : `${count} replies`}` : `Comment from ${name}`} aria-expanded={open}
+        onClick={() => onOpen?.(id)}><Avatar person={person} size={22} />{count > 0 && <b className="n">{count}</b>}</button>
+      {open && <div className="bo-th"><b>{name}</b><p>{text}</p></div>}
+    </span>
   );
 });
 
@@ -649,12 +659,12 @@ export function BoardEmpty({ fading = false, everyone = true, className }: { fad
   );
 }
 
-/** What a board's own page has that a call doesn't: who else is here, and Start a call here. Goes in `BoardLayout`, after the sheet. */
+/** What a board's own page has that a call doesn't: who else is here, and Start a call here. It goes at the end of the bar, as `BoardBar`'s `tail`. */
 export function BoardPageActions({ people, onCall, className }: { people: AvatarPerson[]; onCall: () => void; className?: string | undefined }) {
   return (
     <div className={cn('bpg-acts', className)}>
       {people.length > 0 && <Faces people={people} size={30} max={2} />}
-      <Button variant="primary" icon="video" onClick={onCall}>Start a call here</Button>
+      <Button variant="primary" icon="video" aria-label="Start a call here" onClick={onCall}><span className="lb">Start a call here</span></Button>
     </div>
   );
 }

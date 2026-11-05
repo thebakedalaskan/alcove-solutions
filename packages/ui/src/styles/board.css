@@ -35,12 +35,20 @@
 .bz.is-page .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
 .bz.is-page .bz-rail .ac-dock-sep { background: var(--line); }
 .bz.is-page .bd { border-radius: 18px; box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
-.bz.is-page .bd-head { padding-right: 262px; }
 
 /* Who else is here, and bringing the board to a call, at the end of the page's bar */
-.bpg-acts { position: absolute; z-index: 12; right: 22px; top: 16px; display: flex; align-items: center; gap: 10px; }
+.bpg-acts { flex: none; display: flex; align-items: center; gap: 10px; margin-left: 8px; }
 .bpg-acts .ac-faces .ac-avatar { --ring: var(--bd-ground); }
 .bpg-acts .ac-btn { height: 36px; padding: 0 14px; font-size: 13.5px; }
+
+/* A board's own page in the workspace, beside its list, under the head that says where it is: it fills where a document would be. */
+.wd.is-board { background: var(--ground); }
+.wd.is-board > .bpg { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+.wd.is-board .bz.is-page { padding-top: 0; }
+@container (max-width: 640px) { .wd.is-board .bz.is-page { padding: 0 8px 8px; gap: 8px; } }
+/* A narrow bar: who else is here gives way first, then Start a call here keeps only its camera. */
+@container (max-width: 700px) { .bd-head .bpg-acts .ac-faces { display: none; } }
+@container (max-width: 560px) { .bd-head .bpg-acts .ac-btn { width: 36px; padding: 0; justify-content: center; } .bd-head .bpg-acts .ac-btn .lb { display: none; } }
 
 /* On a phone the sheet is the whole space between the faces and the dock, and nothing sits above it. */
 .bz.is-phone { padding: 0; background: none; }
@@ -167,8 +175,15 @@
 .bo.k-shape.is-live-edit .bo-t:empty::before { content: "\200b"; }
 
 /* A comment: a pin with their face on it, and what they said */
-.bo-pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
-.bo-th { position: absolute; z-index: 5; width: 150px; padding: 9px 11px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); color: var(--ink); }
+/* A comment's pin: its point on the corner of what it's on, one size however near the camera is, as a pointer is. */
+.bo-at { --iz: inherit; position: absolute; z-index: 5; width: 0; height: 0; scale: var(--iz, 1); transform-origin: 0 0; }
+.bd.is-glide .bo-at { transition: scale var(--duration-3) var(--ease-in-out); }
+.bo-pin { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); cursor: pointer; animation: bo-pop var(--duration-2) var(--ease-out) both; }
+.bo-pin:hover, .bo-pin[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--horizon), var(--shadow-2); }
+.bo-pin .n { position: absolute; right: -7px; top: -6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--ground); font: 600 11px/1 var(--font-sans); }
+/* Waiting for what a comment goes on: the next press picks it. */
+.bo-pick { position: absolute; inset: 0; z-index: 7; cursor: crosshair; }
+.bo-th { position: absolute; left: 34px; bottom: -4px; width: 150px; padding: 9px 11px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); color: var(--ink); }
 .bo-th b { display: block; font: 600 12.5px/1.3 var(--font-sans); }
 .bo-th p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
 

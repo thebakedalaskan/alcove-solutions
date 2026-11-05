@@ -130,11 +130,12 @@ export function WsMenu({ rows, label, className, swapped = false }: { rows: WsMe
 }
 
 /** Plus at the top of the list, and on a folder: what you can make. */
-export function WsNewMenu({ onDocument, onFolder, onUpload }: { onDocument: () => void; onFolder: () => void; onUpload?: (() => void) | undefined }) {
+export function WsNewMenu({ onDocument, onFolder, onBoard, onUpload }: { onDocument: () => void; onFolder: () => void; onBoard?: (() => void) | undefined; onUpload?: (() => void) | undefined }) {
   const rows: WsMenuRow[] = [
     { icon: 'filePlus', label: 'New document', hint: 'N', onSelect: onDocument },
     { icon: 'folderPlus', label: 'New folder', hint: '⇧N', onSelect: onFolder }
   ];
+  if (onBoard) rows.push({ icon: 'presentation', label: 'New board', onSelect: onBoard });
   if (onUpload) rows.push({ type: 'sep' }, { icon: 'cloudUpload', label: 'Upload files', onSelect: onUpload });
   return <WsMenu label="New" rows={rows} />;
 }

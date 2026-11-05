@@ -133,11 +133,11 @@ function Thread({ quote, messages: said, value: start, onSend, onResolve, onChan
   const send = () => {
     const text = value.trim();
     if (!text) return;
-    onSend();
+    onSend?.();
     setMessages((now) => [...now, { id: `c${now.length + 1}`, person: ART, name: first(ART), text }]);
     setValue('');
   };
-  const resolve = () => { onResolve(); setResolved(true); say(wsToast.resolved(() => setResolved(false))); };
+  const resolve = () => { onResolve?.(); setResolved(true); say(wsToast.resolved(() => setResolved(false))); };
   return (
     <>
       {resolved
