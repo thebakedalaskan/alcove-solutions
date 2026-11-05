@@ -86,16 +86,20 @@ function CommentField({ label, placeholder, value, onChange, onSend, tagging, au
     } else if (open && choices.length > 0 && (e.key === 'Enter' || e.key === 'Tab')) {
       e.preventDefault();
       take(choices[index]);
-    } else if (open && e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      setClosed(shown.from);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       onSend();
     }
   };
   const moved = (e: { currentTarget: HTMLInputElement }) => setCaret(e.currentTarget.selectionStart ?? e.currentTarget.value.length);
+  /* Esc closes the list and leaves the box: the popover hears it first otherwise. */
+  const from = shown?.from ?? null;
+  useEffect(() => {
+    if (from === null) return;
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setClosed(from); } };
+    window.addEventListener('keydown', esc, true);
+    return () => window.removeEventListener('keydown', esc, true);
+  }, [from]);
   return <>
     <input ref={field} className="wm-in" type="text" placeholder={placeholder} aria-label={label} aria-expanded={open} value={value} autoFocus={autoFocus}
       onChange={(e) => { onChange(e.target.value); setIndex(0); moved(e); }} onSelect={moved} onKeyDown={keys} />
@@ -144,16 +148,21 @@ export function WsCommentThread({ quote, messages, value = '', onChange, onSend,
   quote: string; messages: WsComment[]; value?: string | undefined; onChange?: ((v: string) => void) | undefined; onSend?: (() => void) | undefined; onResolve?: (() => void) | undefined; tagging?: WsTagging | undefined;
 }) {
   const move = useMove();
+  const said = useRef<HTMLDivElement>(null);
+  /* A long thread scrolls, and what was just said is what's showing. */
+  useEffect(() => { const box = said.current; if (box) box.scrollTop = box.scrollHeight; }, [messages.length]);
   return (
     <div className="wv-cmt">
       <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>
-      <AnimatePresence initial={false}>
-        {messages.map((m) => (
-          <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
-            <Avatar person={m.person} size={24} /><div><b>{m.name}</b><p>{m.text}</p></div>
-          </motion.div>
-        ))}
-      </AnimatePresence>
+      <div ref={said} className="wv-ms">
+        <AnimatePresence initial={false}>
+          {messages.map((m) => (
+            <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
+              <Avatar person={m.person} size={24} /><div><b>{m.name}</b><p>{m.text}</p></div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
       {onSend && onChange && <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} tagging={tagging} autoFocus /></div>}
     </div>
   );

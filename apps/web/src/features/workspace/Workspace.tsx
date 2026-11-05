@@ -77,6 +77,7 @@ function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[]
   const qc = useQueryClient();
   const [turn, setTurn] = useState(0);
   const busy = useRef(false);
+  const wait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const look = () => setTurn((n) => n + 1);
     document.addEventListener('visibilitychange', look);
@@ -93,8 +94,9 @@ function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[]
     if (at.kind === 'document' && at.id === next.document && at.block === next.block) { setTurn((n) => n + 1); return; }
     busy.current = true;
     say(wsToast.tagged(next.by, firstName(next.by.name), nameOf(item), () => go({ kind: 'document', id: next.document, block: next.block ?? undefined })));
-    setTimeout(() => { busy.current = false; setTurn((n) => n + 1); }, TAG_MS);
+    wait.current = setTimeout(() => { busy.current = false; setTurn((n) => n + 1); }, TAG_MS);
   }, [store, waiting, tree, at, qc, say, go, turn]);
+  useEffect(() => () => clearTimeout(wait.current), []);
 }
 
 /** Which folders are open, remembered in this browser. */

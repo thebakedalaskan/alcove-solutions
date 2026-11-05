@@ -180,6 +180,7 @@
 .ws-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
 .wv-th { display: flex; align-items: center; gap: 8px; }
 .wv-th .q1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 6px; border-radius: 6px; background: var(--hl); font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.wv-ms { display: grid; gap: 8px; max-height: min(320px, 50vh); overflow: auto; scrollbar-width: thin; }
 .wv-m { display: flex; gap: 8px; }
 .wv-m b { font: 600 13.5px/1.2 var(--font-sans); }
 .wv-m > div { min-width: 0; }

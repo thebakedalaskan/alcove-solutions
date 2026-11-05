@@ -130,6 +130,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Presenter notes | 20,000 characters on each document, saved 120 times a minute per person |
 | Asking about a selection | At most 8,000 characters, 20 a minute per person; a checklist of at most 40 lines |
 | Carets and presence | A caret of at most 4 KiB, 1,800 a minute per person; presence 600 a minute per person, said every 10 seconds and forgotten after 30 |
+| Tags | 240 a minute per person; 200 waiting for one person in one workspace, the newest, for at most 30 days |
 | API instances | Any number: sessions and keys come from Postgres on every request, and notes jobs are claimed with leases. Rings go through Postgres, read by each instance's own ticker, and workspace streams hear of changes from other instances the same way. The rate-limit counters, Google access tokens and the timers that retry notes are per process. The prepared deploy runs one, taking 500 requests at once: an open tab holds one for its stream of rings, and a process holds at most 300 of those, 8 for any one account. |
 
 ## Local versus production

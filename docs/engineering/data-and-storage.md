@@ -120,6 +120,27 @@ what it made follows. A workspace holds at most 1,000 people, a document is shar
 have made at most 100 workspaces. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
+### Tags
+
+Someone tagged in a document hears about it, on the workspace's stream if they're here, and whenever they're next here if
+they aren't. `POST /v1/workspaces/:id/documents/:doc/mentions` (`api.workspaces.mention`) names them by address, or by their seat
+in the call you're both in, and the line. It takes someone who can edit that document, and it gives nobody anything: whoever
+can't open the document isn't told and nothing's kept, and the answer is the same either way, so tagging can't be used to ask
+who has what. Everything happens under the workspace's lock, so nothing's told after either of them loses it.
+
+What's told waits in `workspace_mentions`: the document, the keyed hash access knows them by (their address's if they're
+signed in, even when tagged by their seat, so it reaches them after the call), and a sealed `workspace-mention` record of who
+tagged them, by name and face, and the line. A notice (`told:<hash>`) wakes only that person's streams, which read what's
+waiting, ask access whether they can open each document now, and write a `mention` line. Opening a stream does the same, so
+a tag is heard on arrival, as often as it takes until someone says they've seen it: `DELETE /v1/workspaces/:id/mentions/:id`
+(`WorkspaceLive.seen`), which only they can do. `GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
+workspaces, with what each document's called, for the side panel's count and the browser's notification.
+
+Nobody hears of a tag in something they can't open now, however long it waited. A tag in something they've lost is deleted when
+it's next read, and having it back doesn't bring that back; one in Trash waits to see whether it comes back. Tags go with their
+document, when someone's taken out of the workspace, with their account, and after 30 days; 200 wait for one person in one
+workspace, the newest. The name of a document is never in the record or on the line: it comes from the reader's own tree.
+
 ### Documents
 
 What a document or board holds is a Yjs document: a CRDT, so people can type at once, offline or not, and always end up
@@ -288,8 +309,8 @@ and this way it runs through the same auth, origin check and tests as everything
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
-  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `access`, when their role changes,
-  just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
+  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mention`, someone tagged them
+  ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
   they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
   read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and
   a notice that finds nobody behind stops at that one small query. The read takes the state and what those readers have,
@@ -323,6 +344,9 @@ and this way it runs through the same auth, origin check and tests as everything
   it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
   they can open or in a call with them, and an address goes only between people in the workspace. `callIdentity` goes
   only to people in that call, so a tile can show where someone is. Streams work out who's here at most five times a second.
+  Whoever moved last comes last, so of someone's windows the one in use can be told from one left open. Following someone
+  is all in the browser, from this: nobody is told, and a document you can't open reaches you only as `elsewhere`, so nothing
+  in the app has its name to show.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
   and only people in a call have one. A session or pass that ended, a person out of the call, all end it, within 25 seconds
@@ -446,6 +470,7 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   until the document does, or until newer ones push them out: the newest 200, up to 64 MiB.
 - **Carets and presence** are never stored: they're in Postgres's notice queue for as long as it takes to deliver them, sealed,
   and in the API process's memory.
+- **A tag** lasts until its person has heard, for at most 30 days, and goes before that with its document or their access.
 - **Seats** in `document_access` last while their call does.
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
   call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a
