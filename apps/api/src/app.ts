@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -34,6 +34,7 @@ import * as notes from './modules/notes';
 import * as people from './modules/people';
 import * as personal from './modules/personal';
 import * as photos from './modules/photos';
+import * as presenterNotes from './modules/presenterNotes';
 import * as recordings from './modules/recordings';
 import * as rings from './modules/rings';
 import { jpegSize } from './modules/screens';
@@ -145,6 +146,12 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const followUpLimiter = rateLimit(60, 60_000);
   /** Saying you're looking at the live notes, per connection to a call: a browser does every 5 seconds. Refreshes have their own limit, for each view of each part of the call. */
   const notesWatchLimiter = rateLimit(120, 60_000);
+  /** Reading the call's follow-ups, per connection to a call: a browser showing them does every 5 seconds, and each read opens the documents worked on. */
+  const followUpsLimiter = rateLimit(30, 60_000);
+  /** Asking to see the workspace, per person in a call: each ask reaches the organizer. */
+  const askSpaceLimiter = rateLimit(10, 60_000);
+  /** What goes on in a call's workspace, per person in it: each step makes every browser fetch the call again. */
+  const spaceLimiter = rateLimit(240, 60_000);
   /**
    * Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so
    * this only keeps it calm); and the new device checking on its move, at most twice a second, per client address. Each
@@ -212,6 +219,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const presenceLimiter = rateLimit(600, 60_000);
   /** Reading every document someone can open, for searching: once when search opens. */
   const searchLimiter = rateLimit(12, 60_000);
+  /** Saving someone's own notes on a document, per person: they save as they're typed. */
+  const presenterLimiter = rateLimit(120, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -428,7 +437,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     // The organizer's pass, and the pass of whoever hosts, count as theirs only together with the same account's session,
     // opened only for them.
     addLogContext({ callId: pass.callId, role: pass.role });
-    c.set('viewer', await calls.viewerOf(d, pass, () => optionalOwner(c)));
+    let session: Promise<Owner | undefined> | undefined;
+    c.set('viewer', await calls.viewerOf(d, pass, () => { session ??= optionalOwner(c); return session; }));
     await next();
   };
   // Also matches the call itself (/v1/live/calls/:id): the pass is checked once per request.
@@ -460,11 +470,34 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   /** What whoever hosts may do while standing in for the organizer: keep the call running, but not change its notes or rooms' plan. */
   const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable']);
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
+  /*
+   * The workspace a call uses, beyond what the call's actions do: what changing it would mean, for the organizer to decide,
+   * and the call's follow-ups, which read documents and so aren't part of reading the call.
+   */
+  app.get('/v1/live/calls/:id/workspace/:workspace', async (c) => {
+    const v = organizerOnly(c);
+    spaceLimiter(v.pass.person, 'workspace');
+    return c.json(await calls.previewWorkspace(v, c.req.param('id'), c.req.param('workspace')));
+  });
+  app.use('/v1/live/calls/:id/follow-ups', capped(1024));
+  app.get('/v1/live/calls/:id/follow-ups', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'follow-ups');
+    followUpsLimiter(v.pass.identity, 'follow-ups');
+    return c.json(await calls.followUpsIn(v, c.req.param('id')));
+  });
+  app.post('/v1/live/calls/:id/follow-ups', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'follow-ups');
+    followUpLimiter(v.pass.person, 'follow-up');
+    return c.json(await calls.tickDocumentFollowUp(v, c.req.param('id'), await body(c, DocFollowUpTickSchema)));
+  });
   app.post('/v1/live/calls/:id/actions', async (c) => {
     const a = await body(c, CallActionSchema);
-    // A raised hand, an ask for notes, whether others may point at your share and ticking a follow-up are anyone's in the
-    // call (calls.act says who gets the notes); keeping the call running is whoever hosts'; the rest is the organizer's.
-    if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up') calls.requireIn(c.get('viewer'), a.type);
+    // A raised hand, an ask for notes, whether others may point at your share, ticking a follow-up and what goes by what you
+    // can open in the workspace are anyone's in the call (calls.act says who gets what); keeping the call running is whoever
+    // hosts'; the rest is the organizer's.
+    if (calls.anyone(a)) calls.requireIn(c.get('viewer'), a.type);
     else if (HOST_ACTIONS.has(a.type)) hostOnly(c);
     else organizerOnly(c);
     // Each ask reaches the organizer, so nobody can keep asking.
@@ -472,6 +505,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
     if (a.type === 'follow-up') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
+    if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
+    else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
   });
   /*
@@ -705,6 +740,22 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     treeLimiter(access.limitKey(r), 'workspace change');
     await workspaceDocuments.restoreVersion(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
     return c.json({ restored: true });
+  });
+  /* What someone keeps beside a document for presenting it, under their own account. */
+  app.use('/v1/workspaces/:id/documents/:doc/presenter-notes', capped(128 * 1024));
+  app.get('/v1/workspaces/:id/documents/:doc/presenter-notes', async (c) => c.json(await presenterNotes.read(d, await readerOf(c), c.req.param('id'), c.req.param('doc'))));
+  app.post('/v1/workspaces/:id/documents/:doc/presenter-notes', async (c) => {
+    const r = await readerOf(c);
+    presenterLimiter(access.limitKey(r), 'presenter notes');
+    await presenterNotes.write(d, r, c.req.param('id'), c.req.param('doc'), (await body(c, PresenterNotesBodySchema)).text);
+    return c.json({ kept: true });
+  });
+  /* Asking Alcove about what's selected: what goes to the notes model isn't kept, here or anywhere, and it answers only someone who can edit. */
+  app.use('/v1/workspaces/:id/documents/:doc/ask', capped(64 * 1024));
+  app.post('/v1/workspaces/:id/documents/:doc/ask', async (c) => {
+    const r = await readerOf(c);
+    askLimiter(access.limitKey(r), 'ask-selection');
+    return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
   });
   /* The words of everything a reader can open: for searching in the browser, one document a line. */
   app.get('/v1/workspaces/:id/search', async (c) => {

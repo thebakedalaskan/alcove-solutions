@@ -10,7 +10,7 @@
  * deep however deep someone nests what they send.
  */
 import { DOC_FRAGMENT, type DocTextBlock } from '@alcove/api';
-import { isGone } from '@alcove/api/retire';
+import { isGone, newBlockId } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
 
@@ -77,18 +77,102 @@ export function documentText(doc: Y.Doc, kind: ContentKind): { title: string; bl
 
 /** A `todo` block: who it tags and when, for the call's follow-ups. */
 export interface DocTodo { block: string; text: string; done: boolean; mentions: { id: string; name: string }[]; dates: string[] }
+const todosOf = (doc: Y.Doc): Y.XmlElement[] => blocksOf(doc).filter((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'todo');
+function todoOf(el: Y.XmlElement): DocTodo {
+  const inline = elementsIn(el);
+  const done: unknown = el.getAttribute('done');
+  return {
+    block: textAttr(el, 'id'), text: blockWords(el), done: done === true,
+    mentions: inline.filter((x) => x.nodeName === 'mention').map((x) => ({ id: textAttr(x, 'id'), name: textAttr(x, 'name') })),
+    dates: inline.filter((x) => x.nodeName === 'dateChip').map((x) => textAttr(x, 'date'))
+  };
+}
 /** Every todo in a document, in order. One with a mention and a date joins the follow-ups of a call it was worked on in. */
 export function documentTodos(doc: Y.Doc, kind: ContentKind): DocTodo[] {
   switch (kind) {
-    case 'document': return blocksOf(doc).filter((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'todo').map((el) => {
-      const inline = elementsIn(el);
-      const done: unknown = el.getAttribute('done');
-      return {
-        block: textAttr(el, 'id'), text: blockWords(el), done: done === true,
-        mentions: inline.filter((x) => x.nodeName === 'mention').map((x) => ({ id: textAttr(x, 'id'), name: textAttr(x, 'name') })),
-        dates: inline.filter((x) => x.nodeName === 'dateChip').map((x) => textAttr(x, 'date'))
-      };
-    });
+    case 'document': return todosOf(doc).map(todoOf);
     case 'board': return [];
   }
+}
+/** Whether a todo is one of a call's follow-ups: it says who and when. */
+export const isFollowUp = (t: Pick<DocTodo, 'mentions' | 'dates'>): boolean => t.mentions.length > 0 && t.dates.length > 0;
+
+/** Attributes as y-prosemirror writes them: of any type, though Yjs's types say strings. */
+const setAttr = (el: Y.XmlElement, name: string, value: unknown): void => { Reflect.apply(el.setAttribute, el, [name, value]); };
+
+/** Ticks a follow-up, as ticking it in the editor does, or takes the tick back. False when there's no such follow-up. */
+export function tickFollowUp(doc: Y.Doc, kind: ContentKind, block: string, done: boolean): boolean {
+  if (kind !== 'document') return false;
+  const el = todosOf(doc).find((x) => textAttr(x, 'id') === block);
+  if (!el) return false;
+  const todo = todoOf(el);
+  if (!isFollowUp(todo)) return false;
+  if (todo.done !== done) setAttr(el, 'done', done);
+  return true;
+}
+
+/** Whether a document holds this video. */
+export function holdsVideo(doc: Y.Doc, kind: ContentKind, media: string): boolean {
+  switch (kind) {
+    case 'document': return blocksOf(doc).some((el) => el.nodeName === 'video' && textAttr(el, 'media') === media);
+    case 'board': return false;
+  }
+}
+
+/* ---------- an agenda ---------- */
+
+/** What's in a line that carries on into the next agenda: words, or who and when. */
+export type Run = { text: string } | { mention: { id: string; name: string } } | { date: string };
+/** A line's words, mentions and dates, without what only made sense where they were. */
+const runsOf = (line: Y.XmlElement): Run[] => line.toArray().flatMap((child): Run[] => {
+  if (child instanceof Y.XmlText) return [{ text: Delta.parse(child.toDelta()).map((part) => (typeof part.insert === 'string' ? part.insert : '')).join('') }];
+  if (!(child instanceof Y.XmlElement)) return [];
+  switch (child.nodeName) {
+    case 'mention': return [{ mention: { id: textAttr(child, 'id'), name: textAttr(child, 'name') } }];
+    case 'dateChip': return [{ date: textAttr(child, 'date') }];
+    case 'hardBreak': return [{ text: ' ' }];
+    default: return [];
+  }
+});
+/** What's left to do in an agenda: every todo that says something and isn't ticked, in order. */
+export function openTodos(doc: Y.Doc, kind: ContentKind): Run[][] {
+  switch (kind) {
+    case 'document': return todosOf(doc).filter((el) => !todoOf(el).done && blockWords(el).trim() !== '').map(runsOf);
+    case 'board': return [];
+  }
+}
+const AGENDA_HEADING = 'From last time';
+/** Whether a document is an agenda, going by what the Agenda template starts with. */
+export const readsAsAgenda = (doc: Y.Doc, kind: ContentKind): boolean =>
+  kind === 'document' && blocksOf(doc).some((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'heading' && blockWords(el).trim() === AGENDA_HEADING);
+
+const words = (text: string): Y.XmlText => { const t = new Y.XmlText(); t.insert(0, text); return t; };
+const inlineOf = (run: Run): Y.XmlText | Y.XmlElement => {
+  if ('text' in run) return words(run.text);
+  const el = new Y.XmlElement('mention' in run ? 'mention' : 'dateChip');
+  if ('mention' in run) { setAttr(el, 'id', run.mention.id); setAttr(el, 'name', run.mention.name); } else setAttr(el, 'date', run.date);
+  return el;
+};
+function lineOf(attrs: Record<string, unknown>, runs: Run[] = []): Y.XmlElement {
+  const el = new Y.XmlElement('line');
+  for (const [name, value] of Object.entries({ id: newBlockId(), ...attrs })) setAttr(el, name, value);
+  if (runs.length) el.insert(0, runs.map(inlineOf));
+  return el;
+}
+const heading = (text: string) => lineOf({ kind: 'heading', level: 2 }, [{ text }]);
+
+/**
+ * Fills in a new document as the next call's agenda: the Agenda template, holding what was left open. Its first line is the
+ * one every document starts with, so it's kept and turned into the first heading.
+ */
+export function writeAgenda(doc: Y.Doc, title: string, open: Run[][]): void {
+  const fragment = doc.getXmlFragment(DOC_FRAGMENT);
+  const [head, first] = blocksOf(doc);
+  if (head?.nodeName !== 'title' || !first) return;
+  head.insert(0, [words(title)]);
+  setAttr(first, 'kind', 'heading');
+  setAttr(first, 'level', 2);
+  first.insert(0, [words(AGENDA_HEADING)]);
+  const carried = open.length ? open.map((runs) => lineOf({ kind: 'todo' }, runs)) : [lineOf({ kind: 'todo' })];
+  fragment.insert(2, [...carried, heading('Today'), lineOf({ kind: 'numbered' }), heading('Notes'), lineOf({})]);
 }

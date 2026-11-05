@@ -14,7 +14,7 @@
  * writes goes through the same log and reaches every browser as any other update.
  */
 import {
-  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary
+  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary, type DocAskBody, type DocAskPart
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
 import * as decoding from 'lib0/decoding';
@@ -34,6 +34,8 @@ import { findOwner } from '../owners';
 import {
   change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Credentials, type Reader, type StoredItem, type Who, type Workspace
 } from './workspaceAccess';
+import { workedOn as workedOnInCall, mayAskInCall } from './calls';
+import { editSelection } from './drafting';
 import { MAX_NESTING, SERVER_CAPS, bringsNew, clientsOf, inspect, refusalGiven, type Block, type Inspected, type KnownClient } from './documentFirewall';
 import { docEdits, docReads, type ArgsOf, type OpTable, type ResultOf } from './documentOps';
 import type { ContentKind } from './documentText';
@@ -346,6 +348,7 @@ export async function appendUpdate(d: Deps, reader: Reader, workspaceId: string,
   });
   if (landed.tending) await tend(landed.w, documentId, landed.tending);
   if (landed.stale) await touch(d, reader, workspaceId, documentId);
+  if (reader.seat) await workedOnInCall(reader.seat.viewer, { workspaceId, documentId }, editorOf(landed.w.owner, reader));
   return { seq: landed.seq };
 }
 /** The tree follows what's written, about a minute behind. The update is safe by now, so this can't fail it. */
@@ -659,6 +662,21 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string): 
       await out.write(line);
     }
   };
+}
+
+/**
+ * The format bar's Make this shorter and Turn this into a checklist. What's selected goes to the notes model and nowhere
+ * else, like catching up: nothing is kept, and nobody's credits pay for it. In a call it waits while notes are paused, as
+ * everything that reaches the AI does. Whoever lost the document while the model wrote isn't sent what came back.
+ */
+export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: DocAskBody): Promise<DocAskPart[]> {
+  requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  if (reader.seat) await mayAskInCall(reader.seat.viewer);
+  const t0 = performance.now();
+  const parts = await editSelection(d.cfg, body.action, body.text);
+  requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  dlog.info('selection edited', { workspaceId, documentId, action: body.action, chars: body.text.length, parts: parts.length, ms: Math.round(performance.now() - t0) });
+  return parts;
 }
 
 /* ---------- awareness: where everyone's caret is, never stored ---------- */
