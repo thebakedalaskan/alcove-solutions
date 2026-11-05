@@ -141,6 +141,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
   }, [view.tree, at.kind, phone, owner, workspaceId, tree, onGo]);
 
+  /* A document just made is only opening while it's the one open. */
+  useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
+
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
     rememberPlaces(owner, (p) => ({ ...p, workspace: workspaceId, documents: documentId ? { ...p.documents, [workspaceId]: documentId } : p.documents }));
@@ -155,11 +158,14 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     setListOff(false);
   }, []);
 
-  /* N and ⇧N make something outside any folder, and sleep while you're typing. ⌘\ shows or hides the list. */
+  /*
+   * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
+   * typed then was meant for its title. ⌘\ shows or hides the list.
+   */
   useEffect(() => {
     const keys = (e: KeyboardEvent) => {
       if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || e.key.toLowerCase() !== 'n') return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
       else actions.newDocument(null);

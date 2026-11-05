@@ -7,7 +7,6 @@ import type { IconName } from '@alcove/ui';
 import type { ReactNode, Ref } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type { Doc } from 'yjs';
-import type { DocSize } from '../session';
 
 /** A block or inline piece as plain data: ProseMirror's JSON for the nodes in schema.ts. */
 export interface BlockJSON {
@@ -129,8 +128,6 @@ export interface EditorProps {
   doc: Doc;
   /** Each state may hold `user: { id, name }`; `id` is looked up in `people` for the face. */
   awareness: Awareness;
-  /** What the document comes to here, which a paste is checked against before it goes in: the session's `size`. */
-  size: () => DocSize;
   readOnly?: boolean | undefined;
   /** What the title says while nobody has written one: a document can be made with a name and an empty title. */
   titleHint?: string | undefined;
