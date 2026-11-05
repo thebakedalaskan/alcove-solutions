@@ -176,6 +176,8 @@ export class Board implements LiveStore<BoardState> {
     this.read();
     this.settleNear();
     return () => {
+      // A board can close with a blank new sticky open, which shouldn't stay behind for everyone.
+      this.finishEdit();
       size.disconnect();
       stopNear();
       stopDoc();

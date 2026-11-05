@@ -222,7 +222,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
 
   sheet.addEventListener('pointerdown', (e) => {
     const { target } = e;
-    if (e.button === 2 || !(target instanceof Element) || target.closest(OVER_THE_SHEET)) return;
+    if (e.button > 1 || !(target instanceof Element) || target.closest(OVER_THE_SHEET)) return;
     sheet.focus({ preventScroll: true });
     board.finishEdit();
     if (e.pointerType === 'touch') touches.set(e.pointerId, e);
