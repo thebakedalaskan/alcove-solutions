@@ -109,11 +109,12 @@ function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
 }
 
 /**
- * The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`). `naming`
- * swaps the name for a field. Whatever isn't given isn't shown: someone who can only read makes nothing.
+ * The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`, named for what its
+ * menu makes: `createLabel`). `naming` swaps the name for a field. Whatever isn't given isn't shown: someone who can only read
+ * makes nothing.
  */
-export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, naming }: {
-  name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; naming?: WsNaming | null | undefined;
+export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming }: {
+  name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
 }) {
   return (
     <div className="wt-head">
@@ -125,7 +126,7 @@ export function WsListHead({ name, picker, pickerLabel = 'This call’s workspac
       {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}
       {create && (
         <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={
-          <IconButton icon="plus" size={17} className="wt-ib" label="New document or folder" title="New" />
+          <IconButton icon="plus" size={17} className="wt-ib" label={createLabel} title="New" />
         }>{create.content}</WsPopover>
       )}
     </div>

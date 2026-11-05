@@ -7,15 +7,17 @@
  */
 import { firstName, type DocStatus, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
-import type { Transaction } from 'yjs';
 import { BoardPill, BoardPop, Button, WsCantOpen, WsDoc, WsDocHead, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Transaction } from 'yjs';
 import type { BoardCommenting } from '~/features/board/comments';
 import { BoardSurface } from '~/features/board/lazy';
 import { useBoardPeople } from '~/features/board/people';
 import { FollowingPill } from '~/features/board/pills';
 import { useCallFlow } from '~/features/shell/context';
 import { useLive, useOnline } from '~/lib/live';
+import { q } from '~/lib/queries';
 import { focusRow } from './actions';
 import { useWs, type Ws } from './context';
 import { canKeepEdits } from './keep';
@@ -144,9 +146,15 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const tryAgain = ws.owner !== null && canKeepEdits() ? reopen : undefined;
   const standing = standingOf(status, offline && ready, readOnly, changes, tryAgain);
 
-  /* Who's here, by what they're known by in the workspace: their face from who's in it now, else their name. */
+  /*
+   * Who's here, by what they're known by in the workspace: their face from who's in it now, else from its people, else their
+   * name alone.
+   */
   const here = ws.here;
-  const face = useCallback((id: string, named: string): AvatarPerson => here.find((h) => h.person.id === id)?.person ?? { name: named || 'Someone' }, [here]);
+  const members = useQuery({ ...q.workspacePeople(ws.workspaceId), enabled: member }).data;
+  const face = useCallback((id: string, named: string): AvatarPerson => (
+    here.find((h) => h.person.id === id)?.person ?? members?.find((p) => p.person.id === id || (named !== '' && p.person.name === named))?.person ?? { name: named || 'Someone' }
+  ), [here, members]);
   const people = useBoardPeople(session.awareness, face);
   const me = here.find((h) => h.isMe)?.person;
   const commenting = useMemo((): BoardCommenting => ({
