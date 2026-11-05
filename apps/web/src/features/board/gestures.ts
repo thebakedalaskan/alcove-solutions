@@ -64,13 +64,16 @@ function pressedId(board: Board, target: Element): string | null {
 }
 
 function panGesture(board: Board, start: SheetPoint): Gesture {
-  const from = board.camera.getSnapshot();
+  let last = start;
   board.stopFollow();
   board.stopGlide();
   board.set({ panning: true });
   const stop = (): void => board.set({ panning: false });
   return {
-    move: (at) => board.camera.set({ x: from.x + at.sx - start.sx, y: from.y + at.sy - start.sy, z: board.camera.getSnapshot().z }),
+    move(at) {
+      board.camera.panBy(at.sx - last.sx, at.sy - last.sy);
+      last = at;
+    },
     up: stop,
     cancel: stop
   };

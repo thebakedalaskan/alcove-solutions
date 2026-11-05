@@ -8,7 +8,7 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, contains, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
   type BoardObject, type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
@@ -243,7 +243,7 @@ export class Board implements LiveStore<BoardState> {
       const said = kind && DELETED[kind];
       if (said) this.onSay?.(said);
     }
-    if (this.look.mini || (!was.objects.length && this.untouched)) this.fitAll(false);
+    if (this.look.mini || (!was.objects.length && this.untouched && !this.allInView(view))) this.fitAll(false);
     this.settleNear();
   };
 
@@ -469,6 +469,12 @@ export class Board implements LiveStore<BoardState> {
   stopGlide(): void {
     this.untouched = false;
     if (this.state.glide) this.set({ glide: false });
+  }
+
+  /** Whether all of this is on the sheet. */
+  private allInView(view: BoardView): boolean {
+    const box = bounds(view.objects.filter(hasBox)), seen = this.camera.visible();
+    return contains(seen, box.x, box.y) && contains(seen, box.x + box.w, box.y + box.h);
   }
 
   fitAll(glide = true): void {
