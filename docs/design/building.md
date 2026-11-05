@@ -21,8 +21,10 @@ tests and migrations. Then read the design's canvas, and the page's section of
   `packages/ui`, not into the page.
 - **Delete what it replaces.** A page's old styles, components and tests of removed behaviour go in the same change. No
   shims, no "kept for now".
-- **The canvas follows.** Wherever the built page differs from the canvas, change the canvas to match, and copy its boards
-  into [canvas/](canvas/) in the same pull request (see [canvas.md](canvas.md#keep-it-true)).
+- **Storybook follows.** The page's stories in [apps/storybook](../../apps/storybook/README.md) change in the same pull
+  request: a story for each state, in the scenario that reaches it (add a scenario to the stand-in when none does), and its
+  journeys. The canvas doesn't have to follow; copy the design's boards into [canvas/](canvas/) so the next design can start
+  from them (see [canvas.md](canvas.md#once-its-built)).
 
 ## Put the page on the evening
 
@@ -94,8 +96,9 @@ export function Billing() {
 
 ## Check it in a real browser
 
-Run the app with `pnpm dev`. Locally, the Microsoft button is a demo sign-in, as Art Vandelay, with a sample day of calls.
-Then look at the page yourself:
+Open the page's stories in Storybook (`pnpm storybook`): the real page on the demo world, in each scenario, with the
+toolbar's theme, connection and viewports. Run the app itself with `pnpm dev` too: locally, the Microsoft button is a demo
+sign-in, as Art Vandelay, with a sample day of calls. Then look at the page yourself:
 
 - Dark and light.
 - Every width in the [checklist](principles.md#before-you-show-anything).
@@ -108,8 +111,9 @@ Then look at the page yourself:
 Then open the canvas board beside it at 1440×900 and fix the differences. Measure again after each fix; a fix in one place
 often moves another.
 
-Some states are hard to reach with real data, such as offline, a failed save, or a note being written. Force them by
-changing API responses in the browser while you look. Never fake them in the app's code.
+Some states are hard to reach with real data, such as offline, a failed save, or a note being written. In Storybook a
+scenario reaches them (`offline`, `writing`, ...); when none does, add one to its stand-in API rather than changing API
+responses by hand. Never fake them in the app's code.
 
 **Running it locally:**
 
@@ -141,5 +145,7 @@ Fix every must-fix before merging. The reviews of the redesigned pages caught se
 ## Docs
 
 - Update the page's section of [user-flows.md](../product/user-flows.md) to say what it does now.
+- Update the page's stories and journeys in [apps/storybook](../../apps/storybook/README.md), whose journeys are numbered
+  as user-flows.md is.
 - Update AGENTS.md wherever a component or stylesheet it names changed.
 - Update [pages.md](pages.md) if the page's design changed: its moment, its job, its layout.

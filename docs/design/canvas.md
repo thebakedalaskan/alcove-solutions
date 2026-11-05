@@ -7,6 +7,10 @@ designed before they were built. Read [principles.md](principles.md) and [pages.
 Make a canvas for anything bigger than a tweak: a new page, a new flow, a redesign of part of a page. Build in the app only
 once the canvas has been looked at.
 
+The canvas is for what isn't built yet. What's built is in Storybook ([apps/storybook](../../apps/storybook/README.md),
+`pnpm storybook`), which renders the app itself in every state: look there to see a page as it is now, and start a canvas
+from it when you're changing one.
+
 ## What a canvas is
 
 A canvas is an artifact made from the **Design** artifact type, private to whoever made it until they share it. Its own
@@ -39,8 +43,9 @@ live canvas serves it. What you need day to day:
 
 ## The kit: docs/design/canvas
 
-Never start from a blank canvas. [canvas/](canvas/) is the canonical canvas, the same boards as the app's pages, and it's
-the kit every new design starts from. It holds:
+Never start from a blank canvas. [canvas/](canvas/) is the kit every new design starts from: the boards the app's pages
+were designed as. They don't follow the app once it's built (Storybook does), so where a board and the app differ, the app
+is right. It holds:
 
 | File | What it is |
 |---|---|
@@ -373,11 +378,12 @@ Send `canvas.json` whenever the boards or their sizes change. Never send `suppor
 - The canvas is private until its owner shares it from its Share menu.
 - When you tell someone it's updated, say what changed on the canvas, not how you published it.
 
-## Keep it true
+## Once it's built
 
-- **After the design is built,** update its boards to match the app: anything left out, worded differently or added as a
-  state. Then copy the boards into `docs/design/canvas/`, in the build's pull request. Their `canvas.json` entries come
-  too, with their real sizes.
-- **When a page changes in the app,** its board changes in the same pull request.
+- **Storybook is the record, not the canvas.** The build's pull request gives the page its stories in `apps/storybook`:
+  each state a board drew as a scenario, and each journey row as a journey (see [building.md](building.md)). From then on,
+  a change to the page changes its stories, and its boards don't have to follow.
+- **Copy the boards in.** The build's pull request copies the design's boards into `docs/design/canvas/`, with their
+  `canvas.json` entries and their real sizes, so the next design can start from them.
 - **Old directions don't stay.** Once a direction is chosen, the canvas keeps only the canonical pages. Rounds of options,
   colour studies and rejected layouts come off it.
