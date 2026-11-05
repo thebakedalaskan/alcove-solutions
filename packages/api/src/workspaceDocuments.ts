@@ -169,8 +169,8 @@ export interface DocSession extends LiveStore<DocStatus> {
   /** What this document comes to here, for an editor to check a paste against the limits before it goes in. */
   size(): DocSize;
   /**
-   * Lets go, here and in `keep`, of what a copy holds that can't reach this document (Alcove refused it, or the session's over),
-   * and closes the session: for after `saveCopy`, by someone's choice. Anything written since the copy, anything that can still
+   * Lets go, here and in `keep`, of what a copy holds that can't reach this document (Alcove refused it, the session's over, or
+   * this person can only read it now), and closes the session: for after `saveCopy`, or copying the words, by someone's choice. Anything written since the copy, anything that can still
    * go, and anything another tab keeps is untouched, and goes when the document's opened again.
    */
   discardUnsaved(token: DocCopyToken): Promise<void>;

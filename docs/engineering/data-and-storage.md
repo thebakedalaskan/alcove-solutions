@@ -321,7 +321,7 @@ written. It reads them by the clocks the waiting updates bring, so nothing anyon
 deleted is in it: a new document made of it can't carry what someone can't open any more, or deleted. The app makes that
 document with `saveCopy` (`POST …/adopt`, which only takes a document nobody's written to, and judges what it's given like
 anything from a browser), then calls `discardUnsaved(token)`, the only thing that forgets what Alcove doesn't have: what the
-copy holds that can't reach this document, refused or with the session over, and nothing written since, nothing that can still
+copy holds that can't reach this document, refused, with the session over, or with only reading allowed now, and nothing written since, nothing that can still
 go, and nothing another tab keeps. It closes the session, whose `Y.Doc` still holds what was let go of; opened again, what's
 still kept goes, or comes back to be saved if it was written on what was let go of. A document that's deleted while someone
 has unsent words works the same way.

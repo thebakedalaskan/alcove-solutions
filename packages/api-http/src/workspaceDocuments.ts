@@ -281,10 +281,12 @@ export class HttpDocSession implements DocSession {
    */
   discardUnsaved = async (token: DocCopyToken): Promise<void> => {
     const held = this.copies.get(token);
-    const over = this.view.closed !== null;
-    const letGo = held ? this.unsent.filter((u) => held.has(u) && (u.stuck || over)) : [];
+    // Nothing here goes any more: the session's over, or this person can only read now, which an edit never changes back.
+    const nowhere = this.view.closed !== null || this.shut === 'read-only';
+    const letGo = held ? this.unsent.filter((u) => held.has(u) && (u.stuck || nowhere)) : [];
     this.unsent = this.unsent.filter((u) => !letGo.includes(u));
     await this.forget(letGo);
+    this.publish();
     this.close();
   };
 
