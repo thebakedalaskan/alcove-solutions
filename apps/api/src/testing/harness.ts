@@ -119,7 +119,9 @@ export async function startHarness(): Promise<Harness> {
     // NEAR AI, and the stand-in Intel and NVIDIA roots its evidence is checked against.
     ...near.settings,
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
-    PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1'
+    PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
+    // A limit a test sets is in force on its next request, and gone once the test is: tests that look at the window set their own.
+    LIMITS_CACHE_MS: '0'
   });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');

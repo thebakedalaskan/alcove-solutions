@@ -2706,6 +2706,11 @@ describe('deleting an account', () => {
     await guest.api.account.updatePreferences({ pinned: [callNote] });
     await b.api.meetings.create({ title: 'Next week', startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), durationMinutes: 30, guests: [guest.session.user.email], notes: 'on' });
     await b.api.account.updatePreferences({ pinned: [callNote], groups: [{ id: 'crew', name: 'Crew', emails: [guest.session.user.email] }] });
+    // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account.
+    const shared = (await ann.api.workspaces.create('Shared')).id;
+    await ann.api.workspaces.addPerson(shared, lena.email, 'edit');
+    const plan = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
+    await b.api.workspaces.media.upload(shared, plan, new File([new Uint8Array(16)], 'from-lena.png', { type: 'image/png' }));
     // A room recording whose notes are queued to be tried again...
     const rec = await b.api.recordings.start({ title: 'Waiting' });
     await rec.appendAudio(piece(audioBytes('leaving-room'), 0, 0));
@@ -2742,7 +2747,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_uses', 'workspace_members', 'workspaces'
     ]);
