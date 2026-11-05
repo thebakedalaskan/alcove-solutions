@@ -102,11 +102,14 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   keep.current = view.keepWorkspace;
   useEffect(() => { keep.current({ open, document: openId }); }, [open, openId]);
 
-  /* Esc puts away what's over the page, then gives everything back. A menu or a sheet goes first, and so does anything that took the key before it got this far. */
+  /*
+   * Esc puts away what's over the page, then gives everything back. Before either: a menu, a sheet or a drag, which take it on
+   * the window, then whatever's being edited (`editing`). With only the caret in the document, the editor never sees it.
+   */
   useEffect(() => {
     if (!zen && !peek) return;
     const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || overlayOpen() || document.querySelector('.ws-pop')) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen() || document.querySelector('.ws-pop') || editing(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
       if (peek) setPeek(false);
@@ -120,8 +123,19 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
 }
 export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 
+/**
+ * Something being edited keeps Esc for itself: a field (a rename cancels, the chat box keeps its words), or words selected in a
+ * document, whose format bar goes first.
+ */
+function editing(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  if (t.closest('input, textarea, select')) return true;
+  const selected = document.getSelection();
+  return t.isContentEditable && selected !== null && !selected.isCollapsed;
+}
+
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, zen, listOff, listPeek, top, act, onToggleList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, zen, listOff, listPeek, top, act, onToggleList, onShowList, onToggleZen }: {
   workspace: CallWorkspace;
   /** You're the call's organizer. */
   organizer: boolean;
@@ -138,6 +152,8 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   top?: ReactNode;
   act: WorkspacePanelState['act'];
   onToggleList: () => void;
+  /** Shows the list, and never hides it. */
+  onShowList: () => void;
   onToggleZen: () => void;
 }) {
   const chooser = firstName(workspace.chosenBy.name);
@@ -145,8 +161,8 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const call = useMemo((): WorkspaceCall => ({
     top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
-    list: { off: listOff, peek: listPeek, onToggle: onToggleList }
-  }), [top, documents, act, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList]);
+    list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList }
+  }), [top, documents, act, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */

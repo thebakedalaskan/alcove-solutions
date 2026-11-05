@@ -1188,12 +1188,17 @@ share picker, the leave sheet and the device pickers.
   fades in as the stage makes room, coming up where it's going, and only what's already showing glides. Everything it
   says goes through the call's one place for toasts, one at a time, and a share's offer stays beside that until it's taken
   up some other way. The list is the panels' to give way, so the call tells it (`WorkspaceCall.list`): one that gave way comes
-  over the page (`peek`), one you put away comes back.
+  over the page (`peek`), one you put away comes back. Whatever needs it showing, such as ⇧N naming a folder, asks with
+  `list.onShow`, which never hides it, so the list over the page behaves as it does docked.
 - **Just the document** isn't a new layout: `PanelFacts.zen` says what's left (`adapt` hides the rest, the people go to
   the horizon) and is a box past the call's area, where the bars were (`zenRoom`), so the page glides there like any other
-  panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc is taken in the
-  capture phase on `document`, after anything on `window`, so a menu, a follow or anything else that's open goes first, and
-  the editor never sees it: the caret stays where it was. A share's Show it leaves it, because a share has no place in it.
+  panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc goes in the canvas's
+  order: a menu, a sheet or a drag takes it first (they listen on `window`), then whatever's being edited keeps it (a field
+  does what it does anywhere, so a rename is cancelled and the chat box keeps its words, and words selected in the document
+  lose their format bar), then the list over the page goes, then Just the document. The workspace takes it in the capture
+  phase on `document` and steps aside for all of those (`editing` in WorkspacePanel.tsx); with only the caret in the
+  document, the editor never sees it, so the caret stays where it was. A share's Show it leaves it, because a share has no
+  place in it.
 - **Arranging them.** Every panel has a handle, and the people a small toolbar (move, fold to arches, hide). Dragging
   one lights where it will land with the sunrise glow: any edge of a panel, an edge of the window, or a panel's middle
   to swap the two (a share moved off the stage drops beside what's left of it; two panels of tabs merge). A side

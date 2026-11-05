@@ -1360,6 +1360,21 @@ function InCall({ session }: { session: CallSession }) {
   const listTurn = useRef(turnList);
   listTurn.current = turnList;
   const toggleList = useCallback(() => { listTurn.current(); }, []);
+  /*
+   * What needs the list, such as naming a folder, shows it and never hides it: one that gave way comes over the page, and one
+   * you put away comes back, or over the page in a window with no room for it.
+   */
+  const showList = () => {
+    if (solved.A.list) return;
+    if (panels.list) { work.act.setPeek(true); return; }
+    const back = setList(panels, true);
+    layout.arrange((p) => setList(p, true));
+    onCustom();
+    if (!solve(back, size, facts).A.list) work.act.setPeek(true);
+  };
+  const listShow = useRef(showList);
+  listShow.current = showList;
+  const onShowList = useCallback(() => { listShow.current(); }, []);
 
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
@@ -1386,7 +1401,7 @@ function InCall({ session }: { session: CallSession }) {
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted ? () => (
             <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null}
-              listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onToggleZen={toggleZen} />
+              listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>

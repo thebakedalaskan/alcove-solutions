@@ -156,13 +156,14 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);
 
-  /* A folder is named in the list, so the list has to be showing. */
+  /* A folder is named in the list, so the list has to be showing: in a call, wherever the call shows it, and never hidden. */
+  const showInCall = call?.list.onShow;
   const newFolder = useCallback(() => {
     setDraft({ parent: null });
     setPhoneList(true);
-    if (!toggleInCall) setListOff(false);
-    else if (listOff) toggleInCall();
-  }, [toggleInCall, listOff]);
+    if (showInCall) showInCall();
+    else setListOff(false);
+  }, [showInCall]);
 
   /*
    * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
