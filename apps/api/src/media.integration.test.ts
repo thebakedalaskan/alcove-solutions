@@ -4,12 +4,13 @@
  * guests, a real call. A file's bytes are read as an `<img>` or a player reads them: from its URL, with whatever cookies
  * that browser has and no other headers but `Range`.
  */
-import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MEDIA_PIECE_BYTES, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MEDIA_PIECE_BYTES, REQUEST_ID_HEADER, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { resolveObjectURL } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { request, type ClientRequest } from 'node:http';
+import { connect } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -1343,15 +1344,50 @@ describe('reusing a file', () => {
 describe('what a process takes on at once', () => {
   const { arriving, arrivingEach, arrivalMs, reading, readingEach, stalledMs, waiting, waitingEach, waitMs, working, readsAMinute } = MEDIA_LIMITS;
   const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  /** A read whose response is open and that takes no more of it, as a tab that stalled does. It keeps hold of the response: one nobody holds is collected, which cancels it. */
-  async function stopped(who: { fetch: typeof fetch }, url: string) {
-    const stop = new AbortController();
-    const res = await who.fetch(url, { signal: stop.signal });
-    return { res, status: res.status, end: () => stop.abort() };
+  /** The status the server answered a request with, by the ID it was sent with, from its request line; 0 until it has. */
+  const answered = (from: number, requestId: string): number => {
+    for (const raw of h.logs.slice(from)) {
+      if (!raw.includes(requestId)) continue;
+      const l = LogLine.safeParse(JSON.parse(raw));
+      if (l.success && ['request', 'request refused', 'request failed'].includes(l.data.msg)) return Number(l.data['status']);
+    }
+    return 0;
+  };
+  /**
+   * A read whose browser has stopped taking it, as a tab that stalled has: a connection of its own that sends the request
+   * and reads nothing back, so only what the operating system holds leaves the server, which is less than a piece. A
+   * fetch reads on into buffers of its own, and on Linux that can be the whole of a file of two pieces: the read ends by
+   * itself and gives its place back, and nothing has stopped. It's under way once the server has answered it, which its
+   * request line says, so that's what this waits for, not the answer reaching the browser.
+   */
+  async function stopped(who: { cookie: () => string }, url: string) {
+    const requestId = randomBytes(12).toString('base64url');
+    const { hostname, port, pathname, host } = new URL(url);
+    const from = h.logs.length;
+    const socket = connect({ host: hostname, port: Number(port) });
+    socket.on('error', () => undefined);
+    socket.pause();
+    socket.write(`GET ${pathname} HTTP/1.1\r\nhost: ${host}\r\ncookie: ${who.cookie()}\r\n${REQUEST_ID_HEADER}: ${requestId}\r\nconnection: close\r\n\r\n`);
+    let status = 0;
+    await until(() => { status = answered(from, requestId); return status > 0; }, 'the server to answer a read');
+    /** Takes the rest of the answer now: how much of the body came, or `cut` when the connection ended short of its length. */
+    const rest = () => new Promise<number | 'cut'>((resolve) => {
+      const chunks: Buffer[] = [];
+      socket.on('data', (chunk: Buffer) => { chunks.push(chunk); });
+      socket.once('close', () => {
+        const all = Buffer.concat(chunks);
+        const at = all.indexOf('\r\n\r\n');
+        const length = Number(/\r\ncontent-length: *(\d+)/i.exec(all.subarray(0, Math.max(at, 0)).toString('latin1'))?.[1] ?? Number.NaN);
+        const got = at < 0 ? 0 : all.length - at - 4;
+        resolve(got === length ? got : 'cut');
+      });
+      socket.resume();
+    });
+    return { requestId, status, rest, end: () => { socket.destroy(); } };
   }
   /** Someone with a file of three pieces and a URL to it. */
   async function reader() {
-    const who = await account();
+    const who = await withCookie();
     const id = await workspace(who, 'Ours');
     const doc = await make(who, id, 'document', 'Plan');
     const m = await who.api.workspaces.media.upload(id, doc, fileOf(bytesOf(2 * PIECE + 1)));
@@ -1546,7 +1582,7 @@ describe('what a process takes on at once', () => {
   });
 
   it('holds a place for what’s still to reach the browser, a small picture too', async () => {
-    const ann = await account();
+    const ann = await withCookie();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
     // One piece, all opened and sent at once, so only the response itself says it's still going.
@@ -1573,7 +1609,7 @@ describe('what a process takes on at once', () => {
       expect((await read(newcomer, newcomer.url, 'bytes=0-9')).status).toBe(206);
       expect(Date.now() - began).toBeLessThan(stalledMs + 2000);
       // One went for them. The rest read on as if nothing had happened.
-      const outcomes = await Promise.all(open.map((s) => s.res.arrayBuffer().then((b) => b.byteLength, () => 'cut')));
+      const outcomes = await Promise.all(open.map((s) => s.rest()));
       expect(outcomes.filter((o) => o === 'cut')).toHaveLength(1);
       expect(new Set(outcomes.filter((o) => o !== 'cut'))).toEqual(new Set([2 * PIECE + 1]));
     } finally { for (const s of open) s.end(); }
@@ -1584,13 +1620,19 @@ describe('what a process takes on at once', () => {
     const ann = await reader();
     const theo = await reader();
     // Theo's has been stopped the longest, so it's what anyone else would be given.
+    const from = h.logs.length;
     const theirs = await stopped(theo, theo.url);
     await pause(200);
     const mine = await Promise.all(Array.from({ length: readingEach }, () => stopped(ann, ann.url)));
     try {
+      expect(new Set([theirs, ...mine].map((s) => s.status))).toEqual(new Set([200]));
       expect((await read(ann, ann.url, 'bytes=0-9')).status).toBe(206);
-      expect((await theirs.res.arrayBuffer()).byteLength).toBe(2 * PIECE + 1);
-      const outcomes = await Promise.all(mine.map((s) => s.res.arrayBuffer().then(() => 'read', () => 'cut')));
+      // One of hers was cut for it, and Theo's reads on to the end.
+      const cut = logsSince(from).filter((l) => l.msg === 'a read was cut').map((l) => l['requestId']);
+      expect(cut).toHaveLength(1);
+      expect(mine.map((s) => s.requestId)).toContain(cut[0]);
+      expect(await theirs.rest()).toBe(2 * PIECE + 1);
+      const outcomes = await Promise.all(mine.map((s) => s.rest()));
       expect(outcomes.filter((o) => o === 'cut')).toHaveLength(1);
     } finally { for (const s of [...mine, theirs]) s.end(); }
   });
@@ -1599,7 +1641,7 @@ describe('what a process takes on at once', () => {
     const ann = await reader();
     const paused = await stopped(ann, ann.url);
     await pause(stalledMs + 1000);
-    expect((await paused.res.arrayBuffer()).byteLength).toBe(2 * PIECE + 1);
+    expect(await paused.rest()).toBe(2 * PIECE + 1);
   });
 
   it('ends a read at its own time, however it’s going, and takes the place back', async () => {
@@ -1618,7 +1660,7 @@ describe('what a process takes on at once', () => {
         }
       })().catch(() => 'cut off');
       expect(outcome).toBe('cut off');
-      expect(await paused.res.arrayBuffer().then(() => 'all of it', () => 'cut off')).toBe('cut off');
+      expect(await paused.rest()).toBe('cut');
     } finally { h.deps.cfg = cfg; }
     const full = await Promise.all(Array.from({ length: readingEach }, () => read(ann, ann.url, 'bytes=0-9')));
     expect(new Set(full.map((r) => r.status))).toEqual(new Set([206]));
