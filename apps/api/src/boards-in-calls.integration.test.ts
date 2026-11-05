@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from './crypto';
 import { startHarness, type Browser, type Harness } from './testing/harness';
-import { disposeLiveKit } from './testing/livekit';
+import { connect, disposeLiveKit, type TestParticipant } from './testing/livekit';
 import { MeetingManifest } from './modules/meetings';
 import { openOwner } from './owners';
 import { getItem, saveRevision } from './vault';
@@ -19,7 +19,8 @@ vi.setConfig({ testTimeout: 120_000 });
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
-afterEach(() => { h.closeCalls(); });
+const inRoom: TestParticipant[] = [];
+afterEach(async () => { await Promise.all(inRoom.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
 
 let seq = 0;
 const unique = (who = 'person') => `${who}.${Date.now().toString(36)}${(seq++).toString(36)}@tests.example`;
@@ -278,8 +279,15 @@ describe('a new board', () => {
     expect((await art.api.workspaces.get(id)).items).toHaveLength(50);
     // The ones it made still open, and what was open stays.
     expect(await opened(host)).toMatchObject({ documentId: last });
-    await host.openBoard({ documentId: (await art.api.workspaces.get(id)).items[0]?.id ?? '', letIn: false });
-    expect((await opened(host))?.documentId).not.toBe(last);
+    const made = (await art.api.workspaces.get(id)).items[0]?.id ?? '';
+    await host.openBoard({ documentId: made, letIn: false });
+    expect((await opened(host))?.documentId).toBe(made);
+    await host.openBoard({ documentId: made, letIn: true });
+    // A saved board that's new to the call can open, and it's letting everyone into another that it hasn't room for.
+    const other = await saved(art, id, 'Another');
+    expect(await code(host.openBoard({ documentId: other, letIn: true }))).toBe('conflict');
+    await host.openBoard({ documentId: other, letIn: false });
+    expect((await opened(host))?.documentId).toBe(other);
   });
 
   it('is refused in a workspace the organizer can’t edit in any more, and the call goes on', async () => {
@@ -548,13 +556,41 @@ describe('a saved board', () => {
     expect(await seats(board)).toBe(0);
   });
 
-  it('opens from where it is when it was brought to the call, whichever workspace the call uses now', async () => {
-    const { art, priya, id, board, host, code: c } = await room();
+  it('gives the organizer a seat too when they come back to what they can’t open: being organizer gives nothing', async () => {
+    const lena = await account();
+    const art = await account();
+    const priya = await account();
+    const id = await workspace(lena, 'Lena’s', [[art, 'edit'], [priya, 'edit']]);
+    const board = await saved(lena, id, 'Priya’s only');
+    await lena.api.workspaces.share.restrict(id, board, true);
+    await lena.api.workspaces.share.set(id, board, [{ email: priya.email }], 'edit');
+    const { host, code: c } = await callBy(art, { guests: [priya.email] });
+    await host.setWorkspace(id);
     const p = await invited(host, c, priya);
+    inRoom.push(await connect(await p.room(), { sending: p.crypto }));
+    await host.handOff(p.ticket.identity);
+    await settle(p, (s) => s.isHost);
+    await inGroup(p);
+    await p.openBoard({ documentId: board, letIn: true });
+    expect(await seats(board)).toBe(0);
+    const back = await art.api.calls.join(c, { mic: false, cam: false });
+    await inGroup(back);
+    expect(await opened(back)).toMatchObject({ documentId: board, role: 'edit', canClose: true });
+    expect(await seats(board)).toBe(1);
+  });
+
+  it('opens from where it is when it was brought to the call, whichever workspace the call uses now', async () => {
+    const { art, priya, theo, id, board, host, code: c } = await room();
+    const p = await invited(host, c, priya);
+    const t = await invited(host, c, theo);
     await host.bringDocument(board, true);
-    const other = await workspace(art, 'Other', [[priya, 'edit']]);
+    const other = await workspace(art, 'Other', [[priya, 'edit'], [theo, 'edit']]);
     await host.setWorkspace(other);
-    expect(await p.boardCheck(board)).toEqual({ cannot: [], mayLetIn: true });
+    expect(await p.boardCheck(board)).toEqual({ cannot: [first(theo)], mayLetIn: true });
+    // Someone in the call's workspace who can't reach where it was brought from is told what anyone's told about nothing.
+    const nothing = madeUp();
+    expect(await refusal(t.boardCheck(board))).toEqual(await refusal(t.boardCheck(nothing)));
+    expect(await refusal(t.openBoard({ documentId: board, letIn: false }))).toEqual(await refusal(t.openBoard({ documentId: nothing, letIn: false })));
     await p.openBoard({ documentId: board, letIn: false });
     expect(await opened(host)).toMatchObject({ workspaceId: id, documentId: board, name: 'Onboarding flow' });
     // A new board goes where the call is now, and moving the call interrupts nothing that's open.
@@ -608,25 +644,34 @@ describe('someone who joins the invite during a call', () => {
     const art = await account();
     const nora = await account();
     const omar = await account();
+    const pia = await account();
     const id = await workspace(art, 'Product');
     const { host, code: c } = await callBy(art);
     await host.setWorkspace(id);
+    // Signed in, not invited, and let in from the link: on the invite from now on, whether that's before the board or after it.
+    const before = await pia.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, before);
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
-    // Signed in, not invited, and let in from the link: on the invite from now on.
     const n = await nora.api.calls.join(c, { mic: false, cam: false });
     await letIn(host, n);
     const o = await omar.api.calls.join(c, { mic: false, cam: false });
     await letIn(host, o);
     expect((await read(n)).role).toBe('invited');
-    await until(async () => (await opened(n))?.role === 'edit' && (await opened(o))?.role === 'edit', 'a seat for each of them');
+    await until(async () => (await opened(n))?.role === 'edit' && (await opened(o))?.role === 'edit' && (await opened(before))?.role === 'edit', 'a seat for each of them');
+    // Whoever brings it back later, it's still the call's to give: someone here letting people in again doesn't make it theirs.
+    await host.closeBoard();
+    await host.openBoard({ documentId: board, letIn: true });
     // Taken out of the call, they lose it at once, and with the invite goes any claim on it.
     await host.remove(o.ticket.identity);
-    await until(async () => (await seats(board)) === 1, 'the seat to go with them');
+    await host.remove(before.ticket.identity);
+    await until(async () => (await seats(board)) === 1, 'the seats to go with them');
     await host.leave();
     await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
+    await until(async () => (await code(nora.api.workspaces.get(id))) === 'allowed', 'Nora to keep it');
     expect((await nora.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
     expect(await code(omar.api.workspaces.get(id))).toBe('not-found');
+    expect(await code(pia.api.workspaces.get(id))).toBe('not-found');
   });
 });
 
