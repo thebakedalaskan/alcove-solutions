@@ -436,11 +436,13 @@ export class Board implements LiveStore<BoardState> {
       this.camera.set(cam);
       return;
     }
+    // Read before the camera moves. Reading a style makes the browser work styles out there and then, which would take the move as a jump, ahead of `glide` being drawn.
+    const takes = tokenMs(sheet, '--duration-3');
     this.set({ glide: true });
     this.camera.set(cam);
     const { near } = this.state;
     if (near) this.set({ near: bounds([near, reachOf(this.camera.visible())]) });
-    this.later('glide', tokenMs(sheet, '--duration-3') + SETTLE_MS, () => {
+    this.later('glide', takes + SETTLE_MS, () => {
       this.set({ glide: false });
       this.settleNear();
     });
