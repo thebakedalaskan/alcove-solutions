@@ -1078,8 +1078,9 @@ notes, the share picker, the leave sheet and the device pickers.
   to swap the two (a share moved off the stage drops beside what's left of it; two panels of tabs merge). A side
   panel's tabs show one at a time; dragging a tab out makes it a panel of its own, so two stay open, and dropping it in
   the middle of a panel of tabs puts it back. Closing such a panel keeps its place, and its tab opens it there again.
-  The line between two panels follows the pointer exactly, snaps at half, and a double-click evens it; beside the
-  people it folds them to arches, then away, and a double-click puts them back to the width they start at. The lines
+  The line between two panels follows the pointer exactly and moves only the two beside it, snaps at half, and a
+  double-click evens it; beside the people it folds them to arches, then away, and a double-click puts them back to the
+  width they start at. The lines
   on the stage itself behave the same. A drag is shown as it happens and remembered when it's let go, wherever that
   is: a press is followed on the window, not on the line it started on, which can go. A share ending ends a drag of its
   line or its handle, and something let go about where it was picked up stays put. What's typed in Chat and Ask is kept

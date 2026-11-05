@@ -199,9 +199,10 @@ const dragMin = (k: CallPanelNode, row: boolean) => {
 
 /**
  * A line between two panels. `path` finds their branch in the tree and `ia` and `ib` the two in it; `pa` and `pb` find what
- * sizes them, which is deeper down when a branch shows only one thing.
+ * sizes them, which is deeper down when a branch shows only one thing. `others`: whatever else in the branch takes a share
+ * of the room, what it weighs and how much it has.
  */
-export interface Divider { key: string; path: number[]; ia: number; ib: number; pa: number[]; pb: number[]; dir: 'row' | 'col'; sa: number; sb: number; rect: Box; a: Leaf; b: Leaf }
+export interface Divider { key: string; path: number[]; ia: number; ib: number; pa: number[]; pb: number[]; dir: 'row' | 'col'; sa: number; sb: number; rect: Box; a: Leaf; b: Leaf; others: { flex: number; size: number } | null }
 export interface Solved {
   A: Adapted;
   /** Where each panel showing goes, in the call's area. */
@@ -293,9 +294,11 @@ export function solve(a: CallPanels, size: Size, f: PanelFacts): Solved {
       pos += s;
       const next = ks[j + 1];
       if (!next) return;
+      const rest = ks.flatMap((x, m) => (px[m] === null && m !== j && m !== j + 1 ? [{ flex: weight(m, x.k), size: sizes[m] ?? 0 }] : []));
       dividers.push({
         key: `${firstShown(k)}|${firstShown(next.k)}`, path, ia: i, ib: next.i, pa: by[j]?.path ?? [], pb: by[j + 1]?.path ?? [], dir: n.dir, sa: s, sb: sizes[j + 1] ?? 0,
-        rect: whole(row ? { x: pos, y: r.y, w: GAP, h: r.h } : { x: r.x, y: pos, w: r.w, h: GAP }), a: firstShown(k), b: firstShown(next.k)
+        rect: whole(row ? { x: pos, y: r.y, w: GAP, h: r.h } : { x: r.x, y: pos, w: r.w, h: GAP }), a: firstShown(k), b: firstShown(next.k),
+        others: rest.length ? { flex: sum(rest.map((o) => o.flex)), size: sum(rest.map((o) => o.size)) } : null
       });
       pos += GAP;
     });
@@ -499,6 +502,13 @@ function sidesOf(a: CallPanels, d: Divider) {
 }
 /** A size as the arrangement can keep it: anything else wouldn't read back through its schema, and the arrangement would be lost. */
 const keepable = (v: number) => (v > 0 ? Math.min(v, CALL_PANEL_SIZE_MAX) : 1);
+/**
+ * Beside a panel that holds its size, one that takes a share of what's left would share any change with whatever else
+ * does, and the line wouldn't keep up. It's weighed to end up at `size`, and they stay as they are.
+ */
+function weigh(k: CallPanelNode, size: number, d: Divider) {
+  if (d.others && d.others.size > 0) k.flex = keepable((d.others.flex * size) / d.others.size);
+}
 /** Whether a panel holds its size in pixels along this line, or takes a share of what's left. */
 const heldSize = (k: CallPanelNode, row: boolean) => (isBranch(k) ? row && allGroups(k) : k.id === 'people' || (row && groupOfLeaf(k.id) !== null) || (row ? k.px : k.pxh) !== undefined);
 
@@ -521,6 +531,10 @@ export function dragDivider(a: CallPanels, d: Divider, delta: number): CallPanel
     if (size < 52) return { ...a, tree, people: 'hidden' };
     if (size < (row ? 120 : 100)) { delete people[key]; return { ...a, tree, people: 'arches' }; }
     people[key] = keepable(size);
+    // A panel beside them that holds its size gives or takes what they do, so nothing else in the row moves.
+    const other = people === s.sa ? s.sb : s.sa;
+    if (heldSize(other, row)) other[key] = keepable(tot - size);
+    else weigh(people === s.sa ? kb : ka, tot - size, d);
     return { ...a, tree, people: 'tiles' };
   }
   const fa = heldSize(s.sa, row);
@@ -528,22 +542,29 @@ export function dragDivider(a: CallPanels, d: Divider, delta: number): CallPanel
   if (fa) s.sa[key] = keepable(na);
   if (fb) s.sb[key] = keepable(nb);
   if (!fa && !fb) { const f = (ka.flex ?? 1) + (kb.flex ?? 1); ka.flex = keepable((f * na) / tot); kb.flex = keepable((f * nb) / tot); }
+  else if (fa !== fb) weigh(fa ? kb : ka, fa ? nb : na, d);
   return { ...a, tree };
 }
-/** Evens the two panels either side of a line; beside the people, it puts the people back to the width they start at. */
+/** Evens the two panels either side of a line; beside the people, it puts them both back to the width they start at. */
 export function evenDivider(a: CallPanels, d: Divider): CallPanels {
   const s = sidesOf(a, d);
   if (!s) return a;
   const { tree, ka, kb, people } = s;
   const row = d.dir === 'row';
   const key = row ? 'px' : 'pxh';
-  if (people) { delete people[key]; return { ...a, tree, people: 'tiles' }; }
+  if (people) {
+    const other = people === s.sa ? s.sb : s.sa;
+    delete people[key];
+    if (heldSize(other, row)) delete other[key];
+    return { ...a, tree, people: 'tiles' };
+  }
   const half = keepable((d.sa + d.sb) / 2);
   const fa = heldSize(s.sa, row);
   const fb = heldSize(s.sb, row);
   if (fa) s.sa[key] = half;
   if (fb) s.sb[key] = half;
   if (!fa && !fb) { const f = keepable(((ka.flex ?? 1) + (kb.flex ?? 1)) / 2); ka.flex = f; kb.flex = f; }
+  else if (fa !== fb) weigh(fa ? kb : ka, half, d);
   return { ...a, tree };
 }
 
