@@ -3,14 +3,13 @@
  * sends no email itself: each of these opens your own mail app with an invitation, and marks them invited.
  */
 import { errorMessage, type Person, type Team } from '@alcove/api';
-import { Button, GhostArch, Icon, Popover, buttonClass, cn, useToast, type ButtonVariant } from '@alcove/ui';
+import { Button, GhostArch, Icon, PickList, Popover, buttonClass, cn, useToast, type ButtonVariant, type PickRow } from '@alcove/ui';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { log } from '~/lib/log';
-import { byEmail, callName, fold, isEmail, sameEmail, someNames } from '~/lib/people';
+import { byEmail, callName, fold, isEmail, sameEmail, someNames, typedIn } from '~/lib/people';
 import { useInviteTeam } from '~/lib/queries';
 import { addressOnly, byMeetings, callLine, listed, type Meets, type Member } from './data';
 import { useOpen, usePop } from './open';
-import { PickList, typedIn, type PickRow } from './PickList';
 
 const tlog = log.child({ component: 'team' });
 
@@ -125,7 +124,7 @@ function InviteList({ me, team, meets, now, onClose }: { me: Person; team: Team;
     onClose();
   };
   return (
-    <PickList label="Name or email" query={query} onQuery={setQuery} rows={shown} ticks
+    <PickList label="Name or email" query={query} onQuery={setQuery} address={whole ? typed : undefined} rows={shown} ticks
       none={yours ? 'That’s you.' : someone ? `${callName(someone.person)} ${someone.onAlcove ? 'is on Alcove' : 'has been asked'}.`
         : typed ? 'Nobody here by that name. Type their address.' : !team.members.length ? 'Type their address.' : team.members.every((m) => m.onAlcove) ? 'Everyone here is on Alcove.' : 'Everyone here has been asked.'}
       onPress={(r) => setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person]))}

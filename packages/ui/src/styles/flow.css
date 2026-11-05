@@ -4,7 +4,8 @@
  */
 
 /* ------------------------------------------------------------ the modal */
-.ac-modal.cf-modal { top: 50%; transform: none; translate: -50% -50%; width: min(620px, calc(100vw - 32px)); max-height: min(720px, calc(100dvh - 48px)); animation: cf-rise-m var(--duration-2) var(--ease-out) both; transition: width var(--duration-3) var(--ease-in-out); }
+/* Centred by transform alone, and the keyframes carry the centring: a minified build folds a separate translate into the transform, which an animated transform would then replace. */
+.ac-modal.cf-modal { top: 50%; transform: translate(-50%, -50%); translate: none; width: min(620px, calc(100vw - 32px)); max-height: min(720px, calc(100dvh - 48px)); animation: cf-rise-m var(--duration-2) var(--ease-out) both; transition: width var(--duration-3) var(--ease-in-out); }
 .ac-modal.cf-modal.is-wide { width: min(960px, calc(100vw - 32px)); max-height: min(780px, calc(100dvh - 48px)); }
 .ac-modal.cf-modal[data-state="closed"] { animation: cf-settle var(--duration-2) var(--ease-in) forwards; }
 /* The view inside: its body scrolls when it has to, and the foot stays. */
@@ -200,7 +201,8 @@ button.cf-doc:hover { background: var(--sunk); }
 
 /* ---------------------------------------------------------------- a phone */
 @media (max-width: 640px) {
-  .ac-modal.cf-modal, .ac-modal.cf-modal.is-wide { left: 0; right: 0; top: auto; bottom: 0; translate: none; width: auto; max-height: 92dvh; border-radius: 28px 28px 0 0; animation: cf-sheet var(--duration-3) var(--ease-out) both; }
+  /* The sheet isn't centred: it undoes the modal's centring. */
+  .ac-modal.cf-modal, .ac-modal.cf-modal.is-wide { left: 0; right: 0; top: auto; bottom: 0; translate: none; transform: none; width: auto; max-height: 92dvh; border-radius: 28px 28px 0 0; animation: cf-sheet var(--duration-3) var(--ease-out) both; }
   .ac-modal.cf-modal[data-state="closed"] { animation: cf-sheet-out var(--duration-2) var(--ease-in) forwards; }
   .cf-ways { grid-template-columns: minmax(0, 1fr); padding: 12px 18px calc(26px + env(safe-area-inset-bottom, 0px)); }
   .cf-way { grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; padding: 14px; }
@@ -233,8 +235,8 @@ button.cf-doc:hover { background: var(--sunk); }
 /* --------------------------------------------------------------- keyframes */
 @keyframes cf-fade { from { opacity: 0; } }
 @keyframes cf-fade-away { to { opacity: 0; } }
-@keyframes cf-rise-m { from { opacity: 0; transform: translateY(8px) scale(.985); } }
-@keyframes cf-settle { to { opacity: 0; transform: translateY(6px) scale(.97); } }
+@keyframes cf-rise-m { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.985); } }
+@keyframes cf-settle { to { opacity: 0; transform: translate(-50%, calc(-50% + 6px)) scale(.97); } }
 @keyframes cf-sheet { from { transform: translateY(100%); } }
 @keyframes cf-sheet-out { to { transform: translateY(100%); } }
 @keyframes cf-step { from { opacity: 0; transform: translateX(14px); } }

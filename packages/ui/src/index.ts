@@ -3,6 +3,7 @@ export { cn } from './cn';
 export * from './components/icon';
 export * from './components/brand';
 export * from './components/people';
+export * from './components/pick';
 export * from './components/primitives';
 export * from './components/overlay';
 export * from './components/toast';

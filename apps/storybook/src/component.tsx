@@ -25,6 +25,11 @@ export function PopSurface({ ws = false, width, children }: { ws?: boolean | und
   return <div className={ws ? 'ws-pop sbc-pop' : 'ac-pop sbc-pop'} style={style}>{children}</div>;
 }
 
+/** A modal's frame without the modal, standing in the page: for the call modal's pieces, which only show inside one. */
+export function ModalFrame({ children }: { children: ReactNode }) {
+  return <div className="ac-modal sbc-modal">{children}</div>;
+}
+
 /** A box of a fixed size, for what fills whatever it's given: a tile, a pane, a scene. */
 export function Box({ width, height, children }: { width: number | string; height: number | string; children: ReactNode }) {
   return <div className="sbc-box" style={{ width, height }}>{children}</div>;

@@ -43,7 +43,6 @@
 .wt-r:hover { background: var(--sunk); }
 .wt-r.is-cur { background: var(--sunk); color: var(--ink); }
 .wt-r.is-into { background: var(--horizon-soft); color: var(--horizon); box-shadow: inset 0 0 0 1.5px var(--horizon); }
-.wt-r.is-ghosted { opacity: .4; }
 .wt-r.is-flash { animation: ws-flash 1.4s var(--ease-out); }
 .wt-tw { flex: none; display: grid; place-items: center; width: 20px; height: 32px; color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
 .wt-tw.is-open { transform: rotate(90deg); }
@@ -151,7 +150,7 @@
 .wv-ask p { min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
 .wv-ask b { color: var(--ink); font-weight: 600; }
 .wv-ask .ac, .wv-switch .ac { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.wv-cmt { width: 320px; padding: 10px; display: grid; gap: 8px; }
+.wv-cmt { width: 320px; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .wv-cmt .q { padding: 6px 8px; border-radius: 8px; background: var(--hl); font-size: 13px; line-height: 1.35; color: var(--ink-2); }
 .wv-cmt .in { display: flex; align-items: center; gap: 8px; }
 .wm-in { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }

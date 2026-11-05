@@ -154,8 +154,9 @@ export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tr
   const facesButton = <button type="button" className="wt-f" aria-label={`Who’s in ${name}`}><Faces people={faces} size={16} max={2} /></button>;
   return (
     <motion.div role="treeitem" aria-level={depth + 1} aria-selected={current} aria-expanded={folder ? open : undefined} data-row={id} data-kind={kind} data-area={area}
-      className={cn('wt-r', kind === 'live' && 'is-live', quiet && 'is-quiet', current && 'is-cur', flash && 'is-flash', into && 'is-into', ghosted && 'is-ghosted', (menu?.open || add?.open) && 'is-menu')}
-      style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1, transition: move(1) }} exit={{ height: 0, opacity: 0, transition: move(2) }}
+      className={cn('wt-r', kind === 'live' && 'is-live', quiet && 'is-quiet', current && 'is-cur', flash && 'is-flash', into && 'is-into', (menu?.open || add?.open) && 'is-menu')}
+      /* What's being dragged fades where it was. Motion owns the row's opacity (its inline style beats any class), so the fade is here. */
+      style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: ghosted ? 0.4 : 1, transition: move(1) }} exit={{ height: 0, opacity: 0, transition: move(2) }}
       onDoubleClick={onRename ? (e) => { if (e.target instanceof Element && !e.target.closest('.wt-acts')) onRename(); } : undefined} onContextMenu={onContextMenu} onPointerDown={onPointerDown}>
       {folder && <button type="button" tabIndex={-1} className={cn('wt-tw', open && 'is-open')} aria-label={`Open or close ${name}`} onClick={onTwist}><Icon name="chevron" size={13} /></button>}
       <button type="button" className="wt-open" aria-current={current ? 'page' : undefined} onClick={onOpen} onKeyDown={keys}>

@@ -192,11 +192,15 @@ async function getDisplayMedia(o?: DisplayMediaStreamOptions): Promise<MediaStre
   const sound = o?.audio ? audioContext().createMediaStreamDestination().stream.getAudioTracks()[0] : undefined;
   return new MediaStream(sound ? [video, sound] : [video]);
 }
-/** What's plugged in. Like a real browser, names only once the camera or microphone has been allowed. */
+/**
+ * What's plugged in. Like a real browser, it says which devices there are only once the camera or microphone has been
+ * allowed: until then, one of each kind, with no ID and no name.
+ */
 async function enumerateDevices(): Promise<MediaDeviceInfo[]> {
-  const named = state.devices === 'granted';
-  return DEVICES.map((d) => {
-    const info = { deviceId: d.id, groupId: d.id, kind: d.kind, label: named ? d.label : '' };
+  const allowed = state.devices === 'granted';
+  const listed = allowed ? DEVICES : DEVICES.filter((d, i) => DEVICES.findIndex((o) => o.kind === d.kind) === i);
+  return listed.map((d) => {
+    const info = { deviceId: allowed ? d.id : '', groupId: allowed ? d.id : '', kind: d.kind, label: allowed ? d.label : '' };
     return { ...info, toJSON: () => info };
   });
 }

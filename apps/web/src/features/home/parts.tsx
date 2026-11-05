@@ -16,17 +16,6 @@ export function Moment({ noteId, noteTitle, at }: { noteId: string; noteTitle: s
   );
 }
 
-/** "Show 4 more" under a list that's longer than its first few, and "Show fewer" once it's open. */
-export function More({ all, more, onToggle }: { all: boolean; more: number; onToggle: () => void }) {
-  return (
-    <div className="hm-more">
-      <button type="button" className="lk quiet" aria-expanded={all} onClick={onToggle}>
-        {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
-      </button>
-    </div>
-  );
-}
-
 /**
  * Makes one of your calendar meetings an Alcove call, and says who gets the new link. It waits for its own
  * answer, so what it says never depends on what else happened meanwhile; it resolves true once it's done.
