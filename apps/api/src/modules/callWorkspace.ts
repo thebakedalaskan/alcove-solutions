@@ -20,12 +20,12 @@ import { findItem, type Loaded } from '../vault';
 import { profile, updateProfile } from './account';
 import { seatOfViewer, type Viewer } from './calls';
 import { stopped, type AgendaDraft, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
-import { isFollowUp, type Run } from './documentText';
+import type { DocTodo, FollowUpLimits, Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
 import { placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
 import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
-import { editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
+import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
 import { addBeside, createIn } from './workspaces';
 
 const wlog = log.child({ component: 'call-workspace' });
@@ -536,32 +536,94 @@ const byWorkspace = (worked: WorkedDocument[]): Map<string, WorkedDocument[]> =>
   for (const x of worked) out.set(x.workspaceId, [...(out.get(x.workspaceId) ?? []), x]);
   return out;
 };
-/** A workspace as this reader has it, or nothing when they have nothing in it. */
-async function maybeWorkspace(d: Deps, reader: Who, workspaceId: string) {
-  try {
-    return await workspaceFor(d, reader, workspaceId);
-  } catch (e) {
-    if (e instanceof NotFoundError) return undefined;
-    throw e;
+/** How many documents worked on in a call its follow-ups are read from: the ones most recently worked on. */
+const FOLLOW_UP_DOCUMENTS = 20;
+/** What a call is given of each one's follow-ups, worked out where it's read (`followUpsIn`): a document can hold thousands. */
+const FOLLOW_UP_LIMITS: FollowUpLimits = { max: 25, chars: 300, tags: 5 };
+/** How many come from documents in all. */
+const MAX_DOCUMENT_FOLLOW_UPS = 100;
+/** How long what was read of a document's follow-ups stands for it once someone's typed: nobody's poll reads it again for anyone sooner. */
+const FOLLOW_UPS_FRESH_MS = 3_000;
+const MAX_READ = 512;
+/** A document's follow-ups as last read: as of where it had got to (`at`), and when. */
+interface Read { at: string; when: number; items: DocTodo[] }
+const readByHub = new WeakMap<Hub, Map<string, Read>>();
+const readingByHub = new WeakMap<Hub, Map<string, Promise<DocTodo[]>>>();
+const readsOn = (d: Deps) => {
+  const read = readByHub.get(d.hub) ?? new Map<string, Read>();
+  readByHub.set(d.hub, read);
+  const reading = readingByHub.get(d.hub) ?? new Map<string, Promise<DocTodo[]>>();
+  readingByHub.set(d.hub, reading);
+  return { read, reading };
+};
+/**
+ * One document's follow-ups where it's got to, for everyone in the call: read once for each place it gets to, by whoever asks
+ * first, however many ask at once, and that stands for a moment more while people type, so a poll every few seconds by
+ * everyone in the call reads each document at most every few seconds between them. What's kept is what a call is shown of it,
+ * by ID, and only for someone who can open it now. `tree` opens the workspace, if it comes to reading.
+ */
+async function followUpsAt(d: Deps, workspaceId: string, documentId: string, at: string, tree: () => Promise<HeldWorkspace | undefined>): Promise<DocTodo[]> {
+  const { read, reading } = readsOn(d);
+  const key = `${workspaceId}:${documentId}`;
+  const known = read.get(key);
+  if (known && (known.at === at || Date.now() - known.when < FOLLOW_UPS_FRESH_MS)) return known.items;
+  const once = `${key}:${at}`;
+  let p = reading.get(once);
+  if (!p) {
+    p = (async () => {
+      const w = await tree();
+      const item = w?.state.items[documentId];
+      return w && item ? readDocument(w, documentId, 'followUps', { kind: kindOf(item), ...FOLLOW_UP_LIMITS }) : [];
+    })().finally(() => reading.delete(once));
+    reading.set(once, p);
   }
+  const items = await p;
+  read.delete(key);
+  read.set(key, { at, when: Date.now(), items });
+  for (const oldest of read.keys()) {
+    if (read.size <= MAX_READ) break;
+    read.delete(oldest);
+  }
+  return items;
 }
+/** What was read of a document's follow-ups no longer stands: it was just ticked from the call, and whoever ticked it sees the tick. */
+const forgetFollowUps = (d: Deps, workspaceId: string, documentId: string): void => { readsOn(d).read.delete(`${workspaceId}:${documentId}`); };
 
-/** To-dos with a person and a date in the documents worked on in this call, for someone who can open each. One that won't open is left out, and the rest still come. */
+/**
+ * To-dos with a person and a date in the documents most recently worked on in this call, for someone who can open each, so
+ * many from each and so many in all. Who can open what is asked on every read, from the tree as it is at its version
+ * (`seenAt`), and what's in each document is read once for everyone (`followUpsAt`). One that won't open, or is closed, is
+ * left out, and the rest still come.
+ */
 async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]): Promise<DocFollowUp[]> {
   const out: DocFollowUp[] = [];
-  for (const [workspaceId, documents] of byWorkspace(worked)) {
-    const w = await maybeWorkspace(d, reader, workspaceId);
-    if (!w) continue;
-    for (const { documentId } of documents) {
-      const item = w.state.items[documentId];
-      const role = item && !trashOf(w.state, documentId) ? roleOf(reader, w, documentId, item) : undefined;
-      if (!item || !role) continue;
+  for (const [workspaceId, documents] of byWorkspace(worked.slice(-FOLLOW_UP_DOCUMENTS))) {
+    const at = await workspaceAt(d.pool, workspaceId);
+    if (!at) continue;
+    const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+    if (!canOpen(standing)) continue;
+    const seen = await seenAt(d, workspaceId, at.version, documents.map((x) => x.documentId));
+    if (!seen) continue;
+    const opened = documents.flatMap(({ documentId }) => {
+      const f = seen.items.get(documentId);
+      const role = f && !f.trashed ? roleOf(reader, standing, documentId, f.item) : undefined;
+      return f && role ? [{ documentId, name: f.item.name, role }] : [];
+    });
+    if (!opened.length) continue;
+    const marks = await documentsAt(d.pool, at.ownerId, opened.map((x) => x.documentId));
+    let held: Promise<HeldWorkspace | undefined> | undefined;
+    const tree = () => { held ??= serverWorkspace(d, workspaceId); return held; };
+    for (const { documentId, name, role } of opened) {
+      const mark = marks.get(documentId);
+      if (!mark || mark.closed) continue;
       try {
-        const todos = await readDocument(w, documentId, 'todos', { kind: kindOf(item) });
-        for (const t of todos.filter(isFollowUp)) out.push({ from: 'document', workspaceId, documentId, document: item.name, block: t.block, text: t.text, mentions: t.mentions, dates: t.dates, done: t.done, canTick: role === 'edit' });
+        for (const t of await followUpsAt(d, workspaceId, documentId, mark.at, tree)) {
+          out.push({ from: 'document', workspaceId, documentId, document: name, block: t.block, text: t.text, mentions: t.mentions, dates: t.dates, done: t.done, canTick: role === 'edit' });
+        }
       } catch (e) {
         wlog.warn('document not read for the call’s follow-ups', { workspaceId, documentId, err: e });
       }
+      if (out.length >= MAX_DOCUMENT_FOLLOW_UPS) return out.slice(0, MAX_DOCUMENT_FOLLOW_UPS);
     }
   }
   return out;
@@ -589,6 +651,7 @@ export async function tick(d: Deps, reader: Reader, callId: string, worked: Work
       by, callId, holding: async (c) => { requireDocument(reader, await workspaceFor(d, reader, t.workspaceId, c, 'hold'), t.documentId, 'edit'); }
     });
     if (!ticked) throw shut();
+    forgetFollowUps(d, t.workspaceId, t.documentId);
     return { entry: found, by };
   } catch (e) {
     if (e instanceof NotFoundError) throw shut();

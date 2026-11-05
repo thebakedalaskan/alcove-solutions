@@ -5,7 +5,7 @@
  * asking Alcove about a selection. What's checked is what each person is told, and above all what they aren't.
  */
 import {
-  AlcoveApiError, playPosition, type AudioPiece, type CallAction, type CallSession, type CallState, type DocSession, type DocSessionOptions, type Note, type TranscriptClip, type WorkspaceRole
+  AlcoveApiError, CallFollowUpsSchema, playPosition, type AudioPiece, type CallAction, type CallSession, type CallState, type DocSession, type DocSessionOptions, type Note, type TranscriptClip, type WorkspaceRole
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
@@ -1004,6 +1004,103 @@ describe('the call’s follow-ups', () => {
       held.release();
     }
     expect(documentTodos((await open(art, id, plan)).doc, 'document').map((x) => x.done)).toEqual([false]);
+  });
+
+  /** The call's follow-ups as one person's poll gets them. */
+  const polled = async (who: Browser, call: CallSession) => {
+    const res = await who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/follow-ups`, { headers: { 'x-alcove-call': call.ticket.pass } });
+    const text = await res.text();
+    return { bytes: text.length, items: CallFollowUpsSchema.parse(JSON.parse(text)).items.flatMap((x) => (x.from === 'document' ? [x] : [])) };
+  };
+  /** Counts what workers are asked to read while it runs. */
+  async function counting<T>(f: (reads: () => number) => Promise<T>): Promise<T> {
+    const pool = h.deps.docs;
+    const run = pool.run;
+    const real = pool.run.bind(pool);
+    let reads = 0;
+    pool.run = (task, input, o) => { if (task === 'read') reads++; return real(task, input, o); };
+    try {
+      return await f(() => reads);
+    } finally {
+      pool.run = run;
+    }
+  }
+  const someone = { who: { id: 'priya', name: 'Priya' }, when: '2026-11-06' };
+
+  it('are read once for each version of a document, for everyone polling, and not again until it changes', async () => {
+    const art = await account();
+    const people = [await account(), await account(), await account(), await account()];
+    const id = await workspace(art, 'Product', people.map((p): [Account, WorkspaceRole] => [p, 'edit']));
+    const { host, code: c } = await callBy(art, { guests: people.map((p) => p.email) });
+    await host.setWorkspace(id);
+    const everyone: [Browser, CallSession][] = [[art, host]];
+    for (const p of people) everyone.push([p, await invited(host, c, p)]);
+    const pages: DocSession[] = [];
+    for (let i = 0; i < 4; i++) {
+      const page = await open(art, id, await doc(art, id, `Doc ${i}`), { pass: host.ticket.pass });
+      addTodo(page, `t${i}`, `Thing ${i} for `, someone);
+      await saved(page);
+      pages.push(page);
+    }
+    const round = () => Promise.all(everyone.map(([who, call]) => polled(who, call)));
+    await counting(async (reads) => {
+      // Five people polling at once: each document is read once, for all of them.
+      expect((await round()).map((r) => r.items.length)).toEqual([4, 4, 4, 4, 4]);
+      expect(reads()).toBe(4);
+      // Nothing changed: nothing's read again.
+      await round();
+      expect(reads()).toBe(4);
+      // One document changes: what was read of it stands for a moment, then it's read once more, for everyone.
+      const first = pages[0];
+      if (!first) throw new Error('no page');
+      addTodo(first, 'more', 'One more for ', someone);
+      await saved(first);
+      await round();
+      expect(reads()).toBe(4);
+      await rest(3_100);
+      expect((await round()).map((r) => r.items.length)).toEqual([5, 5, 5, 5, 5]);
+      expect(reads()).toBe(5);
+    });
+    for (const page of pages) page.close();
+    await host.leave();
+  });
+
+  it('come from the documents most recently worked on, so many from each, each so long, and so many in all', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const { host } = await callBy(art);
+    await host.setWorkspace(id);
+    /** A document worked on in the call, with `n` follow-ups in it. */
+    const workedOn = async (name: string, n: number, first?: string) => {
+      const d = await doc(art, id, name);
+      const page = await open(art, id, d, { pass: host.ticket.pass });
+      if (first) addTodo(page, 'long', first, someone);
+      for (let i = 0; i < n; i++) addTodo(page, `x${i}`, `${name} thing ${i} for `, someone);
+      await saved(page);
+      page.close();
+      return d;
+    };
+    const oldest = await workedOn('Oldest', 1);
+    const full = [await workedOn('Full 1', 30, `${'A to-do that goes on and on. '.repeat(40)}for `)];
+    for (let i = 2; i <= 5; i++) full.push(await workedOn(`Full ${i}`, 30));
+    const small: string[] = [];
+    for (let i = 1; i <= 15; i++) small.push(await workedOn(`Small ${i}`, 1));
+    const { items, bytes } = await polled(art, host);
+    // The 20 most recently worked on, in the order they were: the oldest is past them.
+    expect(items.some((x) => x.documentId === oldest)).toBe(false);
+    // Each gives at most 25, and 100 come in all, so the last of the full ones and the small ones are past that.
+    expect(items).toHaveLength(100);
+    expect([...new Set(items.map((x) => x.documentId))]).toEqual(full.slice(0, 4));
+    for (const d of full.slice(0, 4)) expect(items.filter((x) => x.documentId === d)).toHaveLength(25);
+    // A long one is cut short, and the whole answer stays a size a poll every few seconds can carry.
+    const long = items.find((x) => x.block === 'long');
+    expect(long?.text.length).toBeLessThanOrEqual(300);
+    expect(long?.text.endsWith('…')).toBe(true);
+    expect(bytes).toBeLessThan(64 * 1024);
+    // What's ticked still goes by the document's own to-do.
+    await host.tickDocumentFollowUp({ workspaceId: id, documentId: full[0] ?? '', block: 'long', done: true });
+    expect((await polled(art, host)).items.find((x) => x.block === 'long')?.done).toBe(true);
+    await host.leave();
   });
 
   it('stop being read once the call has ended', async () => {
