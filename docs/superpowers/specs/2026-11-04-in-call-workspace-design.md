@@ -124,8 +124,21 @@ is named `content`; comments are the root map `comments`, each thread a `Y.Map` 
 
 Blocks: `paragraph`, `heading` (1–3), `bullet`, `numbered`, `todo` (`done`), `toggle`, `quote`, `callout`, `divider`,
 `code`, `table` (prosemirror-tables), `gallery`, `file`, `video`, `doclink`, `live` (`what`: decided or follow-ups, plus
-the lines it last showed), `moment` (a quoted transcript line). Inline: `mention`, `dateChip`, `docref`. Marks: `bold`,
-`italic`, `strike`, `code`, `link`, `highlight`, `comment`.
+the lines it last showed), `moment` (a quoted transcript line). Inline: `mention`, `dateChip`, `docref`, and `hardBreak`
+for ⇧↵. Marks: `bold`, `italic`, `strike`, `inlineCode` (ProseMirror won't let a mark and a node share the name `code`),
+`link`, `highlight`, `comment`. A `toggle` holds a `toggleSummary` and a `toggleBody`, both inline text, so it stays one
+flat block. `docref` and `doclink` store only the document's ID, and its name is looked up for each reader, so a tag
+never names a document to someone who can't open it. `unsupported` stands in for a block from a newer release, because
+y-prosemirror deletes, for everyone, any element it can't make a node from.
+
+Every document starts from the same seed: its title and first line are one fixed Yjs update under a fixed client ID, so
+two browsers opening a new document merge into one title instead of two. Mount the editor after the first `sync`.
+Anything the server writes into a new document has to start from that seed, or arrive before the editor mounts.
+
+Yjs has no move, and y-prosemirror compares by position, so a move left to it would rewrite the text of every block it
+passes. Moving a block edits the Yjs elements directly. A move or a change of kind deletes the element and inserts a
+copy, so whoever typed in the old element while that was in flight puts their own words back into the new one; if two
+people moved one block, every browser drops the same copy.
 
 y-prosemirror gives sync, per-user undo (⌘Z undoes only your own changes) and carets, drawn as the canvas draws them:
 one horizon colour, told apart by face and name. A `live` block is written by whichever editing browser in the call
