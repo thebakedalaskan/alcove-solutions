@@ -558,20 +558,34 @@ export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
 }
-/** Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. `pass`: a guest's. */
+/**
+ * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
+ * to a call is read again after each, as it lists these documents. `pass`: a guest's.
+ */
 export function useItemChanges(workspaceId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
   const w = api.workspaces;
   const as = pass ? { pass } : undefined;
+  const library = () => qc.invalidateQueries({ queryKey: qk.documents });
   return {
-    create: useMutation({ mutationFn: (input: ItemInput) => w.items.create(workspaceId, input) }),
+    create: useMutation({ mutationFn: (input: ItemInput) => w.items.create(workspaceId, input), onSuccess: library }),
     // One at a time, so what's typed last is what's kept.
-    rename: useMutation({ scope: { id: `workspace-rename:${workspaceId}` }, mutationFn: (v: { id: string; name: string }) => w.items.rename(workspaceId, v.id, v.name, as) }),
-    move: useMutation({ mutationFn: (v: { id: string; to: ItemPlace }) => w.items.move(workspaceId, v.id, v.to) }),
-    duplicate: useMutation({ mutationFn: (id: string) => w.items.duplicate(workspaceId, id) }),
-    trash: useMutation({ mutationFn: (id: string) => w.items.trash(workspaceId, id) }),
-    restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as) }),
-    deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id) })
+    rename: useMutation({ scope: { id: `workspace-rename:${workspaceId}` }, mutationFn: (v: { id: string; name: string }) => w.items.rename(workspaceId, v.id, v.name, as), onSuccess: library }),
+    move: useMutation({ mutationFn: (v: { id: string; to: ItemPlace }) => w.items.move(workspaceId, v.id, v.to), onSuccess: library }),
+    duplicate: useMutation({ mutationFn: (id: string) => w.items.duplicate(workspaceId, id), onSuccess: library }),
+    trash: useMutation({ mutationFn: (id: string) => w.items.trash(workspaceId, id), onSuccess: library }),
+    restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as), onSuccess: library }),
+    deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
   };
+}
+/** Makes a new document of words that didn't reach the one they were written in (`DocSession.localCopy`). */
+export function useSaveCopy() {
+  const qc = useQueryClient();
+  return useMutation({
+    // SEAM: `api.workspaces.saveCopy` once feat/ws-docs-2 is on main (features/workspace/session.ts).
+    mutationFn: async (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => (await import('~/features/workspace/saveCopy')).saveCopy(v.workspaceId, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
+  });
 }
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
 export function useDocumentShare(workspaceId: string, documentId: string) {

@@ -107,6 +107,11 @@
 .wd-off, .wd-gone { background: var(--caution-soft); color: var(--caution); }
 .wd-gone span { flex: 1; min-width: 0; }
 .wd-ro { background: var(--sunk); color: var(--ink-2); }
+/* What didn't save says why, and what can be done with it beside that, under it when there's no room. */
+.wd-unsaved { flex-wrap: wrap; row-gap: 6px; }
+.wd-unsaved > .t { flex: 1 1 320px; min-width: 0; }
+.wd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ac-empty-act .wd-acts { justify-content: center; }
 .wd-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
 .wd-page { max-width: 760px; margin: 0 auto; padding: 22px 72px 40px; }
 .wd-title { min-height: 44px; outline: none; font: 450 38px/1.14 var(--font-display); letter-spacing: -.02em; font-variation-settings: 'opsz' 40; color: var(--ink); word-break: break-word; }
