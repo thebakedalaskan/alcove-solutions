@@ -18,14 +18,19 @@ its address.
 .storybook/main.ts        Vite: the app's ~ alias, Tailwind, and the two stand-ins (below)
 .storybook/preview.tsx    styles and fonts, the toolbar, viewports, providers; starts each story's scenario
 src/api/                  the stand-in AlcoveApi (standin.ts), its live stores, and the scenarios (scenarios.ts)
+src/api/call.ts           a call played from its script: the server's side (who's in it, notes, rings, rooms, the host)
+src/api/script.ts         what a call's script says: who's here, what's said and done when, how rings are answered
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
-src/media/livekit.ts      a scripted room in place of LiveKit
-src/browser.ts            the browser as a story finds it: connection, devices, notifications
+src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
+src/media/screens.ts      what other people share, drawn
+src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
+src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `press()`
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state
 stories/pages/            one file per page, a story per state
+stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, leaving
 stories/journeys/         one file per section of docs/product/user-flows.md
 ```
 
@@ -36,7 +41,8 @@ stories/journeys/         one file per section of docs/product/user-flows.md
 
 **Before every story** the preview starts its scenario: a fresh world for the stand-in, the demo clock at the scenario's
 moment, the browser as the scenario says, and what this browser remembers (the tour, being signed in here), with nothing
-left from the story before.
+left from the story before: its calls and recordings stop, and so do its microphone, camera, recorders and audio, as
+they would when a page goes away.
 
 **The demo clock.** Every story starts on Wednesday 4 November 2026, at 16:12 unless its scenario says otherwise, and the
 clock runs on from there, so "Today" and "in 4 minutes" read the same whenever Storybook is opened. `Date` is moved; timers
@@ -124,6 +130,43 @@ export const StartNow = page('/home', 'busy', {
 The interactions panel steps back and forth through it. What Storybook can't play (Google's sign-in, an email, a second
 person) plays up to the hand-off, and the stand-in plays the other side: a scenario, or a script in `src/api/`.
 
+## Add a call story
+
+`stories/calls/<Part>.stories.tsx`. LiveKit can't run here, so a call is played from a script (`src/api/script.ts`):
+who's in it when you come in, what's said and done and when, how the people you ring answer, and what the call's link
+says while you wait. The scripted call plays the server's side; the scripted room (`src/media/livekit.ts`) plays
+LiveKit's, and the call screen drives it exactly as it drives LiveKit's room. Your own microphone, camera and screen are
+the browser's made-up ones (`src/browser.ts`): mute, switch a device or share, and the room publishes it. Everyone else's
+camera stays off, so people show in their arches; what they share is drawn. While notes are on, what's said reaches the
+transcript as it's said, and the live notes are written again a few seconds later.
+
+```tsx
+const meta = { title: 'Calls/Sharing', ...pages } satisfies Meta<PageArgs>;
+export default meta;
+
+/** In the call: the lobby's part (your devices, joining, ringing anyone picked) is done before the screen opens. */
+export const SomeoneSharing = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: {
+    here: [{ who: PRIYA }, { who: KOFI }, { who: AIKO }],
+    cues: at(2, shares(PRIYA, CHECKLIST)),
+    talk: { lines: [line(PRIYA, 'Can everyone see the checklist?'), line('me', 'Yes.', { decides: 'We go down the checklist.' })] }
+  }
+});
+export const SomeoneSharingPhone = phone(SomeoneSharing);
+/** At the call's link: the organizer comes in eight seconds after the story opens. */
+export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
+/** A play that presses a button in the dock, then one in what it opens. */
+export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: ['End call for everyone'] }) });
+```
+
+A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
+has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
+story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
+`{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
+from another call. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
+stories are always night, and come on a phone too (`phone()`).
+
 ## Extend the stand-in
 
 - **The contract changed.** `standIn` is typed `AlcoveApi`, so the compiler fails until `src/api/standin.ts` answers the new
@@ -133,8 +176,9 @@ person) plays up to the hand-off, and the stand-in plays the other side: a scena
 - **A new state.** Add a scenario to `SCENARIOS` in `src/api/scenarios.ts` and to the table above, or give one story its own
   `opening`.
 - **Something live.** Extend `Snapshots` (`src/api/live.ts`): push whole snapshots on a script with `after()` and `every()`,
-  and `halt()` when it closes. A call is `src/api/call.ts` (its people, notes and transcript) with `src/media/livekit.ts`
-  (who's speaking, mics, cameras and screens); a room recording is `src/api/recording.ts`.
+  and `halt()` when it closes. A call is `src/api/call.ts` (its people, notes and transcript), its `livekit` side, which
+  `src/media/livekit.ts` plays (mics, who's speaking, shares, your connection), and a new beat in `src/api/script.ts`; a
+  room recording is `src/api/recording.ts`.
 
 ## Rules
 
@@ -151,4 +195,7 @@ person) plays up to the hand-off, and the stand-in plays the other side: a scena
   app's in-memory stores (the arrival after a first sign-in) last until the frame reloads: reload it if a journey leaves
   one behind.
 - Google's pages, a calendar's and a call's media aren't real: those links stay on the page, a note's audio is quiet,
-  shared screens are drawn slides, and the call is scripted.
+  shared screens are drawn, nobody else's camera is ever on, and the call is scripted. Nobody else's browser is in it, so
+  pointers and marks on a share go nowhere, and nothing anyone says is heard aloud.
+- A play's timings: Storybook says a story has rendered once its play is done and its animations have settled, so a
+  script's times (counted from joining) can be well under way by then.
