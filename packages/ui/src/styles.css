@@ -179,7 +179,8 @@
 }
 
 /*
- * The board: a dawn sheet on the night stage. Light values on :root and .light, dark on .dark, like everything above.
+ * The board: a dawn sheet. Light values on :root and .light, and dark wherever everything above is. On the stage that's
+ * so as well, unless the sheet says `.light`.
  * `note-*` are the sticky colours and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the
  * `line` tokens for edges above. `bf-*` are frames.
  */
@@ -209,7 +210,7 @@
   --bd-point: 120ms;
 }
 
-.dark {
+.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage) {
   --bd-ground: #14112A;
   --bd-wash: linear-gradient(180deg, #14112E 0%, #1A1438 56%, #2A1A42 100%);
   --bd-bar: rgb(23 20 43 / .74);
