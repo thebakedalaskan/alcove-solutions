@@ -386,6 +386,24 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   URL: at most 4 at once for a browser, trying again for minutes when the server's busy. A room of people opening the same
   board at once would otherwise overrun what the process takes on, and an `<img>` can't try again. Video and audio use the URL,
   which a player reads by range.
+- **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
+  read as one `gallery`, a film it can play as a `video`, anything else as a `file`. The block holds the space at once, with each
+  file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
+  it fill. Only the browser sending writes to it, by the block's ID: through the page's own session while the document is open
+  there, and through a session of its own once it isn't, so leaving the document or the workspace doesn't stop it. As each file
+  is stored its ID goes into the block, and a photo's caption, an attribute of its own (`cap:<id>`), starts as the file's name
+  without its extension. A film's first frame goes first, as a picture of its own, so there's something to see while the film
+  goes; one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block
+  says which file. What the API refuses goes into the block as failed, and the refusal's own words to whoever sent it. That
+  browser says in the document's awareness which blocks it's sending (their IDs, nothing else), so a block that says it's
+  uploading with nobody saying so for 20 seconds shows as failed, with only Delete.
+- **Shown in a document.** Every picture, a film's frame included, goes through `picture`, read once for as long as anything
+  shows it, kept a minute after so a block redrawn or scrolled back to isn't read again, and let go of with `revokeObjectURL`
+  (`apps/web/src/features/workspace/pictures.ts`). A block pasted or dropped from another document, or sent there with Move
+  to…, has its files attached there first, and its pictures wait for that. A picture that's `not-found` shows as deleted; a file
+  or a film does when the workspace's list of files, read after the block was first seen, no longer has it through that
+  document, or a player or a download is refused it. Taking a block out (Delete) leaves its file; Delete for good, from the
+  block's menu, is `remove`.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
   (`MEDIA_LIMITS` in `modules/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
   their bodies are read; past that they're refused with `503 unavailable` and the client tries again. A piece has to keep
@@ -453,7 +471,7 @@ and this way it runs through the same auth, origin check and tests as everything
   updates or 1 MiB behind is let go of, and its browser picks up from its last `seq`. Hearing that the hub missed something
   reads again from there too. Someone who loses a document hears nothing written after that: a change to who has what
   that was heard first is settled before the update behind it is read.
-- **Carets** (awareness) are never stored. A browser's state goes up at most every 100 ms and travels through a notice sealed
+- **Carets** (awareness, which also carries the IDs of the blocks a browser is uploading into) are never stored. A browser's state goes up at most every 100 ms and travels through a notice sealed
   under the workspace's key, at most 4 KiB, and every instance passes it on. It takes having the document open on that
   instance: a stream hears of every change to who has what, so a caret needs no looking up of its own, and opens no tree. Anyone
   else gets the same `404` as for a document that isn't there, except that someone's own caret can always say it's going. The server writes who it is over `user` in the

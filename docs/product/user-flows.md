@@ -901,6 +901,22 @@ and **New folder**; **N** and **⇧N** skip the menu when you aren't typing. A f
 **Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
 page follow as you type, for everyone.
 
+**Photos, videos and files.** **+** beside a line, or **/**, offers **Photos**, **Video** and **File**. Photos opens a space at
+once, "Drop photos here, or choose them", with a picker under it: **Choose from this computer**, or the photos already in the
+workspace, one at a time or **Add all three**; Video and File offer films and files the same way. Files dropped on the page
+land where a line shows, "Drop to add here", and pasted ones under the caret. Several photos make a gallery, one makes a picture
+across the page, a film shows its first frame with **Play**, and anything else is a file that downloads, or opens in a tab when
+the browser can show it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
+pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read,
+or one Alcove refuses, says which file and why ("This file is bigger than 512 MiB, the most a file can be.", "This workspace is
+full, so it can't take more files.", "That's all you can upload today. You can upload more tomorrow."), with **Try again** and
+**Delete**, and nothing else in the document changes. Leaving the page doesn't stop an upload, and closing the tab asks first;
+a browser that goes mid-upload leaves its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
+the file in the workspace, for older versions and to use again. **Delete the photo for good** (or the video, or the file), in
+the block's menu, asks first, then deletes it from every document that has it, where it says it was deleted, older versions
+too; Alcove refuses that for a file that's also in a document you can only read, and says so. **Upload files** in the list's
+**+** makes a new document there holding them, named after the file when there's one.
+
 **Moving things.** Drag a row: a line shows where it lands between two rows, a folder lights up over its middle, and
 pausing over a closed folder opens it. **Esc** puts it back, and dropping it on **Trash** sends it there. When it lands
 it's moved for everyone, and **Undo** is there for a moment. **⋯** on a row, or right-clicking it, offers **Rename**,
