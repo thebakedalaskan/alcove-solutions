@@ -34,7 +34,7 @@ async function sendKept(owner: string): Promise<void> {
   try {
     for (const { workspace, document } of await keptDocuments(owner)) {
       if (location.pathname.endsWith(`/${document}`)) continue;
-      const session = openDocument(workspace, document, owner, undefined);
+      const session = await openDocument(workspace, document, owner, undefined);
       await sent(session);
       session.close();
       klog.info('sent the edits kept for a document', { workspace, document });
