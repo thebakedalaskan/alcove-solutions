@@ -1,7 +1,8 @@
 /*
- * What a new board can start from. The words, sizes, hints and colours are the design canvas's. A template fills
- * in one transaction, and the server makes that update, so everyone gets the same frames and nobody's undo can
- * take them away.
+ * What a new board can start from. Sizes, positions, hints and colours are the design canvas's, and so are its words
+ * wherever they suit any meeting. Where the canvas's were about its fictional launch, they're generic: Flow's shapes
+ * read as what each kind is for. A template fills in one transaction, and the server makes that update, so everyone
+ * gets the same frames and nobody's undo can take them away.
  */
 import type * as Y from 'yjs';
 import { sides } from './routes';
@@ -36,15 +37,15 @@ const BOARDS: Record<TemplateName, Template> = {
     ],
     links: []
   },
-  ideas: { objects: [frame('How do we launch better?', 0, 0, 1160, 530, '', 'butter')], links: [] },
+  ideas: { objects: [frame('Ideas', 0, 0, 1160, 530, '', 'butter')], links: [] },
   flow: {
     objects: [
-      shape('pill', 'Sign up', 0, 130, 170, 76, 'sky'),
-      shape('rect', 'Verify email', 240, 130, 170, 76),
-      shape('diamond', 'Invited by a team?', 480, 88, 180, 160, 'butter'),
-      shape('rect', 'Join their workspace', 740, 20, 190, 76),
-      shape('rect', 'Create a workspace', 740, 240, 190, 76),
-      shape('pill', 'Invite people', 1000, 240, 170, 76, 'sky'),
+      shape('pill', 'Start', 0, 130, 170, 76, 'sky'),
+      shape('rect', 'Step', 240, 130, 170, 76),
+      shape('diamond', 'Choice', 480, 88, 180, 160, 'butter'),
+      shape('rect', 'Step', 740, 20, 190, 76),
+      shape('rect', 'Step', 740, 240, 190, 76),
+      shape('pill', 'Done', 1000, 240, 170, 76, 'sky'),
       label('Yes', 672, 96, 40, 24),
       label('No', 672, 226, 40, 24)
     ],
