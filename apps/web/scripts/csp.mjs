@@ -23,7 +23,7 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' ${[...hashes].join(' ')}`,
   "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: ${api}`,
+  `img-src 'self' data: blob: ${api}`,
   `media-src 'self' blob: ${api}`,
   `connect-src 'self' ${api} ${livekit}`,
   "font-src 'self'",

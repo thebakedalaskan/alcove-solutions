@@ -81,6 +81,10 @@ const EnvSchema = z.object({
   LIVE_PING_MS: z.coerce.number().int().min(10).default(25_000),
   /** How long the API keeps a live stream open before letting go, for the browser to open it again: inside Cloud Run's request timeout, so nothing is cut. */
   LIVE_STREAM_MS: z.coerce.number().int().min(10).default(280_000),
+  /** How long a read of a file lasts, at most, in ms: inside Cloud Run's request timeout, so a read that stopped can't hold its place for good. A player asks on from where it got to. */
+  MEDIA_READ_MS: z.coerce.number().int().min(10).max(290_000).default(280_000),
+  /** How long an instance keeps the service limits it read (limits.ts) before reading them again, in ms: a change made in the database is in force everywhere within this, with no restart. */
+  LIMITS_CACHE_MS: z.coerce.number().int().min(0).max(300_000).default(30_000),
   /** How often the hub checks its LISTEN connection is alive, in ms, and how long that connection has to answer. */
   HUB_CHECK_MS: z.coerce.number().int().min(10).default(15_000),
   HUB_TIMEOUT_MS: z.coerce.number().int().min(10).default(5_000),

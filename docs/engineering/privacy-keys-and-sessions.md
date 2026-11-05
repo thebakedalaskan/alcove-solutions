@@ -3,7 +3,7 @@
 [Docs home](../README.md) · [System architecture](system-architecture.md) · [Data and storage](data-and-storage.md) · [Deployment and acceptance](deployment-and-acceptance.md)
 
 **Goal.** Readable content (names, emails, titles, guests, chat, audio, transcripts, shared-screen frames,
-notes) exists only in
+notes, files in a workspace) exists only in
 the browsers of the people it belongs to and inside the API process while it works on it. The database,
 object store, logs and network edge see ciphertext, opaque IDs, keyed hashes, sizes and timing. NEAR AI
 Cloud transcribes speech and writes notes, but only in confidential VMs whose hardware evidence Alcove checks
@@ -44,23 +44,29 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they keep beside a document for presenting it) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them) and `document:<id>` (what a document or board holds) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they keep beside a document for presenting it) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
+| Media token key | `HKDF(KMASTER, "alcove/media-token/v1")` | Derived per use; signs the token in [a file's URL](#files) |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
 | Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, and the first time an edit, is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding the recordings' database never has to give way to the edits' | That browser's IndexedDB (`alcove-offline`, `alcove-edits`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
 | Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the host's (the organizer's, or a stand-in's while the organizer is away) every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 | Call data keys | `HKDF(media key, "alcove/call-data/v1")` for each sender and epoch: seal what browsers send each other through LiveKit (pointers and marks on shared screens) | Only in the browsers in the call, in memory ([Calls and recordings › Pointing at shared screens](calls-and-recordings.md#how-it-travels)) |
 
 All derivations are HKDF-SHA-256 with 32-byte outputs. `salt=ownerId` means the ID's 32 decoded bytes; the
-index, sign-in attempt and billing keys use an empty salt.
+index, sign-in attempt, media token and billing keys use an empty salt.
 
 ## Records and envelopes
 
 A **record** is `{header, nonce, ciphertext}`: XChaCha20-Poly1305, a random 24-byte nonce, associated data
 `JCS(header)`. Every header carries `v`, `kind` and `ownerId` plus the record's exact location, and opening a
 record recomputes the expected header, so a record copied to another row, owner or object fails to open.
+
+A **binary record** is the same record for bytes too big to carry as text, kept as bytes: a 32-bit length, `JCS(header)`, the
+nonce, then the ciphertext. The seal, the header and the check are the same, and the XChaCha20-Poly1305 is too, byte for byte:
+HChaCha20 makes the key from the nonce and OpenSSL's ChaCha20-Poly1305 does the rest (`sealBinary` in `crypto.ts`), because a
+piece of a file is sealed on the one core every call runs on. A `media-piece` is one, and nothing else is yet.
 
 | Kind | Sealed under | Header binds |
 | --- | --- | --- |
@@ -89,6 +95,8 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `document-version` | state key `document:<id>` | workspace, document, version, which part of it (who and why, or 256 KiB of the state, with which part and of how many, so a version can't be cut short or reordered) |
 | `document-awareness` | state key `workspace` | workspace, document (a caret on its way between instances, never stored) |
 | `workspace-presence` | state key `workspace` | workspace (where someone is, on its way between instances, never stored) |
+| `workspace-media` | state key `media:<id>` | workspace, file (its name, type, size and dimensions) |
+| `media-piece` | state key `media:<id>` | workspace, file, seq, object (a piece of the file, as a binary record) |
 | `operation-result` | operation-result key | operation |
 | `billing` | billing key | owner |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
@@ -438,10 +446,45 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   ([Data and storage › Live traffic](data-and-storage.md#live-traffic)), and each stream looks again. A change that's being
   made is checked under the workspace's lock, so nothing gets in after someone is taken out.
 
+### Files
+
+A file in a workspace ([Data and storage › Media](data-and-storage.md#media)) is reached through a document that has it, and
+only that way, because a guest's seat covers one document. Whoever can open one of those documents can read the file, in Trash
+too. Adding one, or reusing one in another document, takes `edit` on that document, and reusing one takes being able to reach
+it already: an ID someone remembers or was told opens nothing. Deleting one takes `edit` on a document that has it, and on every
+other document that has it that they can open, or reusing a picture would make it theirs to delete, and takes it from all of them.
+A document they can't open doesn't count, because being stopped by it would tell them it's there. What a workspace keeps and what each
+person uploads in a day are limited, the same for everyone: a guest's day is counted by the person their pass names, in the API's
+memory, and an account's in `media_upload_days`, a number a day ([Data and storage › Media](data-and-storage.md#media)). `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
+
+A picture or a player can't send a header and a guest has no cookie, so reading a file takes a URL with a token in it. The token
+is signed, as a call pass is, and lasts 12 hours. It says who's asking (an account's ID, a seat in a call, or both) and what
+for (one workspace, document and file), by opaque IDs and nothing else, and it decides nothing:
+
+- **Every request asks again**, each `Range` included: who's asking and whether they can open the document, in
+  `modules/workspaceAccess.ts`, and whether the document still has the file. An answer sends at most 16 MiB, and a read of a
+  whole file asks again every four pieces, so a read can't outlast access by much. Someone who lost the document gets the same
+  `not-found` on their next request as a URL nobody made, and so does an expired, changed or unsigned token. If they're given
+  the document back, the same URL works again.
+- **An account counts only with its own session.** The browser's cookie comes with the request, and it has to be that
+  account's and live. So a URL is nothing in anyone else's browser, or none, and it stops the moment that session ends.
+- **Nothing counts against anyone until they've shown they're who it names,** so a leaked URL can't spend their reads.
+- **A seat counts while someone's in it**: the call is going on, whoever has the seat is let in, and they weren't taken out.
+  That's what a pass says, read from the call each time, so leaving the call stops the URL even while their `document_access`
+  row waits for the call to end. For a guest the URL is all there is, so within those limits, for 12 hours, anyone who holds it reads
+  that one file. A seat is named by what the call already calls it (`CallParticipant.seat`). Nothing of a call pass goes in a
+  URL, and a pass reads no file by itself.
+
+Anything off the list of what can be shown in place only downloads, what a file is served as comes from its sealed info and
+never the request, and every answer says `nosniff` and `no-store`, with a Content-Security-Policy that lets nothing run if one is
+opened by itself. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
+takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
+
 ## Requests
 
 - **Origin and content type.** Every state-changing request under `/v1` must carry `Origin: WEB_ORIGIN`
-  (`403 forbidden` otherwise) and a JSON or audio body (`400 invalid` otherwise). This blocks blind cross-site
+  (`403 forbidden` otherwise) and a JSON or audio body (`400 invalid` otherwise), or for a shared-screen frame a JPEG and
+  for a piece of a file bytes (`application/octet-stream`), on those routes alone. This blocks blind cross-site
   POSTs that `SameSite=Strict` would still allow from sibling ports or subdomains. CORS answers only
   `WEB_ORIGIN`, with credentials.
 - **Idempotency.** Signed-in mutations carry `x-alcove-operation` (Id128). The receipt stores an HMAC
@@ -464,9 +507,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   What's for people in a workspace keeps a receipt, because a retry mustn't make a second workspace, item or copy, and
   every one of those answers is only an ID or a yes: a receipt filed under someone in a workspace outlives whatever it
   was about, so it can't hold a name. What a guest in a call can reach of a workspace keeps none: renaming an item,
-  which happens as a title is typed, restoring one, and reading. Each sets an explicit state, and a guest has no account
-  to file a receipt under. Nor does anything about a document's content: an update that arrives twice changes nothing,
-  and a receipt would hold a copy of it.
+  which happens as a title is typed, restoring one, reading, and everything to do with files. Each sets an explicit state
+  or, for a piece of a file, is kept by its place, and a guest has no account to file a receipt under. Nor does anything about
+  a document's content: an update that arrives twice changes nothing, and a receipt would hold a copy of it. Starting an upload
+  twice leaves one nobody finishes, which maintenance takes.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the last
   `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
@@ -482,15 +526,16 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Changes to a workspace's tree and people: 600 a
   minute per person, opening its stream 120, making a workspace 20 per account and reading your list of them 120. Document
   updates: 1,200 a minute per person, and 64 MiB of them; carets 1,800; saying where you are 600; opening a document's stream
-  240; reading a version 60; reading everything you can open for search 12. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
+  240; reading a version 60; reading everything you can open for search 12. Pieces of a file: 600 a minute per person, and what a file, a workspace and each person's day can hold, which change without a deploy ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Files read: 240 a minute per person, an account or a seat, counting each URL asked for and each piece opened. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
-- **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV or a shared-screen frame over
-  1 MiB is refused from its `content-length` (`400 invalid`) before the body is read; a frame must also be a
-  JPEG between 64 and 4096 pixels a side. A document update is at most what a document can hold, 16 MiB, and a caret 4 KiB.
-  A document stops taking new content at 16 MiB or 150,000 items on its page, and anything but deletes at twice that or at
-  900,000 structs in all. Too much is `413 too-large`, and what no honest client sends `400 invalid`: neither lets go of
-  anything a browser holds.
+- **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV, a shared-screen frame over
+  1 MiB or a piece of a file over 4 MiB is refused from its `content-length` (`400 invalid`) before the body is read; a frame
+  must also be a JPEG between 64 and 4096 pixels a side, and a piece exactly its own length. A file can be at most what
+  `media.file_bytes` allows, 512 MiB unless it's changed, and never more than 4 GiB. A document update is at most what a
+  document can hold, 16 MiB, and a caret 4 KiB. A document stops taking new content at 16 MiB or 150,000 items on its page,
+  and anything but deletes at twice that or at 900,000 structs in all. Too much is `413 too-large`, and what no honest
+  client sends `400 invalid`: neither lets go of anything a browser holds.
 - **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies, as adding
   someone to a workspace and sharing a document do their addresses; after that they're a `member_id` or an `access_id`.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
@@ -498,7 +543,9 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   Google from a join page keeps the call to come back to in the tab's sessionStorage. Alcove's own logs write
   those paths as `/v1/calls/:code`, and Cloud Run's request logs, which keep raw URLs, are excluded from the
   project's log sink for that reason ([Deployment and acceptance](deployment-and-acceptance.md)). Call passes go
-  in a header.
+  in a header. A file's token is in the path it's read from (`/v1/media/<token>`), which Alcove's logs write as
+  `/v1/media/:token` and Cloud Run's stay out of the same way; it holds opaque IDs and a signature, and [reads nothing by
+  itself](#files).
   A move's code travels in a link's fragment, which browsers never send, and then in POST bodies, like the claim
   that replaces it; only their SHA-256 is stored.
   Logs hold IDs, codes, states, counts and timings: never content, emails, bodies, keys, session IDs, call
@@ -548,7 +595,7 @@ third-party loads.
   the API fetch a photo, not who looked at whom. Guests in a call aren't signed in, so they're shown
   everyone without photos.
 - **The Content-Security-Policy** allows nothing outside the app's origin and the API's (requests, audio,
-  photos), and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
+  photos, files), `blob:` for a picture read into the page and for what's played from it, and the LiveKit host for calls (with `*.livekit.cloud`, where LiveKit Cloud's media servers are). Inline scripts run only by the SHA-256 of what the build produced (`apps/web/scripts/csp.mjs`
   writes the policy at deploy), and nothing may `eval` (the contract configures zod not to compile code at
   runtime). `Permissions-Policy` also opts out of the browser's ad-topics API.
 - **No analytics.** The app has no analytics, error-tracking or tag scripts. Cloudflare Pages inserts its
@@ -605,9 +652,11 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | --- | --- |
 | Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, `series`, so which accounts connected Google, and how many series that repeat an account has, though not which calls are in one: that's sealed in each call); while a change to a series goes through, that one is; revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; while a call runs, how many people its organizer rang, and for each when the ring started and when it stops: so also that someone said "in a little while" (a ring still to come) or answered at all (a ring that stopped early), and when, though never how, and never who; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; while a call runs, which parts of it have live notes, how many views of each, when they were last refreshed, and the size of each; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. |
-| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), and when the oldest thing in its Trash went there. Never a name, a folder, or how the tree is arranged. `presenter_notes` shows which accounts keep notes on which documents, and so that those accounts could open them: one row each, of a size, and never what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
+| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), and when the oldest thing in its Trash went there. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes` shows which accounts keep notes on which documents, and so that those accounts could open them: one row each, of a size, and never what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. Never a word, a title, a mention or a comment. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
-| Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
+| Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a shared screen one each time it changes (at most every 4 seconds), and a file one for every 4 MiB |
+| Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
+| A file's URL | Readable by anyone who sees it, but only opaque IDs: the account or the call, seat and organizer asking, the workspace, document and file, and when it runs out. Alcove keeps it out of its logs, but a browser shows it to whoever opens a file by itself |
 | Ciphertext lengths | Not padded, so title, guest list, transcript, clip and own-notes lengths leak approximately. An answer to an invitation is padded: its length would say which of three words it is |
 | NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: what someone selected in a document, when they ask Alcove to shorten it or turn it into a checklist, and nothing else about it; for notes, live notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, their breakout rooms' too, with their dates (in the asker's time zone), decisions, open questions and follow-ups; comparing a call with earlier ones in its series, what those left standing (the organizer's notes: decisions and open questions), with this call's decisions and transcripts. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
 | NEAR AI's gateway and operators | Alcove's API key on attestation requests, which models are verified when, the size and timing of every sealed request, and the server's address; never the content, the request's parameters or the key inside the seal. A deployment NEAR AI chooses to run in an attested VM on a measured dstack image passes. |
@@ -675,7 +724,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   rings to its address in other people's calls; and its `owners` row,
   from which everything else keyed by the account cascades: its identity (subject and email indexes), every
   session in every browser, its profile (pins and groups with it), its Google connection (the refresh token),
-  its receipts, notes jobs and billing account. Then the API drops the Google access token it held in memory,
+  its receipts, notes jobs, billing account and what it uploaded each day. Then the API drops the Google access token it held in memory,
   closes the LiveKit rooms of its calls still going (which takes everyone out of them, as ending a call does),
   and deletes the audio and shared-screen objects; failures are queued in `object_gc`, which keeps only the object's ID and
   the deleted account's ID until maintenance deletes it. Only then is Google asked to revoke the refresh token,
@@ -703,18 +752,24 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   with it waits for an addition being written, which is then there to delete, and any that gets there later fails on the
   missing account. Signing in again with the same account starts a new one, empty, with the welcome credits.
 - **Deleting a workspace** deletes its `owners` row, and everything of it goes with that: its state, people, documents,
-  what they hold, and who they were shared with. Deleting something from one for good deletes it from the state and its
-  `documents` row, for everyone, and its updates, snapshot and versions with that row. Text someone deletes from a document
-  stays in the log until it compacts and in the versions that hold it, and isn't sent to anyone who opens the document after.
-  Everyone's presenter notes on a document go with its `documents` row, by a foreign key, whichever account they're under.
+  what they hold, and who they were shared with. Its files' objects are queued in `object_gc` in the same transaction and
+  deleted straight after it. Deleting something from one for good deletes it from the state and its `documents` row, for
+  everyone, its updates, snapshot and versions with that row, and any file nothing else has with it: rows, stored bytes and, the
+  same way, objects. Text someone deletes from a document stays in the log until it compacts and in the versions that hold it,
+  and isn't sent to anyone who opens the document after. Everyone's presenter notes on a document go with its `documents` row,
+  by a foreign key, whichever account they're under.
+- **Deleting a file** from a workspace takes it from every document that has it, for everyone: rows and stored bytes in one
+  transaction, and its objects as above. It's refused for someone who can open one of those documents and can't edit it.
+  Taking its block out of a document deletes nothing: a version may still show it.
 - **Deleting your account** takes its presenter notes with its `owners` row, and also reaches every workspace its address still appears in, including ones it left: it comes
   out of them and off every document given to its address, unless another account still signs in with that address, and
   everything its calls gave people's seats ends. A workspace left with nobody in it is deleted, even if people outside it
   have documents from it. One left with no admin makes its longest-standing person its admin. A restricted document only
-  the account could open goes, in Trash or not; anything else left with nobody to open it goes to Trash; and what it made
+  the account could open goes, in Trash or not, with any file nothing else has; anything else left with nobody to open it goes to Trash; and what it made
   keeps its name and loses its address, so signing in again with that address brings none of it back. Every row is touched
   under its workspace's lock, the order every change takes, workspace by workspace in order of owner and after the
-  account's, so it can't deadlock with a change, or with someone else leaving at the same moment.
+  account's, so it can't deadlock with a change, or with someone else leaving at the same moment. Files that go are queued in
+  `object_gc` in the transaction, and deleted before Google is asked to revoke anything.
 - **Series** that follow on from each other have no record of their own: a series is the ID its calls share inside
   their sealed manifests (with Google's ID for a recurring event), so it goes when its calls do. One scheduled to
   repeat has a sealed `series` item, deleted with its link in the transaction that deletes its last call, however
@@ -729,9 +784,10 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
 - **Moves to other devices** run out within minutes and upkeep deletes them; a call's go when it ends.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
-  `object_gc`, removes objects older than 24 hours that no recording piece or shared-screen frame
+  `object_gc`, removes objects older than 24 hours that no recording piece, shared-screen frame or piece of a file
   references, removes rings a day after they ran out, in a call that went on that long, deletes for good what's been in
-  a workspace's Trash for 30 days, ends seats whose call is over, and removes live notes of calls that have ended.
+  a workspace's Trash for 30 days, ends seats whose call is over, removes live notes of calls that have ended, and takes
+  away what an upload left when its browser went, a day on.
 
 ## Moving to confidential computing
 

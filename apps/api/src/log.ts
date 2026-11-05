@@ -8,8 +8,8 @@
  * - Privacy: never pass content (titles, names, chat, audio, notes, request bodies). Logs are built
  *   to leave the confidential VM, so they hold only IDs, codes, states, counts, sizes and timings.
  *   Two backstops catch mistakes: known secret field names are redacted, and every string (messages,
- *   fields, errors and their causes) is scrubbed of email addresses, bearer credentials and signed
- *   tokens. Postgres errors keep their codes but never echo row values.
+ *   fields, errors and their causes) is scrubbed of email addresses, bearer credentials, signed
+ *   tokens and files' URLs. Postgres errors keep their codes but never echo row values.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import pino, { type DestinationStream, type Logger as Pino } from 'pino';
@@ -35,8 +35,10 @@ export interface LogOptions { level?: Level | 'silent'; format?: 'json' | 'prett
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 const CREDENTIAL = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const SIGNED_TOKEN = /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g;
+/** Where a file is read from, as a browser's report of a picture that failed might quote it, whole or cut short. */
+const FILE_URL = /\/v1\/media\/[A-Za-z0-9_.-]+/g;
 /** What a string may not carry into a log line, wherever it came from. */
-export const scrubText = (s: string): string => s.replace(EMAIL, '[email]').replace(CREDENTIAL, '$1 [redacted]').replace(SIGNED_TOKEN, '[token]');
+export const scrubText = (s: string): string => s.replace(EMAIL, '[email]').replace(CREDENTIAL, '$1 [redacted]').replace(SIGNED_TOKEN, '[token]').replace(FILE_URL, '/v1/media/[token]');
 function scrubValue(v: unknown, depth: number): unknown {
   if (typeof v === 'string') return scrubText(v);
   // pino calls this before its own serializers, so errors (and their causes) are serialized here first.
