@@ -72,14 +72,21 @@ function pressedId(board: Board, target: Element): string | null {
   return o?.k === 'frame' && !target.closest('.bf-h') ? null : id;
 }
 
-function panGesture(board: Board, start: SheetPoint): Gesture {
-  let last = start;
-  board.stopFollow();
-  board.stopGlide();
+function panGesture(board: Board, press: SheetPoint): Gesture {
+  let last = press;
+  let taken = false;
   board.set({ panning: true });
   const stop = (): void => board.set({ panning: false });
   return {
     move(at) {
+      if (!taken) {
+        // A tap isn't looking around, and on a board that can't be edited every press lands here. So the camera is taken by the drag, not the press.
+        if (Math.abs(at.sx - last.sx) + Math.abs(at.sy - last.sy) < CLICK_SLOP) return;
+        // Whoever is being followed has gone on moving it since the press, so the drag starts from here. Otherwise what was pressed stays under the pointer.
+        if (board.getSnapshot().following) last = at;
+        board.takeCamera();
+        taken = true;
+      }
       board.camera.panBy(at.sx - last.sx, at.sy - last.sy);
       last = at;
     },
@@ -201,11 +208,20 @@ function pinchGesture(board: Board, a: ClientPoint, b: ClientPoint): (a: ClientP
   const { camera } = board;
   const middle = (p: ClientPoint, q: ClientPoint): SheetPoint => camera.point({ clientX: (p.clientX + q.clientX) / 2, clientY: (p.clientY + q.clientY) / 2 });
   const apart = (p: ClientPoint, q: ClientPoint): number => Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY) || 1;
-  const { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b);
-  board.stopFollow();
-  board.stopGlide();
+  let { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b), taken = false;
   return (p, q) => {
     const now = middle(p, q);
+    if (!taken) {
+      // As with a drag: two fingers landing aren't a pinch until they move, and a followed camera goes on moving until then.
+      if (Math.abs(apart(p, q) - wide) + Math.hypot(now.sx - start.sx, now.sy - start.sy) < CLICK_SLOP) return;
+      if (board.getSnapshot().following) {
+        ({ z } = camera.getSnapshot());
+        wide = apart(p, q);
+        start = now;
+      }
+      board.takeCamera();
+      taken = true;
+    }
     camera.set(camera.holding(start, now.sx, now.sy, z * apart(p, q) / wide));
   };
 }
@@ -337,8 +353,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     e.preventDefault();
     e.stopPropagation();
     if (safariPinch) return;
-    board.stopFollow();
-    board.stopGlide();
+    board.takeCamera();
     const unit = e.deltaMode === 1 ? LINE_HEIGHT : e.deltaMode === 2 ? camera.height : 1;
     if (e.ctrlKey || e.metaKey) {
       const at = camera.point(e);
@@ -357,8 +372,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     e.preventDefault();
     const scale: unknown = Reflect.get(e, 'scale');
     if (!safariPinch || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
-    board.stopFollow();
-    board.stopGlide();
+    board.takeCamera();
     camera.set(camera.holding(safariPinch.at, safariPinch.at.sx, safariPinch.at.sy, safariPinch.z * scale));
   }, { signal });
   sheet.addEventListener('gestureend', (e) => {

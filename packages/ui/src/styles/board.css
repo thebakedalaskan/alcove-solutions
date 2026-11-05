@@ -12,6 +12,10 @@
 @property --dot { syntax: "<length>"; inherits: false; initial-value: 24px; }
 @property --dx { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --dy { syntax: "<length>"; inherits: false; initial-value: 0px; }
+/* The same for a pointer, which moves ten times a second: inherited, each move would restyle everything in its face too. */
+@property --bcx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --bcy { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --iz { syntax: "<number>"; inherits: false; initial-value: 1; }
 
 /* ---------------------------------------------------------------- the board and its rail */
 /* The board sits on the stage like anything else that's shared. Its tools are the call's dock, turned on its side, just off the sheet. */
@@ -88,6 +92,7 @@
 .bf-h .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* A frame is picked by its title, so one left blank keeps a faint one to press. */
 .bf-h .t:empty::before { content: "Frame"; color: var(--ink-3); }
+.bf-h.is-other { outline: 2px solid var(--pc); outline-offset: 4px; border-radius: 6px; }
 .bf-h .sub { flex: none; font: 500 14px/1 var(--font-mono); letter-spacing: 0; color: var(--ink-3); }
 /* Typing a title: in the title's own type and place, on one line, across all the room a title can take. */
 .bf-h:has(.bo-edit) { width: calc(100% + 12px); }
@@ -170,7 +175,9 @@
 /* ---------------------------------------------------------------- pointers */
 /* Everyone's pointer: their face and name, and a glow on whoever is talking. `--iz` undoes the camera's zoom, so a pointer stays one size. It's written on their layer alone: changing a custom property restyles an element's children, and the world's children are everything on the board. */
 .bd-pts { position: absolute; left: 0; top: 0; width: 0; height: 0; }
-.bc { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; transform: translate(var(--bcx, 0), var(--bcy, 0)) scale(var(--iz, 1)); transform-origin: 0 0; transition: transform var(--bd-point) var(--ease-in-out); }
+/* Updates come ten times a second, so a pointer goes at an even speed for a little longer than the gap between two: it's still moving when the next arrives, even a late one. An ease would start from rest at each. Its size isn't eased with its place, because that has to keep step with the board, at once or with its glide. */
+.bc { --iz: inherit; position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; translate: var(--bcx, 0) var(--bcy, 0); scale: var(--iz, 1); transform-origin: 0 0; transition: translate var(--bd-point) linear; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.bd.is-glide .bc { transition: translate var(--bd-point) linear, scale var(--duration-3) var(--ease-in-out); }
 .bc .ac-ptag { height: 24px; font-size: 12px; transition: box-shadow var(--duration-2) var(--ease-out); }
 .bc .ac-ptag .n { display: inline-flex; align-items: center; gap: 5px; }
 .bc .ac-ptag .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -184,6 +191,8 @@
 /* ---------------------------------------------------------------- selection */
 /* Selection, handles and connection points: drawn in screen pixels, so they never scale with the board */
 .bs { position: absolute; z-index: 8; pointer-events: none; border-radius: 8px; box-shadow: 0 0 0 1.5px var(--horizon); }
+/* It's drawn where a glide will end, so it takes the glide's own way there and stays round what it's selecting. */
+.bd.is-glide .bs { transition: left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out), width var(--duration-3) var(--ease-in-out), height var(--duration-3) var(--ease-in-out); }
 .bs i { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--horizon); pointer-events: auto; }
 .bs i:nth-child(1) { left: -5px; top: -5px; cursor: nwse-resize; }
 .bs i:nth-child(2) { right: -5px; top: -5px; cursor: nesw-resize; }
@@ -403,5 +412,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bd.is-new { animation: none; clip-path: none; }
-  .bo.is-glide, .bc { transition: none; }
+  .bo.is-glide, .bc, .bd.is-glide .bc { transition: none; }
+  .bc { animation: none; }
 }

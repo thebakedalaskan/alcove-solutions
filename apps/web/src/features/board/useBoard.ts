@@ -141,7 +141,7 @@ export class Board implements LiveStore<BoardState> {
   mode: BoardMode;
   /** Says something to the person at this board. */
   tell: (text: string) => void = () => undefined;
-  /** Told when following stops from this side: a scroll, a zoom, Esc. */
+  /** Told when following stops, whatever stopped it. */
   onFollow: ((id: string | null) => void) | undefined;
   /** Told what to say to this person about what just happened to them. */
   onSay: ((text: string) => void) | undefined;
@@ -150,6 +150,8 @@ export class Board implements LiveStore<BoardState> {
   letGo: () => boolean = () => false;
   /** Writes in a word still being composed. The field being typed in fills this in. */
   flushTyping: (() => void) | null = null;
+  /** Where this person was when they started following, which is where Stop and Esc take them. */
+  home: BoardPlace | null = null;
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -547,9 +549,11 @@ export class Board implements LiveStore<BoardState> {
     });
   }
 
-  /** The person has taken the camera, so it stops easing. A glide under way lands at once, because the camera is already where it was going. */
-  stopGlide(): void {
+  /** The person has taken the camera. They've started looking around from here, so following stops and leaves them here, and a glide ends at once, where it was heading. */
+  takeCamera(): void {
     this.untouched = false;
+    this.home = null;
+    this.stopFollow();
     if (this.state.glide) this.set({ glide: false });
   }
 
@@ -568,7 +572,7 @@ export class Board implements LiveStore<BoardState> {
   }
 
   zoomBy(factor: number): void {
-    this.stopFollow();
+    this.takeCamera();
     this.glideTo(this.camera.zoomed(factor, this.camera.width / 2, this.camera.height / 2));
   }
 
@@ -576,7 +580,7 @@ export class Board implements LiveStore<BoardState> {
   zoomOut = (): void => this.zoomBy(1 / ZOOM_STEP);
 
   showEverything = (): void => {
-    this.stopFollow();
+    this.takeCamera();
     this.fitAll();
   };
 
@@ -587,12 +591,15 @@ export class Board implements LiveStore<BoardState> {
   /** Fills the sheet with a frame. */
   focusFrame(id: string): void {
     const frame = this.state.view.byId.get(id);
-    if (frame?.k === 'frame') this.glideTo(this.camera.fitting(frame, SLIDE_PAD));
+    if (frame?.k !== 'frame') return;
+    this.takeCamera();
+    this.glideTo(this.camera.fitting(frame, SLIDE_PAD));
   }
 
+  /** Follows someone. A tile doesn't: it's a picture of the board, with nothing on it to stop following by. */
   follow(id: string | null): void {
     if (id === null) this.stopFollow();
-    else this.set({ following: id });
+    else if (!this.look.mini) this.set({ following: id });
   }
 
   stopFollow(): void {

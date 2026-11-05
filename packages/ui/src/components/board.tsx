@@ -426,19 +426,21 @@ export const BoardEdit = forwardRef<HTMLTextAreaElement, Omit<TextareaHTMLAttrib
 });
 
 /** A frame, in board units. `theme`: drawn round a theme after sorting. `dim`: steps back. `land`: arrives from a room, `delay` ms from now. */
-export const BoardFrame = memo(function BoardFrame({ id, x, y, w, h, title, sub, hint, land = false, dim = false, theme = false, delay, editor }: BoardBox & {
+export const BoardFrame = memo(function BoardFrame({ id, x, y, w, h, title, sub, hint, land = false, dim = false, theme = false, delay, other, editor }: BoardBox & {
   id: string; title: string;
   /** Beside the title: how many stickies, or who was in the room. */
   sub?: string | undefined;
   /** Shown while it's empty. */
   hint?: string | undefined;
   land?: boolean | undefined; dim?: boolean | undefined; theme?: boolean | undefined; delay?: number | undefined;
+  /** The colour of whoever else is typing in its title, which is where the ring goes. */
+  other?: string | undefined;
   /** A `BoardEdit` while its title is being typed in. */
   editor?: ReactNode;
 }) {
   return (
     <div className={cn('bf', land && 'is-land', dim && 'is-dim', theme && 'is-theme')} data-id={id} style={{ ...place({ x, y, w, h }), ...(delay ? { '--d': `${delay}ms` } : {}) }}>
-      <div className="bf-h">{editor ?? <span className="t">{title.trim()}</span>}{sub && <span className="sub">{sub}</span>}</div>
+      <div className={cn('bf-h', other && 'is-other')} style={other ? { '--pc': other } : undefined}>{editor ?? <span className="t">{title.trim()}</span>}{sub && <span className="sub">{sub}</span>}</div>
       {hint && <p className="bf-hint">{hint}</p>}
     </div>
   );
@@ -494,15 +496,22 @@ export const BoardPicture = memo(function BoardPicture({ src, shot = false, capt
   return <div {...objectAttrs(o, 'k-shot')}><span className="bo-shot">{picture}</span><p className="bo-t">{caption}</p></div>;
 });
 
+/** Moves a pointer without drawing it again, as `moveBoardCamera` moves the board: it's written on a `BoardPointer`'s ref, in board units, and eases there. */
+export function moveBoardPointer(pointer: HTMLElement, x: number, y: number): void {
+  pointer.style.setProperty('--bcx', `${x}px`);
+  pointer.style.setProperty('--bcy', `${y}px`);
+}
+
 /**
  * Someone's pointer: a face and a name, never colour alone, in board units. Whoever is `talking` glows, with the same ring
- * as their tile, and dots show who's `typing`. It stays one size whatever the zoom, through `--iz`.
+ * as their tile, and dots show who's `typing`. It stays one size whatever the zoom, through `--iz`. `x y` say where it first
+ * appears, and `moveBoardPointer` where it goes after that.
  */
-export const BoardPointer = memo(function BoardPointer({ x, y, person, name, colour, talking = false, typing = false }: {
+export const BoardPointer = memo(forwardRef<HTMLDivElement, {
   x: number; y: number; person: AvatarPerson; name: string; colour: string; talking?: boolean | undefined; typing?: boolean | undefined;
-}) {
+}>(function BoardPointer({ x, y, person, name, colour, talking = false, typing = false }, ref) {
   return (
-    <div className={cn('bc', talking && 'is-talk')} style={{ '--bcx': `${x}px`, '--bcy': `${y}px`, '--stage-point': colour }}>
+    <div ref={ref} className={cn('bc', talking && 'is-talk')} style={{ '--bcx': `${x}px`, '--bcy': `${y}px`, '--stage-point': colour }}>
       <SharePointer person={person} name={(
         <>
           <span className="nm">{name}</span>
@@ -512,7 +521,7 @@ export const BoardPointer = memo(function BoardPointer({ x, y, person, name, col
       )} />
     </div>
   );
-});
+}));
 
 /** A comment pinned to something, with their face on the pin, in board units. `open` shows what they said beside it. */
 export const BoardComment = memo(function BoardComment({ id, x, y, person, name, text, open = false, onOpen }: {
