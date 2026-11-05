@@ -459,6 +459,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   the organizer is the one telling them: they could reach it when they brought it. It opens nothing, and it's a first name
   and never an address, the same whether its maker is still in the workspace or has deleted their account. Something
   nobody in particular made says nobody's name.
+- **What it's called.** The ID a call keeps says which workspace and which item, so only someone who can open it is told
+  that. Anyone else is told a name keyed to them and worked out for that call (`closedDocumentKey`, nothing stored): the
+  same on every read, but no use for telling whether two people, two calls or two entries mean the same thing or the same
+  workspace. An organizer who's lost something they brought sends that name back with the rest of the list, and it means
+  what the call keeps on that call alone. Once someone can open it, they're told the real ID.
 - **Refusals.** An ID in a request is only ever compared with the organizer's library. It reaches no workspace, so a
   made-up one, a real one they can't open, a folder and something in Trash are all refused alike (`400 invalid`), in the
   same time, and nothing anyone guessed gets onto a call, where it would say whose it is.

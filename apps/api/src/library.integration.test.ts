@@ -3,7 +3,7 @@
  * only IDs, and everyone on it is told what they may know of them. Through browsers talking to the real API over HTTP via
  * @alcove/api-http, on real Postgres and, for guests, a real call.
  */
-import { AlcoveApiError, CALL_PASS_HEADER, OPERATION_HEADER, type CallDocument, type CallSession, type CallState, type DocumentLibrary, type ItemKind, type RepeatInput, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, CALL_PASS_HEADER, OPERATION_HEADER, type CallDocument, type CallSession, type CallState, type DocumentKind, type DocumentLibrary, type ItemKind, type RepeatInput, type WorkspaceRole } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -98,6 +98,8 @@ function weekly(first: number, count: number): RepeatInput {
 /** A series' calls still to come. */
 const inSeries = async (who: Account, seriesId: string | undefined) => (await who.api.meetings.upcoming()).filter((m) => m.seriesId === seriesId);
 const on = async (who: Account, meetingId: string) => (await who.api.meetings.get(meetingId)).documents;
+/** What a call tells someone who can't open something: what it is and whose, by a name that's only theirs, only there. */
+const closedAs = (by: string | null, kind: DocumentKind = 'doc') => ({ id: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), kind, by, name: null });
 const upcomingOn = async (who: Account, meetingId: string) => (await who.api.meetings.upcoming()).find((m) => m.id === meetingId)?.documents;
 /** Writes what a call brings as it's stored, for IDs no request can put there. */
 async function stored(who: Account, meetingId: string, documents: string[]) {
@@ -232,7 +234,7 @@ describe('a call’s documents', () => {
 
     const m = await ann.api.meetings.create({ ...soon([ben.email, cas.email, dee.email]), documents: [plan, flow] });
     const opened: CallDocument[] = [{ id: plan, kind: 'doc', by: 'Ann', name: 'Launch plan' }, { id: flow, kind: 'board', by: 'Ann', name: 'Onboarding flow' }];
-    const closed: CallDocument[] = [{ id: plan, kind: 'doc', by: 'Ann', name: null }, { id: flow, kind: 'board', by: 'Ann', name: null }];
+    const closed = [closedAs('Ann'), closedAs('Ann', 'board')];
     expect(m.documents).toEqual(opened);
     expect(await on(ann, m.id)).toEqual(opened);
     expect(await on(ben, m.id)).toEqual(opened);
@@ -286,11 +288,15 @@ describe('a call’s documents', () => {
     expect(m.documents).toEqual([{ id: brought, kind: 'doc', by: 'Ann', name: 'CANARY-CLOSED' }]);
 
     for (const who of [ben, dee]) {
-      expect(await on(who, m.id)).toEqual([{ id: brought, kind: 'doc', by: 'Ann', name: null }]);
+      expect(await on(who, m.id)).toEqual([closedAs('Ann')]);
       const everything = JSON.stringify([await who.api.meetings.get(m.id), await who.api.meetings.upcoming(), await who.api.meetings.past(), await who.api.documents.list()]);
       expect(everything).not.toContain('CANARY');
-      // And bringing it to their own call, having seen its ID, is refused as anything else they can't open is.
-      expect(await refusal(who.api.meetings.create({ ...soon(), documents: [brought] }))).toEqual(await refusal(who.api.meetings.create({ ...soon(), documents: [`${madeUp()}.${madeUp()}`] })));
+      expect(everything).not.toContain(brought);
+      // And bringing it to their own call, by what they're told or by its real ID, is refused as anything else they can't open is.
+      const told = (await on(who, m.id)).map((d) => d.id);
+      const madeUpOne = await refusal(who.api.meetings.create({ ...soon(), documents: [`${madeUp()}.${madeUp()}`] }));
+      expect(await refusal(who.api.meetings.create({ ...soon(), documents: told }))).toEqual(madeUpOne);
+      expect(await refusal(who.api.meetings.create({ ...soon(), documents: [brought] }))).toEqual(madeUpOne);
     }
     expect(h.logs.join('')).not.toContain('CANARY-CLOSED');
 
@@ -314,7 +320,45 @@ describe('a call’s documents', () => {
     });
     expect(listed(await ann.api.documents.list())[0]?.by).toBeNull();
     expect(await on(ann, m.id)).toEqual([{ id: brought, kind: 'doc', by: null, name: 'From the call' }]);
-    expect(await on(dee, m.id)).toEqual([{ id: brought, kind: 'doc', by: null, name: null }]);
+    expect(await on(dee, m.id)).toEqual([closedAs(null)]);
+  });
+
+  it('can’t be matched up by someone who can’t open them: not by two people, not across calls, not to the same workspace', async () => {
+    const ann = await account('ann');
+    const cas = await account('cas');
+    const dee = await account('dee');
+    const id = await workspace(ann, 'Launch');
+    await make(ann, id, 'document', 'Plan');
+    await make(ann, id, 'document', 'Budget');
+    const plan = await idOf(ann, 'Plan');
+    const budget = await idOf(ann, 'Budget');
+    const guests = [cas.email, dee.email];
+    const first = await ann.api.meetings.create({ ...soon(guests), documents: [plan, budget] });
+    const second = await ann.api.meetings.create({ ...soon(guests), documents: [plan] });
+
+    const told = async (who: Account, meetingId: string) => (await on(who, meetingId)).map((d) => d.id);
+    const theirs = [...await told(dee, first.id), ...await told(dee, second.id), ...await told(cas, first.id), ...await told(cas, second.id)];
+    // Six entries for two documents, and nothing says which are the same, or that they're in the same place.
+    expect(theirs).toHaveLength(6);
+    expect(new Set(theirs).size).toBe(6);
+    for (const told of theirs) {
+      expect(told).not.toContain('.');
+      expect(`${plan}.${budget}`).not.toContain(told);
+    }
+    expect(JSON.stringify(await dee.api.meetings.upcoming())).not.toContain(id);
+
+    // It's the same whenever they look and wherever they read it, so a screen can keep track of what it shows.
+    expect(await told(dee, first.id)).toEqual(theirs.slice(0, 2));
+    expect((await upcomingOn(dee, first.id))?.map((d) => d.id)).toEqual(theirs.slice(0, 2));
+
+    // Whoever opens it is told what the call keeps, and being given it changes what they're told.
+    await ann.api.workspaces.share.set(id, await make(ann, id, 'document', 'Unrelated'), [{ email: dee.email }], 'read');
+    expect(await told(dee, first.id)).toEqual(theirs.slice(0, 2));
+    await ann.api.workspaces.addPerson(id, dee.email, 'read');
+    expect(await told(dee, first.id)).toEqual([plan, budget]);
+    expect(await told(cas, first.id)).toEqual(theirs.slice(3, 5));
+    // And what one person is told means nothing from anyone else.
+    expect(await code(ann.api.meetings.update(first.id, { documents: theirs.slice(3, 5) }))).toBe('invalid');
   });
 
   it('are refused the same when they’re made up, someone else’s, or anything else that isn’t in the organizer’s library', async () => {
@@ -382,14 +426,25 @@ describe('a call’s documents', () => {
     const m = await ann.api.meetings.create({ ...soon([ben.email]), documents: [plan] });
 
     await takeOut(ben, id, ann);
-    expect(await on(ann, m.id)).toEqual([{ id: plan, kind: 'doc', by: 'Ben', name: null }]);
+    expect(await on(ann, m.id)).toEqual([closedAs('Ben')]);
     expect((await on(ben, m.id))[0]?.name).toBe('Plan');
-    // It isn't in Ann's library any more, and that doesn't stop Ann changing the call: only what's new has to be.
+    // It isn't in Ann's library any more, and that doesn't stop Ann changing the call: only what's new has to be. Ann's
+    // screen sends the list back as it was told, and the call goes on keeping the same thing.
     expect(await namesOf(ann)).toEqual(['Brief']);
-    expect((await ann.api.meetings.update(m.id, { documents: [plan, brief] })).documents.map((d) => d.id)).toEqual([plan, brief]);
-    expect(await refusal(ann.api.meetings.update(m.id, { documents: [plan, brief, notes] }))).toEqual(await refusal(ann.api.meetings.update(m.id, { documents: [plan, brief, `${madeUp()}.${madeUp()}`] })));
+    const told = (await on(ann, m.id)).map((d) => d.id);
+    expect((await ann.api.meetings.update(m.id, { documents: [...told, brief] })).documents.map((d) => d.id)).toEqual([...told, brief]);
+    const o = await openOwner(h.deps, ann.ownerId, undefined);
+    expect((await findItem(o, h.pool, 'meeting', m.id, MeetingManifest))?.manifest.documents).toEqual([plan, brief]);
+    expect(await refusal(ann.api.meetings.update(m.id, { documents: [...told, brief, notes] }))).toEqual(await refusal(ann.api.meetings.update(m.id, { documents: [...told, brief, `${madeUp()}.${madeUp()}`] })));
+    // By the ID Ann had before losing it, it's the same thing, so one list can't hold it twice.
+    expect((await ann.api.meetings.update(m.id, { documents: [plan, brief] })).documents.map((d) => d.id)).toEqual([...told, brief]);
+    expect(await code(ann.api.meetings.update(m.id, { documents: [plan, ...told, brief] }))).toBe('invalid');
+    // What Ann's told on this call means nothing on another.
+    const other = await ann.api.meetings.create({ ...soon([ben.email]) });
+    expect(await code(ann.api.meetings.update(other.id, { documents: told }))).toBe('invalid');
     // Off the call, no request can add it, here or to another call: it's as anything else Ann can't open.
     expect((await ann.api.meetings.update(m.id, { documents: [brief] })).documents.map((d) => d.id)).toEqual([brief]);
+    expect(await code(ann.api.meetings.update(m.id, { documents: [...told, brief] }))).toBe('invalid');
     expect(await code(ann.api.meetings.update(m.id, { documents: [plan, brief] }))).toBe('invalid');
     expect(await code(ann.api.meetings.create({ ...soon(), documents: [plan] }))).toBe('invalid');
   });
@@ -409,16 +464,17 @@ describe('a call’s documents', () => {
     const repeating = await ann.api.meetings.create({ ...soon(guests), startsAt: new Date(start).toISOString(), documents: [plan], repeat: weekly(start, 2) });
     const single = await ann.api.meetings.create({ ...soon(guests), documents: [plan] });
     await takeOut(ben, id, ann);
-    const shut: CallDocument = { id: plan, kind: 'doc', by: 'Ben', name: null };
+    const shut = closedAs('Ben');
 
     // The next call in a series takes the list as it's kept.
     expect((await ann.api.meetings.scheduleNext(single.id, new Date(Date.now() + WEEK).toISOString())).documents).toEqual([shut]);
     // A change to this and later calls writes what it's given to each of them, what this call keeps included, and the
     // calls a repeat adds copy the call before them.
-    await ann.api.meetings.update(repeating.id, { documents: [plan, brief] }, { scope: 'following' });
+    await ann.api.meetings.update(repeating.id, { documents: [...(await on(ann, repeating.id)).map((d) => d.id), brief] }, { scope: 'following' });
     await ann.api.meetings.update(repeating.id, { repeat: weekly(start, 3) }, { scope: 'following' });
     const calls = await inSeries(ann, repeating.seriesId);
     expect(calls).toHaveLength(3);
+    expect(new Set(calls.flatMap((c) => c.documents.map((d) => d.id))).size).toBe(4);
     for (const call of calls) {
       expect(call.documents).toEqual([shut, { id: brief, kind: 'doc', by: 'Ann', name: 'Brief' }]);
       // Everyone on each of them is told what they'd be told on any call: a name only if they can open it.
@@ -443,12 +499,13 @@ describe('a call’s documents', () => {
     const [planId = '', boardId = '', staysId = ''] = brought;
     const m = await ann.api.meetings.create({ ...soon([dee.email]), documents: brought });
     const ids = async (who: Account) => (await on(who, m.id)).map((d) => d.id);
+    const [planFor = '', boardFor = '', staysFor = ''] = await ids(dee);
 
     await ann.api.workspaces.items.trash(id, board);
     expect(await ids(ann)).toEqual([planId, staysId]);
-    expect(await ids(dee)).toEqual([planId, staysId]);
+    expect(await ids(dee)).toEqual([planFor, staysFor]);
     await ann.api.workspaces.items.restore(id, board);
-    expect(await ids(dee)).toEqual([planId, boardId, staysId]);
+    expect(await ids(dee)).toEqual([planFor, boardFor, staysFor]);
 
     // A folder takes what's in it to Trash, and brings it back.
     await ann.api.workspaces.items.trash(id, folder);
@@ -459,13 +516,13 @@ describe('a call’s documents', () => {
     await ann.api.workspaces.items.trash(id, plan);
     await ann.api.workspaces.items.deleteForever(id, plan);
     expect(await ids(ann)).toEqual([boardId, staysId]);
-    expect(await ids(dee)).toEqual([boardId, staysId]);
+    expect(await ids(dee)).toEqual([boardFor, staysFor]);
 
     // Saving what the call shows takes them off for good; anything else leaves its IDs as they are.
     await ann.api.meetings.update(m.id, { title: 'Still here' });
     await ann.api.workspaces.remove(id);
     expect(await ids(ann)).toEqual([staysId]);
-    expect((await upcomingOn(dee, m.id))?.map((d) => d.id)).toEqual([staysId]);
+    expect((await upcomingOn(dee, m.id))?.map((d) => d.id)).toEqual([staysFor]);
     expect((await ann.api.meetings.update(m.id, { documents: [staysId] })).documents.map((d) => d.id)).toEqual([staysId]);
   });
 
@@ -481,12 +538,12 @@ describe('a call’s documents', () => {
     const open = await idOf(ben, 'For everyone');
     const m = await ben.api.meetings.create({ ...soon([ann.email]), documents: [theirs, open] });
     const n = await ann.api.meetings.create({ ...soon([dee.email]), documents: [open] });
-    expect(await on(ann, m.id)).toEqual([{ id: theirs, kind: 'doc', by: 'Ben', name: null }, { id: open, kind: 'doc', by: 'Ben', name: 'For everyone' }]);
+    expect(await on(ann, m.id)).toEqual([closedAs('Ben'), { id: open, kind: 'doc', by: 'Ben', name: 'For everyone' }]);
 
     await ben.api.account.delete();
     // What its maker made keeps their name and loses their address.
     expect(await on(ann, n.id)).toEqual([{ id: open, kind: 'doc', by: 'Ben', name: 'For everyone' }]);
-    expect(await on(dee, n.id)).toEqual([{ id: open, kind: 'doc', by: 'Ben', name: null }]);
+    expect(await on(dee, n.id)).toEqual([closedAs('Ben')]);
     expect(listed(await ann.api.documents.list()).map((d) => d.name)).toEqual(['For everyone']);
   });
 
@@ -503,7 +560,7 @@ describe('a call’s documents', () => {
     const shown = [{ id: real, kind: 'doc', by: 'Ann', name: 'Real' }];
     expect(await on(ann, m.id)).toEqual(shown);
     expect(await upcomingOn(ann, m.id)).toEqual(shown);
-    expect((await on(dee, m.id)).map((d) => d.id)).toEqual([real]);
+    expect(await on(dee, m.id)).toEqual([closedAs('Ann')]);
 
     // Nothing else about the call minds, and what's saved next is what the call showed.
     expect((await ann.api.meetings.update(m.id, { title: 'Renamed' })).documents).toEqual(shown);

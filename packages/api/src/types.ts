@@ -227,7 +227,8 @@ export type DocumentLibrary = z.infer<typeof DocumentLibrarySchema>;
 /** The most documents a call can bring. */
 export const MAX_CALL_DOCUMENTS = 12;
 /**
- * A document brought to a call. `name` is null for someone who can't open it: they see whose it is and ask them for it.
+ * A document brought to a call. `name` is null for someone who can't open it: they see whose it is and ask them for it, and
+ * its `id` is theirs alone and only means something on this call, so it can't be matched with anything anyone else is told.
  * `by` is null when nobody in particular made it. One that's gone, or in Trash, isn't listed.
  */
 export const CallDocumentSchema = z.object({ id: IDSchema, kind: DocumentKindSchema, by: z.string().nullable(), name: z.string().nullable() });

@@ -5,6 +5,7 @@
  */
 import type { CallDocument, Document, DocumentKind, DocumentLibrary, WorkspaceTree } from '@alcove/api';
 import type { Deps, Owner } from '../context';
+import { b64u, closedDocumentKey, mac, utf8 } from '../crypto';
 import { NotFoundError, ValidationError } from '../errors';
 import { log } from '../log';
 import { accountReader, broughtFrom, whoseItIs, type BroughtKind, type Reader, type Who } from './workspaceAccess';
@@ -23,6 +24,15 @@ const KINDS: Record<BroughtKind, DocumentKind> = { document: 'doc', board: 'boar
  */
 const broughtId = (workspaceId: string, itemId: string): string => `${workspaceId}.${itemId}`;
 const BROUGHT_ID = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{22})$/;
+
+/**
+ * What someone who can't open something on a call knows it by. What the call keeps says which workspace and which item, and
+ * they may know neither. It would also show the same thing on two calls, or to two people, as the same thing. This is
+ * keyed to its reader and worked out for one call, so all it can say is "this entry, here": no two people's can be compared,
+ * nor one person's across calls, and it's the same on every read. It looks like any other ID.
+ */
+const closedId = (viewer: Owner, meetingId: string, kept: string): string =>
+  b64u(mac(closedDocumentKey(viewer.root, viewer.ownerId), utf8(`${meetingId}\n${kept}`))).slice(0, 22);
 
 /** What can be brought from a workspace as someone sees it, newest first. Who sees what is settled by then. */
 const bringable = (t: WorkspaceTree): Document[] => t.items.flatMap((x): Document[] => (
@@ -67,9 +77,22 @@ export async function validDocuments(o: Owner, ids: string[], kept: readonly str
 }
 
 /**
+ * What a list sent for this call means. Whoever can't open something on it was told `closedId`, and sends that back with
+ * the rest, so it means what the call keeps. It means nothing on any other call, and nothing to anyone else.
+ */
+export function keptIds(viewer: Owner, meetingId: string, kept: readonly string[], sent: readonly string[]): string[] {
+  const told = new Map(kept.map((id) => [closedId(viewer, meetingId, id), id]));
+  return sent.map((id) => told.get(id) ?? id);
+}
+
+/** One of a call's documents as `viewer` is told it: `documentsFor` read it, and this says which call it's on. */
+export const shownOn = (viewer: Owner, meetingId: string, doc: CallDocument): CallDocument => (doc.name === null ? { ...doc, id: closedId(viewer, meetingId, doc.id) } : doc);
+
+/**
  * What a call's documents say to someone: a name only for those who can open one. One that's in Trash or gone isn't listed,
  * and nor is anything in a workspace that can't be read: a call doesn't depend on what's brought to it. `ids` are what the
- * call keeps, never what a request sent: reading them answers for things `viewer` can't open.
+ * call keeps, never what a request sent: reading them answers for things `viewer` can't open. They're still the IDs the
+ * call keeps, so a list is read once for any number of calls: nothing leaves without going through `shownOn`.
  */
 export async function documentsFor(d: Deps, ids: readonly string[], viewer: Who): Promise<CallDocument[]> {
   const places = new Map<string, string[]>();
