@@ -40,7 +40,7 @@ export function PickList({ label, placeholder = 'Name or email', query, onQuery,
     moved.current = false;
   };
   return (
-    <div className="tp-pick">
+    <>
       <label className="tp-find">
         <Icon name="search" size={18} />
         <input ref={input} value={query} placeholder={placeholder} autoComplete="off" spellCheck={false} aria-label={label} role="combobox" aria-expanded="true" aria-controls={id}
@@ -64,6 +64,6 @@ export function PickList({ label, placeholder = 'Name or email', query, onQuery,
         {!rows.length && <p className="tp-none">{none}</p>}
       </div>
       {foot && <div className="tp-pop-f">{foot}</div>}
-    </div>
+    </>
   );
 }

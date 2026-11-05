@@ -8,7 +8,7 @@
 import { MAX_GROUPS, MAX_GROUP_NAME, MAX_GROUP_PEOPLE, NEW_GROUP, errorMessage, type Group, type NoteSummary, type Person, type PersonSuggestion } from '@alcove/api';
 import { Avatar, Button, GhostArch, Icon, IconButton, Notice, Popover, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type Ref } from 'react';
 import { useCallFlow } from '~/features/shell/context';
 import { byEmail, callName, isEmail, listNames, sameEmail } from '~/lib/people';
 import { q, useGroups } from '~/lib/queries';
@@ -39,7 +39,7 @@ const begun = (d: Draft) => d.name.trim() !== '' || d.people.length > 0;
 /** Whether it can be made as it is. */
 export const readyToMake = (d: Draft) => d.name.trim() !== '' && d.people.length > 0;
 
-export function Groups({ open, onOpen, notes, person, shown: shownOf, draft, onDraft }: {
+export function Groups({ open, onOpen, notes, person, shown, draft, onDraft }: {
   /** The group shown open: its ID, or NEW_GROUP while one is being made. */
   open: string | undefined;
   onOpen: (group: string | undefined) => void;
@@ -112,15 +112,15 @@ export function Groups({ open, onOpen, notes, person, shown: shownOf, draft, onD
       ) : (
         <div className="tp-gg">
           {listedGroups.map((g) => (open === g.id
-            ? <OpenGroup key={g.id} group={g} groups={groups} calls={groupCalls(g, notes)} person={person} shown={shownOf} change={change} onDelete={() => remove(g)}
+            ? <OpenGroup key={g.id} group={g} groups={groups} calls={groupCalls(g, notes)} person={person} shown={shown} change={change} onDelete={() => remove(g)}
               onClose={() => { setToTile(g.id); onOpen(undefined); }} />
-            : <GroupTile key={g.id} group={g} calls={groupCalls(g, notes)} person={person} shown={shownOf} take={toTile === g.id} onTaken={focused} onOpen={() => onOpen(g.id)} />))}
+            : <GroupTile key={g.id} group={g} calls={groupCalls(g, notes)} person={person} shown={shown} take={toTile === g.id} onTaken={focused} onOpen={() => onOpen(g.id)} />))}
           {making && (
-            <NewGroup groups={groups} draft={draft} onDraft={onDraft} shown={shownOf} onClose={leave}
+            <NewGroup groups={groups} draft={draft} onDraft={onDraft} shown={shown} onClose={leave}
               onCreate={(g) => { change((now) => [...now, g]); onDraft(NO_DRAFT); onOpen(g.id); }} />
           )}
           {!making && !full && (begun(draft)
-            ? <DraftTile ref={newRef} draft={draft} shown={shownOf} onOpen={() => onOpen(NEW_GROUP)} onDiscard={() => leave(true)} />
+            ? <DraftTile ref={newRef} draft={draft} shown={shown} onOpen={() => onOpen(NEW_GROUP)} onDiscard={() => leave(true)} />
             : <NewTile ref={newRef} onOpen={() => onOpen(NEW_GROUP)} />)}
         </div>
       )}
@@ -162,7 +162,7 @@ function GroupTile({ group, calls, person, shown, take, onTaken, onOpen }: {
   );
 }
 
-function NewTile({ ref, onOpen }: { ref: React.Ref<HTMLButtonElement>; onOpen: () => void }) {
+function NewTile({ ref, onOpen }: { ref: Ref<HTMLButtonElement>; onOpen: () => void }) {
   return (
     <article className="tp-g is-new">
       <button ref={ref} type="button" className="tp-g-o" aria-label="New group" onClick={onOpen} />
@@ -173,7 +173,7 @@ function NewTile({ ref, onOpen }: { ref: React.Ref<HTMLButtonElement>; onOpen: (
 }
 
 /** A group half made, waiting on its tile: it opens to carry on, and × throws it away. */
-function DraftTile({ ref, draft, shown, onOpen, onDiscard }: { ref: React.Ref<HTMLButtonElement>; draft: Draft; shown: (p: Person) => Shown; onOpen: () => void; onDiscard: () => void }) {
+function DraftTile({ ref, draft, shown, onOpen, onDiscard }: { ref: Ref<HTMLButtonElement>; draft: Draft; shown: (p: Person) => Shown; onOpen: () => void; onDiscard: () => void }) {
   const name = draft.name.trim();
   return (
     <article className="tp-g is-draft">
@@ -362,9 +362,8 @@ function NewGroup({ groups, draft, onDraft, shown, onClose, onCreate }: {
 /** Add people: anyone you could reach, ticked and added together. */
 function AddPeople({ name, title, skip, shown, disabled, onDone }: { name: string; title: string; skip: string[]; shown: (p: Person) => Shown; disabled: boolean; onDone: (people: Person[]) => void }) {
   const pop = usePop(`add ${name}`);
-  const anchor: ReactNode = <Button size="sm" icon="addUser" disabled={disabled}>Add people</Button>;
   return (
-    <Popover {...pop} anchor={anchor} align="end" caret label={title} className="tp-pop is-list">
+    <Popover {...pop} anchor={<Button size="sm" icon="addUser" disabled={disabled}>Add people</Button>} align="end" caret label={title} className="tp-pop is-list">
       <AddList skip={skip} shown={shown} onDone={(people) => { pop.onOpenChange(false); onDone(people); }} />
     </Popover>
   );
