@@ -2,8 +2,9 @@
 
 How each page is designed and why, so a new page or a change to one fits. Every page here follows
 [principles.md](principles.md). What each page does, feature by feature, is in
-[docs/product/user-flows.md](../product/user-flows.md); this is how it looks. The matching board for each page is in
-[canvas/](canvas/) (see [canvas.md](canvas.md)). In the paths below, `routes/` and `features/` are under `apps/web/src`, and
+[docs/product/user-flows.md](../product/user-flows.md); this is how it looks. Each page as it's built, in every state, is in
+Storybook (`apps/storybook`, `stories/pages/`); the board it was designed as is in [canvas/](canvas/) (see
+[canvas.md](canvas.md)). In the paths below, `routes/` and `features/` are under `apps/web/src`, and
 `components/` and `styles/` are under `packages/ui/src`.
 
 ## The frame

@@ -11,10 +11,10 @@
  * Once in a while something passes through, drawn flat like the rest of the scene: gulls, things leaping out of the water,
  * a whale's tail, a shooting star, a balloon in the corner, and boats and ships along the horizon. They come at random, one
  * at a time; the ships take minutes and are sometimes already out there when the page opens. With reduced motion nothing
- * comes.
+ * comes. Shown for itself rather than behind a page (`only`), the scene brings one kind of visitor over and over, or none.
  */
 import { useReducedMotion } from 'motion/react';
-import { memo, useEffect, useRef, useState, type AnimationEvent, type ComponentProps, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type AnimationEvent, type ComponentProps, type ReactNode } from 'react';
 import { cn } from '../cn';
 
 export type Moment = 'home' | 'team' | 'notes' | 'note' | 'settings' | 'record';
@@ -303,26 +303,74 @@ function laneOf(moment: Moment): { quick: Lane<Quick>; slow: Lane<Slow> } {
 }
 const LANES: Record<Moment, ReturnType<typeof laneOf>> = { home: laneOf('home'), team: laneOf('team'), notes: laneOf('notes'), note: laneOf('note'), settings: laneOf('settings'), record: laneOf('record') };
 
+/** One quick visitor, drawn as its kind is. */
+function Quickly({ v, gone }: { v: Quick; gone: () => void }) {
+  if (v.kind === 'gulls') return <Gulls v={v} gone={gone} />;
+  if (v.kind === 'whale') return <Whale v={v} gone={gone} />;
+  if (v.kind === 'star') return <Shooting v={v} gone={gone} />;
+  return <Leap v={v} gone={gone} />;
+}
+/** One slow visitor: a boat or a ship along the horizon, or the balloon in the corner. */
+function Slowly({ v, gone }: { v: Slow; gone: () => void }) {
+  return v.kind === 'balloon' ? <Balloon ms={v.ms} gone={gone} /> : <Boat v={v} gone={gone} />;
+}
+
 /** Whatever's passing through. It redraws on its own, so the scene around it never does. */
 function Passing({ moment }: { moment: Moment }) {
   const [quick, quickGone] = useVisits(LANES[moment].quick);
   const [slow, slowGone] = useVisits(LANES[moment].slow);
   return (
     <>
-      {slow && (slow.kind === 'balloon' ? <Balloon ms={slow.ms} gone={slowGone} /> : <Boat v={slow} gone={slowGone} />)}
-      {quick?.kind === 'gulls' && <Gulls v={quick} gone={quickGone} />}
-      {quick?.kind === 'whale' && <Whale v={quick} gone={quickGone} />}
-      {quick?.kind === 'star' && <Shooting v={quick} gone={quickGone} />}
-      {quick && quick.kind !== 'gulls' && quick.kind !== 'whale' && quick.kind !== 'star' && <Leap v={quick} gone={quickGone} />}
+      {slow && <Slowly v={slow} gone={slowGone} />}
+      {quick && <Quickly v={quick} gone={quickGone} />}
     </>
   );
 }
 
-function Visitors({ moment }: { moment: Moment }) {
-  return useReducedMotion() ? null : <Passing moment={moment} />;
+/* ------------------------------------------------------- one visitor at a time, to look at */
+/** Everything that passes through: the quick things, and the boats, the ships and the balloon. */
+export type Visitor = Quick['kind'] | Slow['kind'];
+const isSlow = (kind: Visitor): kind is Slow['kind'] => kind === 'balloon' || kind in SHIPS;
+const isSlowVisit = (v: Quick | Slow): v is Slow => isSlow(v.kind);
+
+const MOMENT_NAMES = Object.keys(LIFE).filter((m): m is Moment => m in LIFE);
+/** Every kind of visitor and the moments it comes to, read from each moment's life, the quick ones first. */
+export const VISITORS: readonly { kind: Visitor; moments: readonly Moment[] }[] = [
+  ...new Set<Visitor>([...MOMENT_NAMES.flatMap((m) => LIFE[m].quick), ...MOMENT_NAMES.flatMap((m) => LIFE[m].slow)])
+].map((kind) => ({ kind, moments: MOMENT_NAMES.filter((m) => LIFE[m].quick.some((k) => k === kind) || LIFE[m].slow.some((k) => k === kind)) }));
+
+/**
+ * What passes through when the scene is shown for itself rather than behind a page: one kind of visitor, again and again
+ * with hardly a wait, its crossing `pace` times as fast; or, with no kind, nothing at all.
+ */
+export interface Showing { kind: Visitor | null; pace?: number | undefined }
+const AGAIN_FIRST: Span = [300, 800];
+const AGAIN_GAP: Span = [700, 1600];
+
+function againOf(moment: Moment, kind: Visitor, pace: number): Lane<Quick | Slow> {
+  const life = LIFE[moment];
+  const arrive = (): Quick | Slow => {
+    if (!isSlow(kind)) return quickVisit(kind, life);
+    const v = slowVisit(kind);
+    return { ...v, ms: v.ms / pace };
+  };
+  return { arrive, first: AGAIN_FIRST, gap: AGAIN_GAP };
 }
 
-export const Horizon = memo(function Horizon({ moment }: { moment: Moment }) {
+function Again({ moment, kind, pace }: { moment: Moment; kind: Visitor; pace: number }) {
+  const lane = useMemo(() => againOf(moment, kind, pace), [moment, kind, pace]);
+  const [here, gone] = useVisits(lane);
+  if (!here) return null;
+  return isSlowVisit(here) ? <Slowly v={here} gone={gone} /> : <Quickly v={here} gone={gone} />;
+}
+
+function Visitors({ moment, only }: { moment: Moment; only?: Showing | undefined }) {
+  if (useReducedMotion()) return null;
+  if (!only) return <Passing moment={moment} />;
+  return only.kind ? <Again moment={moment} kind={only.kind} pace={only.pace ?? 1} /> : null;
+}
+
+export const Horizon = memo(function Horizon({ moment, only }: { moment: Moment; only?: Showing | undefined }) {
   const scene = SCENES[moment];
   return (
     <div className="hz" data-moment={moment} aria-hidden="true">
@@ -349,7 +397,7 @@ export const Horizon = memo(function Horizon({ moment }: { moment: Moment }) {
       <div className="hz-light">
         {scene.glints.map((g) => <i key={`${g.x}-${g.y}`} className="hz-glint" style={{ left: g.x, top: g.y, width: g.w, '--o': g.o, '--far': g.far, '--every': `${g.every}s`, '--after': `${g.after}s` }} />)}
       </div>
-      <Visitors moment={moment} />
+      <Visitors moment={moment} only={only} />
     </div>
   );
 });
