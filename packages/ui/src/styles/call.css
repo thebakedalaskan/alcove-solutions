@@ -14,14 +14,6 @@
 .stage .ac-brand { font-size: 18px; }
 .stage :focus-visible { outline-color: var(--speak); }
 
-/* A round control on the stage, outside the dock: the room's pause, the chat's send. */
-.stage-btn { display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 50%; background: rgb(255 255 255 / 0.08); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: background-color var(--duration-1), transform var(--duration-1); }
-.stage-btn:hover { background: rgb(255 255 255 / 0.14); }
-.stage-btn:active { transform: scale(0.96); }
-.stage-btn[disabled] { opacity: 0.5; pointer-events: none; }
-.stage-btn.lg { width: 64px; height: 64px; }
-.stage-btn.sm { width: 40px; height: 40px; border-radius: 12px; }
-
 /* ---- camera feeds ---- */
 .feed { position: relative; overflow: hidden; background: var(--stage-tile); }
 .feed video, .ac-tile video { transform: scaleX(-1); }
@@ -842,86 +834,10 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .tx .tx-key { margin: 6px 0 2px; }
 .tx-latest { position: absolute; left: 50%; bottom: 12px; translate: -50% 0; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px 0 10px; border-radius: var(--radius-pill); background: var(--ink); color: var(--ground); font: 600 12.5px/1 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-rise var(--duration-2) var(--ease-out) both; }
 
-/* ---- in the room ---- */
-.room-stg { background: radial-gradient(60% 50% at 50% 46%, rgba(227, 53, 84, .12), transparent 70%), var(--stage); }
-.rm-title { display: inline-flex; align-items: center; gap: 8px; color: var(--stage-ink-2); font: 600 13.5px/1 var(--font-sans); }
-.room-wait { flex: 1; display: grid; place-items: center; padding: 0 24px 60px; text-align: center; }
-/* The recorder above, what's been said below: the transcript scrolls, the timer and buttons stay put. */
-.room { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding: 36px 24px 24px; text-align: center; }
-.rm-hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: auto; }
-.rm-live { flex: 1 1 0; min-height: 150px; max-height: 440px; width: min(640px, 100%); margin: 26px 0 auto; display: flex; flex-direction: column; }
-.rm-lines { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 12px; padding: 22px 4px 24px; text-align: left;
-  -webkit-mask-image: linear-gradient(transparent, black 30px, black calc(100% - 18px), transparent); mask-image: linear-gradient(transparent, black 30px, black calc(100% - 18px), transparent); }
-.rm-line { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 12px; align-items: baseline; }
-.rm-line .ac-time-chip { justify-self: start; }
-.rm-line p { font-size: 16px; line-height: 1.55; color: var(--stage-ink); text-wrap: pretty; }
-.rm-lines .ac-unsure { text-decoration-color: var(--stage-ink-2); }
-.rm-lines .tx-key { color: var(--stage-ink-2); text-align: center; }
-.rm-wait { margin: auto; max-width: 34ch; font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
-.rm-problem { flex: none; display: flex; align-items: flex-start; justify-content: center; gap: 8px; padding-top: 10px; font-size: 13px; line-height: 1.45; color: var(--stage-ink-2); }
-.rm-problem .ac-i { margin-top: 2px; }
-.rm-dot { position: relative; width: 112px; height: 112px; margin-bottom: 26px; }
-.rm-dot i, .rm-dot::before, .rm-dot::after { position: absolute; inset: 0; border-radius: 50%; }
-.rm-dot i { background: radial-gradient(circle at 40% 35%, #FF7A8E, #E33554 60%, #B5243F); box-shadow: 0 0 60px 6px rgba(227, 53, 84, .45); transition: filter 400ms, box-shadow 400ms; }
-.rm-dot::before, .rm-dot::after { content: ""; border: 2px solid rgba(227, 53, 84, .5); animation: ripple var(--duration-5) ease-out infinite; }
-.rm-dot::after { animation-delay: 1.2s; }
-.room h1 { font-size: 64px; line-height: 1.0; font-weight: 420; letter-spacing: -0.025em; font-variation-settings: 'opsz' 72; color: var(--stage-ink); }
-.rm-name { min-width: 10ch; max-width: 90vw; border: 0; outline: 0; background: transparent; color: var(--stage-ink-2); font: 600 17px/1.3 var(--font-sans); text-align: center; border-bottom: 1.5px dashed transparent; }
-.rm-name:hover, .rm-name:focus { border-bottom-color: rgb(255 255 255 / 0.2); }
-.rm-time { font-size: 30px; font-weight: 500; color: var(--stage-ink-2); }
-.rm-wave { display: flex; align-items: center; gap: 4px; height: 76px; margin: 26px 0 8px; }
-.rm-wave i { width: 5px; height: 10%; border-radius: 3px; background: var(--speak); transition: height 110ms linear; }
-.rm-note { font-size: 14px; color: var(--stage-ink-2); }
-.rm-note.bad { max-width: 46ch; line-height: 1.45; color: #F3B85A; }
-.rm-retry { font-weight: 600; color: var(--stage-ink); text-decoration: underline; text-underline-offset: 3px; }
-.rm-ctrls { display: flex; align-items: center; gap: 14px; margin-top: 34px; }
-.rm-stop { display: inline-flex; align-items: center; gap: 10px; height: 64px; padding: 0 28px; border-radius: var(--radius-pill); background: var(--stage-ink); color: var(--stage); font: 600 16px/1 var(--font-sans); transition: background-color var(--duration-1), transform var(--duration-1); }
-.rm-stop:hover { background: #fff; }
-.rm-stop .ac-i { color: #E33554; }
-.rm-stop[disabled] { opacity: 0.6; pointer-events: none; }
-.room.paused .rm-dot i { filter: grayscale(1) brightness(0.6); box-shadow: none; }
-.room.paused .rm-dot::before, .room.paused .rm-dot::after { animation: none; opacity: 0; }
-/* No connection: the recording is saved on this device for now. */
-.off-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: var(--radius-pill); background: rgb(255 255 255 / 0.08); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
-.off-pill .ac-i { color: var(--gold); }
-.rm-saved { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: center; width: min(440px, 100%); padding: 12px 16px; border-radius: var(--radius-lg); background: rgb(255 255 255 / 0.05); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); text-align: left; font-size: 14px; line-height: 1.45; color: var(--stage-ink); }
-.rm-saved small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--stage-ink-2); }
-.rm-saved-ic { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: rgb(255 199 116 / 0.14); color: var(--gold); }
-
-@keyframes ripple { from { transform: scale(1); opacity: 0.8; } to { transform: scale(2.2); opacity: 0; } }
-
 /* ---- smaller screens ---- */
-/* Shorter windows: the recorder shrinks so the transcript under it keeps room to read. */
-@media (max-height: 940px) {
-  .rm-dot { width: 84px; height: 84px; margin-bottom: 16px; }
-  .room h1 { font-size: 52px; }
-  .rm-wave { height: 56px; margin: 14px 0 4px; }
-  .rm-ctrls { margin-top: 20px; }
-}
 @media (max-width: 1100px) {
   .pj { grid-template-columns: 1fr; align-content: start; gap: 28px; }
   .pj-side h1 { font-size: 34px; }
-}
-@media (max-width: 640px) {
-  .room { padding: 30px 18px 16px; }
-  .room h1 { font-size: 44px; }
-  .rm-ctrls .stage-btn.lg { width: 56px; height: 56px; }
-  .rm-stop { height: 56px; padding: 0 22px; font-size: 15px; }
-  .rm-line { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; }
-  .rm-line p { font-size: 15px; }
-}
-@media (max-height: 760px) {
-  .room { padding-top: 14px; }
-  .rm-hero { gap: 6px; }
-  .rm-dot { width: 52px; height: 52px; margin-bottom: 8px; }
-  .room h1 { font-size: 38px; }
-  .rm-time { font-size: 24px; }
-  .rm-wave { height: 38px; margin: 8px 0 2px; }
-  .rm-ctrls { margin-top: 14px; }
-  .rm-live { margin-top: 14px; }
-}
-@media (max-height: 560px) {
-  .rm-dot, .rm-wave { display: none; }
 }
 
 /* Asking to join: the join page while the organizer decides. */
