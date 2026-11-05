@@ -54,7 +54,7 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | `KeyError` | `key-unavailable` | 403 | warn |
 | `IntegrityError` | `key-unavailable` | 403 | error |
 | `NotFoundError` | `not-found` | 404 | info |
-| `ConflictError` | `conflict` | 409 | info |
+| `ConflictError` (`ClientTakenError`) | `conflict` | 409 | info |
 | `TooLargeError` | `too-large` | 413 | info |
 | `UnavailableError` (`LostConnectionError`, `DatabaseBusyError`) | `unavailable` | 503 | warn |
 | `InternalError` (`DatabaseError`, `ObjectStoreError`) | `unknown` | 500 | error |
@@ -73,6 +73,13 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   pool. A request that waits the whole 10 seconds for a free connection gets `DatabaseBusyError` ("Alcove is busy right
   now. Try again in a moment."), logged at warn in that request: busy, not broken, and nothing of it was done. The object store wraps failures in `ObjectStoreError` with the operation and
   object ID. Anything else thrown becomes an `InternalError` whose cause is the original.
+- A change the server makes to a document that finds a Yjs client it was written as taken by then is taken back with its
+  transaction as a `ClientTakenError`, and worked out again, with a debug line (`server change worked out again`) giving the
+  document's ID, what the change was and which try. It reaches whoever asked only when that happens three times ("This
+  document is changing too fast to change from here. Try again."). One that could never get past it, written as one of the
+  server's own clients the log already had, is a `ConflictError` at once ("This document has had this change already, so it
+  can’t have it again."). A browser's update written as one of the server's clients is refused as `server-client`
+  ([Data and storage › What gets into a document](data-and-storage.md#what-gets-into-a-document)).
 - `app.onError` is the only place errors become responses: one log line at the error's level, and the
   client gets the code, the safe message and the request ID. Unexpected failures never leak their
   internal message.

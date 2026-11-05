@@ -137,10 +137,13 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   seed, one fixed Yjs update that browsers and the API share (`DOC_SEED` in `@alcove/api`), is written as its snapshot when
   the item is made. A browser that can only read never has to write, two people opening a new document find one title, and
   two people typing there first type in the same text. A board starts with nothing. Its template, when it's started from
-  one, is the server's: `writeDocument(w, id, 'boardTemplate', { template })` puts it on as an update like anyone's, so
-  everyone gets the same frames and nobody's undo can take them away. It's written as one Yjs client kept for it, 2 on every
-  board, which no browser gets, so the board itself says whether it has had its template: asking again changes nothing, and
-  so does a second ask at the same moment, and a copy of a board carries its template. A
+  one, is the server's: `writeDocument(w, id, 'boardTemplate', { kind, template, seed })`, with the board's id as the seed,
+  puts it on as an update like anyone's, so everyone gets the same frames and nobody's undo can take them away, and only on a
+  board nobody has put anything on yet. A call's new board is filled this way before the call says it's open (`fillBoard`).
+  It's written as the Yjs client kept for it, `SERVER_CLIENT.template`, 2 on every board, in the same bytes every time for
+  that board, so the board itself says whether it has had its template: asking again changes nothing, nor does a second ask
+  at the same moment or one after a compaction, a copy of a board carries its template and can't have another, and a board
+  put back to before its template doesn't get it back by itself or by asking. A
   copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
   outside it, one document at a time, with a document's title changed to say what the tree calls the copy. A copy holds only
   each map key's last value, since nobody can be behind it. If the workers stay busy it waits about 15 seconds and then
@@ -179,7 +182,8 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   turns updates away with `503` until it's done, and browsers try again, so whatever's undone is in a version. It's a mark and
   not the row's lock because a big document takes a while, and everyone typing would each hold a connection. A restore that
   would leave the document past its limit is refused. The tree's name follows the title, because a browser renames only what
-  it types.
+  it types. What's new in it is written as a client the log hasn't had, as everything the server changes is (below), and what
+  a version holds that's no longer there goes back as it was written, under whoever wrote it.
 - **Size.** What's on a document's page stops at 150,000 items (`MAX_DOC_ITEMS`, `DOC_ITEMS_MAX`), about 37,500 lines, or
   16 MiB. An item is one Yjs struct that isn't deleted and isn't in a retired block, so a line is about four, and a page someone
   emptied has room again. One rule holds at the limit: an update goes in if it doesn't add to what's on the page, counting what
@@ -209,7 +213,17 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 - **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
   'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
   so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
-  plain function of the document and plain data, one line each, which a worker can import. `searchText` streams everything
+  plain function of the document and plain data, one line each, which a worker can import. Every change the server makes
+  goes through `writeDocument`, or `restoreVersion` to put a version back, and both write it only as Yjs clients the log
+  hasn't had, asked under the row's lock in the transaction that appends it (`requireNewClients`): two updates that say
+  different things under one client and clock would leave browsers disagreeing for good, and nothing would tell anyone. A
+  change that finds a client of its taken by then is worked out again on what's there now, up to three times, then `409`
+  (`ClientTakenError`): a random client gets past that at once, and a fixed one finds what was written as it, which is how a
+  template lands once. A fixed client the log had already when the change was worked out, in a row that won't open or from
+  before a version took a board's place, would be the same every time, so that's refused for good, at once. The server's own
+  clients are 1 to 15 (`SERVER_CLIENT` in `@alcove/api`: 1 the seed, 2 a board's template, the rest kept), and what the server
+  works on otherwise writes as a random client outside them. What starts a log isn't a change: the seed, a copy and words
+  rescued into a new document hold what they hold, and the new document is the server's from there. `searchText` streams everything
   someone can open as blocks of words, one document a line, for searching in their browser, and stops as soon as they can't
   read what's next. A board is one block, `board`, of every word on it (`boardText`): stickies, shapes and text, frames' titles
   and who was in a room, tables' cells and pictures' captions, frame by frame in reading order, and never a frame's hint or a
@@ -228,7 +242,10 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much, out of a worker's
   time or memory, closes it, so a poll can't keep a worker on one however many people are polling. A worker that only says a
   job failed closes nothing: a compaction that won't pass a row it can't read is one, and the document opens without that row. Its versions still read, and restoring one replaces what won't open
-  and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
+  and ends everyone's stream, since there's nothing to merge with. Every client it has had keeps its row, as the server's, at
+  what the version holds of it, so nothing is written as one again, by the server or anyone: what other versions hold under it
+  stays the one thing it ever said, a board's template among them, and anything still in a browser from before is refused.
+  Updates to it are still taken: nothing's refused for a
   document that may only be slow. What the server does to it for itself, reading, writing, compacting and searching it, costs
   no worker while it's closed, and a job of those that runs out of time or memory closes it too. One that fails closes
   nothing: a fold won't go past a row it can't read, and the document still opens without that row.
@@ -252,6 +269,10 @@ What can be told from the update alone is checked with nothing held, in a worker
   right neighbour: every key typed mid-line shares one. These, and types nested too deep in one update, are `too-large`.
 - Everything in it can be placed: it's worked through as Yjs would, and anything that waits for what it can't ever have is
   refused, because Yjs would carry it pending for ever, in every snapshot.
+- Nothing written as one of the server's own clients, 1 to 15 (`server-client`, `400`), whether or not the server has
+  written as it yet: what's written as one is fixed, so anything else there would say two things at one clock, or take a
+  template's place before it came. A browser's are random 32-bit numbers outside them. Words rescued into a new document may
+  hold the seed's, and are let through, as they start a log rather than change one.
 
 What depends on the log is checked under the document's lock, against `document_clients`, without opening the document:
 
@@ -318,7 +339,10 @@ one request at a time, the oldest first, as much as fits in one; a retry only ev
 Nothing typed is let go of until the API has it, and with a `keep` store (the app's is sealed under the device key) that
 survives a reload: what's kept is applied when the session starts and sent when there's a connection. The stream picks up from
 the last `seq` it heard, however it ended, and never moves on from what this browser sent, only from what the stream
-said. Being able to only read, or it going to Trash, stops sending until an `access` line says otherwise.
+said. Being able to only read, or it going to Trash, stops sending until an `access` line says otherwise. It never writes as
+one of the server's own clients, which the API turns away: it starts on a client of its own (`randomClient`), and whatever puts
+it on one, it moves to another before a word is written, the same move it makes when it's stuck (below), which a client nothing
+was written as doesn't count towards.
 
 A refusal never lets go of anything. What's refused stays in memory and in `keep`, through reloads, and the status says so:
 `unsent` is true until Alcove has everything or someone chooses to let it go, and `saved` only ever means that.
