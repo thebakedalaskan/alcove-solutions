@@ -55,7 +55,7 @@ function FollowUpRow({ row, onTick, sourced = false }: { row: WsFollowUp; onTick
   return (
     <motion.div className={cn('wl-todo', row.done && 'is-done')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
       <button type="button" className="wb-box" role="checkbox" aria-checked={row.done} aria-label="Done" disabled={row.locked} onClick={() => onTick(row.id)}><Icon name="check" size={13} /></button>
-      <span className="wl-tx">{row.text}{sourced && (row.onSource ? <button type="button" className="src" onClick={row.onSource}>{row.source}</button> : <span className="src">{row.source}</span>)}</span>
+      <span className="wl-tx"><span className="wl-w">{row.text}</span>{sourced && (row.onSource ? <button type="button" className="src" onClick={row.onSource}>{row.source}</button> : <span className="src">{row.source}</span>)}</span>
       {row.person && <span className="who"><Avatar person={row.person} size={18} /><span>{row.name}</span></span>}
       <span className="wl-due">{row.due}</span>
     </motion.div>
@@ -64,7 +64,7 @@ function FollowUpRow({ row, onTick, sourced = false }: { row: WsFollowUp; onTick
 
 /**
  * Notes, written as people talk: the summary, what's been decided (a time opens the transcript there, an arrow sends the
- * line into a document), and the first follow-ups with a way to all of them. `allFollowUps` is how many are still open.
+ * line into a document), and the first follow-ups with a way to all of them. `allFollowUps` is how many there are.
  * `notice` says what's holding the notes back, when something is.
  */
 export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, notice, onTime, onTick, onAll }: {
@@ -88,7 +88,7 @@ export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, no
         ))}
       </Written>
       {decided.length === 0 && <p className="wl-s">Nothing decided yet.</p>}
-      <div className="wl-h"><span className="ac-eyebrow">Follow-ups</span><button type="button" className="wl-all" onClick={onAll}>All {allFollowUps}<Icon name="right" size={13} /></button></div>
+      <div className="wl-h"><span className="ac-eyebrow">Follow-ups</span>{allFollowUps > 0 && <button type="button" className="wl-all" onClick={onAll}>All {allFollowUps}<Icon name="right" size={13} /></button>}</div>
       <Written>{followUps.map((f) => <FollowUpRow key={f.id} row={f} onTick={onTick} />)}</Written>
       {followUps.length === 0 && <p className="wl-s">Nothing to do yet.</p>}
     </LivePage>
@@ -148,7 +148,7 @@ export function WsTranscript({ query, onQuery, lines, now, put, notice }: { quer
           </motion.div>
         ))}
       </Written>
-      {lines.length === 0 && <p className="wl-s">{query ? 'Nothing said matches that yet.' : 'Nothing said yet.'}</p>}
+      {lines.length === 0 && !now && <p className="wl-s">{query ? 'Nothing said matches that yet.' : 'Nothing said yet.'}</p>}
       {now && (
         <div className="wl-line is-now">
           <Avatar person={now.person} size={24} />

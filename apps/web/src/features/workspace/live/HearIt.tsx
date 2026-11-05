@@ -7,7 +7,7 @@ import type { AudioSegment } from '@alcove/api';
 import { Icon } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { usePlayer } from '~/features/notes/Player';
+import { usePlayer, usePlayerAt } from '~/features/notes/Player';
 import { q } from '~/lib/queries';
 
 /** How long a moment plays when it's the last thing said. */
@@ -21,8 +21,10 @@ export function HearIt({ note, line }: { note: string; line: string }) {
   const at = lines.findIndex((l) => l.id === line);
   const from = lines[at]?.at;
   const until = lines[at + 1]?.at ?? (from === undefined ? undefined : from + LAST_LINE_SECONDS);
-  const { pos, playing, seek, toggle } = usePlayer(note, read?.audio ?? NO_AUDIO);
-  useEffect(() => { if (playing && until !== undefined && pos >= until) toggle(); }, [playing, pos, until, toggle]);
+  const player = usePlayer(note, read?.audio ?? NO_AUDIO, read?.status === 'recording');
+  const { playing, seek, toggle } = player;
+  const heard = usePlayerAt(player, (pos) => until !== undefined && pos >= until);
+  useEffect(() => { if (playing && heard) toggle(); }, [playing, heard, toggle]);
   if (from === undefined || !read?.audio.length) return null;
-  return <button type="button" className="pl" onClick={() => { if (playing) toggle(); else seek(from); }}><Icon name={playing ? 'pause' : 'play'} size={11} />Hear it</button>;
+  return <button type="button" className="pl" onClick={() => { if (playing) toggle(); else seek(from, true); }}><Icon name={playing ? 'pause' : 'play'} size={11} />Hear it</button>;
 }

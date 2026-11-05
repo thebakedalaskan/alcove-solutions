@@ -15,7 +15,7 @@ import { withDocument } from '../session';
 import { nameOf, type Tree } from '../tree';
 import { decidedBlock, followUpBlock, quoteBlocks } from './blocks';
 import { dateOf } from './dates';
-import { momentOf, personNamed, sameName } from './lines';
+import { asInDocuments, momentOf, personNamed, sameName } from './lines';
 import type { LiveCall, LivePut } from './types';
 
 interface Sending {
@@ -70,11 +70,12 @@ export function useSending({ live, workspaceId, pass, owner, tree, at, member, h
       await withDocument(workspaceId, targetId, owner, pass, (doc) => { landed = appendBlocks(doc, blocks); });
       latest.current.say(wsToast.addedTo(targetName, () => goTo(landed[0])));
     };
-    /** Who a name in the notes tags, as the document knows people: someone in this workspace, then someone in the call. */
+    /** Who a name in the notes tags: someone in the call, whose name the workspace may not have, or else someone in the workspace. */
     const tagFor = (name: string | undefined) => {
       if (!name) return null;
+      const said = personNamed(live.session.getSnapshot(), name);
       const known = [...(latest.current.people ?? []).map((p) => p.person), ...latest.current.here.map((h) => h.person)];
-      const found = known.find((p) => p.name === name) ?? known.find((p) => sameName(p.name, name)) ?? personNamed(live.session.getSnapshot(), name);
+      const found = said ? asInDocuments(said) : known.find((p) => p.name === name) ?? known.find((p) => sameName(p.name, name));
       return found ? { id: found.id, name: found.name } : null;
     };
     return {

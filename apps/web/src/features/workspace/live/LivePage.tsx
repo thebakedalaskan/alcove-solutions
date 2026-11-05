@@ -44,14 +44,14 @@ function Off({ live, state }: { live: LiveCall; state: CallState }) {
 const decidedId = (d: CatchUpItem) => `${d.evidence[0]?.lineId ?? ''}:${d.text}`;
 
 function NotesPage({ host, state }: { host: LiveHost; state: CallState }) {
-  const { rows, tick, open } = useFollowUps(host);
+  const { rows, tick } = useFollowUps(host);
   const n = state.liveNotes.notes;
   if (!n && rows.length === 0 && modeHere(state) === 'off') return <Off live={host.live} state={state} />;
   const items = n?.decided ?? [];
   const decided = items.map((d): WsDecision => ({ id: decidedId(d), text: d.text, at: clockAt(state, d.evidence[0]?.said ?? 0) }));
   const { put, go } = host;
   return (
-    <WsNotesPage summary={n?.summary ?? ''} decided={decided} followUps={rows.slice(0, FIRST_FOLLOW_UPS)} allFollowUps={open} notice={heldBack(state)} onTick={tick}
+    <WsNotesPage summary={n?.summary ?? ''} decided={decided} followUps={rows.slice(0, FIRST_FOLLOW_UPS)} allFollowUps={rows.length} notice={heldBack(state)} onTick={tick}
       put={put ? { target: put.target, onPut: (id) => { const d = items.find((x) => decidedId(x) === id); if (d) put.decided(d.text); } } : undefined}
       onTime={(id) => go({ kind: 'live', page: 'transcript', line: items.find((x) => decidedId(x) === id)?.evidence[0]?.lineId })}
       onAll={() => go({ kind: 'live', page: 'follow-ups' })} />

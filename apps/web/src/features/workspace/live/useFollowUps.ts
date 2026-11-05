@@ -1,15 +1,15 @@
 /*
  * The call's follow-ups as one list: what was said and what people added come with the call, so they're as live as it is, and
  * what's written in documents comes from `CallSession.followUps`. A line in a document that says the same as something said,
- * for the same person, is that follow-up, not another: it's one row, and ticking it ticks both.
+ * for the same person, is that follow-up, not another: it's one row, ticking it ticks both, and it's done if either is.
  */
-import { errorMessage, type CallState, type DocFollowUp, type Person } from '@alcove/api';
+import { errorMessage, type CallSession, type CallState, type DocFollowUp, type Person } from '@alcove/api';
 import { wsToast, type WsFollowUp } from '@alcove/ui';
 import { useCallback, useMemo, useState } from 'react';
 import { useLive } from '~/lib/live';
 import { dayWords, dueWords } from './dates';
 import type { LiveHost } from './host';
-import { clockAt, personNamed, sameName } from './lines';
+import { asInDocuments, clockAt, personNamed, sameName } from './lines';
 
 /** A row, what it takes to tick it, and whether it's yours. */
 export interface FollowUpRow extends WsFollowUp { mine: boolean; ticks: ((done: boolean) => Promise<void>)[]; said: { text: string; owner?: string | undefined; due?: string | undefined } }
@@ -18,9 +18,25 @@ const folded = (text: string) => text.replace(/\s+/g, ' ').trim().toLowerCase();
 const firstOf = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 const face = (s: CallState, name: string | undefined): Pick<Person, 'name'> & Partial<Person> | null => (name ? personNamed(s, name) ?? { name } : null);
 
+/** Whether a line in a document is this follow-up: the same words, for the same person if both say who. */
+const isTheLine = (f: { text: string; owner?: string | undefined }, d: DocFollowUp): boolean => {
+  const tag = d.mentions[0];
+  return folded(f.text) === folded(d.text) && (tag === undefined || !f.owner || sameName(f.owner, tag.name));
+};
+const tickLine = (session: CallSession, d: DocFollowUp, done: boolean) => session.tickDocumentFollowUp({ workspaceId: d.workspaceId, documentId: d.documentId, block: d.block, done });
+
+/** Ticks something the notes hold from outside the list, as the side panel does, with the line in a document if it's in one. */
+export async function tickEverywhere(session: CallSession, id: string, done: boolean): Promise<void> {
+  const { liveNotes } = session.getSnapshot();
+  const said = [...(liveNotes.notes?.next ?? []), ...liveNotes.added].find((f) => f.id === id);
+  const line = said && session.followUps.getSnapshot()?.items.find((d): d is DocFollowUp => d.from === 'document' && d.canTick && isTheLine(said, d));
+  await Promise.all([session.tickFollowUp(id, done), ...(line ? [tickLine(session, line, done)] : [])]);
+}
+
 /** Whether a document's to-do is for you: by who it tags, as this workspace knows you, or else by name. */
 function isYours(d: DocFollowUp, me: Person | undefined, myId: string | undefined): boolean {
-  return d.mentions.some((m) => m.id === myId || m.id === me?.id || (me !== undefined && m.name === me.name));
+  const tagged = me && asInDocuments(me).id;
+  return d.mentions.some((m) => m.id === myId || m.id === tagged || (me !== undefined && m.name === me.name));
 }
 
 export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost, 'live' | 'here' | 'workspaceId' | 'go' | 'say'>) {
@@ -50,13 +66,13 @@ export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost
       const tag = d.mentions[0];
       const date = d.dates[0];
       const open = d.workspaceId === workspaceId ? () => go({ kind: 'document', id: d.documentId, block: d.block }) : undefined;
-      const tickDoc = d.canTick ? [(done: boolean) => session.tickDocumentFollowUp({ workspaceId: d.workspaceId, documentId: d.documentId, block: d.block, done })] : [];
-      const same = out.find((r) => !joined.has(r.id) && folded(r.text) === folded(d.text) && (tag === undefined || r.name === '' || sameName(r.name, tag.name)));
+      const tickDoc = d.canTick ? [(done: boolean) => tickLine(session, d, done)] : [];
+      const same = out.find((r) => !joined.has(r.id) && isTheLine(r.said, d));
       if (same) {
         joined.add(same.id);
         same.source = `${same.source} · ${d.document}`;
         same.onSource = open;
-        same.done = d.done;
+        same.done = same.done || d.done;
         same.ticks = [...same.ticks, ...tickDoc];
         same.locked = same.ticks.length === 0;
         continue;

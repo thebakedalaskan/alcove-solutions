@@ -11,7 +11,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { Doc } from 'yjs';
 import type { Ws } from '../context';
 import type { EditorCall, EditorHandle } from '../editor/types';
-import { liveLinesOf, notesOnHere, recentLines, writesLiveBlocks } from './lines';
+import { asInDocuments, liveLinesOf, notesOnHere, recentLines, writesLiveBlocks } from './lines';
 
 /** How long each browser waits behind the one before it: longer than an update takes to get round. */
 const TURN_MS = 600;
@@ -41,7 +41,7 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
   });
   /* Faces on quotes and live lines: whoever said them may be in the call and not in the workspace. */
   const here = useSyncExternalStore(session?.subscribe ?? nothing, () => session?.getSnapshot().participants.map((p) => p.person.id).join(' ') ?? '');
-  const people = useMemo(() => (session?.getSnapshot().participants ?? []).map((p) => p.person), [session, here]);
+  const people = useMemo(() => (session?.getSnapshot().participants ?? []).map((p) => asInDocuments(p.person)), [session, here]);
   const held = useRef(editor);
   held.current = editor;
 

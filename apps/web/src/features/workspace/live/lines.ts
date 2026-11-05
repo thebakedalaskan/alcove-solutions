@@ -30,6 +30,9 @@ export function personNamed(s: CallState, name: string | undefined): Person | un
   return people.find((p) => p.name === name) ?? people.find((p) => sameName(p.name, name));
 }
 
+/** Someone as a document tags them. A workspace knows people by their address, and an organizer's ID in the call isn't that. */
+export const asInDocuments = (p: Person): Person => ({ ...p, id: p.email.toLowerCase() || p.id });
+
 /** Who said a line. A breakout room's stand-in has no name to give. */
 export const speakerOf = (l: TranscriptLine): { person: Pick<Person, 'name'> & Partial<Person>; name: string } => {
   const name = l.speaker?.name ?? 'Someone';
@@ -38,7 +41,7 @@ export const speakerOf = (l: TranscriptLine): { person: Pick<Person, 'name'> & P
 
 /** A line of the transcript as a quote keeps it: when it was said, for each reader to read in their own time. */
 export const momentOf = (s: CallState, l: TranscriptLine): MomentLine => ({
-  id: l.id, person: l.speaker?.person ?? null, name: l.speaker?.name ?? 'Someone', at: lineMoment(s, l.at).toISOString(), text: l.text, note: s.notes.noteId
+  id: l.id, person: l.speaker?.person ? asInDocuments(l.speaker.person) : null, name: l.speaker?.name ?? 'Someone', at: lineMoment(s, l.at).toISOString(), text: l.text, note: s.notes.noteId
 });
 
 /** The last few lines, newest first, for Quote what was said. */
@@ -64,6 +67,9 @@ export function liveLinesOf(s: CallState): { decided: LiveLine[]; followUps: Liv
   ].sort((a, b) => a.when - b.when);
   return {
     decided: (n?.decided ?? []).map((d) => ({ text: d.text, at: moment(d.evidence[0]?.said ?? 0) })),
-    followUps: said.map((f) => ({ text: f.text, at: moment(f.when), person: personNamed(s, f.owner)?.id ?? null, name: f.owner ?? '', due: f.due ?? '' }))
+    followUps: said.map((f) => {
+      const who = personNamed(s, f.owner);
+      return { text: f.text, at: moment(f.when), person: who ? asInDocuments(who).id : null, name: f.owner ?? '', due: f.due ?? '' };
+    })
   };
 }
