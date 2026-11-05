@@ -186,7 +186,7 @@
   /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
   --bd-rise: 560ms;
   --bd-glide: 700ms;
-  --bd-point: 1300ms;
+  --bd-point: 120ms;
 }
 
 .dark {
