@@ -541,7 +541,7 @@ export class Board implements LiveStore<BoardState> {
     this.camera.set(cam);
     const { near } = this.state;
     if (near) this.set({ near: bounds([near, reachOf(this.camera.visible())]) });
-    // Not put off by the next glide: following calls this all the time, and what's mounted still has to catch up.
+    // Not put off by the next glide, so a run of them can't keep what's mounted from catching up. What's already easing finishes easing.
     if (this.waits.has('glide')) return;
     this.later('glide', ms, () => {
       this.set({ glide: false });
