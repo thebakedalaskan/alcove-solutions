@@ -1165,6 +1165,16 @@ export type KeptClip = z.infer<typeof KeptClipSchema>;
  */
 export const NotifiedStoredSchema = z.array(z.object({ key: z.string().max(300), at: z.number() })).max(500);
 
+/**
+ * What one tab tells the others in this browser (BroadcastChannel `alcove-account`): this account signed out here, or was
+ * deleted, so nothing more is kept for it; or it signed in again.
+ */
+export const AccountSignalSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('signed-out'), owner: z.string(), deleted: z.boolean() }),
+  z.object({ type: z.literal('signed-in'), owner: z.string() })
+]);
+export type AccountSignal = z.infer<typeof AccountSignalSchema>;
+
 /** A call's code, as its links have it: `kpw-rnzq-hte`. */
 export const CallCodeSchema = z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
 
