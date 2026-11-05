@@ -7,7 +7,7 @@
  * Everything else, which is two fingers on a trackpad and a mouse wheel alone, moves the board. Safari reports a pinch as
  * gesture events of its own instead, and touch screens as two pointers.
  */
-import { BOARD_LIMITS, bounds, hasBox, moveObjects, resizeObject, type PlacedObject } from '@alcove/board';
+import { BOARD_LIMITS, bounds, hasBox, moveObjects, resizeObject, type Camera, type PlacedObject } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
@@ -60,13 +60,23 @@ function pressedId(board: Board, target: Element): string | null {
   return o?.k === 'frame' && !target.closest('.bf-h') ? null : id;
 }
 
-function panGesture(board: Board, start: SheetPoint): Gesture {
-  const from = board.camera.getSnapshot();
-  board.takeCamera();
+function panGesture(board: Board, press: SheetPoint): Gesture {
+  let start = press;
+  let from: Camera | null = null;
   board.set({ panning: true });
   const stop = (): void => board.set({ panning: false });
   return {
-    move: (at) => board.camera.set({ x: from.x + at.sx - start.sx, y: from.y + at.sy - start.sy, z: from.z }),
+    move(at) {
+      if (!from) {
+        // A tap isn't looking around, and on a board that can't be edited every press lands here. So the camera is taken by the drag, not the press.
+        if (Math.abs(at.sx - start.sx) + Math.abs(at.sy - start.sy) < CLICK_SLOP) return;
+        // Whoever is being followed has gone on moving it since the press, so the drag starts from here. Otherwise what was pressed stays under the pointer.
+        if (board.getSnapshot().following) start = at;
+        board.takeCamera();
+        from = board.camera.getSnapshot();
+      }
+      board.camera.set({ x: from.x + at.sx - start.sx, y: from.y + at.sy - start.sy, z: from.z });
+    },
     up: stop,
     cancel: stop
   };
@@ -174,10 +184,20 @@ function pinchGesture(board: Board, a: ClientPoint, b: ClientPoint): (a: ClientP
   const { camera } = board;
   const middle = (p: ClientPoint, q: ClientPoint): SheetPoint => camera.point({ clientX: (p.clientX + q.clientX) / 2, clientY: (p.clientY + q.clientY) / 2 });
   const apart = (p: ClientPoint, q: ClientPoint): number => Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY) || 1;
-  const { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b);
-  board.takeCamera();
+  let { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b), taken = false;
   return (p, q) => {
     const now = middle(p, q);
+    if (!taken) {
+      // As with a drag: two fingers landing aren't a pinch until they move, and a followed camera goes on moving until then.
+      if (Math.abs(apart(p, q) - wide) + Math.hypot(now.sx - start.sx, now.sy - start.sy) < CLICK_SLOP) return;
+      if (board.getSnapshot().following) {
+        ({ z } = camera.getSnapshot());
+        wide = apart(p, q);
+        start = now;
+      }
+      board.takeCamera();
+      taken = true;
+    }
     camera.set(camera.holding(start, now.sx, now.sy, z * apart(p, q) / wide));
   };
 }
