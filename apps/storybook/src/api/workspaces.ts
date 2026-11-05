@@ -4,7 +4,7 @@
  * is ever in it.
  */
 import {
-  AlcoveApiError, DOC_SEED, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
+  AlcoveApiError, DOC_SEED, randomClient, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
   type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson,
   type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
@@ -107,6 +107,12 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
 export const liveWorkspace = (id: string): WorkspaceLive => new LiveWorkspace(id);
 
 const docs = new Map<string, Y.Doc>();
+/** A document as a browser holds one: on a Yjs client of its own, never one of those only the API writes as. */
+function ownDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  doc.clientID = randomClient();
+  return doc;
+}
 class Document extends Pushed<DocStatus> implements DocSession {
   readonly doc: Y.Doc;
   readonly awareness: Awareness;
@@ -114,7 +120,7 @@ class Document extends Pushed<DocStatus> implements DocSession {
   constructor(documentId: string, role: DocumentRole) {
     super({ status: 'saved', refused: null, role, trashed: false, closed: null, unsent: false });
     const known = docs.get(documentId);
-    this.doc = known ?? new Y.Doc();
+    this.doc = known ?? ownDoc();
     if (!known) { Y.applyUpdate(this.doc, DOC_SEED); docs.set(documentId, this.doc); }
     this.awareness = new Awareness(this.doc);
     this.ready = Promise.resolve();
@@ -134,7 +140,7 @@ export function openDocument(id: string, documentId: string): DocSession {
 /** A new document or board of a state, made as the API makes one: a document starts from the seed, then takes the state. */
 export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): { id: string } {
   const made = createItem(id, input);
-  const doc = new Y.Doc();
+  const doc = ownDoc();
   if (input.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
   Y.applyUpdate(doc, input.state);
   docs.set(made.id, doc);
