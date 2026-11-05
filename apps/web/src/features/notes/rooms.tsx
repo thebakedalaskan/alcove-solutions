@@ -9,7 +9,7 @@ import { Faces, Fold, Notice } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { listNames } from '~/lib/people';
 import type { Correcting, FromLine, LineMarks } from './lines';
-import { Decisions, FollowUps, Questions, Section, TranscriptLines } from './parts';
+import { Decisions, FollowUps, Questions, Section, TranscriptLines, roomAnchor } from './parts';
 
 /** What someone who has the notes does with a room's decisions, questions and follow-ups, as with the call's. */
 export interface Settling {
@@ -30,26 +30,29 @@ export interface Settling {
  * The breakout rooms' sections, one fold each. `writing` while the notes are being written; `correct` and `settle` let
  * the reader correct a room's lines and settle what its notes say, as they do the call's. `tryAgain` is under a room
  * whose notes couldn't be written, for someone who can have them written again. `marks` bookmarks a room's lines for
- * the reader, as with the call's.
+ * the reader, as with the call's. `open` is the room a link came to, which starts open, at `at` in what was said there
+ * when the link came to a moment.
  */
-export function RoomSections({ rooms, me, writing, correct, fromLine, settle, tryAgain, marks }: {
+export function RoomSections({ rooms, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
   rooms: NoteRoom[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
+  open?: string | undefined; at?: number | undefined;
 }) {
   return (
     <Section title="Breakout rooms" count={`${rooms.length} ${rooms.length === 1 ? 'room' : 'rooms'}`} className="rooms-sec">
       <p className="rooms-lead">Each room’s notes come from what was said in it alone.</p>
-      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks} />)}
+      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks} open={r.id === open} at={r.id === open ? at : undefined} />)}
     </Section>
   );
 }
 
-function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, marks }: {
+function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
   room: NoteRoom; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
+  open: boolean; at: number | undefined;
 }) {
   const people = room.people.flatMap((x): Person[] => (x.person ? [x.person] : []));
   const said = room.transcript.length > 0;
   return (
-    <Fold summary={(
+    <Fold id={roomAnchor(room.id)} open={open} summary={(
       <span className="room-h">
         <b>{room.name}</b>
         {people.length > 0 && <Faces people={people} size={22} max={5} />}
@@ -71,8 +74,8 @@ function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, mark
               <ol className="room-chapters">{room.chapters.map((c) => <li key={`${c.at}-${c.title}`}><b>{c.title}</b>{c.summary && <span>{c.summary}</span>}</li>)}</ol>
             </Part>
           )}
-          <Fold className="room-said" summary={<span className="room-h"><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></span>}>
-            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} correct={correct} fromLine={fromLine} marks={marks} />
+          <Fold className="room-said" open={at !== undefined} summary={<span className="room-h"><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></span>}>
+            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} focus={at} correct={correct} fromLine={fromLine} marks={marks} />
           </Fold>
         </>
       )}

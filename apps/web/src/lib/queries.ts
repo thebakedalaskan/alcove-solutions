@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody } from '@alcove/api';
-import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
+import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { api } from './api';
@@ -30,6 +30,7 @@ export const qk = {
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
+  callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
   trust: ['trust'] as const
 };
@@ -89,6 +90,17 @@ export const q = {
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: () => api.notes.inbox() }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
+  /**
+   * What carries over into a call, for someone signed in, by its link: null when nothing can. Read again every minute
+   * while it's on screen, and whenever the page comes back into view: a note someone stops having goes from here too,
+   * however long the call has been open. A session that ended elsewhere is just another way of having nothing here:
+   * thrown, it would send them out of their call to sign in, and a call doesn't need one.
+   */
+  callSeries: (code: string) => queryOptions({
+    queryKey: qk.callSeries(code),
+    queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
+    retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
+  }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
   trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
@@ -103,6 +115,16 @@ export const q = {
   /** What you can bring to a call. */
   documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false })
 };
+
+/**
+ * What carries over into a call, while `on`. A read that fails keeps the last answer, as queries do, which would keep
+ * showing what someone may not read any more: once the server says so, there's nothing. A dropped connection changes nothing.
+ */
+export function useCallSeries(code: string, on: boolean): Series | null {
+  const r = useQuery({ ...q.callSeries(code), enabled: on });
+  const refused = r.error !== null && ['forbidden', 'not-found'].includes(errorCode(r.error));
+  return refused ? null : r.data ?? null;
+}
 
 /* ---------- account ---------- */
 
@@ -344,6 +366,14 @@ export function useUpdateQuestion() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { noteId: string; questionId: string; patch: QuestionPatch }) => api.notes.updateQuestion(v.noteId, v.questionId, v.patch),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Says the notes got it wrong, a later call didn't replace that decision or answer that question, or takes that back. */
+export function useUpdateRevisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; revisitId: string; dismissed: boolean }) => api.notes.updateRevisit(v.noteId, v.revisitId, { dismissed: v.dismissed }),
     onSuccess: (n) => changed(qc, n)
   });
 }

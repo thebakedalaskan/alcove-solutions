@@ -170,6 +170,10 @@ export const ShareEndedBodySchema = z.object({ share: ShareIdSchema });
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
 
+/** Saying the notes got a later call wrong, or taking that back. */
+export const RevisitPatchSchema = z.object({ dismissed: z.boolean() });
+export type RevisitPatch = z.infer<typeof RevisitPatchSchema>;
+
 /** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
 export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
 /**

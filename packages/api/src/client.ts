@@ -2,7 +2,7 @@ import type { CallCard, CallSession, LiveStore, NoteProgress, RoomRecording, Roo
 import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
-import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch } from './wire';
+import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
 import type {
   AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
@@ -99,6 +99,12 @@ export interface AlcoveApi {
      */
     pick(code: string, at: ISODate): Promise<CallCard>;
     /**
+     * What carries over into a call, for someone signed in: its series as you see it, from the earlier notes you have
+     * now, before joining and during the call. Null when the call isn't in a series, or you aren't its organizer and
+     * have no notes from it: being invited to this call opens nothing from the others.
+     */
+    series(code: string): Promise<Series | null>;
+    /**
      * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else asks to
      * join: signed in, under their account, otherwise with `name` (1–60 characters). Refused until the organizer is
      * there, while the call is locked, and once it has ended.
@@ -159,6 +165,12 @@ export interface AlcoveApi {
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
     updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
+    /**
+     * Says the notes got it wrong: a later call (this note) didn't replace that decision or answer that question
+     * (`Series` gives the revisit's ID), or takes that back. Everyone with both notes sees who said so, and writing the
+     * notes again doesn't change it. Needs both calls' notes, and for a decision, what `mayDecide` asks of saying it stopped holding.
+     */
+    updateRevisit(noteId: ID, revisitId: ID, patch: RevisitPatch): Promise<Note>;
     /** Follow-ups for you that aren't done, taken on or only suggested, and decisions nobody has confirmed, from every note you have. */
     inbox(): Promise<Inbox>;
     /**

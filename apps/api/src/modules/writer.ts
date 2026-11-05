@@ -4,17 +4,19 @@
  * notes model draft the summary, decisions, open questions, follow-ups, chapters and suggested
  * questions, and each breakout room's own notes from that room's transcript (one request a room),
  * and then writes them into the note, charges the recorded minutes and deletes the job in one
- * transaction. A failed attempt is tried again a little later, up to three times; after the
- * third, the note is finished without a summary, so its transcript and any audio are still there. When
+ * transaction. Only then is a call in a series compared with what earlier calls left standing: nothing
+ * waits for that, and failing costs only the comparison. A failed attempt is tried again a little
+ * later, up to three times; after the third, the note is finished without a summary, so its
+ * transcript and any audio are still there. When
  * the notes model's evidence doesn't check out, or can't be checked, nothing was sent: the job waits
  * and checks again, as long as it takes, without using up an attempt. The owner's keys are opened
  * for each job and wiped after it. The organizer can have the notes written again from a corrected
  * transcript (notes.rewrite): the same job, which keeps what people already settled.
  */
-import type { Change, InferenceEvidence, Person, RoomNote, ScreenMoment } from '@alcove/api';
+import type { Change, Decision, InferenceEvidence, Person, RoomNote, ScreenMoment } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
-import { openJson, stateKey } from '../crypto';
+import { id128, openJson, stateKey } from '../crypto';
 import { bytea, exec, maybeOne, tx } from '../db';
 import { NotFoundError, UnansweredError, UnverifiedError } from '../errors';
 import { inference } from '../inference';
@@ -24,10 +26,11 @@ import { getItem, lockItem, pruneRevisions } from '../vault';
 import { me, profile } from './account';
 import { purgeAudio, queueDelete, segments } from './audio';
 import * as billing from './billing';
-import { briefOf, draft, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
-import { NoteManifest, roomChapters, updateNote } from './notes';
+import { briefOf, draft, revisited, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
+import { NoteManifest, decisionsOf, roomChapters, updateNote, type Revisit } from './notes';
 import { personOf } from './portraits';
 import * as screens from './screens';
+import { standing } from './series';
 import { verificationKey } from './transcripts';
 
 const wlog = log.child({ component: 'writer' });
@@ -207,6 +210,54 @@ async function settle(o: Owner, jobId: string, noteId: string, wrote: Wrote | un
   await queueDelete(o, leftover);
 }
 
+/**
+ * A note's revisits, compared again: what the notes model found now takes the place of what it found before, unless
+ * its own decision isn't in the notes any more. What someone said it got wrong stays said, and follows what was found
+ * again (written again, the later decision can be a new one), so it can still be seen and undone.
+ */
+function revisitsAfter(was: Revisit[], fresh: Revisit[], decisions: Decision[]): Revisit[] {
+  const wrong = was.filter((r) => r.dismissed);
+  const same = (a: Revisit, b: Revisit) => a.noteId === b.noteId && a.itemId === b.itemId;
+  return [
+    ...wrong.map((w) => { const again = fresh.find((r) => same(r, w)); return again ? { ...again, id: w.id, dismissed: w.dismissed } : w; }),
+    ...fresh.filter((r) => !wrong.some((w) => same(r, w)) && (!r.by || decisions.some((d) => d.id === r.by)))
+  ];
+}
+
+/**
+ * What this call came back to from earlier calls in its series, once its notes are written and everyone has them: one
+ * request, for a call with anything to compare, and nothing waits for it. Failing, or the worker going down, costs only
+ * the comparison: the note keeps the revisits it had, and writing the notes again tries again. Revisits are kept, so the
+ * model that found them joins the note's verifications, as the notes' does. What was said is as the notes read it,
+ * `read`: a call set not to keep its transcript has just lost it, and it goes no further than this request.
+ */
+async function compareWithEarlier(o: Owner, noteId: string, read: NoteManifest, organizer: Person, ctx: Record<string, string | number>): Promise<void> {
+  try {
+    const { manifest: written } = await getItem(o, o.pool, 'note', noteId, NoteManifest, 'Those notes');
+    const m: NoteManifest = { ...written, transcript: read.transcript, rooms: written.rooms.map((r) => ({ ...r, transcript: read.rooms.find((x) => x.id === r.id)?.transcript ?? r.transcript })) };
+    const earlier = await standing(o, noteId, m);
+    const decisions = decisionsOf(m).filter((d) => d.state !== 'rejected');
+    const said = Boolean(m.transcript?.length) || m.rooms.some((r) => r.transcript.length > 0);
+    // A question can be answered by what was said; a decision only replaced by one of this call's.
+    const canFind = said && (earlier.some((x) => x.kind === 'question') || (decisions.length > 0 && earlier.length > 0));
+    if (!canFind) {
+      wlog.debug('nothing to compare a call with', { ...ctx, earlier: earlier.length });
+      if (m.revisits.length) await tx(o.pool, (c) => updateNote(o, c, noteId, (n) => ({ ...n, revisits: revisitsAfter(n.revisits, [], decisionsOf(n)) })));
+      return;
+    }
+    const t0 = performance.now();
+    const { found, evidence } = await revisited(o.cfg, briefOf(m, organizer, m.invited.map((e) => personOf(e))), decisions, earlier);
+    const fresh = found.map((r): Revisit => ({ ...r, id: id128(), dismissed: null }));
+    await tx(o.pool, (c) => updateNote(o, c, noteId, (n) => (!fresh.length && !n.revisits.length ? n : {
+      ...n, revisits: revisitsAfter(n.revisits, fresh, decisionsOf(n)),
+      inference: !fresh.length || n.inference.some((x) => verificationKey(x) === verificationKey(evidence)) ? n.inference : [...n.inference, evidence]
+    })));
+    wlog.info('call compared with earlier ones in its series', { ...ctx, earlier: earlier.length, replaced: found.filter((r) => r.kind === 'replaced').length, answered: found.filter((r) => r.kind === 'answered').length, ms: Math.round(performance.now() - t0) });
+  } catch (e) {
+    wlog.warn('call not compared with earlier ones; its notes stand without it', { ...ctx, err: e });
+  }
+}
+
 async function attempt(d: Deps, job: Claimed): Promise<void> {
   const ctx = { jobId: job.job_id, attempt: job.attempt };
   const drop = async (why: string) => {
@@ -255,6 +306,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         await settle(o, job.job_id, noteId, { rooms, readAt }, shown);
         wlog.info(rooms.evidence.length ? 'only breakout rooms were transcribed; their notes written' : 'nothing was transcribed; note finished without notes',
           { ...at, screens: shown.length, rooms: note.manifest.rooms.length, roomsWritten: rooms.evidence.length });
+        await compareWithEarlier(o, noteId, note.manifest, organizer, at);
         return;
       }
       await renew();
@@ -265,6 +317,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         screenRefs: [...notes.decisions, ...notes.questions, ...notes.actions, ...notes.chapters].filter((x) => x.screen).length,
         rooms: note.manifest.rooms.length, roomsWritten: rooms.evidence.length, ms: Math.round(performance.now() - t0)
       });
+      await compareWithEarlier(o, noteId, note.manifest, organizer, at);
     } catch (e) {
       if (e instanceof NotFoundError) { await drop('note deleted while its notes were written'); return; }
       if (e instanceof UnverifiedError || e instanceof UnansweredError) {

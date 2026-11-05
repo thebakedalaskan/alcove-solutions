@@ -1,4 +1,4 @@
-import { errorCode, errorMessage, firstName, mayChangeAction, mayDecide, minutesLabel, type CarriedAction, type CarriedDecision, type CarriedQuestion, type DecisionPatch, type Series } from '@alcove/api';
+import { errorCode, errorMessage, firstName, mayChangeAction, mayDecide, maySayNotReplaced, minutesLabel, type CarriedAction, type CarriedDecision, type CarriedQuestion, type DecisionPatch, type LaterCall, type Series } from '@alcove/api';
 import { ArchThumb, Button, Card, Check, Chip, EmptyState, GoneArch, Icon, IconButton, SealedBadge, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
@@ -9,7 +9,7 @@ import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalenda
 import { useCallFlow } from '~/features/shell/context';
 import { api } from '~/lib/api';
 import { sameEmail } from '~/lib/people';
-import { q, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { q, useUpdateAction, useUpdateDecision, useUpdateQuestion, useUpdateRevisit } from '~/lib/queries';
 import { hm, longDay, noteDay, shortDay, timeZone } from '~/lib/time';
 
 /*
@@ -25,7 +25,8 @@ export const Route = createFileRoute('/_app/notes/series/$seriesId')({
 function SeriesPage() {
   const { seriesId } = Route.useParams();
   const me = useQuery(q.session()).data?.user.email;
-  const s = useQuery(q.series(seriesId)).data;
+  // A failed read keeps the last answer, which would keep showing calls someone may not read any more.
+  const s = useQuery({ ...q.series(seriesId), throwOnError: (e) => errorCode(e) === 'not-found' }).data;
   return s ? <SeriesView s={s} me={me} /> : null;
 }
 
@@ -43,6 +44,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const decision = useUpdateDecision();
   const question = useUpdateQuestion();
   const action = useUpdateAction();
+  const revisit = useUpdateRevisit();
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   const from = new Map(s.notes.map((n) => [n.id, n]));
   const readerAs = useNoteReader();
@@ -51,6 +53,17 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const change = (d: CarriedDecision, patch: DecisionPatch) => decision.mutate({ noteId: d.noteId, decisionId: d.id, patch }, { onError: failed });
   const decide = (d: CarriedDecision, state: CarriedDecision['state']) => change(d, state === 'confirmed' ? { state, seen: { text: d.text } } : { state });
   const answer = (x: CarriedQuestion) => question.mutate({ noteId: x.noteId, questionId: x.id, patch: { state: 'answered' } }, { onSuccess: () => toast('Marked answered', { ms: 2200 }), onError: failed });
+  const reopen = (x: CarriedQuestion) => question.mutate({ noteId: x.noteId, questionId: x.id, patch: { state: 'open' } }, { onError: failed });
+  /** The notes got it wrong: the later call says nothing about this. */
+  const wrong = (later: LaterCall) => revisit.mutate({ noteId: later.noteId, revisitId: later.id, dismissed: true }, { onError: failed });
+  /** Takes back that someone said a later call says nothing about this. */
+  const undo = (later: LaterCall | undefined) => later?.dismissed && <button type="button" className="lk quiet" onClick={() => revisit.mutate({ noteId: later.noteId, revisitId: later.id, dismissed: false }, { onError: failed })}>Undo</button>;
+  /** What the reader can say about the later call that seems to replace a decision, as far as the grants go: that it didn't, or taking that back. */
+  const aboutLater = (d: CarriedDecision, didnt: string) => {
+    const later = d.replacedBy;
+    if (!later || !maySayNotReplaced(d, reader(d))) return undefined;
+    return later.dismissed ? undo(later) : <LaterWrong later={later} onWrong={wrong}>{didnt}</LaterWrong>;
+  };
   const tick = (a: CarriedAction, done: boolean) => action.mutate({ noteId: a.noteId, actionId: a.id, patch: { done } }, { onSuccess: () => { if (done) toast('Marked done', { ms: 2200 }); }, onError: failed });
   const takeOn = (a: CarriedAction) => action.mutate({ noteId: a.noteId, actionId: a.id, patch: { takeOn: true, seen: { text: a.text, due: a.due ?? null } } }, { onSuccess: () => toast('It’s yours. Everyone with the notes sees that.', { icon: 'check' }), onError: failed });
   const mine = (a: CarriedAction) => !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me });
@@ -62,13 +75,13 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const taken = todo.filter((a) => a.takenOn);
   const untaken = todo.filter((a) => !a.takenOn);
   const done = s.actions.filter((a) => a.done);
-  const empty = !s.decisions.length && !s.questions.length && !s.actions.length;
+  const empty = !s.decisions.length && !s.questions.length && !s.answered.length && !s.actions.length;
   const latest = s.notes[0];
   const calls = s.notes.length + s.older;
   const who = s.isOrganizer ? 'Your series' : `${firstName(s.organizer.name)}’s series`;
-  const row = (d: CarriedDecision, actions: ReactNode) => <CarriedDecisionRow key={d.id} d={d} note={from.get(d.noteId)} me={me} actions={actions} />;
+  const row = (d: CarriedDecision, actions: ReactNode, laterActions?: ReactNode) => <CarriedDecisionRow key={d.id} d={d} calls={from} me={me} actions={actions} laterActions={laterActions} saidWrong />;
   const followUp = (a: CarriedAction) => (
-    <CarriedActionRow key={a.id} a={a} note={from.get(a.noteId)} me={me} check={<Check checked={a.done} disabled={!mayChangeAction(a, reader(a))} onChange={(on) => tick(a, on)} label={`${a.done ? 'Mark not done' : 'Mark done'}: ${a.text}`} />}
+    <CarriedActionRow key={a.id} a={a} calls={from} me={me} check={<Check checked={a.done} disabled={!mayChangeAction(a, reader(a))} onChange={(on) => tick(a, on)} label={`${a.done ? 'Mark not done' : 'Mark done'}: ${a.text}`} />}
       actions={mine(a) && !a.takenOn && !a.done ? <button type="button" className="lk" onClick={() => takeOn(a)}>I’ll do it</button> : undefined} />
   );
 
@@ -94,24 +107,39 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
               {s.decisions.length > 0 && (
                 <Section title="Decisions" count={proposed.length ? `${proposed.length} to confirm` : confirmed.length || undefined} style={{ '--d': 2 }}>
                   <div className="carry-list">
-                    {confirmed.map((d) => row(d, mayDecide(d, 'superseded', reader(d)) ? <button type="button" className="lk on-hover" onClick={() => decide(d, 'superseded')}>It no longer holds</button> : undefined))}
+                    {confirmed.map((d) => {
+                      const stands = d.replacedBy && !d.replacedBy.dismissed;
+                      const noLonger = mayDecide(d, 'superseded', reader(d)) && <button type="button" className={cn('lk', !stands && 'on-hover')} onClick={() => decide(d, 'superseded')}>It no longer holds</button>;
+                      const also = aboutLater(d, 'It still holds');
+                      if (!stands) return row(d, noLonger, also);
+                      return row(d, null, noLonger || also ? <>{noLonger}{also}</> : undefined);
+                    })}
                     {proposed.length > 0 && <div className="grp">Not confirmed yet</div>}
                     {proposed.map((d) => {
                       const no = notDecided(d, reader(d));
                       return row(d, <>
                         {mayDecide(d, 'confirmed', reader(d)) && <button type="button" className="lk" onClick={() => decide(d, 'confirmed')}>Confirm</button>}
                         {no && <button type="button" className="lk quiet" onClick={() => change(d, no)}>It wasn’t decided</button>}
-                      </>);
+                      </>, aboutLater(d, 'It wasn’t replaced'));
                     })}
                     {superseded.length > 0 && <div className="grp">No longer holds</div>}
-                    {superseded.map((d) => row(d, mayDecide(d, 'confirmed', reader(d)) ? <button type="button" className="lk on-hover" onClick={() => decide(d, 'confirmed')}>It still holds</button> : undefined))}
+                    {superseded.map((d) => row(d, mayDecide(d, 'confirmed', reader(d)) ? <button type="button" className="lk on-hover" onClick={() => decide(d, 'confirmed')}>It still holds</button> : undefined, aboutLater(d, 'It wasn’t replaced')))}
                   </div>
                 </Section>
               )}
               {s.questions.length > 0 && (
                 <Section title="Still open" count={s.questions.length} style={{ '--d': 3 }}>
                   <div className="carry-list">
-                    {s.questions.map((x) => <CarriedQuestionRow key={x.id} x={x} note={from.get(x.noteId)} actions={<button type="button" className="lk" onClick={() => answer(x)}>It was answered</button>} />)}
+                    {s.questions.map((x) => (x.answeredIn && !x.answeredIn.dismissed
+                      ? <CarriedQuestionRow key={x.id} x={x} calls={from} me={me} saidWrong laterActions={<><button type="button" className="lk" onClick={() => answer(x)}>It was answered</button><LaterWrong later={x.answeredIn} onWrong={wrong}>It’s still open</LaterWrong></>} />
+                      : <CarriedQuestionRow key={x.id} x={x} calls={from} me={me} saidWrong actions={<button type="button" className="lk" onClick={() => answer(x)}>It was answered</button>} laterActions={undo(x.answeredIn)} />))}
+                  </div>
+                </Section>
+              )}
+              {s.answered.length > 0 && (
+                <Section title="Answered since the last call" count={s.answered.length} style={{ '--d': 3 }}>
+                  <div className="carry-list">
+                    {s.answered.map((x) => <CarriedQuestionRow key={x.id} x={x} calls={from} me={me} saidWrong actions={<button type="button" className="lk on-hover" onClick={() => reopen(x)}>It’s still open</button>} laterActions={undo(x.answeredIn)} />)}
                   </div>
                 </Section>
               )}
@@ -153,6 +181,11 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
       </div>
     </>
   );
+}
+
+/** Says a later call didn't do what the notes think it did. */
+function LaterWrong({ later, onWrong, children }: { later: LaterCall; onWrong: (l: LaterCall) => void; children: ReactNode }) {
+  return <button type="button" className="lk quiet" onClick={() => onWrong(later)}>{children}</button>;
 }
 
 /** For the organizer: the next call in the series, or a way to schedule it. */

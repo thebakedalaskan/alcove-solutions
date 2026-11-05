@@ -49,7 +49,7 @@ open it, and only whoever opened the request could have sealed it.
 | Request | Model | Endpoint |
 | --- | --- | --- |
 | Transcribe a clip | `openai/whisper-large-v3` | `NEAR_AI_STT_URL`, `https://whisper-large-v3.completions.near.ai` |
-| Write notes, read a frame of a shared screen, answer a question (about a note, across notes, a call so far or a series), catch up, translate captions | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
+| Write notes, read a frame of a shared screen, answer a question (about a note, across notes, a call so far or a series), catch up, translate captions, compare a call with earlier ones in its series | `z-ai/glm-5.3-flash` | `NEAR_AI_NOTES_URL`, `https://glm-5-3-flash.completions.near.ai` |
 
 These are the endpoints NEAR AI calls "direct completions" and documents as experimental. Its gateway
 also takes chat with end-to-end encrypted fields (E2EE v2), but that protocol encrypts each message to the
@@ -122,7 +122,8 @@ the model name is the report's word; and the OHTTP key's signature doesn't cover
 Each transcript clip's sealed row keeps the evidence of the verification it was sent to, also when nothing
 in it survived the filter. When the recording stops, the distinct verifications (by model, key, OS image,
 measured configuration and TCB status, the first time each was used) move into the note's sealed manifest
-as `inference`; the notes model's is added when the notes are written. `GET /v1/notes/:id` returns them as
+as `inference`; the notes model's is added when the notes are written, and when what it finds comparing a call with
+earlier ones is kept ([Series](#series)). `GET /v1/notes/:id` returns them as
 `Note.inference` (`InferenceEvidence` in `packages/api`): the model, the task, when it was verified, the
 model's key, Intel's TCB status and the quote's SHA-256, the dstack image it booted, the GPUs NVIDIA
 confirmed, the SHA-256 of the measured app compose, and the gateway's TCB status, image and compose hash.
@@ -387,7 +388,11 @@ account.
   correction does, so a correction made after it is later) and the model's verification (once, by
   `verificationKey`: a verification already listed isn't listed again), deletes the job and charges the account. The call's breakout rooms join the chapters
   in that transaction (one chapter per time rooms were open: who was in which room, and for how long); the
-  rooms stay in the note so they do every time it's written.
+  rooms stay in the note so they do every time it's written. Only then, with the notes out and the job gone, is a
+  call in a series compared with what earlier ones left standing: one more request, saved in a transaction of its
+  own, which nothing waits for and whose failure, or the worker going down, costs only the comparison
+  ([Series](#series)). The same owner's next job starts after it, so a stalled comparison can hold that job back by
+  up to its 60 s.
 - **Without the transcript.** For a call set not to keep it, the first transaction that writes notes also deletes
   what they were written from: the new revision's transcript is empty, and so is every breakout room's whose notes it
   wrote, every earlier revision goes (`pruneRevisions` in `vault.ts`: the head loses its parent and the rest are
@@ -1014,14 +1019,60 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   confirmed, no longer hold (`superseded`) or are still `proposed` (never ones said not to be decided), open
   questions, and follow-ups not done yet or ticked since the latest call started. Each question and
   follow-up says how many later calls it stayed open through (`later`) and is `stale` from two. Each item
-  names its note (`noteId`) and moment (`at`). Only the organizer gets the next call scheduled in Alcove
+  names its note (`noteId`) and moment (`at`), and carries what backs it as this reader may read the note (`asRead`): a
+  transcript their call didn't keep is out of reach here as everywhere. Only the organizer gets the next call scheduled in Alcove
   (`next`), whether the series follows a recurring Google event (`recurring`), how it repeats (`repeat`), and the
   call each note is from (`meetingId`). Someone with no notes from a series gets `404 not-found`, as for one that doesn't exist.
   Reading the notes others gave the asker opens each organizer's keys once a request, however many of their
   notes it reads.
+- **Breakout rooms** are part of a call's notes, so they carry over like the rest: each room's decisions, open
+  questions and follow-ups come after the call's own, with the room they came from (`room`, its ID and name), and
+  everything that goes for the call goes for them: the same note, the same access check, the same state. A room's
+  source opens the note at that room's section (`/notes/<id>?room=<room ID>`, at the moment in its transcript with
+  `at`).
 - **Nothing derived is kept.** What carries over is read afresh on each request and stored nowhere, so a note that's
   deleted, removed from someone's notes or never given to them isn't in it. Being invited to one call opens
-  nothing from the others.
+  nothing from the others. No summary is written for it: what shows is what the notes say.
+- **What later calls did.** Once a call's notes are written and everyone has them, if it's in a series, one more
+  request compares it with what earlier calls left standing: the organizer's own notes of the calls before it, newest first, their
+  rooms' too, at most 24 decisions (confirmed or proposed) and 24 open questions. The notes model says which
+  earlier decision one of this call's decisions replaces, and which earlier question this call answered and at
+  what moment. It answers with labels and seconds and nothing else, and the call's notes are written before it,
+  from the call's own transcript, so nothing an earlier call said can reach this call's notes, which go to
+  everyone invited to this call. What it finds is kept in the later note's sealed manifest as `revisits`, by the
+  random IDs of the earlier note and item, and the verification it went to joins the note's, as the notes' does (the
+  model's key can change after the notes are written). A revisit is only ever a suggestion: the decision stays confirmed and the
+  question open until someone who has the notes says otherwise. It lives in the later note because it's that call's
+  to tell: it's looked up for items of the notes the reader has, in the notes the reader has, so it shows
+  (`CarriedDecision.replacedBy`, with the later decision's words, and `CarriedQuestion.answeredIn`) only to someone
+  with both notes right now, and goes with the later note. Someone with only the earlier note sees the decision
+  stand; someone with only the later note sees nothing of the earlier call. It doesn't count once the later decision
+  is said not to be decided or has gone. `PATCH /v1/notes/:id/revisits/:id` with `{dismissed}` says the notes got it
+  wrong, or takes that back; it needs both notes (`404 not-found` otherwise) and records who and when. It settles the
+  suggestion for everyone with both notes, so for a decision it goes by the grants on that decision in the earlier
+  note (`maySayNotReplaced` in `grants.ts`, `403 forbidden` otherwise): the organizer, whoever confirmed it, and while
+  it's only proposed, whoever could settle it. For a question it's for anyone with both notes. Everyone with both
+  sees who said so on the series page (`LaterCall.dismissed`); a call and its pre-join show nothing of it. A later
+  decision someone disputes still counts: a dispute settles nothing, and it goes once the organizer says it wasn't
+  decided. Writing the notes again compares again, what this note's revisits name included
+  even once people have settled it, and drops a revisit whose own decision didn't stay. What was said to be wrong
+  stays said, and follows the later decision when it's found again. That holds for this later call's note only: the
+  next call in the series is compared with the same earlier item, and can suggest it again. A comparison that can't
+  be made leaves the notes as they are (the previous revisits stay, when the notes were written again), and writing
+  them again tries it again. A call set not to keep its transcript has lost it by then, so it's compared from what
+  the notes read, held only for that request.
+- **In a call and at its pre-join.** `GET /v1/calls/:code/series` is the series as `GET /v1/series/:id` reads it, found
+  by the call's link: the call's own notes are still being recorded, so only the earlier ones count. It needs the
+  asker's session, whatever pass they hold: what carries over comes from their account's notes, and a guest has
+  neither (`401 unauthenticated`). It's `null` for a call outside a series, and for anyone who isn't its organizer and
+  has no notes from it, so someone newly invited learns nothing, not even that there's a series. It's read about once
+  a minute while it's on screen and again when the page comes back into view, so a note someone stops having goes from
+  the panel too. `POST /v1/live/calls/:id/series/ask` with `{question, timeZone}` asks across the series during the
+  call: `POST /v1/series/:id/ask` for the asker's own account, found from the call they're let into (their pass) rather
+  than from any ID they send. A pass opens the call and nothing more: the answer comes from the session's notes,
+  whoever's pass came with it. It reads nothing of this call, so it needs no notes here, but while notes are paused
+  (here, or in the asker's breakout room) it's refused (`409 conflict`), since nothing goes to the AI then, questions
+  included. An answer stays on the asker's screen alone, and only while they still have the notes it read.
 - **Settling things.** `PATCH /v1/notes/:id/questions/:id` with `{state?: "open" | "answered", text?}`
   says an open question was answered, reopens it or rewords it; anyone who has the note can, and every change
   records who and when. A confirmed decision can be said to no longer hold (`superseded`) when a later one
@@ -1035,22 +1086,27 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   request, sealed to its verified key at its own endpoint like every request
   ([Verified private inference](#verified-private-inference)). `timeZone` is where the asker is, an
   IANA name such as `Europe/London` (the app sends the browser's); each call's date is given to the model in
-  it, so "Tuesday's call" is the day the asker saw. Anything `Intl.DateTimeFormat` can't use as a time zone
+  it, so "Tuesday's call" is the day the asker saw. Each call's breakout rooms go with it: their notes with the
+  call's, and their transcripts after the call's, in the same 120,000 characters. Anything
+  `Intl.DateTimeFormat` can't use as a time zone
   is refused (`400 invalid`). The answer is one `text` part and up to four `source` parts: a call's note,
-  title and date, and the second it comes from when the model gives one inside the recording. Once the
+  title and date, its breakout room when it comes from one, and the second it comes from when the model gives one inside the recording. Once the
   answer is written, the asker's access to every call it read is checked again: if one of those notes was
   deleted or removed from theirs meanwhile, the whole answer is dropped, since it may quote it, and the
   asker is told to ask again (`409 conflict`). It needs a written note in the series (`409 conflict`
   otherwise), shares the 20-a-minute limit with asking about notes, keeps no operation receipt, stores
   nothing and costs no credits.
 - **In the app.** A call in a series has **What carries over** on its card, which opens the series page:
-  confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest. A note
+  confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest, and what
+  stopped holding or was answered since the latest call. The pre-join shows the same in brief, and the call's Notes
+  view a fold, **From last time**, open until the call has notes of its own, with follow-ups nobody took on as well,
+  which says only you see it. Sources there open in a new tab, so the call, or the camera at the pre-join, stays as it
+  is. The Ask view's **Earlier calls** asks across the series. A note
   says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
   (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under
   its calls it says how many older ones aren't shown. When a series follows a recurring Google event and
   Google Calendar isn't connected any more, the series page and the note say so and offer **Connect Google
-  Calendar**, since Home can't show the next occurrence without it. The call screen doesn't show any of it
-  yet ([What's left](#whats-left)).
+  Calendar**, since Home can't show the next occurrence without it.
 
 ## Prompts
 
@@ -1138,12 +1194,21 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
 - **Answering across a series** (in `apps/api/src/modules/series.ts`). Each call the asker has, numbered
   newest first: its title, date (the day it was where the asker is) and length, the organizer's and invited
   people's names (never addresses), the summary, the decisions with where they stand, the open questions,
-  the follow-ups with who has them, their due dates and whether they're done, then the transcript; after
+  the follow-ups with who has them, their due dates and whether they're done, each breakout room's the same
+  under its number and name, then the transcript and each room's; after
   them the asker's name and the question. One JSON object, `{answer, sources}`: plain, at most four
   sentences unless the question asks for a draft or a list, "I" meaning the asker, saying which call by its
   date when that matters, saying plainly when these calls don't cover it and never guessing about calls
-  that aren't there, and up to four sources, each a call's number and a second (or null when it comes from
-  the notes rather than a moment).
+  that aren't there, and up to four sources, each a call's number, its room's number or null, and a second (or
+  null when it comes from the notes rather than a moment).
+- **Comparing a call with earlier ones** (`revisited`). What the meeting was, what earlier meetings decided (`E1`,
+  `E2`...) and left open (`Q1`, `Q2`...), what this one decided (`N1`, `N2`...), then its transcript and each breakout
+  room's, fenced like every transcript. One JSON object, `{replaced: [{earlier, by}], answered: [{earlier, at, room}]}`:
+  labels and numbers and nothing else, both lists usually empty, told that talking about the same subject isn't
+  changing a decision and asking a question again isn't answering it, and to leave out what the transcript doesn't
+  plainly show. Checked on the real notes model with made-up meetings: it found a plain replacement and answer at the
+  right second, left a call that only touched the same subjects alone, and didn't follow someone in the transcript
+  telling it to mark everything.
 
 Replies are checked before anything is kept:
 
@@ -1158,7 +1223,8 @@ Replies are checked before anything is kept:
   de-duplicated, and cited moments must fall within it. A cite across notes must name a note that was sent,
   at a second within its recording, and is kept once. During a call, a line number must be one of the lines
   sent from the stretch read; a point with none is left out. A series answer's source must be one of the calls
-  sent, its moment inside that call's recording; repeats are dropped.
+  sent, its room one of that call's and its moment inside that call's recording; repeats are dropped. A comparison
+  keeps only labels it was given and moments inside the recording, one revisit an earlier item, at most 12.
 
 ## Models and requests
 
@@ -1188,6 +1254,7 @@ verified against. The measured OS images aren't configuration at all.
 | Write notes | `POST {NEAR_AI_NOTES_URL}/ohttp`, `message/ohttp-req`, sealing `POST /v1/chat/completions`, JSON: `model`, a system and a user message, `temperature` 0.2, `max_tokens` 4,000, `response_format: {"type": "json_object"}`, `chat_template_kwargs: {"enable_thinking": false}`, `stream: false`, with the bearer key | 180 s |
 | Read a frame of a shared screen | The same, with the frame as an image part, `max_tokens` 1,200 | 60 s |
 | Answer a question (about a note, across notes, a call so far or a series) | The same, with `max_tokens` 1,200 | 60 s |
+| Compare a call with earlier ones in its series | The same, with `max_tokens` 500 | 60 s |
 | Catch up | The same, with `max_tokens` 1,500 | 60 s |
 | Translate captions | The same, with `max_tokens` 2,000 | 30 s |
 
@@ -1238,11 +1305,12 @@ notes with nothing to answer from` (how many notes, and whether any is still bei
 question answered`, `question changed`, `transcript line corrected` (the note and line IDs, what changed, and
 whether by the organizer), `notes job queued` again with `again` and how many lines were corrected, `next call
 in a series scheduled`, `series scheduled`, `call made a series`, `calls in a series changed` and `calls in a series
-cancelled` (with the series ID and how many calls), `notes job dropped`, `nothing was
+cancelled` (with the series ID and how many calls), `call compared with earlier ones in its series` (how many items,
+how many replaced and answered, the time), `revisit changed`, `notes job dropped`, `nothing was
 transcribed; note finished without notes` and `clip arrived after the recording stopped; dropped` at info;
-`notes not written yet; trying again`, `series not brought up to date on calendar` (with the series ID, the step
-that failed and why) and `calendar occurrences didn’t match the calls` (how many were moved, dropped or left
-unmatched) at warn; a note finished without a summary after its last attempt at
+`notes not written yet; trying again`, `call not compared with earlier ones; its notes stand without it`, `series not
+brought up to date on calendar` (with the series ID, the step that failed and why) and `calendar occurrences didn’t
+match the calls` (how many were moved, dropped or left unmatched) at warn; a note finished without a summary after its last attempt at
 error. Catching up during a call logs `caught up during a call` and `question answered during a call` at info
 with the call ID, the kind of range, how many lines were read, the gaps and missed stretches in it, whether a
 guest's window narrowed it, how many points came back, how many the model couldn't tie to a line (`uncited`),
@@ -1432,6 +1500,20 @@ a call with breakout rooms (every room's transcript gone from every revision, fo
 notes; one room's notes failing, which keeps only its lines, for the organizer, until they're written; the call's
 failing, which keeps them all; a call where only rooms talked; no audio left of the rooms), the defaults, room
 recordings, and a note sealed by the previous release.
+`apps/api/src/carryover.integration.test.ts` covers what carries over into a call: at the pre-join and during it, for
+the organizer and someone with the earlier notes; nothing for someone newly invited, a stranger with the link or
+another organizer's series, and a refusal for a guest; nothing in the card or the call's state; grants per earlier
+note, through sharing, removing and changes to the invite; a call that keeps no transcript, whose lines reach nobody
+but its organizer in what carries over or in an answer; asking during the call (sealed to the verified notes model,
+from the asker's own notes whoever's pass comes with it, refused while waiting, while paused, in a paused room of their
+own (not someone else's), for a guest and once removed, working with notes off, dropped when a note goes while it's
+written); revisits (shown only with both notes, nothing of them in the note or the prompts that write it, labels the
+model made up dropped, settling, saying the notes got it wrong and undoing that as far as the grants go, a later
+decision said not to be decided, writing the notes again, a comparison that's slow, can't get through or fails, a call
+that keeps no transcript, and its verification when the model's key changed after the notes); breakout rooms' items,
+questions and revisits; what someone keeps for themselves reaching none of it; and canaries in every row, object and
+log line, and on the wire. `apps/api/src/hosting.integration.test.ts` covers a stand-in, who gets nothing of a series'
+earlier calls for hosting.
 
 ## What's kept, and for how long
 
@@ -1451,6 +1533,8 @@ notes start (`NoteManifest.keep`), because it outlives the call and the notes wo
 | What backs an entry, as a reader sees it (`evidence`) | Never stored: worked out from the note for whoever reads it | |
 | Earlier revisions of a note | With the note: a correction or a change writes a new revision, and the old ones stay, so nothing is quietly rewritten | Deleted with the note, or with the transcript they hold, as above |
 | Questions, answers and catch-ups | Never stored, unless someone keeps an answer in their own notes | |
+| What carries over in a series | Never stored: read from the notes someone has, each time they look | |
+| What a later call came back to (`revisits`): the random IDs of an earlier item, and a moment | In the later note | Deleted with the later note. An earlier note going leaves its ID there, naming nothing, and it's never shown |
 | Someone's own notes: what they wrote, bookmarks, answers they kept | While they have the note, under their own keys, with no earlier versions. Bookmarks hold only pointers, so on a call set not to keep its transcript they stop reaching what was said once it's gone. An answer someone chose to keep stays, as anything they write down would | Deleted with the note, when they remove it from theirs, with their account, or at the end of the call if they were taken off the invite |
 | What someone added to the shared notes | With the note, under its organizer's keys, in its own row | Deleted when it's taken back, with the note, and with its author's account. It stays if its author removes the note |
 | A call's MLS log (`call_mls`) | While the call runs | Deleted when it ends |
@@ -1514,9 +1598,8 @@ What goes with each choice:
   ([Calls and recordings › The call screen](calls-and-recordings.md#the-call-screen)). Guests name themselves, so
   the notes model reads them marked as guests. Several people on one device are one voice. Room recordings have no
   speaker diarization.
-- **Rooms in a series, and across notes.** What a series carries into the next call is the call's own decisions,
-  questions and follow-ups, and asking across a series reads the call's own parts: a breakout room's section is in
-  neither yet. Asking across notes reads a room's summary, decisions and follow-ups, but not its lines.
+- **Rooms across notes.** Asking across all your notes reads a room's summary, decisions and follow-ups, but not its
+  lines. Asking across a series reads them.
 - **A scribe that can't listen.** A breakout room's scribe whose browser can't listen (no audio worklet, say) keeps
   the room until it leaves or moves, and the room's speech isn't transcribed meanwhile. The host's browser tells the
   call when it can't listen; a scribe's doesn't yet, so the call can't pick another.
@@ -1582,8 +1665,19 @@ What goes with each choice:
   before they came in can count as said once they were in.
 - **No rewind.** Nothing keeps a rolling recording of a call: audio is kept only while notes are on, for the notes,
   and catching up reads the transcript. Going back to hear or see a moment is a later phase.
-- **Series during the call.** Neither the call screen nor pre-join shows what carries over or answers
-  across the series yet; both are being rebuilt for group calls.
+- **What a later call did, by hand.** The notes model suggests which later decision replaced an earlier one and where
+  a question was answered. Someone can say a decision no longer holds or a question was answered, and can say the notes
+  got one wrong, but can't point at the later decision themselves when the notes didn't. Nothing says a follow-up was
+  done in a later call: it's ticked as it is now. Someone with the earlier note alone isn't told, which is the point,
+  so they see a decision stand until someone with both says it no longer holds.
+- **Asking reads earlier calls only.** Asking across the series during a call reads the earlier notes, not what's been
+  said in this call so far; **This call** reads that. The two aren't read together yet.
+- **Sources on a phone.** A source opens in a new tab, so the call carries on behind it, but a phone's browser can
+  pause a call in a tab it isn't showing. Reading a source inside the panel would keep it in front.
+- **What carries over, every minute.** A call's panel and its pre-join read it about once a minute, and each read
+  opens every note the person has, since which ones are in the series is sealed in them. That's fine for the notes
+  people have now, and rate limited at 60 a minute per account. If it shows up, a smaller read can tell when something
+  changed first.
 - **Series for people invited.** Someone invited finds a series through its notes, and the calls in it they're
   invited to on their own Upcoming, each carrying the series' ID. Nothing else of the series opens to them: only the
   organizer sees its next call (`Series.next`).
