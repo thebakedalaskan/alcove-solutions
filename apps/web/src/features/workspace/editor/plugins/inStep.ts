@@ -5,8 +5,10 @@
  * written back until it works. Someone who can only read never writes at all, whatever else happens on the page.
  */
 import type { EditorView } from 'prosemirror-view';
+import { getRelativeSelection, ySyncPluginKey } from 'y-prosemirror';
 import { log } from '~/lib/log';
 import type { EditorRuntime } from '../runtime';
+import { writeDocument } from '../write';
 import { syncOf, type FollowChange } from '../ydoc';
 
 const elog = log.child({ component: 'editor' });
@@ -15,9 +17,8 @@ const elog = log.child({ component: 'editor' });
 export function keepInStep(rt: EditorRuntime, view: EditorView): () => void {
   const sync = syncOf(view.state);
   if (!sync) return () => undefined;
-  const { binding, type: fragment } = sync;
+  const { binding, type: fragment, doc: ydoc } = sync;
   const follow = binding._observeFunction;
-  const write = binding._prosemirrorChanged.bind(binding);
 
   const redraw = () => {
     const stopped = rt.halted;
@@ -48,7 +49,10 @@ export function keepInStep(rt: EditorRuntime, view: EditorView): () => void {
   binding._prosemirrorChanged = (doc) => {
     if (rt.readOnly || rt.halted) return;
     try {
-      write(doc);
+      ydoc.transact(() => {
+        writeDocument(ydoc, fragment, doc, binding);
+        binding.beforeTransactionSelection = getRelativeSelection(binding, view.state);
+      }, ySyncPluginKey);
     } catch (err) {
       elog.error('a change here couldn’t be written to the document, so the page is drawn from it again', { err, blocks: fragment.length });
       /* After y-prosemirror has let go: it's in the middle of writing. */
