@@ -1311,9 +1311,11 @@ function InCall({ session }: { session: CallSession }) {
   /* When there isn't room for all of it, what's shown big takes turns, and the top bar says which is showing. */
   const turns = solved.A.tabs ? [...(facts.ws ? [{ id: 'ws' as const, name: 'Document' }] : []), ...(facts.board ? [{ id: 'board' as const, name: 'Board' }] : []),
     ...[...seats].map(([id, s]) => ({ id: s, name: shares.find((x) => x.id === id)?.name ?? 'Shared screen' }))] : [];
+  /* On a phone an open panel covers what's taking turns, so choosing one puts the panel away. */
+  const covered = phone && panel !== null;
   const swap = turns.length > 1 && (
     <div className="ic-swap" role="group" aria-label="What’s showing">
-      {turns.map((t) => <button key={t.id} type="button" aria-pressed={solved.A.front === t.id} onClick={() => setFront(t.id)}>{t.name}</button>)}
+      {turns.map((t) => <button key={t.id} type="button" aria-pressed={!covered && solved.A.front === t.id} onClick={() => { setFront(t.id); if (covered) layout.arrange(closeAll); }}>{t.name}</button>)}
     </div>
   );
   const ALL_TABS = CallPanelTabSchema.options;
