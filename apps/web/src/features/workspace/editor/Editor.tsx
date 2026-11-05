@@ -26,6 +26,7 @@ import { Menus, useStore } from './menus/Menus';
 import { blockIds } from './plugins/blockIds';
 import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
+import { keepInStep } from './plugins/inStep';
 import { reconcilePlugin } from './plugins/reconcile';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
@@ -61,9 +62,9 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     watchPlugin(rt)
   ];
   const state = EditorState.create(fits ? { schema, doc: start.doc, plugins } : { schema, plugins });
-  return new EditorView({ mount }, {
+  const view = new EditorView({ mount }, {
     state,
-    editable: () => !rt.readOnly,
+    editable: () => !rt.readOnly && !rt.halted,
     nodeViews: nodeViews(rt),
     markViews: markViews(rt),
     attributes: { class: 'ws-text', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Document', spellcheck: 'true' },
@@ -98,6 +99,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
       return false;
     }
   });
+  keepInStep(rt, view);
+  return view;
 }
 
 /** Brings something into view, in 420 ms if asked and if motion's welcome. */
@@ -222,7 +225,7 @@ export default function Editor(props: EditorProps) {
       const threads = new Map<string, ThreadView>();
       for (const t of readThreads(doc)) threads.set(t.id, { open: !t.resolved, count: t.messages.length });
       rt.threads.set(threads);
-      rt.refresh();
+      rt.refreshAfterTransaction();
     };
     update();
     return observeThreads(doc, update);

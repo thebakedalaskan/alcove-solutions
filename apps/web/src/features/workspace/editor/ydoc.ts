@@ -13,11 +13,24 @@ import type { BlockJSON } from './types';
 
 export const contentOf = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment(FRAGMENT);
 
+/** How y-prosemirror follows the fragment. */
+export type FollowChange = (events: Y.YEvent<Y.XmlFragment>[], tr: Y.Transaction) => void;
+
+/** The parts of y-prosemirror's binding used here. Its version is pinned for these: they aren't its public surface. */
+export interface SyncBinding {
+  mapping: Map<Y.AbstractType<unknown>, PMNode | PMNode[]>;
+  mux: (run: () => void) => void;
+  _forceRerender: () => void;
+  _observeFunction: FollowChange;
+  _prosemirrorChanged: (doc: PMNode) => void;
+}
+
 /** y-prosemirror's plugin state, with the parts used here. */
 export interface SyncState {
   type: Y.XmlFragment;
   doc: Y.Doc;
-  binding: { mapping: Map<Y.AbstractType<unknown>, PMNode | PMNode[]> };
+  binding: SyncBinding;
+  addToHistory: boolean;
   isChangeOrigin: boolean;
   isUndoRedoOperation: boolean;
 }

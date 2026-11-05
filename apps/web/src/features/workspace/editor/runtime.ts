@@ -104,6 +104,9 @@ export class EditorRuntime {
   selecting = false;
   /** A menu was closed with Esc while the caret stayed in this trigger, so it stays closed. */
   dismissed: number | null = null;
+  /** The page couldn't be drawn from its document: nothing is typed or written until it can. */
+  halted = false;
+  private refreshing = false;
 
   constructor(props: EditorProps) {
     this.props = props;
@@ -118,5 +121,19 @@ export class EditorRuntime {
   refresh(): void {
     const v = this.view;
     if (v) v.dispatch(v.state.tr);
+  }
+
+  /**
+   * `refresh`, for what's called from inside a Yjs observer. y-prosemirror writes ProseMirror's document to Yjs on every
+   * dispatch, and during a transaction Yjs may already hold what ProseMirror hasn't been shown: dispatching then would
+   * write the old document over everyone's work. So it waits until the transaction is over.
+   */
+  refreshAfterTransaction(): void {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    queueMicrotask(() => {
+      this.refreshing = false;
+      this.refresh();
+    });
   }
 }
