@@ -51,7 +51,7 @@ flowchart TB
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
 The API is one application with modules (account, people, meetings, calendar, calls, moves, rings, recordings, audio,
-transcripts, notes, drafting, writer, series, repeats, billing), not separate services. Modules share one database pool and
+transcripts, notes, drafting, writer, series, repeats, billing, workspaces, workspaceAccess), not separate services. Modules share one database pool and
 one object store, and receive the owner context (the account's keys, opened for this request) explicitly. A transaction
 reads on its own connection, never through the pool: ten at once each waiting for a second one would wait for ever. Nothing
 waits for a connection longer than 10 seconds, and comes back as an error if it would.
@@ -61,9 +61,13 @@ talk to NEAR AI, and only `inference.ts` sends it content.
 `apps/api/src/demo.ts` holds the stand-ins for Microsoft and SSO sign-in, the sample calendar and the
 company directory until the real providers are connected.
 
-Three things run outside requests, in the same process: maintenance, at start and every 5 minutes; the
-notes worker, which starts when a recording stops ([Notes and inference](notes-and-inference.md)); and, while anyone
-has a stream of rings open, a ticker that reads what's ringing once a second ([Calls and recordings › Ringing](calls-and-recordings.md#ringing)).
+Four things run outside requests, in the same process: maintenance, at start and every 5 minutes; the
+notes worker, which starts when a recording stops ([Notes and inference](notes-and-inference.md)); while anyone
+has a stream of rings open, a ticker that reads what's ringing once a second ([Calls and recordings › Ringing](calls-and-recordings.md#ringing)); and the hub
+(`apps/api/src/live/hub.ts`), one `LISTEN` connection through which API instances tell each other what changed in a
+workspace ([Data and storage › Live traffic](data-and-storage.md#live-traffic)). A workspace is an owner of its own, and
+`modules/workspaceAccess.ts` alone decides who can open what in one
+([Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)).
 
 ## Request lifecycle
 
@@ -75,7 +79,8 @@ has a stream of rings open, a ticker that reads what's ringing once a second ([C
 3. Public routes come first: `GET /health` and `/healthz`, `GET /v1/session`, `POST /v1/auth/sign-in`
    (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, `GET /v1/attestation`
    ([what's running](privacy-keys-and-sessions.md#moving-to-confidential-computing)) and `POST /v1/telemetry`.
-4. Auth middleware looks the session up in Postgres by the hash of the cookie. No session, or an ended one:
+4. Calls and workspaces come next, each by what it takes: a call pass, or for a workspace a session or a call pass
+   (`modules/workspaceAccess.ts`), since guests have no session. Auth middleware looks the session up in Postgres by the hash of the cookie. No session, or an ended one:
    `401 unauthenticated`, and the app returns to the welcome screen. Otherwise it opens the account's keys
    for this request (`openOwner`) and adds `ownerId` to the log context.
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
@@ -109,7 +114,10 @@ has a stream of rings open, a ticker that reads what's ringing once a second ([C
 | Note progress stream | One update a second, for at most two minutes |
 | Busy times | At most 31 days and 300 people, 60 reads a minute per account; other people's calendars 50 at a time |
 | Rings | A ring lasts 45 seconds, and 20 people can be rung at once. Each browser tab holds one stream, which delivers within about a second, repeats itself every 20 seconds and ends after 210 to 240 seconds. An account holds at most 8, a process 300. |
-| API instances | Any number: sessions and keys come from Postgres on every request, and notes jobs are claimed with leases. Rings go through Postgres, read by each instance's own ticker. The rate-limit counters, Google access tokens and the timers that retry notes are per process. The prepared deploy runs one, taking 500 requests at once: an open tab holds one for its stream of rings, and a process holds at most 300 of those, 8 for any one account. |
+| Workspace | A name of up to 120 characters; at most 5,000 items in its tree, each named in up to 200, and folders 32 deep; 1,000 people; 30 days in Trash; 100 made per account, 20 a minute; the list read 120 times a minute |
+| Sharing a document | Up to 500 people in all, 100 at a time |
+| Workspace stream | 8 open per person on each instance; a ping every 25 seconds; opened again after 280 seconds; 120 opened a minute per person; 600 changes a minute per person |
+| API instances | Any number: sessions and keys come from Postgres on every request, and notes jobs are claimed with leases. Rings go through Postgres, read by each instance's own ticker, and workspace streams hear of changes from other instances the same way. The rate-limit counters, Google access tokens and the timers that retry notes are per process. The prepared deploy runs one, taking 500 requests at once: an open tab holds one for its stream of rings, and a process holds at most 300 of those, 8 for any one account. |
 
 ## Local versus production
 

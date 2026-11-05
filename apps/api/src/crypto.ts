@@ -103,7 +103,7 @@ export const mac = (key: Uint8Array, data: Uint8Array): Uint8Array => hmac(sha25
  * A keyed hash that lets the server find a person (by sign-in account or email) without storing
  * who they are. Emails are compared trimmed and lower-cased.
  */
-export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'call-code' | 'addition-author', value: string): Uint8Array {
+export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'call-code' | 'call-seat' | 'addition-author', value: string): Uint8Array {
   const v = purpose === 'email' || purpose === 'invite' || purpose === 'ring' ? value.trim().toLowerCase() : value;
   return hmac(sha256, derive(live(kmaster), new Uint8Array(0), 'alcove/index/v1'), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
 }

@@ -38,13 +38,13 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Key | How it's made | Where it lives |
 | --- | --- | --- |
 | `KMASTER` | 32 random bytes, base64url (43 characters), from the environment | `.env` locally; in production, released only to the attested confidential VM. Wraps every root key and keys the blind indexes. |
-| `ownerId` | 32 random bytes, base64url (43 characters), made when the account is created | Clear, as the account's opaque ID |
-| `Kowner` (account root) | 32 random bytes, made when the account is created | Only wrapped: `owners.root_envelope`, a key envelope (scope `owner-root`) under `HKDF(KMASTER, salt=ownerId, "alcove/owner-root/v1")`. Opened for each request or notes job, never cached. |
+| `ownerId` | 32 random bytes, base64url (43 characters), made when the account or [workspace](#who-can-open-a-workspace) is created | Clear, as the account's opaque ID; a workspace's stays on the server, behind its `workspace_id` |
+| `Kowner` (account or workspace root) | 32 random bytes, made when the account or workspace is created | Only wrapped: `owners.root_envelope`, a key envelope (scope `owner-root`) under `HKDF(KMASTER, salt=ownerId, "alcove/owner-root/v1")`. Opened for each request or notes job, never cached. |
 | Root check | `HMAC(HKDF(Kowner, salt=ownerId, "alcove/root-check/v1"), ownerId)` | `owners.root_check`; proves an opened root is this account's, so a wrong key never opens an empty vault |
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, and who its people and shares are) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -78,6 +78,9 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `personal-notes` | the author's state key `personal:<noteId>` | the author (`ownerId`), the note and its organizer |
 | `note-addition` | state key `note-additions:<noteId>` | note, addition |
 | `job` | state key `job:<noteId>` | note |
+| `workspace-state` | state key `workspace` | workspace (its name and tree) |
+| `workspace-member` | state key `workspace` | workspace, member (who someone in it is) |
+| `document-access` | state key `workspace` | workspace, document, entry (who a document is shared with) |
 | `operation-result` | operation-result key | operation |
 | `billing` | billing key | owner |
 | `sign-in-attempt` | sign-in attempt key | provider (`google`); the owner is empty, as nobody is signed in yet |
@@ -102,11 +105,12 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 | Purpose | Value | Stored in | Used for |
 | --- | --- | --- | --- |
 | `subject` | The sign-in provider's account ID (`google:<sub>` for Google) | `identities.subject_index` (primary key) | Finding the account at sign-in |
-| `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index` | Whether an address is on Alcove (people search, team and who on it uses Alcove); who else may read a note |
+| `email` | The email address, trimmed and lower-cased | `identities.email_index`, `note_access.email_index`, `workspace_members.email_index`, `workspace_authors.email_index`, `document_access.principal_index` | Whether an address is on Alcove (people search, team and who on it uses Alcove); who else may read a note; who's in a workspace, and who a document is shared with |
 | `invite` | The email address, trimmed and lower-cased | `meeting_access.email_index` | Who's invited to a call. A purpose of its own, so these rows can't be joined to `identities` without `KMASTER` |
 | `call-code` | The call's code from its link | `call_codes.code_hash` | Finding a call for anyone with the link, guests included |
 | `ring` | The email address, trimmed and lower-cased | `call_rings.email_index` | Finding the rings for someone signed in. Its own purpose, so a row joins to no other table without `KMASTER` |
 | `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
+| `call-seat` | A call's ID and someone's seat in it | `document_access.principal_index` | Who a document is shared with in a call. Only the API can work one out, from a call pass; it's different in every call |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
 [What is still visible](#what-is-still-visible)), and anyone holding `KMASTER` can test a guessed address.
@@ -365,6 +369,46 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
 Access follows the email address, so it is only as strong as sign-in: whoever signs in with an address can
 read every note given to it. That's why the demo SSO sign-in takes only example addresses (see above).
 
+## Who can open a workspace
+
+`apps/api/src/modules/workspaceAccess.ts` decides, and nothing else does. Every route asks it first.
+
+- **A reader** is an account, known by the email index of its profile's address; or someone in a call, known by the
+  `call-seat` index of their seat, from their call pass, for as long as they're let in and the call is going on. Signed in
+  and in a call, a request with both is both: it has what each gives it, the stronger where they overlap. Neither:
+  `401 unauthenticated`, whatever it asked for.
+- **A workspace role** (`admin`, `edit`, `read`) applies to everything in the workspace. `read` changes nothing. `edit`
+  changes the tree. Only an `admin` renames or deletes the workspace or changes its people, and a workspace always keeps one.
+- **Restricted.** A restricted document or board opens only for its creator, while they're in the workspace, and the
+  people it's shared with. Nobody else's tree shows it, and being an admin doesn't open it. Something with no creator (`by`
+  null) gives nobody the creator's rule, and opens only through `document_access`. Whoever restricts something they didn't
+  make keeps it as its creator does, or they'd be locked out of it, for as long as it's restricted and they're in the
+  workspace: it's kept on the item, so there's no entry to outlive either. A copy of something restricted is restricted to
+  whoever made the copy. When nobody can open one any more it goes to Trash, and to nobody else
+  ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
+- **Shared.** `document_access` opens one document for anyone, at `edit` or `read`. Someone outside the workspace sees that
+  document alone: no folders (its `parent` reads null), no name or head count for the workspace, and no address of anyone.
+  People in a workspace who can edit a document say who it's shared with; someone outside it can't, even with `edit`.
+  One request gives it to up to 100 people, all of them or none, as does one call to `grant` on the server, to any number. An entry for an address lasts until
+  it's removed. An entry for a seat ends with the call: it's deleted when the call ends or that person is taken out of
+  it, the pass stops opening it the moment either happens, and maintenance sweeps up any left by a process that stopped.
+  Someone who also has it through their account keeps what that gives them.
+- **Nothing else opens anything.** Being a call's organizer gives nothing. Joining a call gives nothing.
+- **In Trash**, something stays readable to whoever could open it, and anyone who can edit it can bring it back; nothing
+  else can change it until then (`409 conflict`).
+- **Through a folder**, nobody reaches further than they could directly: sending a folder to Trash, or deleting it, takes
+  only what they could send or delete by itself. Anything they can only read, or can't see, moves out.
+- **A new address.** Access follows the address, so when a sign-in brings an account a new one, everything under the old
+  hash moves to the new one in that transaction, keeping the stronger role where the new address already had something.
+  While another account still signs in with the old address, what's under it stays that account's.
+- **Refusals never say what exists.** Someone with no access gets the same `404 not-found` for a real ID and a made-up one:
+  a workspace, an item, a person, an entry, wherever it comes in, as a parent or a sibling too. Someone who can see
+  something and may not do this to it gets `403 forbidden`. What's only for people in the workspace doesn't exist for
+  anyone outside it, whatever they hold in it.
+- **Losing access** ends a stream with a `closed` line: every change to who has what reaches every instance
+  ([Data and storage › Live traffic](data-and-storage.md#live-traffic)), and each stream looks again. A change that's being
+  made is checked under the workspace's lock, so nothing gets in after someone is taken out.
+
 ## Requests
 
 - **Origin and content type.** Every state-changing request under `/v1` must carry `Origin: WEB_ORIGIN`
@@ -388,6 +432,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   in a receipt for a day; the app doesn't resend them, and doing so can add an entry twice, never lose one.
   Deleting the account keeps none either: its receipts go with it, and a retry finds the session gone
   (`401 unauthenticated`).
+  What's for people in a workspace keeps a receipt, because a retry mustn't make a second workspace, item or copy, and
+  every one of those answers is only an ID or a yes: a receipt filed under someone in a workspace outlives whatever it
+  was about, so it can't hold a name. What a guest in a call can reach of a workspace keeps none: renaming an item,
+  which happens as a title is typed, restoring one, and reading. Each sets an explicit state, and a guest has no account
+  to file a receipt under.
 - **Rate limits.** Sign-in, demo and Google together: 30 a minute per client address (the last
   `x-forwarded-for` entry, which Cloud Run's front end appends). Browser reports: 60 a minute per client
   address. A call's card: 600 a minute per client address (every pre-join reads it every 4 s or so while it
@@ -398,13 +447,15 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   point at what you share: 20 a minute per person. Questions and catch-ups (about a note, across your notes, a call so far or a
   series): 20 a minute per account, together (during a call, per connection to it, and asking about earlier calls per
   account). What carries over into a call: 60 a minute per account. Opening a moment of a call's
-  live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
+  live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Changes to a workspace's tree and people: 600 a
+  minute per person, opening its stream 120, making a workspace 20 per account and reading your list of them 120. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
 - **Sizes.** An audio piece over 2 MiB, a transcript clip over 30 seconds of WAV or a shared-screen frame over
   1 MiB is refused from its `content-length` (`400 invalid`) before the body is read; a frame must also be a
   JPEG between 64 and 4096 pixels a side.
-- **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies.
+- **No content in URLs.** Note search, people search, sharing and questions send their terms in POST bodies, as adding
+  someone to a workspace and sharing a document do their addresses; after that they're a `member_id` or an `access_id`.
   A call's code is in its pages' paths (`/join/<code>`, `/call/<code>`) and in the API paths that read or join
   it (`/v1/calls/<code>/card`, `…/join`, `…/pick`, `…/meeting`), never in a query string or a sign-in URL: signing in with
   Google from a join page keeps the call to come back to in the tab's sessionStorage. Alcove's own logs write
@@ -507,7 +558,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Where | Visible |
 | --- | --- |
 | Postgres | Opaque IDs; item kinds (`profile`, `meeting`, `note`, `connection`, `series`, so which accounts connected Google, and how many series that repeat an account has, though not which calls are in one: that's sealed in each call); while a change to a series goes through, that one is; revision, call and recording times (a room recording uploaded later shows when it really started); that someone in a call is moving to another device, and when the move runs out; while a call runs, how many people its organizer rang, and for each when the ring started and when it stops: so also that someone said "in a little while" (a ring still to come) or answered at all (a ring that stopped early), and when, though never how, and never who; per-piece start, duration, size and codec; while a note records, how many clips were transcribed and their sizes; how many shared-screen frames a note keeps, and their sizes; each notes job's state, attempts and lease times; which accounts have their own notes on which notes (one row each, so not how many, or of what), and how many additions a note has and when each was made; operation method and time; stored bytes; each session's provider and its created, last-seen and expiry times; when each sign-in identity was last used |
-| Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. |
+| Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. Joining `workspace_members` and `document_access` the same way shows who's in which workspaces and who has how many of a workspace's documents, at what role; `workspace_authors` shows who has had their name on something in one, or made it, even after leaving. |
+| Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), and when the oldest thing in its Trash went there. Never a name, a folder, or how the tree is arranged |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
 | Ciphertext lengths | Not padded, so title, guest list, transcript, clip and own-notes lengths leak approximately. An answer to an invitation is padded: its length would say which of three words it is |
 | NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, their breakout rooms' too, with their dates (in the asker's time zone), decisions, open questions and follow-ups; comparing a call with earlier ones in its series, what those left standing (the organizer's notes: decisions and open questions), with this call's decisions and transcripts. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
@@ -600,6 +652,17 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   or not it still has the note or the entry they came from. That runs after the `owners` row goes: taking its own notes
   with it waits for an addition being written, which is then there to delete, and any that gets there later fails on the
   missing account. Signing in again with the same account starts a new one, empty, with the welcome credits.
+- **Deleting a workspace** deletes its `owners` row, and everything of it goes with that: its state, people, documents,
+  what they hold, and who they were shared with. Deleting something from one for good deletes it from the state and its
+  `documents` row, for everyone.
+- **Deleting your account** also reaches every workspace its address still appears in, including ones it left: it comes
+  out of them and off every document given to its address, unless another account still signs in with that address, and
+  everything its calls gave people's seats ends. A workspace left with nobody in it is deleted, even if people outside it
+  have documents from it. One left with no admin makes its longest-standing person its admin. A restricted document only
+  the account could open goes, in Trash or not; anything else left with nobody to open it goes to Trash; and what it made
+  keeps its name and loses its address, so signing in again with that address brings none of it back. Every row is touched
+  under its workspace's lock, the order every change takes, workspace by workspace in order of owner and after the
+  account's, so it can't deadlock with a change, or with someone else leaving at the same moment.
 - **Series** that follow on from each other have no record of their own: a series is the ID its calls share inside
   their sealed manifests (with Google's ID for a recurring event), so it goes when its calls do. One scheduled to
   repeat has a sealed `series` item, deleted with its link in the transaction that deletes its last call, however
@@ -615,7 +678,8 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 - **Moves to other devices** run out within minutes and upkeep deletes them; a call's go when it ends.
 - **Maintenance** (every 5 minutes) removes ended sessions and receipts older than 24 hours, retries
   `object_gc`, removes objects older than 24 hours that no recording piece or shared-screen frame
-  references, and removes rings a day after they ran out, in a call that went on that long.
+  references, removes rings a day after they ran out, in a call that went on that long, deletes for good what's been in
+  a workspace's Trash for 30 days, and ends seats whose call is over.
 
 ## Moving to confidential computing
 

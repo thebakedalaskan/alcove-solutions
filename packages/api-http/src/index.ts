@@ -4,17 +4,18 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
-  type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip
+  type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
+import { HttpWorkspaceLive, QUIET_MS } from './workspaces';
 import { z } from 'zod';
 
 export interface HttpOptions {
@@ -37,6 +38,8 @@ export interface HttpOptions {
    * every 20). A laptop waking up can hold a connection that's dead without knowing it. Tests go faster.
    */
   ringSilenceMs?: number | undefined;
+  /** How long a live stream can say nothing before it's taken for gone and opened again, in ms (default a minute). */
+  liveQuietMs?: number | undefined;
 }
 export interface ClientEvent {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -95,8 +98,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const res = await send(method, path, body === undefined ? null : JSON.stringify(body), { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra }, keepalive);
     return parse(schema, await res.json(), `response from ${method} ${path}`);
   }
-  async function* ndjson<S extends z.ZodType>(schema: S, path: string, signal?: AbortSignal | undefined): AsyncIterable<z.infer<S>> {
-    const res = await send('GET', path, null, {}, false, signal);
+  async function* ndjson<S extends z.ZodType>(schema: S, path: string, signal?: AbortSignal | undefined, headers: Record<string, string> = {}): AsyncIterable<z.infer<S>> {
+    const res = await send('GET', path, null, headers, false, signal);
     if (!res.body) throw new AlcoveApiError('unknown', 'Empty stream.');
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '';
@@ -116,6 +119,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   const ringing = new Set<HttpRings>();
   /** A change to a call in a series says how far it reaches in the query. */
   const inScope = (opts: { scope?: ChangeScope | undefined } | undefined) => (opts?.scope ? `?scope=${opts.scope}` : '');
+  /** What reads a workspace with a call pass sends, for someone who has one. */
+  const withPass = (w?: WorkspaceReadOptions | undefined): Record<string, string> => (w?.pass ? { [CALL_PASS_HEADER]: w.pass } : {});
+  const space = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
+  const itemIn = (id: string, itemId: string) => `${space(id)}/items/${encodeURIComponent(itemId)}`;
   /** Where a piece or clip starts in its segment, in the milliseconds the headers carry. */
   const atMs = (at: number) => String(Math.round(at * 1000));
   const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
@@ -304,6 +311,34 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         const parts = await req(z.array(SeriesAnswerPartSchema), 'POST', `/series/${encodeURIComponent(id)}/ask`, { question, timeZone });
         yield* parts;
       }
+    },
+    workspaces: {
+      list: () => req(z.array(WorkspaceSummarySchema), 'GET', '/workspaces'),
+      create: (name) => req(CreatedSchema, 'POST', '/workspaces', { name }),
+      get: (id, w) => req(WorkspaceTreeSchema, 'GET', space(id), undefined, withPass(w)),
+      rename: async (id, name) => { await req(z.unknown(), 'PATCH', space(id), { name }); },
+      remove: async (id) => { await req(z.unknown(), 'DELETE', space(id)); },
+      people: (id) => req(z.array(WorkspacePersonSchema), 'GET', `${space(id)}/people`),
+      addPerson: (id, email, role) => req(CreatedSchema, 'POST', `${space(id)}/people`, { email, role }),
+      setRole: async (id, personId, role) => { await req(z.unknown(), 'PATCH', `${space(id)}/people/${encodeURIComponent(personId)}`, { role }); },
+      removePerson: async (id, personId) => { await req(z.unknown(), 'DELETE', `${space(id)}/people/${encodeURIComponent(personId)}`); },
+      items: {
+        get: (id, itemId, w) => req(WorkspaceItemSchema, 'GET', itemIn(id, itemId), undefined, withPass(w)),
+        create: (id, input) => req(CreatedSchema, 'POST', `${space(id)}/items`, input),
+        rename: async (id, itemId, name, w) => { await req(z.unknown(), 'PATCH', itemIn(id, itemId), { name }, withPass(w)); },
+        move: async (id, itemId, to) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/move`, to); },
+        duplicate: (id, itemId) => req(CreatedSchema, 'POST', `${itemIn(id, itemId)}/duplicate`, {}),
+        trash: async (id, itemId) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/trash`, {}); },
+        restore: async (id, itemId, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/restore`, {}, withPass(w)); },
+        deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
+      },
+      share: {
+        list: (id, documentId) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`),
+        set: async (id, documentId, to, role, w) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/share`, { to, role }, withPass(w)); },
+        remove: async (id, documentId, entryId) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`); },
+        restrict: async (id, documentId, restricted) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }); }
+      },
+      live: (id, w) => new HttpWorkspaceLive((signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS)
     },
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits')

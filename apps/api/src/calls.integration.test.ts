@@ -207,7 +207,8 @@ describe('end-to-end encryption', () => {
     await host.remove(sam.ticket.identity);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(sam.ticket.identity), 'Sam out of the group');
     await waitFor(() => keyOf(lee) === keyOf(host) && keyOf(host) !== before, 'a new key without Sam');
-    expect(keyOf(sam)).toBe(before);
+    // Never the new one: Sam has the old keys, or none once their browser has heard they're out, whichever came first.
+    expect([before, '[]']).toContain(keyOf(sam));
     await host.sendChat('only for those still here');
     await waitFor(() => chatOf(lee).includes('only for those still here'), 'Lee reads it');
     expect(chatOf(sam)).not.toContain('only for those still here');

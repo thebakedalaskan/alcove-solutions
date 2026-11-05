@@ -102,9 +102,15 @@ immutable repository and owner IDs, main ref, deploy workflow and permitted even
 Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` is a secret in the
 `production` environment. Automatic deployment requires no environment reviewer gate.
 
-Cloud Run uses one instance, session affinity, gen2, one CPU, 512 MiB, port 8080, a 300-second timeout and 500
+Cloud Run uses one instance, session affinity, gen2, one CPU, 1 GiB, port 8080, a 300-second timeout and 500
 requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
 The API holds at most 300 of those streams, and 8 for any one account, so the rest are always there for calls.
+A workspace's live stream holds a request too, for as long as it's open: at most 8 for any one person on an instance, with
+no limit across everyone yet, and the API lets go of each one after 280 seconds for the browser to open it again
+(`LIVE_STREAM_MS`; keep it under the timeout). Node gives its heap about half of the container's memory, so 1 GiB is a
+heap of about 560 MiB. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
+checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
+connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
 CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
 cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
 signs nobody out, and notes jobs left behind by a restart are picked up by the next maintenance run.

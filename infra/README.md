@@ -213,7 +213,7 @@ Each deployment:
 1. Builds the API container, recording its commit in `ALCOVE_COMMIT`, and pushes its commit-SHA tag to
    Artifact Registry.
 2. Runs `alcove-migrate` once, with only `DATABASE_URL`, and waits for success before changing the API.
-3. Deploys `alcove-api`: gen2, port 8080, one CPU, 512 MiB, 300-second request timeout, 500 requests at once,
+3. Deploys `alcove-api`: gen2, port 8080, one CPU, 1 GiB, 300-second request timeout, 500 requests at once,
    min/max one instance, session affinity, and CPU between requests for key expiry and object cleanup.
 4. Checks `/health` at the deployed service's `run.app` URL, allowing the first deployment to finish
    before custom-domain provisioning, and requires `livekit: reachable`.

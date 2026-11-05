@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import type { Config } from './config';
+import type { Hub } from './live/hub';
 import type { LiveKit } from './livekit';
 import type { ObjectStore } from './objects';
 import type { Session } from './sessions';
@@ -9,6 +10,8 @@ export interface Deps {
   pool: pg.Pool;
   objects: ObjectStore;
   livekit: LiveKit;
+  /** This instance's end of what API instances tell each other. */
+  hub: Hub;
 }
 /** Everything an owner-scoped handler needs: the account and its keys, opened for this request. */
 export interface Owner extends Deps {

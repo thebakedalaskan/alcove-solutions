@@ -470,6 +470,9 @@ describe('what a guest’s pass reaches', () => {
     const ids: Record<string, string> = { id: noteId, decisionId: 'd', actionId: 'a', questionId: 'q', segment: '0', token: 'nothing', code: next.code };
     const meetingIds: Record<string, string> = { id: next.id };
     const seriesIds: Record<string, string> = { id: next.seriesId ?? '' };
+    // A real workspace, so what a pass gets from one isn't just what it gets from an ID nobody has.
+    const workspace = await org.api.workspaces.create('Standup workspace');
+    const workspaceIds: Record<string, string> = { id: workspace.id, item: (await org.api.workspaces.items.create(workspace.id, { kind: 'document', name: 'Standup agenda' })).id };
 
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -488,16 +491,28 @@ describe('what a guest’s pass reaches', () => {
       expect(`${path} → ${res.status}`).toBe(`${path} → 404`);
       expect(await res.text()).not.toContain('Standup');
     }
-    const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/'));
+    // The only routes outside the call's that take a pass: what may be shared with someone's seat in a call. Each one is listed
+    // here on purpose, and without anything shared it answers as if the workspace weren't there.
+    const BY_PASS = new Set(['GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore']);
+    const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);
+    const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
     expect(routes.length).toBeGreaterThan(30);
     const fill = (path: string) => {
-      const by = path.startsWith('/v1/meetings/') ? { ...ids, ...meetingIds } : path.startsWith('/v1/series/') ? { ...ids, ...seriesIds } : ids;
+      const by = path.startsWith('/v1/meetings/') ? { ...ids, ...meetingIds } : path.startsWith('/v1/series/') ? { ...ids, ...seriesIds } : path.startsWith('/v1/workspaces/') ? { ...ids, ...workspaceIds } : ids;
       return path.replace(/:([A-Za-z]+)/g, (_, name: string) => encodeURIComponent(by[name] ?? 'x'));
     };
-    const send = (method: string, path: string) => {
+    const send = (method: string, path: string, body = '{}') => {
       const mutating = method !== 'GET';
-      return fetch(`${h.baseUrl}${path}`, { method, headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, ...(mutating ? { 'content-type': 'application/json' } : {}) }, ...(mutating ? { body: '{}' } : {}) });
+      return fetch(`${h.baseUrl}${path}`, { method, headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, ...(mutating ? { 'content-type': 'application/json' } : {}) }, ...(mutating ? { body } : {}) });
     };
+    const passRoutes = table.filter(byPass);
+    expect(passRoutes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([...BY_PASS].sort());
+    for (const r of passRoutes) {
+      const res = await send(r.method, fill(r.path), JSON.stringify({ name: 'Renamed by a guest' }));
+      expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 404`);
+      expect(await res.text()).not.toContain('Standup');
+    }
+    expect((await org.api.workspaces.items.get(workspace.id, workspaceIds['item'] ?? '')).name).toBe('Standup agenda');
     for (const r of routes) {
       const res = await send(r.method, fill(r.path));
       expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 401`);

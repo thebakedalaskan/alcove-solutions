@@ -410,12 +410,15 @@ describe('host hand-off', () => {
     // from Design, and his browser stays there.
     await drop(host, hostRoom);
     await upkeepAfter(HANDOFF_MS);
-    await settle(kofi.call, (x) => x.isHost, 'Kofi hosting');
+    // Kofi hosting starts a new segment and new groups, in the state that says he hosts. Until Mia is back in Design's group the
+    // room has no scribe, so what her browser last read says nothing unless it's from this generation.
+    const hosting = await settle(kofi.call, (x) => x.isHost, 'Kofi hosting');
+    const { segment } = hosting.notes.recording;
     await inPlace(kofi.call, design);
     await inPlace(mia.call, design);
     await inPlace(lena.call, support);
     const taken = (p: Promise<unknown>) => p.then(() => 'taken', (e: unknown) => code(e));
-    const segment = (await settle(mia.call, (x) => x.capture.room?.scribe === mia.call.ticket.identity, 'Mia hearing Design')).notes.recording.segment;
+    await settle(mia.call, (x) => x.generation === hosting.generation && x.capture.room?.scribe === mia.call.ticket.identity, 'Mia hearing Design');
 
     // Design goes on with Mia's browser: whoever hosts is never a room's scribe, and Kofi's voice is heard there like anyone's.
     expect(mia.call.getSnapshot().capture.room).toMatchObject({ id: design, mode: 'on', transcript: { mode: 'on' } });
