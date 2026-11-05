@@ -5,6 +5,8 @@
  */
 .tp {
   container-type: inline-size;
+  /* The name of someone far along the line reaches past their arch, and past the window at the very end of it. */
+  overflow-x: clip;
   --hz: clamp(322px, 40vh, 470px);
   --u0: clamp(74px, 7.3vw, 118px);
   --u: min(var(--u0), calc((100cqw - 24px) / var(--tp-sum, 9)));
@@ -191,6 +193,9 @@
 .tp-r { display: grid; grid-template-columns: 32px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1.2fr) 84px; column-gap: 14px; align-items: center; min-height: 56px; border-top: 1px solid var(--line); }
 .tp-r > b { font: 500 15px/22px var(--font-sans); color: var(--ink); }
 .tp-r-s { font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+/* Someone known by a long address has the room a title would have had. */
+.tp-r:has(.tp-r-s:empty) > b { grid-column: 2 / span 2; }
+.tp-r-s:empty { display: none; }
 .tp-r-m { display: flex; align-items: center; gap: 6px; font: 400 13px/20px var(--font-sans); color: var(--ink-2); }
 .tp-r-m .ac-i { flex: none; color: var(--sun-text); }
 .tp-r .ac-btn { justify-self: end; width: 84px; height: 32px; padding: 0; font-size: 13px; }
