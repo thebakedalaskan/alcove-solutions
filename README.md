@@ -35,6 +35,7 @@ pnpm check             # test policy, strict typing, typecheck, integration test
 - `apps/api`: the API (Hono, Postgres, S3-compatible objects, sessions and sealed records)
 - `packages/ui`: the Alcove design system
 - `packages/api`: the contract (zod schemas + `AlcoveApi`); `packages/api-http`: the browser client
+- `packages/board`: the shape of a board's Y.Doc and the logic the app and the API share, with no React
 - `infra/` and `.github/`: deployment guide, GCP bootstrap, CI, deploy pipeline, branch ruleset
 
 Sign in with **Continue with Microsoft** to be Art Vandelay, with a sample calendar and a company directory
