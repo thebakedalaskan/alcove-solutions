@@ -30,6 +30,8 @@ class WorkspaceWords implements LiveStore<Words> {
   private lastTry = 0;
   /** Someone's role here, the last time it was looked at. */
   private role: WorkspaceRole | null | undefined;
+  /** What the tree last said can be opened: a read on its way may hold something that's been lost since. */
+  private open: ReadonlySet<string> | null = null;
 
   constructor(private readonly workspaceId: string, private readonly pass: string | undefined) {}
 
@@ -39,6 +41,10 @@ class WorkspaceWords implements LiveStore<Words> {
   private set(next: Partial<Words>): void {
     this.view = { ...this.view, ...next };
     this.listeners.forEach((l) => l());
+  }
+  /** Only what can still be opened. */
+  private within(docs: Iterable<[string, SearchDoc]>): ReadonlyMap<string, SearchDoc> {
+    return new Map([...docs].filter(([id]) => this.open?.has(id) ?? true));
   }
 
   /** Reads everything again if something in `docs` may say more than what's held. Called as Find opens. */
@@ -61,16 +67,16 @@ class WorkspaceWords implements LiveStore<Words> {
         found.set(doc.id, doc);
         if (Date.now() - shown < SHOW_EVERY_MS) continue;
         shown = Date.now();
-        this.set({ docs: new Map([...this.view.docs, ...found]) });
+        this.set({ docs: this.within([...this.view.docs, ...found]) });
       }
       if (run !== this.run) return;
       this.readAt = began;
       /* Only what this read found: anything else has gone, or can't be opened any more. */
-      this.set({ docs: found, reading: false });
+      this.set({ docs: this.within(found), reading: false });
     } catch (e) {
       if (run !== this.run) return;
       wlog.info('a workspace’s words weren’t read', { workspaceId: this.workspaceId, code: errorCode(e), found: found.size });
-      this.set({ docs: new Map([...this.view.docs, ...found]), reading: false, failed: true });
+      this.set({ docs: this.within([...this.view.docs, ...found]), reading: false, failed: true });
     }
   }
 
@@ -82,8 +88,9 @@ class WorkspaceWords implements LiveStore<Words> {
     if (this.role !== undefined && this.role !== role) this.forget();
     this.role = role;
     const open = new Set(items.flatMap((i) => (i.trashedAt === null ? [i.id] : [])));
+    this.open = open;
     if ([...this.view.docs.keys()].every((id) => open.has(id))) return;
-    this.set({ docs: new Map([...this.view.docs].filter(([id]) => open.has(id))) });
+    this.set({ docs: this.within(this.view.docs) });
   }
 
   /** Lets go of everything, and of anything on its way. */

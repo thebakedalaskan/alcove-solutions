@@ -32,8 +32,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   const [at, setAt] = useState<WorkspacePlace>(kept.document ? { kind: 'document', id: kept.document } : { kind: 'home' });
   const [zen, setZen] = useState(false);
   const [peek, setPeek] = useState(false);
-  /** How many times ⌘K has asked for Find here. */
-  const [finding, setFinding] = useState(0);
+  /** ⌘K asked for Find, and the workspace hasn't heard yet. */
+  const [finding, setFinding] = useState(false);
   /** The call has said which workspace it uses, for this browser. */
   const [settled, setSettled] = useState(false);
   const asked = useRef(false);
@@ -45,7 +45,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const say = (t: WsToastData) => { said.current?.(); said.current = show(t); };
     const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
     const reveal = () => { setMounted(true); setOpen(true); };
-    const hide = () => { setOpen(false); setZen(false); setPeek(false); };
+    const hide = () => { setOpen(false); setZen(false); setPeek(false); setFinding(false); };
     return {
       say, failed, hide,
       /** A workspace that won't open any more: back to the call, which is asked again, so what opens next time is what it says now. */
@@ -54,7 +54,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       announce: show,
       toggle: () => { if (openNow.current) hide(); else reveal(); },
       /** ⌘K: Find, with the workspace opened for it. */
-      find: () => { reveal(); setFinding((n) => n + 1); },
+      find: () => { reveal(); setFinding(true); },
+      found: () => setFinding(false),
       go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
       /** Just the document, which opens the workspace if it has to, or everything back. */
       setZen: (on: boolean) => { if (on) reveal(); setZen(on); },
@@ -133,7 +134,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   at: WorkspacePlace;
   settled: boolean;
   open: boolean;
-  finding: number;
+  finding: boolean;
   /** Just the document: on or off, if it's on offer at all. */
   zen: boolean | null;
   listOff: boolean;
@@ -147,7 +148,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
-    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open, finding,
+    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
   }), [top, documents, act, organizer, chooser, open, finding, zen, onToggleZen, listOff, listPeek, onToggleList]);

@@ -520,17 +520,17 @@ export function askAboutSelection(rt: EditorRuntime): void {
     const at: InsertAt = last ? { after: last } : !ref ? 'end' : isBlank(ref.node) ? { replace: block } : { after: block };
     last = insertBlocks(rt, [line], at, { appear: true }).at(-1) ?? last;
   };
-  const writeWords = (live: EditorView, words2: string) => {
+  const writeWords = (live: EditorView, answer: string) => {
     const so = written && rangeOf(live.state, written);
     if (so) {
-      live.dispatch(live.state.tr.insertText(words2, so.to));
-      written = holdRange(live.state, so.from, so.to + words2.length);
+      live.dispatch(live.state.tr.insertText(answer, so.to));
+      written = holdRange(live.state, so.from, so.to + answer.length);
       return;
     }
     const range = sameWords(live.state, words);
-    if (!range) { addLine(live, lineOf(words2)); return; }
-    live.dispatch(live.state.tr.insertText(words2, range.from, range.to));
-    written = holdRange(live.state, range.from, range.from + words2.length);
+    if (!range) { addLine(live, lineOf(answer)); return; }
+    live.dispatch(live.state.tr.insertText(answer, range.from, range.to));
+    written = holdRange(live.state, range.from, range.from + answer.length);
     flash(live, block);
   };
   const writeTodo = (live: EditorView, line: string) => {

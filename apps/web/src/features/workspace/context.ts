@@ -34,8 +34,9 @@ export interface WorkspaceCall {
   say: (toast: WsToastData) => void;
   /** Closed, and kept as it was for next time: its keys sleep. */
   closed: boolean;
-  /** Goes up each time ⌘K in the call asks for Find, which opens the workspace first if it's closed. */
-  finding: number;
+  /** ⌘K in the call asked for Find, which opens the workspace first if it's closed. `onFinding` says it's been heard. */
+  finding: boolean;
+  onFinding: () => void;
 }
 
 export interface WorkspaceProps {
