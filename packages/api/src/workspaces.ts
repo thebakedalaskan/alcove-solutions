@@ -115,11 +115,13 @@ export type MentionBody = z.infer<typeof MentionBodySchema>;
 
 /**
  * Where someone was, remembered in this browser, per account, by ID only: the workspace they last had open, the document
- * they last had open in each, which folders they left open, and whether they tucked the list away.
+ * they last had open in each and the ones before it, which folders they left open, and whether they tucked the list away.
  */
 export const WorkspacePlacesSchema = z.object({
   workspace: z.string().nullable(),
   documents: z.record(z.string(), z.string()),
+  /** What was opened in each workspace, the newest first, for Find before anything's typed. */
+  recent: z.record(z.string(), z.array(z.string())).default({}),
   folders: z.record(z.string(), z.array(z.string())),
   listOff: z.boolean()
 });

@@ -196,7 +196,7 @@ export function List({ drags }: { drags: ListDrag }) {
   return (
     <WsList listKey={ws.workspaceId} onKeyDown={rowKeys} empty={rows.length === 0} foot={member ? <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} /> : undefined}
       head={member || ws.mode === 'page' ? (
-        <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField}
+        <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField} onFind={ws.openFind}
           create={canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(null) : null } : undefined} />
       ) : undefined}>
       {(call?.top || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={drag?.spot?.kind === 'bring'} />}

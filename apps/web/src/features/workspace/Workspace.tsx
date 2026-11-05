@@ -19,14 +19,17 @@ import { KeptHere } from './Rescue';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { useFollow } from './follow';
+import { Find, useFindKeys } from './Find';
+import { Keys } from './Keys';
 import { List } from './List';
 import { LiveHostContext } from './live/host';
 import { LivePage } from './live/LivePage';
 import { useSending } from './live/useSending';
-import { placesOf, rememberPlaces } from './places';
+import { openedIn, placesOf, rememberPlaces } from './places';
 import { othersIn } from './presence';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
+import { useWordsFollow } from './words';
 
 const GLOW_MS = 1400;
 
@@ -231,7 +234,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
-    rememberPlaces(owner, (p) => ({ ...p, workspace: workspaceId, documents: documentId ? { ...p.documents, [workspaceId]: documentId } : p.documents }));
+    rememberPlaces(owner, (p) => (documentId ? openedIn({ ...p, workspace: workspaceId }, workspaceId, documentId) : { ...p, workspace: workspaceId }));
   }, [owner, workspaceId, documentId]);
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);
@@ -263,6 +266,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     return () => removeEventListener('keydown', keys);
   }, [actions, canChange, newFolder, toggleList, asleep]);
 
+  const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
+  useWordsFollow(workspaceId, pass, view);
+
   const { drag, arm, ended } = useRowDrag({
     tree, canDrag: (id) => canChange && tree.all.get(id)?.role === 'edit',
     onOpenFolder: (id) => setOpen(id, true),
@@ -287,7 +293,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true)
   };
   const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen } : null;
   return (
@@ -313,6 +319,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         )}
       </WsPane>
       {!call && <WsToasts toasts={toasts} />}
+      <Find open={find.finding} onOpenChange={find.setFinding} onKeys={() => find.setListing(true)} />
+      <Keys open={find.listing} onOpenChange={find.setListing} />
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
      </LiveHostContext>
     </WsContext>

@@ -4,15 +4,17 @@
  * and whatever they wrote that didn't reach Alcove stays theirs to copy, save as a new document, or let go.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type Person, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsFace, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { agoLabel } from '~/lib/time';
 import { focusRow } from './actions';
 import type { CommentOpen } from './Comments';
+import { useAsk } from './Ask';
 import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
+import { useHistory } from './History';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlock, Point, Rect } from './editor/types';
 import { Rescue, type CopyTo } from './Rescue';
@@ -62,6 +64,12 @@ function useSession(ws: Ws, documentId: string) {
 /** How long a document that can't be opened right now waits before it's opened again, a little longer each time. */
 const UNAVAILABLE_WAITS = [2_000, 5_000, 15_000, 30_000];
 
+/** Lands on a line: it glows, and the caret's there, so what's typed next goes where you are. A touch screen's keyboard stays down. */
+export function landOn(editor: EditorHandle, block: string): void {
+  if (!matchMedia('(hover: none)').matches) editor.focusBlock(block, 'end');
+  editor.scrollToBlock(block, { flash: true });
+}
+
 function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus }) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   const now = useNow(60_000);
@@ -70,6 +78,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const [named, setNamed] = useState<{ person: Person; rect: Rect } | null>(null);
   // A session that's ended takes nothing more: anything typed there would have nowhere to go.
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed' || status.closed !== null;
+  const alcove = useAsk(ws, item);
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -106,7 +115,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     if (!editor || !block) return;
     let tries = 0, frame = 0;
     const land = () => {
-      if (editor.blockJSON(block)) { editor.scrollToBlock(block, { flash: true }); return; }
+      if (editor.blockJSON(block)) { landOn(editor, block); return; }
       if (++tries < 60) frame = requestAnimationFrame(land);
     };
     land();
@@ -223,10 +232,11 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             onPresence={(p) => ws.present({ document: item.id, ...p })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
-            moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop}
+            moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : alcove.onAsk}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
+        {alcove.menu}
       </WsPage>
       {comment && (
         <Suspense>
@@ -305,6 +315,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
     const timer = setTimeout(reopen, wait);
     return () => clearTimeout(timer);
   }, [status.closed, reopen]);
+  const history = useHistory(ws, item, session, item.role === 'edit' && !trashed && !offline && status.role !== 'read');
 
   /* Back from being offline, and everything's in. */
   const wasOffline = useRef(false);
@@ -331,6 +342,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
     ) : (
       <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
+        onHistory={() => { close(); history.show(); }}
         onDuplicate={changing ? () => { close(); ws.actions.duplicate(item.id); } : undefined}
         onMove={changing ? () => setMore('move') : undefined}
         onCopyLink={() => { close(); ws.actions.copyLink(item.id); }}
@@ -345,6 +357,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
   return (
+    <>
     <WsDoc>
       <WsDocHead crumbs={crumbsOf(ws, item)} save={save} onToggleList={ws.toggleList} faces={faces}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
@@ -354,9 +367,14 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsUnsavedBar why={unsaved}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
       <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
+      <WsVersionBar when={history.reading} />
+      {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready
-        ? <WsScroll onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
+        ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null} onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
         : status.closed === 'unavailable' ? <WsUnavailable /> : offline && <WsOfflineEmpty />}
+      {history.page}
     </WsDoc>
+    {history.panel}
+    </>
   );
 }

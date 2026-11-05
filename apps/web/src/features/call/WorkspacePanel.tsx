@@ -43,6 +43,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   const [at, setAt] = useState<WorkspacePlace>(kept.document ? { kind: 'document', id: kept.document } : { kind: 'home' });
   const [zen, setZen] = useState(false);
   const [peek, setPeek] = useState(false);
+  /** ⌘K asked for Find, and the workspace hasn't heard yet. */
+  const [finding, setFinding] = useState(false);
   /** The call has said which workspace it uses, for this browser. */
   const [settled, setSettled] = useState(false);
   const asked = useRef(false);
@@ -61,7 +63,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const say = (t: WsToastData) => { said.current?.(); said.current = show(t); };
     const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
     const reveal = () => { setMounted(true); setOpen(true); };
-    const hide = () => { setOpen(false); setZen(false); setPeek(false); };
+    const hide = () => { setOpen(false); setZen(false); setPeek(false); setFinding(false); };
     return {
       say, failed, hide, reveal,
       /** A workspace that won't open any more: back to the call, which is asked again, so what opens next time is what it says now. */
@@ -69,6 +71,9 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
       announce: show,
       toggle: () => { if (openNow.current) hide(); else reveal(); },
+      /** ⌘K: Find, with the workspace opened for it. */
+      find: () => { reveal(); setFinding(true); },
+      found: () => setFinding(false),
       go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
       /** Just the document, which opens the workspace if it has to, or everything back. */
       setZen: (on: boolean) => { if (on) reveal(); setZen(on); },
@@ -153,7 +158,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   useEffect(() => {
     if (!zen && !peek) return;
     const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen() || document.querySelector('.ws-pop') || editing(e.target)) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || overlayOpen() || document.querySelector('.ws-pop, .wh') || editing(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
       if (peek) setPeek(false);
@@ -163,7 +168,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     return () => document.removeEventListener('keydown', esc, true);
   }, [zen, peek]);
 
-  return { open, mounted, at, zen, peek, settled, act, together, lit, reach };
+  return { open, mounted, at, zen, peek, settled, finding, act, together, lit, reach };
 }
 export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 
@@ -181,7 +186,7 @@ function editing(t: EventTarget | null): boolean {
 const LIVE_ROWS = <LiveRows />;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, zen, listOff, listPeek, live, act, reach, people, invited, onToggleList, onShowList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, live, act, reach, people, invited, onToggleList, onShowList, onToggleZen }: {
   workspace: CallWorkspace;
   /** Who's in the call, and who's invited if you can know, for `@`. */
   people: readonly CallPerson[];
@@ -194,6 +199,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   settled: boolean;
   /** It's open and in sight: something taking turns with it can be in front. */
   showing: boolean;
+  finding: boolean;
   /** Just the document: on or off, if it's on offer at all. */
   zen: boolean | null;
   listOff: boolean;
@@ -209,10 +215,10 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
-    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach,
+    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList }
-  }), [ live, documents, act, reach, people, invited, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList ]);
+  }), [ live, documents, act, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */

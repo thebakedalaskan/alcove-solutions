@@ -62,6 +62,9 @@ export interface WorkspaceCall {
   together: RefObject<WorkspaceTogether | null>;
   /** The call's notes, follow-ups and transcript, for its pages and for what a document takes from them. */
   live: LiveCall;
+  /** ⌘K in the call asked for Find, which opens the workspace first if it's closed. `onFinding` says it's been heard. */
+  finding: boolean;
+  onFinding: () => void;
 }
 
 export interface WorkspaceProps {
@@ -152,13 +155,15 @@ export interface Ws {
   toggleList: () => void;
   /** The document just made here, whose page opens with the caret in its title. */
   justMade: RefObject<string | null>;
-  /** The document open on the page, so naming it in the list reaches its title, and what's sent from a call lands where it can be seen. */
+  /** The document open on the page, so naming it in the list reaches its title, what's sent from a call lands where it can be seen, and its editor once it's drawn. */
   openDoc: RefObject<{ id: string; doc: Doc; editor: EditorHandle | null } | null>;
   page: RefObject<OpenPage | null>;
   /** Where what's sent from the call goes, while there's somewhere you can edit. */
   put: LivePut | null;
   /** The document you were last in, while a live page has its place. */
   lastDocument: string | null;
+  /** Find, from the magnifier. ⌘K does the same. */
+  openFind: () => void;
 }
 
 export const WsContext = createContext<Ws | null>(null);

@@ -351,9 +351,25 @@ goes without it, as that's how a full document gets room. Only what was in what 
 stays, and says `rejected`, as does anything Alcove refuses outright. A browser shouldn't ever see that, and what doesn't
 depend on it carries on regardless.
 
+A `503` isn't the connection. A restore turns updates away with it while it runs, and being rate limited does too, so whoever's
+typing stays `saving` and it's tried again. Only if Alcove goes on saying so for 30 seconds does the status go to `offline`.
+
 `KeptUpdate` says when each edit was made (`at`). Nothing reads that yet: retired blocks can't be pruned while someone may
 still be offline with words for one, and nothing in this release prunes them or limits how long someone can stay offline.
 `document()` is async, because Yjs loads with the first document someone opens and stays out of everything else.
+
+Find looks through what `searchText` sends, in this tab's memory (`features/workspace/words.ts`), so nothing typed into it leaves
+the browser. It's read as Find opens, if anything in the tree was edited since, at most every 6 seconds, and it stays until the
+session ends: it's never stored. What's on the page is read from the editor instead, so what was just typed is found. Whatever
+leaves someone's tree or goes to Trash goes from there as the tree says so, all of it does on a change of role or when the
+workspace's stream closes, and all of it on signing out or in. A guest's goes when they leave the workspace.
+
+History reads a version into a `Y.Doc` of its own that nothing's connected to (`editor/version.ts`), and compares it with the row
+below it, by each block's ID and what it serializes to, to tint what changed. A version's `callId` is the call that kept it, and
+the first edit of a call keeps what was there before it, so History treats the oldest version of a call as the work before it.
+A call has no name in the document: a row takes one from the only note of yours whose time covers it, or says **During a call**.
+Whoever restores says so in their awareness state for 8 seconds (`restored`, in `DocCaretStateSchema`), beside who the server says
+they are, so everyone with the document open can be told by name. Nothing is stored for it.
 
 ### Live traffic
 

@@ -55,7 +55,7 @@ import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
 import { tickEverywhere } from '~/features/workspace/live/useFollowUps';
-import { overlayOpen, typing, withModShift } from '~/lib/keys';
+import { overlayOpen, typing, withMod, withModShift } from '~/lib/keys';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -981,6 +981,9 @@ function InCall({ session }: { session: CallSession }) {
     const onKey = (e: KeyboardEvent) => {
       // Wherever the caret is, this gives you just the document, and everything back.
       if (withModShift(e) && e.key.toLowerCase() === 'f') { if (keys.current.zenOffered) { e.preventDefault(); toggleZen(); } return; }
+      // Find, from anywhere in the call. With the workspace in sight it's taken this already, and with words selected the editor has.
+      // Behind something it's taking turns with, it comes to the front, so the line Find lands on is one you can see.
+      if (withMod(e) && e.key.toLowerCase() === 'k') { if (!e.defaultPrevented && !overlayOpen()) { e.preventDefault(); work.act.find(); setFront('ws'); } return; }
       // The call's letters sleep while you're typing, in a field or in a document.
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
@@ -1421,7 +1424,7 @@ function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
-            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
               listOff={!solved.A.list} listPeek={work.peek} live={liveCall} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(

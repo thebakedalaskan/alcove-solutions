@@ -2,7 +2,7 @@
  * The Editor's whole surface: what it's given and what it gives back. Everything here is a plain value or a
  * handler, so screens wire it up without touching ProseMirror or knowing how a block is drawn.
  */
-import type { Person } from '@alcove/api';
+import type { DocAskPart, Person } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
 import type { ReactNode, Ref } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
@@ -65,13 +65,24 @@ export interface CommentDraft {
   cancel: () => void;
 }
 
-/** Someone pressed Ask on the selection. */
+/**
+ * Someone pressed Ask on the selection. The words stay marked, and held by what they are, until `done`: whatever others type
+ * meanwhile, what comes back goes where they are by then.
+ */
 export interface AskDraft {
+  /** The words selected, with tags spelled out, as they go to Alcove. */
   text: string;
   block: string;
   rect: Rect;
-  /** Puts `blocks` where the selection was. */
-  replace: (blocks: BlockJSON[]) => void;
+  /** Alcove's writing: the caret steps off the words, so typing on can't replace them, and dots show beside them. */
+  wait: () => void;
+  /**
+   * Puts in what came back, as it comes: words take the selection's place, and each line of a checklist follows the one before.
+   * If someone changed the words meanwhile, those stay, and this goes under them.
+   */
+  write: (part: DocAskPart) => void;
+  /** Lets go of the words, whether or not anything came. */
+  done: () => void;
 }
 
 /** The `/` items that need more than the editor has. `at` is where what they make should go, for `insertBlocks`. */
@@ -176,6 +187,8 @@ export interface EditorProps {
   onMoveBlock?: ((block: MovingBlock, to: string) => boolean | Promise<boolean>) | undefined;
   blockDrop?: BlockDropTarget | undefined;
   onToast?: ((toast: EditorToast) => void) | undefined;
+  /** Blocks to tint, by ID: what changed in a version of the document. */
+  changed?: ReadonlySet<string> | undefined;
   /** Sits between the title and the first block: who wrote this and when. */
   byline?: ReactNode | undefined;
   /** Sits under the last block, above the space that adds a line. */
@@ -208,6 +221,8 @@ export interface EditorHandle {
   blockJSON: (id: string) => BlockJSON | null;
   /** Where a block is now, to put it back there: after the block before it, or at the start. */
   placeOf: (id: string) => InsertAt;
+  /** What every block with text in it says now, for looking through without waiting on Alcove. */
+  blockWords: () => { id: string; text: string }[];
   /** Writes what every `live` block of this kind in this call shows. Only writes if it changed, so any browser in the call can do this. */
   setLiveLines: (what: LiveWhat, lines: LiveLine[]) => void;
   /** Whether this document has a `live` block of this call. */

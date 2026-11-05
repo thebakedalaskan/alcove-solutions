@@ -103,6 +103,7 @@
 .wb-rc.is-tag em { opacity: 1; }
 .rs { background: color-mix(in srgb, var(--horizon) 22%, transparent); border-radius: 3px; }
 .fs { background: var(--sun-soft); border-radius: 2px; }
+.wb-asking { margin-left: 6px; color: var(--ink-3); }
 .wc { background: var(--hl); color: inherit; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--gold); cursor: pointer; transition: background-color var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
 .wc.is-new { animation: wc-in var(--duration-2) var(--ease-out); }
 .wc.is-resolved { background: transparent; box-shadow: none; cursor: inherit; }

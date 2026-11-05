@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, Faces, type AvatarPerson } from '../people';
+import { Dots } from '../motion';
 import { Button, Kbd } from '../primitives';
 import { WsMenu, WsPopover, type WsMenuRow } from './popover';
 import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
@@ -264,17 +265,20 @@ export interface WsFindHit { id: string; name: string; sub: string; icon: IconNa
 
 /**
  * Find, ⌘K: the page dims as the box pops in, 140 ms. With nothing typed `hits` are what you opened last. Up and Down
- * move `selected` (an index), Enter opens it, Esc closes.
+ * move `selected` (an index), Enter opens it, Esc closes. `searching`: more may be on its way, so nothing found isn't an
+ * answer yet. `note` says why this may not be everything; `foot` sits under the list.
  */
-export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onSelected, onOpen }: {
+export function WsFind<H extends WsFindHit>({ open, onOpenChange, query, onQuery, hits, selected, onSelected, onOpen, searching = false, note, foot }: {
   open: boolean; onOpenChange: (open: boolean) => void; query: string; onQuery: (q: string) => void;
-  hits: WsFindHit[]; selected: number; onSelected: (i: number) => void; onOpen: (hit: WsFindHit) => void;
+  hits: H[]; selected: number; onSelected: (i: number) => void; onOpen: (hit: H) => void;
+  searching?: boolean | undefined; note?: string | undefined; foot?: ReactNode;
 }) {
   const ids = useId();
   const list = useRef<HTMLDivElement>(null);
   const back = useRef<HTMLElement | null>(null);
   useEffect(() => { list.current?.querySelector('.is-sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     const n = hits.length;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -290,7 +294,11 @@ export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onS
       <RDialog.Portal>
         <RDialog.Overlay className="ws-scrim" />
         <RDialog.Content aria-describedby={undefined} className="ws-pop wv-find" onOpenAutoFocus={() => { back.current = focusedNow(); }}
-          onCloseAutoFocus={(e) => { if (canTakeFocus(back.current)) { e.preventDefault(); back.current.focus({ preventScroll: true }); } }}>
+          onCloseAutoFocus={(e) => {
+            // Landing on a line puts the caret there, and it's not to be taken away again.
+            if (focusedNow()) e.preventDefault();
+            else if (canTakeFocus(back.current)) { e.preventDefault(); back.current.focus({ preventScroll: true }); }
+          }}>
           <RDialog.Title className="sr-only">Find in this workspace</RDialog.Title>
           <div className="f">
             <Icon name="search" size={17} />
@@ -299,13 +307,49 @@ export function WsFind({ open, onOpenChange, query, onQuery, hits, selected, onS
             <Kbd>Esc</Kbd>
           </div>
           <div ref={list} id={`${ids}l`} className="wm-list" role="listbox" aria-label="What was found">
-            {!query && <div className="wm-h">Recent</div>}
+            {!query && hits.length > 0 && <div className="wm-h">Recent</div>}
+            {!query && hits.length === 0 && <p className="wm-x">Nothing to find yet. Documents show up here as people write them.</p>}
             {hits.map((h, i) => (
               <button key={h.id} id={`${ids}${i}`} type="button" role="option" aria-selected={i === selected} tabIndex={-1} className={cn('wm-r', i === selected && 'is-sel')} onClick={() => onOpen(h)} onPointerMove={() => { if (i !== selected) onSelected(i); }}>
                 <Icon name={h.icon} size={16} /><span className="t"><span className="l">{h.name}</span><small>{h.sub}</small></span>
               </button>
             ))}
-            {query && hits.length === 0 && <p className="wm-x">Nothing called “{query}”.</p>}
+            {query && searching && <p className="wm-x wv-more"><Dots /></p>}
+            {query && !searching && hits.length === 0 && <p className="wm-x">Nothing called “{query}”.</p>}
+            {note && <p className="wm-x">{note}</p>}
+          </div>
+          {foot}
+        </RDialog.Content>
+      </RDialog.Portal>
+    </RDialog.Root>
+  );
+}
+
+/** The way to the keyboard list, at the foot of Find. A phone has no keys to list. */
+export function WsKeysRow({ onOpen }: { onOpen: () => void }) {
+  return <div className="wv-keyrow"><button type="button" className="wm-r" onClick={onOpen}><Icon name="keyboard" size={16} /><span className="t"><span className="l">Keyboard</span></span><Kbd>?</Kbd></button></div>;
+}
+
+/** One column of the keyboard list. */
+export interface WsKeyGroup { name: string; keys: { label: string; key: string }[] }
+
+/** Every key there is, in columns, over the page like Find. `note`: what's worth knowing about them all. */
+export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean; onOpenChange: (open: boolean) => void; groups: WsKeyGroup[]; note?: string | undefined }) {
+  return (
+    <RDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RDialog.Portal>
+        <RDialog.Overlay className="ws-scrim" />
+        <RDialog.Content aria-describedby={undefined} className="ws-pop wv-keys">
+          <RDialog.Title className="sr-only">Keyboard</RDialog.Title>
+          <Kbd className="wv-keys-esc">Esc</Kbd>
+          <div className="ky">
+            {groups.map((g) => (
+              <div key={g.name} className="ky-g">
+                <h3>{g.name}</h3>
+                {g.keys.map((k) => <div key={k.label} className="ky-r"><span>{k.label}</span><kbd>{k.key}</kbd></div>)}
+              </div>
+            ))}
+            {note && <p className="ky-note">{note}</p>}
           </div>
         </RDialog.Content>
       </RDialog.Portal>

@@ -75,7 +75,8 @@ Beside every page, dark in both themes:
 
 At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
 below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass. Notes has
-its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8).
+its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8). In the workspace
+the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Workspace** and **Team**
@@ -531,8 +532,12 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 7. **After the call**, the note says what was worked on and by whom, for each person only what they can open, and each
    document keeps a version of how the call left it. **The next call in a series** finds a new agenda beside the last one,
    holding only what was left open.
-8. **Make this shorter** and **Turn this into a checklist** work on what's selected, in confidential compute, for anyone who
-   can edit the document. Nothing is kept.
+8. **⌘K** finds anything in the workspace from anywhere in the call. It opens the workspace first if it's closed, and brings it
+   to the front if it's taking turns with a share, so the line it lands on is one you can see.
+9. **Ask** on what's selected (flow 12) answers **What was said about this?** from this call: everything said in it that you
+   may read.
+10. **History** files what was worked on under the call: **During this call** while it's on, and after it under the call's name
+    for anyone who has its notes.
 
 ## 7. End the call and get the notes
 
@@ -937,6 +942,29 @@ block's **Move to…**, or dragging it onto a document in the list, sends it the
 folder, **Enter** opens a row and Tab reaches its buttons. **F2** renames, **Delete** moves to Trash, **⌥↑** and **⌥↓** move
 a row among its neighbours, and the menu key opens its menu. **⌘\** hides or shows the list. While the caret is in a
 document, **N** and **⇧N** type letters; **Esc** goes to the block's handles, and again to the document's row in the list.
+
+**Find.** The magnifier at the top of the list, or **⌘K** (**Ctrl+K**), finds any document or any line you can open. What
+you opened last is ready, so **Enter** goes straight back to it. Typing looks through names and lines, and results arrive as
+documents do. It happens in your browser, so what you type isn't sent anywhere. **↑** and **↓** move through what's found,
+and **Enter** lands on the line, which glows, with the caret on it. Words typed a moment ago in the open document are found too;
+what others wrote is found from the next time Find opens. **Keyboard**, at the foot of Find, or **?**, lists every key.
+
+**History.** **⋯** at the top of a document, then **History**: now, then each stretch of work, the newest first. A call's versions
+are one row, under the call's name if you have its notes; other edits are a row a day; what was kept before a restore is a row
+of its own; and the last says who made the document and when. Pressing a row shows the document as it was in the page's place,
+read-only, with what changed in that stretch tinted. **↑** and **↓** move through them, and **Esc** puts it away.
+
+**Restore this version**, for anyone who can edit, makes the document that for everyone, and what it said a moment ago is kept
+as a version too, so **Undo** in the toast brings it back. If anyone else is in the document, you're told who first, and who's
+typing, and you choose **Restore for everyone** or **Not yet**. Everyone in it is told who restored what, with **History** one
+press away. Someone typing through it sees **Saving…**, and what they type lands on what's restored. A block they're in that the
+version doesn't have stays on the page, holding what they typed since; what they'd typed before that is in the version kept.
+
+**Ask Alcove.** **Ask**, on the bar over what's selected, offers **Make this shorter**, **Turn this into a checklist** and **What
+was said about this?**, written in confidential compute. The words stay marked with dots beside them, and the caret steps off
+them, so you can keep writing. What comes back takes their place wherever they've got to, for everyone, and **⌘Z** takes it
+back. If someone changes the words meanwhile, what they wrote stays and the answer goes under it. **What was said about
+this?** answers beside the words, from every note you have, or in a call from what's been said in it. Nothing is kept.
 
 **Trash.** A quiet row at the foot of the list, with how much is in it. It lists what was moved there, by whom, when and
 how long it has left: things stay for 30 days. **Restore** puts something back in its folder, or at the top if the folder

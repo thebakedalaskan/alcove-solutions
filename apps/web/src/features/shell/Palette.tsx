@@ -1,6 +1,6 @@
 /*
- * The palette: one line over the page, to find a note or to ask your notes. ⌘K (Ctrl+K), Search or ask
- * at the top of every page and the phone's search button open it. Typing lists the notes that match; Enter
+ * The palette: one line over the page, to find a note or to ask your notes. ⌘K (Ctrl+K), though not where a page keeps it
+ * for its own search, Search or ask at the top of every page and the phone's search button open it. Typing lists the notes that match; Enter
  * asks every note you have, and the answer arrives here with the notes and moments it comes from.
  * ↑ and ↓ pick a note instead, and Enter opens it. "Pin a note" opens the same line to pick notes to
  * pin. It's the only thing open while it's open. Escape closes it, and focus goes back where it was.
@@ -120,7 +120,7 @@ function Find({ onClose }: { onClose: () => void }) {
 }
 
 /** Where an answer comes from: each note it cites, once, with its moments in order. A note that's gone isn't shown. */
-function Sources({ cites, notes, onPick }: { cites: Cite[]; notes: NoteSummary[]; onPick: () => void }) {
+export function Sources({ cites, notes, onPick }: { cites: Cite[]; notes: NoteSummary[]; onPick: () => void }) {
   const rows: { note: NoteSummary; at: number[] }[] = [];
   for (const c of cites) {
     // Asking every note cites moments in notes; screens and a series' calls come from asking about one note or one series.
