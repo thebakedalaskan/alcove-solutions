@@ -43,11 +43,18 @@ interface Root {
   /** How something on this root is made again. */
   make: (map: Y.Map<unknown>, id: string, fields: Copy) => void;
   copies: Map<string, Copy>;
-  /**
-   * How many times someone else has written to each id. A write that lost the merge counts: whoever made it still moved that
-   * sticky. Under `id/part`, what that count was when someone else last brought back a row, column or cell.
-   */
+  /** How many times someone else has written to each id. A write that lost the merge counts: whoever made it still moved that sticky. */
   others: Map<string, number>;
+  /** Under `id/part`, what `others` was when someone else last brought back a row, column or cell. A cell goes under its words too: new words typed in an empty cell haven't brought back the old ones. */
+  back: Map<string, number>;
+  /** Under `id/line`, what `others` was when someone else last put words in a cell of a row or column. */
+  wrote: Map<string, number>;
+}
+
+/** What someone else has done to a table's parts since an entry was written. */
+interface Since {
+  back: (part: unknown) => boolean;
+  wrote: (line: unknown) => boolean;
 }
 
 /** What one change did to one id. Null means it didn't exist. Undoing goes from `after` to `before`. */
@@ -86,6 +93,17 @@ function touched(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): Set<stri
   return ids;
 }
 
+/** The cells a transaction wrote in, as an id and a key, even if they had gone again by the time it reached this browser. */
+function cellsWritten(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): [string, string][] {
+  const cells: [string, string][] = [];
+  for (const event of events) {
+    const [id, field, key] = event.path;
+    if (typeof id !== 'string' || field !== 'cells') continue;
+    for (const cell of typeof key === 'string' ? [key] : event instanceof Y.YMapEvent ? event.keysChanged : []) if (typeof cell === 'string') cells.push([id, cell]);
+  }
+  return cells;
+}
+
 /** What something names: a line's attached ends, or the object a thread is pinned to. */
 function names(value: unknown): unknown[] {
   const m = mapOf(value);
@@ -100,14 +118,20 @@ function rewrite(text: Y.Text, words: string): void {
   if (insert) text.insert(start, insert);
 }
 
-/** Each cell of a table is a field of its own. One that went with its row is made again, unless someone else has brought it back since. */
-function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, spent: (part: unknown) => boolean): void {
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    const was = wordsOf(before[key]), left = wordsOf(after[key]);
-    if (was === left || wordsOf(now[key]) !== left || spent(key)) continue;
+/**
+ * Each cell of a table is a field of its own. One that went with its row is made again, unless someone else has since brought back
+ * those words, or that row and it has gone again: then what's in the cell is in a newer undo than this one.
+ */
+function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, since: Since): void {
+  const was = recordOf(before['cells']), left = recordOf(after['cells']), held = recordOf(now['cells']);
+  const lines = new Set(partsOf(after)), here = new Set(partsOf(now));
+  for (const key of new Set([...Object.keys(was), ...Object.keys(left)])) {
+    const words = wordsOf(was[key]), mine = wordsOf(left[key]);
+    const spent = !mine && (since.back(`${key}${words}`) || key.split(':').some((line) => !lines.has(line) && !here.has(line) && since.back(line)));
+    if (words === mine || wordsOf(held[key]) !== mine || spent) continue;
     const cell = cells.get(key);
-    if (cell instanceof Y.Text) rewrite(cell, was);
-    else cells.set(key, new Y.Text(was));
+    if (cell instanceof Y.Text) rewrite(cell, words);
+    else cells.set(key, new Y.Text(words));
   }
 }
 
@@ -116,7 +140,7 @@ function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, 
  * doesn't stop this one going back. One this browser added goes, unless it's `kept`. One it resized goes back, if nobody has
  * resized it since. One it removed returns after the one it followed, unless it's back, or someone has brought it back since.
  */
-function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: readonly unknown[], kept: (id: unknown) => boolean, spent: (part: unknown) => boolean): void {
+function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: readonly unknown[], kept: (id: unknown) => boolean, returned: (part: unknown) => boolean): void {
   const was = new Map(before.map((line) => [idOf(line), line])), left = new Map(after.map((line) => [idOf(line), line]));
   const live = lines.toArray();
   for (let at = live.length - 1; at >= 0; at -= 1) {
@@ -130,7 +154,7 @@ function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: r
   for (const line of before) {
     const id = idOf(line), found = ids.indexOf(id);
     if (found >= 0) place = found + 1;
-    else if (!left.has(id) && !spent(id)) {
+    else if (!left.has(id) && !returned(id)) {
       lines.insert(place, [line]);
       ids.splice(place, 0, id);
       place += 1;
@@ -138,19 +162,22 @@ function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: r
   }
 }
 
-/** Whether a row or column has a cell holding anything but what this browser left there, so it can't go. */
-function written(id: unknown, axis: TableAxis, after: Copy, now: Copy): boolean {
-  const left = recordOf(after['cells']);
-  return typeof id === 'string' && Object.entries(recordOf(now['cells'])).some(([key, words]) => inLine(key, axis, id) && words !== left[key]);
+/**
+ * Whether a row or column this browser added holds anything it didn't write, so it can't go: words that were waiting for it, or
+ * that someone has put there since. Those aren't only what's on it now: they may be waiting in another undo, and they'd need this line to be read.
+ */
+function written(id: unknown, axis: TableAxis, before: Copy, after: Copy, now: Copy, since: Since): boolean {
+  const was = recordOf(before['cells']), left = recordOf(after['cells']);
+  return since.wrote(id) || (typeof id === 'string' && Object.entries(recordOf(now['cells'])).some(([key, words]) => inLine(key, axis, id) && (words !== left[key] || key in was)));
 }
 
 /** Sets back what this browser changed in something, field by field. A field someone has changed since stays theirs, and none is ever deleted. */
-function fieldsBack(m: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, spent: (part: unknown) => boolean): void {
+function fieldsBack(m: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, since: Since): void {
   for (const [key, was] of Object.entries(before)) {
     const left = after[key], live = m.get(key);
     if (same(was, left)) continue;
-    if (live instanceof Y.Array) linesBack(live, listOf(was), listOf(left), (id) => written(id, key === 'rows' ? 'rows' : 'cols', after, now), spent);
-    else if (live instanceof Y.Map) cellsBack(live, recordOf(was), recordOf(left), recordOf(now[key]), spent);
+    if (live instanceof Y.Array) linesBack(live, listOf(was), listOf(left), (id) => (key === 'rows' || key === 'cols') && written(id, key, before, after, now, since), since.back);
+    else if (live instanceof Y.Map) cellsBack(live, before, after, now, since);
     else if (!same(now[key], left)) continue;
     else if (live instanceof Y.Text) rewrite(live, wordsOf(was));
     else m.set(key, was);
@@ -161,10 +188,10 @@ function fieldsBack(m: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, spe
 export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
   const root = (name: string, make: Root['make']): Root[] => {
     const map = rootMap(doc, name);
-    return map ? [{ name, map, make, copies: new Map(), others: new Map() }] : [];
+    return map ? [{ name, map, make, copies: new Map(), others: new Map(), back: new Map(), wrote: new Map() }] : [];
   };
   const roots = [...root(BOARD_OBJECTS, put), ...root(BOARD_COMMENTS, putThread)];
-  /** Going back is under its own origin, so it isn't recorded as a new step, and it stays this browser's rather than someone else's. */
+  /** Going back is under its own origin, so it isn't recorded as a new step. */
   const applying = {};
   const undos: Entry[][] = [], redos: Entry[][] = [];
   const listeners = new Set<() => void>();
@@ -215,10 +242,11 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
           record(at, id, before, after);
           continue;
         }
-        const others = (at.others.get(id) ?? 0) + 1, had = new Set(partsOf(before));
+        const others = (at.others.get(id) ?? 0) + 1, had = new Set(partsOf(before)), cells = recordOf(after?.['cells']);
         at.others.set(id, others);
-        for (const part of partsOf(after)) if (!had.has(part)) at.others.set(`${id}/${String(part)}`, others);
+        for (const part of partsOf(after)) if (!had.has(part)) at.back.set(`${id}/${String(part)}${wordsOf(cells[String(part)])}`, others);
       }
+      if (!mine) for (const [id, key] of cellsWritten(events)) for (const line of key.split(':')) at.wrote.set(`${id}/${line}`, at.others.get(id) ?? 0);
     };
     at.map.forEach((value, id) => {
       const copy = copyOf(value);
@@ -263,9 +291,10 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
       const added: Entry[] = [];
       for (const entry of [...step].reverse()) {
         const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyOf(m);
+        const notes = (of: Map<string, number>) => (part: unknown): boolean => (of.get(`${id}/${String(part)}`) ?? 0) > entry.others;
         if (!before) added.push(entry);
         else if (!after && !now && untouched(entry)) at.make(at.map, id, before);
-        else if (after && m && now) fieldsBack(m, before, after, now, (part) => (at.others.get(`${id}/${String(part)}`) ?? 0) > entry.others);
+        else if (after && m && now) fieldsBack(m, before, after, now, { back: notes(at.back), wrote: notes(at.wrote) });
       }
       takeAway(added);
     }, applying);
