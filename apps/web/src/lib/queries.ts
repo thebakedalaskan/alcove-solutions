@@ -7,6 +7,7 @@ import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
+import { announceSignIn, announceSignOut } from './signedOut';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
@@ -174,7 +175,7 @@ export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
-    onSuccess: (r) => { forgetWords(); qc.clear(); qc.setQueryData(qk.session, r.session); }
+    onSuccess: (r) => { forgetWords(); if (r.session) announceSignIn(r.session.ownerId); qc.clear(); qc.setQueryData(qk.session, r.session); }
   });
 }
 /**
@@ -182,11 +183,13 @@ export function useSignIn() {
  * waiting to upload among it (features/record/offline.ts; anyone else's stay), its notifications, those showing too, and
  * the words of its workspaces this tab held for Find.
  */
-async function forgetHere(qc: QueryClient) {
+async function forgetHere(qc: QueryClient, deleted: boolean) {
   forgetWords();
   await forgetNotified();
   const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
   if (!owner) return;
+  // Every tab hears it first, so none keeps anything more for the account while what's kept is deleted.
+  announceSignOut(owner, deleted);
   forgetPlaces(owner);
   try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
   try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
@@ -194,7 +197,7 @@ async function forgetHere(qc: QueryClient) {
 export function useSignOut() {
   const qc = useQueryClient();
   // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
-  return useMutation({ networkMode: 'always', mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); } });
+  return useMutation({ networkMode: 'always', mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc, false); qc.clear(); qc.setQueryData(qk.session, null); } });
 }
 /**
  * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
@@ -212,7 +215,7 @@ export function useDeleteAccount(onDeleted: () => void) {
       if (!here || now?.ownerId !== here) throw new AlcoveApiError('forbidden', 'Who’s signed in here changed in another tab, so nothing was deleted. Reload this page.');
       await api.account.delete();
     },
-    onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+    onSuccess: async () => { await forgetHere(qc, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
   });
 }
 /*
@@ -600,7 +603,7 @@ export function useSavePresenterNotes(workspaceId: string, documentId: string, p
     onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
   });
 }
-/** Makes a new document of words that didn't reach the one they were written in (`DocSession.localCopy`). */
+/** Makes a new document of words that didn't reach the one they were written in (`DocSession.unsentCopy`). */
 export function useSaveCopy() {
   const qc = useQueryClient();
   return useMutation({

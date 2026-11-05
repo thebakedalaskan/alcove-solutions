@@ -1,16 +1,21 @@
 /*
  * Files on their way into documents from this browser (docs: Data and storage › Media). A block holds their space straight
- * away, for everyone, and says how far they've got as they go. Sending them is this browser's alone: it writes to the block
- * by its stable ID, always through one session of its own for the document, so its writes arrive in the order they were made
- * (two sessions writing the same attribute without hearing each other could leave the older one standing), and leaving the
- * document, or the workspace, doesn't stop it. Everyone else hears that it's going on through that session's awareness, so a
- * block that says it's uploading with nobody sending it shows as failed.
+ * away, for everyone, and says how far they've got as they go. Each upload has a token of its own, in its block's `upload`
+ * attribute, and follows its block by that, not by the block's ID: a block cut and pasted gets a new ID, and one undone and
+ * done again comes back, and the upload goes on into it. Nothing is stored until the block is in the document for everyone,
+ * so one Alcove turned away never holds a file.
+ *
+ * Sending them is this browser's alone: it writes to the block always through one session of its own for the document, so
+ * its writes arrive in the order they were made (two sessions writing the same attribute without hearing each other could
+ * leave the older one standing), and leaving the document, or the workspace, doesn't stop it. That session closes only once
+ * everything it wrote has reached Alcove, however long the connection is away, and until then closing the tab asks first.
+ * Everyone else hears that an upload is going on through that session's awareness, so a block that says it's uploading with
+ * nobody sending it shows as failed.
  *
  * Nothing about a file is logged but its IDs, sizes and how it went: never its name.
  */
 import { errorCode, errorMessage, servedType, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
-import type { Doc } from 'yjs';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import type { BlockJSON } from './editor/types';
@@ -24,30 +29,35 @@ const ORIGIN = Symbol('upload');
 const AT_ONCE = 2;
 /** Progress is written at most this often: it's in the document, for everyone. */
 const PROGRESS_MS = 250;
-/** How long a session opened to finish an upload waits for the block to reach it before giving up on the block. */
+/** How long an upload waits for its block to reach Alcove before it stores anything. */
 const ARRIVE_MS = 60_000;
+/** How long a block that left the page, undone or cut, has to come back before its upload is let go of. */
+const AWAY_MS = 15_000;
 /** A finished upload's own picture stays here this long, so the stored one can come without the picture blinking. */
 const AFTER_MS = 60_000;
 /** A failed upload can be tried again for this long; then its file is let go of here, and the block offers only Delete. */
 const FAILED_MS = 10 * 60_000;
-/** A session opened for uploads closes this long after its last one, once what it wrote has gone. */
+/** A session opened for uploads closes this long after its last one, once what it wrote has reached Alcove. */
 const CLOSE_MS = 3_000;
 /** What an upload writes on its block, which nobody else does: a stray one on a retired copy of the block comes off again. */
-const OWN = ['items', 'up', 'failed', 'media', 'poster'] as const;
+const OWN = ['items', 'up', 'failed', 'media', 'poster', 'upload'] as const;
+/** How a video's first frame is named, so nothing offers it as a photo of its own. */
+export const FRAME_SUFFIX = ' (first frame).jpg';
 
 type Kind = 'gallery' | 'video' | 'file';
 
-/** One file of a block. A photo this browser can't read is refused before anything of it is sent. */
-interface Part { file: File; readable: boolean; width: number | null; height: number | null; stored: WorkspaceMedia | null; sent: number }
+/** One file of a block. */
+interface Part { file: File; width: number | null; height: number | null; stored: WorkspaceMedia | null; sent: number }
 
 /** A block and what it's waiting for, before it's on the page. `failed`: a photo this browser can't read. */
-export interface Draft { block: BlockJSON; kind: Kind; parts: Part[]; poster: Part | null; previews: (string | null)[]; failed: boolean }
+export interface Draft { token: string; block: BlockJSON; kind: Kind; parts: Part[]; poster: Part | null; previews: (string | null)[]; failed: boolean }
 
 /** Who's sending, and into what. */
 export interface Destination { workspaceId: string; documentId: string; owner: string | null; pass: string | undefined }
 
 interface Job extends Destination {
-  id: string;
+  /** What its block carries as `upload`, and what it's known by here. */
+  token: string;
   kind: Kind;
   parts: Part[];
   poster: Part | null;
@@ -61,10 +71,22 @@ interface Job extends Destination {
   queue: Promise<unknown>;
   /** When it failed, for how long it can be tried again. */
   failedAt: number;
+  /** Its block has reached the upload's session: until then nothing is stored. */
+  arrived: boolean;
+  /** Since when its block has been off the page, undone or cut, if it is. */
+  awaySince: number | null;
+  /** A photo this browser can't read: it can go in as a file instead. */
+  unreadable: boolean;
 }
 
-/** A photo this browser can't read: the block says so, and nothing is sent. */
-class Unreadable extends Error {}
+/** The block never reached Alcove: nothing was stored. */
+class NeverArrived extends Error {}
+
+/** A random token for an upload: nothing about the file is in it. */
+function newToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 /* ---------- reading files ---------- */
 
@@ -138,9 +160,12 @@ async function videoFacts(file: File): Promise<{ width: number; height: number; 
   }
 }
 
-const partOf = (file: File, readable = true, width: number | null = null, height: number | null = null): Part => ({ file, readable, width, height, stored: null, sent: 0 });
+const partOf = (file: File, width: number | null = null, height: number | null = null): Part => ({ file, width, height, stored: null, sent: 0 });
 
-const fileDraft = (f: File): Draft => ({ block: { type: 'file', attrs: { name: f.name, size: f.size, up: 0 } }, kind: 'file', parts: [partOf(f)], poster: null, previews: [], failed: false });
+function fileDraft(f: File): Draft {
+  const token = newToken();
+  return { token, block: { type: 'file', attrs: { upload: token, name: f.name, size: f.size, up: 0 } }, kind: 'file', parts: [partOf(f)], poster: null, previews: [], failed: false };
+}
 
 /**
  * The blocks files make, each holding their space. Photos this browser can read go in one block: one photo full width,
@@ -155,20 +180,25 @@ export async function prepare(files: readonly File[], asFiles = false): Promise<
     if (asFiles) rest.push(fileDraft(f));
     else if (f.type.startsWith('image/')) {
       const size = await pictureSize(f);
-      if (size) photos.push(partOf(f, true, size.width, size.height));
-      else unreadable.push({ block: { type: 'gallery', attrs: { items: [{ media: null, name: f.name, width: null, height: null }], failed: f.name } }, kind: 'gallery', parts: [partOf(f, false)], poster: null, previews: [null], failed: true });
+      if (size) photos.push(partOf(f, size.width, size.height));
+      else {
+        const token = newToken();
+        unreadable.push({ token, block: { type: 'gallery', attrs: { upload: token, items: [{ media: null, name: f.name, width: null, height: null }], failed: f.name } }, kind: 'gallery', parts: [partOf(f)], poster: null, previews: [null], failed: true });
+      }
     } else if (servedType(f.type).startsWith('video/')) {
       const facts = await videoFacts(f);
       if (!facts) { rest.push(fileDraft(f)); continue; }
-      const poster = facts.frame ? partOf(new File([facts.frame], `${stemOf(f.name)}.jpg`, { type: 'image/jpeg' })) : null;
+      const poster = facts.frame ? partOf(new File([facts.frame], `${stemOf(f.name)}${FRAME_SUFFIX}`, { type: 'image/jpeg' })) : null;
+      const token = newToken();
       rest.push({
-        block: { type: 'video', attrs: { title: stemOf(f.name), dur: facts.dur, width: facts.width, height: facts.height, up: 0 } },
-        kind: 'video', parts: [partOf(f, true, facts.width, facts.height)], poster, previews: [facts.frame ? URL.createObjectURL(facts.frame) : null], failed: false
+        token, block: { type: 'video', attrs: { upload: token, title: stemOf(f.name), dur: facts.dur, width: facts.width, height: facts.height, up: 0 } },
+        kind: 'video', parts: [partOf(f, facts.width, facts.height)], poster, previews: [facts.frame ? URL.createObjectURL(facts.frame) : null], failed: false
       });
     } else rest.push(fileDraft(f));
   }
+  const token = newToken();
   const gallery: Draft[] = photos.length ? [{
-    block: { type: 'gallery', attrs: { items: photos.map((p) => ({ media: null, name: p.file.name, width: p.width, height: p.height })), up: 0 } },
+    token, block: { type: 'gallery', attrs: { upload: token, items: photos.map((p) => ({ media: null, name: p.file.name, width: p.width, height: p.height })), up: 0 } },
     kind: 'gallery', parts: photos, poster: null, previews: photos.map((p) => URL.createObjectURL(p.file)), failed: false
   }] : [];
   return [...gallery, ...unreadable, ...rest];
@@ -207,43 +237,58 @@ export function onStored(run: (workspaceId: string) => void): () => void {
   return () => { stored.delete(run); };
 }
 
+/** Jobs by their token. */
 const jobs = new Map<string, Job>();
 const jobsIn = (workspaceId: string, documentId: string) => [...jobs.values()].filter((j) => j.workspaceId === workspaceId && j.documentId === documentId);
 const sending = (j: Job) => j.status === 'waiting' || j.status === 'running';
 
-export const isSending = (block: string): boolean => { const j = jobs.get(block); return j !== undefined && sending(j); };
-export const canRetry = (block: string): boolean => jobs.get(block)?.status === 'failed';
+/* `upload`: a block's `upload` token, which is what an upload is known by here. */
+export const isSending = (upload: string): boolean => { const j = jobs.get(upload); return j !== undefined && sending(j); };
+export const canRetry = (upload: string): boolean => { const j = jobs.get(upload); return j?.status === 'failed' && !j.unreadable; };
+/** A photo this browser can't read, which it still has: it can go in as a file instead. */
+export const canAddAsFile = (upload: string): boolean => { const j = jobs.get(upload); return j?.status === 'failed' && j.unreadable; };
 /** What this browser is sending into a block, at its place in it: the photo, or a video's first frame. */
-export const previewOf = (block: string, index: number): string | undefined => jobs.get(block)?.previews[index] ?? undefined;
+export const previewOf = (upload: string, index: number): string | undefined => jobs.get(upload)?.previews[index] ?? undefined;
 
 /* ---------- where writes go ---------- */
 
-interface Keeper { session: DocSession; ready: Promise<boolean>; arrived: Set<string>; closing: ReturnType<typeof setTimeout> | null }
+interface Keeper { session: DocSession; ready: Promise<boolean>; closing: ReturnType<typeof setTimeout> | null; unheard: () => void }
 const docKey = (workspaceId: string, documentId: string) => `${workspaceId}:${documentId}`;
 
 /**
- * Each document's own session for uploads, while anything's going into it. It's one of the few document streams a person can
- * have open, so a failed upload doesn't keep it: Try again opens it again.
+ * Each document's own session for uploads, while anything's going into it or what it wrote hasn't reached Alcove. It's one
+ * of the few document streams a person can have open, so a failed upload doesn't keep it: Try again opens it again.
  */
 const keepers = new Map<string, Promise<Keeper>>();
 const keepersOpen = new Map<string, Keeper>();
+/** Documents whose page here was turned away: a block put in there won't reach Alcove, so nothing waits for it. */
+const turnedAway = new Set<string>();
 
-/** Says in the document's awareness which of its blocks this browser is sending. */
+/** Something a session wrote hasn't reached Alcove, and it's still trying. */
+const holding = (session: DocSession): boolean => {
+  const s = session.getSnapshot();
+  return s.unsent && s.refused === null && s.closed === null;
+};
+
+/** Says in the document's awareness which uploads this browser is sending, finished ones included until Alcove has them. */
 function claim(workspaceId: string, documentId: string): void {
   const session = keepersOpen.get(docKey(workspaceId, documentId))?.session;
   if (!session || session.doc.isDestroyed) return;
-  const ids = jobsIn(workspaceId, documentId).filter(sending).map((j) => j.id);
+  const unsent = holding(session);
+  const ids = jobsIn(workspaceId, documentId).filter((j) => sending(j) || (unsent && j.status === 'done')).map((j) => j.token);
   const was: unknown = session.awareness.getLocalState()?.['uploading'];
   if (Array.isArray(was) ? was.join() !== ids.join() : ids.length > 0) session.awareness.setLocalStateField('uploading', ids);
 }
 
-/** The document's own session for uploads, opened by the first and closed a moment after the last. */
+/** The document's own session for uploads, opened by the first and closed a moment after the last has reached Alcove. */
 function keeperFor(j: Destination): Promise<Keeper> {
   const key = docKey(j.workspaceId, j.documentId);
   const had = keepers.get(key);
   if (had) return had;
   const opening = openDocument(j.workspaceId, j.documentId, j.owner, j.pass, false).then((session) => {
-    const keeper: Keeper = { session, ready: session.ready.then(() => true, () => false), arrived: new Set(), closing: null };
+    const keeper: Keeper = { session, ready: session.ready.then(() => true, () => false), closing: null, unheard: () => undefined };
+    /* As what it wrote reaches Alcove, or stops being able to: who's sending what, the tab's question, and closing. */
+    keeper.unheard = session.subscribe(() => { claim(j.workspaceId, j.documentId); guard(); idle(j.workspaceId, j.documentId); });
     keepersOpen.set(key, keeper);
     claim(j.workspaceId, j.documentId);
     return keeper;
@@ -253,50 +298,68 @@ function keeperFor(j: Destination): Promise<Keeper> {
   return opening;
 }
 
-/** Closes a document's own session once nothing more is going into it. */
+/** Closes a document's own session once nothing more is going into it and everything it wrote has reached Alcove. */
 function idle(workspaceId: string, documentId: string): void {
   const key = docKey(workspaceId, documentId);
   const keeper = keepersOpen.get(key);
-  const busy = () => jobsIn(workspaceId, documentId).some(sending);
-  if (!keeper || busy()) return;
-  if (keeper.closing) clearTimeout(keeper.closing);
+  if (!keeper || keeper.closing) return;
+  const busy = () => jobsIn(workspaceId, documentId).some(sending) || holding(keeper.session);
+  if (busy()) return;
   keeper.closing = setTimeout(() => {
+    keeper.closing = null;
     if (busy()) return;
     keepersOpen.delete(key);
     keepers.delete(key);
+    keeper.unheard();
     keeper.session.close();
+    guard();
   }, CLOSE_MS);
 }
 
 const ydoc = () => import('./editor/ydoc');
 const sleep = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-/** Writes to a block, after whatever it was writing before. False: the block's gone. */
-function write(job: Job, attrs: Readonly<Record<string, unknown>>): Promise<boolean> {
-  const next = job.queue.then(() => writeNow(job, attrs));
+/** Written, or the block is off the page for now, or it's gone for good. */
+type Wrote = 'written' | 'away' | 'gone';
+
+/** Writes to a block, after whatever it was writing before. */
+function write(job: Job, attrs: Readonly<Record<string, unknown>>, wait: boolean): Promise<Wrote> {
+  const next = job.queue.then(() => writeNow(job, attrs, wait));
   job.queue = next.catch(() => undefined);
   return next;
 }
 
 /**
- * Writes to a block through the document's own session. The block was put on the page through the page's session, so it has
- * to have reached this one first; once it has, not finding it means it's gone.
+ * Writes to the upload's blocks, found by its token, through the document's own session. A block put on the page through
+ * the page's session has to reach this one first: until it has, or while it's off the page (undone, or cut and not yet
+ * pasted), a write that `wait`s waits for it, and one that doesn't is skipped. Away longer than AWAY_MS, or never arrived in
+ * ARRIVE_MS, it's gone.
  */
-async function writeNow(job: Job, attrs: Readonly<Record<string, unknown>>): Promise<boolean> {
-  const { setBlockAttrsIn, hasBlock } = await ydoc();
+async function writeNow(job: Job, attrs: Readonly<Record<string, unknown>>, wait: boolean): Promise<Wrote> {
+  const { setUploadAttrs } = await ydoc();
   let keeper = await keeperFor(job);
   /* It closed just as this came to it: another opens. */
   if (keepersOpen.get(docKey(job.workspaceId, job.documentId)) !== keeper) keeper = await keeperFor(job);
   if (keeper.closing) { clearTimeout(keeper.closing); keeper.closing = null; }
   if (!(await keeper.ready)) throw new Error('The document didn’t open to finish the upload.');
-  const doc: Doc = keeper.session.doc;
-  if (!keeper.arrived.has(job.id)) {
-    const until = Date.now() + ARRIVE_MS;
-    while (!hasBlock(doc, job.id) && Date.now() < until && !job.stop.signal.aborted) await sleep(250);
-    if (!hasBlock(doc, job.id)) return false;
-    keeper.arrived.add(job.id);
+  const doc = keeper.session.doc;
+  const found = (): boolean => {
+    if (setUploadAttrs(doc, job.token, attrs, OWN, ORIGIN) === 0) return false;
+    job.arrived = true;
+    job.awaySince = null;
+    return true;
+  };
+  if (found()) return 'written';
+  const now = Date.now();
+  if (job.arrived) job.awaySince ??= now;
+  const until = job.arrived ? (job.awaySince ?? now) + AWAY_MS : now + ARRIVE_MS;
+  if (!wait) return job.arrived && now >= until ? 'gone' : 'away';
+  const away = docKey(job.workspaceId, job.documentId);
+  while (Date.now() < until && !job.stop.signal.aborted && (job.arrived || !turnedAway.has(away))) {
+    await sleep(250);
+    if (found()) return 'written';
   }
-  return setBlockAttrsIn(doc, job.id, attrs, OWN, ORIGIN);
+  return 'gone';
 }
 
 /* ---------- sending ---------- */
@@ -307,16 +370,18 @@ const percentOf = (job: Job): number => {
   return Math.min(99, Math.floor((sent / Math.max(1, total(job))) * 100));
 };
 
-/** Says how far it's got, a few times a second at most. */
+/** Says how far it's got, a few times a second at most. A block that's away for now is told when it's back. */
 function progress(job: Job): void {
   if (job.pending || percentOf(job) === job.written) return;
   const go = () => {
     job.pending = null;
     const now = percentOf(job);
     if (now === job.written || !sending(job)) return;
-    job.written = now;
     job.wroteAt = Date.now();
-    write(job, { up: now }).then((ok) => { if (!ok) drop(job); }, (err: unknown) => { ulog.info('progress not written', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, err }); });
+    write(job, { up: now }, false).then((w) => {
+      if (w === 'written') job.written = now;
+      else if (w === 'gone') drop(job);
+    }, (err: unknown) => { ulog.info('progress not written', { workspaceId: job.workspaceId, documentId: job.documentId, err }); });
   };
   const wait = job.wroteAt + PROGRESS_MS - Date.now();
   if (wait <= 0) go();
@@ -342,21 +407,21 @@ function send(job: Job, part: Part, counts: boolean): Promise<WorkspaceMedia> {
   });
 }
 
-/** The block's gone, or its upload was stopped: whatever's on its way is taken back. */
+/** The block's gone for good, or its upload was stopped: whatever's on its way is taken back. */
 function drop(job: Job): void {
-  if (jobs.get(job.id) !== job) return;
+  if (jobs.get(job.token) !== job) return;
   job.stop.abort();
   if (job.pending) clearTimeout(job.pending);
-  jobs.delete(job.id);
+  jobs.delete(job.token);
   for (const u of job.previews) if (u) URL.revokeObjectURL(u);
   /* A video's first frame, stored for everyone to see while the video went, is nothing without it. */
   const frame = job.poster?.stored;
   if (frame && job.parts.some((p) => !p.stored)) {
     api.workspaces.media.remove(job.workspaceId, job.documentId, frame.id, { pass: job.pass }).catch((err: unknown) => {
-      ulog.info('a video’s first frame was left for its document', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, err });
+      ulog.info('a video’s first frame was left for its document', { workspaceId: job.workspaceId, documentId: job.documentId, err });
     });
   }
-  ulog.info('upload let go: its block has gone', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id });
+  ulog.info('upload let go: its block has gone', { workspaceId: job.workspaceId, documentId: job.documentId });
   claim(job.workspaceId, job.documentId);
   idle(job.workspaceId, job.documentId);
   changed();
@@ -368,50 +433,52 @@ async function run(job: Job): Promise<void> {
   changed();
   let failing: Part | null = null;
   try {
+    /* Nothing is stored until the block is in the document for everyone: one Alcove turned away never holds a file. */
+    const there = await write(job, { up: percentOf(job), failed: null }, true);
+    if (there === 'gone') {
+      if (job.arrived) { drop(job); return; }
+      throw new NeverArrived();
+    }
     /* A video's first frame goes first, so everyone sees it while the rest is on its way. It's only a picture of it: if it can't go, the video goes without one. */
     if (job.poster && !job.poster.stored) {
       const poster = job.poster;
       try {
         poster.stored = await send(job, poster, false);
-        if (!(await write(job, storedAttrs(job, poster, poster.stored)))) { drop(job); return; }
+        if ((await write(job, storedAttrs(job, poster, poster.stored), true)) === 'gone') { drop(job); return; }
       } catch (e) {
         if (job.stop.signal.aborted) throw e;
-        ulog.info('a video’s first frame wasn’t stored, so it goes without one', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, err: e });
+        ulog.info('a video’s first frame wasn’t stored, so it goes without one', { workspaceId: job.workspaceId, documentId: job.documentId, err: e });
         job.poster = null;
       }
     }
     for (const part of job.parts) {
       if (part.stored) continue;
       failing = part;
-      if (!part.readable) {
-        const size = await pictureSize(part.file);
-        if (!size) throw new Unreadable();
-        part.readable = true;
-        part.width = size.width;
-        part.height = size.height;
-      }
       const media = await send(job, part, true);
       part.stored = media;
       part.sent = part.file.size;
       for (const tell of stored) tell(job.workspaceId);
-      if (!(await write(job, storedAttrs(job, part, media)))) { drop(job); return; }
+      if ((await write(job, storedAttrs(job, part, media), true)) === 'gone') { drop(job); return; }
     }
     failing = null;
     job.status = 'done';
-    if (!(await write(job, { up: null, failed: null }))) { drop(job); return; }
-    ulog.info('upload finished', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, files: job.parts.length, bytes: total(job) });
+    if ((await write(job, { up: null, failed: null, upload: null }, true)) === 'gone') { drop(job); return; }
+    ulog.info('upload finished', { workspaceId: job.workspaceId, documentId: job.documentId, files: job.parts.length, bytes: total(job) });
     /* The stored pictures take a moment to come: until then, the ones sent show. */
-    setTimeout(() => { if (jobs.get(job.id) === job && job.status === 'done') drop(job); }, AFTER_MS);
+    setTimeout(() => { if (jobs.get(job.token) === job && job.status === 'done') drop(job); }, AFTER_MS);
   } catch (e) {
     if (job.stop.signal.aborted) { drop(job); return; }
     job.status = 'failed';
     job.failedAt = Date.now();
     const name = (failing ?? job.parts.find((p) => !p.stored) ?? job.parts[0])?.file.name ?? '';
-    const unreadable = e instanceof Unreadable;
-    ulog.warn('upload failed', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, code: unreadable ? 'unreadable' : errorCode(e), err: unreadable ? undefined : e });
-    await write(job, { up: null, failed: name }).then((ok) => { if (!ok) drop(job); }, (err: unknown) => { ulog.warn('a failed upload couldn’t say so', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, err }); });
+    const never = e instanceof NeverArrived;
+    ulog.warn('upload failed', { workspaceId: job.workspaceId, documentId: job.documentId, code: never ? 'never-arrived' : errorCode(e), err: never ? undefined : e });
+    /* A block that never reached Alcove can't say so: this page shows it couldn't, with Try again. */
+    if (!never) {
+      await write(job, { up: null, failed: name }, true).then((w) => { if (w === 'gone') drop(job); }, (err: unknown) => { ulog.warn('a failed upload couldn’t say so', { workspaceId: job.workspaceId, documentId: job.documentId, err }); });
+    }
     /* What the server said is written for the person uploading: the file's too big, the workspace is full, the day's used up. */
-    if (!unreadable) talkers.get(job.workspaceId)?.(wsToast.failed(errorMessage(e)));
+    if (!never) talkers.get(job.workspaceId)?.(wsToast.failed(errorMessage(e)));
     sweepSoon();
   } finally {
     claim(job.workspaceId, job.documentId);
@@ -430,15 +497,10 @@ let sweeping: ReturnType<typeof setInterval> | null = null;
 function sweep(): void {
   const waiting = [...jobs.values()].filter((j) => j.status === 'failed');
   if (waiting.length === 0) { if (sweeping) clearInterval(sweeping); sweeping = null; return; }
-  void ydoc().then(({ hasBlock }) => {
+  void ydoc().then(({ uploadBlocks }) => {
     for (const job of waiting) {
       const keeper = keepersOpen.get(docKey(job.workspaceId, job.documentId));
-      let gone = false;
-      if (keeper && !keeper.session.doc.isDestroyed) {
-        /* A block that failed before anything was written, a photo this browser can't read, is seen here first. */
-        if (hasBlock(keeper.session.doc, job.id)) keeper.arrived.add(job.id);
-        else gone = keeper.arrived.has(job.id);
-      }
+      const gone = keeper !== undefined && !keeper.session.doc.isDestroyed && job.arrived && uploadBlocks(keeper.session.doc, job.token).length === 0;
       if (gone || Date.now() - job.failedAt > FAILED_MS) drop(job);
     }
   });
@@ -455,30 +517,29 @@ function pump(): void {
   }
 }
 
-/* While something's on its way, closing the tab asks first: what's been sent so far would be lost. */
+/* While something's on its way, or what was written about it hasn't reached Alcove, closing the tab asks first. */
 const leaving = (e: BeforeUnloadEvent) => { e.preventDefault(); };
 let guarding = false;
 function guard(): void {
-  const busy = [...jobs.values()].some(sending);
+  const busy = [...jobs.values()].some(sending) || [...keepersOpen.values()].some((k) => !k.session.doc.isDestroyed && holding(k.session));
   if (busy === guarding) return;
   guarding = busy;
   if (busy) addEventListener('beforeunload', leaving);
   else removeEventListener('beforeunload', leaving);
 }
 
-/** Starts sending drafts, now that their blocks are on the page with these IDs, in order. */
-export function start(to: Destination, drafts: readonly Draft[], ids: readonly string[]): void {
-  drafts.forEach((d, i) => {
-    const id = ids[i];
-    if (!id) { discard([d]); return; }
-    jobs.set(id, {
-      ...to, id, kind: d.kind, parts: d.parts, poster: d.poster, previews: d.previews,
-      status: d.failed ? 'failed' : 'waiting', stop: new AbortController(), written: d.failed ? null : 0, wroteAt: 0, pending: null, queue: Promise.resolve(), failedAt: Date.now()
+/** Starts sending drafts, now that their blocks are on the page. `arrived`: they were put in through the upload's own session. */
+export function start(to: Destination, drafts: readonly Draft[], arrived = false): void {
+  for (const d of drafts) {
+    jobs.set(d.token, {
+      ...to, token: d.token, kind: d.kind, parts: d.parts, poster: d.poster, previews: d.previews,
+      status: d.failed ? 'failed' : 'waiting', stop: new AbortController(), written: d.failed ? null : 0, wroteAt: 0, pending: null, queue: Promise.resolve(),
+      failedAt: Date.now(), arrived, awaySince: null, unreadable: d.failed
     });
-  });
+  }
   /* Its own session opens now, so it's there by the time there's something to say. A photo this browser can't read says so
      in the block it came in, and sends nothing: that needs no session, and one opened for Upload files closes again. */
-  if (ids.some((id) => jobs.get(id)?.status === 'waiting')) {
+  if (drafts.some((d) => !d.failed)) {
     keeperFor(to).catch((err: unknown) => { ulog.warn('a document didn’t open for an upload', { workspaceId: to.workspaceId, documentId: to.documentId, err }); });
   }
   claim(to.workspaceId, to.documentId);
@@ -501,10 +562,9 @@ export async function uploadInto(to: Destination, files: readonly File[], title:
     const [{ appendBlocks, retireBlankStart }, { setTitle, titleOf }] = await Promise.all([ydoc(), import('./editor/title')]);
     const doc = keeper.session.doc;
     if (title && !titleOf(doc)) setTitle(doc, title);
-    const ids = appendBlocks(doc, drafts.map((d) => d.block));
+    appendBlocks(doc, drafts.map((d) => d.block));
     retireBlankStart(doc);
-    for (const id of ids) keeper.arrived.add(id);
-    start(to, drafts, ids);
+    start(to, drafts, true);
   } catch (e) {
     discard(drafts);
     idle(to.workspaceId, to.documentId);
@@ -513,18 +573,31 @@ export async function uploadInto(to: Destination, files: readonly File[], title:
 }
 
 /** Try again, on a block whose upload failed here: it starts from what's still to send. */
-export function retry(block: string): void {
-  const job = jobs.get(block);
-  if (!job || job.status !== 'failed') return;
+export function retry(upload: string): void {
+  const job = jobs.get(upload);
+  if (!job || job.status !== 'failed' || job.unreadable) return;
   job.status = 'waiting';
   job.stop = new AbortController();
   job.written = percentOf(job);
   claim(job.workspaceId, job.documentId);
   changed();
   guard();
-  write(job, { failed: null, up: percentOf(job) }).then((ok) => { if (ok) pump(); else drop(job); }, (err: unknown) => {
-    ulog.warn('an upload couldn’t start again', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, err });
-    job.status = 'failed';
-    changed();
-  });
+  pump();
+}
+
+/**
+ * A photo this browser couldn't read, to go in as a file instead: its file, and the upload's let go of. Null when this
+ * browser hasn't it any more.
+ */
+export function asFile(upload: string): File | null {
+  const job = jobs.get(upload);
+  const file = job && job.status === 'failed' && job.unreadable ? job.parts[0]?.file ?? null : null;
+  if (job && file) drop(job);
+  return file;
+}
+
+/** The page of a document here was turned away, or isn't any more: a block put in there won't reach Alcove meanwhile. */
+export function pageTurnedAway(workspaceId: string, documentId: string, away: boolean): void {
+  const key = docKey(workspaceId, documentId);
+  if (away) turnedAway.add(key); else turnedAway.delete(key);
 }

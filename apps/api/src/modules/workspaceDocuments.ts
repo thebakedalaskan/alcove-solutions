@@ -32,7 +32,7 @@ import { LiveStream, inPieces, type Line, type Step } from '../live/stream';
 import { log } from '../log';
 import { findOwner } from '../owners';
 import {
-  change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Credentials, type Reader, type StoredItem, type Who, type Workspace
+  change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Allowed, type Credentials, type Reader, type StoredItem, type Who, type Workspace
 } from './workspaceAccess';
 import { workedOn as workedOnInCall, mayAskInCall } from './calls';
 import { editSelection } from './drafting';
@@ -50,8 +50,11 @@ const COMPACT_UPDATES = 200;
 const COMPACT_BYTES = 1024 * 1024;
 /** A version is kept at most this often while people edit. */
 const VERSION_EVERY_MS = 10 * 60_000;
-/** What a document keeps of its past: older versions go, so a document edited for months stays a size that can be stored. The newest always stays. */
-const MAX_VERSIONS = 200;
+/**
+ * What a document keeps of its past, in bytes: past this the oldest go, so a document edited for months stays a size that can
+ * be stored. The newest always stays. Nothing goes for being one of many: an old version is often the last to hold words
+ * that were deleted since, and telling would mean opening every one of them.
+ */
 const MAX_VERSION_BYTES = 64 * 1024 * 1024;
 /** How long the tree's `editedAt` may lag what's been typed, so nobody rewrites the tree for every key. */
 const TOUCH_EVERY_MS = 60_000;
@@ -107,11 +110,37 @@ const awarenessHeader = (p: Place, documentId: string): RecordHeader => ({ v: 1,
  * address is still theirs after it.
  */
 const PERSON_TAG_BYTES = 32;
+const clientsKey = (o: Owner, documentId: string): Uint8Array => stateKey(o.root, o.ownerId, `document-clients:${documentId}`);
+const clientTag = (key: Uint8Array, client: number, principal: Uint8Array): Uint8Array => mac(key, concat(utf8(`${client}:`), principal));
 function tagsFor(o: Owner, documentId: string, client: number, r: Reader): Uint8Array[] {
-  const key = stateKey(o.root, o.ownerId, `document-clients:${documentId}`);
-  return [...r.principals, ...(r.account ? [utf8(`account:${r.account.owner.ownerId}`)] : [])].map((p) => mac(key, concat(utf8(`${client}:`), p)));
+  const key = clientsKey(o, documentId);
+  return [...r.principals, ...(r.account ? [utf8(`account:${r.account.owner.ownerId}`)] : [])].map((p) => clientTag(key, client, p));
 }
 const tagsIn = (people: Uint8Array): Uint8Array[] => Array.from({ length: Math.floor(people.length / PERSON_TAG_BYTES) }, (_, i) => people.subarray(i * PERSON_TAG_BYTES, (i + 1) * PERSON_TAG_BYTES));
+const ClientTags = z.object({ document_id: z.string(), client_id: bigintText, people: bytea });
+/**
+ * Someone's address changed, in the caller's transaction: every client in this workspace's documents that went by the old one
+ * goes by the new one, so a tab of theirs that's open, or words they kept offline, carry on. Rows from before clients went by
+ * account too have only the address to go by.
+ */
+export async function moveClientTags(o: Owner, db: Db, from: Uint8Array, to: Uint8Array): Promise<number> {
+  const found = await rows(db, ClientTags, 'SELECT document_id, client_id, people FROM document_clients WHERE owner_id = $1', [o.ownerId]);
+  const keys = new Map<string, Uint8Array>();
+  let moved = 0;
+  for (const r of found) {
+    const key = keys.get(r.document_id) ?? clientsKey(o, r.document_id);
+    keys.set(r.document_id, key);
+    const was = clientTag(key, r.client_id, from);
+    const tags = tagsIn(r.people);
+    if (!tags.some((t) => equalBytes(t, was))) continue;
+    const now = clientTag(key, r.client_id, to);
+    const people = concat(...tags.filter((t) => !equalBytes(t, was) && !equalBytes(t, now)), now);
+    await exec(db, 'UPDATE document_clients SET people = $4 WHERE owner_id = $1 AND document_id = $2 AND client_id = $3', [o.ownerId, r.document_id, r.client_id, Buffer.from(people)]);
+    moved += 1;
+  }
+  if (moved) dlog.info('document clients moved to a new address', { workspaceOwner: o.ownerId, clients: moved });
+  return moved;
+}
 /** What the server writes belongs to nobody, so no browser can write as it. */
 const nobody = (): Uint8Array => new Uint8Array(0);
 
@@ -181,36 +210,43 @@ const jobFor = (p: Place, documentId: string, row: DocRow, who: string = p.owner
 
 const byLimits = (p: Place, bytes: number, items: number, times = 1): boolean => bytes > MAX_DOC_BYTES * times || items > p.owner.cfg.DOC_ITEMS_MAX * times;
 const tooLong = (p: Place, documentId: string, bytes: number, items: number) => new TooLargeError('This document is too long to add to. Delete something from it first.', { context: { workspaceId: p.workspaceId, documentId, bytes, items } });
-/** How far past its limit what's on a document's page can go on what isn't new content. Only what's deleted outright goes further. */
+/** How far past its limit what's on a document's page, or its size, can be, which only a race between two updates comes near. */
 const CEILING = 2;
-/** How much it can hold in all, as a multiple of that limit, whatever's on its page: what's been overwritten or deleted stays in memory too, at about a third of the cost. A worker opened 1.09 million structs of the worst shape measured, and ran out at 1.49 million. */
-const HOLDS = 6;
-/** The most new content one update's deletes can excuse: enough to join two lines, and little enough that deletes can't bring a paste in with them. */
-const EXCUSED_CONTENT = 4096;
+/**
+ * How much it can hold in all, as a multiple of that limit, whatever's on its page: what's been overwritten or deleted stays in
+ * memory too. A document at both ceilings at once, of the worst shape measured, compacts with a third of its worker's memory
+ * to spare, and ran out at about twice as much.
+ */
+const HOLDS = 3;
+/** What a document comes to, exactly, before an update and after it, from a worker that opened it. */
+interface Weight { items: number; bytes: number; state: number }
+interface Weighed { before: Weight; after: Weight }
 /**
  * A document's size is capped, in bytes and in items, because its memory follows items, so nobody can fill the disk or an
  * instance with one. The limit is on what's on its page: blocks are retired and words deleted, and a page someone emptied has
- * room, however much of that Yjs has to keep. What's refused is what would add to it: new text and new elements, past what the
- * same update takes out. Blocks leave a page by having attributes written and their words deleted, and joining two lines
- * writes the same words somewhere else, so all of that goes through, and a full document can always be made smaller. A move
- * adds an element, so it waits like anything else that adds one. An update's deletes can excuse only so much, as an update a
- * browser rebuilt says everything that's ever been deleted.
+ * room, however much of that Yjs has to keep. One rule holds at the limit: an update goes in if it doesn't add to what's on
+ * the page, counting what it adds against what it deletes and retires. So deletes, retires, joins and moves go through, whole,
+ * and nothing ever has to be sent apart. The figures on the row are the most it could come to, so most updates are taken on
+ * those alone, and one they can't settle is weighed exactly, by a worker that opens the document: `'weigh'`, and then again
+ * with what that says. Bytes go the same way, by what's said on the page, since a move adds a little structure every time.
  *
- * That isn't free of limits, because everything it holds costs memory. There's a ceiling on what's on its page, at twice the
- * limit, and one on all it holds, including every value a map key has had, which Yjs keeps and no compaction can let go of:
- * a browser that's behind needs them to find what's current. Those are far past anything but someone doing it on purpose,
- * or a store that writes the same keys over and over, and past them only deletes are taken. A document at its ceilings opens
- * and folds inside its worker: that's where they were measured, and a copy of it lets go of what's been overwritten. How deep
- * things nest is held the same way. All of this is what could be there, not what is: a refusal compacts the document, which
- * finds out.
+ * Everything a document holds costs memory, on its page or not, so there are ceilings that nothing gets past but deletes: on
+ * what's on the page and on its size, at twice the limit, and on all it holds, including every value a map key has had, which
+ * Yjs keeps and no compaction can let go of. A document at its ceilings opens, folds and copies inside its worker: that's
+ * where they were measured, and a copy lets go of what's been overwritten. How deep things nest is held the same way. Those
+ * figures can be more than what's there, so a refusal compacts the document, which finds out, and it's judged again.
  */
-function requireRoom(p: Place, documentId: string, row: DocRow, bytes: number, seen: Inspected): void {
-  if (!seen.blocks.length) return;
+function requireRoom(p: Place, documentId: string, row: DocRow, bytes: number, seen: Inspected, weighed: Weighed | null): 'fits' | 'weigh' {
+  if (!seen.blocks.length) return 'fits';
   const size = sizeOf(row) + bytes;
   const items = itemsOf(row) + seen.items;
   const page = pageOf(row) + seen.items;
-  const adds = seen.content > Math.min(seen.deleted, EXCUSED_CONTENT);
-  if (items > p.owner.cfg.DOC_ITEMS_MAX * HOLDS || byLimits(p, size, page, CEILING) || (adds && byLimits(p, size, page)) || (seen.nesting > 0 && nestingOf(row) + seen.nesting > MAX_NESTING)) throw tooLong(p, documentId, size, items);
+  if (items > p.owner.cfg.DOC_ITEMS_MAX * HOLDS || byLimits(p, size, page, CEILING) || (seen.nesting > 0 && nestingOf(row) + seen.nesting > MAX_NESTING)) throw tooLong(p, documentId, size, items);
+  if (!byLimits(p, size, page)) return 'fits';
+  if (!weighed) return 'weigh';
+  const { before, after } = weighed;
+  if ((after.items <= p.owner.cfg.DOC_ITEMS_MAX || after.items <= before.items) && (after.state <= MAX_DOC_BYTES || after.bytes <= before.bytes)) return 'fits';
+  throw tooLong(p, documentId, after.state, after.items);
 }
 const restoring = (p: Place, documentId: string) => new UnavailableError('This document is being put back to an earlier version. What’s here will go in a moment.', { context: { workspaceId: p.workspaceId, documentId } });
 
@@ -231,7 +267,7 @@ async function writeVersion(c: Db, p: Place, documentId: string, versionId: stri
   await exec(c, `DELETE FROM document_versions v USING (
       SELECT version_id, row_number() OVER newest AS n, sum(bytes) OVER newest AS kept_bytes
       FROM document_versions WHERE owner_id = $1 AND document_id = $2 WINDOW newest AS (ORDER BY created_at DESC, version_id)
-    ) kept WHERE v.owner_id = $1 AND v.document_id = $2 AND v.version_id = kept.version_id AND kept.n > 1 AND (kept.n > $3 OR kept.kept_bytes > $4)`, [p.owner.ownerId, documentId, MAX_VERSIONS, MAX_VERSION_BYTES]);
+    ) kept WHERE v.owner_id = $1 AND v.document_id = $2 AND v.version_id = kept.version_id AND kept.n > 1 AND kept.kept_bytes > $3`, [p.owner.ownerId, documentId, MAX_VERSION_BYTES]);
 }
 
 /**
@@ -318,13 +354,24 @@ async function tend(p: Place, documentId: string, t: Tending): Promise<boolean> 
   }
 }
 
-/** Puts an update at the end of the log, under the row's lock, and tells every instance when the transaction commits. */
-async function append(c: pg.PoolClient, p: Place, documentId: string, row: DocRow, update: Uint8Array, by: Editor | null, seen: Inspected, people: (client: number) => Uint8Array): Promise<number> {
+/** A keyed hash of what an update deletes, so the same deletes arriving again are known without opening anything. */
+const deletesTag = (o: Owner, documentId: string, update: Uint8Array, seen: Inspected): Uint8Array | null =>
+  (seen.deletes.length ? mac(stateKey(o.root, o.ownerId, `document-deletes:${documentId}`), update.subarray(seen.dsFrom)) : null);
+/** Whether the log since its snapshot has had these deletes already. */
+const deletedBefore = async (c: Db, p: Place, documentId: string, tag: Uint8Array): Promise<boolean> =>
+  (await maybeOne(c, z.object({ n: z.number() }), 'SELECT 1 AS n FROM document_updates WHERE owner_id = $1 AND document_id = $2 AND deletes_tag = $3 LIMIT 1', [p.owner.ownerId, documentId, tag])) !== undefined;
+/** An update's deletes and nothing else, for one whose structs are all here already: the structs would only be counted again. */
+function deletesOnly(update: Uint8Array, seen: Inspected): { update: Uint8Array; seen: Inspected } {
+  return { update: concat(new Uint8Array([0]), update.subarray(seen.dsFrom)), seen: { ...seen, blocks: [], needs: [], items: 0, nesting: 0, content: 0, dsFrom: 1 } };
+}
+
+/** Puts an update at the end of the log, under the row's lock, and tells every instance when the transaction commits. `deletes`: its tag, if it deletes anything. */
+async function append(c: pg.PoolClient, p: Place, documentId: string, row: DocRow, update: Uint8Array, by: Editor | null, seen: Inspected, people: (client: number) => Uint8Array, deletes: Uint8Array | null = null): Promise<number> {
   const seq = row.next_seq;
   const at = atOf(p, documentId);
   const key = contentKey(p.owner, documentId);
   const sealed = update.length <= INLINE_BYTES ? sealUpdate(at, key, seq, by, update) : (await p.owner.docs.run('seal', { at, key, seq, by, update }, { big: update.length > BIG_UPDATE_BYTES, bytes: update.length, who: p.owner.ownerId, first: true })).sealed;
-  await exec(c, 'INSERT INTO document_updates (owner_id, document_id, seq, update_ciphertext, bytes, items, nesting) VALUES ($1,$2,$3,$4,$5,$6,$7)', [p.owner.ownerId, documentId, seq, sealed, update.length, seen.items, seen.nesting]);
+  await exec(c, 'INSERT INTO document_updates (owner_id, document_id, seq, update_ciphertext, bytes, items, nesting, deletes_tag) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [p.owner.ownerId, documentId, seq, sealed, update.length, seen.items, seen.nesting, deletes ? Buffer.from(deletes) : null]);
   await exec(c, `UPDATE documents SET next_seq = $3, updates_since_snapshot = updates_since_snapshot + 1, bytes_since_snapshot = bytes_since_snapshot + $4, items_since_snapshot = items_since_snapshot + $5,
                  nesting_since_snapshot = nesting_since_snapshot + $6 WHERE owner_id = $1 AND document_id = $2`, [p.owner.ownerId, documentId, seq + 1, update.length, seen.items, seen.nesting]);
   await noteClients(c, p, documentId, seen.blocks, people);
@@ -339,10 +386,10 @@ function refuseUpdate(workspaceId: string, documentId: string, why: string, byte
   return isTooMuch(why) ? new TooLargeError('That’s too much to save in one go.', { context }) : new ValidationError('That isn’t an update Alcove can take.', { context });
 }
 /** What this instance has coming in and going out, as much of it can be megabytes, and whoever's asked for it. */
-interface Traffic { sending: number; sendingBy: Map<string, number>; receiving: number }
+interface Traffic { sending: number; sendingBy: Map<string, number>; sendingTo: Map<string, number>; receiving: number }
 const trafficByHub = new WeakMap<Hub, Traffic>();
 function trafficOn(hub: Hub): Traffic {
-  const traffic = trafficByHub.get(hub) ?? { sending: 0, sendingBy: new Map<string, number>(), receiving: 0 };
+  const traffic = trafficByHub.get(hub) ?? { sending: 0, sendingBy: new Map<string, number>(), sendingTo: new Map<string, number>(), receiving: 0 };
   trafficByHub.set(hub, traffic);
   return traffic;
 }
@@ -358,6 +405,8 @@ function takeReceiving(d: Deps, bytes: number): () => void {
 
 /** What one update may hold: as much as a document can. */
 const capsFor = (d: Deps) => browserCaps(d.cfg.DOC_ITEMS_MAX * HOLDS);
+/** Where an update landed, and what that leaves to do. */
+interface Landed { w: Allowed; seq: number; stale: boolean; tending: Tending | null }
 
 /**
  * An update from a browser, sealed and appended in one transaction. Whoever can't write here hears so before anything of it is
@@ -375,30 +424,42 @@ export async function appendUpdate(d: Deps, reader: Reader, workspaceId: string,
     const { seen, why } = update.length <= INLINE_BYTES ? inspect(update, capsFor(d)) : await d.docs.run('inspect', { update, items: capsFor(d).items }, { big: update.length > BIG_DOC_BYTES, bytes: update.length, who: limitKey(reader) });
     if (!seen) throw refuseUpdate(workspaceId, documentId, why ?? 'unknown', update.length);
 
-    const write = () => tx(d.pool, async (c) => {
+    const write = (weighed: Weighed | null) => tx(d.pool, async (c) => {
       const w = await editableBy(d, reader, workspaceId, documentId, c, 'hold');
       const row = await lockDocument(c, w, documentId);
       if (row.held) throw restoring(w, documentId);
       const known = await knownClients(c, w, documentId, seen);
       const why2 = refusalGiven(seen, known, (client, people) => tagsFor(w.owner, documentId, client, reader).some((t) => people.some((q) => equalBytes(t, q))));
       if (why2) throw refuseUpdate(workspaceId, documentId, why2, update.length);
-      // Here before, whole: a retry, of what's safe already.
-      if (!bringsNew(seen, known) && !seen.deletes.length) return { w, seq: row.next_seq - 1, stale: false, tending: null };
-      requireRoom(w, documentId, row, update.length, seen);
+      // Every struct in it is here already, as with a retry, or something rebuilt: what's left is its deletes, if they're new. The same deletes again are nothing, and cost nothing: no row, no version.
+      const fresh = bringsNew(seen, known);
+      const deletes = deletesTag(w.owner, documentId, update, seen);
+      if (!fresh && (!deletes || (await deletedBefore(c, w, documentId, deletes)))) return { landed: { w, seq: row.next_seq - 1, stale: false, tending: null } };
+      const what = fresh ? { update, seen } : deletesOnly(update, seen);
+      if (requireRoom(w, documentId, row, what.update.length, what.seen, weighed) === 'weigh') return { weigh: row };
       // Whoever's writing is who a client belongs to by now, which refusalGiven has made sure of: what it went by still counts, and so does anything new, such as an account for a client from before accounts were counted.
       const tags = (client: number) => {
         const had = known.get(client)?.people ?? [];
         return concat(...had, ...tagsFor(w.owner, documentId, client, reader).filter((t) => !had.some((q) => equalBytes(t, q))));
       };
-      const seq = await append(c, w, documentId, row, update, editorOf(w.owner, reader), seen, tags);
-      return { w, seq, stale: Date.now() - Date.parse(w.editedAt) >= TOUCH_EVERY_MS, tending: tendingAfter(w, row, seq, update.length, reader.seat?.callId ?? null) };
+      const seq = await append(c, w, documentId, row, what.update, editorOf(w.owner, reader), what.seen, tags, deletes);
+      return { landed: { w, seq, stale: Date.now() - Date.parse(w.editedAt) >= TOUCH_EVERY_MS, tending: tendingAfter(w, row, seq, what.update.length, reader.seat?.callId ?? null) } };
     });
-    const landed = await write().catch(async (e: unknown) => {
-      if (!(e instanceof TooLargeError)) throw e;
-      // What's counted is what could be there: much of it may be what's been deleted, or overwritten, which only a compaction shows, and nothing else may come along to start one. So this one reaches all the way: a stream reading the last row starts again, which is rare and safe. Then it's judged again by what's there.
-      if (!(await tend(asked, documentId, { through: (await documentRow(asked, documentId)).next_seq - 1, keep: undefined, full: true }))) throw e;
-      return write();
-    });
+    /** A document at its limit, where the figures can't say: a worker weighs what this update would bring it to. */
+    const weigh = async (row: DocRow): Promise<Weighed> => working(asked, documentId, row, async () => d.docs.run('weigh', { ...(await sealedLog(asked, documentId)), update }, jobFor(asked, documentId, row, limitKey(reader))));
+    const settle = async (weighed: Weighed | null, folded: boolean): Promise<Landed> => {
+      try {
+        const done = await write(weighed);
+        if ('landed' in done) return done.landed;
+        return settle(await weigh(done.weigh), folded);
+      } catch (e) {
+        if (!(e instanceof TooLargeError) || folded) throw e;
+        // What's counted is what could be there: much of it may be what's been deleted, or overwritten, which only a compaction shows, and nothing else may come along to start one. So this one reaches all the way: a stream reading the last row starts again, which is rare and safe. Then it's judged again by what's there.
+        if (!(await tend(asked, documentId, { through: (await documentRow(asked, documentId)).next_seq - 1, keep: undefined, full: true }))) throw e;
+        return settle(weighed, true);
+      }
+    };
+    const landed = await settle(null, false);
     if (landed.tending) await tend(landed.w, documentId, landed.tending);
     if (landed.stale) await touch(d, reader, workspaceId, documentId);
     if (reader.seat) await workedOnInCall(reader.seat.viewer, { workspaceId, documentId }, editorOf(landed.w.owner, reader));
@@ -496,7 +557,7 @@ export async function writeDocument<N extends keyof Edits>(
     await opts.holding?.(c);
     const locked = await lockDocument(c, w, documentId);
     if (locked.held) throw restoring(w, documentId);
-    requireRoom(w, documentId, locked, update.length, seen);
+    requireRoom(w, documentId, locked, update.length, seen, done.weighed);
     const landed = await append(c, w, documentId, locked, update, opts.by ?? null, seen, nobody);
     return { seq: landed, tending: tendingAfter(w, locked, landed, update.length, opts.callId ?? null) };
   });
@@ -599,27 +660,35 @@ const asAscii = (bytes: number): number => Math.ceil((bytes * 4) / 3);
 const SMALL_SEND_BYTES = asAscii(BIG_DOC_BYTES);
 /** Room held for something on its way to a browser. `settle`: what it turned out to be. */
 interface Sending { settle(bytes: number): void; release(): void }
+/** What one person, or one address, can have on its way, as a part of all there can be. */
+const SHARE = 4;
 /**
- * Takes room for something on its way to a browser. That's before anything's opened, so it counts however many are opening
- * at once, and it's held until the last of it has left or the reader has, so what nobody reads stays counted. Past the limit
- * overall, or half of it for one person, the browser's told to try again. Someone with nothing on its way is held back only
- * by the overall limit, and with nothing at all on its way anything goes, however big: a document can be bigger than either,
- * and has to be able to open.
+ * Takes room for something on its way to a browser: a document opening, a line of its stream, a version, a search. That's
+ * before anything's opened, so it counts however many are opening at once, and it's held until the last of it has left or the
+ * reader has, so what nobody reads stays counted. Past the limit overall, or a quarter of it for one person or one address,
+ * the browser's told to try again. Someone with nothing on its way is held back only by the overall limit, and with nothing
+ * at all on its way anything goes, however big: a document can be bigger than any of these, and has to be able to open.
  */
-function takeSending(d: Deps, who: string, wanted: number): Sending {
+function takeSending(d: Deps, who: string, address: string, wanted: number): Sending {
   const traffic = trafficOn(d.hub);
   const all = d.cfg.DOC_SENDING_MB * 1024 * 1024;
   const theirs = traffic.sendingBy.get(who) ?? 0;
-  if (wanted > SMALL_SEND_BYTES && ((theirs > 0 && theirs + wanted > all / 2) || (traffic.sending > 0 && traffic.sending + wanted > all))) {
-    throw new UnavailableError('Too many documents are on their way right now. Try again in a moment.', { context: { wanted, theirs, sending: traffic.sending } });
+  const there = traffic.sendingTo.get(address) ?? 0;
+  const over = (n: number, limit: number) => n > 0 && n + wanted > limit;
+  if (wanted > SMALL_SEND_BYTES && (over(theirs, all / SHARE) || over(there, all / SHARE) || over(traffic.sending, all))) {
+    throw new UnavailableError('Too many documents are on their way right now. Try again in a moment.', { context: { wanted, theirs, there, sending: traffic.sending } });
   }
   let held = 0;
+  const count = (counts: Map<string, number>, key: string, bytes: number) => {
+    const now = (counts.get(key) ?? 0) + bytes - held;
+    if (now > 0) counts.set(key, now);
+    else counts.delete(key);
+  };
   const hold = (bytes: number) => {
-    const now = (traffic.sendingBy.get(who) ?? 0) + bytes - held;
+    count(traffic.sendingBy, who, bytes);
+    count(traffic.sendingTo, address, bytes);
     traffic.sending += bytes - held;
     held = bytes;
-    if (now > 0) traffic.sendingBy.set(who, now);
-    else traffic.sendingBy.delete(who);
   };
   hold(wanted);
   return { settle: hold, release: () => { hold(0); } };
@@ -641,7 +710,7 @@ function takeVersionRead(d: Deps): () => void {
  * A version as it's kept, a part at a time, so a reader who stops reading holds one part and no more. Nothing's written until
  * it's known they can have it, and it stops if they lose it on the way.
  */
-export async function version(d: Deps, reader: Reader, workspaceId: string, documentId: string, versionId: string): Promise<(out: StreamingApi) => Promise<void>> {
+export async function version(d: Deps, reader: Reader, workspaceId: string, documentId: string, versionId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
   const w = await workspaceFor(d, reader, workspaceId);
   requireDocument(reader, w, documentId, 'read');
   const r = await versionRow(w, documentId, versionId);
@@ -661,7 +730,7 @@ export async function version(d: Deps, reader: Reader, workspaceId: string, docu
           requireDocument(reader, current, documentId, 'read');
         }
         const bytes = openVersionPart(at, key, r.version_id, part, r.parts, await partOf(w, documentId, r.version_id, part));
-        const room = takeSending(d, limitKey(reader), asAscii(bytes.length));
+        const room = takeSending(d, limitKey(reader), address, asAscii(bytes.length));
         const wrote = await lineFor(d, out, `{"type":"part","update":"${b64u(bytes)}"}\n`).finally(room.release);
         if (!wrote) return;
       }
@@ -765,7 +834,7 @@ export async function restoreVersion(d: Deps, reader: Reader, workspaceId: strin
  * for everyone as it would be for opening it. It stops as soon as they can't read what's next: whatever changes who has what
  * moves the workspace's version on.
  */
-export async function searchText(d: Deps, reader: Reader, workspaceId: string): Promise<(out: StreamingApi) => Promise<void>> {
+export async function searchText(d: Deps, reader: Reader, workspaceId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
   const who = limitKey(reader);
   const w = await workspaceFor(d, reader, workspaceId);
   const opens = Object.entries(w.state.items).filter(([id, item]) => item.kind !== 'folder' && roleOf(reader, w, id, item) !== undefined && !trashOf(w.state, id));
@@ -785,7 +854,7 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string): 
       try {
         const row = await documentRow(current, id);
         if (row.closed) continue;
-        room = takeSending(d, who, sizeOf(row));
+        room = takeSending(d, who, address, sizeOf(row));
         const done = await working(current, id, row, async () => d.docs.run('searchLine', { ...(await sealedLog(current, id)), id, itemKind: now.kind, name: now.name, kind: kindOf(now) }, jobFor(current, id, row, who)));
         report(current, id, done.found);
         room.settle(done.line.length);
@@ -1080,7 +1149,11 @@ class DocStream extends LiveStream<DocLiveEvent> {
   private why: DocClosed = 'access';
   private shut = false;
 
-  constructor(d: Deps, room: Room, private readonly doc: DocRoom, credentials: Credentials, who: Who, version: number, release: () => void, private role: 'edit' | 'read', private trashed: boolean) {
+  constructor(
+    d: Deps, room: Room, private readonly doc: DocRoom, credentials: Credentials, who: Who, version: number, release: () => void, private role: 'edit' | 'read', private trashed: boolean,
+    /** Whose budget what's sent here comes out of, and from where. */
+    private readonly sender: string, private readonly address: string
+  ) {
     super(d, room, credentials, who, version, release, { workspaceId: doc.workspaceId, documentId: doc.documentId });
     this.at = doc.reached;
     this.caretsTold = doc.caretsSoFar;
@@ -1129,8 +1202,21 @@ class DocStream extends LiveStream<DocLiveEvent> {
     const { behind, line: update } = this.doc.updateAfter(this.at);
     if (behind) { this.end(); return 'idle'; }
     if (update) {
+      // A line is counted until it's gone, like anything else on its way. One there isn't room for now lets this stream go, and its browser opens it again from where it got to.
+      let room: Sending;
+      try {
+        room = takeSending(this.d, this.sender, this.address, update.text.length);
+      } catch (e) {
+        dlog.info('stream let go: too much on its way', { workspaceId: this.doc.workspaceId, documentId: this.doc.documentId, seq: update.seq, bytes: update.text.length, err: e });
+        this.end();
+        return 'idle';
+      }
+      try {
+        await line.raw(update.text);
+      } finally {
+        room.release();
+      }
       this.at = update.seq;
-      await line.raw(update.text);
       return 'wrote';
     }
     const caret = this.doc.caretAfter(this.caretsTold);
@@ -1150,9 +1236,9 @@ class DocStream extends LiveStream<DocLiveEvent> {
 }
 
 /** What a browser at `after` doesn't have yet, and the seq that brings it to. There's a limit to what can be on its way to browsers, and it's taken before anything's opened. */
-async function syncFrom(d: Deps, p: Place, documentId: string, row: DocRow, after: number, who: string): Promise<First> {
+async function syncFrom(d: Deps, p: Place, documentId: string, row: DocRow, after: number, who: string, address: string): Promise<First> {
   if (after > 0 && row.next_seq === after + 1) return { seq: after, ascii: NOTHING, sent: () => undefined };
-  const room = takeSending(d, who, asAscii(sizeOf(row)));
+  const room = takeSending(d, who, address, asAscii(sizeOf(row)));
   try {
     const made = await p.owner.docs.run('sync', { ...(await sealedLog(p, documentId)), after }, jobFor(p, documentId, row, who));
     report(p, documentId, made.found);
@@ -1165,10 +1251,10 @@ async function syncFrom(d: Deps, p: Place, documentId: string, row: DocRow, afte
 }
 
 /**
- * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much, in time
- * or memory, closes, so a poll asking again can't keep a worker on it, however many people are polling. One that failed has
- * said something only about itself, and cost no time: a fold won't go past a row it can't read, and the document still opens
- * without that row.
+ * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much, out of
+ * a worker's time or memory, closes, so a poll asking again can't keep a worker on it, however many people are polling. A
+ * worker that only says the job failed closes nothing: a compaction that won't pass a row it can't read is one, and the
+ * document opens fine without that row.
  */
 async function working<T>(p: Place, documentId: string, row: DocRow, job: () => Promise<T>): Promise<T> {
   if (row.closed) throw new UnavailableError('This document can’t be opened right now.', { context: { workspaceId: p.workspaceId, documentId } });
@@ -1201,14 +1287,14 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     if (item.kind === 'document') await started(w, documentId, row);
     const tree = roomFor(d, workspaceId);
     const room = docRoomFor(d, w, documentId, tree);
-    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, release, role, trashOf(w.state, documentId) !== null);
+    const stream = new DocStream(d, tree, room, credentials, { email: reader.email, principals: reader.principals }, w.version, release, role, trashOf(w.state, documentId) !== null, limitKey(reader), address);
     tree.join(stream);
     room.join(stream);
     try {
       await Promise.all([tree.ready, room.ready]);
       // Whatever changed before the room was listening: nothing did, usually, and that costs one small query.
       void tree.read();
-      stream.start(await syncFrom(d, w, documentId, await documentRow(w, documentId), after, limitKey(reader)));
+      stream.start(await syncFrom(d, w, documentId, await documentRow(w, documentId), after, limitKey(reader), address));
     } catch (e) {
       tree.leave(stream);
       room.leave(stream);

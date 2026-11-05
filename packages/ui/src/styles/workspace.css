@@ -44,7 +44,6 @@
 .wt-r:hover { background: var(--sunk); }
 .wt-r.is-cur { background: var(--sunk); color: var(--ink); }
 .wt-r.is-into { background: var(--horizon-soft); color: var(--horizon); box-shadow: inset 0 0 0 1.5px var(--horizon); }
-.wt-r.is-ghosted { opacity: .4; }
 .wt-r.is-flash { animation: ws-flash 1.4s var(--ease-out); }
 /* The keyboard's ring goes round the row, with the buttons that show on it. */
 .wt-r:has(.wt-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -482,6 +481,7 @@
   .ws-pane.in-app { border-radius: 0; box-shadow: none; }
   .main.is-full, .shell.is-bare .main.is-full { padding: 0 0 calc(82px + env(safe-area-inset-bottom, 0px)); }
   .main.is-full .ws-toasts { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+  .main.is-full:has(.ws-pane.phone-tree) .ws-toasts { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
   /* Record stands up out of the tab bar, into the foot of the list and of History. */
   .main.is-full .wt, .main.is-full .wh { padding-bottom: 24px; }
   .wt, .ws-pane.tree-off .wt { position: absolute; z-index: 5; inset: 0; width: 100%; margin-left: 0; border-right: 0; background: var(--surface); visibility: visible; transform: translateX(-100%); transition: transform var(--duration-2) var(--ease-out); }

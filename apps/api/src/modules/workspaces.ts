@@ -27,7 +27,7 @@ import { profile } from './account';
 import { addressesIn, nudgeCall, seated } from './calls';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from './portraits';
-import { copyContent, kindOf, startContent } from './workspaceDocuments';
+import { copyContent, kindOf, moveClientTags, startContent } from './workspaceDocuments';
 import { waitingFor } from './workspaceMentions';
 
 const wlog = log.child({ component: 'workspaces' });
@@ -815,12 +815,12 @@ async function trashStranded(w: HeldWorkspace, db: Db): Promise<number> {
 
 const Due = z.object({ owner_id: z.string(), workspace_id: z.string(), trash_since: timestamp });
 /**
- * Deletes for good what's been in Trash for `ageMs`, with what's in it, and returns how many things went. Each workspace
- * goes in a transaction of its own, and one that fails is logged and left for next time: nothing in one workspace can stop
- * the others.
+ * Deletes for good what's been in Trash for `ageMs` as of `now`, with what's in it, and returns how many things went. Each
+ * workspace goes in a transaction of its own, and one that fails is logged and left for next time: nothing in one workspace
+ * can stop the others.
  */
-export async function sweepTrash(d: Deps, ageMs: number = TRASH_MS): Promise<number> {
-  const cutoff = new Date(Date.now() - ageMs);
+export async function sweepTrash(d: Deps, ageMs: number = TRASH_MS, now: number = Date.now()): Promise<number> {
+  const cutoff = new Date(now - ageMs);
   let deleted = 0;
   let after: z.infer<typeof Due> | undefined;
   for (;;) {
@@ -988,6 +988,7 @@ export async function moveAddress(d: Deps, db: Db, ownerId: string, from: Uint8A
     if (!w) continue;
     await moveMember(w, db, from, index, address);
     await moveShares(w, db, from, index, address);
+    await moveClientTags(w.owner, db, from, index);
     await exec(db, `INSERT INTO workspace_authors (owner_id, email_index, made_workspace) SELECT owner_id, $3, made_workspace FROM workspace_authors WHERE owner_id = $1 AND email_index = $2
       ON CONFLICT (owner_id, email_index) DO UPDATE SET made_workspace = workspace_authors.made_workspace OR EXCLUDED.made_workspace`, [workspaceOwner, from, index]);
     await exec(db, 'DELETE FROM workspace_authors WHERE owner_id = $1 AND email_index = $2', [workspaceOwner, from]);

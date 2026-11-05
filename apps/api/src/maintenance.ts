@@ -32,6 +32,8 @@ const mlog = log.child({ component: 'maintenance' });
 const ORPHAN_AGE_MS = 24 * 60 * 60_000;
 
 export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: number; uploadAgeMs?: number } = {}) {
+  /* What's old enough to go is as old as it was when upkeep started: the sweeps before one don't move its line. */
+  const started = Date.now();
   const sessions = await sweepSessions(d);
   const receipts = await exec(d.pool, `DELETE FROM operations WHERE completed_at < now() - interval '24 hours'`);
 
@@ -55,9 +57,9 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const liveNotes = await sweepLiveNotes(d);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
-  const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs));
+  const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
   const seats = await quietly('seats', () => sweepSeats(d));
-  const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs));
+  const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
   return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays, mentions };

@@ -316,7 +316,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   const copyTo: CopyTo | undefined = ws.canChange && ws.owner !== null && status.closed !== 'session' ? {
     workspaceId: ws.workspaceId, name: () => nameOf(item), parent: folder && folder.trashedAt === null ? folder.id : null, go: (id) => ws.go({ kind: 'document', id })
   } : undefined;
-  const rescue = stuck ? <Rescue session={session} say={ws.say} copyTo={copyTo} onLetGo={reopen} /> : null;
+  const rescue = stuck ? <Rescue session={session} say={ws.say} copyTo={copyTo} gone={gone} onLetGo={reopen} /> : null;
 
   /* A document that can't be opened right now opens again by itself, a little later each time. */
   const tries = useRef(0);
@@ -330,12 +330,16 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   }, [status.closed, reopen]);
   const history = useHistory(ws, item, session, item.role === 'edit' && !trashed && !offline && status.role !== 'read');
 
-  /* Back from being offline, and everything's in. */
-  const wasOffline = useRef(false);
+  /*
+   * Back from being offline, and everything's in: in the session that was offline. Not once what was written was refused or
+   * the session ended, so a document opened again after Discard doesn't say its edits saved.
+   */
+  const wasOffline = useRef<DocSession | null>(null);
   useEffect(() => {
-    if (offline) wasOffline.current = true;
-    else if (wasOffline.current && status.status === 'saved') { wasOffline.current = false; ws.say(wsToast.backOnline()); }
-  }, [offline, status.status, ws.say]);
+    if (offline) wasOffline.current = session;
+    else if (wasOffline.current !== session || status.status === 'failed' || status.closed !== null) wasOffline.current = null;
+    else if (status.status === 'saved') { wasOffline.current = null; ws.say(wsToast.backOnline()); }
+  }, [offline, session, status.status, status.closed, ws.say]);
 
   if (gone) {
     return (
@@ -387,8 +391,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       )}
       <WsFollowBar following={ws.following} onStop={() => ws.stopFollowing()} />
       <WsOfflineBar show={offline && ready && status.closed === null} />
-      <WsUnsavedBar why={unsaved}>{rescue}</WsUnsavedBar>
-      <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
+      <WsUnsavedBar why={unsaved} saveable={copyTo !== undefined}>{rescue}</WsUnsavedBar>
+      <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} />
       <WsVersionBar when={history.reading} />
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}

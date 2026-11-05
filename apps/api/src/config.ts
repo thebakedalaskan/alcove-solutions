@@ -102,7 +102,7 @@ const EnvSchema = z.object({
   DOC_ITEMS_MAX: z.coerce.number().int().min(1).default(MAX_DOC_ITEMS),
   /** How many jobs one person can have waiting for a worker: past this their browser is told to try again. */
   DOC_WAITING_PER_PERSON: z.coerce.number().int().min(1).default(32),
-  /** How much of documents can be on its way to browsers at once, in MiB, and half of that for any one person: past it, opening a big one waits for the browser to try again. */
+  /** How much of documents can be on its way to browsers at once, in MiB, and a quarter of that for any one person or address: past it, opening a big one waits for the browser to try again, and a stream that can't have its next line is let go of. */
   DOC_SENDING_MB: z.coerce.number().int().min(1).default(64),
   /** How many reads of a version an instance serves at once: each holds a request for as long as its reader takes. */
   DOC_VERSION_READS: z.coerce.number().int().min(1).default(8),

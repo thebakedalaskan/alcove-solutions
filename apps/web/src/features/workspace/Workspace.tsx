@@ -4,18 +4,21 @@
  * address. See WorkspaceProps in context.ts.
  */
 import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
-import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
+import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { moveFocusOut, overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
+import { log } from '~/lib/log';
 import { q, qk } from '~/lib/queries';
 import { useTreeActions } from './actions';
 import { useLaidOver } from './changes';
 import { WsContext, type FolderDraft, type OpenPage, type Ws, type WorkspacePlace, type WorkspaceProps } from './context';
 import { DocumentPane } from './DocumentPane';
+import { keptDocuments } from './keep';
 import { KeptHere } from './Rescue';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
@@ -37,6 +40,40 @@ import { onStored, talkThrough } from './uploads';
 import { useWordsFollow } from './words';
 
 const GLOW_MS = 1400;
+const wlog = log.child({ component: 'workspace' });
+
+/**
+ * A workspace's stream closes for good when you can't open it any more, and also when the session's over (it expired, or
+ * Alcove ended it), which says nothing about the workspace. So on the workspace page, someone signed in has the session
+ * asked about again before anything's said. Still there: it's the workspace that closed. Over: the app goes to the welcome
+ * page to sign in again, as it does whenever it finds the session over, saying that what's kept here is safe, if anything
+ * is, since it saves once they sign in again.
+ */
+function useClosedFor(closed: boolean, owner: string | null, page: boolean): 'asking' | 'workspace' {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [session, setSession] = useState<'unasked' | 'there' | 'over'>('unasked');
+  const asks = closed && owner !== null && page;
+  useEffect(() => {
+    if (!asks || owner === null || session !== 'unasked') return undefined;
+    let left = false;
+    qc.fetchQuery({ ...q.session(), staleTime: 0 }).then(async (found) => {
+      if (found !== null) { if (!left) setSession('there'); return; }
+      // Over, whatever this page does meanwhile (its owner is gone as the answer lands): it goes on to the welcome page.
+      setSession('over');
+      const kept = await keptDocuments(owner).catch(() => []);
+      wlog.info('the session ended while a workspace was open', { kept: kept.length });
+      void navigate({ to: '/welcome', replace: true });
+      if (kept.length > 0) toast('You’re signed out. Your edits are safe in this browser, and they save when you sign in again.', { icon: 'signOut' });
+    }, (e: unknown) => {
+      wlog.warn('couldn’t ask whether the session is over', { err: e });
+      if (!left) setSession('there');
+    });
+    return () => { left = true; };
+  }, [asks, owner, session, qc, navigate, toast]);
+  return session === 'over' || (asks && session === 'unasked') ? 'asking' : 'workspace';
+}
 
 type Shown = Omit<WsToastData, 'ms'> & { id: number };
 
@@ -331,7 +368,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   });
 
   const isPage = mode === 'page';
+  const closedFor = useClosedFor(view.status === 'closed', owner, isPage);
   if (view.status === 'closed') {
+    if (closedFor === 'asking') return <WsPane page={isPage} />;
     const back = <Button size="sm" onClick={onLeave}>{isPage ? 'Back to your workspaces' : 'Back to the call'}</Button>;
     return (
       <>

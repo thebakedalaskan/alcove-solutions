@@ -8,10 +8,12 @@
  * place bound in (which account, workspace and document, its order and when it was made), so nothing can pass for something
  * else. In the clear: opaque IDs, the order, the time and sizes. It's its own database and key: an old tab that has the recordings' database open
  * never has to give way to this one. Signing out or deleting the account here deletes what was kept for it; another
- * account's stays sealed until it signs in here again, and the key goes with the last.
+ * account's stays sealed until it signs in here again, and the key goes with the last. Once an account signs out here, in
+ * this tab or another, nothing more is kept for it: a tab closing afterwards can't bring its words, or the key, back.
  */
-import { KeptEditSchema, type KeptEdit, type KeptUpdate, type KeptUpdates } from '@alcove/api';
+import { AlcoveApiError, KeptEditSchema, type KeptEdit, type KeptUpdate, type KeptUpdates } from '@alcove/api';
 import { log } from '~/lib/log';
+import { signedOut } from '~/lib/signedOut';
 
 const klog = log.child({ component: 'workspace-keep' });
 
@@ -93,6 +95,7 @@ const nextKey = (): number => { last = Math.max(last + 1, Date.now() * 1000); re
 export function keptUpdates(owner: string, workspace: string, document: string): KeptUpdates {
   return {
     load: async () => {
+      if (signedOut(owner)) return [];
       const rows = listOf(await ask((await db()).transaction(EDITS).objectStore(EDITS).getAll(inDocument(owner, workspace, document))));
       const key = await deviceKey();
       const out: KeptUpdate[] = [];
@@ -110,6 +113,7 @@ export function keptUpdates(owner: string, workspace: string, document: string):
       return out;
     },
     add: async (update, at) => {
+      if (signedOut(owner)) throw new AlcoveApiError('unauthenticated', 'This account signed out here, so nothing more is kept for it.');
       const order = nextKey();
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: placeOf(owner, workspace, document, order, at) }, await deviceKey(), new Uint8Array(update));
@@ -123,16 +127,19 @@ export function keptUpdates(owner: string, workspace: string, document: string):
   };
 }
 
-/** The documents `owner` has edits waiting in, for sending them. */
+/** The documents `owner` has edits waiting in, for sending them: the one first written in first. */
 export async function keptDocuments(owner: string): Promise<{ workspace: string; document: string }[]> {
-  if (!canKeepEdits()) return [];
+  if (!canKeepEdits() || signedOut(owner)) return [];
   const rows = listOf(await ask((await db()).transaction(EDITS).objectStore(EDITS).getAll(inAccount(owner))));
-  const found = new Map<string, { workspace: string; document: string }>();
+  const found = new Map<string, { workspace: string; document: string; at: number }>();
   for (const row of rows) {
     const edit = KeptEditSchema.safeParse(row);
-    if (edit.success) found.set(`${edit.data.workspace}/${edit.data.document}`, { workspace: edit.data.workspace, document: edit.data.document });
+    if (!edit.success) continue;
+    const { workspace, document, at } = edit.data;
+    const seen = found.get(`${workspace}/${document}`);
+    if (!seen || at < seen.at) found.set(`${workspace}/${document}`, { workspace, document, at });
   }
-  return [...found.values()];
+  return [...found.values()].sort((a, b) => a.at - b.at).map(({ workspace, document }) => ({ workspace, document }));
 }
 
 /** Signing out or deleting the account here: everything kept for `owner` goes, and with nobody's left, the key too. */

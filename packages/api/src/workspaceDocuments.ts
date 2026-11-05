@@ -97,7 +97,7 @@ export type DocLiveEvent = z.infer<typeof DocLiveEventSchema>;
  * too much, whether in one go or for the document, which counts its size and how many separate pieces are on its page. What
  * was typed stays here, and goes once that changes: undoing a paste, or deleting something, is enough. `rejected`: Alcove
  * won't take it as it stands, which no browser should see. Whatever doesn't depend on it still goes. A refusal never lets go
- * of anything: what's refused stays kept, through reloads, for someone to take out with `localCopy`.
+ * of anything: what's refused stays kept, through reloads, for someone to take out with `unsentCopy`.
  */
 export type DocRefusal = 'read-only' | 'trashed' | 'too-large' | 'rejected';
 
@@ -116,7 +116,7 @@ export interface DocStatus {
   closed: DocClosed | null;
   /**
    * Something here hasn't reached Alcove. It stays kept until Alcove has it or someone chooses to let it go, whatever else
-   * this says. With `refused` or `closed`, it may not get there by itself: that's when to offer `localCopy`.
+   * this says. With `refused` or `closed`, it may not get there by itself: that's when to offer `unsentCopy`.
    */
   unsent: boolean;
 }
@@ -137,8 +137,13 @@ export interface KeptUpdates {
 }
 export interface DocSessionOptions extends WorkspaceReadOptions { keep?: KeptUpdates | undefined }
 
-/** Everything in a document as it stands here, whether or not Alcove has it. `text`: to read or copy, a line to a block. `state`: for `saveCopy`, to make a new document of it. */
-export interface DocLocalCopy { text: string; state: Uint8Array }
+/** What a copy held, to let go of with `discardUnsaved`: the document's state vector, and the keys of what was kept, as they stood. */
+export interface DocCopyToken { readonly vector: Uint8Array; readonly keys: readonly number[] }
+/**
+ * Someone's own words that haven't reached Alcove, and nothing else, as plain paragraphs: for them to read, copy, or make a new
+ * document of. `token`: for `discardUnsaved`, once they're saved.
+ */
+export interface DocUnsentCopy { text: string; token: DocCopyToken }
 /** How much a document holds as it stands here, to set beside `MAX_DOC_BYTES` and `MAX_DOC_ITEMS`. `items`: what's on its page. */
 export interface DocSize { bytes: number; items: number }
 
@@ -154,15 +159,21 @@ export interface DocSession extends LiveStore<DocStatus> {
   readonly ready: Promise<void>;
   /** Sends what's waiting, says this browser's caret is gone, and stops. */
   close(): void;
-  /** What's here now, for someone whose words aren't reaching Alcove. It holds every word this browser has, and works however the session ended, until `close()`. */
-  localCopy(): DocLocalCopy;
+  /**
+   * The words this browser wrote that Alcove hasn't taken, for someone whose words aren't reaching it: what's placed, in page
+   * order, a paragraph to a line, then what Yjs has nowhere to put, in the order it was written. Never anything deleted, nor
+   * anything anyone else wrote, so a new document made of it can't carry what someone can't open any more, or deleted. What's
+   * being typed is cut off here, so all of it is in the copy. Works however the session ended, until `close()`.
+   */
+  unsentCopy(): DocUnsentCopy;
   /** What this document comes to here, for an editor to check a paste against the limits before it goes in. */
   size(): DocSize;
   /**
-   * Lets go of everything unsent, here and in `keep`, for good, and closes the session: only for someone who chose to, once
-   * they've had the chance of `localCopy`. Open the document again to carry on from what Alcove has.
+   * Lets go, here and in `keep`, of what a copy holds that can't reach this document (Alcove refused it, the session's over, or
+   * this person can only read it now), and closes the session: for after `saveCopy`, or copying the words, by someone's choice. Anything written since the copy, anything that can still
+   * go, and anything another tab keeps is untouched, and goes when the document's opened again.
    */
-  discardUnsaved(): Promise<void>;
+  discardUnsaved(token: DocCopyToken): Promise<void>;
 }
 
 /* ---------- versions ---------- */

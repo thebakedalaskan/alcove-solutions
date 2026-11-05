@@ -151,13 +151,20 @@ export interface MediaHandlers {
   watch?: ((media: string) => () => void) | undefined;
   /** Counts every change to what the handlers say. Read it with `useSyncExternalStore`. */
   changes?: { subscribe: (listener: () => void) => () => void; getSnapshot: () => number } | undefined;
+  /*
+   * `upload` below is what an upload is known by: its block's `upload` token, which follows the block wherever it's moved,
+   * or the block's ID for one without.
+   */
   /** The file this browser is sending into a block, at its place in the block, to show while it goes. */
-  preview?: ((block: string, index: number) => string | undefined) | undefined;
-  /** A block says it's uploading, and nobody is any more: it shows as failed, with only Delete. */
-  stalled?: ((block: string) => boolean) | undefined;
+  preview?: ((upload: string, index: number) => string | undefined) | undefined;
+  /** A block says it's uploading, and nobody is any more: it shows as failed. */
+  stalled?: ((upload: string) => boolean) | undefined;
   /** Try again, on a block that couldn't upload: only where this browser still has what it was sending. */
-  onRetry?: ((block: string) => void) | undefined;
-  canRetry?: ((block: string) => boolean) | undefined;
+  onRetry?: ((upload: string) => void) | undefined;
+  canRetry?: ((upload: string) => boolean) | undefined;
+  /** A photo this browser couldn't read, which it still has: Add as a file puts the file in its block's place. */
+  canAddAsFile?: ((upload: string) => boolean) | undefined;
+  onAsFile?: ((upload: string, block: string) => void) | undefined;
   /** Where a player reads a video from, asked for afresh. Rejects for one that's gone. */
   stream?: ((media: string) => Promise<string>) | undefined;
   /** A video found out how long it is: for a block that didn't say. */

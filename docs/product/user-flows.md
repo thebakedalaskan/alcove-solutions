@@ -49,8 +49,8 @@ screen. Signing in on another browser doesn't end the first session.
 Beside every page, dark in both themes:
 
 - **Start a call** (or **N**) opens flow 4.
-- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Workspace**, where you
-  write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
+- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Drive**, every workspace,
+  where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
   device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
   once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
 - **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
@@ -79,7 +79,7 @@ its own search, so there's none at the top right, and the shortcut goes to the l
 the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
-you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Workspace** and **Team**
+you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Drive** and **Team**
 when you're on one. Offline, the same notice sits under the top bar.
 
 **The palette** is one line over the page. Before anything is typed it lists your five newest notes. Typing
@@ -871,7 +871,10 @@ the horizon with your name and address, beside **Take the tour** (the tour of Ho
 With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
 ("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by
 themselves, or, too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
-**Sign out and delete them**. It counts only this account's recordings, and only those go. With no connection, signing
+**Sign out and delete them**. It counts only this account's recordings, and only those go. The same goes for anything
+written in the workspace that hasn't reached Alcove ("Something you wrote hasn't reached Alcove yet. Signing out deletes it
+from this browser."), with **Copy what you wrote** beside them, which copies only your own words, as plain text. Every
+other tab open here hears it at once and goes to the welcome page, saying you signed out in another tab. With no connection, signing
 out says so and nothing happens later by itself. Under the water the page is
 one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
 narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
@@ -983,11 +986,13 @@ workspace, one at a time or **Add all three**; Video and File offer films and fi
 land where a line shows, "Drop to add here", and pasted ones under the caret. Several photos make a gallery, one makes a picture
 across the page, a film shows its first frame with **Play**, and anything else is a file that downloads, or opens in a tab when
 the browser can show it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
-pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read,
-or one Alcove refuses, says which file and why ("This file is bigger than 512 MiB, the most a file can be.", "This workspace is
-full, so it can't take more files.", "That's all you can upload today. You can upload more tomorrow."), with **Try again** and
-**Delete**, and nothing else in the document changes. Leaving the page doesn't stop an upload, and closing the tab asks first;
-a browser that goes mid-upload leaves its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
+pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
+says which file, with **Add as a file** and **Delete**. One Alcove refuses says which file and why ("This file is bigger than
+512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
+can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
+uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop
+an upload, and closing the tab asks first, until everything about it has reached Alcove; a browser that goes mid-upload leaves
+its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
 the file in the workspace, for older versions and to use again. **Delete the photo for good** (or the video, or the file), in
 the block's menu, asks first, then deletes it from every document that has it, where it says it was deleted, older versions
 too; Alcove refuses that for a file that's also in a document you can only read, and says so. **Upload files** in the list's
@@ -1085,18 +1090,23 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   taking edits, and opens again by itself, a little later each time.
 - A document too big to save says so: delete something, or send a block to another document, and what's waiting saves.
   Anything Alcove can't take at all says so too, and so does losing the right to edit with something unsaved.
-- Signed out in another tab: a bar says your edits are safe in this browser, and save when you sign in again.
+- Your session ends by itself (it expired): the app goes to the welcome page to sign in again, saying your edits are safe
+  in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
+  purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
-gone), the page offers **Copy text**, **Save as new document**, which makes a copy named after it of everything as you
-have it, opens it, and lets this one carry on from what Alcove has, and **Discard**, which asks once. A document that's
-gone keeps offering them where it was. Words this browser holds for a document you aren't looking at, found when the app
-opens or the connection comes back, get one toast, with **Show it**.
+gone), the page offers what to do with it, holding only your own words that didn't save, never the rest of the document:
+**Copy text**; **Save as new document**, for someone who can make one, which makes "Your words from" and the document's
+name beside it, says so with **Open**, and lets this one carry on from what Alcove has; and **Discard**, which asks once,
+with the keyboard on **Keep it**. On a document that's gone, only **Copy text** is offered until it's sure the document
+is gone. In Trash, the bar says what you wrote saves once it's restored. A document that's gone keeps offering them where it
+was. Words this browser holds for a document you aren't looking at, found when the app opens or the connection comes back,
+get one toast, with **Show it**.
 
 Signing out, or deleting your account, on this browser deletes every edit still kept here for it and where you were in
-your workspaces.
+your workspaces; Sign out asks first if anything hasn't reached Alcove.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a

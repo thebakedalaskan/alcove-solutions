@@ -416,12 +416,12 @@ export function WsUploadPicker({ heading, photos = [], files = [], onChoose, onP
       <div className="wu">
         <Button size="sm" onClick={onChoose}><Icon name="cloudUpload" size={16} />Choose from this computer</Button>
         {photos.length > 0 && <>
-          <span className="ac-eyebrow">{heading}</span>
+          <span className="ac-eyebrow ac-clamp-1">{heading}</span>
           <div className="wu-g">{photos.map((p) => <button key={p.id} type="button" className="wu-p" aria-label={p.label} onClick={() => onPhoto?.(p.id)}>{p.src ? <img src={p.src} alt="" /> : <span className="wu-w" />}</button>)}</div>
           {onAll && photos.length > 1 && <Button variant="quiet" size="xs" onClick={onAll}>Add all {howMany(photos.length)}</Button>}
         </>}
         {files.length > 0 && <>
-          <span className="ac-eyebrow">{heading}</span>
+          <span className="ac-eyebrow ac-clamp-1">{heading}</span>
           <div className="wu-f">
             {files.map((f) => (
               <button key={f.id} type="button" className="wm-r" onClick={() => onFile?.(f.id)}>
