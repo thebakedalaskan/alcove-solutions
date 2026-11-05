@@ -12,14 +12,15 @@ import {
   type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
   type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
-import { itemsOnPage } from '@alcove/api/retire';
+import { itemsOnPage, newBlockId } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { COMMENTS } from '~/features/workspace/editor/names';
 import { setTitle } from '~/features/workspace/editor/title';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import { appendBlocks, contentOf } from '~/features/workspace/editor/ydoc';
 import { isOnline } from '../browser';
-import type { Space } from '../world';
+import type { PageThread, Space } from '../world';
 import { personAt } from '../world/people';
 import { Pushed, pause } from './live';
 import { current, me, nextId } from './state';
@@ -268,20 +269,61 @@ export function removeMedia(id: string, documentId: string, mediaId: string): vo
 
 const docs = new Map<string, Y.Doc>();
 const lineOf = (text: string): BlockJSON => ({ type: 'line', content: [{ type: 'text', text }] });
+/** The ID someone has in a workspace's documents, by their address. */
+const idIn = (workspace: string, email: string): string => { const lower = email.toLowerCase(); return idsIn(workspace, [lower])[lower] ?? ''; };
+/** A page's tags name people by address (`@` and it): in the document, each is the ID they have in its workspace. */
+function tagged(blocks: readonly BlockJSON[], workspace: string): BlockJSON[] {
+  const swap = (b: BlockJSON): BlockJSON => {
+    const named = b.attrs?.['id'];
+    const attrs = b.type === 'mention' && typeof named === 'string' && named.startsWith('@') ? { ...b.attrs, id: idIn(workspace, named.slice(1)) } : b.attrs;
+    return { ...b, ...(attrs ? { attrs } : {}), ...(b.content ? { content: b.content.map(swap) } : {}) };
+  };
+  return blocks.map(swap);
+}
+/** A page's comment threads, written as the app writes them (editor/comments.ts), each message when the page says it was said. */
+function writeThreads(doc: Y.Doc, threads: readonly PageThread[], blocks: readonly string[], workspace: string): void {
+  const all = doc.getMap<unknown>(COMMENTS);
+  doc.transact(() => {
+    for (const t of threads) {
+      const block = blocks[t.on];
+      if (block === undefined) continue;
+      const replies = new Y.Array<unknown>();
+      replies.push(t.says.map((m) => ({
+        id: newBlockId(), by: idIn(workspace, m.who.email), name: m.who.name, text: m.text, at: new Date(Date.now() - m.hoursAgo * 3_600_000).toISOString(), tags: []
+      })));
+      const thread = new Y.Map<unknown>();
+      thread.set('quote', t.quote);
+      thread.set('block', block);
+      thread.set('resolved', false);
+      thread.set('replies', replies);
+      all.set(t.id, thread);
+    }
+  });
+}
+/** What a page's blocks say is being uploaded by someone, and hasn't failed: someone else's browser is sending it. */
+const sendingIn = (blocks: readonly BlockJSON[]): string[] => blocks.flatMap((b) => {
+  const up = b.attrs?.['up'];
+  const key = b.attrs?.['upload'];
+  return typeof up === 'number' && typeof key === 'string' && b.attrs?.['failed'] === undefined ? [key] : [];
+});
+/** Whoever else is in a document, as its awareness has them: only ever someone sending an upload. */
+const SOMEONE_ELSE = 424242;
 /**
- * A document as the world has it: its title, what its page says, and whatever of it Alcove refused, which only this browser
- * has. The empty first line every document starts with is written over, as typing into it would be.
+ * A document as the world has it: its title, what its page says (tags, comment threads and all), and whatever of it Alcove
+ * refused, which only this browser has. The empty first line every document starts with is written over, as typing into it
+ * would be.
  */
-function documentOf(item: WorkspaceItem): Y.Doc {
+function documentOf(item: WorkspaceItem, workspace: string): Y.Doc {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, DOC_SEED);
   if (item.kind !== 'document') return doc;
   setTitle(doc, item.name);
   const page = current().pages[item.id];
-  const blocks = [...(page?.blocks ?? []), ...(page?.refused?.words ?? []).map(lineOf)];
+  const blocks = tagged([...(page?.blocks ?? []), ...(page?.refused?.words ?? []).map(lineOf)], workspace);
   if (blocks.length > 0) {
-    appendBlocks(doc, blocks);
+    const ids = appendBlocks(doc, blocks);
     contentOf(doc).delete(1, 1);
+    writeThreads(doc, page?.threads ?? [], ids, workspace);
   }
   return doc;
 }
@@ -290,14 +332,17 @@ class Document extends Pushed<DocStatus> implements DocSession {
   readonly awareness: Awareness;
   readonly ready: Promise<void>;
   private readonly id: string;
-  constructor(item: WorkspaceItem) {
-    const refused = current().pages[item.id]?.refused ?? null;
+  constructor(item: WorkspaceItem, workspace: string) {
+    const page = current().pages[item.id];
+    const refused = page?.refused ?? null;
     super({ status: refused ? 'failed' : 'saved', refused: refused?.why ?? null, role: item.role, trashed: item.trashedAt !== null, closed: null, unsent: refused !== null });
     this.id = item.id;
     const known = docs.get(item.id);
-    this.doc = known ?? documentOf(item);
+    this.doc = known ?? documentOf(item, workspace);
     if (!known) docs.set(item.id, this.doc);
     this.awareness = new Awareness(this.doc);
+    const sending = sendingIn(page?.blocks ?? []);
+    if (sending.length > 0) this.awareness.states.set(SOMEONE_ELSE, { uploading: sending });
     this.ready = Promise.resolve();
   }
   /** What Alcove refused of this document, which is all this browser wrote here that it hasn't taken. */
@@ -322,7 +367,7 @@ class Document extends Pushed<DocStatus> implements DocSession {
 export function openDocument(id: string, documentId: string): DocSession {
   const item = treeOf(id).items.find((i) => i.id === documentId);
   if (!item || item.kind === 'folder') throw notFound();
-  return new Document(item);
+  return new Document(item, id);
 }
 /**
  * A new document or board of a state, made as the API makes one: a document starts from the seed, takes the state, and is

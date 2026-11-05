@@ -5,18 +5,20 @@
  * of these reach.
  */
 import {
-  CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
+  FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentRole,
-  type Group, type ItemCall, type Person, type ShareEntry, type WorkspaceItem
+  type Group, type ItemCall, type MentionNotice, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, library, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { clipOf, stillOf } from '../media/screens';
+import { CREDITS, PREFS, WELCOME_CREDITS, session, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
 import {
-  COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, OLD_ROADMAP, PRICING_COPY, WORKING_FROM_HOME
+  COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
+  PRICING_DRAFT, REVIEW_CHECKLIST, REVIEW_UPLOADS, SHOWN, SIDEBAR_SHOTS, WORKED, WORKING_FROM_HOME
 } from '../world/documents';
 import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, standupOwn, walkthrough } from '../world/notes';
 import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, teamOf, type Colleague } from '../world/people';
@@ -47,11 +49,32 @@ function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: n
     call: o.call ?? null
   };
 }
-/** The workspaces: Product, which Art runs; Design, where he edits; and the company handbook, which he can only read. */
+/** When the calls with homes started, as their notes say. */
+const STANDUP_AT = iso(0, 9, 0);
+const PRICING_AT = iso(-1, 15, 0);
+const REVIEW_AT = iso(-1, 11, 0);
+/**
+ * A call's home, as the API makes one when the call's workspace first opens: named after the call and the day, with the
+ * call's folder at its top, whose pages open the call's note once it's over.
+ */
+function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
+  const name = `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
+  const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
+  return { id, name, role, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
+}
+/**
+ * The workspaces: the homes of the day's calls, the standup's newest; Product, which Art runs; Design, where he edits; and
+ * the company handbook, which he can only read.
+ */
 function workspaces(): Space[] {
   const research = { parent: itemId('Research') };
   const reading = { role: 'read' } as const;
   return [
+    home('ws-standup', 'Team standup', STANDUP_AT, ART, 'admin', 4, 'n2', [item('Onboarding fixes', 'document', PRIYA, 6.8)]),
+    home('ws-pricing', 'Pricing sync', PRICING_AT, MAYA, 'edit', 3, 'n3', [item('Pricing draft', 'document', MAYA, 24.6)]),
+    home('ws-review', 'Design review', REVIEW_AT, ART, 'admin', 4, 'n4', [
+      item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28), item('Review checklist', 'document', ART, 28.6)
+    ]),
     {
       id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
       items: [
@@ -77,10 +100,36 @@ function pages(): Record<string, Page> {
   const named: [string, Page][] = [
     ['Launch plan', LAUNCH_PLAN], ['Launch checklist', LAUNCH_CHECKLIST], ['Interview notes', INTERVIEWS], ['Competitor notes', COMPETITORS],
     ['Pricing page copy', PRICING_COPY], ['Old roadmap', OLD_ROADMAP], ['Launch plan, first draft', FIRST_DRAFT], ['Empty states', EMPTY_STATES],
-    ['Holidays', HOLIDAYS], ['Expenses', EXPENSES], ['Working from home', WORKING_FROM_HOME]
+    ['Holidays', HOLIDAYS], ['Expenses', EXPENSES], ['Working from home', WORKING_FROM_HOME], ['Onboarding fixes', ONBOARDING_FIXES],
+    ['Sidebar screenshots', SIDEBAR_SHOTS], ['Review uploads', REVIEW_UPLOADS], ['Review checklist', REVIEW_CHECKLIST], ['Pricing draft', PRICING_DRAFT]
   ];
   return Object.fromEntries(named.map(([name, page]) => [itemId(name), page]));
 }
+/** The files in the design review's home: its screenshots, drawn; its walkthrough, recorded; and the spec, a download. */
+function files(): Kept[] {
+  const doc = itemId('Sidebar screenshots');
+  const frame = { width: 1600, height: 900 };
+  const kept = (id: string, name: string, type: string, size: number, body: () => Promise<Blob>, shape: { width: number; height: number } | null): Kept => ({
+    workspace: 'ws-review', body,
+    media: { id, name, type, size, width: shape?.width ?? null, height: shape?.height ?? null, createdAt: iso(-1, 11, 40), documents: [doc] }
+  });
+  return [
+    kept(MEDIA.light, 'Sidebar, light.png', 'image/png', 214_310, () => stillOf(SHOWN.light), frame),
+    kept(MEDIA.dark, 'Sidebar, dark.png', 'image/png', 198_744, () => stillOf(SHOWN.dark), frame),
+    kept(MEDIA.pricing, 'Pricing page.png', 'image/png', 176_020, () => stillOf(SHOWN.pricing), frame),
+    kept(MEDIA.walkthrough, 'Sidebar walkthrough.webm', 'video/webm', 1_830_552, () => clipOf(SHOWN.walkthrough), frame),
+    kept(MEDIA.spec, 'Sidebar spec.pdf', FILE_TYPE, 482_133, () => Promise.resolve(new Blob(['The sidebar, in both themes.'], { type: FILE_TYPE })), null)
+  ];
+}
+/** Kofi tagged Art in the standup's onboarding fixes this afternoon: by name and face, never an address. */
+const TAGGED: MentionNotice[] = [
+  { id: 'tag-kofi-fixes', workspaceId: 'ws-standup', document: itemId('Onboarding fixes'), name: 'Onboarding fixes', block: null, by: { id: KOFI.id, name: KOFI.name, email: '', ...(KOFI.portrait ? { portrait: KOFI.portrait } : {}) }, at: iso(0, 15, 40) }
+];
+/** Who changed what during a call, as its note lists it for Art. */
+function workedOn(workspaceId: string, name: string, people: readonly Person[]): NoteWorkedOn {
+  return { workspaceId, id: itemId(name), kind: 'document', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])) };
+}
+
 /** The launch plan reaches a designer outside the company and someone from sales; the pricing copy is closed to the workspace. */
 function shares(): Record<string, ShareEntry[]> {
   const entry = (id: string, person: Person, role: DocumentRole, daysAgo: number): ShareEntry => ({ id, kind: 'email', person, role, since: iso(-daysAgo, 10, 0) });
@@ -93,11 +142,14 @@ function shares(): Record<string, ShareEntry[]> {
 /** The canvas's busy Wednesday afternoon, at 16:12. */
 function busy(): World {
   const notes = busyNotes();
-  for (const n of notes) if (n.id === 'n2') n.additions = standupAdditions();
+  for (const n of notes) {
+    if (n.id === 'n2') { n.additions = standupAdditions(); n.workedOn = [workedOn('ws-standup', 'Onboarding fixes', WORKED.standup)]; }
+    if (n.id === 'n4') n.workedOn = [workedOn('ws-review', 'Sidebar screenshots', WORKED.review), workedOn('ws-review', 'Review checklist', WORKED.checklist)];
+  }
   return {
     session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
     meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(),
-    mentions: [], media: [], rings: [], writing: null
+    mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null
   };
 }
 

@@ -4,7 +4,7 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, Note, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
@@ -14,8 +14,17 @@ import { iso } from './clock';
 
 /** Words this browser wrote in a document that Alcove wouldn't take, as the story opens: on its page, and nowhere else. */
 export interface Refused { why: Exclude<DocRefusal, 'trashed'>; words: string[] }
-/** What a document says, in the editor's own blocks under its title, and what of it Alcove refused, if anything. */
-export interface Page { blocks: BlockJSON[]; refused?: Refused | undefined }
+/**
+ * A comment thread on a page: the words it hangs on (a `comment` mark with its `id`, in the block at index `on`) and what's
+ * been said, the oldest first.
+ */
+export interface PageThread { id: string; on: number; quote: string; says: { who: Person; text: string; hoursAgo: number }[] }
+/**
+ * What a document says, in the editor's own blocks under its title; its comment threads; and what of it Alcove refused, if
+ * anything. A tag on a page names someone by address (`@` and it, as a mention's `id`): the stand-in writes in the ID they
+ * have in the document's workspace, as the app would.
+ */
+export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined }
 
 /** A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call). */
 export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
