@@ -224,7 +224,8 @@ export function WsFind<H extends WsFindHit>({ open, onOpenChange, query, onQuery
             <Kbd>Esc</Kbd>
           </div>
           <div ref={list} id={`${ids}l`} className="wm-list" role="listbox" aria-label="What was found">
-            {!query && <div className="wm-h">Recent</div>}
+            {!query && hits.length > 0 && <div className="wm-h">Recent</div>}
+            {!query && hits.length === 0 && <p className="wm-x">Nothing to find yet. Documents show up here as people write them.</p>}
             {hits.map((h, i) => (
               <button key={h.id} id={`${ids}${i}`} type="button" role="option" aria-selected={i === selected} tabIndex={-1} className={cn('wm-r', i === selected && 'is-sel')} onClick={() => onOpen(h)} onPointerMove={() => { if (i !== selected) onSelected(i); }}>
                 <Icon name={h.icon} size={16} /><span className="t"><span className="l">{h.name}</span><small>{h.sub}</small></span>
