@@ -224,8 +224,8 @@ async function openNew<S extends Boarded>(x: Changing<S>, template: BoardTemplat
 }
 
 /**
- * A saved board. `letIn` is a choice about everyone here, so it's worked out afresh, and whoever made it keeps the board
- * everyone's: what the call made stays the call's to give, whoever brings it back.
+ * A saved board. `letIn` is a new decision about everyone here, so it's worked out afresh. A board the call made stays the
+ * call's to give, whoever brings it back.
  */
 async function openSaved<S extends Boarded>(x: Changing<S>, documentId: string, letIn: boolean): Promise<Changed<S>> {
   const { v, reader, c, s, callId } = x;
