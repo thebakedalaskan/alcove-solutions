@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notes, step by step</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-notes.css">
+<link rel="stylesheet" href="page-note.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="data-notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="fl" style="width: 4668px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<section class="fl-r">
+<h2 class="fl-h">{{r.name}}</h2>
+<div class="fl-s">
+<sc-for list="{{r.frames}}" as="f" hint-placeholder-count="3">
+<div class="fl-f{{r.cls}}">
+<p class="fl-c"><span>{{f.n}}</span>{{f.t}}</p>
+<div class="fl-box"><div class="fl-in"><dc-import name="Notes" mode="{{f.mode}}" scene="{{f.scene}}" step="{{f.step}}" hint-size="1440px,900px"></dc-import></div></div>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":4668,"height":14337}}'>
+var JOURNEYS = [
+  { name: 'Find what was said', frames: [
+    { step: 'lineHot', t: 'Click the line, or press ⌘K.' },
+    { step: 'typing', t: 'Type. The list narrows, and each row shows the words, who said them and when.' },
+    { step: 'momentHot', t: 'The picked note lists every moment. Click one.' },
+    { step: 'moment', t: 'The note opens at that moment, not playing.' }
+  ] },
+  { name: 'Nothing matches', frames: [
+    { step: 'noMatch', t: 'It says what it looked through. Click Clear search.' },
+    { step: 'list', t: 'Every note is back.' }
+  ] },
+  { name: 'When the search can’t answer', frames: [
+    { step: 'searchFailed', t: 'It says what went wrong. Try again searches once more.' }
+  ] },
+  { name: 'Narrow to someone', frames: [
+    { step: 'chipHot', t: 'Click someone.' },
+    { step: 'withPriya', t: 'Only the notes you both have, under their chip.' },
+    { step: 'withPriyaHot', t: 'Click the × on the chip.' },
+    { step: 'list', t: 'Everyone’s notes are back.' }
+  ] },
+  { name: 'Narrow to anyone else', frames: [
+    { step: 'addHot', t: 'Click +.' },
+    { step: 'pickOpen', t: 'A popover opens under it. Type a name, or pick one.' },
+    { step: 'withLena', t: 'Their chip takes the row. + still changes who.' }
+  ] },
+  { name: 'Someone you have no notes with', frames: [
+    { step: 'withNobody', t: 'The Team page links here. It says why, and Show notes with anyone goes back.' },
+    { step: 'list', t: 'Every note is back.' }
+  ] },
+  { name: 'Calls, in the room, shared with you', frames: [
+    { step: 'roomHot', t: 'Click In the room.' },
+    { step: 'room', t: 'Only what was recorded in the room.' },
+    { step: 'sharedHot', t: 'Click Shared with you.' },
+    { step: 'sharedList', t: 'Each note says who shared it, and with which group.' }
+  ] },
+  { name: 'Nothing shared yet', frames: [
+    { step: 'noneSharedHot', t: 'Click Shared with you.' },
+    { step: 'noneShared', t: 'It says so, and what will land here.' }
+  ] },
+  { name: 'Pick a note and open it', frames: [
+    { step: 'rowHot', t: 'Click a note. ↑, ↓, Home and End move through the list too.' },
+    { step: 'rowPicked', t: 'It shows beside the list.' },
+    { step: 'openHot', t: 'Click Open notes, double-click the row, or press Enter.' },
+    { step: 'opened', t: 'The note opens on its own page.' }
+  ] },
+  { name: 'Settle things in the preview', frames: [
+    { step: 'confirmHot', t: 'Click Confirm. No page to open.' },
+    { step: 'confirmedOne', t: 'It says who confirmed it, with Undo. The rose chip leaves the row.' },
+    { step: 'tickedOne', t: 'Tick a follow-up. It crosses out in place, and the row’s count drops.' }
+  ] },
+  { name: 'Someone says it wasn’t decided', frames: [
+    { step: 'disputedYours', t: 'Given the notes, you can only say so. Take that back unsays it.' },
+    { step: 'disputedOrganizer', t: 'The organizer settles it: Keep it confirmed, or It wasn’t decided.' }
+  ] },
+  { name: 'Pin a note', frames: [
+    { step: 'pinHot', t: 'Click the pin.' },
+    { step: 'pinnedOne', t: 'The pin shows on the row, and the note joins Pinned in the side panel.' }
+  ] },
+  { name: 'Share a note', frames: [
+    { step: 'shareHot', t: 'Click Share.' },
+    { step: 'shareOpen', t: 'A popover opens under it, over the page. Your groups come first.' },
+    { step: 'sharePicked', t: 'Pick a group or people, or type an email. Then Share.' },
+    { step: 'shareSent', t: 'Done. Whoever already had them is skipped.' }
+  ] },
+  { name: 'Who has these notes', frames: [
+    { step: 'whoHot', t: 'Click the faces.' },
+    { step: 'whoOpen', t: 'Each person, and how they got the notes. A long list stops at eight.' },
+    { step: 'whoAll', t: 'Show all opens the rest.' }
+  ] },
+  { name: 'Delete notes, or remove them', frames: [
+    { step: 'moreHot', t: 'Click More.' },
+    { step: 'moreOpen', t: 'Your own notes can be deleted for everyone.' },
+    { step: 'moreConfirm', t: 'It asks once, in place, and says what goes.' },
+    { step: 'moreGone', t: 'The row leaves the list.' },
+    { step: 'moreTheirs', t: 'Someone else’s notes can only leave yours.' },
+    { step: 'moreInCall', t: 'While the call is going, Delete waits for it to end.' }
+  ] },
+  { name: 'Ask across your notes', frames: [
+    { step: 'askTyped', t: 'Type a question and press Enter, or click Ask.' },
+    { step: 'asking', t: 'It reads your notes in confidential compute. The horizon pulses while it does.' },
+    { step: 'askDone', t: 'The answer lands on the water. The list and the preview follow what it cites.' },
+    { step: 'askDoneHot', t: 'Every note and moment it used is a chip. Click a moment.' },
+    { step: 'moment', t: 'The note opens at that moment, not playing. Typing, a filter or someone’s chip puts the answer away.' }
+  ] },
+  { name: 'When there’s no answer', frames: [
+    { step: 'answerNone', t: 'Nothing in your notes says. It tells you, and doesn’t guess.' },
+    { step: 'answerGone', t: 'A note it read went while it wrote. The answer isn’t shown: ask again.' }
+  ] },
+  { name: 'Notes on their way', frames: [
+    { step: 'writing', t: 'After a call: the row and the preview say the notes are being written.' },
+    { step: 'recording', t: 'In the room: still recording, and Share waits until it stops.' },
+    { step: 'writingAgain', t: 'Written again after corrections: the notes stay readable meanwhile.' }
+  ] },
+  { name: 'When there’s no summary', frames: [
+    { step: 'nothingSaid', t: 'Nothing was said, so there’s nothing to write.' },
+    { step: 'summaryFailed', t: 'The summary couldn’t be written. The transcript and the audio are kept.' },
+    { step: 'pvGone', t: 'A note that went meanwhile says so, and its row leaves the list.' }
+  ] },
+  { name: 'Your first day', frames: [
+    { step: 'first', t: 'Before any notes, the job is to get some. The example shows what you’ll get.' },
+    { step: 'firstHot', t: 'Click Start a call.' },
+    { scene: 'first', step: 'choose', t: 'The same flow as everywhere.' }
+  ] },
+  { name: 'Read the example', frames: [
+    { step: 'exHot', t: 'Click Open the example.' },
+    { step: 'exOpen', t: 'It opens like any note, with nothing to share or delete.' }
+  ] },
+  { name: 'In the light', mode: 'light', frames: [
+    { step: 'list', t: 'The list.' },
+    { step: 'typing', t: 'Searching.' },
+    { step: 'askDone', t: 'An answer.' },
+    { step: 'shareOpen', t: 'Share.' },
+    { step: 'first', t: 'First day.' }
+  ] },
+  { name: 'On a phone', phone: true, frames: [
+    { step: 'list', t: 'The list. A tap opens a note.' },
+    { step: 'typing', t: 'Searching.' },
+    { step: 'withPriya', t: 'With someone.' },
+    { step: 'pickOpen', t: '+ opens along the bottom.' },
+    { step: 'noMatch', t: 'Nothing matches.' },
+    { step: 'askDone', t: 'An answer.' },
+    { step: 'opened', t: 'A note.' },
+    { step: 'first', t: 'First day.' }
+  ] }
+];
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: JOURNEYS.map(function (r) {
+        return {
+          name: r.name, cls: r.phone ? ' is-phone' : '',
+          frames: r.frames.map(function (f, i) { return { n: i + 1, t: f.t, step: f.step, scene: f.scene || 'today', mode: r.mode || 'dark' }; })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
