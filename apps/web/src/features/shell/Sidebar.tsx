@@ -83,7 +83,7 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
           <IconButton ref={hideRef} icon="panel" label="Hide the side panel" onClick={onHide} />
         </div>
         <Offline className="sb-offline" />
-        <button type="button" className={cn(buttonClass({ variant: 'primary' }), 'sb-new', path === '/home' && 'is-tint')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" data-tour="new-call">
+        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" data-tour="new-call">
           <Icon name="video" size={18} /><span>Start a call</span><Kbd>N</Kbd>
         </button>
         <SidebarNav>
