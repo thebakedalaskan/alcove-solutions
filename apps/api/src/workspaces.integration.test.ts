@@ -1185,9 +1185,13 @@ describe('a new address from the provider', () => {
     await ann.api.workspaces.share.set(elsewhere, given, [{ email: old }], 'edit');
     const live = moved.api.workspaces.live(id);
     await until(() => liveNames(live).length === 2, 'the stream');
+    const tagged = await make(ann, id, 'document', 'Tagged in');
+    await ann.api.workspaces.mention(id, tagged, { to: { email: old }, block: null });
 
     const after = await withGoogle(fresh, sub);
     expect(after.ownerId).toBe(moved.ownerId);
+    // What was waiting for them still is.
+    expect((await after.api.workspaces.mentions()).map((m) => m.document)).toEqual([tagged]);
 
     expect((await after.api.workspaces.get(id)).role).toBe('edit');
     expect((await after.api.workspaces.items.get(id, made)).role).toBe('edit');

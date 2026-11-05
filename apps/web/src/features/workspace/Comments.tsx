@@ -1,7 +1,7 @@
 /*
- * Comments: writing one on words someone selected, and a thread as it goes. It loads with the document, because threads live
- * in its Yjs state. Nobody who can only read gets anything to press: `comments.ts` can't check a role, so `canWrite` is the
- * only thing between a reader and writing, and every change here goes through it.
+ * Comments: writing one on words someone selected, and a thread as it goes. It loads the first time one opens, because
+ * threads live in the document's Yjs state. Nobody who can only read gets anything to press: `comments.ts` can't check a role,
+ * so `canWrite` is the only thing between a reader and writing, and every change here goes through it.
  */
 import { firstName, type Person } from '@alcove/api';
 import { WsCommentCompose, WsCommentThread, WsPopover, WsTagWords, wsToast, type AvatarPerson, type WsComment, type WsTagChoice, type WsTagging, type WsToastData } from '@alcove/ui';
@@ -80,7 +80,7 @@ function wordsWith(text: string, tags: readonly MessageTag[]): ReactNode {
 
 const tagsOf = (people: readonly Person[]): MessageTag[] => people.map((p) => ({ id: p.id, name: p.name }));
 
-function Compose({ draft, self, sections, onOpen, onTagged, onDraft }: { draft: CommentDraft; self: Person; sections: CommentsProps['sections']; onOpen: CommentsProps['onOpen']; onTagged: CommentsProps['onTagged']; onDraft: (text: string) => void }) {
+function Compose({ draft, self, sections, onOpen, onTagged }: { draft: CommentDraft; self: Person; sections: CommentsProps['sections']; onOpen: CommentsProps['onOpen']; onTagged: CommentsProps['onTagged'] }) {
   const [text, setText] = useState('');
   const { tagging, take } = useTagging(sections);
   const send = () => {
@@ -91,7 +91,7 @@ function Compose({ draft, self, sections, onOpen, onTagged, onDraft }: { draft: 
     onOpen({ kind: 'thread', id, rect: draft.rect });
     for (const p of named) onTagged(p, draft.block, () => wordsOf(id)?.getBoundingClientRect() ?? rectOf(draft.rect));
   };
-  return <WsCommentCompose quote={draft.quote} person={self} value={text} onChange={(v) => { setText(v); onDraft(v); }} onSend={send} tagging={tagging} />;
+  return <WsCommentCompose quote={draft.quote} person={self} value={text} onChange={setText} onSend={send} tagging={tagging} />;
 }
 
 function ThreadView({ doc, id, thread, self, people, canWrite, sections, onOpen, onTagged, say }: { thread: Thread; id: string } & Pick<CommentsProps, 'doc' | 'self' | 'people' | 'canWrite' | 'sections' | 'onOpen' | 'onTagged' | 'say'>) {
@@ -135,11 +135,10 @@ function ThreadPopover(props: CommentsProps & { id: string; rect: Rect }) {
 function DraftPopover({ open, onOpen, self, sections, onTagged, hidden }: CommentsProps & { open: Extract<CommentOpen, { kind: 'draft' }> }) {
   const { draft } = open;
   const at = useCallback(() => document.querySelector('.fs')?.getBoundingClientRect() ?? rectOf(draft.rect), [draft.rect]);
-  const typed = useRef('');
   if (!self) return null;
   return (
     <WsPopover open={!hidden} at={at} label={`Comment on ${draft.quote}`} onOpenChange={(to) => { if (!to) { draft.cancel(); onOpen(null); } }}>
-      <Compose draft={draft} self={self} sections={sections} onOpen={onOpen} onTagged={onTagged} onDraft={(t) => { typed.current = t; }} />
+      <Compose draft={draft} self={self} sections={sections} onOpen={onOpen} onTagged={onTagged} />
     </WsPopover>
   );
 }

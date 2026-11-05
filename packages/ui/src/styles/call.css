@@ -231,6 +231,8 @@
 .ic-tfl { height: 26px; padding: 0 9px; background: var(--stage-ink); color: var(--stage); opacity: 0; transition: opacity var(--duration-1); }
 .ac-tile:hover .ic-tfl, .ic-slot:focus-visible .ic-tfl, .ic-tfl:focus-visible { opacity: 1; }
 @media (hover: none) { .ic-tfl { opacity: 1; } }
+/* A small tile keeps its name and says this with the icon. */
+@container (max-width: 200px) { .ic-ton, .ic-tfl { gap: 0; padding: 0 6px; font-size: 0; } }
 /* On the layer over the picture: a ring under a tile's video doesn't show. */
 .ac-tile.is-followed::after { border-radius: inherit; box-shadow: inset 0 0 0 2px var(--speak); }
 .ac-tile.is-lit { animation: ic-lit 2.6s var(--ease-out); }
