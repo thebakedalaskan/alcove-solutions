@@ -36,7 +36,6 @@ export const qk = {
   callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
   trust: ['trust'] as const,
-  workspaces: ['workspaces'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
 };
@@ -121,8 +120,6 @@ export const q = {
   }),
   /** What you can bring to a call. */
   documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
-  /** Your workspaces, read again each time the name at the top of the list is pressed. */
-  workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
