@@ -2,10 +2,10 @@
  * What keys and menus do to blocks. Everything works on one top-level block at a time, found by position or ID: the flat
  * document means a block's neighbours are simply the ones beside it, leaving out what isn't on the page (see retire.ts).
  */
+import { newBlockId } from '@alcove/api/retire';
 import { Fragment, type Attrs, type Node as PMNode, type NodeType, type ResolvedPos } from 'prosemirror-model';
 import { NodeSelection, Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { addRowAfter, CellSelection, goToNextCell, isInTable, selectedRect, TableMap } from 'prosemirror-tables';
-import { newBlockId } from './names';
 import { blockIdOf, headingLevel, indentAttr, isGone, isListLine, isPlainLine, lineKind, MAX_INDENT, schema, textAttr } from './schema';
 import type { BlockKind } from './types';
 

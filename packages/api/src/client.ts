@@ -3,10 +3,10 @@ import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
-import type { DocSession, DocSessionOptions, DocVersion, DocVersionSummary, SearchDoc } from './workspaceDocuments';
+import type { DocAskBody, DocAskPart, DocSession, DocSessionOptions, DocVersion, DocVersionSummary, PresenterNotes, SearchDoc } from './workspaceDocuments';
 import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
-  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
+  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteFound, NoteKind, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
@@ -147,7 +147,11 @@ export interface AlcoveApi {
     start(input?: RoomRecordingInput): Promise<RoomRecording>;
   };
   notes: {
-    list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]>;
+    /**
+     * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A found note
+     * says what was said that matched, from what you may read of it.
+     */
+    list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]>;
     get(id: ID): Promise<Note>;
     progress(id: ID): AsyncIterable<NoteProgress>;
     /** URL that streams one decrypted audio segment to a signed-in browser. */
@@ -278,7 +282,7 @@ export interface AlcoveApi {
      * once, and stays up through dropped connections and restarts: what's typed meanwhile sends when it can, and with `keep`
      * survives a reload.
      */
-    document(id: ID, documentId: ID, opts?: DocSessionOptions): DocSession;
+    document(id: ID, documentId: ID, opts?: DocSessionOptions): Promise<DocSession>;
     /** What a document looked like: the versions kept of it, the newest first. For anyone who can open it. */
     versions(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocVersionSummary[]>;
     /** One version with its whole state, for showing it. */
@@ -290,6 +294,18 @@ export interface AlcoveApi {
     restoreVersion(id: ID, documentId: ID, versionId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     /** Every document you can open here as blocks of words, for searching in this browser: nothing you type in a search reaches Alcove. */
     searchText(id: ID, opts?: WorkspaceReadOptions): AsyncIterable<SearchDoc>;
+    /** What you keep beside a document for presenting it: yours alone, under your own account, whoever else can open it. */
+    presenterNotes: {
+      get(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<PresenterNotes>;
+      /** Empty text deletes them. */
+      set(id: ID, documentId: ID, text: string, opts?: WorkspaceReadOptions): Promise<void>;
+    };
+    /**
+     * The format bar's Make this shorter and Turn this into a checklist: what's selected goes to the notes model in confidential
+     * compute, and what comes back is for the person asking to put in the document. Needs `edit`. Nothing is kept, and in a
+     * call it waits while notes are paused, like everything that reaches the AI.
+     */
+    ask(id: ID, documentId: ID, body: DocAskBody, opts?: WorkspaceReadOptions): AsyncIterable<DocAskPart>;
   };
   credits: {
     balance(): Promise<CreditBalance>;
@@ -306,7 +322,7 @@ export interface AlcoveApi {
 
 export type AlcoveErrorCode =
   | 'unauthenticated' | 'not-found' | 'forbidden' | 'invalid' | 'insufficient-credits' | 'conflict' | 'unavailable'
-  | 'key-unavailable' | 'network' | 'unknown';
+  | 'key-unavailable' | 'too-large' | 'network' | 'unknown';
 
 /** Where a failed request went, for logs and bug reports. `requestId` matches the server's log lines. */
 export interface ErrorDetails { requestId?: string | undefined; status?: number | undefined; method?: string | undefined; path?: string | undefined; cause?: unknown }
@@ -328,7 +344,7 @@ export class AlcoveApiError extends Error {
 /** The server's request ID behind an error, if it has one: quote it when reporting a problem. */
 export const errorRequestId = (e: unknown): string | undefined => (e instanceof AlcoveApiError ? e.requestId : undefined);
 
-export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'network', 'unknown'];
+export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'too-large', 'network', 'unknown'];
 export const isAlcoveErrorCode = (v: unknown): v is AlcoveErrorCode => typeof v === 'string' && ALCOVE_ERROR_CODES.some((c) => c === v);
 
 /** A user-facing message for anything thrown. */

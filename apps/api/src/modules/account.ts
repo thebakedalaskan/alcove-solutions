@@ -14,7 +14,7 @@ import { ForbiddenError, NotFoundError } from '../errors';
 import { log } from '../log';
 import { createOwner, masterKey, openOwner, ownerFrom } from '../owners';
 import { closeSession, openSession } from '../sessions';
-import { createItem, listItems, saveRevision } from '../vault';
+import { createItem, listItems, saveRevision, lockItem } from '../vault';
 import { forgetAnswers } from './access';
 import { takeAllBack } from './additions';
 import { queueDelete } from './audio';
@@ -38,7 +38,9 @@ export const Profile = z.object({
   sample: z.boolean(),
   preferences: PreferencesSchema,
   /** Colleagues this person has invited to Alcove. */
-  invited: z.array(z.string())
+  invited: z.array(z.string()),
+  /** The workspace they used last, which a call of theirs uses if nobody chooses another. */
+  recentWorkspace: z.string().nullable().default(null)
 });
 export type Profile = z.infer<typeof Profile>;
 
@@ -57,8 +59,9 @@ async function profileItem(o: Owner, db: Db) {
 export const profile = async (o: Owner, db: Db = o.pool): Promise<Profile> => (await profileItem(o, db)).manifest;
 
 async function changeProfile(o: Owner, db: Db, fn: (p: Profile) => Profile): Promise<Profile> {
-  const [p] = await listItems(o, db, 'profile', Profile);
-  if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
+  // Changes take turns: two at once, like a setting and the workspace someone just opened, are both kept.
+  await lockItem(o, db, (await profileItem(o, db)).itemId);
+  const p = await profileItem(o, db);
   const next = fn(p.manifest);
   await saveRevision(o, db, p.itemId, p.revisionId, next);
   return next;
@@ -109,7 +112,7 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
     const { ownerId, root } = await createOwner(d, c);
     await exec(c, 'INSERT INTO identities (subject_index, owner_id, email_index) VALUES ($1,$2,$3)', [subject, ownerId, email]);
     const o = ownerFrom(d, ownerId, root, undefined);
-    const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
+    const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [], recentWorkspace: null };
     await createItem(o, c, 'profile', p);
     await openAccount(d, c, ownerId);
     return { ownerId, isNew: true };
@@ -127,7 +130,7 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
 async function refreshProfile(o: Owner, who: Identity): Promise<void> {
   const p = await profile(o);
   if (p.name === who.name && p.email === who.email && p.photoUrl === who.photoUrl) return;
-  await updateProfile(o, (x) => ({ name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: x.sample, preferences: x.preferences, invited: x.invited }));
+  await updateProfile(o, (x) => ({ name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: x.sample, preferences: x.preferences, invited: x.invited, recentWorkspace: x.recentWorkspace }));
   alog.info('profile updated from provider', { ownerId: o.ownerId });
 }
 

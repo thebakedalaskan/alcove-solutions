@@ -18,18 +18,19 @@ import type { Deps, Owner } from '../context';
 import { b64u, blindIndex, id128, mac, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { AppError, AuthError, ConflictError, ForbiddenError, ValidationError, notFound } from '../errors';
-import { publish } from '../live/hub';
+import { publish, type Hub } from '../live/hub';
 import { log } from '../log';
 import { findOwner, masterKey, openOwner } from '../owners';
 import { findSession } from '../sessions';
 import { profile } from './account';
-import { seated, seatOfViewer, viewerOf, type Viewer } from './calls';
+import { nudgeCall, seated, seatedIn, seatOfViewer, settledWorkspace, viewerOf, type Viewer } from './calls';
 import { personOf, portraitFor } from './portraits';
 
 const xlog = log.child({ component: 'access' });
 
 /** IDs are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
+export const isItemId = (id: string): boolean => ID128.test(id);
 /** The notice that the tree, or who can open what, changed: every stream of the workspace looks again. */
 export const TREE_NOTICE = 'tree';
 
@@ -91,7 +92,7 @@ export interface Reader extends Who {
   seat: Seat | undefined;
 }
 
-const emailIndex = (d: Deps, email: string): Uint8Array => blindIndex(masterKey(d), 'email', email);
+export const emailIndex = (d: Deps, email: string): Uint8Array => blindIndex(masterKey(d), 'email', email);
 export const seatIndex = (d: Deps, callId: string, seat: string): Uint8Array => blindIndex(masterKey(d), 'call-seat', `${callId}:${seat}`);
 
 /** The seat behind a call pass. Removed, not let in, or the call is over: no seat. */
@@ -107,14 +108,17 @@ async function seatFrom(d: Deps, token: string | undefined, account: Owner | und
   }
 }
 
-async function reader(d: Deps, owner: Owner | undefined, pass: string | undefined): Promise<Reader> {
-  const seat = await seatFrom(d, pass, owner);
-  if (!owner && !seat) throw new AuthError('Sign in to Alcove first.');
+async function readerWith(d: Deps, owner: Owner | undefined, seat: Seat | undefined): Promise<Reader> {
   const me = owner && await profile(owner);
   return {
     account: owner && me ? { owner, name: me.name } : undefined, seat, email: me?.email,
     principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])]
   };
+}
+async function reader(d: Deps, owner: Owner | undefined, pass: string | undefined): Promise<Reader> {
+  const seat = await seatFrom(d, pass, owner);
+  if (!owner && !seat) throw new AuthError('Sign in to Alcove first.');
+  return readerWith(d, owner, seat);
 }
 /** Who's behind a request that reaches a workspace by session or call pass. Nobody: `unauthenticated`, whatever it asks for. */
 export async function readerOf(d: Deps, who: Credentials): Promise<Reader> {
@@ -123,6 +127,15 @@ export async function readerOf(d: Deps, who: Credentials): Promise<Reader> {
 }
 /** The same for a request already signed in. */
 export const accountReader = (owner: Owner, pass?: string | undefined): Promise<Reader> => reader(owner, owner, pass);
+/**
+ * Who someone in a call is to a workspace, from what the call already knows: what their session gives them and, once
+ * they're let in, their seat. The same as `readerOf` says for that browser, so what the call tells them is what opens.
+ */
+export const readerInCall = async (v: Viewer): Promise<Reader> =>
+  readerWith(v.organizer, await v.session(), v.inCall ? { callId: v.pass.callId, seat: seatOfViewer(v), name: v.pass.name, viewer: v } : undefined);
+/** Who someone else in a call is to a workspace, from what the call keeps of them. */
+export const whoInCall = (d: Deps, callId: string, x: { seat: string; email: string | null }): Who =>
+  ({ email: x.email ?? undefined, principals: [...(x.email === null ? [] : [emailIndex(d, x.email)]), seatIndex(d, callId, x.seat)] });
 /** Who a limit counts: the account, or the person in a call. */
 export const limitKey = (r: Reader): string => r.account?.owner.ownerId ?? r.seat?.viewer.pass.person ?? 'nobody';
 
@@ -211,6 +224,63 @@ export async function workspaceFor(d: Deps, who: Who, workspaceId: string, db: D
   if (!owner) throw missing(workspaceId);
   return { ...standing, workspaceId, owner, state: openState(owner, workspaceId, row.state_ciphertext), people: await peopleIn(db, row.owner_id), version: row.version };
 }
+
+/** How far a workspace has moved on: whatever changes the tree or who has what moves it, so an answer given at this version still holds. */
+export async function workspaceVersion(d: Deps, workspaceId: string): Promise<number | undefined> {
+  return (await maybeOne(d.pool, z.object({ version: bigintText }), 'SELECT version FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.version;
+}
+
+/** A yes to something, as of a version of the workspace. Only that: no keys, and nothing of the tree. */
+interface Yes { version: number; role: WorkspaceRole | null; editedAt: string }
+/** What a remembered yes gives: the keys of this request, and what was true of the tree. */
+export interface Allowed extends Omit<Yes, 'version'> { owner: Owner; workspaceId: string }
+const MAX_REMEMBERED = 4096;
+const yesByHub = new WeakMap<Hub, Map<string, Yes>>();
+const VersionRow = z.object({ owner_id: z.string(), version: bigintText });
+/**
+ * For what's asked many times a second: opening a tree costs in proportion to its size, and someone typing asks every few
+ * keys. So a yes is remembered, for as long as the workspace's version says it still holds, and the answer costs one small
+ * query. A no isn't remembered, and always comes from `workspaceFor`, which is the only thing that decides. `lock` as there.
+ */
+async function remembering(d: Deps, who: Who, workspaceId: string, what: string, ask: (w: Workspace) => string, db: Db, lock?: keyof typeof LOCKS): Promise<Allowed> {
+  if (!ID128.test(workspaceId)) throw missing(workspaceId);
+  const row = await maybeOne(db, VersionRow, `SELECT owner_id, version FROM workspaces WHERE workspace_id = $1${lock ? LOCKS[lock] : ''}`, [workspaceId]);
+  const remembered = yesByHub.get(d.hub) ?? new Map<string, Yes>();
+  yesByHub.set(d.hub, remembered);
+  const key = `${workspaceId}:${what}:${who.email ?? ''}:${who.principals.map(b64u).join()}`;
+  const yes = remembered.get(key);
+  if (row && yes?.version === row.version) {
+    const owner = await findOwner(d, row.owner_id, undefined, db);
+    if (!owner) throw missing(workspaceId);
+    return { owner, workspaceId, role: yes.role, editedAt: yes.editedAt };
+  }
+  const w = await workspaceFor(d, who, workspaceId, db, lock);
+  const editedAt = ask(w);
+  remembered.delete(key);
+  remembered.set(key, { version: w.version, role: w.role, editedAt });
+  for (const oldest of remembered.keys()) {
+    if (remembered.size <= MAX_REMEMBERED) break;
+    remembered.delete(oldest);
+  }
+  return { owner: w.owner, workspaceId, role: w.role, editedAt };
+}
+/** `requireDocument(..., 'edit')`, for each update. */
+export const editableBy = (d: Deps, who: Who, workspaceId: string, documentId: string, db: Db = d.pool, lock?: keyof typeof LOCKS): Promise<Allowed> =>
+  remembering(d, who, workspaceId, `edit:${documentId}`, (w) => requireDocument(who, w, documentId, 'edit').item.editedAt, db, lock);
+/** That someone can open the workspace, and `documentId` in it, if any: for saying where they are. */
+export const placeableIn = (d: Deps, who: Who, workspaceId: string, documentId: string | null): Promise<Allowed> =>
+  remembering(d, who, workspaceId, `read:${documentId ?? ''}`, (w) => (documentId === null ? '' : requireDocument(who, w, documentId, 'read').item.editedAt), d.pool);
+
+/** A workspace the server is working on for a call, not for anyone in it: its keys and tree. What's shown from it is for whoever opened it to decide. */
+export type HeldWorkspace = Pick<Workspace, 'owner' | 'workspaceId' | 'state'>;
+/** Opens one for that, or nothing once it's gone. `lock`: as `workspaceFor`. These IDs come from a call, where only what its organizer could reach gets in. */
+export async function serverWorkspace(d: Deps, workspaceId: string, db: Db = d.pool, lock?: keyof typeof LOCKS): Promise<HeldWorkspace | undefined> {
+  const row = await maybeOne(db, WorkspaceRow, `SELECT owner_id, version, state_ciphertext FROM workspaces WHERE workspace_id = $1${lock ? LOCKS[lock] : ''}`, [workspaceId]);
+  const owner = row && await findOwner(d, row.owner_id, undefined, db);
+  return row && owner ? { owner, workspaceId, state: openState(owner, workspaceId, row.state_ciphertext) } : undefined;
+}
+/** Who a workspace is, if it's still there, without opening anything of it. */
+export const workspaceOwner = async (db: Db, workspaceId: string): Promise<string | undefined> => (await maybeOne(db, z.object({ owner_id: z.string() }), 'SELECT owner_id FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.owner_id;
 
 /** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
 export async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {
@@ -302,7 +372,7 @@ export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kin
  * (`workspaceFor(..., 'change')`): all of them or none. Someone who has it already has their role changed. Their streams
  * hear when the transaction commits.
  */
-export async function grant(w: Workspace, db: Db, documentId: string, grants: Grant[]): Promise<void> {
+export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, documentId: string, grants: Grant[]): Promise<void> {
   const o = w.owner;
   const byIndex = new Map(grants.map((g) => {
     const index = g.kind === 'email' ? emailIndex(o, g.email) : seatIndex(o, g.callId, g.seat);
@@ -323,6 +393,35 @@ export async function grant(w: Workspace, db: Db, documentId: string, grants: Gr
   ]);
   await exec(db, 'UPDATE workspaces SET version = version + 1 WHERE owner_id = $1', [o.ownerId]);
   await publish(db, w.workspaceId, TREE_NOTICE);
+}
+
+/** A call, as what's done for it on the server names it: its organizer's keys, and which call. */
+export interface CallRef { organizer: Owner; callId: string }
+
+/**
+ * The workspace a call uses, for the server to work in: the meeting's, else its organizer's most recently used, else a new
+ * one in their name, settled the first time it's asked for. It opens nothing for anyone.
+ */
+export async function workspaceForCall(d: Deps, call: CallRef): Promise<HeldWorkspace> {
+  const workspaceId = await settledWorkspace(call.organizer, call.callId);
+  const w = await serverWorkspace(d, workspaceId);
+  if (!w) throw missing(workspaceId);
+  return w;
+}
+
+/**
+ * Gives one document to everyone in a call now or, with `place`, in that part of it: a seat each, which ends with the call or
+ * when they're removed from it. Being in the call gives nothing until this says so, and someone who joins after isn't given it.
+ */
+export async function grantDocumentToCall(d: Deps, workspace: Pick<Workspace, 'workspaceId'>, documentId: string, call: CallRef, opts: { role: DocumentRole; place?: string | undefined }): Promise<void> {
+  const people = await seatedIn(call.organizer, call.callId, opts.place);
+  await tx(d.pool, async (c) => {
+    const w = await serverWorkspace(d, workspace.workspaceId, c, 'change');
+    const item = w?.state.items[documentId];
+    if (!w || !item || item.kind === 'folder') throw notFound('That document', { workspaceId: workspace.workspaceId, documentId });
+    await grant(w, c, documentId, [...people].map(([seat, name]): Grant => ({ kind: 'seat', callId: call.callId, seat, name, role: opts.role })));
+  });
+  await nudgeCall(d, call.callId);
 }
 
 /** What `ShareTarget`s from a browser mean: an address as it is, and a seat in the sharer's own call, with who's in it. */

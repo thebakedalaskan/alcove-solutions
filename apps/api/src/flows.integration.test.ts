@@ -1766,6 +1766,57 @@ describe('the inbox', () => {
   });
 });
 
+describe('finding what was said', () => {
+  /** A call between its organizer and someone invited, with `said` said by the organizer at 4-second steps, written up. */
+  async function talked(said: string[], title = 'Roadmap review') {
+    const org = await account(unique('organizer'));
+    const guestEmail = unique('guest');
+    const guest = await account(guestEmail);
+    const meeting = await org.api.meetings.create({ title, startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [guestEmail], notes: 'on' });
+    const call = await org.api.calls.join(meeting.code, { mic: true, cam: false });
+    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
+    const noteId = (await ended(call)).pendingNoteId ?? '';
+    await written(org.api, noteId);
+    return { org, guest, noteId };
+  }
+  const found = async (api: AlcoveApi, text: string) => (await api.notes.list({ text })).map((n) => n.id);
+
+  it('finds the words in what was said, with who said them and when, for everyone who has the notes', async () => {
+    const { org, guest, noteId } = await talked(['The harbour pilot starts in March.', 'Nothing else came up about the budget.', 'The budget for the harbour pilot is agreed.']);
+    const name = org.session.user.name;
+    const [hit] = await org.api.notes.list({ text: 'pilot' });
+    expect(hit).toMatchObject({ id: noteId, saidCount: 2 });
+    expect(hit?.said.map((l) => [l.at, l.text, l.speaker?.name])).toEqual([[0, 'The harbour pilot starts in March.', name], [8, 'The budget for the harbour pilot is agreed.', name]]);
+    expect((await guest.api.notes.list({ text: 'pilot' }))[0]?.said).toEqual(hit?.said);
+
+    // Every word counts, in any order and anywhere in the note: the title is searched too, though nothing said matches it.
+    expect(await found(org.api, 'budget harbour')).toEqual([noteId]);
+    expect(await found(org.api, 'budget tugboat')).toEqual([]);
+    expect(await org.api.notes.list({ text: 'Roadmap' })).toMatchObject([{ id: noteId, said: [], saidCount: 0 }]);
+    expect(await org.api.notes.list({ text: 'roadmap pilot' })).toMatchObject([{ id: noteId, saidCount: 2 }]);
+
+    // Not a search at all: nothing was looked for, so nothing is quoted.
+    expect(await org.api.notes.list()).toMatchObject([{ id: noteId, said: [], saidCount: 0 }]);
+    // A question shows the notes with any of its words, while it's being typed, and what was said with them.
+    expect(await found(org.api, 'When does the pilot start?')).toEqual([noteId]);
+    expect(await found(org.api, 'Who ordered the cake?')).toEqual([]);
+    // Only what you have: someone else's search finds nothing here, and neither does asking to see every note.
+    const stranger = await account(unique('stranger'));
+    expect(await found(stranger.api, 'pilot')).toEqual([]);
+    expect(await stranger.api.notes.list()).toEqual([]);
+  });
+
+  it('quotes the lines with most of the words first, and says how many there were', async () => {
+    const { org } = await talked([
+      'The tide table is late.', 'The tide came in early.', 'The tide turned at noon.', 'The tide was high all week.', 'The harbour tide table is right now.', 'Then the tide went out.'
+    ]);
+    const [hit] = await org.api.notes.list({ text: 'tide harbour' });
+    expect(hit?.saidCount).toBe(6);
+    expect(hit?.said.map((l) => l.text)).toEqual(['The harbour tide table is right now.', 'The tide table is late.', 'The tide came in early.', 'The tide turned at noon.']);
+    expect(hit?.said.map((l) => l.at)).toEqual([16, 0, 4, 8]);
+  });
+});
+
 describe('asking your notes', () => {
   const NOTHING = 'You don’t have any notes to answer from yet.';
   const WRITING = 'Your notes aren’t written yet. Ask again once they’re ready.';
@@ -2051,10 +2102,14 @@ describe('who has the notes', () => {
     expect(code(await stranger.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
     expect((await stranger.fetch(stranger.api.notes.audioUrl(noteId, 0))).status).toBe(404);
 
-    // Removing someone else's note only takes it out of your own notes...
+    // Removing someone else's note only takes it out of your own notes, and out of what your searches find...
+    const search = { text: note.title };
+    expect((await later.api.notes.list(search)).map((n) => n.id)).toEqual([noteId]);
     await later.api.notes.delete(noteId);
     expect(code(await later.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect(await later.api.notes.list(search)).toEqual([]);
     expect((await guest.api.notes.get(noteId)).id).toBe(noteId);
+    expect((await guest.api.notes.list(search)).map((n) => n.id)).toEqual([noteId]);
     // ...and the organizer deleting it takes it from everyone.
     await org.api.notes.delete(noteId);
     expect(code(await guest.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
@@ -2486,6 +2541,10 @@ describe('deleting an account', () => {
     await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));
     await live.transcribe(speech('We are still talking.', 0, 0), live.ticket.identity);
     expect(await live.translate(live.getSnapshot().transcript.map((l) => l.id), 'de')).toHaveLength(1);
+    // Its shared live notes, which she was reading.
+    const reading = live.watchNotes();
+    await until(async () => { await live.refresh(); return live.getSnapshot().liveNotes.notes !== null; }, 'the call’s live notes');
+    reading();
     // A chat line in it goes into the call's end-to-end encrypted log, and its LiveKit room is open.
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
@@ -2503,18 +2562,23 @@ describe('deleting an account', () => {
     const own = (await b.api.notes.personal(callNote).add({ kind: 'note', text: 'For everyone with it.' })).entries[0]?.id ?? '';
     await b.api.notes.addToShared(callNote, own, { text: 'For everyone with it.', seal: (await b.api.notes.previewAddition(callNote, own)).seal });
 
+    // What she keeps beside a document for presenting it, under her own account.
+    const hers = await b.api.workspaces.create('Hers');
+    const plan = await b.api.workspaces.items.create(hers.id, { kind: 'document', name: 'Plan' });
+    await b.api.workspaces.presenterNotes.set(hers.id, plan.id, 'Thank everyone.');
+
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_snapshots', 'document_updates', 'document_versions', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
+      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_members', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
     const before = await counts();
     // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those.
-    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'document_updates', 'document_snapshots', 'document_versions']);
+    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
@@ -2794,6 +2858,16 @@ describe('privacy at rest', () => {
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
+    // The call's shared live notes are sealed rows too, and so is who ticked what.
+    await call.transcribe(speech('CANARY-LIVENOTE Kofi will sign the merger by Friday.', 0, 4000), call.ticket.identity);
+    const watching = call.watchNotes();
+    await settle(call, (x) => x.liveNotes.notes !== null && !x.liveNotes.writing);
+    watching();
+    const liveFollowUp = call.getSnapshot().liveNotes.notes?.next[0];
+    expect(liveFollowUp?.text).toContain('CANARY-LIVENOTE');
+    await call.tickFollowUp(liveFollowUp?.id ?? '', true);
+    const liveNoteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_notes x`)).rows[0]?.all ?? '');
+    expect(liveNoteRows).not.toBe('');
     // While the call is on, the live transcript is sealed rows too.
     const liveClips = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
     expect(liveClips).not.toBe('');
@@ -2814,7 +2888,7 @@ describe('privacy at rest', () => {
     call.messageRooms('CANARY-BROADCAST to every room');
     await settle(call, (x) => x.breakouts.open?.message !== null);
     const caught = await call.catchUp({ kind: 'all' });
-    expect(caught.read.lines).toBe(1);
+    expect(caught.read.lines).toBe(2);
     await call.askSoFar('What closes on Friday? CANARY-ASKED', { kind: 'all' });
     await call.catchUpWindow();
     await call.moment(call.getSnapshot().transcript[0]?.id ?? '');
@@ -2833,7 +2907,7 @@ describe('privacy at rest', () => {
     await call.ring(['canary-rung@canary.example']);
     const ringRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_rings x`)).rows[0]?.all ?? '');
     expect(ringRows).not.toBe('');
-    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows}`;
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows}`;
     // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
     await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
@@ -2861,6 +2935,7 @@ describe('privacy at rest', () => {
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
     await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
+    await rec.transcribe(speech('CANARY-SEARCH words in the room.', 0, 5));
     await new Promise((r) => setTimeout(r, 150));
     const { pendingNoteId: roomNote } = await rec.stop();
     await written(c.api, roomNote);
@@ -2878,7 +2953,8 @@ describe('privacy at rest', () => {
     expect((await member.api.meetings.answer(invitation.id, 'maybe')).rsvp).toBe('maybe');
     const invited = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM meeting_access x`)).rows[0]?.all ?? '');
     expect(invited).not.toBe('');
-    await c.api.notes.list({ text: 'CANARY-SEARCH words' });
+    // A search and the lines it quotes pass through here, and stay out of every row and log line below.
+    expect((await c.api.notes.list({ text: 'CANARY-SEARCH words' })).flatMap((n) => n.said.map((l) => l.text))).toEqual(['CANARY-SEARCH words in the room.']);
     await c.api.people.search('CANARY-PEOPLE query');
     // A workspace: its name, folders, documents and boards, and who's in it, sealed in its state and beside its rows.
     const space = await c.api.workspaces.create('CANARY-WORKSPACE name');
@@ -2931,7 +3007,7 @@ describe('privacy at rest', () => {
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
-      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',

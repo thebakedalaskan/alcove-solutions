@@ -1,7 +1,8 @@
 /*
- * The call's top bar: the title and clock, the notes sign everyone sees (which opens what's captured), then
- * your own view control, a private catch-up, the confidential-compute shield and who is here (with how many
- * are asking to join, for the organizer).
+ * The call's top bar: the title and clock, the notes sign everyone sees (which opens what's captured), what's showing
+ * when the workspace, the board and the shares have to take turns, then Reset my view once there's anything to reset,
+ * your own view control, a private catch-up, the confidential-compute shield and who is here (with how many are asking
+ * to join, for the organizer).
  */
 import { clock, type Person } from '@alcove/api';
 import { Dots, Faces, Icon, Popover, Tooltip, cn } from '@alcove/ui';
@@ -13,10 +14,12 @@ import { hm } from '~/lib/time';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
-export function TopBar({ title, elapsed, sign, view, custom, people, asking, reconnecting, peopleOpen, screens, onReset, onCatchUp, onPeople }: {
+export function TopBar({ title, elapsed, sign, swap, view, custom, people, asking, reconnecting, peopleOpen, screens, onReset, onCatchUp, onPeople }: {
   title: string; elapsed: number;
   /** The notes sign: what the call captures, the same for everyone. */
   sign: ReactNode;
+  /** What's showing, when there isn't room for all of it at once. */
+  swap: ReactNode;
   /** Your view's controls (ViewMenu). */
   view: ReactNode;
   custom: boolean; people: Person[];
@@ -37,25 +40,25 @@ export function TopBar({ title, elapsed, sign, view, custom, people, asking, rec
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       <span className="vr v1" />
       <div className="nz">{sign}</div>
+      {swap}
       <div className="end">
-        {view}
         <AnimatePresence initial={false}>
           {custom && (
-            <motion.span key="reset" initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={UI}>
-              <Tooltip label="Back to Auto: nobody pinned, the call’s order and sizes" side="bottom">
-                <button type="button" className="ac-btn is-quiet is-sm ic-reset" onClick={onReset}><Icon name="reset" size={15} /><span className="rtxt">Reset my view</span></button>
+            <motion.span key="reset" initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={UI}>
+              <Tooltip label="Back to the call’s layout" side="bottom">
+                <button type="button" className="ic-reset" aria-label="Reset my view" onClick={onReset}><Icon name="reset" size={15} /><span className="rtxt">Reset my view</span></button>
               </Tooltip>
             </motion.span>
           )}
         </AnimatePresence>
-        <span className="vr" />
+        {view}
         <Tooltip label="A private recap of what you missed" side="bottom">
           <button type="button" className="ac-btn is-secondary is-sm ic-catch" onClick={onCatchUp}><Icon name="history" size={16} /><span className="catchtxt">Catch up</span></button>
         </Tooltip>
         <Shield screens={screens} />
         <Tooltip label={asking ? `${asking} asking to join` : 'People in this call'} side="bottom">
           <button type="button" className={cn('ic-faces', peopleOpen && 'is-on')} aria-label={label} onClick={onPeople}>
-            <Faces people={people} size={26} max={6} /><span>{people.length}</span>
+            <Faces people={people} size={26} max={6} /><span className="n">{people.length}</span>
             {asking > 0 && <span className="badge" aria-hidden="true">{asking}</span>}
           </button>
         </Tooltip>

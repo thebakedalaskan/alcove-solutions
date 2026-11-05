@@ -17,9 +17,9 @@ export interface Answer { q: string; text: string; cites: Cite[]; done: boolean 
 /**
  * Asks with `ask` and follows the answer as it arrives. Asking again, or `reset`, leaves the earlier
  * answer behind: anything still arriving for it is dropped. If asking fails, a toast says why, unless
- * whatever asked has gone (the palette was closed) by then.
+ * whatever asked has gone (the palette was closed) by then, or `refused` says it took care of it.
  */
-export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>) {
+export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>, refused?: ((e: unknown, question: string) => boolean) | undefined) {
   const toast = useToast();
   const [answer, setAnswer] = useState<Answer | null>(null);
   const run = useRef(0);
@@ -41,9 +41,9 @@ export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | 
     } catch (e) {
       if (!current()) return;
       setAnswer(null);
-      toast(errorMessage(e), { icon: 'x' });
+      if (!refused?.(e, q)) toast(errorMessage(e), { icon: 'x' });
     }
-  }, [ask, toast]);
+  }, [ask, refused, toast]);
   return { answer, ask: start, reset };
 }
 

@@ -9,7 +9,7 @@
     "migrate": "tsx --env-file=../../.env src/migrate-cli.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "build": "esbuild src/server.ts src/migrate-cli.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
+    "build": "esbuild src/server.ts src/migrate-cli.ts src/live/docWorker.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --outbase=src --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
     "start:prod": "node --enable-source-maps dist/server.js"
   },
   "dependencies": {
