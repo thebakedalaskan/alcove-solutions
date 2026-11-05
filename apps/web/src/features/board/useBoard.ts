@@ -370,11 +370,11 @@ export class Board implements LiveStore<BoardState> {
     this.set({ sel: everything(this.state.view) });
   }
 
-  /** Picks a tool and opens its options. Picking it again closes them, and the tool stays. */
+  /** Picks a tool and opens its options. Picking it again closes them, and the tool stays, and again opens them: the pen stays picked, so that's how to reach the highlighter. */
   pickTool(tool: BoardTool): void {
     this.finishEdit();
-    const again = tool === this.state.tool;
-    this.set({ ...CLOSED, tool, sel: [], hover: null, fly: again ? null : OPTIONS[tool] ?? null });
+    const { tool: was, fly } = this.state;
+    this.set({ ...CLOSED, tool, sel: [], hover: null, fly: tool === was && fly ? null : OPTIONS[tool] ?? null });
   }
 
   /** More, beside the rail. */

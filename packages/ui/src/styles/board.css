@@ -270,7 +270,7 @@
 .bfly.is-pen { top: calc(50% + 56px); }
 .bfly .row { display: flex; gap: 2px; }
 .bfly .bt { width: 36px; height: 36px; border-radius: 9px; color: var(--stage-ink); }
-.bfly .bt[aria-pressed="true"] { background: rgba(255, 138, 91, .18); color: #FFB08A; }
+.bfly .bt[aria-pressed="true"], .bx .bt[aria-pressed="true"] { background: rgba(255, 138, 91, .18); color: #FFB08A; }
 .bfly .sw { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; }
 .bfly .item { display: flex; align-items: center; gap: 10px; width: 188px; height: 38px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); text-align: left; }
 .bfly .item .ac-i { color: var(--stage-ink-2); }

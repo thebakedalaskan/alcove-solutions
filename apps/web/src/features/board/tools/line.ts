@@ -22,6 +22,8 @@ const HOVER_REACH = 30;
 const STICKY_REACH = 60;
 /** How far a new sticky overlaps the end of the line it's made from, in board units. */
 const STICKY_TUCK = 10;
+/** Where dots would only be in the way: a frame's title is pressed to pick the frame, and it can sit right where a dot would. */
+const NO_DOTS = `${OVER_THE_SHEET}, .bf-h`;
 
 /** A line's route. Its first end leads, as a line being drawn does. */
 export function lineRoute(view: BoardView, o: LineObject): Route | null {
@@ -51,20 +53,41 @@ export function dotsOn(b: Box, { x, y, z }: Camera): BoardDot[] {
 /** What a line can join, and so what shows dots: a frame is space to work in, a stroke is a mark, and a heading is a label. */
 const joinable = (o: BoardObject): o is PlacedObject => hasBox(o) && o.k !== 'frame' && o.k !== 'ink' && !(o.k === 'text' && o.size === 'heading');
 
+/** How far a point is from a box, and nothing if it's inside. */
+function outside(b: Box, { x, y }: SheetPoint): number {
+  return Math.hypot(Math.max(b.x - x, 0, x - b.x - b.w), Math.max(b.y - y, 0, y - b.y - b.h));
+}
+
+/**
+ * What shows its dots: what's already showing them, until the pointer leaves it, so that a dot sitting over its neighbour can
+ * still be reached. Otherwise the nearest, which is the top one of anything the pointer is on.
+ */
+function nearest(view: BoardView, hover: string | null, at: SheetPoint, reach: number): string | null {
+  const now = hover ? view.byId.get(hover) : undefined;
+  if (now && joinable(now) && outside(now, at) <= reach) return now.id;
+  let found: string | null = null, least = reach;
+  for (const o of view.objects) {
+    if (!joinable(o)) continue;
+    const d = outside(o, at);
+    if (d > least) continue;
+    found = o.id;
+    least = d;
+  }
+  return found;
+}
+
 /** The pointer has moved with nothing pressed: a line waiting for its end follows it, and whatever it's near shows its dots. */
 export function hoverAt(board: Board, at: SheetPoint, target: EventTarget | null): void {
-  const { tool, sel, view, lineFrom } = board.getSnapshot();
+  const { tool, sel, view, hover, lineFrom } = board.getSnapshot();
   if (lineFrom) {
     board.set({ draft: { kind: 'line', from: { on: lineFrom, side: 'r' }, to: [at.x, at.y] } });
     return;
   }
-  if (!board.canEdit || tool !== 'select' || sel.length || (target instanceof Element && target.closest(OVER_THE_SHEET))) {
+  if (!board.canEdit || tool !== 'select' || sel.length || (target instanceof Element && target.closest(NO_DOTS))) {
     board.hoverOn(null);
     return;
   }
-  const pad = HOVER_REACH / board.camera.getSnapshot().z;
-  const near = view.objects.findLast((o) => joinable(o) && at.x > o.x - pad && at.x < o.x + o.w + pad && at.y > o.y - pad && at.y < o.y + o.h + pad);
-  board.hoverOn(near?.id ?? null);
+  board.hoverOn(nearest(view, hover, at, HOVER_REACH / board.camera.getSnapshot().z));
 }
 
 /** Writes a line, and it's done: back to Select with nothing picked. */
@@ -114,8 +137,7 @@ function finishLine(board: Board, from: LineEnd, start: SheetPoint, at: SheetPoi
     addLine(board, fromEnd(away, 0), { x: at.x, y: at.y });
     return;
   }
-  const dx = Math.max(a.x - at.x, 0, at.x - a.x - a.w), dy = Math.max(a.y - at.y, 0, at.y - a.y - a.h);
-  if (on && Math.hypot(dx, dy) > STICKY_REACH) newStickyFrom(board, on, a, at);
+  if (on && outside(a, at) > STICKY_REACH) newStickyFrom(board, on, a, at);
 }
 
 function lineGesture(board: Board, from: LineEnd, start: SheetPoint, fromDot: boolean): Gesture {

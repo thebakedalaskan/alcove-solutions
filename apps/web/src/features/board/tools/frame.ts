@@ -20,10 +20,11 @@ export const framePress: ToolPress = (board, { at }) => drawGesture(board, at, {
   }
 });
 
-/** Whether something is settled for this frame: it's in a smaller frame inside this one, which stays what holds it. */
+/** Whether something is already held inside this frame, by a smaller frame in it, which goes on holding it. */
 function heldInside(view: BoardView, frame: FrameObject, o: BoardObject): boolean {
   const home = view.byId.get(o.f);
-  return home !== undefined && home.id !== frame.id && hasBox(home) && contains(frame, centre(home).x, centre(home).y);
+  if (!home || home.id === frame.id || !hasBox(home)) return false;
+  return contains(frame, home.x, home.y) && contains(frame, home.x + home.w, home.y + home.h);
 }
 
 /** Takes in what's now inside a frame and lets go of what isn't. Moving something nowhere is how it's asked where it sits. */

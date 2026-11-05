@@ -169,7 +169,7 @@ function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): 
 /** Double-click: type in what's there, or put a sticky here. It asks what's at the point, because a captured pointer makes the sheet the event's target. */
 function doubleClick(board: Board, e: MouseEvent): void {
   const target = document.elementFromPoint(e.clientX, e.clientY);
-  if (!board.canEdit || board.getSnapshot().tool !== 'select' || !target || target.closest(OVER_THE_SHEET)) return;
+  if (!board.canEdit || board.getSnapshot().tool !== 'select' || !target || target.closest(`${OVER_THE_SHEET}, [data-p], [data-h]`)) return;
   const id = pressedId(board, target);
   if (id) {
     board.startEdit(id);
