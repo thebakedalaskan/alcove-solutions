@@ -12,6 +12,7 @@
  *   ├─ IntegrityError       key-unavailable  403    error  stored data failed verification
  *   ├─ NotFoundError        not-found        404    info
  *   ├─ ConflictError        conflict         409    info   state changed / wrong state
+ *   │   └─ ClientTakenError                                a change from the server was worked out as a Yjs client someone wrote as first
  *   ├─ TooLargeError        too-large        413    info   more than something can hold
  *   ├─ UnavailableError     unavailable      503    warn   not connected yet / rate limited
  *   │   └─ UnverifiedError                          warn   a model's attestation didn't check out (or couldn't be checked), so it was sent nothing
@@ -54,6 +55,12 @@ export class ForbiddenError extends AppError { constructor(m: string, o?: ErrorO
 export class KeyError extends AppError { constructor(m: string, o?: ErrorOptions) { super('key-unavailable', m, o); } }
 export class NotFoundError extends AppError { constructor(m: string, o?: ErrorOptions) { super('not-found', m, o); } }
 export class ConflictError extends AppError { constructor(m: string, o?: ErrorOptions) { super('conflict', m, o); } }
+/**
+ * A change the server made to a document was worked out as a Yjs client the log has had by the time it was written, so it's
+ * taken back with the transaction writing it, and worked out again on the document as it now stands. It reaches whoever
+ * asked only when that keeps happening, as the document's changing that fast.
+ */
+export class ClientTakenError extends ConflictError { constructor(m = 'This document is changing too fast to change from here. Try again.', o?: ErrorOptions) { super(m, o); } }
 export class TooLargeError extends AppError { constructor(m: string, o?: ErrorOptions) { super('too-large', m, o); } }
 export class UnavailableError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unavailable', m, o); } }
 /**
