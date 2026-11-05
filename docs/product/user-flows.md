@@ -49,10 +49,10 @@ screen. Signing in on another browser doesn't end the first session.
 Beside every page, dark in both themes:
 
 - **Start a call** (or **N**) opens flow 4.
-- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Record**, where recording in the room starts (flow 9),
-  with how many recordings on this device are waiting to upload; and **Team** (flow 10), with how many people at
-  your company use Alcove, you among them, once anyone besides you does. Someone on their own, at a personal address,
-  has no Team page and no groups here.
+- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Workspace**, where you
+  write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
+  device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
+  once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
 - **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
   that has a video link (unless **Show my other meetings on Home** is off), when it starts, who's coming,
   and **Join**. With nothing left today it says the next call will show there, except before your first
@@ -78,8 +78,8 @@ below, and you, which opens Settings (flow 11). In a narrow window search shrink
 its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8).
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
-you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised),
-**Team** when you're on one, and **Settings**. Offline, the same notice sits under the top bar.
+you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Workspace** and **Team**
+when you're on one. Offline, the same notice sits under the top bar.
 
 **The palette** is one line over the page. Before anything is typed it lists your five newest notes. Typing
 lists the notes whose titles, summaries or transcripts match, up to eight, with the match marked. **Enter**
@@ -859,3 +859,72 @@ row says to reload the page. Any other failure, having no connection included, i
 tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.
+
+## 12. The workspace
+
+Documents and folders people write in together, between calls as well as in them. **Workspace** opens the one you had
+open last, at the document you had open in it; it fills the page, in your theme, with search and you in the top of it.
+It's the list and a document side by side. Everything happens in the list: nothing opens a window, and nothing asks you
+to fill anything in. Whatever someone does here reaches everyone else in the workspace as it happens, and a row that
+arrives or moves glows for a moment for all of them.
+
+**First day.** Someone with no workspace gets one in their name, made the first time they open Workspace. It says
+**Nothing here yet** with **New document** and **New folder**. **New document** opens an empty page with the caret in
+the title and a few ways to start under it: **Agenda**, **Decision log**, **Retro** and **Project brief**. They're only
+blocks: picking one fills the page, names an untitled document after it, and anything in it can change or go. Two
+people can have the same new document open: they get one title and one first line.
+
+**Making things.** **+** at the top of the list, or hovering a folder and pressing its **+**, offers **New document**
+and **New folder**; **N** and **⇧N** skip the menu when you aren't typing. A folder is named in its row: type, then
+**Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
+page follow as you type, for everyone.
+
+**Moving things.** Drag a row: a line shows where it lands between two rows, a folder lights up over its middle, and
+pausing over a closed folder opens it. **Esc** puts it back, and dropping it on **Trash** sends it there. When it lands
+it's moved for everyone, and **Undo** is there for a moment. **⋯** on a row, or right-clicking it, offers **Rename**,
+**Duplicate**, **Move to…**, **Copy link** and **Move to Trash**; a folder has **Rename**, **Move to…** and **Move to
+Trash**. Renaming a document in the list changes its title too. Links are to the document, so they keep working wherever
+it goes, and a link to a block (**Copy link** in the block's own menu) opens the document at that line, which glows. A
+block's **Move to…**, or dragging it onto a document in the list, sends it there, with **Undo**.
+
+**From the keyboard.** The list is one stop for Tab: **↑** and **↓** move through it, **←** and **→** close and open a
+folder, **Enter** opens a row and Tab reaches its buttons. **F2** renames, **Delete** moves to Trash, **⌥↑** and **⌥↓** move
+a row among its neighbours, and the menu key opens its menu. **⌘\** hides or shows the list. While the caret is in a
+document, **N** and **⇧N** type letters, and **Esc** leaves it for its row in the list.
+
+**Trash.** A quiet row at the foot of the list, with how much is in it. It lists what was moved there, by whom, when and
+how long it has left: things stay for 30 days. **Restore** puts something back in its folder, or at the top if the folder
+has gone, and **Delete forever** asks once, then deletes it for everyone. A document in Trash still opens, to read.
+
+**Sharing.** **Share** at the top of a document shows who has it: the workspace, and anyone it's shared with beyond it,
+each with what they can do. Typing a name or an address finds people (**Enter** adds the first, or an address nobody
+knows); they can edit, and their row changes that to **Can read** or takes them off. The workspace's row can close the
+document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
+everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone.
+
+**Workspaces.** The name at the top of the list lists your workspaces with who's in each, and opens another. **People**
+shows who's in this one in the same sheet as Share: an admin adds people by name or address and sets each to **Admin**,
+**Can edit** or **Can read**, or removes them; anyone can leave. **Rename** (admins) and **New workspace** turn the name
+into a field: type, then **Enter**. A workspace always keeps an admin.
+
+**When things go wrong.** At the top of every document one quiet word says how it stands: **Saved**, **Saving…**,
+**Reconnecting** or **Couldn’t save**.
+
+- The connection drops: you keep writing. A bar says your edits are safe in this browser. They're kept there, sealed,
+  through a reload, and send when you're back, even if you never open that document again; everyone's words merge, with
+  nothing to resolve, and a toast says so.
+- Someone moves the document you're in to Trash: you aren't thrown out. A bar says who, the page stops taking edits, and
+  **Restore it** brings it back for everyone, where it was. Whoever moved it goes on to the next document, with **Undo**.
+- It stops being yours (taken off it, or closed to the workspace) or it's deleted: the page says you can't open it, the
+  same as for a document that never existed, with the way back. The same goes for a whole workspace.
+- A document opened with no connection says so, and opens by itself when you're back. Sending a block to another document
+  waits for a connection too.
+- A document too big to save says so, and what's typed stays in this browser.
+- Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
+
+Signing out, or deleting your account, on this browser deletes every edit still kept here for it and where you were in
+your workspaces.
+
+On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
+brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
+touch screen: **Move to…** does that.
