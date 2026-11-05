@@ -27,6 +27,10 @@ export type VideoAboutReader = (video: CallVideo) => Promise<VideoAbout | null>;
 
 /** How far this player can drift from everyone else's before it's moved to where they are. */
 export const DRIFT_MS = 500;
+/** Within this, it's in step. Between this and `DRIFT_MS` it plays a little faster or slower until it is, without a jump. */
+const CLOSE_MS = 60;
+/** How much faster or slower: too little to hear, and Chrome keeps the pitch. */
+const NUDGE = 0.05;
 /** A held picture is the same frame for everyone. */
 const HELD_MS = 40;
 const TICK_MS = 250;
@@ -256,14 +260,17 @@ export class SharedVideo implements LiveStore<PlayView> {
     const want = this.shared();
     const v = this.video;
     if (want && this.failure === null && v.readyState >= HTMLMediaElement.HAVE_METADATA) {
-      const off = Math.abs(v.currentTime * 1000 - want.at);
+      const ahead = v.currentTime * 1000 - want.at;
+      const off = Math.abs(ahead);
       if (want.playing && !this.away) {
         if (!v.seeking && off > DRIFT_MS) v.currentTime = want.at / 1000;
+        v.playbackRate = off > CLOSE_MS && off <= DRIFT_MS ? 1 - Math.sign(ahead) * NUDGE : 1;
         /* Played to the end here a moment before everyone: playing it again would start it over. */
         const length = this.length();
         const over = length !== null && want.at >= length - (v.ended ? DRIFT_MS : 0);
         if (v.paused && !this.blocked && !over) this.resume();
       } else {
+        v.playbackRate = 1;
         if (!v.paused) v.pause();
         if (!want.playing && !v.seeking && off > HELD_MS) v.currentTime = want.at / 1000;
       }

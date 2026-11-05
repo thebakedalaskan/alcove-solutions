@@ -1061,8 +1061,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   - *One player per call*, playing whatever's open. A video block on screen borrows its `<video>`, which moves into the block
     and is never copied, so nothing is heard twice; with none on screen it plays out of sight and is still heard.
   - *In step*: it reads the call itself, and works out where everyone is with `playPosition(play, ms since this browser heard
-    it)`, four times a second. More than 500 ms off, it moves there; held, it holds the same frame (within 40 ms). A late
-    joiner does the same on arriving. Whoever started it says when it's reached the end, which stops it for everyone.
+    it)`, four times a second. More than 500 ms off, it moves there; nearer than that, it plays 5% faster or slower until it's
+    within 60 ms, which nobody hears; held, it holds the same frame (within 40 ms). A late joiner does the same on arriving. Whoever started it says when it's reached the end, which stops it for everyone.
   - *Here alone*: a browser that refuses to play (autoplay) shows Play here, and anything pressed tries again; the system's
     pause key holds it for you with Back to everyone; loading, a file this browser can't play and one that didn't arrive each
     say so. Your volume is the player's own. None of it reaches anyone else.
