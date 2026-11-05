@@ -211,7 +211,7 @@ const addDocuments = async (w: Pick<Workspace, 'owner'>, db: Db, ids: string[]):
 const removeDocuments = async (o: Owner, db: Db, ids: string[]): Promise<void> => {
   if (ids.length) await exec(db, 'DELETE FROM documents WHERE owner_id = $1 AND document_id = ANY($2::text[])', [o.ownerId, ids]);
 };
-function requireRoom(w: Workspace, adding: number): void {
+function requireRoom(w: Pick<Workspace, 'state' | 'workspaceId'>, adding: number): void {
   if (Object.keys(w.state.items).length + adding > MAX_ITEMS) throw new ConflictError('This workspace is full. Delete something from it first.', { context: { workspaceId: w.workspaceId, items: Object.keys(w.state.items).length } });
 }
 /** Refuses what would take folders past the limit: `height` levels of them, landing in `parent`. */
@@ -337,24 +337,38 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
 /* ---------- the tree ---------- */
 
 export interface NewItem { kind: ItemKind; name: string; parent: string | null; after?: string | null | undefined }
+/** Puts something new in `w.state`, in the caller's transaction, which holds the workspace's row and saves it. */
+async function addItem(w: HeldWorkspace, c: Db, input: NewItem, by: Maker): Promise<string> {
+  requireRoom(w, 1);
+  const id = id128();
+  const at = new Date().toISOString();
+  w.state = withItem(w.state, id, {
+    kind: input.kind, name: input.name, parent: input.parent, pos: positionIn(w.state, input.parent, input.after), by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null
+  });
+  if (holdsContent(input.kind)) await addDocuments(w, c, [id]);
+  if (input.kind === 'document') await startContent(w, c, [id]);
+  await noteAuthor(w, c, by.email);
+  wlog.info('item created', { workspaceId: w.workspaceId, itemId: id, kind: input.kind });
+  return id;
+}
 export async function createItem(d: Deps, reader: Reader, workspaceId: string, input: NewItem): Promise<{ id: string }> {
   return change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'edit');
-    requireRoom(w, 1);
     const parent = landing(reader, w, input.parent);
     requireDepth(w, parent, input.kind === 'folder' ? 1 : 0);
     if (input.after) requireItem(reader, w, input.after);
-    const id = id128();
-    const at = new Date().toISOString();
-    w.state = withItem(w.state, id, {
-      kind: input.kind, name: input.name, parent, pos: positionIn(w.state, parent, input.after), by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null
-    });
-    if (holdsContent(input.kind)) await addDocuments(w, c, [id]);
-    if (input.kind === 'document') await startContent(w, c, [id]);
-    await noteAuthor(w, c, makerOf(reader).email);
-    wlog.info('item created', { workspaceId, itemId: id, kind: input.kind });
-    return { id };
+    return { id: await addItem(w, c, { ...input, parent }, makerOf(reader)) };
   });
+}
+/**
+ * A board the server makes for a call, at the top of the tree, in the caller's transaction, which holds the workspace's row:
+ * the same as making one here, for someone in the call who needn't be in the workspace. `by` is who it's made for.
+ */
+export async function addBoard(w: HeldWorkspace, db: Db, name: string, by: Maker): Promise<string> {
+  const id = await addItem(w, db, { kind: 'board', name, parent: null }, by);
+  await saveState(w, db);
+  await publish(db, w.workspaceId, TREE_NOTICE);
+  return id;
 }
 export async function renameItem(d: Deps, reader: Reader, workspaceId: string, itemId: string, name: string): Promise<void> {
   await change(d, reader, workspaceId, (w) => {

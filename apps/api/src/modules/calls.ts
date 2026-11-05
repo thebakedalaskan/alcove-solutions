@@ -1,6 +1,6 @@
 import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
-  type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
+  type BoardCheck, type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
   type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person,
   type CallFollowUps, type CallWorkspace, type CallWorkspaceAsk, type CallWorkspaceSwitch, type DocFollowUpTick, type RingReply, type ScreenFrameReceipt, type SeriesAnswerPart, type Speaker
 } from '@alcove/api';
@@ -13,8 +13,9 @@ import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
 import { openOwner } from '../owners';
 import { me, profile } from './account';
-import { CallSpace, NO_SPACE, withWorked, type WorkedBy, type WorkedDocument } from './callSpace';
+import { CallBoards, CallSpace, NO_BOARDS, NO_SPACE, withWorked, type WorkedBy, type WorkedDocument } from './callSpace';
 import * as space from './callWorkspace';
+import * as boards from './callBoards';
 import * as catchup from './catchup';
 import * as drafting from './drafting';
 import * as liveNotes from './liveNotes';
@@ -40,7 +41,7 @@ import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
 import * as series from './series';
 import * as transcripts from './transcripts';
-import { readerInCall, workspaceOwner } from './workspaceAccess';
+import { readerInCall, workspaceForCall, workspaceOwner, type CallRef } from './workspaceAccess';
 import { endSeat, endSeats } from './workspaces';
 import * as writer from './writer';
 import { log } from '../log';
@@ -128,7 +129,9 @@ const Stored = z.preprocess(withHost, z.object({
   chatAt: z.record(z.string(), z.number()),
   notices: z.array(Notice),
   /** What's going on in the workspace the call uses: who's asking to see it, what's being presented and played, and what's been worked on. */
-  workspace: CallSpace.default(NO_SPACE)
+  workspace: CallSpace.default(NO_SPACE),
+  /** Which board is open in each part of the call, and which boards it lets everyone into. */
+  board: CallBoards.default(NO_BOARDS)
 }));
 type Stored = z.infer<typeof Stored>;
 const Row = z.object({
@@ -382,7 +385,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   if (!v.inCall) {
     return {
       ...base, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
-      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, notices: []
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, notices: []
     };
   }
   const rooms = settle(s, row, end.getTime());
@@ -444,6 +447,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
     liveNotes: await notesFor(v, db, row, rooms, viewing, where, invited),
     workspace,
+    board: await boards.shownTo(v, rooms, where),
     // Each notice to the people it's for: everyone, only those in the room it's about, one connection, or everyone but one.
     notices: s.notices.filter((n) => (n.place === undefined || n.place === where) && (n.to === undefined || n.to === v.pass.identity) && n.not !== v.pass.identity)
       .map((n) => ({ id: n.id, text: n.text, kind: n.kind }))
@@ -615,6 +619,8 @@ async function enter(d: Deps, o: Owner, meeting: Loaded<MeetingManifest>, joined
   if (j.replaced) await o.livekit.removeParticipant(j.roomName, j.replaced).catch((e: unknown) => clog.info('previous host connection already gone', { callId: j.callId, err: e }));
   await o.livekit.ensureRoom(j.roomName);
   // A new host starts a new group (everyone fetches the call and its log); someone asking only concerns the host's browser.
+  // A connection that hosts is in the call from the start, with no commit to let it in.
+  if (j.hosts) await syncBoardSeats({ organizer: o, callId: j.callId });
   await nudge(o, j.roomName, j.callId, { call: j.hosts, log: true });
   clog.info(role === 'host' ? 'call joined' : 'asked to join a call', { callId: j.callId, meetingId: meeting.itemId, role, admit: j.admit, generation: j.generation, back: Boolean(who.earlier) });
   return ticketFor(d, o, j.callId, { identity, role, name, person: j.person, hosts: j.hosts, owner: who.owner }, j.roomName);
@@ -776,7 +782,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const callId = id128();
       const roomName = `r_${id128()}`;
       let s: Stored = {
-        host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, notices: [], workspace: NO_SPACE,
+        host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
         notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, segmentFrom: 0, history: [], asks: [], unavailable: [], offline: [], screens: { on: false, history: [], ended: [] } }
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
@@ -857,8 +863,8 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */
 
-/** Everything in `act` but a raised hand, an ask for notes, your own share's pointing, ticking a follow-up and what goes by what you can open in the workspace is whoever hosts' (the organizer's own besides, checked by the API). */
-export const anyone = (a: CallAction): boolean => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || space.anyonesAction(a);
+/** Everything in `act` but a raised hand, an ask for notes, your own share's pointing, ticking a follow-up, what goes by what you can open in the workspace and a board is whoever hosts' (the organizer's own besides, checked by the API). */
+export const anyone = (a: CallAction): boolean => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || space.anyonesAction(a) || boards.isBoardAction(a);
 /**
  * Refused for a connection that doesn't host now (`who`: the connection that does, by default whoever hosts): checked
  * again where it counts, as the host may have changed since the request came in. The same 409 as the API's for a
@@ -872,6 +878,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   const o = v.organizer;
   if (a.type === 'workspace-open') return openWorkspace(v, callId);
   if (space.isSpaceAction(a)) return actOnWorkspace(v, callId, a);
+  if (boards.isBoardAction(a)) return actOnBoard(v, callId, a);
   if (a.type === 'mute') {
     // Carried out by LiveKit; nothing about the call changes here.
     const { row, state } = await load(o, o.pool, callId);
@@ -1178,6 +1185,80 @@ async function openWorkspace(v: Viewer, callId: string): Promise<CallState> {
 /** What changing the call's workspace would mean, for the organizer to decide. */
 export async function previewWorkspace(v: Viewer, callId: string, workspaceId: string): Promise<CallWorkspaceSwitch> {
   return space.preview(v, await readerInCall(v), (await load(v.organizer, v.organizer.pool, callId)).state.people, workspaceId);
+}
+
+/* ---------- a board in a call: what's done is modules/callBoards.ts; the call's row is held here ---------- */
+
+/** Everyone in the call now, once each, as a seat on a board names them. Wherever they are in it: a main board is for the whole call. */
+function hereIn(o: Owner, callId: string, s: Stored): boards.Here[] {
+  const seats = seatKey(o, callId);
+  return [...new Map(s.people.filter((j) => j.status === 'in').map((j): [string, boards.Here] => [seatOf(seats, j), { seat: seatOf(seats, j), name: j.name, email: j.email ?? null }])).values()];
+}
+
+/**
+ * Someone opens or closes a board, under the call's row. Who's asking, and for a new board which workspace the call uses, are
+ * settled before that's taken: settling takes the row itself, and a guest settles nothing.
+ */
+async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Promise<CallState> {
+  const o = v.organizer;
+  if (a.type === 'board-open') boards.requireStarter(v, a.type);
+  const reader = await readerInCall(v);
+  if (a.type === 'board-open' && 'template' in a) await workspaceForCall(o, { organizer: o, callId });
+  const { room, made } = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
+    const settled = settle(state, row);
+    const mine = settled.people.find((j) => j.identity === v.pass.identity);
+    const { manifest } = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+    const done = await boards.change({
+      v, reader, c, callId, meeting: manifest, s: settled, place: mine ? placeOf(settled, mine) : MAIN_PLACE, here: hereIn(o, callId, settled), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }
+    }, a);
+    await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, done.s)));
+    return { room: row.room_name, made: done.made };
+  });
+  // A board left as it started is still a board, so nothing about filling it is worth refusing the person who opened it.
+  if (made) await boards.fillBoard(o, made.w, made.documentId, made.template).catch((e: unknown) => clog.warn('board not filled from its template', { callId, documentId: made.documentId, err: e }));
+  await nudge(o, room, callId, { call: true, log: false });
+  return view(v, o.pool, callId);
+}
+
+/** What opening a saved board would mean, for the menu to ask first. */
+export async function boardCheck(v: Viewer, callId: string, documentId: string): Promise<BoardCheck> {
+  boards.requireStarter(v, 'board-check');
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'board-check' } });
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  const { manifest } = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  return boards.check(o, await readerInCall(v), { callId, meeting: manifest, place: mine ? placeOf(s, mine) : MAIN_PLACE, here: hereIn(o, callId, s) }, documentId);
+}
+
+/**
+ * Keeps what the call lets people into in step with who's in it: called wherever someone's let in, as a seat ends with the
+ * call and comes from it. One workspace at a time, so nothing here holds two of their locks, and under the call's row, so it
+ * can't land after whoever it's for is taken out. Letting someone in is done by then: this fails on its own, with a log line.
+ */
+export async function syncBoardSeats(call: CallRef): Promise<void> {
+  const { organizer: o, callId } = call;
+  try {
+    const { row, state } = await load(o, o.pool, callId);
+    if (row.state !== 'live') return;
+    let changed = false;
+    for (const workspaceId of new Set(state.board.letIn.map((e) => e.workspaceId))) {
+      const seated = await tx(o.pool, async (c) => {
+        const held = await load(o, c, callId, true);
+        if (held.row.state !== 'live') return false;
+        const board = await boards.seatNewcomers(o, c, callId, workspaceId, held.state.board, hereIn(o, callId, held.state));
+        if (board !== held.state.board) await save(o, c, callId, { ...held.state, board });
+        return board !== held.state.board;
+      });
+      changed ||= seated;
+    }
+    if (changed) await nudge(o, row.room_name, callId, { call: true, log: false });
+  } catch (e) {
+    clog.warn('seats on the call’s boards not kept up', { callId, err: e });
+  }
 }
 
 /** Who worked on what is only ever added to: each person and document is noted once, so typing doesn't hold the call's row. */
@@ -1644,6 +1725,8 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     return row.room_name;
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
+  // Before they hear they're in, so they find what's open for them.
+  if (b.added.length) await syncBoardSeats({ organizer: o, callId });
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
   if (b.added.length && room) {
     // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
@@ -2162,6 +2245,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   let room: string | null = null;
   let audio: string[] = [];
   let worked: WorkedDocument[] = [];
+  let keptBoards = NO_BOARDS;
   const end = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     // Upkeep decided from an earlier read; the organizer may have come back since.
@@ -2177,8 +2261,9 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     const s = row.state === 'live' ? await roomsChanged(o, c, callId, state, relocate(state, closed, Date.now(), row.mls_seq)) : closed;
     if (row.state === 'live') {
       worked = s.workspace.worked;
+      keptBoards = s.board;
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
-      await save(o, c, callId, { ...s, workspace: NO_SPACE });
+      await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       await rings.clear(o, c, row.meeting_item_id);
@@ -2225,6 +2310,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
   // Nor does anything shared with people's seats in it (maintenance sweeps up, should this be cut short).
   await endSeats(o, [callId]);
+  await boards.keepForInvited(o, callId, end.meetingId, keptBoards);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   // Deleting the room disconnects everyone in it, which is how their browsers learn the call ended: an ended call is the organizer's alone to read.
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));

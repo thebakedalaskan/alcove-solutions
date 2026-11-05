@@ -43,7 +43,7 @@ export interface Spaced extends Placing { workspace: CallSpace; removed: string[
  */
 const broughtId = (workspaceId: string, documentId: string): string => `${workspaceId}.${documentId}`;
 const BROUGHT = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{22})$/;
-const placeOfBrought = (id: string): { workspaceId: string; documentId: string } | undefined => {
+export const placeOfBrought = (id: string): { workspaceId: string; documentId: string } | undefined => {
   const [, workspaceId, documentId] = BROUGHT.exec(id) ?? [];
   return workspaceId && documentId ? { workspaceId, documentId } : undefined;
 };
@@ -83,7 +83,7 @@ export function tidied<S extends Spaced>(s: S): S {
   return { ...s, workspace: { ...w, present: w.present.filter((x) => !over(s, x)), play: w.play.filter((x) => !over(s, x)), asks: w.asks.filter((a) => !s.removed.includes(a.person)) } };
 }
 /** Who started something, by the name they came into the call with, which is how everyone there knows them. */
-const controllerOf = (v: Viewer, reader: Reader): Controller => ({ person: v.pass.person, seat: seatOfViewer(v), name: v.pass.name, email: reader.email ?? null });
+export const controllerOf = (v: Viewer, reader: Reader): Controller => ({ person: v.pass.person, seat: seatOfViewer(v), name: v.pass.name, email: reader.email ?? null });
 const whoStarted = (d: Deps, callId: string, by: Controller): Who => whoInCall(d, callId, by);
 const asSeat = (by: Controller) => ({ seat: by.seat, name: by.name });
 

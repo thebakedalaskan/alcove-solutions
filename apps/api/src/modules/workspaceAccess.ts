@@ -430,6 +430,24 @@ export async function grantDocumentToCall(d: Deps, workspace: Pick<Workspace, 'w
   await nudgeCall(d, call.callId);
 }
 
+/** Whichever of these people can't open a document, by what each of them has now. */
+export async function cantOpen<T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<T[]> {
+  const item = w.state.items[documentId];
+  if (!item) return people;
+  const holders = await holdersOf(db, w.owner.ownerId, people.flatMap((p) => p.who.principals));
+  return people.filter((p) => !roleOf(p.who, standingIn(holders, p.who), documentId, item));
+}
+
+/**
+ * A call adds to a workspace only while its organizer can edit there. It only ever takes one they could, and nobody else in
+ * the call need be in it, so it stops being theirs to add to the moment it stops being the organizer's.
+ */
+export async function requireOrganizerEdits(d: Deps, w: HeldWorkspace, db: Db, callId: string, email: string): Promise<void> {
+  const who: Who = { email, principals: [emailIndex(d, email)] };
+  const { role } = standingIn(await holdersOf(db, w.owner.ownerId, who.principals), who);
+  if (role !== 'admin' && role !== 'edit') throw new ConflictError('This call’s workspace can’t take a new board. Ask the organizer to choose another.', { context: { callId, workspaceId: w.workspaceId } });
+}
+
 /** What `ShareTarget`s from a browser mean: an address as it is, and a seat in the sharer's own call, with who's in it. */
 export async function grantsFor(reader: Reader, to: ShareTarget[], role: DocumentRole): Promise<Grant[]> {
   const asked = to.some((t) => 'seat' in t);
