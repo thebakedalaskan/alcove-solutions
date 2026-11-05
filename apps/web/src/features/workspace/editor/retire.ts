@@ -11,6 +11,9 @@ interface TextPart { insert?: unknown; attributes?: Record<string, unknown> }
 
 const partsOf = (text: Y.XmlText): TextPart[] => text.toDelta();
 
+/** Every client this browser has written as since it opened the document: the session moves to a new one after a refusal, and Yjs does if two collide. */
+export type Clients = ReadonlySet<number>;
+
 /** A stretch of text, by who wrote it, how far into the words read it starts, and how far into its block. */
 interface Run { client: number; clock: number; length: number; at: number; place: number }
 
@@ -58,7 +61,7 @@ export interface StrayWords { element: Y.XmlElement; target: string; parts: { in
  * change deleted can still be read until it ends. Null if anyone else's words are in there too, or if it isn't a plain run
  * of text: then the block stays on the page as it is, which is always safe.
  */
-export function strayWords(element: Y.XmlElement, into: Y.XmlElement | undefined, tr: Y.Transaction, client: number): StrayWords | null {
+export function strayWords(element: Y.XmlElement, into: Y.XmlElement | undefined, tr: Y.Transaction, mine: Clients): StrayWords | null {
   const target: unknown = element.getAttribute('gone');
   if (typeof target !== 'string' || target === '') return null;
   const parts: StrayWords['parts'] = [];
@@ -69,8 +72,8 @@ export function strayWords(element: Y.XmlElement, into: Y.XmlElement | undefined
     for (let item = child._start; item !== null; item = item.right) {
       if (!(item.content instanceof Y.ContentString)) continue;
       if (!item.deleted) {
-        if (item.id.client !== client) return null;
-        runs.push({ client, clock: item.id.clock, length: item.length, at: words.length, place: 0 });
+        if (!mine.has(item.id.client)) return null;
+        runs.push({ client: item.id.client, clock: item.id.clock, length: item.length, at: words.length, place: 0 });
         words += item.content.str;
       } else if (Y.isDeleted(tr.deleteSet, item.id)) {
         if (words) after += item.content.str;
@@ -112,12 +115,13 @@ function addTo(set: DeleteSet, client: number, clock: number, len: number): void
 }
 
 /** Tells undo where words went: every step that remembers typing what `was` says now also remembers what `now` says, from `base` on. */
-function rewire(manager: Y.UndoManager, was: readonly Run[], now: readonly Run[], base: number, client: number): void {
+function rewire(manager: Y.UndoManager, was: readonly Run[], now: readonly Run[], base: number, mine: Clients): void {
   for (const step of manager.undoStack) {
-    for (const typed of [...(step.insertions.clients.get(client) ?? [])]) {
-      for (const run of was) {
+    for (const run of was) {
+      if (!mine.has(run.client)) continue;
+      for (const typed of [...(step.insertions.clients.get(run.client) ?? [])]) {
         const start = Math.max(typed.clock, run.clock), end = Math.min(typed.clock + typed.len, run.clock + run.length);
-        if (run.client !== client || start >= end) continue;
+        if (start >= end) continue;
         const first = base + run.at + start - run.clock, last = first + end - start;
         for (const there of now) {
           const from = Math.max(first, there.at), to = Math.min(last, there.at + there.length);
@@ -133,14 +137,14 @@ function rewire(manager: Y.UndoManager, was: readonly Run[], now: readonly Run[]
  * remembers the words it typed, which have just gone, so it would skip them and take back something older instead. This
  * tells it where those words are now. Read from the change that did it (`tr`), while what it deleted can still be read.
  */
-export function followUndo(manager: Y.UndoManager, element: Y.XmlElement, into: Y.XmlElement, tr: Y.Transaction, client: number): void {
+export function followUndo(manager: Y.UndoManager, element: Y.XmlElement, into: Y.XmlElement, tr: Y.Transaction, mine: Clients): void {
   const holder = textHolder(into);
   if (!holder) return;
   const was = runsOf(element, (item) => item.deleted && Y.isDeleted(tr.deleteSet, item.id));
   const now = runsOf(holder, (item) => !item.deleted && writtenIn(tr, item));
   const base = now.text.indexOf(was.text);
   if (base < 0 || was.text === '') return;
-  rewire(manager, was.runs, now.runs, base, client);
+  rewire(manager, was.runs, now.runs, base, mine);
   /* A block that a step here brought to the page goes with that step wherever it's been moved: taking its ID leaves it to `settleUndone`. */
   const made = element._item?.id, name = into._map.get('id');
   if (!made || !name || !into._item || !writtenIn(tr, into._item)) return;
@@ -152,7 +156,7 @@ export function followUndo(manager: Y.UndoManager, element: Y.XmlElement, into: 
  * exactly one place. It only ever writes text into something that holds text. If there's nowhere for them it does nothing,
  * and the words stay on the page where they are. Undo follows them there. Returns how far into the block they end, for the caret.
  */
-export function gatherWords(stray: StrayWords, into: Y.XmlElement, undo: Y.UndoManager | undefined): number | null {
+export function gatherWords(stray: StrayWords, into: Y.XmlElement, undo: Y.UndoManager | undefined, mine: Clients): number | null {
   const holder = textHolder(into);
   const doc = holder?.doc;
   if (!holder || !doc) return null;
@@ -175,7 +179,7 @@ export function gatherWords(stray: StrayWords, into: Y.XmlElement, undo: Y.UndoM
     text.insert(end, part.insert, part.attributes);
     end += part.insert.length;
   }
-  if (undo) rewire(undo, stray.runs, runsOf(holder, (item) => item.id.client === doc.clientID && item.id.clock >= first).runs, 0, doc.clientID);
+  if (undo) rewire(undo, stray.runs, runsOf(holder, (item) => item.id.client === doc.clientID && item.id.clock >= first).runs, 0, mine);
   empty(stray.element, stray.seen);
   return at + end - left;
 }

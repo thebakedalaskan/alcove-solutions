@@ -369,6 +369,7 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       const sync = syncOf(view.state);
       if (!sync) return {};
       const { doc, binding, type: fragment } = sync;
+      const mine = new Set([doc.clientID]);
 
       /* Writing here, after the fact, can wait until the change that needs it is over: y-prosemirror keeps track of the selection between them. */
       const tidy = ({ strays, arrived, unnamed, redone, cuts }: Tidying) => {
@@ -384,7 +385,7 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
               for (const copy of copies) settleCopies(copy.element, copy.keeper, copy.id, newBlockId());
               for (const stray of strays) {
                 const into = elementOf(fragment, stray.target);
-                const offset = into ? gatherWords(stray, into.element, undo) : null;
+                const offset = into ? gatherWords(stray, into.element, undo, mine) : null;
                 if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
               }
               for (const element of unnamed) settleUndone(element);
@@ -410,6 +411,7 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       };
 
       const after = (tr: Y.Transaction) => {
+        if (tr.local) mine.add(doc.clientID);
         const undone = tr.origin instanceof Y.UndoManager;
         if (rt.readOnly || rt.halted || (tr.local && !undone)) return;
         const strays: StrayWords[] = [];
@@ -433,11 +435,11 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
           const gone: unknown = type.getAttribute('gone');
           if (typeof gone !== 'string' || gone === '') return;
           const into = elementOf(fragment, gone)?.element;
-          const stray = strayWords(type, into, tr, doc.clientID);
+          const stray = strayWords(type, into, tr, mine);
           if (stray) strays.push(stray);
           const undo: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
           if (!tr.local && into) {
-            if (undo) followUndo(undo, type, into, tr, doc.clientID);
+            if (undo) followUndo(undo, type, into, tr, mine);
             if (into.nodeName === type.nodeName) arrived.push(gone);
           }
         });
