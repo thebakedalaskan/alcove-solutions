@@ -3,7 +3,8 @@
  * More's items come from outside the board, so they run what the surface was given.
  */
 import { BoardFlyout } from '@alcove/ui';
-import { useBoardState, type Board, type BoardState } from '../useBoard';
+import type { BoardState } from '../state';
+import { useBoardState, type Board } from '../useBoard';
 
 export function Flyouts({ board }: { board: Board }) {
   const fly = useBoardState(board, (s) => s.fly);

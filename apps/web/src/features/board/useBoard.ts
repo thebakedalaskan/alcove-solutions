@@ -9,104 +9,20 @@
 import type { LiveStore } from '@alcove/api';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, contains, duplicateObjects, frameAt, hasBox, isAttached, makeHistory, objectText, observeBoard, readBoard, removeObjects,
-  type BoardHistory, type BoardObject, type BoardView, type Box, type Camera, type LineStyle, type NewObject, type Pad, type ShapeKind, type StepResult, type StickyColour
+  type BoardHistory, type BoardObject, type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
-import type { BoardMoreItem, BoardPenKind, BoardTool } from '@alcove/ui';
+import type { BoardMoreItem, BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
 import type * as Y from 'yjs';
 import { typing } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, holdKeys, nextSpot, textField } from './editing';
-import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds, type Guide } from './selection';
-import type { BoardDraft } from './tools/draft';
+import { BoardOverlay } from './overlay';
+import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds } from './selection';
+import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardState } from './state';
 
 const log = rootLog.child({ component: 'board' });
-
-export type BoardMode = 'call' | 'page' | 'tile' | 'present' | 'phone' | 'read';
-
-/** What each mode has. */
-export interface BoardLook {
-  /** The bar along the top of the sheet. */
-  bar: boolean;
-  /** The tools beside it. */
-  rail: boolean;
-  /** Whether anything can be changed. Without it, a drag moves the board around. */
-  edit: boolean;
-  /** No dots on the sheet. */
-  clean: boolean;
-  page: boolean;
-  phone: boolean;
-  /** A picture of the board: it can't be pressed, and always shows all of it. */
-  mini: boolean;
-}
-
-const LOOK: BoardLook = { bar: true, rail: true, edit: true, clean: false, page: false, phone: false, mini: false };
-const BARE: BoardLook = { ...LOOK, bar: false, rail: false, edit: false, clean: true };
-
-export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
-  call: LOOK,
-  page: { ...LOOK, page: true },
-  read: { ...LOOK, rail: false, edit: false },
-  present: BARE,
-  tile: { ...BARE, mini: true },
-  phone: { ...BARE, page: true, phone: true }
-};
-
-/** What can open beside the rail: a tool's options, or More's. */
-export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more';
-
-/** What More's items do. Each comes from outside the board, and one that isn't given does nothing. */
-export type BoardMoreItems = Partial<Record<BoardMoreItem, (() => void) | undefined>>;
-
-export interface BoardState {
-  view: BoardView;
-  tool: BoardTool;
-  /** The colour picked on the sticky tool, which a sticky takes where no frame says otherwise. */
-  colour: StickyColour;
-  /** What the Shape tool draws, how the Line tool runs, and what the Pen tool is holding. */
-  shape: ShapeKind;
-  line: LineStyle;
-  pen: BoardPenKind;
-  /** What's open beside the rail. */
-  fly: BoardFly | null;
-  sel: readonly string[];
-  /** What's being typed in. */
-  edit: string | null;
-  /** The row of colours under the selection bar is open. */
-  picking: boolean;
-  /** The selection bar's More is open. */
-  menu: boolean;
-  /** What the pointer is near, whose dots are showing. */
-  hover: string | null;
-  /** What's being drawn, which only this person sees until it's let go. */
-  draft: BoardDraft | null;
-  /** The object a line waits to go from, after Draw a line from this. */
-  lineFrom: string | null;
-  /** A press is held, so the selection bar keeps out of the way. */
-  pressing: boolean;
-  /** The map is open. */
-  map: boolean;
-  /** The box being dragged out, in board units. */
-  marquee: Box | null;
-  guides: readonly Guide[];
-  /** Space is held, so a press drags the board. */
-  space: boolean;
-  /** The board is being dragged around. */
-  panning: boolean;
-  /** The camera is easing to where it was last put. */
-  glide: boolean;
-  /** Objects travelling to new places together, as they do after an undo. */
-  settling: ReadonlySet<string>;
-  /** Objects that have just landed, which pop in. */
-  landed: ReadonlySet<string>;
-  /** Past 500 objects, the part of the board that's mounted, in board units. */
-  near: Box | null;
-  /** Whose view this is, if it isn't your own. */
-  following: string | null;
-  canUndo: boolean;
-  canRedo: boolean;
-}
 
 const NOTHING: ReadonlySet<string> = new Set();
 /** Whatever is open or under way over the sheet, closed. */
@@ -138,6 +54,10 @@ export class Board implements LiveStore<BoardState> {
   /** This surface's own, so undo takes back what was done here and nothing else. */
   readonly origin = {};
   readonly camera = new BoardCameraStore();
+  /** What this person sees ahead of the doc. */
+  readonly overlay = new BoardOverlay(() => this.showOverlay());
+  /** The doc as last read, which is what writes go by. `view` is what's shown, and can be ahead of it. */
+  written: BoardView;
   mode: BoardMode;
   /** Says something to the person at this board. */
   tell: (text: string) => void = () => undefined;
@@ -173,8 +93,9 @@ export class Board implements LiveStore<BoardState> {
   constructor(doc: Y.Doc, mode: BoardMode) {
     this.doc = doc;
     this.mode = mode;
+    this.written = readBoard(doc);
     this.state = {
-      view: readBoard(doc), tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, picking: false, menu: false, hover: null,
+      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, picking: false, menu: false, hover: null,
       draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING,
       near: null, following: null, canUndo: false, canRedo: false
     };
@@ -220,6 +141,7 @@ export class Board implements LiveStore<BoardState> {
       stopNear();
       stopDoc();
       stopCamera();
+      this.overlay.stop();
       history.destroy();
       this.history = null;
       this.sheet = null;
@@ -258,16 +180,34 @@ export class Board implements LiveStore<BoardState> {
   /* ---------- reading the doc ---------- */
 
   private changed = (): void => {
-    this.frame ||= requestAnimationFrame(this.read);
+    this.frame ||= requestAnimationFrame(this.heard);
   };
 
-  /** Reads the board now. Writes in a gesture call this, so a drag draws in the frame it was written. */
-  read = (): void => {
+  /** What arrives on its own is someone else's, and what they moved travels. This person's own changes are read at once. */
+  private heard = (): void => this.read(true);
+
+  private showOverlay(): void {
+    const view = this.overlay.over(this.written);
+    if (view !== this.state.view) this.set({ view });
+  }
+
+  /** Lets go of what the pointer was carrying: its last place goes to the doc, and the doc is what shows from here. */
+  land(): void {
+    this.overlay.land();
+    this.read();
+    this.showOverlay();
+  }
+
+  /** Reads the board now. Writes in a gesture call this, so what they did is drawn in the frame it was written. */
+  read = (heard = false): void => {
     if (this.frame) cancelAnimationFrame(this.frame);
     this.frame = 0;
+    const before = this.written;
+    this.written = readBoard(this.doc, before);
+    if (this.written === before) return;
+    if (heard && !this.look.mini) this.overlay.heard(before, this.written);
     const { view: was, sel, edit, landed } = this.state;
-    const view = readBoard(this.doc, was);
-    if (view === was) return;
+    const view = this.overlay.over(this.written);
     const patch: Partial<BoardState> = { view };
     if (sel.some((id) => !view.byId.has(id))) patch.sel = sel.filter((id) => view.byId.has(id));
     const arrived = view.objects.length > was.objects.length ? view.objects.filter((o) => !was.byId.has(o.id)) : [];
@@ -474,11 +414,11 @@ export class Board implements LiveStore<BoardState> {
 
   /** Stops typing. A sticky made for this and left blank goes again, leaving nothing to undo, unless something hangs off it by then: taking that too couldn't be undone. */
   finishEdit(): void {
-    const { edit, view } = this.state;
+    const { edit } = this.state;
     if (!edit) return;
     this.flushTyping?.();
     const text = objectText(this.doc, edit);
-    const blank = this.fresh === edit && text !== null && !text.toString().trim() && !hangsOff(readBoard(this.doc, view), this.doc.getMap<unknown>(BOARD_COMMENTS), edit, this.freshLine);
+    const blank = this.fresh === edit && text !== null && !text.toString().trim() && !hangsOff(readBoard(this.doc, this.written), this.doc.getMap<unknown>(BOARD_COMMENTS), edit, this.freshLine);
     this.fresh = null;
     this.freshLine = null;
     if (blank) removeObjects(this.doc, [edit], this.origin);

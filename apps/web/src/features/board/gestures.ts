@@ -8,12 +8,13 @@
  * Everything else, which is two fingers on a trackpad and a mouse wheel alone, moves the board. Safari reports a pinch as
  * gesture events of its own instead, and touch screens as two pointers.
  */
-import { BOARD_LIMITS, bounds, hasBox, moveObjects, resizeObject, type PlacedObject } from '@alcove/board';
+import { BOARD_LIMITS, bounds, hasBox, type PlacedObject } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { log as rootLog } from '~/lib/log';
 import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
 import { keyDown, keyUp } from './keys';
+import { dragTo, stretchTo } from './overlay';
 import { CLICK_SLOP, NO_GUIDES, OVER_THE_SHEET, boxBetween, carried, drawn, movable, picks, pressed, snapTargets, snapTo } from './selection';
 import { framePress, settleFrame } from './tools/frame';
 import { dotPress, hoverAt, linePress } from './tools/line';
@@ -120,7 +121,9 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
   let moved = false;
   const stop = (): void => {
     board.set({ guides: NO_GUIDES });
-    if (moved) board.endStep();
+    if (!moved) return;
+    board.land();
+    board.endStep();
   };
   return {
     move(at) {
@@ -130,8 +133,7 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
       if (!moved) board.beginStep();
       moved = true;
       const { dx, dy, guides } = snapTo({ ...box, x: box.x + mx, y: box.y + my }, targets, SNAP_REACH / z);
-      moveObjects(board.doc, objects.map((o) => ({ id: o.id, x: o.x + mx + dx, y: o.y + my + dy })), board.origin);
-      board.read();
+      dragTo(board, objects.map((o) => ({ id: o.id, x: o.x + mx + dx, y: o.y + my + dy })));
       if (guides !== board.getSnapshot().guides) board.set({ guides });
     },
     up(_at, e) {
@@ -148,6 +150,7 @@ function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: s
   const side = (n: number, was: number): number => Math.min(BOARD_LIMITS.maxSide, Math.max(Math.min(LEAST_SIDE, was), n));
   board.beginStep();
   const stop = (): void => {
+    board.land();
     if (o.k === 'frame') settleFrame(board, o.id);
     board.endStep();
   };
@@ -156,8 +159,7 @@ function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: s
       const dx = at.x - start.x, dy = at.y - start.y;
       const w = corner.includes('e') ? side(o.w + dx, o.w) : corner.includes('w') ? side(o.w - dx, o.w) : o.w;
       const h = corner.includes('s') ? side(o.h + dy, o.h) : corner.includes('n') ? side(o.h - dy, o.h) : o.h;
-      resizeObject(board.doc, o.id, { x: corner.includes('w') ? o.x + o.w - w : o.x, y: corner.includes('n') ? o.y + o.h - h : o.y, w, h }, board.origin);
-      board.read();
+      stretchTo(board, o.id, { x: corner.includes('w') ? o.x + o.w - w : o.x, y: corner.includes('n') ? o.y + o.h - h : o.y, w, h });
     },
     up: stop,
     cancel: stop

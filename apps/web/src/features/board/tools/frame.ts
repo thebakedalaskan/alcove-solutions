@@ -19,7 +19,7 @@ export const framePress: ToolPress = (board, { at }) => drawGesture(board, at, {
 
 /** Takes in what's now inside a frame and lets go of what isn't. Moving something nowhere is how it's asked where it sits. A smaller frame inside goes on holding what it holds. */
 export function settleFrame(board: Board, id: string): void {
-  const { view } = board.getSnapshot();
+  const view = board.written;
   const frame = view.byId.get(id);
   if (frame?.k !== 'frame') return;
   const ids = view.objects.flatMap((o) => {

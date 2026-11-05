@@ -21,6 +21,12 @@ export interface Move {
   y: number;
 }
 
+/** How far something goes. */
+interface Shift {
+  dx: number;
+  dy: number;
+}
+
 /** A `setObjects` patch. Each object takes the fields it has and ignores the rest. */
 export interface ObjectPatch {
   at?: number;
@@ -223,9 +229,9 @@ function landing(o: BoardObject, frames: readonly FrameObject[], carried: Readon
   return frameFor(o, frames, new Set([o.id, ...inner]));
 }
 
-/** Moves objects, takes each frame's contents along, and settles `f` by where what was moved landed. */
-function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move[]): void {
-  const wanted = new Map<string, { dx: number; dy: number }>();
+/** How far each move goes, and how far that takes what's inside it: what a frame holds goes with it. */
+function shiftsOf(view: BoardView, moves: readonly Move[]): { wanted: Map<string, Shift>; shifts: Map<string, Shift> } {
+  const wanted = new Map<string, Shift>();
   for (const { id, x, y } of moves) {
     const from = startOf(view.byId.get(id));
     if (from && Number.isFinite(x) && Number.isFinite(y)) wanted.set(id, { dx: reach(x) - from.x, dy: reach(y) - from.y });
@@ -242,14 +248,34 @@ function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move
       waiting.push([o.id, shift]);
     }
   }
+  return { wanted, shifts };
+}
 
-  const shifted = (end: LineEnd, dx: number, dy: number): LineEnd => (isAttached(end) ? end : { x: reach(end.x + dx), y: reach(end.y + dy) });
+/** Everything these shifts move, as it would be. */
+function shifted(view: BoardView, shifts: ReadonlyMap<string, Shift>): Map<string, BoardObject> {
+  const end = (e: LineEnd, dx: number, dy: number): LineEnd => (isAttached(e) ? e : { x: reach(e.x + dx), y: reach(e.y + dy) });
   const moved = new Map<string, BoardObject>();
   for (const [id, { dx, dy }] of shifts) {
-    const o = view.byId.get(id), m = mapOf(objects.get(id));
-    if (!o || !m) continue;
-    const next = o.k === 'line' ? { ...o, from: shifted(o.from, dx, dy), to: shifted(o.to, dx, dy) } : { ...o, x: reach(o.x + dx), y: reach(o.y + dy) };
-    moved.set(id, next);
+    const o = view.byId.get(id);
+    if (o) moved.set(id, o.k === 'line' ? { ...o, from: end(o.from, dx, dy), to: end(o.to, dx, dy) } : { ...o, x: reach(o.x + dx), y: reach(o.y + dy) });
+  }
+  return moved;
+}
+
+/**
+ * What moves would make of everything they touch, what's carried included, with nothing written: the same answer
+ * `moveObjects` writes, so a surface can show a drag ahead of the doc.
+ */
+export const afterMove = (view: BoardView, moves: readonly Move[]): Map<string, BoardObject> => shifted(view, shiftsOf(view, moves).shifts);
+
+/** Moves objects, takes each frame's contents along, and settles `f` by where what was moved landed. */
+function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move[]): void {
+  const { wanted, shifts } = shiftsOf(view, moves);
+  const held = heldBy(view);
+  const moved = shifted(view, shifts);
+  for (const [id, next] of moved) {
+    const m = mapOf(objects.get(id));
+    if (!m) continue;
     if (next.k === 'line') {
       change(m, 'from', next.from);
       change(m, 'to', next.to);
@@ -278,14 +304,20 @@ export function moveObjects(doc: Y.Doc, moves: readonly Move[], origin: unknown)
   writing(doc, origin, undefined, (objects) => relocate(objects, viewOf(doc), moves));
 }
 
-/** Gives an object a new box, inside the limits. A stroke stretches with its box. */
+/** What an object would be in a new box, inside the limits, with nothing written. A stroke stretches with its box. */
+export function afterResize(o: PlacedObject, box: Box): PlacedObject {
+  const next = { x: reach(box.x), y: reach(box.y), w: side(box.w), h: side(box.h) };
+  return o.k === 'ink' ? { ...o, ...next, pts: o.pts.map((n, i) => reach(n * (i % 2 ? next.h / o.h : next.w / o.w))) } : { ...o, ...next };
+}
+
+/** Gives an object a new box. */
 export function resizeObject(doc: Y.Doc, id: string, box: Box, origin: unknown): void {
   writing(doc, origin, undefined, (objects) => {
     const o = viewOf(doc).byId.get(id), m = mapOf(objects.get(id));
-    if (!o || !m || o.k === 'line' || ![box.x, box.y, box.w, box.h].every(Number.isFinite)) return;
-    const next = { x: reach(box.x), y: reach(box.y), w: side(box.w), h: side(box.h) };
-    if (o.k === 'ink') change(m, 'pts', o.pts.map((n, i) => reach(n * (i % 2 ? next.h / o.h : next.w / o.w))));
-    for (const [key, value] of Object.entries(next)) change(m, key, value);
+    if (!o || !m || !hasBox(o) || ![box.x, box.y, box.w, box.h].every(Number.isFinite)) return;
+    const next = afterResize(o, box);
+    if (next.k === 'ink') change(m, 'pts', next.pts);
+    for (const key of ['x', 'y', 'w', 'h'] as const) change(m, key, next[key]);
   });
 }
 

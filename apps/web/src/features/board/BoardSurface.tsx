@@ -19,13 +19,14 @@ import { BoardTyping } from './editing';
 import { watchSheet } from './gestures';
 import { BoardPointers, FollowingPill, useBoardPresence, useOthersEditing, type BoardPresenceStore } from './presence';
 import { mounted, placed, selectionRing } from './selection';
+import { BOARD_LOOKS, type BoardMode, type BoardMoreItems } from './state';
 import { SelectedBar } from './tools/bar';
 import { Draft } from './tools/draft';
 import { Flyouts } from './tools/flyouts';
 import { dotsOn, lineRoute } from './tools/line';
 import { Minimap } from './tools/map';
 import { strokePath } from './tools/pen';
-import { BOARD_LOOKS, useBoard, useBoardState, type Board, type BoardMode, type BoardMoreItems } from './useBoard';
+import { useBoard, useBoardState, type Board } from './useBoard';
 
 /** Someone in the call or on the page. */
 export interface BoardPerson {
