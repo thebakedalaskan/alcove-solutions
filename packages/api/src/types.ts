@@ -50,6 +50,8 @@ export const SessionSchema = z.object({
   provider: SignInProviderSchema,
   /** A demo account, with a sample calendar and company directory instead of connected ones. */
   sample: z.boolean(),
+  /** The one demo account everyone who tries Alcove signs in to, which can't be deleted. */
+  sharedDemo: z.boolean(),
   createdAt: ISODateSchema,
   /** The session ends at this time at the latest. */
   expiresAt: ISODateSchema
