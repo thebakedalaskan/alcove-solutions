@@ -3,14 +3,14 @@
  * They're offered wherever the words may not get there by themselves: a document that refused them, or one that can't be
  * opened any more, including one that's left the list while this device still holds something written in it.
  */
-import { errorMessage } from '@alcove/api';
+import { errorMessage, type DocSession } from '@alcove/api';
 import { WsCantOpen, WsDiscardAsk, WsRescue, wsToast, type WsToastData } from '@alcove/ui';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { useSaveCopy } from '~/lib/queries';
 import { keptDocuments } from './keep';
-import { openDocument, type DocSession } from './session';
+import { openDocument } from './session';
 
 const rlog = log.child({ component: 'workspace-rescue' });
 
@@ -34,11 +34,11 @@ export function Rescue({ session, say, copyTo, onLetGo }: {
   const saveAsNew = copyTo && (() => {
     const { workspaceId, parent, go } = copyTo;
     void (async () => {
-      const { retitled, titleIn } = await import('./editor/title');
+      const { titleIn } = await import('./editor/title');
       const { state } = session.localCopy();
       const name = `${copyTo.name() ?? (titleIn(state) || 'Untitled')} copy`;
-      const { id } = await save.mutateAsync({ workspaceId, input: { kind: 'document', name, parent, state: retitled(state, name) } });
-      // It's all in the copy now, which Alcove has: this document carries on from what Alcove has of it.
+      const { id } = await save.mutateAsync({ workspaceId, input: { kind: 'document', name, parent, state } });
+      // Its title is what the list calls it. It's all in the copy now, which Alcove has: this document carries on from what Alcove has of it.
       await session.discardUnsaved();
       rlog.info('saved unsent words as a new document', { workspaceId, copy: id });
       say(wsToast.savedAsNew(name));

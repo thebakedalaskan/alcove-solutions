@@ -582,8 +582,7 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
 export function useSaveCopy() {
   const qc = useQueryClient();
   return useMutation({
-    // SEAM: `api.workspaces.saveCopy` once feat/ws-docs-2 is on main (features/workspace/session.ts).
-    mutationFn: async (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => (await import('~/features/workspace/saveCopy')).saveCopy(v.workspaceId, v.input),
+    mutationFn: (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => api.workspaces.saveCopy(v.workspaceId, v.input),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
   });
 }
