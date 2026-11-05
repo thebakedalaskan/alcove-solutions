@@ -741,8 +741,8 @@ describe('calls with notes', () => {
     expect(note.audio.map((a) => [a.index, a.pieces])).toEqual([[0, 2], [1, 1]]);
 
     // The decrypted segment is exactly the concatenation of what was recorded, and only for this account.
-    expect((await h.browser().fetch(api.notes.audioUrl(noteId, 0))).status).toBe(401);
-    const mine = await own(api.notes.audioUrl(noteId, 0));
+    expect((await h.browser().fetch(api.notes.audioUrl(noteId, 0, 2))).status).toBe(401);
+    const mine = await own(api.notes.audioUrl(noteId, 0, 2));
     expect(Buffer.from(await mine.arrayBuffer()).equals(Buffer.concat(seg0))).toBe(true);
 
     expect((await api.meetings.past())[0]).toMatchObject({ status: 'ended', noteId });
@@ -772,9 +772,169 @@ describe('calls with notes', () => {
     await first.leave();
     await written(api, noteId);
     expect((await api.notes.get(noteId)).audio.map((a) => [a.index, a.pieces, a.seconds])).toEqual([[0, 3, 15], [1, 3, 15]]);
-    const audio = async (segment: number) => Buffer.from(await (await own(api.notes.audioUrl(noteId, segment))).arrayBuffer());
+    const audio = async (segment: number) => Buffer.from(await (await own(api.notes.audioUrl(noteId, segment, 3))).arrayBuffer());
     expect((await audio(0)).equals(Buffer.concat(before))).toBe(true);
     expect((await audio(1)).equals(Buffer.concat(after))).toBe(true);
+  });
+
+  describe('reading a recording', () => {
+    const bytes = async (r: Response) => Buffer.from(await r.arrayBuffer());
+    /** Enough pieces to read ahead of, of every length a sealed piece's base64 can end on, in a recording that's going on. */
+    async function going(count = 30) {
+      const who = await account();
+      const rec = await who.api.recordings.start({ title: 'Long read' });
+      const pieces = Array.from({ length: count }, (_, i) => audioBytes('x'.repeat(i + 1)));
+      for (const [seq, b] of pieces.entries()) await rec.appendAudio(piece(b, 0, seq));
+      const noteId = rec.getSnapshot().noteId ?? '';
+      const ask = (range?: string | undefined, pinned = count, init: RequestInit = {}) => who.fetch(who.api.notes.audioUrl(noteId, 0, pinned), { ...init, ...(range ? { headers: { range } } : {}) });
+      return { ...who, rec, pieces, whole: Buffer.concat(pieces), noteId, ask };
+    }
+    const object = async (noteId: string, seq: number) => (await h.pool.query<{ object_id: string }>('SELECT p.object_id FROM recording_pieces p JOIN recordings r USING (owner_id, recording_id) WHERE r.note_item_id = $1 AND p.seq = $2', [noteId, seq])).rows[0]?.object_id ?? '';
+
+    it('goes to any byte of it, and whole it has no length to keep to', async () => {
+      const { rec, whole, pieces, noteId, ask, api, fetch: own } = await going();
+      const size = whole.length;
+      await rec.stop();
+      await written(api, noteId);
+
+      const plain = await ask();
+      expect(plain.status).toBe(200);
+      expect(plain.headers.get('accept-ranges')).toBe('bytes');
+      expect(plain.headers.get('content-length')).toBeNull();
+      expect((await bytes(plain)).equals(whole)).toBe(true);
+      const blob = await api.notes.audio(noteId, 0, 30);
+      expect(Buffer.from(await blob.arrayBuffer()).equals(whole)).toBe(true);
+
+      // The browsers' first asks, a stretch across two pieces, what starts at a piece's edge, the last bytes, and past the end.
+      const edge = pieces[0]?.length ?? 0;
+      const ranges: [string, number, number][] = [
+        ['bytes=0-1', 0, 1], ['bytes=0-', 0, size - 1], [`bytes=${edge - 3}-${edge + 3}`, edge - 3, edge + 3], [`bytes=${edge}-${edge}`, edge, edge],
+        [`bytes=${edge}-`, edge, size - 1], ['bytes=-5', size - 5, size - 1], [`bytes=-${size + 9}`, 0, size - 1], [`bytes=${size - 1}-${size + 99}`, size - 1, size - 1]
+      ];
+      for (const [range, from, to] of ranges) {
+        const r = await ask(range);
+        expect(r.status).toBe(206);
+        expect(r.headers.get('content-range')).toBe(`bytes ${from}-${to}/${size}`);
+        expect(r.headers.get('content-length')).toBe(String(to - from + 1));
+        expect((await bytes(r)).equals(whole.subarray(from, to + 1))).toBe(true);
+      }
+      const past = await ask(`bytes=${size}-`);
+      expect(past.status).toBe(416);
+      expect(past.headers.get('content-range')).toBe(`bytes */${size}`);
+      // What it doesn't take gets the whole file, as a server that ignored the header would send.
+      for (const range of ['bytes=0-1,4-5', 'bytes=9-2', 'seconds=0-1']) expect((await bytes(await ask(range))).length).toBe(size);
+      // A URL says how much of the recording it means.
+      expect((await own(`${h.baseUrl}/v1/notes/${noteId}/audio/0`)).status).toBe(400);
+      expect((await ask(undefined, 0)).status).toBe(400);
+    });
+
+    it('a URL stays the same file while the recording goes on, and a newer length is a new URL', async () => {
+      const { rec, pieces, whole, noteId, ask, api } = await going(20);
+      // What's there so far plays while it's still going, and a browser holds a URL to the length it first said.
+      expect((await api.notes.get(noteId)).audio.map((a) => a.pieces)).toEqual([20]);
+      const size = whole.length;
+      const first = await ask('bytes=0-1', 20);
+      expect(first.headers.get('content-range')).toBe(`bytes 0-1/${size}`);
+      const later = Array.from({ length: 10 }, (_, i) => audioBytes(`later-${i}`));
+      for (const [i, b] of later.entries()) await rec.appendAudio(piece(b, 0, pieces.length + i));
+      const longer = Buffer.concat([whole, ...later]);
+
+      // The same URL, after more was recorded: as a browser asks again after a pause, a dropped connection or Cloud Run's cut.
+      const again = await ask(`bytes=${size - 5}-`, 20);
+      expect(again.status).toBe(206);
+      expect(again.headers.get('content-range')).toBe(`bytes ${size - 5}-${size - 1}/${size}`);
+      expect((await bytes(again)).equals(whole.subarray(size - 5))).toBe(true);
+      expect((await ask(`bytes=${size}-`, 20)).status).toBe(416);
+      expect((await bytes(await ask(undefined, 20))).equals(whole)).toBe(true);
+
+      // The note says how much there is now, and that's a new URL, with all of it.
+      expect((await api.notes.get(noteId)).audio.map((a) => a.pieces)).toEqual([30]);
+      const now = await ask('bytes=0-', 30);
+      expect(now.headers.get('content-range')).toBe(`bytes 0-${longer.length - 1}/${longer.length}`);
+      expect((await bytes(now)).equals(longer)).toBe(true);
+      // Asking for more than there is gets what there is, and it stays the same file once the recording has stopped.
+      await rec.stop();
+      await written(api, noteId);
+      expect((await bytes(await ask(undefined, 99))).equals(longer)).toBe(true);
+      expect((await bytes(await ask('bytes=0-', 20))).equals(whole)).toBe(true);
+    });
+
+    it('someone who only asks about it, or leaves, costs nothing and is no failure', async () => {
+      const { rec, whole, noteId, ask, api } = await going();
+      await rec.stop();
+      await written(api, noteId);
+      // HEAD says how long it is and reads nothing: it works even with the first piece gone.
+      await h.objects.delete(await object(noteId, 0));
+      expect((await ask(undefined, 30)).status).toBe(500);
+      const head = await ask(undefined, 30, { method: 'HEAD' });
+      expect(head.status).toBe(200);
+      expect(head.headers.get('accept-ranges')).toBe('bytes');
+      expect(head.headers.get('content-length')).toBe(String(whole.length));
+
+      // Someone leaving partway through is ordinary: nothing failed. From the second piece on, it's all still there.
+      const logged = h.logs.length;
+      const leaving = new AbortController();
+      const reply = await ask(`bytes=${whole.length - 8000}-`, 30, { signal: leaving.signal });
+      expect(reply.status).toBe(206);
+      await reply.body?.getReader().read();
+      leaving.abort();
+      await new Promise((r) => setTimeout(r, 200));
+      expect(h.logs.slice(logged).join('')).not.toContain('audio stopped partway through');
+    });
+
+    it('what can’t be read fails where it can be seen, and never passes for the end', async () => {
+      const { rec, pieces, whole, noteId, ask, api } = await going();
+      await rec.stop();
+      await written(api, noteId);
+      const start = (seq: number) => Buffer.concat(pieces.slice(0, seq)).length;
+      const reading = async (r: Response) => {
+        const arrived: Uint8Array[] = [];
+        const reader = r.body?.getReader();
+        await expect((async () => { for (let c = await reader?.read(); c && !c.done; c = await reader?.read()) arrived.push(c.value); })()).rejects.toThrow();
+        return Buffer.concat(arrived);
+      };
+
+      // A piece the store has lost: the reply breaks there, and what did arrive is only the recording, not even word of what went wrong.
+      await h.objects.delete(await object(noteId, 20));
+      const logged = h.logs.length;
+      const broken = await ask();
+      expect(broken.status).toBe(200);
+      const arrived = await reading(broken);
+      expect(arrived.length).toBeLessThanOrEqual(start(20));
+      expect(whole.subarray(0, arrived.length).equals(arrived)).toBe(true);
+      // And the failure can be found by the request it broke.
+      await expect.poll(() => h.logs.slice(logged).find((l) => l.includes('audio stopped partway through')) ?? '').toContain(broken.headers.get('x-request-id') ?? 'no id');
+      // It can't be asked for from there either, and before it the recording still plays.
+      expect((await ask(`bytes=${start(20)}-`)).status).toBe(500);
+      expect((await bytes(await ask(`bytes=0-${start(20) - 1}`))).equals(whole.subarray(0, start(20)))).toBe(true);
+
+      // The second piece of a reply going wrong at once is still a break, not an early, clean end.
+      await h.objects.delete(await object(noteId, 11));
+      const early = await ask(`bytes=${start(10)}-${start(20) - 1}`);
+      expect(early.status).toBe(206);
+      const broke = Date.now();
+      await reading(early);
+      expect(Date.now() - broke).toBeLessThan(2000);
+
+      // A piece that's been changed fails its check, at the start of a reply as anywhere.
+      const changed = await object(noteId, 5);
+      const stored = await h.objects.get(changed);
+      const flipped = Uint8Array.from(stored);
+      flipped[flipped.length - 20] = (flipped[flipped.length - 20] ?? 0) ^ 1;
+      await h.objects.put(changed, flipped);
+      const refused = await ask(`bytes=${start(5)}-${start(6) - 1}`);
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({ code: 'key-unavailable' });
+      await h.objects.put(changed, stored);
+      expect((await bytes(await ask(`bytes=${start(5)}-${start(6) - 1}`))).equals(whole.subarray(start(5), start(6)))).toBe(true);
+
+      // A piece stored at a length it isn't: the same.
+      const wrong = await object(noteId, 7);
+      await h.pool.query('UPDATE recording_pieces SET cipher_bytes = cipher_bytes + 4 WHERE object_id = $1', [wrong]);
+      const short = await ask(`bytes=${start(7)}-${start(7) + 1}`);
+      expect(short.status).toBe(403);
+      expect(await short.json()).toMatchObject({ code: 'key-unavailable' });
+    });
   });
 
   it('joins a call without notes and leaves no note behind', async () => {
@@ -808,7 +968,7 @@ describe('calls with notes', () => {
     expect((await resend('0')).status).toBe(404);
     expect((await resend('7')).status).toBe(404);
     expect(code(await b.api.notes.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
-    expect((await b.fetch(a.api.notes.audioUrl(state.noteId, 0))).status).toBe(404);
+    expect((await b.fetch(a.api.notes.audioUrl(state.noteId, 0, 1))).status).toBe(404);
     const steal = await b.fetch(`${h.baseUrl}/v1/recordings/${state.id}/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(steal.status).toBe(404);
     expect(code(await b.api.meetings.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
@@ -2073,7 +2233,8 @@ describe('who has the notes', () => {
     const guestEmail = unique('guest');
     const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] });
     const call = await org.api.calls.join(c, { mic: true, cam: false });
-    await call.appendAudio(piece(audioBytes('shared-audio'), 0, 0));
+    const recorded = audioBytes('shared-audio');
+    await call.appendAudio(piece(recorded, 0, 0));
     const noteId = call.getSnapshot().notes.noteId ?? '';
     expect(code(await org.api.notes.share(noteId, { emails: [unique()] }).catch((e: unknown) => e))).toBe('invalid');
 
@@ -2087,7 +2248,10 @@ describe('who has the notes', () => {
     expect((await guest.api.notes.list()).find((n) => n.id === noteId)).toMatchObject({ received: { role: 'invited', by: { id: org.session.ownerId } } });
     const note = await guest.api.notes.get(noteId);
     expect(note.recipients.map((r) => [r.person.email, r.role])).toEqual([[org.session.user.email, 'organizer'], [guestEmail, 'invited']]);
-    expect((await guest.fetch(guest.api.notes.audioUrl(noteId, 0))).status).toBe(200);
+    // Everyone who has the notes hears it the way the browser's player asks for it, to the byte.
+    const heard = await guest.fetch(guest.api.notes.audioUrl(noteId, 0, 1), { headers: { range: 'bytes=3-' } });
+    expect(heard.status).toBe(206);
+    expect(Buffer.from(await heard.arrayBuffer()).equals(Buffer.from(recorded).subarray(3))).toBe(true);
 
     // Anyone with the notes can share them on; people who already have them aren't added twice.
     const laterEmail = unique('later');
@@ -2100,7 +2264,7 @@ describe('who has the notes', () => {
     // Someone who was never given them can't reach them.
     const stranger = await account();
     expect(code(await stranger.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
-    expect((await stranger.fetch(stranger.api.notes.audioUrl(noteId, 0))).status).toBe(404);
+    expect((await stranger.fetch(stranger.api.notes.audioUrl(noteId, 0, 1))).status).toBe(404);
 
     // Removing someone else's note only takes it out of your own notes, and out of what your searches find...
     const search = { text: note.title };
@@ -2406,7 +2570,7 @@ describe('room recordings', () => {
     expect(note.audio).toEqual([expect.objectContaining({ index: 0, pieces: 3, seconds: 15 })]);
     expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to start with the roof.'], [9, 'Ben brings the ladder.']]);
     expect(transcribed() - heardBefore).toBe(2);
-    const audio = Buffer.from(await (await own(api.notes.audioUrl(pendingNoteId, 0))).arrayBuffer());
+    const audio = Buffer.from(await (await own(api.notes.audioUrl(pendingNoteId, 0, 3))).arrayBuffer());
     expect(audio.equals(Buffer.concat(takes))).toBe(true);
     // The account's stored bytes count each piece once, the resends after stopping included.
     const kept = (await h.pool.query<{ pieces: number; bytes: string; stored: string }>(

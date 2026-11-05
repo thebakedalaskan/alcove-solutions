@@ -3,7 +3,7 @@
  * show it. Asking about a note or a series (the ask bar) and asking every note (the palette) all use these.
  */
 import { errorMessage, type AnswerPart, type SeriesAnswerPart } from '@alcove/api';
-import { Dots, Icon, Words, cn, useToast } from '@alcove/ui';
+import { Dots, Icon, IconButton, Words, cn, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
@@ -50,13 +50,14 @@ export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | 
 /**
  * An answer as it arrives: the question, then the words (written in once it's finished), then
  * `children`, which say where it comes from. Until the first words arrive it shows `waiting`, if given.
+ * With `onClose`, it can be put away.
  */
-export function AnswerView({ answer, waiting, className, children }: {
-  answer: Answer; waiting?: string | undefined; className?: string | undefined; children?: ReactNode;
+export function AnswerView({ answer, waiting, onClose, className, children }: {
+  answer: Answer; waiting?: string | undefined; onClose?: (() => void) | undefined; className?: string | undefined; children?: ReactNode;
 }) {
   return (
     <div className={cn('answer', className)} aria-live="polite" aria-busy={!answer.done}>
-      <div className="q"><Icon name="ask" size={15} /><span>{answer.q}</span></div>
+      <div className="q"><Icon name="ask" size={15} /><span>{answer.q}</span>{onClose && <IconButton icon="x" label="Close" size={15} onClick={onClose} />}</div>
       <p>{answer.done ? <Words text={answer.text} /> : answer.text || <span className="wait">{waiting}<Dots /></span>}</p>
       {children}
     </div>

@@ -5,11 +5,12 @@
  * alone, and what was said there. Everyone with the call's notes reads every room's section.
  */
 import { minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type NoteReader, type NoteRoom, type Person, type Question, type QuestionPatch } from '@alcove/api';
-import { Faces, Fold, Notice } from '@alcove/ui';
+import { Faces, Fold, Notice, UnsureKey, cn } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { listNames } from '~/lib/people';
 import type { Correcting, FromLine, LineMarks } from './lines';
-import { Decisions, FollowUps, Questions, Section, TranscriptLines, roomAnchor } from './parts';
+import { Section, TranscriptLines, roomAnchor } from './parts';
+import { Decisions, FollowUps, Questions } from './rows';
 
 /** What someone who has the notes does with a room's decisions, questions and follow-ups, as with the call's. */
 export interface Settling {
@@ -38,8 +39,7 @@ export function RoomSections({ rooms, me, writing, correct, fromLine, settle, tr
   open?: string | undefined; at?: number | undefined;
 }) {
   return (
-    <Section title="Breakout rooms" count={`${rooms.length} ${rooms.length === 1 ? 'room' : 'rooms'}`} className="rooms-sec">
-      <p className="rooms-lead">Each room’s notes come from what was said in it alone.</p>
+    <Section title="Breakout rooms" count={rooms.length} className="nd-rooms">
       {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks} open={r.id === open} at={r.id === open ? at : undefined} />)}
     </Section>
   );
@@ -52,30 +52,31 @@ function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, mark
   const people = room.people.flatMap((x): Person[] => (x.person ? [x.person] : []));
   const said = room.transcript.length > 0;
   return (
-    <Fold id={roomAnchor(room.id)} open={open} summary={(
-      <span className="room-h">
+    <Fold id={roomAnchor(room.id)} open={open} className="nd-fold" summary={(
+      <>
         <b>{room.name}</b>
         {people.length > 0 && <Faces people={people} size={22} max={5} />}
         <small>{minutesLabel(Math.max(0, room.to - room.from))}{people.length ? ` · ${listNames(people)}` : ''}</small>
-      </span>
+      </>
     )}>
-      {!said ? <p className="room-quiet">Nothing was said here while notes were on.</p> : (
+      {!said ? <p className="nd-rs">Nothing was said here while notes were on.</p> : (
         <>
-          {room.summary ? <p className="summary">{room.summary}</p>
-            : writing ? <p className="room-quiet">This room’s notes are being written.</p>
+          {room.summary ? <p className="nd-fold-sum">{room.summary}</p>
+            : writing ? <p className="nd-rs">This room’s notes are being written.</p>
               : <><Notice tone="caution" icon="pen">This room’s notes couldn’t be written. What was said is below.</Notice>{tryAgain}</>}
-          {(room.decisions.length > 0 || settle) && <Part title="Decisions"><Decisions items={room.decisions} me={me} reader={settle?.reader} onChange={settle?.onDecision} />{settle?.decisionForm(room.id)}</Part>}
-          {room.questions.length > 0 && <Part title="Still open"><Questions items={room.questions} me={me} onChange={settle?.onQuestion} /></Part>}
+          {(room.decisions.length > 0 || settle) && <Part title="Decided" kind="decide"><Decisions items={room.decisions} room me={me} reader={settle?.reader} onChange={settle?.onDecision} />{settle?.decisionForm(room.id)}</Part>}
+          {room.questions.length > 0 && <Part title="Still open"><Questions items={room.questions} room me={me} onChange={settle?.onQuestion} /></Part>}
           {(room.actions.length > 0 || settle) && (
-            <Part title="Follow-ups"><FollowUps actions={room.actions} me={me} reader={settle?.reader} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} />{settle?.actionForm(room.id)}</Part>
+            <Part title="Follow-ups" kind="follow"><FollowUps actions={room.actions} room me={me} reader={settle?.reader} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} />{settle?.actionForm(room.id)}</Part>
           )}
           {room.chapters.length > 0 && (
             <Part title="Chapters">
-              <ol className="room-chapters">{room.chapters.map((c) => <li key={`${c.at}-${c.title}`}><b>{c.title}</b>{c.summary && <span>{c.summary}</span>}</li>)}</ol>
+              <ol className="nd-rch">{room.chapters.map((c) => <li key={`${c.at}-${c.title}`}><b>{c.title}</b>{c.summary && <span>{c.summary}</span>}</li>)}</ol>
             </Part>
           )}
-          <Fold className="room-said" open={at !== undefined} summary={<span className="room-h"><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></span>}>
-            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} focus={at} correct={correct} fromLine={fromLine} marks={marks} />
+          <Fold className="nd-fold is-said" open={at !== undefined} summary={<><b>What was said in {room.name}</b><small>{room.transcript.length} {room.transcript.length === 1 ? 'line' : 'lines'}</small></>}>
+            <UnsureKey words={room.transcript.some((l) => l.unsure?.words)} speaker={room.transcript.some((l) => l.unsure?.speaker)} className="nd-key" />
+            <TranscriptLines lines={room.transcript} gaps={room.gaps} me={me} focus={at} correct={correct} fromLine={fromLine} marks={marks} className="is-room" />
           </Fold>
         </>
       )}
@@ -83,6 +84,6 @@ function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, mark
   );
 }
 
-function Part({ title, children }: { title: string; children: ReactNode }) {
-  return <div className="room-part"><h4>{title}</h4>{children}</div>;
+function Part({ title, kind, children }: { title: string; kind?: 'decide' | 'follow' | undefined; children: ReactNode }) {
+  return <div className={cn('nd-sub', kind && `is-${kind}`)}><h3>{title}</h3>{children}</div>;
 }

@@ -23,6 +23,8 @@ export function noteDay(iso: string, now = new Date()): string {
   const n = daysFromToday(d, now);
   return n === 0 ? 'Today' : n === -1 ? 'Yesterday' : shortDay(d);
 }
+/** When a note's call was: "Today at 09:30", "Yesterday at 09:30" or "Fri 30 Oct at 09:30". */
+export const noteAt = (iso: string, now = new Date()): string => `${noteDay(iso, now)} at ${hm(iso)}`;
 /** "Tue 3 Nov · 09:30–09:54 · 24 min" */
 export function noteWhen(startedAt: string, seconds: number): string {
   const a = new Date(startedAt);

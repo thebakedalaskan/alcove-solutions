@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import {
   applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDocument, pickMention, pickMoment, pickSlash, sendBlock, startComment, turnInto
 } from '../actions';
-import { findBlock, kindOf, scrollerOf } from '../commands';
+import { evenTables, findBlock, kindOf, scrollerOf } from '../commands';
 import type { EditorRuntime, OpenMenu, Store } from '../runtime';
 import { schema } from '../schema';
 import type { BlockKind, MentionItem, Rect } from '../types';
@@ -200,9 +200,12 @@ function tableEnd(rt: EditorRuntime, block: string): { rect: TableRect; pos: num
 
 function tableRows(rt: EditorRuntime, block: string): Row[] {
   const change = (edit: (t: { rect: TableRect; pos: number }, tr: NonNullable<typeof rt.view>['state']['tr']) => void) => () => {
-    const view = rt.view, t = tableEnd(rt, block);
+    const view = rt.view;
     rt.menu.set(null);
-    if (!view || !t) return;
+    if (!view) return;
+    evenTables(view.state, (tr) => { view.dispatch(tr); }, view);
+    const t = tableEnd(rt, block);
+    if (!t) return;
     const tr = view.state.tr;
     edit(t, tr);
     view.dispatch(tr);
