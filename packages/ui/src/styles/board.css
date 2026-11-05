@@ -66,6 +66,7 @@
 .bd-svg path.head.is-sel { fill: var(--horizon); }
 .bd-svg path.is-draft { stroke: var(--horizon); stroke-dasharray: 2 7; }
 .bd-svg path.head.is-draft { fill: var(--horizon); stroke-dasharray: none; }
+.bd-svg path.is-settle { animation: bd-settle var(--duration-1) var(--ease-out) both; }
 .bd-svg path.ink { stroke-width: 3.5; }
 .bd-svg path.ink.c-rose { stroke: var(--line-rose); }
 .bd-svg path.ink.c-sun { stroke: var(--sun); }
@@ -388,6 +389,7 @@
 @keyframes bo-pop { from { opacity: 0; transform: translateY(8px) scale(.9); } }
 @keyframes bc-dot { 0%, 60%, 100% { opacity: .35; } 30% { opacity: 1; } }
 @keyframes bd-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+@keyframes bd-settle { from { opacity: 0; } }
 @keyframes bd-drop { from { opacity: 0; transform: translateY(-10px); } }
 @keyframes bd-toast { from { opacity: 0; transform: translateY(10px); } }
 @keyframes bd-sheet { from { transform: translateY(100%); } }

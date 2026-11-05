@@ -132,7 +132,7 @@ const Objects = memo(function Objects({ board }: { board: Board }) {
       frames.push(<BoardFrame key={o.id} id={o.id} x={o.x} y={o.y} w={o.w} h={o.h} title={o.title} sub={o.sub || (count ? String(count) : undefined)} hint={count ? undefined : o.hint} editor={editor} />);
     } else if (o.k === 'line') {
       const r = lineRoute(view, o);
-      if (r) lines.push(<BoardLine key={o.id} id={o.id} d={r.d} head={r.head} selected={picked.has(o.id)} />);
+      if (r) lines.push(<BoardLine key={o.id} id={o.id} d={r.d} head={r.head} selected={picked.has(o.id)} settle={landed.has(o.id)} />);
     } else if (o.k === 'ink') {
       lines.push(<BoardStroke key={o.id} id={o.id} d={strokePath(o)} colour={o.c} marker={o.tool === 'marker'} selected={picked.has(o.id)} />);
     } else {

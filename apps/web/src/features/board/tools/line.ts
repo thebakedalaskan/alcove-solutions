@@ -125,19 +125,15 @@ function finishLine(board: Board, from: LineEnd, start: SheetPoint, at: SheetPoi
   if (!a) return;
   const on = isAttached(from) ? from.on : null;
   const target = view.objects.findLast((o): o is PlacedObject => joinable(o) && o.id !== on && contains(o, at.x, at.y));
-  const fromEnd = (b: Box, i: 0 | 1): LineEnd => (on ? { on, side: sides(a, b)[i] } : from);
+  const leaving = (b: Box): LineEnd => (on ? { on, side: sides(a, b)[0] } : from);
   if (target) {
-    addLine(board, fromEnd(target, 0), { on: target.id, side: sides(a, target)[1] });
+    addLine(board, leaving(target), { on: target.id, side: sides(a, target)[1] });
     return;
   }
-  const away = { x: at.x, y: at.y, w: 0, h: 0 };
-  if (on && contains(a, at.x, at.y)) return;
-  if (!on && Math.hypot(at.x - start.x, at.y - start.y) < CLICK_SLOP / board.camera.getSnapshot().z) return;
-  if (!fromDot) {
-    addLine(board, fromEnd(away, 0), { x: at.x, y: at.y });
-    return;
-  }
-  if (on && outside(a, at) > STICKY_REACH) newStickyFrom(board, on, a, at);
+  // Let go where it started, it was only a press.
+  if (on ? contains(a, at.x, at.y) : Math.hypot(at.x - start.x, at.y - start.y) < CLICK_SLOP / board.camera.getSnapshot().z) return;
+  if (!fromDot) addLine(board, leaving({ x: at.x, y: at.y, w: 0, h: 0 }), { x: at.x, y: at.y });
+  else if (on && outside(a, at) > STICKY_REACH) newStickyFrom(board, on, a, at);
 }
 
 function lineGesture(board: Board, from: LineEnd, start: SheetPoint, fromDot: boolean): Gesture {

@@ -88,9 +88,9 @@ export function BoardLines({ children }: { children?: ReactNode }) {
   return <svg className="bd-svg" aria-hidden="true">{children}</svg>;
 }
 
-/** A line, with its arrowhead. `id` lets it be pressed, through a wider path that isn't drawn. `draft`: the one being drawn, as dots. */
-export const BoardLine = memo(function BoardLine({ id, d, head, selected = false, draft = false }: { id?: string | undefined; d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined }) {
-  const state = cn(selected && 'is-sel', draft && 'is-draft');
+/** A line, with its arrowhead. `id` lets it be pressed, through a wider path that isn't drawn. `draft`: the one being drawn, as dots. `settle`: it's just been let go. */
+export const BoardLine = memo(function BoardLine({ id, d, head, selected = false, draft = false, settle = false }: { id?: string | undefined; d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined; settle?: boolean | undefined }) {
+  const state = cn(selected && 'is-sel', draft && 'is-draft', settle && 'is-settle');
   return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={state} d={d} />{head && <path className={cn('head', state)} d={head} />}</>;
 });
 

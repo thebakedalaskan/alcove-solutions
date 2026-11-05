@@ -15,7 +15,7 @@ type Point = readonly [number, number];
 const FINEST = 1.5;
 /** How far a stroke can stray from what was drawn, in screen pixels. */
 const STRAY = 0.5;
-/** How far apart kept points can get, in screen pixels: the curve at a corner reaches this far along each side of it. */
+/** How far apart kept points can get, in screen pixels. Smoothing rounds a corner by half this along each side of it. */
 const LONGEST = 16;
 /** How near a stroke the eraser touches it, in screen pixels. */
 const ERASER_REACH = 10;
