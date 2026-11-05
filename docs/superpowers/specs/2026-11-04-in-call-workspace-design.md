@@ -75,7 +75,7 @@ members is deleted; a workspace left with no admin gets its longest-standing mem
 
 ## Access
 
-Resolved in one module, `apps/api/src/modules/access.ts`, the only place that decides. A reader is an account (email
+Resolved in one module, `apps/api/src/modules/workspaceAccess.ts`, the only place that decides. A reader is an account (email
 index) or a guest in a call (seat MAC, from the call pass).
 
 - A workspace member's role applies to every item, except a `restricted` document, which opens only for its creator and

@@ -36,12 +36,12 @@
 ### Task A1: Workspaces, tree and access
 
 **Files:**
-- Create: `apps/api/migrations/NNNN_workspaces.sql`, `packages/api/src/workspaces.ts`, `apps/api/src/modules/workspaces.ts`, `apps/api/src/modules/access.ts`, `apps/api/src/workspaces.integration.test.ts`
+- Create: `apps/api/migrations/NNNN_workspaces.sql`, `packages/api/src/workspaces.ts`, `apps/api/src/modules/workspaces.ts`, `apps/api/src/modules/workspaceAccess.ts`, `apps/api/src/workspaces.integration.test.ts`
 - Modify: `packages/api/src/client.ts`, `packages/api/src/index.ts`, `apps/api/src/app.ts`, `packages/api-http/src/index.ts`, `apps/api/src/modules/account.ts` (deletion), `apps/api/src/maintenance.ts`, `docs/engineering/data-and-storage.md`, `docs/engineering/privacy-keys-and-sessions.md`
 
 **Interfaces:**
 - Produces: `api.workspaces` on `AlcoveApi`: `list`, `create`, `rename`, `remove`, `people`, `addPerson`, `setRole`, `removePerson`, `items` (`create`, `rename`, `move`, `duplicate`, `trash`, `restore`, `deleteForever`), `share` (`list`, `set`, `remove`, `restrict`), `live(id): WorkspaceLive`. `WorkspaceLive extends LiveStore<WorkspaceView>` with `tree`, `people here` and a `close()`.
-- Produces in `access.ts`: `readerOf(c)`, `workspaceFor(d, reader, workspaceId)`, `requireDocument(reader, workspace, documentId, need: 'read' | 'edit')`. Later tasks use these and nothing else to decide access.
+- Produces in `workspaceAccess.ts`: `readerOf(c)`, `workspaceFor(d, reader, workspaceId)`, `requireDocument(reader, workspace, documentId, need: 'read' | 'edit')`. Later tasks use these and nothing else to decide access.
 - Produces: `apps/api/src/live/hub.ts`, the per-instance hub with its `LISTEN` connection, used by B1.
 
 - [ ] Tests first in `workspaces.integration.test.ts`: create, list, rename a workspace; members and roles; create, rename, move, reorder, duplicate, trash, restore, delete an item; a cycle is refused; a restricted document is absent from others' trees and `not-found` by ID; a document shared to a non-member shows that document alone; a read member can't change anything; deleting an account leaves no member rows, and an empty workspace goes; two API instances (`h.secondServer()`) see each other's tree changes on the live stream; the leakage test finds no name, folder or email in any column, object or log.
