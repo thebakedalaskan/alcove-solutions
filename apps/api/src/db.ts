@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { z } from 'zod';
-import { DatabaseError, LostConnectionError } from './errors';
+import { DatabaseBusyError, DatabaseError, LostConnectionError } from './errors';
 import { log } from './log';
 
 const dblog = log.child({ component: 'db' });
@@ -18,6 +18,7 @@ async function query(db: Db, sql: string, params: unknown[]) {
     return r;
   } catch (e) {
     const context = { sql: label(sql), pgCode: pgCode(e), ms: Math.round(performance.now() - t0) };
+    if (busy(e)) throw busyError(e, context);
     if (!gone(e)) throw new DatabaseError(undefined, { cause: e, context });
     // Said here, where whatever was using the connection can be found: the request it fails, or the job.
     dblog.warn('lost the connection to the database', context);
@@ -35,6 +36,13 @@ const gone = (e: unknown) => e instanceof Error && (GONE_MESSAGES.has(e.message)
  * from the query it was running, or its next one, and says so in its own request (`query`).
  */
 const lent = (e: Error) => dblog.debug('a lent connection went', { err: e });
+/** What pg-pool says when no connection came free within `CONNECTION_WAIT_MS`. */
+const busy = (e: unknown) => e instanceof Error && e.message === 'timeout exceeded when trying to connect';
+/** Said in the request that waited, so its ID finds it; the request can be tried again. */
+function busyError(e: unknown, context: { sql: string; ms: number }) {
+  dblog.warn('no database connection came free', context);
+  return new DatabaseBusyError(undefined, { cause: e, context });
+}
 
 export type Db = pg.Pool | pg.PoolClient;
 
@@ -70,7 +78,11 @@ export async function exec(db: Db, sql: string, params: unknown[] = []): Promise
 
 /** One transaction; constraints declared DEFERRABLE are checked at commit. */
 export async function tx<T>(pool: pg.Pool, fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
-  const c = await pool.connect();
+  const t0 = performance.now();
+  const c = await pool.connect().catch((e: unknown) => {
+    const context = { sql: 'BEGIN', ms: Math.round(performance.now() - t0) };
+    throw busy(e) ? busyError(e, context) : new DatabaseError(undefined, { cause: e, context });
+  });
   /** The connection went, and the transaction with it: there's nothing to roll back, and it never goes back to the pool. */
   let lost = false;
   try {
