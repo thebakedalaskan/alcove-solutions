@@ -25,6 +25,11 @@ const BATCH_MS = 150;
 const CARET_MS = 100;
 const FIRST_WAIT_MS = 500;
 const LONGEST_WAIT_MS = 10_000;
+/**
+ * How long Alcove can be turning edits away with `unavailable` before that's the connection's fault as far as anyone typing
+ * is concerned. A restore holds a document for a moment, and it's only ever longer if the instance doing it went.
+ */
+const BUSY_MS = 30_000;
 /** A stream that lasted at least this long was fine, so opening it again waits for nothing. */
 const STEADY_MS = 1_000;
 /** What one request carries, leaving room for what merging adds. */
@@ -85,6 +90,8 @@ export class HttpDocSession implements DocSession {
   private sending = false;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private retryWait = FIRST_WAIT_MS;
+  /** When Alcove started saying it can't take this yet, though there's a connection. */
+  private busySince: number | null = null;
   private stuckTry: ReturnType<typeof setTimeout> | undefined;
 
   private caret: ReturnType<typeof setTimeout> | undefined;
@@ -229,6 +236,7 @@ export class HttpDocSession implements DocSession {
   }
   private delivered(batch: Unsent[]): void {
     this.sendDown = false;
+    this.busySince = null;
     this.retryWait = FIRST_WAIT_MS;
     this.unsent = this.unsent.filter((u) => !batch.includes(u));
     void this.forget(batch);
@@ -243,11 +251,17 @@ export class HttpDocSession implements DocSession {
     if (code === 'forbidden') this.shut = 'read-only';
     else if (code === 'conflict') this.shut = 'trashed';
     else if (code === 'not-found' || code === 'unauthenticated') this.barred = true;
-    else this.tryAgain();
+    else if (code === 'unavailable') this.tryAgain(this.stillBusy());
+    else this.tryAgain(true);
     return false;
   }
-  private tryAgain(): void {
-    this.sendDown = true;
+  /** Whether Alcove has been saying "not yet" for longer than it should: someone typing through a restore is saving, not offline. */
+  private stillBusy(): boolean {
+    this.busySince ??= Date.now();
+    return Date.now() - this.busySince >= BUSY_MS;
+  }
+  private tryAgain(down: boolean): void {
+    this.sendDown = down;
     if (this.retry !== undefined || this.stopped) return;
     this.retry = setTimeout(() => { this.retry = undefined; void this.send(); }, this.retryWait * (0.8 + Math.random() * 0.4));
     unref(this.retry);
