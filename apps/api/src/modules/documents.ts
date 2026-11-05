@@ -3,17 +3,17 @@
  * call keeps only IDs and each person is told, on every read, what they may know of them, so a name, who can open what and
  * whether something's still there are never out of date.
  */
-import { firstName, type CallDocument, type Document, type DocumentKind, type DocumentLibrary, type ItemKind, type WorkspaceTree } from '@alcove/api';
+import type { CallDocument, Document, DocumentKind, DocumentLibrary, WorkspaceTree } from '@alcove/api';
 import type { Deps, Owner } from '../context';
 import { NotFoundError, ValidationError } from '../errors';
 import { log } from '../log';
-import { accountReader, broughtFrom, type Reader, type Who } from './workspaceAccess';
+import { accountReader, broughtFrom, whoseItIs, type BroughtKind, type Reader, type Who } from './workspaceAccess';
 import { list, tree } from './workspaces';
 
 const dlog = log.child({ component: 'documents' });
 
-/** What each kind of item is on a call. A folder has no place on one. */
-const KINDS: Partial<Record<ItemKind, DocumentKind>> = { document: 'doc', board: 'board' };
+/** What each kind of item is on a call. */
+const KINDS: Record<BroughtKind, DocumentKind> = { document: 'doc', board: 'board' };
 
 /**
  * What a call keeps for a document. An item's own ID doesn't say which workspace it's in, and only a workspace's keys open
@@ -24,14 +24,10 @@ const KINDS: Partial<Record<ItemKind, DocumentKind>> = { document: 'doc', board:
 const broughtId = (workspaceId: string, itemId: string): string => `${workspaceId}.${itemId}`;
 const BROUGHT_ID = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{22})$/;
 
-/** Whose something is, by first name, and nobody's when nobody in particular made it. */
-const whose = (by: { name: string } | null): string | null => (by?.name.trim() ? firstName(by.name) : null);
-
 /** What can be brought from a workspace as someone sees it, newest first. Who sees what is settled by then. */
-const bringable = (t: WorkspaceTree): Document[] => t.items.flatMap((x): Document[] => {
-  const kind = KINDS[x.kind];
-  return kind && x.trashedAt === null ? [{ id: broughtId(t.id, x.id), name: x.name, kind, by: whose(x.by), updatedAt: x.editedAt }] : [];
-}).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+const bringable = (t: WorkspaceTree): Document[] => t.items.flatMap((x): Document[] => (
+  x.kind !== 'folder' && x.trashedAt === null ? [{ id: broughtId(t.id, x.id), name: x.name, kind: KINDS[x.kind], by: whoseItIs(x.by), updatedAt: x.editedAt }] : []
+)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
 /** A workspace as someone sees it, unless it went, or they lost it, since it was listed. */
 async function stillThere(o: Owner, reader: Reader, workspaceId: string): Promise<WorkspaceTree | undefined> {
@@ -60,7 +56,8 @@ export async function library(o: Owner): Promise<DocumentLibrary> {
  * Refuses anything that isn't in the organizer's library, and anything twice. It only compares: what a request sends reaches
  * no workspace, so a made-up ID and a real one they can't open go the same way and read the same. What's on the call already
  * (`kept`) can stay, because they can lose it after bringing it, and that shouldn't stop every other change to the call.
- * Taken off, it's like anything else they can't open.
+ * Taken off, it's like anything else they can't open. This is for what a request sends: a list a call already keeps is
+ * carried on as it stands, to the next call in a series and to the calls a repeat adds.
  */
 export async function validDocuments(o: Owner, ids: string[], kept: readonly string[] = []): Promise<void> {
   const adding = ids.filter((id) => !kept.includes(id));
@@ -83,10 +80,9 @@ export async function documentsFor(d: Deps, ids: readonly string[], viewer: Who)
   const found = new Map<string, CallDocument>();
   for (const [workspaceId, items] of places) {
     try {
-      for (const { id, item, role } of await broughtFrom(d, viewer, workspaceId, items)) {
-        const kind = KINDS[item.kind];
+      for (const { id, kind, by, name } of await broughtFrom(d, viewer, workspaceId, items)) {
         const brought = broughtId(workspaceId, id);
-        if (kind) found.set(brought, { id: brought, kind, by: whose(item.by), name: role ? item.name : null });
+        found.set(brought, { id: brought, kind: KINDS[kind], by, name });
       }
     } catch (e) {
       dlog.warn('documents not read', { workspaceId, err: e });

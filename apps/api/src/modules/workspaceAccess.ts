@@ -10,7 +10,7 @@
  *
  * Someone with no access gets the same `not-found` for a real ID and a made-up one, wherever they ask.
  */
-import { ItemKindSchema, type DocumentRole, type Person, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { ItemKindSchema, firstName, type DocumentRole, type ItemKind, type Person, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import type pg from 'pg';
 import { z } from 'zod';
 import { readPass } from '../callPass';
@@ -380,13 +380,21 @@ export function requireSharing(who: Who, w: WorkspaceAs, documentId: string): Op
 
 /* ---------- brought to a call ---------- */
 
-/** Something brought to a call, and what this reader can do with it. `role` is undefined when that's nothing: it stays shut. */
-export interface Brought { id: string; item: StoredItem; role: DocumentRole | undefined }
+/** Whose something is, as people are told: by first name, never an address, and nobody's when nobody in particular made it. */
+export const whoseItIs = (by: { name: string } | null): string | null => (by?.name.trim() ? firstName(by.name) : null);
+/** What can be brought to a call. A folder holds things, and isn't brought anywhere. */
+export type BroughtKind = Exclude<ItemKind, 'folder'>;
 /**
- * Which of these items are still in the tree, and what `who` can do with each. Its answer covers what they can't open,
- * because a call's organizer brought it and says so to everyone on the call, and that's the one reason a workspace's keys
- * open for someone with no place in it. So these IDs come from a call, where only what the organizer could reach gets in.
- * One from a request would ask about anything: modules/documents.ts checks those against what its reader can open instead.
+ * All anyone on a call may be told about something brought to it: what it is, whose it is, and its name only if it opens
+ * for them. Nothing else of the item leaves this module, so nothing further along can pass on an address by mistake.
+ */
+export interface Brought { id: string; kind: BroughtKind; by: string | null; name: string | null }
+/**
+ * What `who` may be told about these items, leaving out anything that isn't in the tree or can't be brought. Its answer
+ * covers what they can't open, because a call's organizer brought it and says so to everyone on the call, and that's the
+ * one reason a workspace's keys open for someone with no place in it. So these IDs come from a call, where only what the
+ * organizer could reach gets in. One from a request would ask about anything: modules/documents.ts checks those against
+ * what its reader can open instead.
  */
 export async function broughtFrom(d: Deps, who: Who, workspaceId: string, ids: readonly string[]): Promise<Brought[]> {
   const row = await maybeOne(d.pool, WorkspaceRow, 'SELECT owner_id, version, state_ciphertext FROM workspaces WHERE workspace_id = $1', [workspaceId]);
@@ -394,9 +402,10 @@ export async function broughtFrom(d: Deps, who: Who, workspaceId: string, ids: r
   if (!row || !owner) return [];
   const state = openState(owner, workspaceId, row.state_ciphertext);
   const standing = standingIn(await holdersOf(d.pool, row.owner_id, who.principals), who);
-  return ids.flatMap((id) => {
+  return ids.flatMap((id): Brought[] => {
     const item = state.items[id];
-    return item && !trashOf(state, id) ? [{ id, item, role: roleOf(who, standing, id, item) }] : [];
+    if (!item || item.kind === 'folder' || trashOf(state, id)) return [];
+    return [{ id, kind: item.kind, by: whoseItIs(item.by), name: roleOf(who, standing, id, item) ? item.name : null }];
   });
 }
 
