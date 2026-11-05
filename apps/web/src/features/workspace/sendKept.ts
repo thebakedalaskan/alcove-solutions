@@ -5,12 +5,13 @@
  * having it does, or someone choosing to on the document's page. Words that can't get there by themselves (a document that
  * refuses them, or one that's gone) are said once, with the way to them.
  */
+import type { DocSession, DocStatus } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { log } from '~/lib/log';
 import { keptDocuments } from './keep';
-import { openDocument, type DocSession, type DocStatus } from './session';
+import { openDocument } from './session';
 
 const klog = log.child({ component: 'workspace-keep' });
 /** How long one document gets before it waits for next time. */
