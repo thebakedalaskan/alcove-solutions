@@ -9,7 +9,7 @@
  *  - deletes rings a day after they ran out, in calls that went on that long;
  *  - deletes for good what's been in a workspace's Trash for 30 days, and ends seats whose call is over;
  *  - deletes live notes a call left behind when a release from before them ended it;
- *  - takes away what an upload left when its browser went, a day on.
+ *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
  */
 import { z } from 'zod';
 import type { Deps } from './context';
@@ -18,7 +18,7 @@ import { log } from './log';
 import { deleteQueued } from './modules/audio';
 import { reconcile } from './modules/calls';
 import { sweep as sweepLiveNotes } from './modules/liveNotes';
-import { sweepUploads } from './modules/media';
+import { pruneUploadDays, sweepUploads } from './modules/media';
 import { sweep as sweepMoves } from './modules/moves';
 import { sweep as sweepRings } from './modules/rings';
 import { sweepSeats, sweepTrash } from './modules/workspaces';
@@ -56,5 +56,6 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs));
   const seats = await quietly('seats', () => sweepSeats(d));
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs));
-  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads };
+  const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
+  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays };
 }

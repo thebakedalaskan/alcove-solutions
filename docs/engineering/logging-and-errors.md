@@ -102,6 +102,14 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   why: it stopped and someone's waiting, or its time ran out. A piece that stopped arriving, or a read whose browser went while it
   waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
   unless what answered it says it's an ordinary refusal.
+- An upload refused by a storage limit is an ordinary refusal at info: `409 conflict` for a full workspace or a day used up,
+  `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context. A piece that takes a workspace past 80% of its
+  limit logs `a workspace is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
+  80% of what they can upload today`, once each time it's crossed, with IDs and sizes. Every instance logs `service limit
+  changed` at info when it reads a new value, with `limit`, `old` and `new`, and `service limit ignored` or `service limit
+  clamped` at warn, once, for a row it can't use or had to hold to its bounds, and `service limits not read; keeping what was in
+  force` at warn when it can't read them. `limits set` logs `service limit set`, with the old value and the new, and `limit not
+  set` at warn with why: a typo is an ordinary refusal.
 - A frame past a call's `SCREEN_FRAMES_MAX` is refused as `409 conflict` and logged at info (`frame refused: the
   notes have kept as many as they can`, with the limit), with one more info line when screen notes turn off for
   it (`screen notes turned off: the notes are full`). A frame whose image still can't be fetched on a second try
