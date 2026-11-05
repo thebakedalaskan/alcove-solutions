@@ -278,18 +278,18 @@ the call that rang.
 
 ## 6. In the call
 
-The call opens full screen: the stage with everyone's tiles, a side panel that slides in beside it, and one
-dock at the bottom.
+The call opens full screen: the stage with everyone's tiles, side panels that slide in beside it and go wherever you
+put them, and one dock at the bottom.
 
 - **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
   unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested** while
   someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
   the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared
-  screens**, or anyone else's **Ask for notes**; your view: **Auto**, **Speaker** or **Grid**, which change only
-  your screen, beside a menu with the same three, two ready-made layouts (**Everyone equal**, **Presenter and
-  me**), where you see yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once
-  you've arranged it; **Catch up**; the shield, whose hover says what confidential compute covers (verified only
+  screens**, or anyone else's **Ask for notes**; **Reset my view** once you've arranged anything; **View**, which
+  changes only your screen: four layouts (**Side by side**, **Stacked**, **Screen first**, **Document first**), how
+  you see people (**Tiles**, **Arches**, **Hidden**), **Auto**, **Speaker** or **Grid**, where you see yourself, and
+  two ready-made layouts (**Everyone equal**, **Presenter and me**); **Catch up**; the shield, whose hover says what confidential compute covers (verified only
   when the server's hardware check is bound to this browser's request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
@@ -303,6 +303,15 @@ dock at the bottom.
   where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
   are remembered in this browser, and shared screens are never made smaller.
+- **Panels.** Everything can be moved and resized, for you alone. Drag the line between two panels: it follows your
+  pointer, snaps at half, and a double-click evens it. Hover a panel for its handle and drag it: a sunrise glow shows
+  where it will land, on any edge of another panel, an edge of the window, or the middle of a panel to swap them.
+  Drag a tab out of a side panel to keep it open beside the others; drop it back on a panel to merge them. Hover the
+  people to move them, fold them to arches, or hide them (**⇧P**): hidden, they stand small on the horizon beside the
+  dock, and whoever's talking or has a hand up rises, with a line saying so. As the window narrows, tiles fold to arches,
+  side panels float, and what's big takes turns, with a switcher in the top bar. A panel there's no room for waits out
+  of sight: its button in the dock shows it closed, with anything new on it, and one press brings it up. All of it works from the keyboard,
+  and Alcove remembers how you like calls in this browser, so tomorrow's starts the way you left it.
 - **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
   screen. A tile's **⋯** menu says what each choice changes and the key for it: **Pin for me** (up to six people,
   who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for
