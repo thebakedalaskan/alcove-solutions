@@ -66,6 +66,11 @@ export class UnverifiedError extends UnavailableError {}
  * so the notes worker waits and tries again instead of counting this as a failed attempt.
  */
 export class UnansweredError extends UnavailableError {}
+/**
+ * The database connection a request was using went before it answered: Postgres ended it, or it dropped on the way. A
+ * transaction on it goes with it, so the request can be tried again.
+ */
+export class LostConnectionError extends UnavailableError { constructor(m = 'Alcove lost its connection to the database. Try again.', o?: ErrorOptions) { super(m, o); } }
 export class InternalError extends AppError { constructor(m = 'Something went wrong on our side.', o?: ErrorOptions) { super('unknown', m, o); } }
 export class DatabaseError extends InternalError {}
 export class ObjectStoreError extends InternalError {}
