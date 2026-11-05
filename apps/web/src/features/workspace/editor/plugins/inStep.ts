@@ -17,7 +17,7 @@ import type { EditorRuntime } from '../runtime';
 import { blockIdOf } from '../schema';
 import { writeDocument } from '../write';
 import { syncOf, type FollowChange } from '../ydoc';
-import { beside, retireLeaving } from './retire';
+import { beside, caretBefore, retireLeaving } from './retire';
 
 const elog = log.child({ component: 'editor' });
 
@@ -112,7 +112,7 @@ export function keepInStep(rt: EditorRuntime, view: EditorView): () => void {
   const write = (doc: PMNode) => {
     ydoc.transact(() => {
       retireLeaving(view);
-      writeDocument(ydoc, fragment, doc, binding);
+      writeDocument(ydoc, fragment, doc, binding, caretBefore(view));
       binding.beforeTransactionSelection = getRelativeSelection(binding, view.state);
     }, ySyncPluginKey);
   };

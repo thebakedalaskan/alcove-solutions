@@ -10,6 +10,10 @@
  * to each other. A line can hold any number of texts, empty ones included: an empty text is nothing to ProseMirror, and
  * texts side by side are one run of words to it.
  *
+ * Comparing can't tell which of two same letters is the new one, so where the caret was says: nothing before it changed.
+ * Without that, an `l` typed in front of `line` is written after the `l` that was there, and the next letter goes between
+ * them. It reads the same until a move copies only the old letters: then what was typed comes apart.
+ *
  * What this writes never needs a text to be made while someone else may be making the same one: a new line starts with an
  * empty text in it, and whatever isn't text has one either side. Two texts made at once in one place would sit side by side,
  * and y-prosemirror's reader merges those by deleting one (its #160), in the one browser that made it.
@@ -25,6 +29,9 @@ export type ProsemirrorMapping = Parameters<typeof absolutePositionToRelativePos
 
 /** What's kept between writes: the record, and which marks can overlap themselves. */
 export interface WriteMeta { mapping: ProsemirrorMapping; isOMark: Map<MarkType, boolean> }
+
+/** Where the caret was before this change: the line as the record has it, and how far into it. */
+export interface Caret { line: PMNode; offset: number }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -155,18 +162,25 @@ function sameObject(element: Y.XmlElement | undefined, node: PMNode | undefined,
 const isHighHalf = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
 const isLowHalf = (code: number): boolean => code >= 0xdc00 && code <= 0xdfff;
 
-/** How much of two lines is the same from each end. Never between the two halves of a character. */
-function commonEnds(was: Flat<Y.XmlElement>, now: Flat<PMNode>, meta: WriteMeta): { left: number; right: number } {
+/**
+ * How much of two lines is the same from each end, with `caret` where the caret was in this line, if it was. Up to there
+ * comes first, then everything from the right, and only then whatever else is the same from the left. Never between the two
+ * halves of a character.
+ */
+function commonEnds(was: Flat<Y.XmlElement>, now: Flat<PMNode>, caret: number | null, meta: WriteMeta): { left: number; right: number } {
   const plain = was.objects.size === 0 && now.objects.size === 0;
   const same = (i: number, j: number) => was.words.charCodeAt(i) === now.words.charCodeAt(j) && (plain || sameObject(was.objects.get(i), now.objects.get(j), meta));
   const shorter = Math.min(was.words.length, now.words.length);
-  let left = 0;
-  while (left < shorter && same(left, left)) left += 1;
-  if (left > 0 && isHighHalf(was.words.charCodeAt(left - 1))) left -= 1;
+  const fromLeft = (from: number, limit: number) => {
+    let left = from;
+    while (left < limit && same(left, left)) left += 1;
+    return left > 0 && isHighHalf(was.words.charCodeAt(left - 1)) ? left - 1 : left;
+  };
+  const start = fromLeft(0, Math.min(shorter, caret ?? shorter));
   let right = 0;
-  while (left + right < shorter && same(was.words.length - 1 - right, now.words.length - 1 - right)) right += 1;
+  while (start + right < shorter && same(was.words.length - 1 - right, now.words.length - 1 - right)) right += 1;
   if (right > 0 && isLowHalf(was.words.charCodeAt(was.words.length - right))) right -= 1;
-  return { left, right };
+  return { left: fromLeft(start, shorter - right), right };
 }
 
 const sizeOf = (child: unknown): number => (child instanceof Y.XmlText ? child.length : child instanceof Y.XmlElement ? 1 : 0);
@@ -302,9 +316,9 @@ function writeMarks(text: Y.XmlText, spans: readonly Span[]): void {
   text.applyDelta(spans.map((span) => ({ retain: span.length, attributes: { ...clear, ...span.attributes } })));
 }
 
-function writeLine(line: Y.XmlFragment, node: PMNode, meta: WriteMeta): void {
+function writeLine(line: Y.XmlFragment, node: PMNode, meta: WriteMeta, caret: Caret | null): void {
   const was = flatElement(line.toArray()), now = flatNode(node);
-  const { left, right } = commonEnds(was, now, meta);
+  const { left, right } = commonEnds(was, now, caret && meta.mapping.get(line) === caret.line ? caret.offset : null, meta);
   takeOut(line, left, was.words.length - right, meta);
   putIn(line, left, partsBetween(now, left, now.words.length - right), meta);
   const children = line.toArray();
@@ -392,7 +406,7 @@ function likeness(element: Y.XmlElement, node: PMNode, meta: WriteMeta): { same:
 
 const sameName = (child: unknown, node: PMNode): child is Y.XmlElement => child instanceof Y.XmlElement && child.nodeName === node.type.name;
 
-function writeBlocks(parent: Y.XmlFragment, node: PMNode, meta: WriteMeta): void {
+function writeBlocks(parent: Y.XmlFragment, node: PMNode, meta: WriteMeta, caret: Caret | null): void {
   const ys = parent.toArray();
   const ps: PMNode[] = [];
   node.forEach((child) => ps.push(child));
@@ -421,10 +435,10 @@ function writeBlocks(parent: Y.XmlFragment, node: PMNode, meta: WriteMeta): void
       else updateRight = false;
     }
     if (updateLeft && sameName(leftY, leftP)) {
-      write(leftY, leftP, meta);
+      write(leftY, leftP, meta, caret);
       left += 1;
     } else if (updateRight && sameName(rightY, rightP)) {
-      write(rightY, rightP, meta);
+      write(rightY, rightP, meta, caret);
       right += 1;
     } else {
       if (leftY) meta.mapping.delete(leftY);
@@ -441,15 +455,15 @@ function writeBlocks(parent: Y.XmlFragment, node: PMNode, meta: WriteMeta): void
   if (left + right < pCount) parent.insert(left, ps.slice(left, pCount - right).map((child) => makeElement(child, meta)));
 }
 
-function write(type: Y.XmlFragment, node: PMNode, meta: WriteMeta): void {
+function write(type: Y.XmlFragment, node: PMNode, meta: WriteMeta, caret: Caret | null): void {
   if (type instanceof Y.XmlElement) writeAttrs(type, node);
-  if (node.inlineContent) writeLine(type, node, meta);
-  else writeBlocks(type, node, meta);
+  if (node.inlineContent) writeLine(type, node, meta, caret);
+  else writeBlocks(type, node, meta, caret);
   /* Last, so that if this fails, writing again doesn't take it as done. */
   meta.mapping.set(type, node);
 }
 
 /** Makes a document's blocks say what `node` says, writing only what differs. */
-export function writeDocument(doc: Y.Doc, fragment: Y.XmlFragment, node: PMNode, meta: WriteMeta): void {
-  doc.transact(() => { write(fragment, node, meta); }, ySyncPluginKey);
+export function writeDocument(doc: Y.Doc, fragment: Y.XmlFragment, node: PMNode, meta: WriteMeta, caret: Caret | null = null): void {
+  doc.transact(() => { write(fragment, node, meta, caret); }, ySyncPluginKey);
 }

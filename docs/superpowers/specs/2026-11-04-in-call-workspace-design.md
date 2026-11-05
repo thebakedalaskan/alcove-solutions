@@ -155,8 +155,10 @@ where it was. Nothing has to notice for that to be true.
 
 A text is never deleted either, for the same reason: only the words in it. y-prosemirror spares a text only when it's alone
 in its line, so `write.ts` is its `updateYFragment` with that one rule added. A line's two sides are read as one run of
-letters, with anything that isn't text as one letter, and only the stretch that differs is written. Taking out a tag
-touches no words, and leaves the texts either side next to each other. A line can hold any number of texts, side by side
+letters, with anything that isn't text as one letter, and only the stretch that differs is written. Where the change started
+comes from where the caret was: comparing can't tell which of two same letters is new, and a letter typed in front of the
+same letter would otherwise be recorded after it, which comes apart when a move copies only the old letters. Taking out a tag touches
+no words, and leaves the texts either side next to each other. A line can hold any number of texts, side by side
 or empty, and all of that reads the same to ProseMirror. A new line starts with an empty text in it, and whatever isn't
 text has one either side, so nobody has to make a text while someone else may be making the same one: y-prosemirror's
 reader merges two made side by side by deleting one.

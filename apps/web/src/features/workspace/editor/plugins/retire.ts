@@ -24,7 +24,7 @@ import { allBlocks, blockAt, findBlock, type BlockRef } from '../commands';
 import { attrsToCut, cutWords, followUndo, gatherWords, isNewIn, movedIn, settleCopies, strayWords, wordsToCut, type CopiedWords, type StrayWords } from '../retire';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, isGone, schema, textAttr } from '../schema';
-import { setAttr } from '../write';
+import { setAttr, type Caret } from '../write';
 import { elementOf, syncOf, type SyncBinding, type SyncState } from '../ydoc';
 import { fromSync } from './blockIds';
 import { flash } from './decor';
@@ -304,6 +304,11 @@ function remember(binding: SyncBinding, element: Y.XmlElement, node: PMNode): vo
   }
 }
 
+const lastCaret = new WeakMap<EditorView, Caret>();
+
+/** Where the caret was before the change being written, which says where that change started. */
+export const caretBefore = (view: EditorView): Caret | null => lastCaret.get(view) ?? null;
+
 const retired = new WeakMap<EditorView, readonly Leaving[]>();
 
 /**
@@ -444,7 +449,14 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       tidy({ strays: [], arrived: [], unnamed: [], redone: [], cuts: [] });
 
       doc.on('afterTransaction', after);
-      return { destroy() { doc.off('afterTransaction', after); } };
+      return {
+        /* Before ySyncPlugin's own, which writes the change. */
+        update(_, previous) {
+          const { $from } = previous.selection;
+          lastCaret.set(view, { line: $from.parent, offset: $from.parentOffset });
+        },
+        destroy() { doc.off('afterTransaction', after); }
+      };
     }
   });
 }
