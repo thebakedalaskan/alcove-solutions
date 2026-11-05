@@ -20,7 +20,9 @@
     "livekit-client": "^2.23.0",
     "motion": "^14.9.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "y-protocols": "1.0.7",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
