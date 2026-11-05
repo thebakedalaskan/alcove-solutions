@@ -1005,8 +1005,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   - **What a read costs.** What it needs of a workspace's tree, its name and what's brought, presented and played, with who
     can open each, is read once for each version of the workspace, for everyone reading the call, and kept by ID until the
     version moves on, as each update typed is checked (`editableBy`): a read by someone in it costs a small query for the
-    version and two for who holds what, and a tree is opened once a version however many read at once. Who holds what is
-    read afresh every time. Someone with nothing in it has nothing of it read for them: they're told only that something's
+    version and two for who holds what, two more for whoever started what's showing, and a tree is opened once a version
+    however many read at once. Who holds what is read afresh every time. Someone with nothing in it has nothing of it read for them: they're told only that something's
     being presented, and by whom, so a read costs them the same whatever's going on there, and how long it takes says
     nothing about a video they can't see.
 - **What's brought to the call** is `Meeting.documents`, the one list, kept as `<workspace>.<item>`. `workspace-bring`
