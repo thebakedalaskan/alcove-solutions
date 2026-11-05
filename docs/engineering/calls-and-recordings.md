@@ -1002,6 +1002,13 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   nothing that names anything, `present` aside (below). Someone with one document has the `id` to open it with and no name.
   It's computed only for a call that has something to show, and a workspace that can't be read reads as private: nothing
   in one can stop anyone reading the call. Someone waiting to be let in gets nothing at all.
+  - **What a read costs.** What it needs of a workspace's tree, its name and what's brought, presented and played, with who
+    can open each, is read once for each version of the workspace, for everyone reading the call, and kept by ID until the
+    version moves on, as each update typed is checked (`editableBy`): a read by someone in it costs a small query for the
+    version and two for who holds what, and a tree is opened once a version however many read at once. Who holds what is
+    read afresh every time. Someone with nothing in it has nothing of it read for them: they're told only that something's
+    being presented, and by whom, so a read costs them the same whatever's going on there, and how long it takes says
+    nothing about a video they can't see.
 - **What's brought to the call** is `Meeting.documents`, the one list, kept as `<workspace>.<item>`. `workspace-bring`
   adds a document in the call's workspace, or takes one off, for anyone who can open it, up to 12. `CallState.workspace.documents`
   says which of them this person can open, wherever they are, by the name they have now; one in Trash isn't listed.
@@ -1046,7 +1053,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
     which a page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
   - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
     everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
-    tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never
+    tells everyone. It's found by a read from someone who can open something in the workspace, or from whoever started it,
+    never from someone with nothing in it, who's told only that something's being presented until then. While something's showing, a browser reads the call each time it checks its keys, so it never
     waits on a nudge that isn't coming.
 - **The next agenda.** When a call in a series opens Workspace, it looks for an agenda to make, until it has one or finds
   there's none to make: the call before

@@ -187,7 +187,7 @@ export function standingIn(h: Holders, who: Who): Standing {
 }
 
 /** What someone can do with one item, or undefined when it doesn't exist for them. */
-export function roleOf(who: Who, s: Standing, id: string, item: StoredItem): DocumentRole | undefined {
+export function roleOf(who: Who, s: Standing, id: string, item: Pick<StoredItem, 'kind' | 'by' | 'restricted' | 'restrictedBy'>): DocumentRole | undefined {
   const asMember = s.role === null ? undefined : s.role === 'read' ? 'read' : 'edit';
   if (item.kind === 'folder') return asMember;
   const email = who.email?.trim().toLowerCase();
@@ -272,16 +272,21 @@ export const editableBy = (d: Deps, who: Who, workspaceId: string, documentId: s
 export const placeableIn = (d: Deps, who: Who, workspaceId: string, documentId: string | null): Promise<Allowed> =>
   remembering(d, who, workspaceId, `read:${documentId ?? ''}`, (w) => (documentId === null ? '' : requireDocument(who, w, documentId, 'read').item.editedAt), d.pool);
 
-/** A workspace the server is working on for a call, not for anyone in it: its keys and tree. What's shown from it is for whoever opened it to decide. */
-export type HeldWorkspace = Pick<Workspace, 'owner' | 'workspaceId' | 'state'>;
+/** A workspace the server is working on for a call, not for anyone in it: its keys, its tree, and the version that's at. What's shown from it is for whoever opened it to decide. */
+export type HeldWorkspace = Pick<Workspace, 'owner' | 'workspaceId' | 'state' | 'version'>;
 /** Opens one for that, or nothing once it's gone. `lock`: as `workspaceFor`. These IDs come from a call, where only what its organizer could reach gets in. */
 export async function serverWorkspace(d: Deps, workspaceId: string, db: Db = d.pool, lock?: keyof typeof LOCKS): Promise<HeldWorkspace | undefined> {
   const row = await maybeOne(db, WorkspaceRow, `SELECT owner_id, version, state_ciphertext FROM workspaces WHERE workspace_id = $1${lock ? LOCKS[lock] : ''}`, [workspaceId]);
   const owner = row && await findOwner(d, row.owner_id, undefined, db);
-  return row && owner ? { owner, workspaceId, state: openState(owner, workspaceId, row.state_ciphertext) } : undefined;
+  return row && owner ? { owner, workspaceId, state: openState(owner, workspaceId, row.state_ciphertext), version: row.version } : undefined;
 }
 /** Who a workspace is, if it's still there, without opening anything of it. */
 export const workspaceOwner = async (db: Db, workspaceId: string): Promise<string | undefined> => (await maybeOne(db, z.object({ owner_id: z.string() }), 'SELECT owner_id FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.owner_id;
+/** The same, and how far it's moved on, which says whether what was read of it still holds. */
+export async function workspaceAt(db: Db, workspaceId: string): Promise<{ ownerId: string; version: number } | undefined> {
+  const row = await maybeOne(db, VersionRow, 'SELECT owner_id, version FROM workspaces WHERE workspace_id = $1', [workspaceId]);
+  return row && { ownerId: row.owner_id, version: row.version };
+}
 
 /** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
 export async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {

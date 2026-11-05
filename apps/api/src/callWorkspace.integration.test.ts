@@ -2032,6 +2032,55 @@ describe('a live call comes first', () => {
   });
 });
 
+describe('reading the call', () => {
+  const LogLine = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional() });
+  /** The statements one read of the call ran, from its log lines: what it cost, in what it did. */
+  async function statementsOf(who: Browser, call: CallSession): Promise<string[]> {
+    const requestId = `read-${id128()}`;
+    const res = await who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}`, { headers: { 'x-alcove-call': call.ticket.pass, 'x-request-id': requestId } });
+    await res.text();
+    expect(res.status).toBe(200);
+    return h.logs.flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success && r.data.requestId === requestId && r.data.msg === 'query' && r.data.sql ? [r.data.sql] : []; });
+  }
+  /** How many times a read opened a workspace's tree. */
+  const opensTree = (sql: string[]) => sql.filter((q) => q.includes('state_ciphertext FROM workspaces')).length;
+
+  it('opens a workspace once a version for everyone in it, and never for someone who can open nothing', async () => {
+    const art = await account();
+    const priya = await account();
+    const id = await workspace(art, 'Product', [[priya, 'edit']]);
+    const plan = await doc(art, id, 'Plan');
+    const film = await doc(art, id, 'Film');
+    const media = madeUp();
+    const f = await open(art, id, film);
+    addVideo(f, 'v1', media);
+    await saved(f);
+    f.close();
+    const { host, code: c } = await callBy(art, { guests: [priya.email] });
+    await host.setWorkspace(id);
+    await host.bringDocument(plan, true);
+    const p = await invited(host, c, priya);
+    const jamie = await guest(host, c);
+    // Everyone in it: the first read at a version may open the tree, and no read after it does, whoever's reading.
+    await statementsOf(art, host);
+    for (let i = 0; i < 3; i++) for (const [who, call] of [[art, host], [priya, p]] as const) expect(opensTree(await statementsOf(who, call))).toBe(0);
+    // A change to the tree is opened once more, for everyone, and what they're told follows it.
+    await art.api.workspaces.items.rename(id, plan, 'Plan, renamed');
+    expect(opensTree(await statementsOf(art, host)) + opensTree(await statementsOf(priya, p))).toBe(1);
+    expect((await space(p)).documents.map((x) => x.name)).toEqual(['Plan, renamed']);
+    // Someone who can open nothing: nothing of it is opened for them, and a read costs the same whether or not something they
+    // can't open is being presented and played, so how long it takes says nothing about it either.
+    const quiet = await statementsOf(jamie, jamie.call);
+    await p.startPresenting('document', plan, 0);
+    await host.startPlaying(film, media);
+    expect((await read(jamie.call)).workspace).toMatchObject({ present: { id: null }, play: null });
+    const busy = await statementsOf(jamie, jamie.call);
+    expect(opensTree(quiet)).toBe(0);
+    expect(busy).toEqual(quiet);
+    await host.leave();
+  });
+});
+
 describe('what a call leaves in the record', () => {
   const revisions = (ownerId: string, kind: string) => count('SELECT count(*)::int AS n FROM revisions r JOIN items i ON i.owner_id = r.owner_id AND i.item_id = r.item_id WHERE r.owner_id = $1 AND i.kind = $2', [ownerId, kind]);
 
