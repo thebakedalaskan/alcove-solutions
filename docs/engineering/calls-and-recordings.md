@@ -1216,12 +1216,17 @@ share picker, the leave sheet and the device pickers.
   fades in as the stage makes room, coming up where it's going, and only what's already showing glides. Everything it
   says goes through the call's one place for toasts, one at a time, and a share's offer stays beside that until it's taken
   up some other way. The list is the panels' to give way, so the call tells it (`WorkspaceCall.list`): one that gave way comes
-  over the page (`peek`), one you put away comes back.
+  over the page (`peek`), one you put away comes back. Whatever needs it showing, such as ⇧N naming a folder, asks with
+  `list.onShow`, which never hides it, so the list over the page behaves as it does docked.
 - **Just the document** isn't a new layout: `PanelFacts.zen` says what's left (`adapt` hides the rest, the people go to
   the horizon) and is a box past the call's area, where the bars were (`zenRoom`), so the page glides there like any other
-  panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc is taken in the
-  capture phase on `document`, after anything on `window`, so a menu, a follow or anything else that's open goes first, and
-  the editor never sees it: the caret stays where it was. A share's Show it leaves it, because a share has no place in it.
+  panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc goes in the canvas's
+  order: a menu, a sheet or a drag takes it first (they listen on `window`), then whatever's being edited keeps it (a field
+  does what it does anywhere, so a rename is cancelled and the chat box keeps its words, and words selected in the document
+  lose their format bar), then the list over the page goes, then Just the document. The workspace takes it in the capture
+  phase on `document` and steps aside for all of those (`editing` in WorkspacePanel.tsx); with only the caret in the
+  document, the editor never sees it, so the caret stays where it was. A share's Show it leaves it, because a share has no
+  place in it.
 - **Arranging them.** Every panel has a handle, and the people a small toolbar (move, fold to arches, hide). Dragging
   one lights where it will land with the sunrise glow: any edge of a panel, an edge of the window, or a panel's middle
   to swap the two (a share moved off the stage drops beside what's left of it; two panels of tabs merge). A side
@@ -1252,8 +1257,12 @@ share picker, the leave sheet and the device pickers.
   nobody: nothing ever stands on it. Those there's no room for stay mounted, out of sight. Someone rung waits in a tile
   among the tiles; among arches or on the horizon they're in People. A panel of people has no stage to have a corner
   of, so your own picture is one of them; hidden, its chip waits under the tiles. Nothing here changes while nothing
-  else is on the stage: hiding people then says it applies once the workspace is open or something is shared. With people on
-  the horizon toasts sit to the right of the dock, so they never cover the foot of the list.
+  else is on the stage: hiding people then says it applies once the workspace is open or something is shared. Beside the
+  workspace, a share waiting among the people comes after them, as the canvas has it; in an ordinary call it leads. A
+  share tile's name keeps room for its Show it only when it has one.
+- **Toasts in a call** sit left of the dock from 1280 px, spaced as the canvas spaces them so that someone's share is offered
+  on one line, and right of it when people are on the horizon, so they never cover the foot of the list. Narrower, there's
+  no room for one line beside the dock, so they go above it, in the middle.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: where the
   panels sit; Auto, Speaker or Grid; up to six pins, which share the main stage (in Grid they come first and bigger);
   the order you put people in; who you made bigger; how much room shared screens get beside the people; and where you

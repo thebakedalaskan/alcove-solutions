@@ -73,8 +73,11 @@ export interface WorkspaceCall {
   chooser?: string | undefined;
   /** Just the document, at the far right of a document's head. */
   zen?: { on: boolean; onToggle: () => void } | undefined;
-  /** Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). */
-  list: { off: boolean; peek: boolean; onToggle: () => void };
+  /**
+   * Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). `onToggle` is
+   * the list's button. `onShow` is for whatever needs the list showing, such as naming a folder: it never hides it.
+   */
+  list: { off: boolean; peek: boolean; onToggle: () => void; onShow: () => void };
   /** Where what the workspace says goes: a call has one place for toasts. */
   say: (toast: WsToastData) => void;
   /** Out of sight, and kept as it was for next time: closed, or behind something it's taking turns with. Its keys sleep. */

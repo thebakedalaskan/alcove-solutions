@@ -173,5 +173,5 @@ function Presented({ ws, presenting, present, documentId }: { ws: Ws; presenting
 }
 
 /** Before the document has opened, there's nothing to say about it. */
-const NO_STATUS: DocStatus = { status: 'saving', refused: null, role: null, trashed: false, closed: null };
+const NO_STATUS: DocStatus = { status: 'saving', refused: null, role: null, trashed: false, closed: null, unsent: false };
 const NO_SESSION: LiveStore<DocStatus> = { getSnapshot: () => NO_STATUS, subscribe: () => () => undefined };

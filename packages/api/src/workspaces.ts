@@ -125,7 +125,7 @@ export const WorkspacePlacesSchema = z.object({
 });
 export type WorkspacePlaces = z.infer<typeof WorkspacePlacesSchema>;
 
-/** An edit kept in this browser until Alcove has it: where it belongs, and the update sealed under the device key. */
+/** An edit kept in this browser until Alcove has it: where it belongs, when it was made, and the update sealed under the device key. */
 export const KeptEditSchema = z.object({ owner: z.string(), workspace: z.string(), document: z.string(), key: z.number(), at: z.number(), sealed: DeviceSealedSchema });
 export type KeptEdit = z.infer<typeof KeptEditSchema>;
 

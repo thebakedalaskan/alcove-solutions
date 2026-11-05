@@ -118,9 +118,60 @@ export function WsGoneBar({ who, onRestore }: { who: string | null; onRestore?: 
   );
 }
 
-/** Alcove won't take what's typed here because the document has grown too big. Nothing typed is lost. */
-export function WsFullBar({ show }: { show: boolean }) {
-  return <Bar show={show} className="wd-off"><Icon name="alert" size={14} /><span>This document is too big to save. Your edits are safe in this browser: move some of it to another document.</span></Bar>;
+/**
+ * Why what's typed here isn't reaching Alcove. `too-large`: the document is past its limits. `rejected`: Alcove won't take it
+ * as it stands. `read-only`: whoever typed it can't edit it any more. `unavailable`: the document can't be opened right now,
+ * and opens again by itself. `signed-out` and `call-ended`: what let someone in is over.
+ */
+export type WsUnsaved = 'too-large' | 'rejected' | 'read-only' | 'unavailable' | 'signed-out' | 'call-ended';
+
+const UNSAVED_WORDS: Record<WsUnsaved, string> = {
+  'too-large': 'This document is too big to save. Your edits are safe in this browser: delete something, or send a block to another document, and they’ll save.',
+  rejected: 'Alcove couldn’t take your last edits. They’re safe in this browser: copy them, or save them as a new document.',
+  'read-only': 'You can only read this now, so your last edits didn’t save. They’re safe in this browser: copy them, or save them as a new document.',
+  unavailable: 'This document can’t be opened right now. Your edits are safe in this browser, and it opens again by itself.',
+  'signed-out': 'You’re signed out here. Your edits are safe in this browser, and they save when you sign in again.',
+  'call-ended': 'The call has ended, so nothing more saves here.'
+};
+
+/** What's typed here isn't reaching Alcove, and why. Nothing typed is lost: where it may not get there by itself, pass `WsRescue`. */
+export function WsUnsavedBar({ why, children }: { why: WsUnsaved | null; children?: ReactNode }) {
+  return (
+    <Bar show={why !== null} className="wd-off wd-unsaved">
+      <Icon name={why === 'unavailable' ? 'hourglass' : 'alert'} size={14} /><span className="t">{why && UNSAVED_WORDS[why]}</span>
+      {children}
+    </Bar>
+  );
+}
+
+/** What someone can do with words that didn't reach Alcove. Leave `onSaveAsNew` out for someone who can't make a document here. */
+export function WsRescue({ onCopy, onSaveAsNew, saving = false, discard }: {
+  onCopy: () => void; onSaveAsNew?: (() => void) | undefined; saving?: boolean | undefined;
+  /** The ask before they go: `WsDiscardAsk`. */
+  discard: WsPop;
+}) {
+  return (
+    <span className="wd-acts">
+      <Button size="xs" icon="copy" onClick={onCopy}>Copy text</Button>
+      {onSaveAsNew && <Button size="xs" icon="filePlus" loading={saving} onClick={onSaveAsNew}>Save as new document</Button>}
+      <WsPopover open={discard.open} onOpenChange={discard.onOpenChange} label="Discard what didn’t save" align="end"
+        anchor={<Button size="xs" variant="quiet">Discard</Button>}>{discard.content}</WsPopover>
+    </span>
+  );
+}
+
+/** Asks once before letting go of what didn't save. */
+export function WsDiscardAsk({ onDiscard, onKeep }: { onDiscard: () => void; onKeep: () => void }) {
+  return (
+    <div className="wv-switch">
+      <b>Discard what didn’t save?</b>
+      <p>It’s only in this browser, so it goes for good. The document carries on from what Alcove has.</p>
+      <div className="ac">
+        <Button variant="primary" size="sm" onClick={onDiscard}>Discard</Button>
+        <Button variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
+      </div>
+    </div>
+  );
 }
 
 /** You can read this and not change it. */
@@ -190,10 +241,23 @@ const LockedArch = () => <WsArch><path d="M24 44h18v14H24zM28 44v-5a5 5 0 0 1 10
  * A document or workspace that isn't open to you, however that came about: it says the same for something taken from you,
  * something deleted and something that never was. `action` is the way back.
  */
-export function WsCantOpen({ what, action }: { what: 'document' | 'workspace'; action?: ReactNode }) {
+/** `unsent`: something written in it here didn't reach Alcove, and `action` is what can be done with it (`WsRescue`). */
+export function WsCantOpen({ what, action, unsent = false }: { what: 'document' | 'workspace'; action?: ReactNode; unsent?: boolean | undefined }) {
+  const gone = what === 'document' ? 'It was deleted, or it isn’t shared with you any more.' : 'It was deleted, or you aren’t in it any more.';
+  const next = unsent ? 'What you wrote in it that didn’t reach Alcove is safe in this browser.' : what === 'document' ? 'Ask whoever shared it.' : 'Ask whoever added you.';
   return (
     <EmptyState className="wd-none" title={`You can’t open this ${what}`} art={<LockedArch />} action={action}>
-      {what === 'document' ? 'It was deleted, or it isn’t shared with you any more. Ask whoever shared it.' : 'It was deleted, or you aren’t in it any more. Ask whoever added you.'}
+      {gone} {next}
+    </EmptyState>
+  );
+}
+
+/** A document that can't be opened right now, for anyone: it opens by itself as soon as it can. */
+export function WsUnavailable() {
+  return (
+    <EmptyState className="wd-none" title="This can’t be opened right now"
+      art={<WsArch><path d="M26 40h14M26 58h14M28 40c0 5 5 6.5 5 9s-5 4-5 9M38 40c0 5-5 6.5-5 9s5 4 5 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></WsArch>}>
+      It opens by itself as soon as it can. Anything you wrote is safe in this browser.
     </EmptyState>
   );
 }

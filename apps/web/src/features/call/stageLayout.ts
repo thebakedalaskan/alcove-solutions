@@ -399,6 +399,8 @@ export interface StageFrame {
     loud: ReadonlySet<string>;
     /** The row of arches on a phone. */
     small: boolean;
+    /** Beside the workspace, a share waiting among the people comes after them, as the canvas has it, not before. */
+    sharesLast: boolean;
   } | null;
 }
 const rectOf = (b: Box): Rect => [b.x, b.y, b.w, b.h];
@@ -421,7 +423,8 @@ export function placeFrame(plan: Plan, f: StageFrame): Placed {
   const folded = plan.self?.folded && p.people && p.mode === 'tiles';
   const people = folded && p.people ? { ...p.people, h: Math.max(0, p.people.h - CHIP_H - GAP) } : p.people;
   // Someone rung waits in a tile: among arches or on the horizon they're in People, with what they said.
-  const who = [...plan.leads, ...plan.rest].filter((id) => p.mode === 'tiles' || !isWaitKey(id));
+  const all = [...plan.leads, ...plan.rest].filter((id) => p.mode === 'tiles' || !isWaitKey(id));
+  const who = p.sharesLast ? [...all.filter((id) => !isShareKey(id)), ...all.filter(isShareKey)] : all;
   const placed = placePeople(people, who.map((id) => ({ id, share: isShareKey(id) })), p.mode, p.horizon, p.loud, p.small);
   const modes = new Map<string, TileMode>();
   const slots = new Map<string, Rect>();

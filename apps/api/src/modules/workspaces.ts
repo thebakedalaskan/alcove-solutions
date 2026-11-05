@@ -438,7 +438,13 @@ export async function duplicateItem(d: Deps, reader: Reader, workspaceId: string
     return { place: w, id, content };
   });
   // What they hold comes after the lock, so nobody's typing waits on it. They start from the seed, like anything new.
-  for (const x of content) await copyContent(place, x.from, x.id, kindOf(x.item), x.item.name);
+  try {
+    for (const x of content) await copyContent(place, x.from, x.id, kindOf(x.item), x.item.name, limitKey(reader));
+  } catch (e) {
+    // A copy that says less than what it's a copy of is worse than none: it goes for good, and they try again.
+    await trashItem(d, reader, workspaceId, id).then(() => deleteItem(d, reader, workspaceId, id)).catch((err: unknown) => wlog.warn('a copy that wasn’t filled stayed in the tree', { workspaceId, itemId, copy: id, err }));
+    throw e;
+  }
   return { id };
 }
 /**

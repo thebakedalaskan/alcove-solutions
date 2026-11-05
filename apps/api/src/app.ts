@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -83,7 +83,8 @@ const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
 const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 /** The one route that takes an image: a frame of someone's own shared screen. */
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
-const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/updates$/;
+/** What holds a document's content, as it is: a paste can be megabytes, and it has a limit of its own. */
+const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/(?:updates|adopt)$/;
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 
@@ -254,8 +255,9 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
-  // Audio pieces (2 MiB) are the largest bodies; call commits and chat have their own, tighter caps below.
-  app.use('/v1/*', capped(4 * 1024 * 1024));
+  // Audio pieces (2 MiB) are the largest bodies; call commits and chat have their own, tighter caps below. A document's updates can be as big as a document, and are capped where they arrive.
+  const anyBody = capped(4 * 1024 * 1024);
+  app.use('/v1/*', (c, next) => (DOC_UPDATES.test(c.req.path) ? next() : anyBody(c, next)));
   app.use('/v1/*', async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
     const origin = c.req.header('origin');
@@ -721,6 +723,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
    * nothing, and a receipt would hold a copy of it, so none of this keeps one.
    */
   app.use('/v1/workspaces/:id/documents/:doc/updates', capped(MAX_DOC_UPDATE_BYTES));
+  app.use('/v1/workspaces/:id/documents/:doc/adopt', capped(MAX_DOC_BYTES));
   app.use('/v1/workspaces/:id/documents/:doc/awareness', capped(Math.ceil((MAX_DOC_AWARENESS_BYTES * 4) / 3) + 1024));
   app.get('/v1/workspaces/:id/documents/:doc/live', async (c) => {
     const r = await readerOf(c);
@@ -735,8 +738,17 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/documents/:doc/updates', async (c) => {
     const r = await readerOf(c);
     updateLimiter(access.limitKey(r), 'document update');
-    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(Number(c.req.header('content-length') ?? 0) / 1024) || 1);
-    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), () => c.req.arrayBuffer()));
+    const length = Number(c.req.header('content-length') ?? MAX_DOC_UPDATE_BYTES);
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
+    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
+  });
+  /* Words that couldn't reach the document they were written in, as a new one's first state. */
+  app.post('/v1/workspaces/:id/documents/:doc/adopt', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
+    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
   app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
     const r = await readerOf(c);

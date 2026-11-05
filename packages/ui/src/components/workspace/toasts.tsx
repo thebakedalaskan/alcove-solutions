@@ -44,6 +44,9 @@ export const wsToast = {
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),
   notesOn: () => say('check', 'Notes are on for everyone'),
   backOnline: () => say('check', 'Back online. Your edits are saved.'),
+  copiedText: () => say('copy', 'Copied. Paste it wherever you like.'),
+  savedAsNew: (name: string) => say('filePlus', `Saved as ${name}`),
+  discarded: () => say('trash', 'Discarded. This document is as Alcove has it.'),
   sharing: (person: AvatarPerson, first: string, onShow: () => void): WsToastData => ({ person, text: `${first} started sharing`, action: { label: 'Show it', onClick: onShow }, ms: 12000 })
 };
 
