@@ -226,17 +226,21 @@ function useLeaving(now: Shown, settled: boolean) {
     let done: ReturnType<typeof setTimeout> | undefined;
     const started = Date.now();
     let since = 0;
-    /* A page on its way to a document can say "pick one" for a frame, so what's drawn has to hold for 100 ms. */
-    const drawn = () => {
+    /*
+     * How long what's drawn has to hold: a workspace's page on its way to a document can say "pick one" for a frame, and
+     * a private one is drawn at once, so nothing waits for what's leaving to say it's gone.
+     */
+    const drawn = (): number | null => {
       const b = box.current;
-      if (!b) return false;
-      const page = b.querySelector('.ProseMirror, .wd-none') !== null;
-      return b.querySelector('.wt') === null ? page : page && b.querySelector('.wt-scroll') !== null;
+      if (!b || b.querySelector('.ProseMirror, .wd-none') === null) return null;
+      if (b.querySelector('.wt') === null) return 0;
+      return b.querySelector('.wt-scroll') === null ? null : 100;
     };
     const look = () => {
       const now = Date.now();
-      since = drawn() ? since || now : 0;
-      if ((since === 0 || now - since < 100) && now - started < 1500) { frame = requestAnimationFrame(look); return; }
+      const hold = drawn();
+      since = hold === null ? 0 : since || now;
+      if ((hold === null || now - since < hold) && now - started < 1500) { frame = requestAnimationFrame(look); return; }
       setGone(true);
       done = setTimeout(() => setLeaving(null), reduce ? 0 : DURATION[2] * 1000 + 40);
     };

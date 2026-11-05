@@ -444,9 +444,14 @@
   /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
   [data-radix-popper-content-wrapper] > .ws-pop kbd { display: none; }
   body:has([data-radix-popper-content-wrapper] > .ws-pop) .tab-rec { visibility: hidden; }
+  /* So does a toast, which would sit on the sheet's rows: what it says has been said by the time someone's choosing here. */
+  body:has([data-radix-popper-content-wrapper] > .ws-pop) .ac-toasts { visibility: hidden; }
   .wm-r.is-phone { display: flex; }
   .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }
   .wv-knock { left: 8px; right: 8px; width: auto; margin-left: 0; }
+  /* Too narrow for its answers side by side: what's shared takes the row, and the other two share the next. */
+  .wv-knock .ac { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wv-knock .ac .ac-btn.is-primary { grid-column: 1 / -1; }
   .ws-toasts { left: 12px; right: 12px; bottom: 82px; max-width: none; }
   .ws-play { left: 12px; right: 12px; width: auto; margin-left: 0; gap: 10px; }
   .ws-play .m { flex: 1; min-width: 0; }
