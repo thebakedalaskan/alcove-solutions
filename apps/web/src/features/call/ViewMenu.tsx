@@ -61,7 +61,7 @@ export function ViewMenu({ mode, preset, self, custom, layout, people, list, roo
             <span>People</span>
             <Segmented value={people} onChange={onPeople} label="People" options={[{ value: 'tiles', label: 'Tiles' }, { value: 'arches', label: 'Arches' }, { value: 'hidden', label: 'Hidden' }]} />
           </div>
-          {!roomy && <p className="hint">Layouts and how you see people apply once something is shared.</p>}
+          {!roomy && <p className="hint">Layouts and how you see people apply once the workspace is open or something is shared.</p>}
           {list !== null && <div className="ic-vrow"><span>Document list</span><Switch checked={list} label="Show the document list" onChange={onList} /></div>}
           <div className="ic-msep" />
           {onZen && (

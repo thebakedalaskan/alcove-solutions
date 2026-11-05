@@ -79,7 +79,7 @@ export async function me(o: Owner, db: Db = o.pool): Promise<Person> {
 export async function sessionFor(o: Owner): Promise<Session> {
   if (!o.session) throw new NotFoundError('No session.', { context: { ownerId: o.ownerId } });
   const p = await profile(o);
-  return { user: await me(o), ownerId: o.ownerId, provider: o.session.provider, sample: p.sample, createdAt: o.session.createdAt.toISOString(), expiresAt: o.session.expiresAt.toISOString() };
+  return { user: await me(o), ownerId: o.ownerId, provider: o.session.provider, sample: p.sample, sharedDemo: isSharedDemo(p), createdAt: o.session.createdAt.toISOString(), expiresAt: o.session.expiresAt.toISOString() };
 }
 
 const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp, email_index: bytea });

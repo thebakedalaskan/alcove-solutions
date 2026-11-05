@@ -64,7 +64,7 @@ function watchPermission() {
 const subscribe = (f: () => void) => { watchPermission(); listeners.add(f); return () => { listeners.delete(f); }; };
 export const useNotifyPermission = (): NotifyPermission => useSyncExternalStore(subscribe, permissionNow, () => 'default');
 
-/** Asks the browser to allow notifications. Only ever on a press: Settings' Turn on browser notifications. */
+/** Asks the browser to allow notifications. Only ever on a press: Turn on, in Settings. */
 export async function askToNotify(): Promise<NotifyPermission> {
   if (!supported()) return 'unsupported';
   try {

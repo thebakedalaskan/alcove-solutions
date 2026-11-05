@@ -1,7 +1,7 @@
 /*
  * Pick people by name or email: colleagues from your company's directory, people you've had calls
- * with, or any address. The same picker shares notes afterwards (where it offers your groups first), fills a group,
- * and (offering only colleagues who aren't on Alcove) invites people to Alcove.
+ * with, or any address. The same picker shares notes afterwards (where it offers your groups first), and (offering
+ * only people on Alcove) rings someone else in the lobby.
  */
 import type { Group, Person, PersonSuggestion } from '@alcove/api';
 import { Avatar, Button, Chip, GroupChip, Icon, Popover, cn } from '@alcove/ui';

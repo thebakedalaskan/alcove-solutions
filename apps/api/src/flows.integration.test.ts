@@ -2174,6 +2174,19 @@ describe('who has the notes', () => {
     expect((await org.api.notes.list()).find((n) => n.id === newer)?.groupShares).toEqual([]);
     expect((await member.api.notes.list()).find((n) => n.id === newer)?.groupShares).toEqual([]);
 
+    // The list says who got a note afterwards, so nobody counts as having been on a call they were only shared: the
+    // guest was invited to the older one, and everyone else has it from a share, a group's or not. A call nobody was
+    // shared lists nobody.
+    const later = [friend.session.user.email, member.session.user.email];
+    const onOlder = (await org.api.notes.list()).find((n) => n.id === older);
+    expect(onOlder?.people.map((p) => p.email)).toEqual(expect.arrayContaining([org.session.user.email, guest.session.user.email, ...later]));
+    expect(onOlder?.sharedWith).toEqual(expect.arrayContaining(later));
+    expect(onOlder?.sharedWith).not.toContain(guest.session.user.email);
+    expect(onOlder?.sharedWith).not.toContain(org.session.user.email);
+    expect((await guest.api.notes.list()).find((n) => n.id === older)?.sharedWith).toEqual(onOlder?.sharedWith);
+    expect((await org.api.notes.get(older)).sharedWith).toEqual(onOlder?.sharedWith);
+    expect((await org.api.notes.list()).find((n) => n.id === newer)?.sharedWith).toEqual([member.session.user.email]);
+
     // Once everyone a share reached has removed the note, that share isn't listed; one reaching anyone still is.
     await friend.api.notes.delete(older);
     await member.api.notes.delete(older);
@@ -2817,6 +2830,17 @@ describe('the shared demo account', () => {
     // Still signed in, with its sample calendar.
     expect((await demo.api.auth.getSession())?.sample).toBe(true);
     expect((await demo.api.meetings.upcoming()).length).toBeGreaterThan(0);
+  });
+
+  it('says so in the session, so the app needn’t offer what the server would refuse', async () => {
+    const shared = h.browser();
+    expect((await shared.api.auth.signIn('microsoft')).session).toMatchObject({ sample: true, sharedDemo: true });
+    expect((await shared.api.auth.getSession())?.sharedDemo).toBe(true);
+    // Every other demo account is its owner's own, and can go.
+    const own = h.browser();
+    expect((await own.api.auth.signIn('sso', { email: unique('own') })).session).toMatchObject({ sample: true, sharedDemo: false });
+    await own.api.account.delete();
+    expect(await own.api.auth.getSession()).toBeNull();
   });
 });
 
