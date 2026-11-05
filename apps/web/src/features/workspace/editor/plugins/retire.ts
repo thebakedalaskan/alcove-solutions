@@ -18,10 +18,11 @@ import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Editor
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { allBlocks, blockAt, findBlock } from '../commands';
-import { followUndo, gatherWords, settleCopies, strayWords, type StrayWords } from '../retire';
+import { allBlocks, blockAt, findBlock, type BlockRef } from '../commands';
+import { attrsToCut, cutWords, followUndo, gatherWords, isNewIn, movedIn, settleCopies, strayWords, wordsToCut, type CopiedWords, type StrayWords } from '../retire';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, isGone, schema, textAttr } from '../schema';
+import { setAttr } from '../write';
 import { elementOf, syncOf, type SyncBinding, type SyncState } from '../ydoc';
 import { fromSync } from './blockIds';
 import { flash } from './decor';
@@ -49,30 +50,79 @@ function putCaret(view: EditorView, held: HeldCaret): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.between(doc.resolve(inside(held.anchor)), doc.resolve(inside(held.head)))));
 }
 
+/** A block's element, as it reads now. Texts side by side become one, because y-prosemirror's reader merges a browser's own by deleting one. */
+function copyOf(element: Y.XmlElement): Y.XmlElement {
+  const copy = new Y.XmlElement(element.nodeName);
+  for (const [key, value] of Object.entries<unknown>(element.getAttributes())) if (key !== 'gone') setAttr(copy, key, value);
+  const children: (Y.XmlElement | Y.XmlText)[] = [];
+  let words: unknown[] | null = null;
+  const endWords = () => {
+    if (!words) return;
+    const text = new Y.XmlText();
+    text.applyDelta(words);
+    children.push(text);
+    words = null;
+  };
+  for (const child of element.toArray()) {
+    if (child instanceof Y.XmlText) words = [...(words ?? []), ...child.toDelta()];
+    else if (child instanceof Y.XmlElement) {
+      endWords();
+      children.push(copyOf(child));
+    }
+  }
+  endWords();
+  copy.insert(0, children);
+  return copy;
+}
+
+/** Roughly what a copy of a block adds to a document for good: the same for each line and each cell, whatever it says, because what it replaces goes when the document is compacted. */
+function copyCost(node: PMNode): number {
+  let cost = 1;
+  node.descendants((child) => {
+    if (child.isTextblock) cost += 1;
+    return !child.isTextblock;
+  });
+  return cost;
+}
+
+/**
+ * What a move has to copy. A table leaves every cell behind, for anyone offline typing in one. So a table stays where it is
+ * if what it goes past costs less: those move to its other side, and the blocks end up in the same order.
+ */
+function whatMoves(blocks: readonly BlockRef[], here: number, there: number, side: 'before' | 'after'): { moving: readonly BlockRef[]; around: BlockRef | null } {
+  const block = blocks[here];
+  if (!block) return { moving: [], around: null };
+  const past = here < there ? blocks.slice(here + 1, side === 'before' ? there : there + 1) : blocks.slice(side === 'before' ? there : there + 1, here);
+  const cheaper = past.reduce((cost, b) => cost + copyCost(b.node), 0) < copyCost(block.node);
+  return block.node.type === schema.nodes.table && cheaper && past.every((b) => b.id) ? { moving: past, around: block } : { moving: [block], around: null };
+}
+
 /** Moves a block to one side of another, for everyone. Returns false if it's already there. */
 export function moveBlock(rt: EditorRuntime, id: string, target: string, side: 'before' | 'after'): boolean {
   const view = rt.readOnly ? null : rt.view;
   const sync = view ? syncOf(view.state) : null;
   if (!view || !sync || id === target) return false;
   const fragment = sync.type;
-  const from = elementOf(fragment, id), to = elementOf(fragment, target);
-  if (!from || !to) return false;
+  if (!elementOf(fragment, id) || !elementOf(fragment, target)) return false;
   /* On the page it's beside there already, whatever may be between them in the document. */
   const blocks = allBlocks(view.state.doc);
   const here = blocks.findIndex((b) => b.id === id), there = blocks.findIndex((b) => b.id === target);
-  if (here + (side === 'before' ? 1 : -1) === there) return false;
+  if (here < 0 || there < 0 || here + (side === 'before' ? 1 : -1) === there) return false;
+  const { moving, around } = whatMoves(blocks, here, there, side);
   const held = caretOf(view.state);
   const undo = yUndoPluginKey.getState(view.state)?.undoManager;
   /* Its own step: ⌘Z takes back the move, not the move and the typing either side of it. */
   undo?.stopCapturing();
   sync.doc.transact(() => {
-    const copy = from.element.clone();
-    copy.removeAttribute('gone');
-    fragment.insert(to.index + (side === 'after' ? 1 : 0), [copy]);
-    retire(from.element, newBlockId(), id);
+    const leaving = moving.flatMap((b) => { const found = b.id ? elementOf(fragment, b.id) : null; return found && b.id ? [{ id: b.id, element: found.element }] : []; });
+    /* Going down, what it goes past lands above it, and going up, below it. */
+    const staying = around?.id ? elementOf(fragment, around.id) : null;
+    const landing = staying ? staying.index + (here < there ? 0 : 1) : (elementOf(fragment, target)?.index ?? 0) + (side === 'after' ? 1 : 0);
+    fragment.insert(landing, leaving.map((block) => copyOf(block.element)));
+    for (const block of leaving) retire(block.element, newBlockId(), block.id);
   }, ySyncPluginKey);
   undo?.stopCapturing();
-  if (held?.id === id) putCaret(view, held);
+  if (held?.id && moving.some((b) => b.id === held.id)) putCaret(view, held);
   flash(view, id);
   return true;
 }

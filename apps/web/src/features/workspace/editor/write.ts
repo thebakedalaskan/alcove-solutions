@@ -37,7 +37,7 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 /** Attributes hold more than the strings Yjs's types say they do. */
 interface Attributed { setAttribute(key: string, value: unknown): void }
-const setAttr = (element: Attributed, key: string, value: unknown): void => { element.setAttribute(key, value); };
+export const setAttr = (element: Attributed, key: string, value: unknown): void => { element.setAttribute(key, value); };
 
 const defaultOf = (node: PMNode, key: string): unknown => node.type.spec.attrs?.[key]?.default;
 
