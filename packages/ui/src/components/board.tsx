@@ -635,13 +635,16 @@ export function BoardMap({ blocks, bounds, view, className }: { blocks: BoardBox
   return <div className={cn('bi bd-map', className)} aria-hidden="true">{blocks.map((b, i) => <i key={i} style={onMap(b)} />)}<b style={onMap(view)} /></div>;
 }
 
-/** What a blank board says, until the first sticky. `fading` as that sticky lands: it goes on being drawn until it has gone. */
-export function BoardEmpty({ fading = false, className }: { fading?: boolean | undefined; className?: string | undefined }) {
+/**
+ * What a blank board says, until the first sticky. `fading` as that sticky lands: it goes on being drawn until it has gone.
+ * `everyone`: everyone here can add to it, which it says only when it's so.
+ */
+export function BoardEmpty({ fading = false, everyone = true, className }: { fading?: boolean | undefined; everyone?: boolean | undefined; className?: string | undefined }) {
   return (
     <div className={cn('bd-empty', fading && 'is-faded', className)}>
       <EmptyArch />
       <b>Double-click anywhere to add a sticky</b>
-      <span>Or press N. Everyone here can add to this board.</span>
+      <span>{everyone ? 'Or press N. Everyone here can add to this board.' : 'Or press N.'}</span>
     </div>
   );
 }

@@ -99,6 +99,8 @@ export interface BoardSurfaceProps extends BoardHandlers {
   name?: string | undefined;
   /** What the seal says: Sealed, Sealed to this room, View only. */
   seal?: string | undefined;
+  /** Everyone here can add to it, as a blank board says. Unless it's said otherwise, they can. */
+  everyone?: boolean | undefined;
   sealIcon?: IconName | undefined;
   /** Timer, Vote, Present and More in the bar. On by default in a call and nowhere else. */
   acts?: boolean | undefined;
@@ -246,7 +248,7 @@ function Over(props: OverProps) {
 }
 
 /** What a blank board says. It fades as the first thing lands, and goes on being drawn until it has. */
-function Blank({ board }: { board: Board }) {
+function Blank({ board, everyone }: { board: Board; everyone: boolean }) {
   const empty = useBoardState(board, (s) => s.view.objects.length === 0);
   const [here, setHere] = useState(empty);
   useEffect(() => {
@@ -257,7 +259,7 @@ function Blank({ board }: { board: Board }) {
     const fading = setTimeout(() => setHere(false), DURATION[2] * 1000);
     return () => clearTimeout(fading);
   }, [empty]);
-  return here ? <BoardEmpty fading={!empty} /> : null;
+  return here ? <BoardEmpty fading={!empty} everyone={everyone} /> : null;
 }
 
 function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
@@ -301,7 +303,7 @@ function shotSpot(board: Board): { x: number; y: number } {
 }
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
-  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, onCall, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
+  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, everyone = true, onCall, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
@@ -355,7 +357,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
           tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
           <BoardWorld ref={world} pointers={<BoardPointers presence={presence} talking={talking} />}><Objects board={board} presence={presence} /></BoardWorld>
           {!look.mini && <Over board={board} onSort={onSort} />}
-          {look.edit && <Blank board={board} />}
+          {look.edit && <Blank board={board} everyone={everyone} />}
           {look.bar && <Bar board={board} surface={props} />}
           {look.bar && <Minimap board={board} />}
           {look.rail && <Flyouts board={board} />}
